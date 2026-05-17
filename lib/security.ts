@@ -1,6 +1,7 @@
 type OriginOptions = {
   appUrl?: string;
   nodeEnv?: string;
+  requestUrl?: string;
 };
 
 function toOrigin(value?: string | null): string | null {
@@ -31,6 +32,7 @@ export function isAllowedOrigin(
 ): boolean {
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV ?? "development";
   const appOrigin = toOrigin(options.appUrl ?? process.env.NEXT_PUBLIC_APP_URL);
+  const currentOrigin = toOrigin(options.requestUrl);
 
   if (!origin) {
     return nodeEnv !== "production";
@@ -45,6 +47,10 @@ export function isAllowedOrigin(
     return true;
   }
 
+  if (currentOrigin && requestOrigin === currentOrigin) {
+    return true;
+  }
+
   if (nodeEnv !== "production" && isLocalhostOrigin(requestOrigin)) {
     return true;
   }
@@ -53,5 +59,7 @@ export function isAllowedOrigin(
 }
 
 export function hasAllowedOrigin(request: Request): boolean {
-  return isAllowedOrigin(request.headers.get("origin"));
+  return isAllowedOrigin(request.headers.get("origin"), {
+    requestUrl: request.url,
+  });
 }

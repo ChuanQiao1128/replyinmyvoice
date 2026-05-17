@@ -25,9 +25,20 @@ describe("isAllowedOrigin", () => {
     expect(
       isAllowedOrigin("https://example.com", {
         appUrl: "https://replyinmyvoice.com",
+        requestUrl: "https://replyinmyvoice.com/api/rewrite",
         nodeEnv: "production",
       }),
     ).toBe(false);
+  });
+
+  it("allows the active deployment origin", () => {
+    expect(
+      isAllowedOrigin("https://replyinmyvoice-app.example.workers.dev", {
+        appUrl: "https://replyinmyvoice.com",
+        requestUrl: "https://replyinmyvoice-app.example.workers.dev/api/rewrite",
+        nodeEnv: "production",
+      }),
+    ).toBe(true);
   });
 
   it("rejects missing production origins", () => {
