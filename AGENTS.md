@@ -1,0 +1,1472 @@
+# AGENTS.md instructions for /Users/qc/Desktop/CloudFlare
+
+## Project
+
+Project name: **Reply In My Voice**
+
+Domain: `replyinmyvoice.com`
+
+Core positioning:
+
+> Replies that still sound like you.
+
+Sub-positioning:
+
+> A writing assistant for everyday communication: teacher messages, sales follow-ups, workplace email, and drafts that need your tone.
+
+This is an AI-assisted writing workflow product. It helps users turn rough, generic, or AI-assisted drafts into replies that preserve facts and sound closer to how the user would personally write.
+
+It must not be positioned as a detector-bypass, evasion, or gray-market humanizer product.
+
+## Product Background
+
+This product exists because many real professionals already use AI to draft replies, but raw AI output often sounds stiff, generic, or unlike the sender.
+
+Primary user story:
+
+```text
+A teacher needs to reply to students by email.
+The teacher may use AI to draft the response.
+The raw AI draft may feel artificial, too polished, or unlike the teacher's normal voice.
+Students may react badly if the reply feels impersonal.
+The product helps the teacher turn the draft into a clearer, warmer, more personal reply while preserving the facts.
+```
+
+Second user story:
+
+```text
+A salesperson needs to reply to customers, leads, or clients.
+The salesperson may use AI to organize context or draft a reply.
+The raw AI draft may sound mechanical, corporate, or detached.
+The product helps make the reply more natural and relationship-aware without inventing promises, discounts, timelines, meetings, names, or outcomes.
+```
+
+Strategic framing:
+
+```text
+The product is for real communication replies: teacher messages, sales follow-ups, workplace email, and customer/client responses.
+It is not for student essay rewriting, academic misconduct, detector evasion, or hidden bypass workflows.
+The core workflow is draft + context -> reply in my voice.
+The product should emphasize personal tone, context, fact preservation, and practical send-ready replies.
+```
+
+## Confirmed Product Decisions: Usage Limits And Third-Party Writing Signal
+
+These decisions were confirmed before implementation and should be treated as implementation requirements.
+
+### Input Workflow Direction
+
+The app should support a practical email/message reply workflow:
+
+```text
+User pastes the email/message they need to reply to.
+User may also paste a rough AI-assisted draft, or write a rough draft themselves.
+User adds context about what actually happened and facts that must be preserved.
+The app rewrites the response so it feels friendlier, more natural, and closer to the user's own voice.
+```
+
+Confirmed MVP decision:
+
+```text
+Use two main textareas:
+1. Message to reply to
+2. Rough draft reply
+
+Keep the existing context fields:
+- Audience
+- Purpose
+- What actually happened
+- Facts to preserve
+```
+
+### Character Limits
+
+The user wants a clear character limit for pasted content.
+
+Confirmed limits:
+
+```text
+Message to reply to: max 5000 characters
+Rough draft reply: 10 to 5000 characters
+Audience: max 300 characters
+Purpose: max 500 characters
+What actually happened: max 1000 characters
+Facts to preserve: max 1000 characters
+Combined request cap: 10000 characters
+```
+
+Reasoning:
+
+```text
+Teachers and sales users may paste a full incoming email.
+The app should prevent very large email threads from driving up cost and latency.
+The UI should show remaining characters near long textareas.
+```
+
+### Free And Paid Usage Limits
+
+The user wants usage limits.
+
+Candidate plan:
+
+```text
+Free users: 3 rewrites
+Paid users: NZD $9/month in the current sandbox/MVP configuration
+Paid quota: 100 rewrites/month
+```
+
+Confirmed MVP decision:
+
+```text
+Require sign-up before free rewrites.
+Give every signed-in user 3 free lifetime successful rewrites.
+Paid users get 100 successful rewrites per billing month.
+One user click/request on Rewrite counts as one usage attempt, even if the server tries multiple bounded internal rewrite strategies for quality.
+Do not count validation errors, auth failures, payment failures, or provider/server errors.
+When free users exhaust 3 lifetime attempts, show a hard paywall.
+When paid users exhaust 100 monthly attempts, show a hard quota/paywall state.
+Show simple remaining-usage text in /app.
+```
+
+Database implication:
+
+```text
+Add usage tracking beyond the current User model.
+Either add monthly counters to User for MVP simplicity, or create a RewriteUsage table for cleaner billing-period resets.
+Prefer a RewriteUsage table if time allows.
+```
+
+Possible MVP model:
+
+```prisma
+model RewriteUsage {
+  id          String   @id @default(cuid())
+  userId      String
+  periodKey   String
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodKey])
+}
+```
+
+### Third-Party Writing Signal
+
+The user wants to connect **Sapling** as the third-party writing signal provider to measure how AI-like or natural the text appears before and after rewriting. Confirm the exact Sapling API docs and response schema before implementation.
+
+Important framing:
+
+```text
+This signal is useful as a reference for naturalness and writing quality.
+It must not become the sole success metric.
+It must not be marketed as a detector bypass feature.
+It must not claim guarantees.
+It should be combined with fact preservation, tone quality, and user review.
+```
+
+Recommended internal terminology:
+
+```text
+third-party writing signal
+AI-likeness reference signal
+naturalness reference
+before/after writing signal
+```
+
+Avoid user-facing language that suggests:
+
+```text
+guaranteed human writing
+detector evasion
+undetectable output
+score hacking
+```
+
+Potential implementation:
+
+```text
+1. Run third-party signal on the rough draft before rewrite.
+2. Generate one rewrite candidate using the user's context.
+3. Run third-party signal on the rewritten candidate.
+4. If the signal remains too high, gets worse, or the rewrite is too generic, automatically try another bounded internal strategy for the same user request.
+5. Select based on a composite score:
+   - facts preserved
+   - tone matches Warm or Direct
+   - reply is concise and send-ready
+   - third-party signal materially improves when possible
+   - no invented promises, timelines, discounts, names, policies, or outcomes
+```
+
+Recommended cap:
+
+```text
+Start with a maximum of 2 internal rewrite strategies per user request in MVP.
+The production MVP cap is 2 internal strategies per user request, charged as 1 user usage attempt.
+Development/evaluation scripts may try more strategies per sample while searching for better prompts and scoring.
+Do not create an unbounded loop chasing a third-party score.
+```
+
+Core optimization goal:
+
+```text
+Lowering the AI-like signal is a core product goal, similar to how a compression tool should noticeably reduce file size.
+The product should not merely display before/after percentages; it must actively search for rewrite strategies that lower the signal while preserving facts and tone.
+During development, if the AI-like signal reduction is not satisfactory, automatically test other prompts, rewrite strategies, and scoring approaches until the before/after results improve meaningfully.
+Internal development target, not user-facing copy:
+- average signal reduction of at least 30 points across the representative sample set
+- most rewritten samples below 50% AI-like signal
+```
+
+Development evaluation loop:
+
+```text
+Create a local evaluation set with representative teacher, sales, workplace, and client/customer reply samples.
+For each sample, record:
+- draft Sapling AI-like signal
+- rewrite Sapling AI-like signal
+- signal delta
+- facts preserved
+- tone quality
+- whether output became too casual, too generic, too salesy, or invented details
+
+Use this eval set to compare rewrite strategies during development.
+Do not accept the first prompt if the measured reduction is weak.
+If the target is not met, keep running alternative prompts, strategy ordering, and composite scoring until results improve or a hard provider/cost limit is documented.
+```
+
+Possible new env vars:
+
+```env
+WRITING_SIGNAL_PROVIDER=sapling
+SAPLING_API_KEY=
+WRITING_SIGNAL_TIMEOUT_SEC=10
+```
+
+Confirmed decisions:
+
+```text
+Show the before/after Sapling signal to users.
+Run the Sapling signal for free users too.
+One user Rewrite request counts as one usage attempt.
+If the system tries multiple internal strategies for that same request, it still consumes only one usage attempt.
+If the user manually clicks Try again after receiving a result, that is a new request and consumes another usage attempt.
+```
+
+Confirmed user-facing label:
+
+```text
+Use "Naturalness Check" for the before/after Sapling signal.
+Explainer copy:
+A third-party reference signal that helps compare how natural the draft and rewrite feel. It is not a guarantee; review the reply before sending.
+```
+
+Updated MVP decision:
+
+```text
+Show a cautious before/after "Naturalness Check".
+Do not show it as a guarantee.
+Do not optimize solely for this score, but treat meaningful signal reduction as a core product objective.
+Charge one usage attempt per user Rewrite request.
+Automatically run bounded internal optimization strategies when the first candidate does not reduce the AI-like signal enough.
+If the user manually clicks Try again, that is a new usage attempt.
+If the third-party signal provider is missing or fails, still return the rewrite and show a neutral "signal unavailable" state.
+```
+
+### Product Focus
+
+Confirmed MVP focus:
+
+```text
+General reply assistant.
+The landing page and examples should explicitly include teacher and sales scenarios, but the product should not be limited to only those two.
+Also include workplace email and customer/client replies.
+All user-facing website and app UI copy should be in English.
+```
+
+## Confirmed UI/UX Decisions
+
+Visual direction:
+
+```text
+Warm Writing Desk
+Warm, calm, professional, writing-focused.
+Use off-white paper-like backgrounds, dark readable text, soft borders, subtle note/paper metaphors, and restrained warm accents.
+Avoid heavy futuristic AI-tool styling, large purple/blue gradients, and aggressive marketing visuals.
+```
+
+Landing page:
+
+```text
+Include a preset interactive demo.
+The demo must not call OpenAI or Sapling.
+The demo must not consume usage.
+Demo scenarios:
+- Teacher message
+- Sales follow-up
+- Workplace email
+- Client/customer reply
+```
+
+App workspace:
+
+```text
+Use a two-column desktop layout.
+Left column: Message to reply to, Rough draft reply, context fields, tone selector, Rewrite button.
+Right column: rewritten output, Naturalness Check, change summary, risk notes, copy button, Try again, local history.
+Mobile layout stacks vertically.
+```
+
+Naturalness Check:
+
+```text
+Show Sapling before/after as an AI-like signal percentage.
+Lower is better.
+Example:
+Naturalness Check
+AI-like signal
+Draft: 78%
+Rewrite: 32%
+Change: -46 pts
+Reference signal only. Review the reply before sending.
+```
+
+Display rules:
+
+```text
+Use soft progress bars and labels such as High AI-like signal, Lower AI-like signal, Signal unavailable.
+Do not display pass/fail.
+Do not imply 0% means guaranteed human writing.
+Do not use "detector score" in user-facing UI.
+```
+
+Privacy and history:
+
+```text
+Local history must include a Clear history button.
+Add an input-area privacy reminder:
+Avoid pasting passwords, payment details, or highly sensitive personal information.
+```
+
+Character limits:
+
+```text
+Message to reply to: max 5000 characters.
+Rough draft reply: 10 to 5000 characters.
+Audience: max 300 characters.
+Purpose: max 500 characters.
+What actually happened: max 1000 characters.
+Facts to preserve: max 1000 characters.
+Combined request cap: 10000 characters.
+Show remaining characters near long textareas.
+```
+
+Account/settings scope:
+
+```text
+Do not create a separate /account page for MVP.
+Show account-adjacent controls inside /app:
+- Subscription status
+- Usage remaining
+- Manage billing
+- Clear history
+```
+
+## Important Local Files
+
+Work only inside this folder unless the user explicitly says otherwise:
+
+```text
+/Users/qc/Desktop/CloudFlare
+```
+
+Key files:
+
+```text
+/Users/qc/Desktop/CloudFlare/replyinmyvoice_requirements.md
+/Users/qc/Desktop/CloudFlare/.env.local
+/Users/qc/Desktop/CloudFlare/local-env.md
+/Users/qc/Desktop/CloudFlare/AGENTS.md
+```
+
+Sensitive Cloudflare credential file:
+
+```text
+/Users/qc/Desktop/CloudFlare/globalapikey/globalapikey.md
+```
+
+Do not print, quote, summarize, commit, or expose secret values from `.env.local` or `globalapikey/globalapikey.md`.
+
+## Current External Setup
+
+Domain:
+
+```text
+replyinmyvoice.com
+```
+
+Current holding page:
+
+```text
+https://replyinmyvoice.com
+```
+
+Cloudflare Pages project already exists:
+
+```text
+replyinmyvoice
+```
+
+GitHub remote to use:
+
+```bash
+git remote add origin git@github.com:ChuanQiao1128/replyinmyvoice.git
+```
+
+GitHub SSH has already been checked successfully for user:
+
+```text
+ChuanQiao1128
+```
+
+Stripe sandbox webhook has already been created for:
+
+```text
+https://replyinmyvoice.com/api/stripe/webhook
+```
+
+Webhook events:
+
+```text
+checkout.session.completed
+customer.subscription.created
+customer.subscription.updated
+customer.subscription.deleted
+```
+
+## Environment
+
+Local env file:
+
+```text
+/Users/qc/Desktop/CloudFlare/.env.local
+```
+
+Environment setup notes:
+
+```text
+/Users/qc/Desktop/CloudFlare/local-env.md
+```
+
+`.env.local` has been checked and is ready. Required variables are present and filled:
+
+```env
+NEXT_PUBLIC_APP_URL
+NODE_ENV
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+CLERK_SECRET_KEY
+NEXT_PUBLIC_CLERK_SIGN_IN_URL
+NEXT_PUBLIC_CLERK_SIGN_UP_URL
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL
+DATABASE_URL
+DIRECT_URL
+OPENAI_API_KEY
+OPENAI_MODEL
+STRIPE_SECRET_KEY
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+STRIPE_PRICE_ID
+STRIPE_WEBHOOK_SECRET
+WRITING_SIGNAL_PROVIDER
+SAPLING_API_KEY
+WRITING_SIGNAL_TIMEOUT_SEC
+ALLOW_DEV_SUBSCRIPTION_BYPASS
+CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_API_TOKEN
+LAUNCH_CONFIRMED
+EVAL_MAX_PROMPT_ITERATIONS
+EVAL_MAX_WALLCLOCK_MINUTES
+```
+
+Never hardcode secrets. Always read secrets from `process.env`.
+
+Builds must not fail only because production secrets are absent. Validate required secrets at runtime in the route or server action that uses them.
+
+## Deployment Decision
+
+The requirements file has been aligned to Cloudflare deployment.
+
+Because this MVP requires API routes, Stripe webhooks, Clerk auth, OpenAI calls, and Prisma/Neon access, do not use static Next export as the production architecture.
+
+Confirmed production target:
+
+```text
+Next.js App Router + Cloudflare Workers/OpenNext
+Worker name: replyinmyvoice-app
+Verify first on the workers.dev URL before any production-domain cutover.
+```
+
+The existing Cloudflare Pages holding page should remain live until the full app is built, tested, and ready to cut over.
+
+Do not modify the existing `replyinmyvoice` Pages project's Custom Domain, and do not modify `replyinmyvoice.com` DNS records during normal autonomous development.
+
+Production-domain cutover is gated by:
+
+```env
+LAUNCH_CONFIRMED=true
+```
+
+If `LAUNCH_CONFIRMED` is missing or `false`, deploy and verify only the independent Worker (`replyinmyvoice-app`) on its `workers.dev` URL. Then document the final domain cutover steps in `docs/manual-setup.md` and stop before changing the live domain.
+
+If Cloudflare custom-domain conflicts appear during deployment, preserve the working holding page and document the final cutover step instead of breaking the live domain mid-build.
+
+Preflight finding:
+
+```text
+CLOUDFLARE_API_TOKEN is required for Wrangler deployment in this non-interactive local environment.
+The user has added a scoped API token to `.env.local`.
+Do not print or expose the token.
+```
+
+Latest pre-development checks:
+
+```text
+GitHub SSH auth: ok
+Git remote origin: git@github.com:ChuanQiao1128/replyinmyvoice.git
+Remote branch heads: none found, likely empty repository
+Node.js: v24.9.0
+npm: 11.6.0
+Wrangler: 4.92.0
+Neon DATABASE_URL: ok
+Neon DIRECT_URL: ok
+OpenAI model lookup: ok
+OpenAI tiny generation request: ok
+Clerk secret key: ok
+Stripe price lookup: ok, unit_amount=900, currency=nzd, interval=month
+Stripe sandbox NZD price accepted by user for testing
+Stripe webhook endpoint/events: ok
+Sapling aidetect API: ok
+Cloudflare raw API / zone active: ok
+Cloudflare non-interactive deploy token: set
+Wrangler whoami with API token: ok
+Cloudflare Pages API with token: ok, replyinmyvoice project found
+Cloudflare zone read with token: ok
+Cloudflare Workers scripts API with token: ok
+Cloudflare DNS records read with token: ok
+```
+
+## Product Requirements Summary
+
+Read the full source of truth before implementation:
+
+```text
+/Users/qc/Desktop/CloudFlare/replyinmyvoice_requirements.md
+```
+
+Required routes:
+
+```text
+/
+/pricing
+/sign-in/[[...sign-in]]
+/sign-up/[[...sign-up]]
+/app
+/api/rewrite
+/api/stripe/checkout
+/api/stripe/portal
+/api/stripe/webhook
+```
+
+Landing page must include:
+
+```text
+Hero
+Use cases
+How it works
+Example before/after panel
+Pricing
+FAQ
+Footer
+```
+
+Authenticated app page must include:
+
+```text
+Rewrite workspace for signed-in inactive/free users while free lifetime quota remains
+Paywall for signed-in inactive/free users only after free lifetime quota is exhausted
+Rewrite workspace for active/trialing subscribers with paid billing-period quota
+Message to reply to textarea
+Rough draft reply textarea
+Audience field
+Purpose field
+What actually happened field
+Facts to preserve field
+Tone selector with exactly Warm and Direct
+Rewrite button
+Before panel
+After panel
+Change summary panel
+Risk notes panel
+Copy button
+Local history of last 5 rewrites
+```
+
+LocalStorage key:
+
+```text
+rimv.rewrite.history.v1
+```
+
+Do not persist rewrite history in the database.
+
+## User-Facing Copy Constraints
+
+Never use these terms or concepts in user-facing copy, metadata, route labels, marketing sections, UI docs, or visible product text:
+
+```text
+AI detection bypass
+detector bypass
+undetectable
+humanizer
+evade detection
+bypass filters
+trick detectors
+```
+
+Allowed direction:
+
+```text
+natural writing
+personal tone
+context-aware replies
+sounds like you
+preserve facts
+clearer replies
+warmer replies
+direct replies
+```
+
+Before completion, run:
+
+```bash
+grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib || true
+```
+
+Remove or rewrite any user-facing occurrences.
+
+## Tech Stack
+
+Use this stack unless implementation proves a narrow compatibility adjustment is required:
+
+```text
+Next.js 15 App Router pinned to v15.x
+TypeScript
+Tailwind CSS v3
+Clerk
+Neon Postgres
+Prisma ORM with Cloudflare-compatible Neon adapter/driver
+Stripe Checkout
+Stripe Billing Portal
+OpenAI API
+Cloudflare Workers/OpenNext deployment with @opennextjs/cloudflare
+```
+
+Default OpenAI model:
+
+```text
+gpt-4o-mini
+```
+
+## Database
+
+Use Prisma with Postgres.
+
+Minimum `User` model:
+
+```prisma
+model User {
+  id                   String   @id @default(cuid())
+  clerkUserId          String   @unique
+  email                String?
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  subscriptionStatus   String   @default("inactive")
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+```
+
+Allowed subscription statuses for app access:
+
+```ts
+["active", "trialing"]
+```
+
+## Implementation Plan
+
+### Phase 1: Repository And Project Setup
+
+1. Initialize git in `/Users/qc/Desktop/CloudFlare`.
+2. Create `.gitignore` before adding files.
+3. Ensure these are ignored:
+
+```text
+.env
+.env.local
+.dev.vars
+globalapikey/
+node_modules/
+.next/
+.open-next/
+.wrangler/
+dist/
+```
+
+4. Add GitHub remote:
+
+```bash
+git remote add origin git@github.com:ChuanQiao1128/replyinmyvoice.git
+```
+
+5. Scaffold or create the Next.js app in this folder.
+
+### Phase 2: Base App Structure
+
+Create or update:
+
+```text
+app/layout.tsx
+app/page.tsx
+app/pricing/page.tsx
+app/sign-in/[[...sign-in]]/page.tsx
+app/sign-up/[[...sign-up]]/page.tsx
+app/app/page.tsx
+app/api/rewrite/route.ts
+app/api/stripe/checkout/route.ts
+app/api/stripe/portal/route.ts
+app/api/stripe/webhook/route.ts
+middleware.ts
+```
+
+Create components:
+
+```text
+components/site-header.tsx
+components/site-footer.tsx
+components/landing/hero.tsx
+components/landing/use-cases.tsx
+components/landing/how-it-works.tsx
+components/landing/example-panel.tsx
+components/landing/pricing.tsx
+components/landing/faq.tsx
+components/app/rewrite-workspace.tsx
+components/app/paywall-card.tsx
+components/app/subscription-status.tsx
+components/ui/button.tsx
+components/ui/card.tsx
+components/ui/textarea.tsx
+components/ui/input.tsx
+```
+
+Create helpers:
+
+```text
+lib/db.ts
+lib/users.ts
+lib/subscription.ts
+lib/stripe.ts
+lib/openai.ts
+lib/validation.ts
+```
+
+### Phase 3: Auth
+
+1. Install Clerk.
+2. Add Clerk provider in `app/layout.tsx`.
+3. Add Clerk middleware.
+4. Public routes:
+
+```text
+/
+/pricing
+/sign-in
+/sign-up
+/api/stripe/webhook
+```
+
+5. Protected routes:
+
+```text
+/app
+/api/rewrite
+/api/stripe/checkout
+/api/stripe/portal
+```
+
+### Phase 4: Prisma And Neon
+
+1. Add Prisma dependencies and schema.
+2. Configure `DATABASE_URL` and `DIRECT_URL`.
+3. Generate Prisma client.
+4. Add a Prisma database helper compatible with Cloudflare Workers, preferably using an edge-compatible Neon adapter/driver.
+5. Add user and subscription helpers.
+6. Run migration locally.
+7. After OpenNext build, run a Worker preview/runtime DB smoke test.
+
+### Phase 5: Stripe
+
+Implement:
+
+```text
+POST /api/stripe/checkout
+POST /api/stripe/portal
+POST /api/stripe/webhook
+```
+
+Checkout requirements:
+
+```text
+Authenticated user required
+Get or create local User
+Get or create Stripe customer
+Use STRIPE_PRICE_ID
+Subscription mode
+Success URL: NEXT_PUBLIC_APP_URL + /app?checkout=success
+Cancel URL: NEXT_PUBLIC_APP_URL + /app?checkout=cancelled
+Return { url }
+```
+
+Webhook requirements:
+
+```text
+Use raw request body
+Verify Stripe signature in production
+Use Cloudflare Workers-compatible async verification if synchronous Stripe verification fails
+Webhook handling must be idempotent by Stripe event id
+Update local User subscription fields
+Treat active/trialing as active
+Treat canceled/unpaid/incomplete_expired/deleted as inactive
+```
+
+### Phase 6: OpenAI Rewrite API
+
+Implement:
+
+```text
+POST /api/rewrite
+```
+
+Request shape:
+
+```ts
+type RewriteRequest = {
+  messageToReplyTo?: string;
+  roughDraftReply: string;
+  audience?: string;
+  purpose?: string;
+  whatHappened?: string;
+  factsToPreserve?: string;
+  tone: "warm" | "direct";
+};
+```
+
+Response shape:
+
+```ts
+type RewriteResponse = {
+  rewrittenText: string;
+  changeSummary: string[];
+  riskNotes: string[];
+};
+```
+
+Validation:
+
+```text
+messageToReplyTo optional, max 5000 chars
+roughDraftReply required, 10 to 5000 chars
+audience optional, max 300 chars
+purpose optional, max 500 chars
+whatHappened optional, max 1000 chars
+factsToPreserve optional, max 1000 chars
+combined request cap 10000 chars
+tone must be warm or direct
+401 unauthenticated
+402 no active/trialing subscription and free lifetime quota exhausted
+400 invalid input
+500 provider/server error
+```
+
+The model must return strict JSON only. If parsing fails, return a safe server error without exposing raw model text.
+
+### Phase 7: UI
+
+Implement a polished, practical SaaS UI with:
+
+```text
+Off-white background
+Dark readable text
+Subtle cards and borders
+Friendly but professional tone
+Mobile responsiveness
+No large component library unless necessary
+```
+
+The first viewport must clearly signal:
+
+```text
+Reply In My Voice
+Replies that still sound like you.
+```
+
+### Phase 8: Local History
+
+Use localStorage only:
+
+```text
+rimv.rewrite.history.v1
+```
+
+Store the last 5 rewrite results with:
+
+```text
+original draft
+rewritten text
+tone
+change summary
+risk notes
+created timestamp
+```
+
+Do not write rewrite history to Neon.
+
+### Phase 9: Docs
+
+Create or update:
+
+```text
+.env.example
+README.md
+docs/manual-setup.md
+local-env.md
+```
+
+Docs must include:
+
+```text
+Local setup
+Required env vars
+Prisma commands
+Running dev server
+Stripe webhook local testing note
+Build/typecheck commands
+Cloudflare Workers/OpenNext deployment notes
+Manual dashboard tasks
+```
+
+### Phase 10: Verification
+
+Run until passing:
+
+```bash
+npm run prisma:generate
+npm run typecheck
+npm run build
+grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib || true
+```
+
+If tests or builds fail, fix and repeat.
+
+Expected scripts:
+
+```json
+{
+  "dev": "next dev",
+  "build": "next build",
+  "typecheck": "tsc --noEmit",
+  "lint": "next lint || eslint .",
+  "prisma:generate": "prisma generate",
+  "prisma:migrate": "prisma migrate dev",
+  "prisma:deploy": "prisma migrate deploy",
+  "postinstall": "prisma generate"
+}
+```
+
+### Phase 11: Deploy
+
+1. Build locally.
+2. Deploy with Cloudflare-compatible Next.js deployment to Worker `replyinmyvoice-app`.
+3. Set production environment variables in Cloudflare.
+4. Verify:
+
+```text
+replyinmyvoice-app workers.dev URL
+/pricing
+/sign-in
+/app
+/api/stripe/webhook
+```
+
+5. If `LAUNCH_CONFIRMED=false`, do not change DNS or custom domains. Document the final cutover steps in `docs/manual-setup.md`.
+6. If `LAUNCH_CONFIRMED=true`, perform the final production-domain cutover only after Worker verification passes.
+
+### Phase 12: Git
+
+Commit and push in meaningful stages. At minimum, commit after each completed phase:
+
+```text
+preflight/docs
+project scaffold
+auth
+database/usage
+stripe
+rewrite/signal
+ui
+evaluation
+cloudflare verification
+```
+
+Push to:
+
+```bash
+git@github.com:ChuanQiao1128/replyinmyvoice.git
+```
+
+## Completion Criteria
+
+The project is complete only when:
+
+```text
+npm run typecheck passes
+npm run build passes
+Prisma client generation works
+Landing page exists and has required sections
+Clerk sign-in/sign-up routes exist
+/app is protected
+/app allows signed-in inactive/free users to use remaining free lifetime quota
+/app shows hard paywall only after free quota is exhausted for inactive/free users
+/app gates paid billing-period quota for active/trialing subscribers
+POST /api/rewrite validates input
+POST /api/rewrite rejects unauthenticated users
+POST /api/rewrite returns 402 only when signed-in users have neither active/trialing quota nor remaining free lifetime quota
+Stripe checkout route is implemented
+Stripe portal route is implemented
+Stripe webhook route is implemented
+Subscription state persists in Postgres
+Rewrite history uses localStorage only
+.env.example is complete
+README.md is updated
+docs/manual-setup.md is created
+Banned terms are absent from user-facing app code
+Production deployment is verified or the remaining cutover blocker is documented clearly
+```
+
+## Autonomy Rules
+
+After the user approves the implementation plan, continue autonomously until the goal is complete.
+
+Do not stop for ordinary build errors, type errors, lint errors, package issues, Cloudflare adapter issues, Stripe route bugs, or local testing problems. Fix them and keep going.
+
+Only stop for the user if:
+
+```text
+An external dashboard action is impossible from the local environment
+GitHub SSH push is denied
+Cloudflare API/deploy permission is denied
+Clerk/Stripe/Neon/OpenAI credentials are invalid and cannot be worked around
+A real paid/live-mode financial action is required
+The task would require exposing or committing secrets
+```
+
+If blocked by a dashboard-only step, document it in `docs/manual-setup.md` and continue with everything else that can be completed.
+
+## Autonomous Preflight — Must Run Before Coding
+
+Before writing application code, run a preflight check and create `docs/preflight-report.md`.
+
+The report must include:
+
+- Current working directory.
+- Git status and current branch.
+- Whether the GitHub remote is configured.
+- Existing project structure and framework detected.
+- Package manager detected.
+- Next.js version detected.
+- Node and npm versions detected.
+- Whether the current holding-page code exists and should be preserved.
+- Whether `.gitignore` protects `.env`, `.env.local`, `.dev.vars`, `globalapikey/`, `node_modules/`, `.next/`, `.open-next/`, `.wrangler/`, and `dist/`.
+- Required environment variable names present or missing. Do not print secret values.
+- Cloudflare deployment target and whether `CLOUDFLARE_API_TOKEN` is available.
+- Clerk configuration availability.
+- Neon connection availability.
+- Stripe price and webhook availability.
+- OpenAI model availability.
+- Sapling aidetect availability and observed response shape.
+- Any blockers and the chosen fallback.
+
+Preflight rules:
+
+- Work only inside `/Users/qc/Desktop/CloudFlare`.
+- Do not create a second unrelated app folder.
+- Inspect the existing project before scaffolding.
+- Preserve the current holding-page brand direction unless the existing codebase is unusable.
+- Never print, summarize, commit, or expose secret values from `.env.local`, `.dev.vars`, or `globalapikey/`.
+- Do not use static Next export.
+- Production deployment target is Next.js App Router on Cloudflare Workers using OpenNext.
+- If `CLOUDFLARE_API_TOKEN` is missing, continue building the full app, skip destructive deployment/cutover, and document the missing deployment step in `docs/manual-setup.md`.
+- If dashboard-only actions are required, document them and keep going.
+- If a build fails because of Node 24 compatibility, first try dependency-compatible fixes; if still blocked, document a recommendation to use Node 22 LTS or Node 20 LTS.
+- Use Clerk middleware appropriate to the detected Next.js version. For Next.js 15, use `middleware.ts`.
+- Stripe webhook signature verification is mandatory in production.
+- Local webhook fallback without signature is allowed only when `NODE_ENV !== "production"`.
+- Sapling must be called server-side only.
+- Convert Sapling `score` from 0..1 to 0..100 if that is the observed response shape.
+- If Sapling fails, still return the rewrite and show `Signal unavailable`.
+- Usage quota must be enforced server-side, never from localStorage.
+- Count exactly one successful user rewrite request after a successful response is ready.
+- Do not count validation errors, auth failures, payment failures, provider errors, or server errors.
+- Continue autonomously after preflight unless a stop condition from `AGENTS.md` is met.
+
+## Final Long-Run Clarifications Before Autonomous Development
+
+### Free Quota Vs Paywall
+
+Signed-in inactive users are allowed to use the rewrite workspace until they have used 3 lifetime successful rewrites. Only show the hard paywall after the free lifetime quota is exhausted. Active/trialing paid users get 100 successful rewrites per billing period.
+
+`POST /api/rewrite` should return:
+
+- `401` when unauthenticated.
+- `402` only when the signed-in user has no active/trialing subscription and has exhausted the 3 free lifetime successful rewrites.
+- `400` for validation errors.
+- `500` for provider/server errors.
+
+### Usage Accounting
+
+Implement quota enforcement server-side only.
+
+Use a transaction for quota checks and increments.
+
+Suggested period keys:
+
+- `lifetime` for signed-in unpaid users.
+- `paid:<stripeSubscriptionId>:<billingPeriodEnd>` for active/trialing paid users.
+
+Check quota before provider calls. Charge usage only after a successful rewrite result is ready. Increment exactly once per successful user-visible rewrite request.
+
+Do not count validation errors, auth failures, payment failures, provider failures, Sapling failures, OpenAI failures, or server errors. Do not let localStorage decide usage quota.
+
+### Cloudflare-Compatible Database Access
+
+Do not assume a standard Node/TCP Prisma Client will work in Cloudflare Workers.
+
+Choose and implement one Cloudflare-compatible database access strategy:
+
+- Prisma with an edge-compatible Neon adapter/driver.
+- Prisma Accelerate or Prisma Postgres if configured.
+- Another documented Cloudflare-compatible Prisma approach.
+
+After OpenNext build, run a Worker preview/runtime DB smoke test. Passing `next build` alone is not enough.
+
+### Next.js And Clerk Version Pinning
+
+Pin Next.js to v15.x. Do not install `next@latest` if it resolves to Next.js 16.
+
+For Next.js 15, use `middleware.ts`.
+
+If a dependency forces Next.js 16, adapt to `proxy.ts` and document the version change.
+
+Use `.nvmrc` value `22`. When creating `package.json`, set `engines.node` to `>=22 <23`.
+
+Do not put database queries, subscription checks, Stripe calls, OpenAI calls, Sapling calls, or heavy logic in middleware/proxy. Use middleware only for lightweight auth route protection. Subscription checks belong in server pages and API routes.
+
+### Stripe Subscription Period Compatibility
+
+When reading Stripe subscription billing periods, prefer:
+
+```ts
+subscription.items.data[0].current_period_end
+```
+
+Fall back to legacy:
+
+```ts
+subscription.current_period_end
+```
+
+only if present. Do not assume top-level `current_period_end` exists.
+
+### Stripe Webhook On Cloudflare Workers
+
+Use raw request body for webhook verification.
+
+In production, Stripe webhook signature verification is mandatory.
+
+If synchronous webhook verification fails in Cloudflare Workers, use an async-compatible verification path and Web Crypto compatible Stripe setup.
+
+Webhook handling must be idempotent. Repeated Stripe events must not double-create users or corrupt subscription status.
+
+### Dynamic Runtime Behavior
+
+Mark auth/subscription-dependent pages and routes as dynamic where needed:
+
+- `/app`
+- `/api/rewrite`
+- `/api/stripe/checkout`
+- `/api/stripe/portal`
+- `/api/stripe/webhook`
+
+Do not read secret env vars at module import time in a way that breaks build. Validate required secrets inside the handler that uses them.
+
+Do not add `export const runtime = "edge"` to Prisma/Stripe/OpenAI routes unless the implementation is verified in Cloudflare Worker preview.
+
+### Cloudflare/OpenNext Verification
+
+Passing `npm run build` is not sufficient.
+
+Also add and run Cloudflare/OpenNext build and preview commands appropriate to the installed adapter version.
+
+Verify at minimum:
+
+- `/`
+- `/pricing`
+- `/sign-in`
+- `/app`
+- unauthenticated `/api/rewrite` rejection
+- `/api/stripe/webhook` method/body handling
+- one DB smoke test in Worker preview
+
+Keep the current live holding page intact until the Worker deployment is verified.
+
+### Naturalness Evaluation Budget
+
+Use 8-12 representative samples for development evaluation.
+
+Try at most 3 prompt/strategy variants during evaluation.
+
+Honor these env caps when present:
+
+```env
+EVAL_MAX_PROMPT_ITERATIONS=5
+EVAL_MAX_WALLCLOCK_MINUTES=60
+```
+
+The default long-run guardrail is stricter than the env ceiling: run at most 3 full prompt/strategy evaluation rounds before continuing.
+
+Production cap remains 2 internal rewrite strategies per user request.
+
+If the target reduction is not met within the evaluation budget or wall-clock limit, keep the best measured strategy, write measured results and tradeoffs to `docs/optimization-notes.md`, and continue building the product.
+
+Never create an unbounded loop chasing the writing signal.
+
+### User-Facing Terminology
+
+Use `Naturalness Check`, `writing signal`, and `AI-like signal`.
+
+Avoid the banned words in user-facing UI, metadata, and marketing copy.
+
+Prefer naming internal files/functions `writing-signal` rather than `detector` to avoid grep failures.
+
+## Final Pre-Run Patch — Before Long Autonomous Development
+
+### Banned-Term Grep Compatibility
+
+The banned-term grep scans `lib/**` too. Therefore internal prompts, comments, helper names, filenames, and constants must also avoid the grep substrings:
+
+```text
+humanizer
+bypass
+undetect
+detector
+evade
+```
+
+Do not put those substrings in the OpenAI system prompt. Use neutral phrasing such as:
+
+```text
+Do not discuss hiddenness, evasion, or whether the reply will pass automated reviews.
+```
+
+### Cloudflare/OpenNext Scripts
+
+Do not use plain `wrangler dev` as the main Cloudflare preview command for this Next.js app.
+
+Use:
+
+```json
+{
+  "cf:build": "opennextjs-cloudflare build",
+  "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+  "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy -- --keep-vars"
+}
+```
+
+Create `wrangler.jsonc` explicitly. Do not rely only on auto-generated config.
+
+Required minimum:
+
+```jsonc
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "replyinmyvoice-app",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-05-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+}
+```
+
+Do not remove `nodejs_compat`. Do not set a compatibility date earlier than `2024-09-23`.
+
+Create `open-next.config.ts` using the installed `@opennextjs/cloudflare` configuration helper.
+
+### Environment Handling
+
+Use `.env.local` for local Next/OpenNext development.
+
+Do not create `.dev.vars` with duplicated secrets unless absolutely necessary. If `.dev.vars` is created, it should normally contain only:
+
+```env
+NEXTJS_ENV=development
+```
+
+Never commit `.env*` or `.dev.vars*`.
+
+Production secrets must be configured in Cloudflare as secrets/runtime variables.
+
+Deploy with `opennextjs-cloudflare deploy -- --keep-vars` so existing Cloudflare dashboard variables are not wiped.
+
+Do not print secret values while setting secrets. Names only.
+
+### Pricing Display
+
+Treat Stripe `unit_amount=900` with `currency=nzd` as `NZD $9/month`.
+
+User-facing copy must say `NZD $9/month`.
+
+Do not display `900 NZD/month`.
+
+In the final report, include Stripe price verification as:
+
+```text
+unit_amount=900, currency=nzd, interval=month
+```
+
+### Stripe Webhook Event Coverage
+
+Required MVP events:
+
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+
+Strongly preferred additional events:
+
+- `invoice.paid`
+- `invoice.payment_failed`
+
+If Stripe dashboard currently lacks invoice events, do not stop coding. Implement handlers and document adding those events in `docs/manual-setup.md`.
+
+### Quota Concurrency
+
+Do not implement quota as read-count-then-write-count without a guard.
+
+Use an atomic DB transaction that either:
+
+- creates the usage row if missing, then conditionally increments only when `count < quota`
+- locks/serializes the usage row before provider calls
+
+If two requests race when only one attempt remains, exactly one may succeed and the other must return `402`.
+
+Do not count validation, auth, payment, OpenAI, Sapling, or server failures.
+
+### Same-Origin Protection
+
+Protected POST routes should enforce same-origin requests:
+
+- `/api/rewrite`
+- `/api/stripe/checkout`
+- `/api/stripe/portal`
+
+Check `Origin` when present. Allow only:
+
+- `NEXT_PUBLIC_APP_URL`
+- localhost development origins
+
+Do not apply this check to `/api/stripe/webhook`; Stripe webhook uses signature verification instead.
+
+### Local History Privacy
+
+Store only:
+
+- rough draft
+- rewritten text
+- tone
+- change summary
+- risk notes
+- naturalness result
+- timestamp
+
+Do not store the full `messageToReplyTo` field in localStorage.
+
+### Migration Safety
+
+Allowed:
+
+- `npx prisma generate`
+- `npx prisma migrate dev --name init`
+- `npx prisma migrate deploy`
+
+Forbidden unless the user explicitly approves:
+
+- `prisma migrate reset`
+- `prisma db push --force-reset`
+- dropping tables
+- deleting existing production data
+
+`DIRECT_URL` is for migrations only. `DATABASE_URL` is runtime.
+
+### Deployment Cutover
+
+First deploy and test on the Worker preview / workers.dev URL.
+
+Do not delete the existing Cloudflare Pages project.
+
+Do not attach `replyinmyvoice.com` to the Worker until:
+
+- `/` works
+- `/pricing` works
+- `/sign-in` works
+- `/app` auth gate works
+- unauthenticated `/api/rewrite` returns `401`
+- Stripe webhook method/signature behavior is verified
+- one DB smoke test passes in Worker preview
+
+If custom-domain conflict appears, leave the holding page live and document the manual cutover.
+
+### Provider Timeout And Cost Guard
+
+Use `AbortController`/timeouts for OpenAI and Sapling calls.
+
+Use `WRITING_SIGNAL_TIMEOUT_SEC` for Sapling.
+
+Add `OPENAI_TIMEOUT_SEC=25` to `.env.example` if needed.
+
+One production user request may perform at most:
+
+- 1 draft writing-signal call
+- up to 2 OpenAI rewrite attempts
+- up to 2 rewrite writing-signal calls
+
+If Sapling times out, return the best rewrite with `naturalness.label = "unavailable"`.
+
+If OpenAI fails, do not charge usage.
+
+Do not run the development evaluation loop against unbounded samples.

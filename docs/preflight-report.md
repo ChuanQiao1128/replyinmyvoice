@@ -1,0 +1,123 @@
+# Autonomous Preflight Report
+
+Date: 2026-05-17
+Workspace: `/Users/qc/Desktop/CloudFlare`
+
+## Decision
+
+Proceed with coding and deployment preparation.
+
+External services needed for development are reachable. Cloudflare token now passes Pages, Workers, Zone, and DNS records checks. Keep the current live holding page intact until final cutover.
+
+## Working Directory And Git
+
+- Current working directory: `/Users/qc/Desktop/CloudFlare`
+- Git branch/status: `codex/autonomous-mvp`; setup/docs files are untracked
+- GitHub remote: `origin -> git@github.com:ChuanQiao1128/replyinmyvoice.git`
+- Remote branch heads: none detected earlier; repository appears reachable and likely empty
+
+## Existing Project Structure
+
+Detected files before app scaffolding:
+
+```text
+.gitignore
+.nvmrc
+AGENTS.md
+docs/preflight-report.md
+local-env.md
+replyinmyvoice_requirements.md
+```
+
+- Framework detected: none yet; app still needs to be scaffolded in this same directory.
+- Package manager detected: npm available; no `package.json` yet.
+- Next.js version detected: not installed yet.
+- Clerk middleware decision: target Next.js 15 should use `middleware.ts`.
+- Holding page code in this workspace: no app source found here. Existing live holding page exists on Cloudflare and must remain live until cutover. Preserve its warm brand direction in the new app.
+
+## Tool Versions
+
+- Default shell Node: `v24.9.0`
+- Default shell npm: `11.6.0`
+- `bash -lc` Node: `v22.13.1`
+- `bash -lc` npm: `10.9.2`
+- Wrangler: `4.92.0`
+- `.nvmrc`: `22`
+
+Compatibility note: if install/build fails under Node 24, first try dependency-compatible fixes. If still blocked, recommend using Node 22 LTS or Node 20 LTS for local build consistency.
+
+## Gitignore Secret Protection
+
+- `.env`: protected
+- `.env.local`: protected
+- `.dev.vars`: protected
+- `globalapikey/`: protected
+- `node_modules/`: protected
+- `.next/`: protected
+- `.open-next/`: protected
+- `.wrangler/`: protected
+- `dist/`: protected
+
+## Required Env Vars
+
+Secret values are intentionally not printed.
+
+```text
+NEXT_PUBLIC_APP_URL=present
+NODE_ENV=present
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=present
+CLERK_SECRET_KEY=present
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=present
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=present
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=present
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=present
+DATABASE_URL=present
+DIRECT_URL=present
+OPENAI_API_KEY=present
+OPENAI_MODEL=present
+OPENAI_TIMEOUT_SEC=present
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=present
+STRIPE_SECRET_KEY=present
+STRIPE_PRICE_ID=present
+STRIPE_WEBHOOK_SECRET=present
+WRITING_SIGNAL_PROVIDER=present
+SAPLING_API_KEY=present
+WRITING_SIGNAL_TIMEOUT_SEC=present
+ALLOW_DEV_SUBSCRIPTION_BYPASS=present
+CLOUDFLARE_ACCOUNT_ID=present
+CLOUDFLARE_API_TOKEN=present
+LAUNCH_CONFIRMED=present
+EVAL_MAX_PROMPT_ITERATIONS=present
+EVAL_MAX_WALLCLOCK_MINUTES=present
+```
+
+## External Service Checks
+
+- Neon `DATABASE_URL`: ok
+- Neon `DIRECT_URL`: ok
+- OpenAI model availability: ok
+- Clerk configuration availability: ok
+- Stripe price: ok, `unit_amount=900`, `currency=nzd`, `interval=month`; display as `NZD $9/month`
+- Stripe webhook availability: ok for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
+- Stripe webhook invoice events: not currently configured in dashboard; implement handlers and document adding `invoice.paid` and `invoice.payment_failed`
+- Sapling `aidetect` availability: ok
+- Sapling observed response keys: `score`, `sentence_scores`, `text`, `token_probs`, `tokens`
+- Sapling score field: number, use 0..1 to 0..100 conversion unless implementation observes a schema change
+- Cloudflare deployment target: Next.js App Router on Cloudflare Workers using OpenNext; no static export
+- Worker name: `replyinmyvoice-app`
+- Cloudflare API token availability: present
+- Cloudflare Zone read: ok
+- Cloudflare DNS records read: ok
+- Cloudflare Pages API: ok, `replyinmyvoice` project found
+- Cloudflare Workers Scripts API: ok
+- Launch guardrail: `LAUNCH_CONFIRMED=false`, so do not modify `replyinmyvoice.com` DNS or existing Pages custom domain during autonomous development
+
+## Blockers And Fallbacks
+
+- Blocking issues before coding: none.
+- Deployment/cutover fallback: keep the existing live holding page intact if a Cloudflare custom-domain or dashboard-only action blocks automatic cutover.
+- If a dashboard-only action appears, document it in `docs/manual-setup.md` and continue all code work.
+- Auth testing requirement: after implementation, automatically test registration/sign-in gates, logged-in `/app` access, and unauthenticated rewrite API rejection.
+- Usage enforcement requirement: enforce quota server-side only; count exactly one successful user rewrite request after the response is ready.
+- Naturalness optimization requirement: run the local sample evaluation, target average signal drop of at least 30 points and most rewritten samples below 50%; iterate prompts, strategies, and scoring if the target is weak.
+- Naturalness guardrail: use 8-12 samples, at most 3 evaluation strategy rounds by default, and respect `EVAL_MAX_PROMPT_ITERATIONS` / `EVAL_MAX_WALLCLOCK_MINUTES`. If the target is not met within budget, document best measured strategy in `docs/optimization-notes.md` and continue.

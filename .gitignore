@@ -1,0 +1,26 @@
+.DS_Store
+.vscode/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+.dev.vars
+globalapikey/
+
+# Dependencies and build output
+node_modules/
+.next/
+.open-next/
+.vercel/
+.wrangler/
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
