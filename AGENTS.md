@@ -1470,3 +1470,45 @@ If Sapling times out, return the best rewrite with `naturalness.label = "unavail
 If OpenAI fails, do not charge usage.
 
 Do not run the development evaluation loop against unbounded samples.
+
+## Next Phase: Launch Cutover And Quality Target
+
+The next long-running phase is no longer initial MVP construction. It is launch cutover, real-account verification, and Naturalness Check quality improvement.
+
+Required plan file:
+
+- `/Users/qc/Desktop/CloudFlare/docs/launch-cutover-plan.md`
+
+Before executing the next phase, read:
+
+- `/Users/qc/Desktop/CloudFlare/AGENTS.md`
+- `/Users/qc/Desktop/CloudFlare/replyinmyvoice_requirements.md`
+- `/Users/qc/Desktop/CloudFlare/docs/preflight-report.md`
+- `/Users/qc/Desktop/CloudFlare/docs/manual-setup.md`
+- `/Users/qc/Desktop/CloudFlare/docs/optimization-notes.md`
+- `/Users/qc/Desktop/CloudFlare/docs/launch-cutover-plan.md`
+- `/Users/qc/Desktop/CloudFlare/package.json`
+- `/Users/qc/Desktop/CloudFlare/wrangler.jsonc`
+- `/Users/qc/Desktop/CloudFlare/prisma/schema.prisma`
+
+`.env.local` may be checked only for variable names and presence. Never print secret values.
+
+Updated launch authorization:
+
+- `LAUNCH_CONFIRMED=true` means the code agent is authorized to cut over `replyinmyvoice.com` to the verified Worker during the next phase.
+- Keep Stripe in sandbox mode. Do not switch to live Stripe keys or live price IDs.
+- Keep the Worker name `replyinmyvoice-app`.
+- Do not delete the existing Cloudflare Pages project.
+- Preserve rollback instructions.
+- Commit and push after each completed phase.
+
+Next phase goals:
+
+1. Re-run launch preflight.
+2. Check Clerk and Stripe sandbox dashboard configuration as far as API/local context allows.
+3. Deploy the latest Worker and cut over `replyinmyvoice.com`.
+4. Verify a real test account flow: register, sign in, free quota, paywall, sandbox checkout, webhook, paid quota.
+5. Continue Naturalness Check optimization until the internal target is met:
+   - average AI-like signal reduction of at least 30 points
+   - most evaluated samples below 50%
+6. Push all work to GitHub and leave the branch clean.

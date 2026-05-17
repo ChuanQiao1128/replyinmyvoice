@@ -999,3 +999,47 @@ Preflight rules:
 - Count exactly one successful user rewrite request after a successful response is ready.
 - Do not count validation errors, auth failures, payment failures, provider errors, or server errors.
 - Continue autonomously after preflight unless a stop condition from `AGENTS.md` is met.
+
+## Next Phase Product Goal: Launch Cutover And Quality Target
+
+The MVP implementation phase has produced a verified Worker deployment. The next phase goal is to make the product a launch candidate on the formal domain.
+
+Plan file:
+
+- `/Users/qc/Desktop/CloudFlare/docs/launch-cutover-plan.md`
+
+Updated goal:
+
+Launch `replyinmyvoice.com` on the Cloudflare Worker, keep Stripe in sandbox mode, verify the real account flow, and continue Naturalness Check optimization until the internal quality target is met.
+
+In scope:
+
+- Re-run launch preflight.
+- Keep working only in `/Users/qc/Desktop/CloudFlare`.
+- Treat `LAUNCH_CONFIRMED=true` as authorization to cut over `replyinmyvoice.com`.
+- Keep Stripe sandbox keys and sandbox price. Do not switch to live Stripe mode.
+- Check Clerk origins and redirect requirements.
+- Check Stripe sandbox webhook requirements and document dashboard-only gaps.
+- Deploy and verify `replyinmyvoice-app`.
+- Attach or route `replyinmyvoice.com` to the verified Worker.
+- Preserve the existing Pages project for rollback.
+- Test a real account flow:
+  - register
+  - sign in
+  - rewrite with free quota
+  - free quota exhaustion
+  - paywall
+  - sandbox checkout
+  - webhook subscription update
+  - paid quota
+- Continue Naturalness Check optimization until:
+  - average AI-like signal reduction is at least 30 points
+  - most evaluated samples rewrite to below 50%
+- Commit and push after each phase.
+
+Out of scope:
+
+- Switching Stripe to live keys.
+- Creating a live Stripe price.
+- Deleting the existing Cloudflare Pages project.
+- Exposing secret values in logs, docs, commits, or final responses.
