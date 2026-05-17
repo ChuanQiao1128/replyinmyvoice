@@ -304,3 +304,31 @@ Date: 2026-05-18
   - one draft writing-signal call
   - up to one OpenAI rewrite attempt
   - up to two rewrite writing-signal calls
+
+## Final Verification
+
+Date: 2026-05-18
+
+- `npm run lint`: pass
+- `npm run typecheck`: pass
+- `npm run test`: 15 tests passed
+- `npm run test:e2e`: 2 tests passed
+- `npm run build`: pass
+- `npm run cf:build`: pass
+- Banned-term scan over `app`, `components`, `public`, and source `lib`: clean
+- Latest deployed Worker version observed: `6b3f15b7-a6f2-4664-935e-b529ddd88ba7`
+- `workers.dev` smoke:
+  - `/`: 200
+  - `/pricing`: 200
+  - `/sign-in`: 200
+  - `/app`: 307
+  - `/api/stripe/webhook`: 200
+  - `/api/health/db`: 200
+- Formal-domain smoke:
+  - `/`: 200
+  - `/pricing`: 200
+  - `/sign-in`: 200
+  - `/app`: 307
+  - `/api/stripe/webhook`: 200
+  - `/api/health/db`: 200
+  - same-origin unauthenticated `/api/rewrite`: 401
