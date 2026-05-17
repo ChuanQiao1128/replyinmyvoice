@@ -589,11 +589,419 @@ Acceptance:
 These decisions are no longer open:
 
 - Keep the rewrite workspace as one page with grouped sections.
-- Collapse `Extra context` by default.
-- Show custom audience/purpose inputs when `Other` is selected.
-- Pass `tonePreset` or equivalent visible preset data to the API, not only client-side mapping.
+- Remove the current `Quick context` panel from the workspace. The user should not need to choose audience, purpose, or must-preserve chips.
+- Make `Context or message to respond to` optional. Users may paste only a draft and still run the rewrite.
+- Replace narrow starter templates with broader scenario choices.
+- Scenario must affect backend prompt guardrails and rewrite strategy. It must not be only a UI label.
+- Keep `tonePreset` or equivalent visible preset data in the API payload, but reduce visible choices to a short list.
+- Keep `Try again` for users who dislike the first rewrite.
+- Put the rewritten output below the draft flow, not in a right-side column.
+- Put Naturalness Check below the rewritten output so before/after comparison follows the result.
+- Keep recent history, but collapse or de-emphasize it by default.
 - Homepage sample Naturalness Check values should come from documented selected runs, not repeated live calls.
 - Add a usage/cost estimate section to `docs/sample-cases.md` with sample character counts and Sapling call counts.
+
+## Workspace Redesign V2 — Supersedes Earlier Quick Context Plan
+
+The previous next-round plan added audience/purpose dropdowns, must-keep chips, and an optional extra context panel. The latest product decision is to remove that complexity.
+
+### Product Goal
+
+The workspace should feel like:
+
+1. Pick the broad writing scenario.
+2. Optionally paste the original message/context.
+3. Paste the draft that sounds too stiff or too AI-written.
+4. Pick a simple tone.
+5. Begin rewrite.
+6. Review the rewritten version and Naturalness Check.
+
+The user should be able to run the product with only:
+
+- scenario
+- rough draft
+- tone
+
+The original message/context is helpful but optional.
+
+### Recommended One-Page Layout
+
+Use a vertical layout:
+
+1. `Scenario`
+   - Broad scenario chips/cards.
+   - Do not prefill heavy hidden context fields.
+   - Scenario may optionally load a sample only when the user explicitly chooses a sample/demo action.
+2. `Context or message to respond to`
+   - Optional textarea.
+   - Helper: `Optional. Paste the email, prompt, job post, thread, or background context if it helps.`
+   - Leave blank for draft-only rewriting.
+3. `Draft to rewrite`
+   - Required textarea.
+   - This is the main user input.
+4. `Tone`
+   - Short set of buttons.
+   - Recommended visible tones:
+     - `Warm`
+     - `Professional`
+     - `Friendly`
+     - `Concise`
+   - Default: `Professional` for business-like scenarios, `Warm` for general message replies if no scenario-specific default is set.
+5. `Begin rewrite`
+   - Primary action.
+6. `Rewritten version`
+   - Show output below inputs.
+   - Include `Copy` and `Try again`.
+   - `Try again` should use the same inputs, scenario, and tone, but ask for another version.
+7. `Naturalness Check`
+   - Show draft and rewrite AI-like signal after the output.
+   - Keep the disclaimer that this is a third-party reference signal, not a guarantee.
+8. `Recent versions`
+   - Collapsed or visually secondary by default.
+
+### Final Scenario Set For This Round
+
+Use exactly these five scenarios unless the user changes the product direction again:
+
+1. `Blank / custom`
+2. `Email or message reply`
+3. `Customer support`
+4. `Cover letter`
+5. `Work update`
+
+Do not keep narrow homepage-style categories such as `Teacher reply`, `Sales follow-up`, `Workplace update`, and `Client reply` as the main workspace scenario set. Those can remain as homepage examples or internal sample cases, but not the main user choice.
+
+### Scenario-Specific Backend Prompt Guardrails
+
+Each scenario must send explicit hidden strategy/guardrail instructions to the backend rewrite prompt. These guardrails replace the removed Quick context controls.
+
+#### 1. Blank / custom
+
+Use when the user only wants a generic rewrite.
+
+Guardrails:
+
+- Preserve the original meaning and intent.
+- Do not add names, facts, timelines, claims, examples, outcomes, or promises.
+- Keep numbers, dates, prices, organization names, titles, and proper nouns unchanged.
+- If the draft is vague, keep it vague rather than inventing detail.
+- Prefer natural wording over polished marketing language.
+
+Rewrite behavior:
+
+- Make the text sound like a real person wrote it.
+- Keep length roughly similar unless the input is repetitive.
+- Avoid making the output overly formal or over-structured.
+
+#### 2. Email or message reply
+
+Use for general replies: teacher/student, sales follow-up, colleague, client, vendor, or everyday professional messages.
+
+Guardrails:
+
+- Preserve greeting/name if present.
+- Do not invent relationship details, meetings, deadlines, discounts, attachments, or next steps.
+- Preserve the user’s answer and the requested action.
+- Keep the reply send-ready for an email, DM, or short professional message.
+- If there is an incoming message, answer that message directly.
+- If there is no incoming message, improve only the draft.
+
+Rewrite behavior:
+
+- Use natural short paragraphs.
+- Avoid stock phrases like `Thank you for reaching out`, `I understand your concern`, and `Please be advised` unless genuinely useful.
+- Prefer a human thread style over formal memo style.
+
+#### 3. Customer support
+
+Use for billing explanations, customer complaints, bug reports, account issues, service questions, or support follow-ups.
+
+Guardrails:
+
+- Preserve amounts, dates, plan names, seat counts, user counts, account status, deadlines, and known causes.
+- Do not promise refunds, credits, fixes, escalation, timelines, account changes, or compensation unless the draft explicitly says so.
+- Do not remove operational next steps such as asking for names, email addresses, screenshots, files, or confirmation.
+- Do not over-compress long support explanations. A short result is not acceptable if it stops answering the customer’s specific questions.
+- If the draft includes a forwardable internal explanation, keep it or preserve a close equivalent.
+- Keep responsibility clear: do not imply the team will make changes if the draft says no changes will be made without user approval.
+
+Rewrite behavior:
+
+- Use 3-5 short paragraphs for longer billing/support replies.
+- Explain plainly, without sounding robotic.
+- Keep a calm support tone.
+- Preserve a concrete next step.
+
+This scenario is important because the Priya billing/support sample showed that a very low AI-like signal can be achieved by over-compressing the answer, but that is not a good product result. Quality and factual usefulness must come before score optimization.
+
+#### 4. Cover letter
+
+Use for job applications, cover letters, personal statements, short professional bios, and application-style introductions.
+
+Guardrails:
+
+- Do not invent employers, job titles, degrees, years of experience, metrics, awards, skills, projects, or personal background.
+- Preserve the target role/company if provided.
+- If the draft has no specific evidence, make the writing cleaner but do not add fake achievements.
+- Avoid exaggerated enthusiasm or generic “perfect fit” language.
+- Keep the voice confident but grounded.
+
+Rewrite behavior:
+
+- Make the letter sound personal, specific, and professional.
+- Prefer clear human motivation over corporate application clichés.
+- Keep paragraphing readable.
+
+#### 5. Work update
+
+Use for internal work messages, status updates, manager updates, Slack/Teams notes, project notes, blockers, and handoffs.
+
+Guardrails:
+
+- Preserve owners, dates, deadlines, blockers, deliverables, statuses, and next steps.
+- Do not invent completed work, approvals, blockers, or timelines.
+- Do not soften a real risk so much that the update becomes misleading.
+- Keep the message scannable.
+
+Rewrite behavior:
+
+- Make the update clearer and less stiff.
+- Prefer direct, practical language.
+- Keep it concise unless the draft contains necessary detail.
+
+### Why The Rewrite Strategy Works Better Than A Simple GPT Prompt
+
+The product should not rely on a simple instruction like “make this sound more natural.” Normal GPT rewrites often become more polished, smooth, and corporate. That polish can increase the AI-like signal because the output has:
+
+- uniform sentence rhythm
+- generic transition phrases
+- overly complete explanations
+- formal support language
+- stock openings and closings
+- balanced but unnatural paragraph structure
+
+Reply In My Voice should use a bounded strategy that combines prompt design, scenario guardrails, candidate selection, and third-party signal measurement. The next development round should strengthen this into a diagnosis-driven rewrite engine.
+
+Current strategy from the previous development round:
+
+1. Measure the draft AI-like signal.
+2. Generate an OpenAI rewrite using plain, real-message instructions.
+3. Measure the rewrite AI-like signal.
+4. If the rewrite remains high or did not drop enough, try a second internal strategy.
+5. Select the best candidate only if it passes content-quality checks.
+6. Charge the user once after a successful rewrite response is ready.
+
+The strategy lowers AI-like signal by:
+
+- avoiding polished corporate templates
+- using natural short paragraphs where appropriate
+- removing stock phrases when they do not add value
+- preserving facts instead of over-explaining around them
+- varying sentence length and rhythm
+- using scenario-specific fallback structures for hard cases such as billing/support
+- measuring before/after signal instead of trusting the model’s self-assessment
+
+### Diagnosis-Driven Rewrite Engine
+
+The next version should not only generate two candidates and pick the lower AI-like signal. It should use the signal workflow to diagnose why the original draft feels AI-like, then apply targeted repairs.
+
+The intended pipeline:
+
+1. `Analyze draft`
+   - Inspect the original draft for likely AI-like causes before rewriting.
+   - This analysis can be model-assisted and rule-assisted.
+   - It should be internal only; do not show a long diagnosis to users in the MVP.
+2. `Create rewrite plan`
+   - Decide which parts must be preserved.
+   - Decide which AI-like patterns should be repaired.
+   - Decide the scenario-specific risks.
+3. `Generate targeted rewrite`
+   - Rewrite based on the plan, not only a generic "make it natural" instruction.
+4. `Measure signal`
+   - Run the third-party writing signal on the draft and rewrite.
+5. `Repair if needed`
+   - If the rewrite remains high or did not improve enough, diagnose the failed rewrite and apply a second targeted repair.
+6. `Select usable candidate`
+   - Choose the lowest acceptable signal candidate that still passes quality gates.
+
+### AI-Like Cause Taxonomy
+
+During analysis, tag the likely causes that make the draft score high or feel synthetic. Suggested internal tags:
+
+- `stock_opening`
+  - Examples: `Thank you for reaching out`, `I understand your concern`, `I hope this message finds you well`.
+- `corporate_polish`
+  - Text is too smooth, formal, balanced, or customer-service-like.
+- `uniform_rhythm`
+  - Sentences have similar length and structure.
+- `over_explained`
+  - The reply explains every step in a complete but unnatural way.
+- `generic_transitions`
+  - Examples: `Additionally`, `Furthermore`, `In conclusion`, `Please note that`.
+- `policy_memo_voice`
+  - Reply sounds like a policy document instead of a person responding.
+- `low_specificity`
+  - Lots of generic safe wording, not enough concrete details from the user.
+- `too_balanced_structure`
+  - Every paragraph has the same neat shape: acknowledge, explain, summarize, next step.
+- `over_safe_tone`
+  - Too neutral, risk-averse, or emotionally flattened.
+- `support_template_voice`
+  - Sounds like generic support macros rather than a real support reply.
+- `application_cliche`
+  - Cover-letter style generic claims such as "I am uniquely qualified" without evidence.
+
+The taxonomy does not need to be perfect. It exists so the second pass can target the actual failure pattern instead of blindly asking for another rewrite.
+
+### Targeted Repair Strategies
+
+The rewrite engine should map diagnosis tags to concrete repairs:
+
+- `stock_opening`
+  - Replace with a specific, situational opener.
+  - Example: `Thanks for laying this out` for a detailed customer issue.
+- `corporate_polish`
+  - Reduce formal density.
+  - Replace abstract phrases with plain wording.
+- `uniform_rhythm`
+  - Vary sentence length.
+  - Use one shorter sentence where natural.
+- `over_explained`
+  - Keep necessary details but remove redundant explanation.
+  - Do not remove operational next steps.
+- `generic_transitions`
+  - Remove or replace with natural transitions.
+- `policy_memo_voice`
+  - Make the reply sound like one person answering another person.
+- `low_specificity`
+  - Pull concrete details from the draft/context without inventing new facts.
+- `too_balanced_structure`
+  - Break the overly neat structure.
+  - Use more natural paragraph boundaries.
+- `over_safe_tone`
+  - Add a clearer human stance while staying accurate.
+- `support_template_voice`
+  - Keep support boundaries but remove macro-like wording.
+- `application_cliche`
+  - Replace generic enthusiasm with grounded, specific motivation from the draft.
+
+### Why Users Cannot Easily Replicate This With GPT Alone
+
+If a user manually tells GPT "write this less polished and more human," GPT can sometimes improve the output. But GPT alone usually lacks the full loop:
+
+- It does not know the third-party writing signal result.
+- It does not know whether the rewrite improved or got worse.
+- It does not systematically diagnose why the draft was high.
+- It does not apply scenario-specific repair strategies unless the user manually explains them.
+- It does not keep a measured memory of which repair patterns work for customer support, cover letters, work updates, and general replies.
+- It may reduce AI-like signal by making the reply too short or dropping important detail unless quality gates block that candidate.
+
+Reply In My Voice should be positioned internally as:
+
+> Diagnose why the draft feels AI-like, repair those causes with scenario-specific strategies, measure the result, and select the best usable rewrite.
+
+This is the product value beyond a simple GPT prompt.
+
+### Important Quality Rule
+
+Never optimize only for the lowest AI-like signal.
+
+The selected rewrite must also:
+
+- preserve facts
+- answer the user’s actual situation
+- keep necessary detail
+- maintain correct tone and risk boundaries
+- avoid random names or unsupported facts
+- avoid becoming too short to be useful
+
+If a candidate gets a lower signal but drops important content, reject it and choose a more complete candidate.
+
+### Implementation Notes For Next Round
+
+Recommended technical changes:
+
+- Replace `audienceOptions`, `purposeOptions`, and `mustKeepOptions` UI usage with `scenarioOptions`.
+- Keep old request fields optional in the API temporarily for compatibility, but stop showing them in the main UI.
+- Add `scenario` to the API request schema.
+- Add scenario-specific prompt guardrails in `lib/openai.ts` or a small dedicated module such as `lib/rewrite-scenarios.ts`.
+- Add a diagnosis step that produces internal tags from the AI-like cause taxonomy.
+- Add a rewrite plan step or structured prompt section that uses the diagnosis tags.
+- Add a targeted repair pass for candidates that remain too high or fail the improvement target.
+- Add quality gates so lower-signal candidates are rejected if they drop required detail.
+- Keep `tonePreset`, but reduce visible tone options.
+- Update tests to assert:
+  - exactly five scenario options exist
+  - Quick context is not rendered
+  - draft-only request passes validation
+  - scenario is included in the prompt context
+  - diagnosis tags can be generated for common AI-like patterns
+  - targeted repair instructions are included when a candidate remains high
+  - customer support scenario preserves long support detail
+  - cover letter scenario does not invent experience
+  - work update scenario preserves dates/status/next steps
+
+### Required Evaluation Log Before Push And Deploy
+
+During implementation, create and maintain:
+
+- `docs/scenario-evaluation-results.md`
+
+This file must be written before final push/deploy for the next development round.
+
+Minimum evaluation requirement:
+
+- 5 scenarios.
+- At least 3 cases per scenario.
+- At least 15 total cases.
+
+For every case, record:
+
+- scenario
+- case name
+- input type and approximate word/character count
+- optional context/message if used
+- rough draft before rewrite
+- diagnosis tags
+- rewrite plan summary
+- rewritten output
+- draft AI-like signal
+- rewrite AI-like signal
+- change points
+- whether the rewrite went below 50%
+- whether the output preserved names, dates, numbers, facts, and next steps
+- whether any unsupported fact was introduced
+- whether the output was rejected by a quality gate
+- final decision: pass/fail/needs follow-up
+
+Scenario coverage:
+
+1. `Blank / custom`
+   - Include at least one draft-only case.
+   - Include one generic AI-written paragraph that is not an email.
+   - Include one short bio or description.
+2. `Email or message reply`
+   - Include a teacher/student or school-related reply.
+   - Include a sales or follow-up reply.
+   - Include a general professional reply.
+3. `Customer support`
+   - Include the Priya billing/seat/proration style case.
+   - Include one complaint or service issue.
+   - Include one bug/account support case.
+4. `Cover letter`
+   - Include one job application draft.
+   - Include one short personal statement.
+   - Include one case with sparse details to verify it does not invent experience.
+5. `Work update`
+   - Include one status update.
+   - Include one delay/blocker update.
+   - Include one manager or team handoff note.
+
+Deployment rule:
+
+- Do not push and deploy the next rewrite-engine update until `docs/scenario-evaluation-results.md` contains the evaluation records.
+- If some cases do not meet the target, document the failure and either fix the strategy or explicitly mark the residual risk.
+- After tests and evaluation pass, push to GitHub and deploy to the production domain so the user can test on `replyinmyvoice.com`.
 
 ## Commercial Site Baseline
 
