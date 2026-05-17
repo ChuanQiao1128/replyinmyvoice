@@ -1,6 +1,6 @@
 import { optionalEnv } from "./env";
 
-export type SignalLabel = "lower" | "still_high" | "unavailable";
+export type SignalLabel = "lower" | "low_signal" | "still_high" | "unavailable";
 
 export type WritingSignalResult = {
   aiLikePercent: number | null;
@@ -23,8 +23,12 @@ export function getSignalLabel(
     return "unavailable";
   }
 
-  if (rewriteAiLikePercent <= 50 || rewriteAiLikePercent <= draftAiLikePercent - 10) {
+  if (rewriteAiLikePercent < draftAiLikePercent) {
     return "lower";
+  }
+
+  if (rewriteAiLikePercent <= 50) {
+    return "low_signal";
   }
 
   return "still_high";

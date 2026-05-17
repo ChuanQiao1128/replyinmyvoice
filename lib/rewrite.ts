@@ -3,6 +3,7 @@ import type { RewriteRequestInput } from "./validation";
 import {
   formatNaturalness,
   measureWritingSignal,
+  type SignalLabel,
 } from "./writing-signal";
 
 export type RewriteResponsePayload = {
@@ -13,7 +14,7 @@ export type RewriteResponsePayload = {
     draftAiLikePercent: number | null;
     rewriteAiLikePercent: number | null;
     changePoints: number | null;
-    label: "lower" | "still_high" | "unavailable";
+    label: SignalLabel;
   };
   optimization: {
     internalStrategiesTried: number;

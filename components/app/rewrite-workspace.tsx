@@ -47,7 +47,7 @@ type Naturalness = {
   draftAiLikePercent: number | null;
   rewriteAiLikePercent: number | null;
   changePoints: number | null;
-  label: "lower" | "still_high" | "unavailable";
+  label: "lower" | "low_signal" | "still_high" | "unavailable";
 };
 
 type RewriteResponse = {
@@ -188,6 +188,8 @@ const templates: Array<{
   },
 ];
 
+const CUSTOM_TEMPLATE_LABEL = "Custom input";
+
 const progressSteps = [
   "Reading the thread",
   "Rewriting in your voice",
@@ -242,6 +244,9 @@ function labelForNaturalness(naturalness?: Naturalness) {
   }
   if (naturalness.label === "lower") {
     return "Lower AI-like signal";
+  }
+  if (naturalness.label === "low_signal") {
+    return "Low AI-like signal";
   }
   return "High AI-like signal";
 }
@@ -362,7 +367,28 @@ export function RewriteWorkspace({
   }
 
   function updateField(name: StringFormField, value: string) {
-    setForm((current) => ({ ...current, [name]: value }));
+    const shouldResetTemplateContext =
+      activeTemplate !== CUSTOM_TEMPLATE_LABEL &&
+      (name === "messageToReplyTo" || name === "roughDraftReply");
+
+    if (shouldResetTemplateContext) {
+      setActiveTemplate(CUSTOM_TEMPLATE_LABEL);
+    }
+
+    setForm((current) => {
+      const next = { ...current, [name]: value };
+
+      if (shouldResetTemplateContext) {
+        return {
+          ...next,
+          whatHappened: "",
+          factsToPreserve: "",
+          mustKeepSelections: [],
+        };
+      }
+
+      return next;
+    });
   }
 
   function updateAudiencePreset(value: AudienceOption) {
