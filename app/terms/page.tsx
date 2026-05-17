@@ -26,6 +26,10 @@ const sections = [
     title: "Content responsibility",
     text: "You should only submit content that you have the right to use and should avoid highly sensitive personal information.",
   },
+  {
+    title: "Contact",
+    text: "For product or billing questions, contact TimeAwake Ltd. at info@timeawake.co.nz.",
+  },
 ];
 
 export default function TermsPage() {

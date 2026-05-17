@@ -1,15 +1,15 @@
 const steps = [
   {
     title: "Paste the thread",
-    text: "Add the message you are answering and the rough reply you already have.",
+    text: "Paste the message you are answering and the rough reply you already have.",
   },
   {
-    title: "Lock the facts",
-    text: "Tell the workspace what happened, who the audience is, and what must not change.",
+    title: "Pick quick context",
+    text: "Choose audience, purpose, and anything that must stay unchanged. Most fields are optional.",
   },
   {
-    title: "Choose the tone",
-    text: "Use a warmer or more direct mode depending on the relationship and urgency.",
+    title: "Choose a tone preset",
+    text: "Pick a warmer, clearer, firmer, or more professional style from a short list.",
   },
   {
     title: "Review the signal",

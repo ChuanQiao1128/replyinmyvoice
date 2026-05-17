@@ -1043,3 +1043,161 @@ Out of scope:
 - Creating a live Stripe price.
 - Deleting the existing Cloudflare Pages project.
 - Exposing secret values in logs, docs, commits, or final responses.
+
+## Next Development Addendum: Reduced Form Friction And Tested Samples
+
+This addendum records the next product/UI development scope. It supersedes earlier Warm/Direct-only and heavy context-field wording for the next iteration.
+
+Primary planning file:
+
+- `/Users/qc/Desktop/CloudFlare/docs/next-development-brief.md`
+
+### Product Goal
+
+The next development round should make the app feel easier and more commercial without changing the subscription, quota, or Cloudflare architecture.
+
+The user should be able to get a useful rewrite with:
+
+- message/thread to reply to
+- rough draft reply
+- one audience preset
+- one tone preset
+
+Everything else should be optional.
+
+### Rewrite Workspace UX
+
+Keep the rewrite workspace as one page with grouped sections. Do not turn it into a step-by-step wizard.
+
+Main fields:
+
+- message/thread to reply to
+- rough draft reply
+
+Secondary controls should be grouped into `Quick context`:
+
+- audience preset
+- purpose preset
+- what must stay the same chips
+- tone preset
+- optional extra context
+
+`Extra context` should replace the heavier `What actually happened` wording and should be collapsed by default. Users open it only when they need it.
+
+`What must stay the same` should replace the heavier `Facts to preserve` wording.
+
+Audience and purpose should include `Other`. Selecting `Other` should reveal a custom input. Normal presets should not require custom text.
+
+### Tone Presets And API
+
+The visible tone controls should include more than two choices, such as:
+
+- Warm
+- Direct
+- Professional
+- Friendly
+- Firm but polite
+- Apologetic
+- Concise
+
+The selected visible tone preset must be sent to `/api/rewrite` as `tonePreset` or an equivalent explicit request field. The server prompt should use this preset directly. Existing `tone = warm | direct` behavior may remain as compatibility/fallback, but client-only mapping is not enough for the next phase.
+
+### Landing Page And How It Works
+
+Update the landing page so the workflow feels easy:
+
+1. Paste the thread.
+2. Pick quick context.
+3. Choose a tone preset.
+4. Review the signal.
+
+Step 2 should not imply that users must write a detailed explanation. It should communicate that most context is optional and can be selected from presets.
+
+### Homepage Sample Cases
+
+Replace placeholder homepage demo samples with documented internal test cases:
+
+- Teacher message
+- Sales follow-up
+- Workplace email
+- Client reply
+
+Rules:
+
+- Do not introduce random names.
+- Do not invent dates, times, numbers, prices, policies, promises, or next steps.
+- If a rewrite uses a name, that name must exist in the incoming context or rough draft.
+- Use examples long enough to be persuasive but still readable.
+- Naturalness Check values shown on the homepage should come from recorded selected runs in `docs/sample-cases.md`, not repeated live Sapling calls on each render.
+
+### Sapling Usage And Cost Estimate
+
+The user has subscribed to the Sapling API plan. The next round may test longer, more realistic samples:
+
+- 150-300 words for short reply contexts
+- 300-600 words for normal workplace/customer contexts
+- 600-1,000 words for longer thread or detailed client reply contexts
+
+Create or update `docs/sample-cases.md` with:
+
+- category
+- incoming context
+- rough draft
+- rewritten reply
+- word count
+- estimated character count
+- displayed excerpt word count
+- displayed excerpt estimated character count
+- Sapling call count
+- estimated Sapling characters consumed
+- draft score
+- rewrite score
+- score change
+- preserved facts checklist
+- whether the case is used on the homepage
+
+Add a usage/cost estimate section that records:
+
+- total selected sample count
+- total evaluation sample count
+- total Sapling calls used
+- total estimated characters sent to Sapling
+- average characters per sample
+- any 429/rate/capacity errors
+
+Unavailable Sapling results must not count as quality-target success. If Sapling returns 429 again, stop repeated evaluation calls, keep the best documented results, and continue product work.
+
+### FAQ Layout
+
+Change the FAQ from a two-column card grid to a common single-column list or accordion:
+
+- centered max-width column
+- question rows with light dividers
+- concise answers
+- optional chevron/plus interaction
+- no large repeated FAQ cards
+
+### Commercial Site Defaults
+
+Pricing stays `NZD $9/month` for this round. Do not implement or advertise annual checkout until a Stripe annual price exists.
+
+The commercial site should include:
+
+- `Operated by TimeAwake Ltd.` in the footer.
+- Contact/support email: `info@timeawake.co.nz`.
+- Privacy and Terms footer links/pages when practical.
+
+Privacy/Terms pages can be concise MVP pages. They should state that pasted messages and rewritten replies are processed for the request and are not saved to the database.
+
+Sapling is only a third-party reference writing signal provider for the Naturalness Check. Do not copy Sapling's Pro feature table or market Sapling-specific features such as autocomplete, snippets, domain administration, or chat assist as Reply In My Voice features.
+
+### Acceptance For This Addendum
+
+- Workspace remains one page and feels faster to use.
+- Context fields use presets and optional custom inputs.
+- `Extra context` is collapsed by default.
+- Tone preset is passed to the API.
+- Homepage samples are documented and fact-consistent.
+- `docs/sample-cases.md` includes sample counts and Sapling usage/cost estimates.
+- FAQ uses a list/accordion pattern instead of card grid.
+- Commercial footer/contact uses TimeAwake Ltd. and `info@timeawake.co.nz`.

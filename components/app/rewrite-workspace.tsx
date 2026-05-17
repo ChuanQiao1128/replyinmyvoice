@@ -2,6 +2,7 @@
 
 import {
   CheckCircle2,
+  ChevronDown,
   Clipboard,
   CopyCheck,
   Loader2,
@@ -13,6 +14,18 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import {
+  audienceOptions,
+  formatMustKeep,
+  mustKeepOptions,
+  purposeOptions,
+  tonePresetOptions,
+  tonePresetToTone,
+  type AudienceOption,
+  type MustKeepOption,
+  type PurposeOption,
+  type TonePreset,
+} from "../../lib/rewrite-presets";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
@@ -52,6 +65,7 @@ type HistoryItem = {
   roughDraftReply: string;
   rewrittenText: string;
   tone: "warm" | "direct";
+  tonePreset: TonePreset;
   changeSummary: string[];
   riskNotes: string[];
   naturalness: Naturalness;
@@ -62,11 +76,23 @@ type FormState = {
   messageToReplyTo: string;
   roughDraftReply: string;
   audience: string;
+  audiencePreset: AudienceOption;
   purpose: string;
+  purposePreset: PurposeOption;
   whatHappened: string;
   factsToPreserve: string;
+  mustKeepSelections: MustKeepOption[];
   tone: "warm" | "direct";
+  tonePreset: TonePreset;
 };
+
+type StringFormField =
+  | "messageToReplyTo"
+  | "roughDraftReply"
+  | "audience"
+  | "purpose"
+  | "whatHappened"
+  | "factsToPreserve";
 
 type Props = {
   usageLabel: string;
@@ -79,11 +105,15 @@ const initialForm: FormState = {
     "Hi, I missed the deadline because I had a family issue this week. Is there any way I can still submit the reflection?",
   roughDraftReply:
     "Dear student, I acknowledge your message. Late submissions are generally not accepted according to course policy. Please provide additional details for consideration.",
-  audience: "A student who missed a reflection deadline",
-  purpose: "Reply clearly while keeping the policy in mind",
+  audience: "Student",
+  audiencePreset: "Student",
+  purpose: "Reply clearly",
+  purposePreset: "Reply clearly",
   whatHappened: "They had a family issue and asked whether they can still submit.",
   factsToPreserve: "Late work policy matters. I can review the situation tomorrow.",
+  mustKeepSelections: ["Policy details", "Next step", "No new promises"],
   tone: "warm" as const,
+  tonePreset: "Warm",
 };
 
 const templates: Array<{
@@ -104,13 +134,17 @@ const templates: Array<{
         "Thanks for the proposal. We are still comparing options and may come back next month.",
       roughDraftReply:
         "Hello, I am following up on the proposal and would like to know if you have any updates about whether you will proceed.",
-      audience: "A prospect who reviewed a proposal last week",
-      purpose: "Follow up without sounding pushy",
+      audience: "Prospect",
+      audiencePreset: "Prospect",
+      purpose: "Follow up",
+      purposePreset: "Follow up",
       whatHappened:
         "They are comparing options and said they may revisit the decision next month.",
       factsToPreserve:
         "Proposal was sent last week. They may revisit next month. Offer to simplify the options.",
+      mustKeepSelections: ["Next step", "No new promises"],
       tone: "warm",
+      tonePreset: "Friendly",
     },
   },
   {
@@ -121,11 +155,15 @@ const templates: Array<{
         "Can you send the revised numbers today? I need them for the partner update.",
       roughDraftReply:
         "Unfortunately, the requested numbers are not available at this time due to delayed source information.",
-      audience: "A teammate preparing a partner update",
-      purpose: "Explain a short delay and give a reliable next step",
+      audience: "Teammate",
+      audiencePreset: "Teammate",
+      purpose: "Explain a delay",
+      purposePreset: "Explain a delay",
       whatHappened: "The source file arrived late and still needs one check.",
       factsToPreserve: "Send the revised numbers by 4pm Friday.",
+      mustKeepSelections: ["Dates and times", "Next step"],
       tone: "direct",
+      tonePreset: "Concise",
     },
   },
   {
@@ -136,12 +174,16 @@ const templates: Array<{
         "The report totals look different from last month. Can someone explain what changed?",
       roughDraftReply:
         "Thank you for contacting us. Our team is currently reviewing the matter and will provide an update as soon as possible.",
-      audience: "A client asking about a reporting change",
-      purpose: "Acknowledge the issue and explain what will happen next",
+      audience: "Customer or client",
+      audiencePreset: "Customer or client",
+      purpose: "Clarify a misunderstanding",
+      purposePreset: "Clarify a misunderstanding",
       whatHappened: "The new report includes a category that was hidden last month.",
       factsToPreserve:
         "Report includes a newly visible category. Send a line-by-line note today.",
+      mustKeepSelections: ["No new promises", "Next step"],
       tone: "warm",
+      tonePreset: "Professional",
     },
   },
 ];
@@ -225,7 +267,7 @@ export function RewriteWorkspace({
       form.audience.length +
       form.purpose.length +
       form.whatHappened.length +
-      form.factsToPreserve.length,
+      formatMustKeep(form.mustKeepSelections, form.factsToPreserve).length,
     [form],
   );
 
@@ -265,6 +307,7 @@ export function RewriteWorkspace({
       roughDraftReply: form.roughDraftReply,
       rewrittenText: response.rewrittenText,
       tone: form.tone,
+      tonePreset: form.tonePreset,
       changeSummary: response.changeSummary,
       riskNotes: response.riskNotes,
       naturalness: response.naturalness,
@@ -281,12 +324,21 @@ export function RewriteWorkspace({
     setError("");
 
     try {
+      const requestPayload = {
+        ...form,
+        tone: tonePresetToTone(form.tonePreset),
+        factsToPreserve: formatMustKeep(
+          form.mustKeepSelections,
+          form.factsToPreserve,
+        ),
+      };
+
       const response = await fetch("/api/rewrite", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(requestPayload),
       });
       const payload = (await response.json()) as RewriteResponse & {
         error?: string;
@@ -309,8 +361,45 @@ export function RewriteWorkspace({
     }
   }
 
-  function updateField(name: keyof typeof form, value: string) {
+  function updateField(name: StringFormField, value: string) {
     setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function updateAudiencePreset(value: AudienceOption) {
+    setForm((current) => ({
+      ...current,
+      audiencePreset: value,
+      audience: value === "Other" ? "" : value,
+    }));
+  }
+
+  function updatePurposePreset(value: PurposeOption) {
+    setForm((current) => ({
+      ...current,
+      purposePreset: value,
+      purpose: value === "Other" ? "" : value,
+    }));
+  }
+
+  function updateTonePreset(value: TonePreset) {
+    setForm((current) => ({
+      ...current,
+      tonePreset: value,
+      tone: tonePresetToTone(value),
+    }));
+  }
+
+  function toggleMustKeep(value: MustKeepOption) {
+    setForm((current) => {
+      const exists = current.mustKeepSelections.includes(value);
+
+      return {
+        ...current,
+        mustKeepSelections: exists
+          ? current.mustKeepSelections.filter((item) => item !== value)
+          : [...current.mustKeepSelections, value],
+      };
+    });
   }
 
   function applyTemplate(template: (typeof templates)[number]) {
@@ -430,94 +519,201 @@ export function RewriteWorkspace({
                 value={form.roughDraftReply}
               />
             </Card>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card className="p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-sm font-semibold" htmlFor="audience">
-                    Audience
-                  </label>
-                  <Remaining max={limits.audience} value={form.audience} />
-                </div>
-                <Input
-                  id="audience"
-                  maxLength={limits.audience}
-                  onChange={(event) => updateField("audience", event.target.value)}
-                  value={form.audience}
-                />
-              </Card>
-              <Card className="p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-sm font-semibold" htmlFor="purpose">
-                    Purpose
-                  </label>
-                  <Remaining max={limits.purpose} value={form.purpose} />
-                </div>
-                <Input
-                  id="purpose"
-                  maxLength={limits.purpose}
-                  onChange={(event) => updateField("purpose", event.target.value)}
-                  value={form.purpose}
-                />
-              </Card>
-            </div>
             <Card className="p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <label className="text-sm font-semibold" htmlFor="whatHappened">
-                  What actually happened
-                </label>
-                <Remaining
-                  max={limits.whatHappened}
-                  value={form.whatHappened}
-                />
-              </div>
-              <Textarea
-                id="whatHappened"
-                maxLength={limits.whatHappened}
-                onChange={(event) =>
-                  updateField("whatHappened", event.target.value)
-                }
-                rows={3}
-                value={form.whatHappened}
-              />
-            </Card>
-            <Card className="p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <label className="text-sm font-semibold" htmlFor="factsToPreserve">
-                  Facts to preserve
-                </label>
-                <Remaining
-                  max={limits.factsToPreserve}
-                  value={form.factsToPreserve}
-                />
-              </div>
-              <Textarea
-                id="factsToPreserve"
-                maxLength={limits.factsToPreserve}
-                onChange={(event) =>
-                  updateField("factsToPreserve", event.target.value)
-                }
-                rows={3}
-                value={form.factsToPreserve}
-              />
-            </Card>
-            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div>
-                <p className="text-sm font-semibold">Tone</p>
-                <p className="mt-1 text-xs text-ink/50">
-                  Combined request: {combinedLength}/10000
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold">Quick context</h2>
+                  <p className="mt-1 text-xs leading-5 text-ink/50">
+                    Optional, but useful. Pick what fits; you can leave the rest
+                    blank.
+                  </p>
+                </div>
+                <p className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/50">
+                  {combinedLength}/10000
                 </p>
               </div>
-              <div className="flex rounded-md border border-line bg-white p-1">
-                {(["warm", "direct"] as const).map((tone) => (
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold text-ink/65" htmlFor="audiencePreset">
+                    Audience
+                  </label>
+                  <select
+                    className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm text-ink outline-none focus:border-clay"
+                    id="audiencePreset"
+                    onChange={(event) =>
+                      updateAudiencePreset(event.target.value as AudienceOption)
+                    }
+                    value={form.audiencePreset}
+                  >
+                    {audienceOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  {form.audiencePreset === "Other" ? (
+                    <div className="mt-2">
+                      <div className="mb-1 flex items-center justify-between">
+                        <label className="text-xs font-medium text-ink/55" htmlFor="audience">
+                          Custom audience
+                        </label>
+                        <Remaining max={limits.audience} value={form.audience} />
+                      </div>
+                      <Input
+                        id="audience"
+                        maxLength={limits.audience}
+                        onChange={(event) =>
+                          updateField("audience", event.target.value)
+                        }
+                        placeholder="Example: finance lead reviewing renewal terms"
+                        value={form.audience}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-semibold text-ink/65" htmlFor="purposePreset">
+                    Purpose
+                  </label>
+                  <select
+                    className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm text-ink outline-none focus:border-clay"
+                    id="purposePreset"
+                    onChange={(event) =>
+                      updatePurposePreset(event.target.value as PurposeOption)
+                    }
+                    value={form.purposePreset}
+                  >
+                    {purposeOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  {form.purposePreset === "Other" ? (
+                    <div className="mt-2">
+                      <div className="mb-1 flex items-center justify-between">
+                        <label className="text-xs font-medium text-ink/55" htmlFor="purpose">
+                          Custom purpose
+                        </label>
+                        <Remaining max={limits.purpose} value={form.purpose} />
+                      </div>
+                      <Input
+                        id="purpose"
+                        maxLength={limits.purpose}
+                        onChange={(event) =>
+                          updateField("purpose", event.target.value)
+                        }
+                        placeholder="Example: explain the delay without overpromising"
+                        value={form.purpose}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <p className="text-xs font-semibold text-ink/65">
+                  What must stay the same
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {mustKeepOptions.map((option) => {
+                    const selected = form.mustKeepSelections.includes(option);
+
+                    return (
+                      <button
+                        aria-pressed={selected}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                          selected
+                            ? "border-sage bg-sage text-paper"
+                            : "border-line bg-white text-ink/62 hover:text-ink"
+                        }`}
+                        key={option}
+                        onClick={() => toggleMustKeep(option)}
+                        type="button"
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="text-xs font-medium text-ink/55" htmlFor="factsToPreserve">
+                      Specific details
+                    </label>
+                    <Remaining
+                      max={limits.factsToPreserve}
+                      value={form.factsToPreserve}
+                    />
+                  </div>
+                  <Textarea
+                    id="factsToPreserve"
+                    maxLength={limits.factsToPreserve}
+                    onChange={(event) =>
+                      updateField("factsToPreserve", event.target.value)
+                    }
+                    placeholder="Optional: add specific dates, numbers, policy details, or promises to avoid."
+                    rows={2}
+                    value={form.factsToPreserve}
+                  />
+                </div>
+              </div>
+
+              <details className="mt-5 rounded-lg border border-line bg-white p-3">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold">
+                  <span>Extra context</span>
+                  <span className="flex items-center gap-2 text-xs font-medium text-ink/45">
+                    Optional
+                    <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                </summary>
+                <p className="mt-2 text-xs leading-5 text-ink/50">
+                  Add anything the reply should understand but not over-explain.
+                </p>
+                <div className="mt-3 mb-2 flex items-center justify-between">
+                  <label className="text-xs font-medium text-ink/55" htmlFor="whatHappened">
+                    Details
+                  </label>
+                  <Remaining
+                    max={limits.whatHappened}
+                    value={form.whatHappened}
+                  />
+                </div>
+                <Textarea
+                  id="whatHappened"
+                  maxLength={limits.whatHappened}
+                  onChange={(event) =>
+                    updateField("whatHappened", event.target.value)
+                  }
+                  placeholder="Optional. Leave blank if there is no extra context."
+                  rows={3}
+                  value={form.whatHappened}
+                />
+              </details>
+            </Card>
+
+            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div>
+                <p className="text-sm font-semibold">Tone preset</p>
+                <p className="mt-1 text-xs text-ink/50">
+                  Choose the style closest to the relationship and situation.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {tonePresetOptions.map((tonePreset) => (
                   <button
-                    className={`rounded px-4 py-2 text-sm font-semibold capitalize ${
-                      form.tone === tone ? "bg-ink text-paper" : "text-ink/65"
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                      form.tonePreset === tonePreset
+                        ? "border-ink bg-ink text-paper"
+                        : "border-line bg-white text-ink/65 hover:text-ink"
                     }`}
-                    key={tone}
-                    onClick={() => setForm((current) => ({ ...current, tone }))}
+                    key={tonePreset}
+                    onClick={() => updateTonePreset(tonePreset)}
                     type="button"
                   >
-                    {tone}
+                    {tonePreset}
                   </button>
                 ))}
               </div>
@@ -690,7 +886,9 @@ export function RewriteWorkspace({
                       }
                       type="button"
                     >
-                      <p className="font-medium capitalize">{item.tone}</p>
+                      <p className="font-medium">
+                        {item.tonePreset ?? item.tone}
+                      </p>
                       <p className="mt-1 line-clamp-2 text-ink/60">
                         {item.rewrittenText}
                       </p>

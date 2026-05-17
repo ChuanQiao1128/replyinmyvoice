@@ -52,6 +52,7 @@ describe("thread fallback rewrite pass", () => {
         factsToPreserve:
           "Three seats added June 2. Includes prorated seat charges.",
         tone: "direct",
+        tonePreset: "Direct",
       },
       threadFallback!,
     );
@@ -75,6 +76,7 @@ describe("thread fallback rewrite pass", () => {
         whatHappened: "The source file arrived late.",
         factsToPreserve: "Source file arrived late. Send by 4pm Friday.",
         tone: "warm",
+        tonePreset: "Warm",
       },
       threadFallback!,
     );

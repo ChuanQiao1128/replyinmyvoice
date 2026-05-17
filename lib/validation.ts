@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { tonePresetOptions } from "./rewrite-presets";
+
 export const rewriteRequestSchema = z
   .object({
     messageToReplyTo: z.string().max(5000).optional().default(""),
@@ -9,6 +11,7 @@ export const rewriteRequestSchema = z
     whatHappened: z.string().max(1000).optional().default(""),
     factsToPreserve: z.string().max(1000).optional().default(""),
     tone: z.enum(["warm", "direct"]),
+    tonePreset: z.enum(tonePresetOptions).optional().default("Warm"),
   })
   .superRefine((value, ctx) => {
     const combinedLength =

@@ -26,6 +26,10 @@ const sections = [
     title: "Safety reminder",
     text: "Do not paste passwords, payment details, government identifiers, or highly sensitive personal information into the workspace.",
   },
+  {
+    title: "Contact",
+    text: "For privacy questions, contact TimeAwake Ltd. at info@timeawake.co.nz.",
+  },
 ];
 
 export default function PrivacyPage() {

@@ -37,7 +37,7 @@ export function SiteFooter() {
             <Link href="/terms" className="hover:text-ink">
               Terms
             </Link>
-            <a href="mailto:qc1128qc@outlook.com" className="hover:text-ink">
+            <a href="mailto:info@timeawake.co.nz" className="hover:text-ink">
               Contact
             </a>
           </div>

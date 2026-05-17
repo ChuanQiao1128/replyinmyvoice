@@ -1541,3 +1541,139 @@ Next phase goals:
    - average AI-like signal reduction of at least 30 points
    - most evaluated samples below 50%
 6. Push all work to GitHub and leave the branch clean.
+
+## Next Development Phase: Quick Context, Tested Samples, And Commercial UX
+
+Before starting the next product/UI development run, read:
+
+- `/Users/qc/Desktop/CloudFlare/docs/next-development-brief.md`
+- `/Users/qc/Desktop/CloudFlare/docs/sample-cases.md` if it exists
+- `/Users/qc/Desktop/CloudFlare/docs/optimization-notes.md`
+
+This section supersedes earlier Warm/Direct-only and heavy context-field wording for the next product iteration.
+
+### Workspace UX Direction
+
+Keep the rewrite workspace as a single-page tool surface. Do not convert it into a step-by-step wizard.
+
+Primary inputs remain:
+
+- message/thread to reply to
+- rough draft reply
+
+Reduce form burden by grouping secondary controls into a `Quick context` section:
+
+- audience preset
+- purpose preset
+- what must stay the same chips
+- tone preset
+- optional extra context
+
+`Extra context` must be collapsed by default. Users should open it only when they need to add additional details.
+
+Audience and purpose should support `Other`. When `Other` is selected, show a custom input. Do not force custom text for normal preset choices.
+
+Rename or position the old `What actually happened` concept as `Extra context`, and the old `Facts to preserve` concept as `What must stay the same`.
+
+### Tone Presets And API Contract
+
+The UI should show more than two tone choices, such as:
+
+- Warm
+- Direct
+- Professional
+- Friendly
+- Firm but polite
+- Apologetic
+- Concise
+
+Pass the selected visible tone preset to the API as `tonePreset` or an equivalent explicit request field. Do not rely only on client-side mapping into `warm` or `direct`.
+
+Keep the existing `tone` field only as compatibility/fallback if useful. The server prompt must receive enough information to reflect the user's selected preset.
+
+### Homepage Samples
+
+Homepage sample cases must come from documented internal testing or evaluation, not arbitrary placeholder copy.
+
+Rules:
+
+- Do not introduce names, dates, prices, numbers, policy details, or commitments that are not in the sample input.
+- Do not rewrite `Dear Student` into a random named greeting.
+- Use one selected case each for teacher, sales follow-up, workplace email, and client reply.
+- Samples should be long enough to feel realistic but still readable on the homepage.
+- Naturalness Check values shown on the homepage should be static selected sample values from `docs/sample-cases.md`, not fresh Sapling calls on every page render or local load.
+
+### Sapling Sample Usage And Cost Tracking
+
+The user has subscribed to the Sapling API plan, so the next round can test longer, more realistic emails.
+
+Use longer samples during evaluation:
+
+- 150-300 words for short reply contexts
+- 300-600 words for normal workplace/customer contexts
+- 600-1,000 words for longer thread or detailed client reply contexts
+
+Create or update `docs/sample-cases.md` during implementation. For each selected case, record:
+
+- category
+- incoming context
+- rough draft
+- rewritten reply
+- word count
+- estimated character count
+- displayed excerpt word count
+- displayed excerpt estimated character count
+- Sapling call count
+- estimated Sapling characters consumed
+- draft score
+- rewrite score
+- score change
+- preserved facts checklist
+- whether the case is used on the homepage
+
+Add a usage/cost estimate section with:
+
+- total selected sample count
+- total evaluation sample count
+- total Sapling calls used
+- total estimated characters sent to Sapling
+- average characters per sample
+- notes on any 429/rate/capacity errors
+
+Unavailable Sapling scores must not count as target-met results. If Sapling returns 429 again, stop repeated evaluation calls, keep the best documented results, and continue product work.
+
+### FAQ Layout
+
+Change the FAQ from a two-column card grid to a familiar single-column list or accordion:
+
+- centered max-width column
+- question rows separated by light dividers
+- concise answers
+- optional chevron/plus interaction
+- no large repeated FAQ cards
+
+### Commercial Site Defaults
+
+Use these defaults unless the user gives a newer instruction:
+
+- Pricing remains `NZD $9/month`.
+- Do not implement annual checkout until a Stripe annual price exists.
+- Do not advertise an annual plan in the UI unless checkout can support it.
+- Footer should include `Operated by TimeAwake Ltd.`
+- Support/contact email is `info@timeawake.co.nz`.
+- Add or expose concise Privacy and Terms footer links/pages when practical.
+- Privacy/Terms should state that pasted messages and rewritten replies are processed for the request and are not saved to the database.
+
+Sapling is only a third-party reference signal provider for the Naturalness Check. Do not copy Sapling's Pro feature table or market Sapling-specific features such as autocomplete, snippets, domain administration, or chat assist as Reply In My Voice features.
+
+### Next Development Reporting
+
+When the next development run finishes, include:
+
+- workspace UX changes completed
+- tone preset/API behavior
+- sample case source and recorded scores
+- Sapling usage/cost estimate summary
+- FAQ layout changes
+- tests/screenshots run
+- GitHub push status

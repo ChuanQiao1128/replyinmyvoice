@@ -47,6 +47,7 @@ function buildUserPrompt(input: RewriteRequestInput, strategy: Strategy) {
   return [
     `Strategy: ${strategy.instruction}`,
     `Tone: ${input.tone}`,
+    `Tone preset: ${input.tonePreset}`,
     "",
     "Message to reply to:",
     input.messageToReplyTo || "(not provided)",
@@ -173,8 +174,11 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
     ]);
   } else {
     const detail = compactDetail(input.factsToPreserve || input.whatHappened);
+    const opening = ["Warm", "Friendly", "Apologetic"].includes(input.tonePreset)
+      ? "Thanks for the note."
+      : "Got it.";
     rewrittenText = detail
-      ? `${input.tone === "warm" ? "Thanks for the note." : "Got it."}\n\n${detail}.`
+      ? `${opening}\n\n${detail}.`
       : input.roughDraftReply;
   }
 
@@ -265,7 +269,13 @@ export async function generateRewriteCandidate(
           "- Return strict JSON only with keys: rewrittenText, changeSummary, riskNotes.\n\n" +
           "Tone guidance:\n" +
           "- warm: friendly, clear, kind, natural, concise.\n" +
-          "- direct: concise, professional, clear, low-fluff.",
+          "- direct: concise, professional, clear, low-fluff.\n" +
+          "- Tone preset is the user's visible style choice. Follow it unless it would add facts or make the reply unsafe.\n" +
+          "- Professional: polished but not stiff.\n" +
+          "- Friendly: approachable and conversational.\n" +
+          "- Firm but polite: clear boundary, no extra edge.\n" +
+          "- Apologetic: accountable without overpromising.\n" +
+          "- Concise: shorter and direct.",
       },
       {
         role: "user",
