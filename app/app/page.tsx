@@ -1,20 +1,52 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import { PaywallCard } from "../../components/app/paywall-card";
+import { RewriteWorkspace } from "../../components/app/rewrite-workspace";
+import { getUsageStatus, isPaidSubscriptionStatus } from "../../lib/quota";
+import { getCurrentAppUser } from "../../lib/users";
 
 export const dynamic = "force-dynamic";
 
-export default function AppPage() {
+export default async function AppPage() {
+  const user = await getCurrentAppUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const usage = await getUsageStatus(user);
+  const paid = isPaidSubscriptionStatus(user.subscriptionStatus);
+
+  if (usage.exhausted && !paid) {
+    return (
+      <PaywallCard
+        description="Your 3 free rewrites have been used. Upgrade to keep using the workspace for everyday replies."
+        status="Free quota used"
+        title="Keep writing in your own voice."
+      />
+    );
+  }
+
+  if (usage.exhausted && paid) {
+    return (
+      <PaywallCard
+        action="portal"
+        description="Your monthly rewrite quota has been used for this billing period. You can manage billing or come back when the next period starts."
+        status="Monthly quota used"
+        title="Your monthly limit has been reached."
+      />
+    );
+  }
+
+  const usageLabel = paid
+    ? `${usage.remaining} of ${usage.quota} rewrites remaining this billing period`
+    : `${usage.remaining} of ${usage.quota} free rewrites remaining`;
+
   return (
-    <main className="min-h-screen bg-paper px-6 py-10 text-ink">
-      <section className="mx-auto max-w-5xl">
-        <Link href="/" className="text-sm font-medium text-clay">
-          Reply In My Voice
-        </Link>
-        <h1 className="mt-6 text-4xl font-semibold">Rewrite workspace</h1>
-        <p className="mt-3 max-w-2xl text-ink/65">
-          The workspace is being assembled. Authentication, quota, billing, and
-          writing signal checks will be wired in the next phase.
-        </p>
-      </section>
-    </main>
+    <RewriteWorkspace
+      paid={paid}
+      subscriptionStatus={user.subscriptionStatus}
+      usageLabel={usageLabel}
+    />
   );
 }
