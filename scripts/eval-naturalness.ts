@@ -73,6 +73,7 @@ const averageDrop = measured.length
   : null;
 const belowFifty = measured.filter((row) => (row.rewrite ?? 100) < 50).length;
 const targetMet =
+  measured.length === rows.length &&
   averageDrop !== null &&
   averageDrop >= 30 &&
   belowFifty >= Math.ceil(measured.length / 2);

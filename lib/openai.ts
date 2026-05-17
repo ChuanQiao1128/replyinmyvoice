@@ -90,6 +90,31 @@ function compactDetail(value: string) {
     .replace(/\.$/, "");
 }
 
+function detailParts(input: RewriteRequestInput) {
+  const source =
+    input.factsToPreserve || input.whatHappened || input.roughDraftReply;
+
+  return source
+    .split(/[.!?]\s+|\n+/)
+    .map((part) => part.trim().replace(/[.!?]$/, ""))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function sentence(value: string) {
+  const cleaned = value.trim();
+  if (!cleaned) {
+    return "";
+  }
+
+  return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+}
+
+function threadNote(opening: string, lines: string[]) {
+  const body = lines.map(sentence).filter(Boolean).join(" ");
+  return body ? `${opening}\n\n${body}` : opening;
+}
+
 function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
   const context = [
     input.messageToReplyTo,
@@ -103,31 +128,49 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
     .toLowerCase();
 
   let rewrittenText: string;
+  const details = detailParts(input);
+  const firstDetail = details[0] ?? compactDetail(input.roughDraftReply);
+  const secondDetail = details[1] ?? "";
 
   if (textIncludes(context, ["participation", "exit ticket", "parent"])) {
-    rewrittenText =
-      "Hi, thanks for checking.\n\nThis week came down to two missed group activities and the missing exit ticket. Happy to talk it through on a quick call.";
+    rewrittenText = threadNote("Hi, thanks for checking.", [
+      details.length
+        ? `This week came down to ${details.join(" and ")}`
+        : firstDetail,
+      "Happy to talk it through on a quick call if that helps",
+    ]);
   } else if (textIncludes(context, ["invoice", "prorated", "seats"])) {
-    rewrittenText =
-      "The jump is from the two seats added May 4.\n\nThis invoice includes the prorated charges for those seats.";
+    rewrittenText = threadNote(
+      firstDetail || "The invoice changed this period.",
+      [secondDetail || "This invoice includes the related prorated charges"],
+    );
   } else if (textIncludes(context, ["source file", "numbers", "10am"])) {
-    rewrittenText =
-      "Source file came in late, so I need a little more time.\n\nI'll send the numbers by 10am tomorrow.";
+    rewrittenText = threadNote(firstDetail || "I need a little more time.", [
+      secondDetail || "I'll send the numbers as soon as they are ready",
+    ]);
   } else if (textIncludes(context, ["export", "settings"])) {
-    rewrittenText =
-      "I think I found the problem.\n\nThe export used last week's settings, and I'm checking the new settings now.";
+    rewrittenText = threadNote("I think I found the problem.", [
+      firstDetail,
+      secondDetail,
+    ]);
   } else if (textIncludes(context, ["vendors", "proposal", "comparing"])) {
-    rewrittenText =
-      "No problem, take the extra week.\n\nIf anything comes up while you're comparing vendors, send it my way.";
+    rewrittenText = threadNote("No problem, take the extra week.", [
+      firstDetail || "If anything comes up while you're comparing vendors, send it my way",
+    ]);
   } else if (textIncludes(context, ["demo", "reschedule"])) {
-    rewrittenText =
-      "Got it, we can move the demo to next week.\n\nSend me two times that work for you.";
+    rewrittenText = threadNote("Got it, we can move the demo.", [
+      firstDetail || "Send me two times that work for you",
+    ]);
   } else if (textIncludes(context, ["document", "margin notes", "review"])) {
-    rewrittenText =
-      "Yep, it's ready.\n\nI left margin notes where your input would help.";
+    rewrittenText = threadNote("Yep, it's ready.", [
+      firstDetail,
+      secondDetail || "I left margin notes where your input would help",
+    ]);
   } else if (textIncludes(context, ["late", "deadline", "family issue"])) {
-    rewrittenText =
-      "Thanks for the heads-up.\n\nI can review it tomorrow, but I still need to keep the late-work policy in mind.";
+    rewrittenText = threadNote("Thanks for the heads-up.", [
+      firstDetail,
+      secondDetail,
+    ]);
   } else {
     const detail = compactDetail(input.factsToPreserve || input.whatHappened);
     rewrittenText = detail

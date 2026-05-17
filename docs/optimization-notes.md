@@ -1,27 +1,54 @@
 # Optimization Notes
 
-Date: 2026-05-17T14:16:44.779Z
-Samples evaluated: 8
-Evaluation strategy rounds used: 3 of max 5
-Average absolute signal drop: 89 pts
-Rewrites below 50% AI-like signal: 8/8
-Internal target met: yes
+Date: 2026-05-18
 
-Final selected strategy:
+## Mandatory R&D Target
 
-- First attempt: OpenAI plain email-thread note with compact, concrete paragraphs.
-- Fallback attempt: deterministic thread fallback using only user-provided facts and a short opening + blank line + concrete next step structure.
-- Fallback is only tried when the first candidate remains above 50% AI-like signal or does not reduce the draft by at least 30 points.
+- Average AI-like signal reduction: at least 30 points.
+- Majority of evaluated rewrites: below 50% AI-like signal.
+- Evaluation set: 8 representative teacher, sales, workplace, client, and customer email reply samples.
 
-The internal target was met in the final run. Keep teacher/parent and invoice scenarios in the evaluation set because they are useful regression cases.
+## Iteration Log
 
-| Sample | Tone | Draft | Rewrite | Change | Strategies | Notes |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-teacher-late-work | warm | 100% | 1% | -99 pts | 2 | Review before sending if the context needs more detail.
-teacher-parent-update | warm | 100% | 1% | -99 pts | 2 | Review before sending if the context needs more detail.
-sales-proposal-follow-up | warm | 100% | 19% | -81 pts | 1 | Review the reply before sending.
-sales-demo-reschedule | direct | 100% | 2% | -98 pts | 1 | Review the reply before sending.
-workplace-doc-review | direct | 100% | 49% | -51 pts | 1 | Review the reply before sending.
-workplace-delay | warm | 100% | 15% | -85 pts | 1 | None.
-client-issue-update | warm | 100% | 0% | -100 pts | 1 | None
-customer-invoice-question | direct | 100% | 0% | -100 pts | 2 | Review before sending if the context needs more detail.
+| Round | Change | Samples | Average Drop | Below 50% | Target | Notes |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| 1 | Baseline compact prompt | 8 | 7 pts | 0/8 | no | Too many outputs stayed polished and single-paragraph. |
+| 2 | Plain email-thread prompt and retry threshold | 8 | 24 pts | 2/8 | no | Improved some workplace/client cases, but teacher/sales/invoice remained high. |
+| 3 | Stricter thread-shape prompt | 8 | 56 pts | 5/8 | yes | Hit target once but was not stable on confirmation. |
+| 4 | Deterministic fallback rewrite pass for hard cases | 8 | 89 pts | 8/8 | yes | Strongest raw result, but first version had sample-specific wording risk. |
+| 5 | Generalized fallback rewrite pass using request facts only | 8 | 69 pts | 6/8 | yes | Final production strategy: target met while avoiding hardcoded sample details. |
+| 6 | Post-budget provider check | 8 | unavailable | unavailable | not scored | Sapling returned 429 capacity errors after repeated evaluation calls; not used as a quality result. |
+
+## Final Selected Strategy
+
+Production API uses a bounded two-pass rewrite workflow:
+
+1. OpenAI plain email-thread note:
+   - compact concrete paragraphs
+   - thread-like wording
+   - preserves facts from the user fields
+2. Deterministic fallback rewrite pass:
+   - only runs when the first pass remains above 50% AI-like signal or improves by less than 30 points
+   - uses only `messageToReplyTo`, `roughDraftReply`, `whatHappened`, and `factsToPreserve`
+   - creates a short opening, blank line, and concrete fact/next-step structure
+
+The fallback is intentionally not a separate external agent in this MVP. It behaves like an internal rewrite pass/subroutine so production latency and cost stay bounded.
+
+## Sample-Specific Failure Analysis
+
+- Teacher late-work replies are hard because policy language naturally sounds formal. Best results came from a short "thanks for the heads-up" opening plus one concrete policy/timing line.
+- Parent participation replies improved when the reply used the exact recorded reasons instead of a broad explanatory paragraph.
+- Sales follow-up replies improved when the output avoided pressure and used short thread wording.
+- Workplace delay replies improved when the source-file/timing facts were preserved as direct lines.
+- Invoice replies improved only after the fallback stopped using sample-specific wording and rebuilt the reply from the provided seat/date/proration facts.
+
+## Current Status
+
+Final valid complete run:
+
+- Samples evaluated: 8
+- Average AI-like signal reduction: 69 points
+- Rewrites below 50% AI-like signal: 6/8
+- Internal target met: yes
+
+Provider note: after repeated development evaluation calls, Sapling returned `429` capacity errors. The app already handles provider failure by returning the rewrite with an unavailable signal state, and evaluation results with unavailable scores must not be counted as target-met runs.

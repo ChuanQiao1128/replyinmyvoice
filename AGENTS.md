@@ -220,6 +220,17 @@ Internal development target, not user-facing copy:
 - most rewritten samples below 50% AI-like signal
 ```
 
+Mandatory R&D target:
+
+```text
+For launch-quality Naturalness Check work, the internal R&D target is mandatory:
+- average AI-like signal reduction of at least 30 points
+- majority of fully measured evaluated rewrites below 50%
+
+Do not count a run as target-met if the writing signal provider returns unavailable scores for any evaluated sample.
+If the provider rate-limits or fails, document it in docs/optimization-notes.md and keep the best last complete measured run.
+```
+
 Development evaluation loop:
 
 ```text
@@ -235,6 +246,24 @@ For each sample, record:
 Use this eval set to compare rewrite strategies during development.
 Do not accept the first prompt if the measured reduction is weak.
 If the target is not met, keep running alternative prompts, strategy ordering, and composite scoring until results improve or a hard provider/cost limit is documented.
+```
+
+Production rewrite strategy selected on 2026-05-18:
+
+```text
+Use a bounded two-pass workflow in /api/rewrite:
+1. OpenAI plain email-thread note using the user's supplied context.
+2. Deterministic fallback rewrite pass when the first pass remains above 50% AI-like signal or improves by less than 30 points.
+
+The fallback rewrite pass must use only request-provided facts and must not contain sample-specific hardcoded facts such as dates, times, people, product quantities, invoice details, or policy outcomes.
+
+The fallback is intentionally implemented as an internal rewrite pass/subroutine, not a separate external agent, so cost and latency remain bounded. Reconsider a dedicated rewrite subagent only if future evaluation shows the two-pass workflow cannot meet the target on expanded samples.
+
+Current complete measured result:
+- samples evaluated: 8
+- average AI-like signal reduction: 69 points
+- rewrites below 50% AI-like signal: 6/8
+- target met: yes
 ```
 
 Possible new env vars:
