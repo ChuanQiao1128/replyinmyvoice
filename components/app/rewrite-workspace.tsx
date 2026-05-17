@@ -1,11 +1,15 @@
 "use client";
 
 import {
+  CheckCircle2,
   Clipboard,
+  CopyCheck,
   Loader2,
   RefreshCw,
   Send,
+  Sparkles,
   Trash2,
+  WandSparkles,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -82,6 +86,72 @@ const initialForm: FormState = {
   tone: "warm" as const,
 };
 
+const templates: Array<{
+  label: string;
+  description: string;
+  form: FormState;
+}> = [
+  {
+    label: "Teacher reply",
+    description: "A student missed a deadline and needs a firm but kind answer.",
+    form: initialForm,
+  },
+  {
+    label: "Sales follow-up",
+    description: "A buyer needs a specific, relationship-aware nudge.",
+    form: {
+      messageToReplyTo:
+        "Thanks for the proposal. We are still comparing options and may come back next month.",
+      roughDraftReply:
+        "Hello, I am following up on the proposal and would like to know if you have any updates about whether you will proceed.",
+      audience: "A prospect who reviewed a proposal last week",
+      purpose: "Follow up without sounding pushy",
+      whatHappened:
+        "They are comparing options and said they may revisit the decision next month.",
+      factsToPreserve:
+        "Proposal was sent last week. They may revisit next month. Offer to simplify the options.",
+      tone: "warm",
+    },
+  },
+  {
+    label: "Workplace update",
+    description: "A teammate needs a clear status reply with timing.",
+    form: {
+      messageToReplyTo:
+        "Can you send the revised numbers today? I need them for the partner update.",
+      roughDraftReply:
+        "Unfortunately, the requested numbers are not available at this time due to delayed source information.",
+      audience: "A teammate preparing a partner update",
+      purpose: "Explain a short delay and give a reliable next step",
+      whatHappened: "The source file arrived late and still needs one check.",
+      factsToPreserve: "Send the revised numbers by 4pm Friday.",
+      tone: "direct",
+    },
+  },
+  {
+    label: "Client support",
+    description: "A client reported a problem and needs a careful reply.",
+    form: {
+      messageToReplyTo:
+        "The report totals look different from last month. Can someone explain what changed?",
+      roughDraftReply:
+        "Thank you for contacting us. Our team is currently reviewing the matter and will provide an update as soon as possible.",
+      audience: "A client asking about a reporting change",
+      purpose: "Acknowledge the issue and explain what will happen next",
+      whatHappened: "The new report includes a category that was hidden last month.",
+      factsToPreserve:
+        "Report includes a newly visible category. Send a line-by-line note today.",
+      tone: "warm",
+    },
+  },
+];
+
+const progressSteps = [
+  "Reading the thread",
+  "Rewriting in your voice",
+  "Checking the writing signal",
+];
+
 function Remaining({
   value,
   max,
@@ -99,11 +169,14 @@ function Remaining({
 function SignalBar({
   label,
   value,
+  variant = "clay",
 }: {
   label: string;
   value: number | null;
+  variant?: "clay" | "sage";
 }) {
   const width = value ?? 0;
+  const fillClass = variant === "sage" ? "bg-sage" : "bg-clay";
 
   return (
     <div>
@@ -113,7 +186,7 @@ function SignalBar({
       </div>
       <div className="h-2 rounded-full bg-paper-deep">
         <div
-          className="h-2 rounded-full bg-clay"
+          className={`h-2 rounded-full ${fillClass}`}
           style={{ width: `${width}%` }}
         />
       </div>
@@ -141,6 +214,9 @@ export function RewriteWorkspace({
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState(templates[0].label);
+  const [loadingStepIndex, setLoadingStepIndex] = useState(0);
 
   const combinedLength = useMemo(
     () =>
@@ -161,6 +237,28 @@ export function RewriteWorkspace({
       setHistory([]);
     }
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStepIndex(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setLoadingStepIndex((current) => (current + 1) % progressSteps.length);
+    }, 1400);
+
+    return () => window.clearInterval(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setCopied(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
 
   function saveHistory(response: RewriteResponse) {
     const nextItem: HistoryItem = {
@@ -215,6 +313,23 @@ export function RewriteWorkspace({
     setForm((current) => ({ ...current, [name]: value }));
   }
 
+  function applyTemplate(template: (typeof templates)[number]) {
+    setForm({ ...template.form });
+    setActiveTemplate(template.label);
+    setResult(null);
+    setError("");
+    setCopied(false);
+  }
+
+  async function copyReply() {
+    if (!result?.rewrittenText) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(result.rewrittenText);
+    setCopied(true);
+  }
+
   function clearHistory() {
     setHistory([]);
     localStorage.removeItem(HISTORY_KEY);
@@ -237,6 +352,42 @@ export function RewriteWorkspace({
         />
         <form className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.9fr]" onSubmit={submit}>
           <section className="space-y-4">
+            <Card className="p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-2 text-sm font-semibold">
+                    <WandSparkles className="h-4 w-4 text-clay" aria-hidden="true" />
+                    Starter scenarios
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-ink/50">
+                    Use a realistic email workflow as a starting point, then
+                    replace the details with your own.
+                  </p>
+                </div>
+                <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/55">
+                  {activeTemplate}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 md:grid-cols-2">
+                {templates.map((template) => (
+                  <button
+                    className={`rounded-lg border p-3 text-left transition ${
+                      activeTemplate === template.label
+                        ? "border-ink bg-ink text-paper"
+                        : "border-line bg-white text-ink hover:bg-paper"
+                    }`}
+                    key={template.label}
+                    onClick={() => applyTemplate(template)}
+                    type="button"
+                  >
+                    <span className="text-sm font-semibold">{template.label}</span>
+                    <span className="mt-1 block text-xs leading-5 opacity-75">
+                      {template.description}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </Card>
             <Card className="p-4">
               <div className="mb-2 flex items-center justify-between">
                 <label className="text-sm font-semibold" htmlFor="messageToReplyTo">
@@ -378,6 +529,35 @@ export function RewriteWorkspace({
                 )}
                 Rewrite
               </Button>
+              {loading ? (
+                <div
+                  aria-live="polite"
+                  className="w-full rounded-lg border border-line bg-white px-3 py-3"
+                >
+                  <div className="grid gap-2 md:grid-cols-3">
+                    {progressSteps.map((step, index) => (
+                      <div
+                        className={`flex items-center gap-2 text-xs font-semibold ${
+                          index === loadingStepIndex ? "text-ink" : "text-ink/40"
+                        }`}
+                        key={step}
+                      >
+                        {index < loadingStepIndex ? (
+                          <CheckCircle2 className="h-4 w-4 text-sage" aria-hidden="true" />
+                        ) : index === loadingStepIndex ? (
+                          <Loader2
+                            className="h-4 w-4 animate-spin text-clay"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <span className="h-4 w-4 rounded-full border border-line" />
+                        )}
+                        {step}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </Card>
             {error ? (
               <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -392,16 +572,16 @@ export function RewriteWorkspace({
                 <div className="flex gap-2">
                   <Button
                     disabled={!result?.rewrittenText}
-                    onClick={() =>
-                      result?.rewrittenText
-                        ? void navigator.clipboard.writeText(result.rewrittenText)
-                        : undefined
-                    }
+                    onClick={() => void copyReply()}
                     type="button"
                     variant="secondary"
                   >
-                    <Clipboard className="h-4 w-4" aria-hidden="true" />
-                    Copy
+                    {copied ? (
+                      <CopyCheck className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Clipboard className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    {copied ? "Copied" : "Copy"}
                   </Button>
                   <Button
                     disabled={loading}
@@ -415,8 +595,20 @@ export function RewriteWorkspace({
                 </div>
               </div>
               <div className="min-h-52 rounded-lg border border-line bg-white p-4 text-sm leading-7 text-ink">
-                {result?.rewrittenText ??
-                  "Your rewritten reply will appear here after you run the workspace."}
+                {loading ? (
+                  <div className="flex h-44 flex-col items-center justify-center text-center text-ink/55">
+                    <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
+                    <p className="font-semibold text-ink">
+                      {progressSteps[loadingStepIndex]}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      The workspace is preserving the facts you provided.
+                    </p>
+                  </div>
+                ) : (
+                  result?.rewrittenText ??
+                  "Your rewritten reply will appear here after you run the workspace."
+                )}
               </div>
             </Card>
             <Card className="p-4">
@@ -434,6 +626,7 @@ export function RewriteWorkspace({
                 <SignalBar
                   label="Rewrite AI-like signal"
                   value={result?.naturalness.rewriteAiLikePercent ?? null}
+                  variant="sage"
                 />
               </div>
               <p className="mt-3 text-sm text-ink/60">

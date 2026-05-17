@@ -1,4 +1,4 @@
-import { CreditCard, RefreshCcw } from "lucide-react";
+import { CreditCard, RefreshCcw, ShieldCheck } from "lucide-react";
 
 import { Button } from "../ui/button";
 
@@ -23,12 +23,16 @@ export function SubscriptionStatus({ status, usageLabel, paid }: Props) {
   return (
     <div className="rounded-lg border border-line bg-white/75 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold">Account</p>
           <p className="mt-1 text-sm text-ink/60">
             {paid ? `Subscription: ${status}` : "Free workspace"}
           </p>
           <p className="mt-1 text-sm font-medium text-sage">{usageLabel}</p>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-ink/45">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Operated by TimeAwake Ltd. Billing is handled by Stripe.
+          </p>
         </div>
         {paid ? (
           <Button

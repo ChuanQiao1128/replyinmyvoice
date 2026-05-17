@@ -5,8 +5,9 @@ import { Card } from "../ui/card";
 
 const features = [
   "100 rewrites per billing month",
+  "3 free rewrites after sign-up",
   "Naturalness Check before and after",
-  "Warm and Direct reply modes",
+  "Teacher, sales, workplace, and client templates",
   "Cancel anytime",
 ];
 
@@ -23,8 +24,23 @@ export function PricingSection() {
           </h2>
           <p className="mt-4 max-w-2xl leading-7 text-ink/65">
             Every signed-in user gets 3 free rewrites first. Upgrade when you
-            want a steady monthly workflow for real replies.
+            want a steady monthly workflow for real replies. Billing is handled
+            through Stripe.
           </p>
+          <div className="mt-6 grid gap-3 text-sm text-ink/62 sm:grid-cols-3">
+            <div className="rounded-lg border border-line bg-white/70 p-3">
+              <p className="font-semibold text-ink">Free start</p>
+              <p className="mt-1">3 successful rewrites</p>
+            </div>
+            <div className="rounded-lg border border-line bg-white/70 p-3">
+              <p className="font-semibold text-ink">Paid plan</p>
+              <p className="mt-1">100 per billing month</p>
+            </div>
+            <div className="rounded-lg border border-line bg-white/70 p-3">
+              <p className="font-semibold text-ink">Company</p>
+              <p className="mt-1">TimeAwake Ltd.</p>
+            </div>
+          </div>
         </div>
         <div className="rounded-lg border border-line bg-white p-5">
           <p className="text-sm font-medium text-ink/60">Reply In My Voice</p>

@@ -18,6 +18,21 @@ const faqs = [
     question: "Can I cancel?",
     answer: "Yes. The monthly plan can be managed through Stripe billing.",
   },
+  {
+    question: "Is the Naturalness Check a guarantee?",
+    answer:
+      "No. It is a reference writing signal that helps compare drafts. You should still review the reply before sending.",
+  },
+  {
+    question: "Do you save my reply content?",
+    answer:
+      "The app processes reply content for the request. It does not save pasted messages or rewritten replies to the database.",
+  },
+  {
+    question: "Who operates the product?",
+    answer:
+      "Reply In My Voice is operated by TimeAwake Ltd. for practical email and message workflows.",
+  },
 ];
 
 export function FAQ() {

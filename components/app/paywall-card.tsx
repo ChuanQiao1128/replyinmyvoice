@@ -66,6 +66,9 @@ export function PaywallCard({
             <p className="mt-2 text-sm text-ink/60">
               100 rewrites per billing month. Cancel anytime.
             </p>
+            <p className="mt-2 text-xs text-ink/45">
+              Operated by TimeAwake Ltd. Payments are managed by Stripe.
+            </p>
           </div>
           <Button
             className="mt-6 w-full"
