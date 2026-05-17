@@ -4,10 +4,21 @@ import { z } from "zod";
 import { optionalEnv, requireEnv } from "./env";
 import type { RewriteRequestInput } from "./validation";
 
+const stringListSchema = z
+  .union([z.array(z.string()), z.string()])
+  .transform((value) => {
+    const cleaned = (Array.isArray(value) ? value : [value])
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    return cleaned.length ? cleaned : ["Review the reply before sending."];
+  })
+  .pipe(z.array(z.string()).min(1).max(6));
+
 const rewriteOutputSchema = z.object({
   rewrittenText: z.string().min(1),
-  changeSummary: z.array(z.string()).min(1).max(6),
-  riskNotes: z.array(z.string()).min(1).max(6),
+  changeSummary: stringListSchema,
+  riskNotes: stringListSchema,
 });
 
 export type RewriteCandidate = z.infer<typeof rewriteOutputSchema>;
@@ -21,15 +32,15 @@ type Strategy = {
 const STRATEGIES: Strategy[] = [
   {
     id: "grounded",
-    temperature: 0.45,
+    temperature: 0.55,
     instruction:
-      "Keep the reply close to the user's facts. Remove generic phrasing, stiff openings, and overly polished transitions. Make it sound like a practical message someone would actually send.",
+      "Keep the reply close to the user's facts. Write a compact 1 to 3 sentence reply. Remove generic phrasing, stiff openings, formal signposts, and polished transitions. Prefer concrete context from the fields over broad empathy lines.",
   },
   {
     id: "texture",
-    temperature: 0.65,
+    temperature: 0.75,
     instruction:
-      "Rewrite with more natural rhythm. Vary sentence length, keep useful imperfections, and add only context-specific phrasing supported by the provided fields.",
+      "Rewrite like a quick send-ready email from a real professional. Use contractions when natural, vary rhythm, avoid template-like openers and closers, and add only context-specific phrasing supported by the provided fields.",
   },
 ];
 
@@ -76,6 +87,10 @@ export function getRewriteStrategies() {
   return STRATEGIES;
 }
 
+export function normalizeRewriteOutput(raw: unknown): RewriteCandidate {
+  return rewriteOutputSchema.parse(raw);
+}
+
 export async function generateRewriteCandidate(
   input: RewriteRequestInput,
   strategy: Strategy,
@@ -100,6 +115,8 @@ export async function generateRewriteCandidate(
           "- Preserve concrete facts and constraints.\n" +
           "- If important context is missing, keep the reply neutral rather than adding details.\n" +
           "- Avoid sounding overly polished, generic, corporate, or robotic.\n" +
+          "- Keep the reply compact, practical, and send-ready.\n" +
+          "- Avoid stock phrases like 'Thank you for reaching out', 'I understand your concern', and 'at your earliest convenience' unless the user's draft clearly needs them.\n" +
           "- Do not discuss hiddenness, evasion, or whether the reply will pass automated reviews.\n" +
           "- Return strict JSON only with keys: rewrittenText, changeSummary, riskNotes.\n\n" +
           "Tone guidance:\n" +
@@ -125,5 +142,5 @@ export async function generateRewriteCandidate(
     throw new Error("OpenAI returned invalid JSON.");
   }
 
-  return rewriteOutputSchema.parse(parsed);
+  return normalizeRewriteOutput(parsed);
 }

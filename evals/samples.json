@@ -1,0 +1,82 @@
+[
+  {
+    "id": "teacher-late-work",
+    "tone": "warm",
+    "messageToReplyTo": "Hi, I missed the deadline because I had a family issue this week. Is there any way I can still submit the reflection?",
+    "roughDraftReply": "Dear student, I acknowledge your message. Late submissions are generally not accepted according to course policy. Please provide additional details for consideration.",
+    "audience": "A student who missed a reflection deadline",
+    "purpose": "Reply clearly while keeping the policy in mind",
+    "whatHappened": "They had a family issue and asked whether they can still submit.",
+    "factsToPreserve": "Late work policy matters. I can review the situation tomorrow."
+  },
+  {
+    "id": "teacher-parent-update",
+    "tone": "warm",
+    "messageToReplyTo": "Can you tell me why Alex got a low participation mark this week?",
+    "roughDraftReply": "Thank you for your inquiry. Participation marks are calculated based on observable classroom engagement and completion of assigned activities during the relevant period.",
+    "audience": "A parent asking about a weekly participation mark",
+    "purpose": "Explain the mark without sounding defensive",
+    "whatHappened": "Alex missed two group activities and did not turn in the exit ticket.",
+    "factsToPreserve": "Two missed group activities. Exit ticket not submitted. Invite a short call if helpful."
+  },
+  {
+    "id": "sales-proposal-follow-up",
+    "tone": "warm",
+    "messageToReplyTo": "We are still comparing vendors and may need another week.",
+    "roughDraftReply": "Hello, following up on our previous communication. Please advise whether you would like to proceed with the proposal as discussed.",
+    "audience": "A potential customer comparing vendors",
+    "purpose": "Follow up without pressure",
+    "whatHappened": "They need another week to compare vendors.",
+    "factsToPreserve": "Offer to answer questions. Do not promise a discount."
+  },
+  {
+    "id": "sales-demo-reschedule",
+    "tone": "direct",
+    "messageToReplyTo": "Sorry, I need to move tomorrow's demo. Can we do next week?",
+    "roughDraftReply": "Thank you for the notification. We can accommodate your request and reschedule the demonstration for a mutually convenient time next week.",
+    "audience": "A lead who needs to reschedule",
+    "purpose": "Confirm next step clearly",
+    "whatHappened": "They need to move tomorrow's demo to next week.",
+    "factsToPreserve": "Ask for two times that work next week."
+  },
+  {
+    "id": "workplace-doc-review",
+    "tone": "direct",
+    "messageToReplyTo": "Is the onboarding document ready for review?",
+    "roughDraftReply": "I am writing to inform you that the document has been completed and is available for your review at your earliest convenience.",
+    "audience": "A colleague waiting on a document",
+    "purpose": "Give a concise update",
+    "whatHappened": "The document is ready, and there are margin notes where input would help.",
+    "factsToPreserve": "Document ready. Margin notes need review."
+  },
+  {
+    "id": "workplace-delay",
+    "tone": "warm",
+    "messageToReplyTo": "Can you send the numbers today?",
+    "roughDraftReply": "Unfortunately, due to unforeseen circumstances, the requested numbers cannot be provided today. They will be shared when they are available.",
+    "audience": "A teammate waiting for numbers",
+    "purpose": "Explain a short delay",
+    "whatHappened": "The source file arrived late. I can send numbers by 10am tomorrow.",
+    "factsToPreserve": "Source file arrived late. Send by 10am tomorrow."
+  },
+  {
+    "id": "client-issue-update",
+    "tone": "warm",
+    "messageToReplyTo": "The export still looks wrong. Do you know what happened?",
+    "roughDraftReply": "We apologize for any inconvenience caused. Our team is currently looking into the matter and will provide an update soon.",
+    "audience": "A client reporting an export issue",
+    "purpose": "Acknowledge and set a clear next update",
+    "whatHappened": "The export job used last week's settings. I am checking the new settings now.",
+    "factsToPreserve": "Do not promise it is fixed. Say I will send a clear update after checking."
+  },
+  {
+    "id": "customer-invoice-question",
+    "tone": "direct",
+    "messageToReplyTo": "Why is this invoice higher than last month?",
+    "roughDraftReply": "Thank you for contacting us regarding your invoice. The amount may vary based on service usage and applicable charges during the billing period.",
+    "audience": "A customer asking about invoice amount",
+    "purpose": "Explain without sounding generic",
+    "whatHappened": "They added two seats on May 4. The higher amount includes the prorated seat charges.",
+    "factsToPreserve": "Two seats added May 4. Includes prorated seat charges."
+  }
+]
