@@ -48,6 +48,23 @@ function isBetterCandidate(
   return nextPercent < currentPercent;
 }
 
+export function isCandidateCompleteEnough(
+  input: RewriteRequestInput,
+  rewrittenText: string,
+) {
+  const draftLength = input.roughDraftReply.trim().length;
+
+  if (draftLength >= 900) {
+    return rewrittenText.trim().length >= Math.max(450, Math.floor(draftLength * 0.3));
+  }
+
+  if (draftLength >= 450) {
+    return rewrittenText.trim().length >= Math.max(220, Math.floor(draftLength * 0.3));
+  }
+
+  return rewrittenText.trim().length >= 20;
+}
+
 export async function rewriteWithOptimization(
   input: RewriteRequestInput,
 ): Promise<RewriteResponsePayload> {
@@ -55,16 +72,29 @@ export async function rewriteWithOptimization(
   const strategies = getRewriteStrategies().slice(0, 2);
   let best: Awaited<ReturnType<typeof generateRewriteCandidate>> | null = null;
   let bestSignal: Awaited<ReturnType<typeof measureWritingSignal>> | null = null;
+  let backup: Awaited<ReturnType<typeof generateRewriteCandidate>> | null = null;
+  let backupSignal: Awaited<ReturnType<typeof measureWritingSignal>> | null = null;
   let tried = 0;
 
   for (const strategy of strategies) {
     tried += 1;
     const candidate = await generateRewriteCandidate(input, strategy);
     const candidateSignal = await measureWritingSignal(candidate.rewrittenText);
+    const completeEnough = isCandidateCompleteEnough(input, candidate.rewrittenText);
 
     if (
-      !best ||
+      !backup ||
+      isBetterCandidate(backupSignal?.aiLikePercent ?? null, candidateSignal.aiLikePercent)
+    ) {
+      backup = candidate;
+      backupSignal = candidateSignal;
+    }
+
+    if (
+      completeEnough &&
+      (!best ||
       isBetterCandidate(bestSignal?.aiLikePercent ?? null, candidateSignal.aiLikePercent)
+      )
     ) {
       best = candidate;
       bestSignal = candidateSignal;
@@ -73,6 +103,11 @@ export async function rewriteWithOptimization(
     if (!shouldTryAnother(draftSignal.aiLikePercent, candidateSignal.aiLikePercent)) {
       break;
     }
+  }
+
+  if (!best) {
+    best = backup;
+    bestSignal = backupSignal;
   }
 
   if (!best) {

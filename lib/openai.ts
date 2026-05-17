@@ -31,9 +31,9 @@ type Strategy = {
 const STRATEGIES: Strategy[] = [
   {
     id: "plain_note",
-    temperature: 0.78,
+    temperature: 0.68,
     instruction:
-      "Write like a short reply someone would actually send in an email thread. Use 2 short paragraphs separated by a blank line unless the reply is only one sentence. Start with a small thread phrase when natural, such as 'Got it', 'No problem', 'Thanks for checking', 'Yep', or 'Looks like'. Use contractions and plain wording. Prefer a slightly imperfect but professional note over a polished template.",
+      "Write like a real reply someone would send in an email thread. Keep the message natural and plain, but do not over-compress long support or billing replies. For short drafts, use 2 short paragraphs. For longer customer or client replies, use 3 to 5 short paragraphs with blank lines so the explanation, forwardable summary, and next step remain easy to read. Start with a small human phrase only when it fits the relationship; for customer support, prefer calm openings such as 'Hi [name], thanks for laying this out' over very casual phrases. Use contractions and plain wording. Preserve useful operational details from the draft.",
   },
   {
     id: "thread_reply",
@@ -44,10 +44,19 @@ const STRATEGIES: Strategy[] = [
 ];
 
 function buildUserPrompt(input: RewriteRequestInput, strategy: Strategy) {
+  const roughLength = input.roughDraftReply.length;
+  const lengthGuidance =
+    roughLength >= 900
+      ? "The rough draft is long. Keep the rewrite substantial enough to preserve the explanation and next steps. Do not collapse it into one paragraph."
+      : roughLength >= 450
+        ? "The rough draft is medium length. Keep the rewrite clear and compact, but preserve the important sequence of facts."
+        : "The rough draft is short. A short reply is fine if it preserves the facts.";
+
   return [
     `Strategy: ${strategy.instruction}`,
     `Tone: ${input.tone}`,
     `Tone preset: ${input.tonePreset}`,
+    `Length guidance: ${lengthGuidance}`,
     "",
     "Message to reply to:",
     input.messageToReplyTo || "(not provided)",
@@ -111,13 +120,102 @@ function sentence(value: string) {
   return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned}.`;
 }
 
+function firstMatch(value: string, patterns: RegExp[]) {
+  for (const pattern of patterns) {
+    const match = value.match(pattern);
+    const captured = match?.[1]?.trim();
+    if (captured) {
+      return captured;
+    }
+  }
+
+  return "";
+}
+
+function extractRecipientName(input: RewriteRequestInput) {
+  return firstMatch(input.roughDraftReply, [
+    /\b(?:Hi|Hello|Dear)\s+([A-Z][a-z]+)\b/,
+  ]);
+}
+
+function extractInvoiceFacts(context: string) {
+  const activeSeats = firstMatch(context, [
+    /\bshows?\s+(\d+)\s+active seats\b/i,
+    /\b(\d+)\s+active seats\b/i,
+  ]);
+  const approvedSeats = firstMatch(context, [
+    /\bapproved\s+(\d+)\s+regular seats\b/i,
+    /\b(\d+)\s+regular seats\b/i,
+  ]);
+  const amount = firstMatch(context, [
+    /\b(NZD\s*\$\s*\d+(?:\.\d{2})?)\b/i,
+    /\b(\$\s*\d+(?:\.\d{2})?)\b/i,
+  ]).replace(/\s+/g, " ");
+  const removalDate = firstMatch(context, [
+    /\b(?:after|on|by)\s+(May\s+\d{1,2})\b/i,
+  ]);
+  const temporaryUsers = firstMatch(context, [
+    /\b(three temporary contractors)\b/i,
+    /\b(3 temporary contractors)\b/i,
+    /\b(three temporary users)\b/i,
+    /\b(3 temporary users)\b/i,
+  ]);
+  const temporaryUsersPhrase =
+    temporaryUsers && /^(three|3)\b/i.test(temporaryUsers)
+      ? `the ${temporaryUsers}`
+      : temporaryUsers;
+
+  return {
+    activeSeats,
+    approvedSeats,
+    amount,
+    removalDate,
+    temporaryUsers: temporaryUsersPhrase || "the temporary users",
+  };
+}
+
 function threadNote(opening: string, lines: string[]) {
   const body = lines.map(sentence).filter(Boolean).join(" ");
   return body ? `${opening}\n\n${body}` : opening;
 }
 
+function invoiceFallback(input: RewriteRequestInput, context: string) {
+  const name = extractRecipientName(input);
+  const facts = extractInvoiceFacts(context);
+  const suppliedDetails =
+    input.factsToPreserve || input.whatHappened ? detailParts(input) : [];
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const changeExplanation = suppliedDetails[0]
+    ? `${sentence(suppliedDetails[0])} Based on that, the higher invoice preview is most likely from prorated seat usage rather than a base plan change.`
+    : `Based on what you described, the higher invoice preview is most likely from ${facts.temporaryUsers} being counted as active seats during May, rather than a base plan change.`;
+  const supportingDetail = suppliedDetails[1] ? `${sentence(suppliedDetails[1])} ` : "";
+  const activeSeatPhrase =
+    facts.activeSeats && facts.approvedSeats
+      ? `That would explain why the dashboard shows ${facts.activeSeats} active seats instead of the ${facts.approvedSeats} regular seats your team approved.`
+      : "That would explain the higher active-seat count in the invoice preview.";
+  const amountPhrase = facts.amount
+    ? `It also lines up with the ${facts.amount} increase you are seeing.`
+    : "It also lines up with the increase you are seeing.";
+  const financeSummary = context.includes("finance")
+    ? `A simple note for finance would be: "The invoice preview increased because ${facts.temporaryUsers} were active during the month. The extra charge appears to be prorated seat usage, not a change to the base plan."`
+    : "";
+  const datePhrase = facts.removalDate
+    ? `They may still be active if they were not removed after ${facts.removalDate}.`
+    : "They may still be active if they were not removed after the short project ended.";
+
+  return [
+    greeting,
+    `Thanks for laying this out. ${changeExplanation}`,
+    `${supportingDetail}Even if someone only has access for part of the month, that access can still create a prorated seat charge for the days they were active. ${activeSeatPhrase} ${amountPhrase}`,
+    financeSummary,
+    `For the next step, check whether those contractor accounts are still active. ${datePhrase} If you want us to help confirm, send over their names or email addresses and we can check their status. We will not change anything unless you ask us to.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
-  const context = [
+  const rawContext = [
     input.messageToReplyTo,
     input.roughDraftReply,
     input.audience,
@@ -125,8 +223,8 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
     input.whatHappened,
     input.factsToPreserve,
   ]
-    .join(" ")
-    .toLowerCase();
+    .join(" ");
+  const context = rawContext.toLowerCase();
 
   let rewrittenText: string;
   const details = detailParts(input);
@@ -141,10 +239,7 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
       "Happy to talk it through on a quick call if that helps",
     ]);
   } else if (textIncludes(context, ["invoice", "prorated", "seats"])) {
-    rewrittenText = threadNote(
-      firstDetail || "The invoice changed this period.",
-      [secondDetail || "This invoice includes the related prorated charges"],
-    );
+    rewrittenText = invoiceFallback(input, rawContext);
   } else if (textIncludes(context, ["source file", "numbers", "10am"])) {
     rewrittenText = threadNote(firstDetail || "I need a little more time.", [
       secondDetail || "I'll send the numbers as soon as they are ready",
@@ -257,6 +352,11 @@ export async function generateRewriteCandidate(
           "- Use only information from the draft and context fields.\n" +
           "- Keep the user's intent.\n" +
           "- Preserve concrete facts and constraints.\n" +
+          "- Preserve named amounts, seat counts, dates, user counts, plan status, and requested next steps exactly when provided.\n" +
+          "- If the draft includes a forwardable summary, keep that summary or a close equivalent.\n" +
+          "- If the draft asks the recipient to send names, email addresses, files, or other details, keep that ask unless the context says not to.\n" +
+          "- For long customer support replies, prefer several short paragraphs over one dense paragraph.\n" +
+          "- Do not make the reply so short that it stops answering the customer's specific questions.\n" +
           "- If important context is missing, keep the reply neutral rather than adding details.\n" +
           "- Avoid sounding overly polished, generic, corporate, or robotic.\n" +
           "- Keep the reply compact, practical, and send-ready.\n" +

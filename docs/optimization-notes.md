@@ -18,6 +18,7 @@ Date: 2026-05-18
 | 4 | Deterministic fallback rewrite pass for hard cases | 8 | 89 pts | 8/8 | yes | Strongest raw result, but first version had sample-specific wording risk. |
 | 5 | Generalized fallback rewrite pass using request facts only | 8 | 69 pts | 6/8 | yes | Final production strategy: target met while avoiding hardcoded sample details. |
 | 6 | Post-budget provider check | 8 | unavailable | unavailable | not scored | Sapling returned 429 capacity errors after repeated evaluation calls; not used as a quality result. |
+| 7 | Long client-support prompt guardrail | 1 live manual sample | 89 pts | 1/1 | yes | Real billing-support test dropped from 89% to 0%, but the first output over-compressed the explanation. Prompt now preserves long support explanations, forwardable summaries, and requested next steps. |
 
 ## Final Selected Strategy
 
@@ -41,6 +42,7 @@ The fallback is intentionally not a separate external agent in this MVP. It beha
 - Sales follow-up replies improved when the output avoided pressure and used short thread wording.
 - Workplace delay replies improved when the source-file/timing facts were preserved as direct lines.
 - Invoice replies improved only after the fallback stopped using sample-specific wording and rebuilt the reply from the provided seat/date/proration facts.
+- A live client-support test showed that optimizing too hard for a short thread style can remove useful explanation. Long support and billing replies now ask the model to keep 3 to 5 short paragraphs and preserve forwardable summaries plus detail requests.
 
 ## Current Status
 
