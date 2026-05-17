@@ -10,6 +10,7 @@ These steps are dashboard-only or final-cutover tasks. They should not block loc
   - `/sign-in`
   - `/sign-up`
   - `/app`
+- Launch check on 2026-05-18: Clerk API was reachable, but `replyinmyvoice.com` was not observed in the `/domains` API response. Verify the formal domain/origin in the Clerk dashboard before or during real-account testing.
 
 ## Stripe
 
@@ -22,7 +23,7 @@ These steps are dashboard-only or final-cutover tasks. They should not block loc
   - `customer.subscription.created`
   - `customer.subscription.updated`
   - `customer.subscription.deleted`
-- Additional events implemented in code and recommended in the Stripe dashboard:
+- Additional events implemented in code and configured in the Stripe sandbox webhook on 2026-05-18:
   - `invoice.paid`
   - `invoice.payment_failed`
 - Before live mode, create or confirm a live recurring price and update `STRIPE_PRICE_ID`.

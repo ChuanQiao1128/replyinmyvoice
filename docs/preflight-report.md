@@ -202,3 +202,29 @@ Date: 2026-05-18
   - unauthenticated `/api/rewrite`: 401
   - `/api/stripe/webhook` GET: 200
   - `/api/health/db`: 200
+
+## Launch Dashboard Configuration Check
+
+Date: 2026-05-18
+
+- Clerk local/public env alignment:
+  - `NEXT_PUBLIC_APP_URL`: ok for `https://replyinmyvoice.com`
+  - `NEXT_PUBLIC_CLERK_SIGN_IN_URL`: ok for `/sign-in`
+  - `NEXT_PUBLIC_CLERK_SIGN_UP_URL`: ok for `/sign-up`
+  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`: ok for `/app`
+  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL`: ok for `/app`
+  - `CLERK_SECRET_KEY`: present
+  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: present
+- Clerk API checks:
+  - `/instance`: ok
+  - `/redirect_urls`: ok, count observed as 0
+  - `/domains`: ok, but `replyinmyvoice.com` was not observed
+  - Clerk dashboard action remains: verify formal domain/origin and redirects before real-account testing
+- Stripe sandbox API checks:
+  - Formal webhook endpoint `https://replyinmyvoice.com/api/stripe/webhook`: present
+  - `checkout.session.completed`: ok
+  - `customer.subscription.created`: ok
+  - `customer.subscription.updated`: ok
+  - `customer.subscription.deleted`: ok
+  - `invoice.paid`: added and verified
+  - `invoice.payment_failed`: added and verified
