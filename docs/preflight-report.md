@@ -157,3 +157,48 @@ Date: 2026-05-18
   - Remote `/api/health/db`: 200
 - Banned-term scan over `app`, `components`, `public`, and `lib` source paths: clean
 - Current deployment blockers: none for independent Worker deployment; final custom-domain cutover remains blocked by launch guardrail and should be manual/dashboard-confirmed
+
+## Launch Cutover Preflight Update
+
+Date: 2026-05-18
+
+- Current working directory: `/Users/qc/Desktop/CloudFlare`
+- Current branch: `codex/autonomous-mvp`
+- GitHub remote: `origin -> git@github.com:ChuanQiao1128/replyinmyvoice.git`
+- GitHub push dry run: ok
+- Launch authorization: `LAUNCH_CONFIRMED=true`
+- Secret handling: `.env.local` inspected only for variable names/presence; no secret values printed
+- `.gitignore` protection confirmed for:
+  - `.env`
+  - `.env.local`
+  - `.dev.vars`
+  - `globalapikey/`
+  - `node_modules/`
+  - `.next/`
+  - `.open-next/`
+  - `.wrangler/`
+  - `dist/`
+- Cloudflare API checks:
+  - Zone read: ok
+  - DNS records read: ok
+  - Worker script read for `replyinmyvoice-app`: ok
+  - Workers custom domains API read: ok
+  - Workers routes API read: 403; use custom domains API path for cutover instead of legacy Workers routes
+- Stripe sandbox price verification: `unit_amount=900`, `currency=nzd`, `interval=month`
+- Stripe webhook secret presence: yes
+- Verification commands:
+  - `npm run lint`: pass
+  - `npm run typecheck`: pass
+  - `npm run test`: 15 tests passed
+  - `npm run test:e2e`: 2 tests passed
+  - `npm run build`: pass
+  - `npm run cf:build`: pass
+  - banned-term scan over app source paths: clean
+- Worker `workers.dev` smoke:
+  - `/`: 200
+  - `/pricing`: 200
+  - `/sign-in`: 200
+  - `/app`: 307 signed-out redirect
+  - unauthenticated `/api/rewrite`: 401
+  - `/api/stripe/webhook` GET: 200
+  - `/api/health/db`: 200

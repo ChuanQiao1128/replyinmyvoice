@@ -76,13 +76,19 @@ Migration commands still use `DIRECT_URL`; runtime requests use `DATABASE_URL`.
 
 ## Domain Cutover
 
-Current guardrail:
+Previous guardrail:
 
 ```env
 LAUNCH_CONFIRMED=false
 ```
 
-Do not change `replyinmyvoice.com` DNS or the existing Pages custom domain while this remains false.
+Current launch phase authorization:
+
+```env
+LAUNCH_CONFIRMED=true
+```
+
+Formal domain cutover is authorized for this phase. Keep the existing Cloudflare Pages project available for rollback.
 
 Final cutover checklist:
 
