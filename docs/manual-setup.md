@@ -91,6 +91,29 @@ LAUNCH_CONFIRMED=true
 
 Formal domain cutover is authorized for this phase. Keep the existing Cloudflare Pages project available for rollback.
 
+Cutover result on 2026-05-18:
+
+- `replyinmyvoice.com` is attached to Worker `replyinmyvoice-app`.
+- Cloudflare Pages project `replyinmyvoice` was not deleted.
+- The apex Pages custom domain was removed because it was still serving the holding page after Worker custom-domain attach.
+- `www.replyinmyvoice.com` remained on Pages at the time of the cutover check.
+
+Rollback DNS record captured before cutover:
+
+```text
+type=CNAME
+name=replyinmyvoice.com
+content=replyinmyvoice.pages.dev
+proxied=true
+ttl=1
+```
+
+Rollback path:
+
+1. Detach the Worker custom domain for `replyinmyvoice.com`.
+2. Recreate the CNAME record above.
+3. Confirm the Cloudflare Pages project `replyinmyvoice` still serves the holding page.
+
 Final cutover checklist:
 
 - Worker preview URL works.

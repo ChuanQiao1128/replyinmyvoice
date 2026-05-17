@@ -228,3 +228,29 @@ Date: 2026-05-18
   - `customer.subscription.deleted`: ok
   - `invoice.paid`: added and verified
   - `invoice.payment_failed`: added and verified
+
+## Formal Domain Cutover
+
+Date: 2026-05-18
+
+- Latest Worker deploy before cutover:
+  - Worker: `replyinmyvoice-app`
+  - URL: `https://replyinmyvoice-app.qc1128qc.workers.dev`
+  - Version ID observed: `2a382dc2-b59d-4649-8394-3e1f8d8d5f87`
+- Worker custom domain:
+  - `replyinmyvoice.com`: present
+  - service: `replyinmyvoice-app`
+- Cloudflare Pages project:
+  - `replyinmyvoice`: preserved
+  - apex Pages custom domain removed to allow Worker custom domain
+  - `www.replyinmyvoice.com`: still present on Pages at the time of cutover check
+- Rollback record:
+  - recreate apex CNAME `replyinmyvoice.com -> replyinmyvoice.pages.dev`, proxied, ttl `1`
+- Formal-domain smoke:
+  - `/`: 200
+  - `/pricing`: 200
+  - `/sign-in`: 200
+  - `/app`: 307 signed-out redirect
+  - unauthenticated `/api/rewrite`: 401
+  - `/api/stripe/webhook` GET: 200
+  - `/api/health/db`: 200
