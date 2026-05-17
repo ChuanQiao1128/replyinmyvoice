@@ -51,6 +51,7 @@ Set production runtime variables/secrets for the Worker:
 - `WRITING_SIGNAL_PROVIDER`
 - `SAPLING_API_KEY`
 - `WRITING_SIGNAL_TIMEOUT_SEC`
+- `STRIPE_TIMEOUT_SEC` optional, defaults to 25 seconds
 - `LAUNCH_CONFIRMED`
 - `EVAL_MAX_PROMPT_ITERATIONS`
 - `EVAL_MAX_WALLCLOCK_MINUTES`
@@ -62,6 +63,12 @@ npm run cf:deploy
 ```
 
 The deploy script uses `--keep-vars` so dashboard variables are preserved.
+
+Launch update on 2026-05-18:
+
+- Worker `replyinmyvoice-app` has the required runtime secret names configured.
+- `NODE_ENV` was corrected to `production` in Worker secrets.
+- Secret values were not printed or committed.
 
 ## Database Runtime Note
 
@@ -128,3 +135,20 @@ Final cutover checklist:
 - Clerk production origins are configured.
 
 Only then switch `LAUNCH_CONFIRMED=true` and attach `replyinmyvoice.com` to the verified Worker.
+
+## Real Account Checkout Note
+
+Real signed-in account testing on 2026-05-18 verified:
+
+- Clerk sign-in through the formal domain.
+- Free quota: 3 successful rewrites.
+- Hard paywall/API quota response after free quota: 402.
+- Stripe sandbox Checkout session creation.
+- Stripe webhook DB update from an active sandbox subscription.
+- Paid rewrite after subscription activation.
+
+The hosted Stripe Checkout browser page itself triggered Stripe/hCaptcha agent
+verification in headless automation. The backend paid-path verification used
+Stripe sandbox API subscription creation for the same real Clerk user/customer
+so webhook handling, DB subscription state, and paid rewrite behavior were still
+verified end to end.

@@ -1,7 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-import { getCheckoutUrls, getStripe, getStripePriceId } from "../../../../lib/stripe";
+import {
+  createStripeCheckoutSession,
+  createStripeCustomer,
+} from "../../../../lib/stripe";
 import { jsonError, requireSameOrigin } from "../../../../lib/http";
 import {
   getCurrentAppUser,
@@ -26,45 +29,23 @@ export async function POST(request: Request) {
     return jsonError("Authentication required.", 401);
   }
 
-  const stripe = getStripe();
   let customerId = user.stripeCustomerId;
 
   if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email ?? undefined,
-      metadata: {
-        clerkUserId: user.clerkUserId,
-        userId: user.id,
-      },
+    const customer = await createStripeCustomer({
+      email: user.email,
+      clerkUserId: user.clerkUserId,
+      userId: user.id,
     });
     customerId = customer.id;
 
     await updateUserStripeCustomer(user.id, customerId);
   }
 
-  const { successUrl, cancelUrl } = getCheckoutUrls();
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    client_reference_id: user.clerkUserId,
-    metadata: {
-      clerkUserId: user.clerkUserId,
-      userId: user.id,
-    },
-    subscription_data: {
-      metadata: {
-        clerkUserId: user.clerkUserId,
-        userId: user.id,
-      },
-    },
-    line_items: [
-      {
-        price: getStripePriceId(),
-        quantity: 1,
-      },
-    ],
-    success_url: successUrl,
-    cancel_url: cancelUrl,
+  const session = await createStripeCheckoutSession({
+    customerId,
+    clerkUserId: user.clerkUserId,
+    userId: user.id,
   });
 
   if (!session.url) {

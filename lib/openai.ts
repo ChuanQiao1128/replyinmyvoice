@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { z } from "zod";
 
 import { optionalEnv, requireEnv } from "./env";
@@ -44,20 +43,6 @@ const STRATEGIES: Strategy[] = [
   },
 ];
 
-let openAIClient: OpenAI | null = null;
-
-function getOpenAIClient() {
-  if (!openAIClient) {
-    const timeoutSeconds = Number(optionalEnv("OPENAI_TIMEOUT_SEC", "25"));
-    openAIClient = new OpenAI({
-      apiKey: requireEnv("OPENAI_API_KEY"),
-      timeout: (Number.isFinite(timeoutSeconds) ? timeoutSeconds : 25) * 1000,
-    });
-  }
-
-  return openAIClient;
-}
-
 function buildUserPrompt(input: RewriteRequestInput, strategy: Strategy) {
   return [
     `Strategy: ${strategy.instruction}`,
@@ -91,14 +76,54 @@ export function normalizeRewriteOutput(raw: unknown): RewriteCandidate {
   return rewriteOutputSchema.parse(raw);
 }
 
+function timeoutSignal(seconds: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), seconds * 1000);
+
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
+  };
+}
+
+async function createChatCompletion(body: unknown) {
+  const timeoutSeconds = Number(optionalEnv("OPENAI_TIMEOUT_SEC", "25"));
+  const timeout = timeoutSignal(Number.isFinite(timeoutSeconds) ? timeoutSeconds : 25);
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${requireEnv("OPENAI_API_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: timeout.signal,
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: { type?: string; code?: string; message?: string } }
+        | null;
+      const errorType = payload?.error?.type ?? payload?.error?.code ?? response.status;
+      throw new Error(`OpenAI request failed: ${errorType}`);
+    }
+
+    return (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+  } finally {
+    timeout.clear();
+  }
+}
+
 export async function generateRewriteCandidate(
   input: RewriteRequestInput,
   strategy: Strategy,
 ): Promise<RewriteCandidate> {
-  const client = getOpenAIClient();
   const model = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");
 
-  const completion = await client.chat.completions.create({
+  const completion = await createChatCompletion({
     model,
     temperature: strategy.temperature,
     response_format: { type: "json_object" },
@@ -130,7 +155,7 @@ export async function generateRewriteCandidate(
     ],
   });
 
-  const rawContent = completion.choices.at(0)?.message.content;
+  const rawContent = completion.choices?.at(0)?.message?.content;
   if (!rawContent) {
     throw new Error("OpenAI returned no content.");
   }

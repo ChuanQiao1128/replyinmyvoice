@@ -254,3 +254,34 @@ Date: 2026-05-18
   - unauthenticated `/api/rewrite`: 401
   - `/api/stripe/webhook` GET: 200
   - `/api/health/db`: 200
+
+## Real Account Launch Path
+
+Date: 2026-05-18
+
+- Worker runtime secrets:
+  - Required runtime secret names were written to Worker `replyinmyvoice-app`.
+  - `NODE_ENV` was corrected to `production` for the Worker.
+  - Secret values were not printed.
+- Runtime provider fix:
+  - `/api/rewrite` initially returned 500 on the formal domain.
+  - Root cause observed in Worker tail: OpenAI SDK network path returned `Connection error`.
+  - `lib/openai.ts` now uses Worker-native `fetch` for OpenAI Chat Completions with the existing JSON output contract.
+  - Stripe checkout/portal/webhook subscription retrieval now use Worker-native `fetch` for Stripe API calls with timeout protection; Stripe SDK remains for webhook signature verification.
+- Real signed-in account checks on `https://replyinmyvoice.com`:
+  - Clerk test user creation by API: ok
+  - sign-in token flow through `/sign-in?__clerk_ticket=...`: ok
+  - `/app` authenticated workspace: ok
+  - free rewrite 1: 200
+  - free rewrite 2: 200
+  - free rewrite 3: 200
+  - fourth free rewrite after quota: 402
+  - DB usage row: `lifetime:3`
+- Stripe sandbox checks:
+  - authenticated `/api/stripe/checkout`: 200, hosted Checkout URL created
+  - Stripe Checkout browser page reached, but headless automation hit Stripe/hCaptcha agent verification
+  - fallback backend subscription path used for launch verification:
+    - Stripe test payment method attached by API: ok
+    - Stripe sandbox subscription created by API: active
+    - real Stripe webhook updated DB: `subscriptionStatus=active`, subscription id present
+    - paid authenticated `/api/rewrite`: 200

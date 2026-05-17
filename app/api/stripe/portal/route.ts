@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getAppUrl } from "../../../../lib/env";
 import { jsonError, requireSameOrigin } from "../../../../lib/http";
-import { getStripe } from "../../../../lib/stripe";
+import { createStripePortalSession } from "../../../../lib/stripe";
 import { getCurrentAppUser } from "../../../../lib/users";
 
 export const dynamic = "force-dynamic";
@@ -24,10 +24,9 @@ export async function POST(request: Request) {
     return jsonError("Billing customer not found.", 400);
   }
 
-  const stripe = getStripe();
-  const session = await stripe.billingPortal.sessions.create({
-    customer: user.stripeCustomerId,
-    return_url: `${getAppUrl()}/app`,
+  const session = await createStripePortalSession({
+    customerId: user.stripeCustomerId,
+    returnUrl: `${getAppUrl()}/app`,
   });
 
   return NextResponse.json({ url: session.url });

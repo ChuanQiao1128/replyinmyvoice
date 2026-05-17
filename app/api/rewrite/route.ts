@@ -22,6 +22,17 @@ function allowDevQuotaOverride() {
   );
 }
 
+function safeErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "Unknown rewrite failure";
+  }
+
+  return error.message
+    .replace(/postgresql:\/\/\S+/gi, "[redacted-database-url]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted-token]")
+    .slice(0, 240);
+}
+
 export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
   if (originError) {
@@ -69,6 +80,11 @@ export async function POST(request: Request) {
     if (error instanceof QuotaExceededError) {
       return jsonError("Rewrite quota exhausted.", 402);
     }
+
+    console.error("rewrite_failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: safeErrorMessage(error),
+    });
 
     return jsonError("Could not rewrite this draft right now.", 500);
   }

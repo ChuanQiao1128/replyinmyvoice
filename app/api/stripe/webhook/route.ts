@@ -3,7 +3,12 @@ import type Stripe from "stripe";
 
 import { isProduction, optionalEnv, requireEnv } from "../../../../lib/env";
 import { getSql } from "../../../../lib/db";
-import { getStripe, applySubscriptionToUser, markSubscriptionInactive } from "../../../../lib/stripe";
+import {
+  getStripe,
+  applySubscriptionToUser,
+  markSubscriptionInactive,
+  retrieveStripeSubscription,
+} from "../../../../lib/stripe";
 import { updateStripeCustomerByClerkId } from "../../../../lib/users";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +52,7 @@ async function updateCustomerFromSession(session: Stripe.Checkout.Session) {
 
   const subscriptionId = stripeObjectId(session.subscription);
   if (subscriptionId) {
-    const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
+    const subscription = await retrieveStripeSubscription(subscriptionId);
     await applySubscriptionToUser(subscription, { clerkUserId });
   }
 }
@@ -58,7 +63,7 @@ async function updateFromInvoice(invoice: Stripe.Invoice) {
     return;
   }
 
-  const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
+  const subscription = await retrieveStripeSubscription(subscriptionId);
   await applySubscriptionToUser(subscription);
 }
 
