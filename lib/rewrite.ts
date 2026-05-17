@@ -29,7 +29,7 @@ function shouldTryAnother(
     return false;
   }
 
-  return rewritePercent > 50 && rewritePercent > draftPercent - 15;
+  return rewritePercent > 50 || rewritePercent > draftPercent - 30;
 }
 
 function isBetterCandidate(

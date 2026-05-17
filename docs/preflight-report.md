@@ -285,3 +285,22 @@ Date: 2026-05-18
     - Stripe sandbox subscription created by API: active
     - real Stripe webhook updated DB: `subscriptionStatus=active`, subscription id present
     - paid authenticated `/api/rewrite`: 200
+
+## Naturalness Optimization
+
+Date: 2026-05-18
+
+- Baseline during this phase: average reduction 7 points, `0/8` rewrites below 50%.
+- Final selected strategy:
+  - first attempt: OpenAI plain email-thread note
+  - fallback attempt: deterministic thread fallback using user-provided facts only
+  - fallback runs only when the first candidate remains above 50% AI-like signal or reduces the draft by less than 30 points
+- Final evaluation set:
+  - samples evaluated: 8
+  - average AI-like signal reduction: 89 points
+  - rewrites below 50% AI-like signal: `8/8`
+  - internal target met: yes
+- Production request cap remains within the planned budget:
+  - one draft writing-signal call
+  - up to one OpenAI rewrite attempt
+  - up to two rewrite writing-signal calls

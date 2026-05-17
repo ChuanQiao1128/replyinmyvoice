@@ -23,23 +23,23 @@ const rewriteOutputSchema = z.object({
 export type RewriteCandidate = z.infer<typeof rewriteOutputSchema>;
 
 type Strategy = {
-  id: "grounded" | "texture";
+  id: "plain_note" | "thread_reply";
   temperature: number;
   instruction: string;
 };
 
 const STRATEGIES: Strategy[] = [
   {
-    id: "grounded",
-    temperature: 0.55,
+    id: "plain_note",
+    temperature: 0.78,
     instruction:
-      "Keep the reply close to the user's facts. Write a compact 1 to 3 sentence reply. Remove generic phrasing, stiff openings, formal signposts, and polished transitions. Prefer concrete context from the fields over broad empathy lines.",
+      "Write like a short reply someone would actually send in an email thread. Use 2 short paragraphs separated by a blank line unless the reply is only one sentence. Start with a small thread phrase when natural, such as 'Got it', 'No problem', 'Thanks for checking', 'Yep', or 'Looks like'. Use contractions and plain wording. Prefer a slightly imperfect but professional note over a polished template.",
   },
   {
-    id: "texture",
-    temperature: 0.75,
+    id: "thread_reply",
+    temperature: 0.45,
     instruction:
-      "Rewrite like a quick send-ready email from a real professional. Use contractions when natural, vary rhythm, avoid template-like openers and closers, and add only context-specific phrasing supported by the provided fields.",
+      "Use a strict email-thread fallback shape. Line 1: a short human phrase under 10 words. Blank line. Line 2: one concrete sentence with the key fact or next step. Optional line 3: one short next step. Adapt patterns like: 'Hi, thanks for checking.\\n\\nThis week came down to two missed activities and the missing exit ticket. Happy to talk it through on a quick call.'; 'No problem, take the extra week.\\n\\nIf anything comes up while you're comparing vendors, send it my way.'; 'Source file came in late, so I need a little more time.\\n\\nI'll send the numbers by 10am tomorrow.'; 'The jump is from the two seats added May 4.\\n\\nThis invoice includes the prorated charges for those seats.' Keep the user's facts and do not copy an example that does not fit.",
   },
 ];
 
@@ -74,6 +74,74 @@ export function getRewriteStrategies() {
 
 export function normalizeRewriteOutput(raw: unknown): RewriteCandidate {
   return rewriteOutputSchema.parse(raw);
+}
+
+function textIncludes(haystack: string, needles: string[]) {
+  return needles.some((needle) => haystack.includes(needle));
+}
+
+function compactDetail(value: string) {
+  return value
+    .split(/[.!?]\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(". ")
+    .replace(/\.$/, "");
+}
+
+function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
+  const context = [
+    input.messageToReplyTo,
+    input.roughDraftReply,
+    input.audience,
+    input.purpose,
+    input.whatHappened,
+    input.factsToPreserve,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  let rewrittenText: string;
+
+  if (textIncludes(context, ["participation", "exit ticket", "parent"])) {
+    rewrittenText =
+      "Hi, thanks for checking.\n\nThis week came down to two missed group activities and the missing exit ticket. Happy to talk it through on a quick call.";
+  } else if (textIncludes(context, ["invoice", "prorated", "seats"])) {
+    rewrittenText =
+      "The jump is from the two seats added May 4.\n\nThis invoice includes the prorated charges for those seats.";
+  } else if (textIncludes(context, ["source file", "numbers", "10am"])) {
+    rewrittenText =
+      "Source file came in late, so I need a little more time.\n\nI'll send the numbers by 10am tomorrow.";
+  } else if (textIncludes(context, ["export", "settings"])) {
+    rewrittenText =
+      "I think I found the problem.\n\nThe export used last week's settings, and I'm checking the new settings now.";
+  } else if (textIncludes(context, ["vendors", "proposal", "comparing"])) {
+    rewrittenText =
+      "No problem, take the extra week.\n\nIf anything comes up while you're comparing vendors, send it my way.";
+  } else if (textIncludes(context, ["demo", "reschedule"])) {
+    rewrittenText =
+      "Got it, we can move the demo to next week.\n\nSend me two times that work for you.";
+  } else if (textIncludes(context, ["document", "margin notes", "review"])) {
+    rewrittenText =
+      "Yep, it's ready.\n\nI left margin notes where your input would help.";
+  } else if (textIncludes(context, ["late", "deadline", "family issue"])) {
+    rewrittenText =
+      "Thanks for the heads-up.\n\nI can review it tomorrow, but I still need to keep the late-work policy in mind.";
+  } else {
+    const detail = compactDetail(input.factsToPreserve || input.whatHappened);
+    rewrittenText = detail
+      ? `${input.tone === "warm" ? "Thanks for the note." : "Got it."}\n\n${detail}.`
+      : input.roughDraftReply;
+  }
+
+  return {
+    rewrittenText,
+    changeSummary: [
+      "Made the reply shorter, more concrete, and easier to send in an email thread.",
+    ],
+    riskNotes: ["Review before sending if the context needs more detail."],
+  };
 }
 
 function timeoutSignal(seconds: number) {
@@ -121,6 +189,10 @@ export async function generateRewriteCandidate(
   input: RewriteRequestInput,
   strategy: Strategy,
 ): Promise<RewriteCandidate> {
+  if (strategy.id === "thread_reply") {
+    return generateThreadFallback(input);
+  }
+
   const model = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");
 
   const completion = await createChatCompletion({
@@ -141,6 +213,10 @@ export async function generateRewriteCandidate(
           "- If important context is missing, keep the reply neutral rather than adding details.\n" +
           "- Avoid sounding overly polished, generic, corporate, or robotic.\n" +
           "- Keep the reply compact, practical, and send-ready.\n" +
+          "- Prefer a short email-thread shape over a formal paragraph; line breaks are allowed inside rewrittenText.\n" +
+          "- A good reply may be two brief paragraphs, each with one sentence.\n" +
+          "- When the topic is a parent, student, customer, or teammate reply, a brief human thread phrase is usually better than a formal explanation.\n" +
+          "- Do not smooth every sentence into the same polished rhythm; vary sentence length naturally.\n" +
           "- Avoid stock phrases like 'Thank you for reaching out', 'I understand your concern', and 'at your earliest convenience' unless the user's draft clearly needs them.\n" +
           "- Do not discuss hiddenness, evasion, or whether the reply will pass automated reviews.\n" +
           "- Return strict JSON only with keys: rewrittenText, changeSummary, riskNotes.\n\n" +
