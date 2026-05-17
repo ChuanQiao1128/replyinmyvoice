@@ -1,29 +1,44 @@
-import { neonConfig } from "@neondatabase/serverless";
-import { PrismaNeon } from "@prisma/adapter-neon";
-import { PrismaClient } from "@prisma/client";
+import { neon, neonConfig } from "@neondatabase/serverless";
 
 import { requireEnv } from "./env";
 
-type PrismaGlobal = typeof globalThis & {
-  replyInMyVoicePrisma?: PrismaClient;
-};
+type SqlClient = ReturnType<typeof neon>;
 
-function createPrismaClient(): PrismaClient {
-  const connectionString = requireEnv("DATABASE_URL");
+let sqlClient: SqlClient | null = null;
 
-  if (typeof WebSocket !== "undefined") {
-    neonConfig.webSocketConstructor = WebSocket;
+export function getSql(): SqlClient {
+  if (!sqlClient) {
+    if (typeof WebSocket !== "undefined") {
+      neonConfig.webSocketConstructor = WebSocket;
+    }
+
+    sqlClient = neon(requireEnv("DATABASE_URL"));
   }
 
-  const adapter = new PrismaNeon({ connectionString });
-  return new PrismaClient({ adapter });
+  return sqlClient;
 }
 
-const globalForPrisma = globalThis as PrismaGlobal;
+export function createId(): string {
+  return crypto.randomUUID();
+}
 
-export const prisma =
-  globalForPrisma.replyInMyVoicePrisma ?? createPrismaClient();
+export function nullableDate(value: unknown): Date | null {
+  if (!value) {
+    return null;
+  }
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.replyInMyVoicePrisma = prisma;
+  if (value instanceof Date) {
+    return value;
+  }
+
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function requiredDate(value: unknown): Date {
+  return nullableDate(value) ?? new Date();
+}
+
+export async function dbHealthCheck() {
+  await getSql()`SELECT 1`;
 }

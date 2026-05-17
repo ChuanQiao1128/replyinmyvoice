@@ -121,3 +121,29 @@ EVAL_MAX_WALLCLOCK_MINUTES=present
 - Usage enforcement requirement: enforce quota server-side only; count exactly one successful user rewrite request after the response is ready.
 - Naturalness optimization requirement: run the local sample evaluation, target average signal drop of at least 30 points and most rewritten samples below 50%; iterate prompts, strategies, and scoring if the target is weak.
 - Naturalness guardrail: use 8-12 samples, at most 3 evaluation strategy rounds by default, and respect `EVAL_MAX_PROMPT_ITERATIONS` / `EVAL_MAX_WALLCLOCK_MINUTES`. If the target is not met within budget, document best measured strategy in `docs/optimization-notes.md` and continue.
+
+## Post-Implementation Preflight Update
+
+Date: 2026-05-18
+
+- Current working directory: `/Users/qc/Desktop/CloudFlare`
+- Current branch: `codex/autonomous-mvp`
+- GitHub remote: `origin -> git@github.com:ChuanQiao1128/replyinmyvoice.git`
+- Framework detected: Next.js `15.5.18`
+- Deployment target: Cloudflare Workers via `@opennextjs/cloudflare`
+- Worker name: `replyinmyvoice-app`
+- Launch guardrail: `LAUNCH_CONFIRMED=false`; DNS and existing Pages custom domain were not modified
+- Package manager: npm
+- Node policy: `.nvmrc` is `22`, `package.json` requires `>=22 <23`
+- Database runtime: Prisma schema/migrations are retained; Worker runtime database access uses Neon serverless SQL because the Prisma generated client WASM path failed in OpenNext workerd preview
+- OpenNext build: passes
+- Worker preview smoke:
+  - `/`: 200
+  - `/pricing`: 200
+  - `/sign-in`: 200
+  - `/app`: 307 auth redirect when signed out
+  - unauthenticated `/api/rewrite`: 401
+  - `/api/stripe/webhook` GET: 200
+  - `/api/health/db`: 200
+- Banned-term scan over `app`, `components`, `public`, and `lib` source paths: clean
+- Current deployment blockers: none for independent Worker deployment; final custom-domain cutover remains blocked by launch guardrail and should be manual/dashboard-confirmed

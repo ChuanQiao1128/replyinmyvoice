@@ -62,6 +62,18 @@ npm run cf:deploy
 
 The deploy script uses `--keep-vars` so dashboard variables are preserved.
 
+## Database Runtime Note
+
+Prisma remains the source of truth for schema, migrations, and generated types.
+Runtime database access in the Worker uses the Neon serverless driver directly.
+
+Reason: the Prisma generated client path for the JS engine currently emits a
+query compiler WASM artifact that does not run correctly in the OpenNext
+workerd preview for this app. The direct Neon runtime path was verified with
+the Worker preview DB smoke test, while keeping Prisma migrations intact.
+
+Migration commands still use `DIRECT_URL`; runtime requests use `DATABASE_URL`.
+
 ## Domain Cutover
 
 Current guardrail:

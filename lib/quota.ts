@@ -1,4 +1,6 @@
-import type { RewriteUsage, User } from "@prisma/client";
+import type { RewriteUsage, User } from "./generated/prisma/client";
+
+import { createId, getSql, nullableDate, requiredDate } from "./db";
 
 export const FREE_REWRITE_LIMIT = 3;
 export const PAID_REWRITE_LIMIT = 100;
@@ -35,6 +37,26 @@ export type UsageStatus = UsagePlan & {
   exhausted: boolean;
 };
 
+type RewriteUsageRow = Omit<
+  RewriteUsage,
+  "periodStart" | "periodEnd" | "createdAt" | "updatedAt"
+> & {
+  periodStart: unknown;
+  periodEnd: unknown;
+  createdAt: unknown;
+  updatedAt: unknown;
+};
+
+function mapRewriteUsage(row: RewriteUsageRow): RewriteUsage {
+  return {
+    ...row,
+    periodStart: nullableDate(row.periodStart),
+    periodEnd: nullableDate(row.periodEnd),
+    createdAt: requiredDate(row.createdAt),
+    updatedAt: requiredDate(row.updatedAt),
+  };
+}
+
 export function isPaidSubscriptionStatus(status: string | null | undefined) {
   return ACTIVE_STATUSES.has(status ?? "");
 }
@@ -68,17 +90,16 @@ export function getUsagePlan(user: UsageSubject): UsagePlan {
 }
 
 async function getUsageCount(userId: string, periodKey: string) {
-  const { prisma } = await import("./db");
-  const usage = await prisma.rewriteUsage.findUnique({
-    where: {
-      userId_periodKey: {
-        userId,
-        periodKey,
-      },
-    },
-  });
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT "count"
+    FROM "RewriteUsage"
+    WHERE "userId" = ${userId}
+      AND "periodKey" = ${periodKey}
+    LIMIT 1
+  `) as Array<{ count: number }>;
 
-  return usage?.count ?? 0;
+  return rows[0]?.count ?? 0;
 }
 
 export async function getUsageStatus(user: UsageSubject): Promise<UsageStatus> {
@@ -106,59 +127,42 @@ export async function chargeSuccessfulRewrite(
   user: UsageSubject,
 ): Promise<RewriteUsage> {
   const plan = getUsagePlan(user);
-  const { prisma } = await import("./db");
+  const sql = getSql();
 
-  return prisma.$transaction(async (tx) => {
-    await tx.rewriteUsage.upsert({
-      where: {
-        userId_periodKey: {
-          userId: user.id,
-          periodKey: plan.periodKey,
-        },
-      },
-      create: {
-        userId: user.id,
-        periodKey: plan.periodKey,
-        periodStart: plan.periodStart,
-        periodEnd: plan.periodEnd,
-        count: 0,
-      },
-      update: {
-        periodStart: plan.periodStart,
-        periodEnd: plan.periodEnd,
-      },
-    });
+  const rows = (await sql`
+    INSERT INTO "RewriteUsage" (
+      "id",
+      "userId",
+      "periodKey",
+      "periodStart",
+      "periodEnd",
+      "count",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${createId()},
+      ${user.id},
+      ${plan.periodKey},
+      ${plan.periodStart},
+      ${plan.periodEnd},
+      1,
+      now(),
+      now()
+    )
+    ON CONFLICT ("userId", "periodKey")
+    DO UPDATE SET
+      "count" = "RewriteUsage"."count" + 1,
+      "periodStart" = EXCLUDED."periodStart",
+      "periodEnd" = EXCLUDED."periodEnd",
+      "updatedAt" = now()
+    WHERE "RewriteUsage"."count" < ${plan.quota}
+    RETURNING *
+  `) as RewriteUsageRow[];
 
-    const increment = await tx.rewriteUsage.updateMany({
-      where: {
-        userId: user.id,
-        periodKey: plan.periodKey,
-        count: {
-          lt: plan.quota,
-        },
-      },
-      data: {
-        count: {
-          increment: 1,
-        },
-        periodStart: plan.periodStart,
-        periodEnd: plan.periodEnd,
-      },
-    });
+  if (!rows[0]) {
+    throw new QuotaExceededError();
+  }
 
-    if (increment.count !== 1) {
-      throw new QuotaExceededError();
-    }
-
-    const usage = await tx.rewriteUsage.findUniqueOrThrow({
-      where: {
-        userId_periodKey: {
-          userId: user.id,
-          periodKey: plan.periodKey,
-        },
-      },
-    });
-
-    return usage;
-  });
+  return mapRewriteUsage(rows[0]);
 }

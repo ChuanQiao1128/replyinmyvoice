@@ -10,6 +10,7 @@ globalapikey/
 
 # Dependencies and build output
 node_modules/
+lib/generated/
 .next/
 .open-next/
 .vercel/

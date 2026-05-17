@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 
 import { getCheckoutUrls, getStripe, getStripePriceId } from "../../../../lib/stripe";
 import { jsonError, requireSameOrigin } from "../../../../lib/http";
-import { getCurrentAppUser } from "../../../../lib/users";
+import {
+  getCurrentAppUser,
+  updateUserStripeCustomer,
+} from "../../../../lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -36,11 +39,7 @@ export async function POST(request: Request) {
     });
     customerId = customer.id;
 
-    const { prisma } = await import("../../../../lib/db");
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { stripeCustomerId: customerId },
-    });
+    await updateUserStripeCustomer(user.id, customerId);
   }
 
   const { successUrl, cancelUrl } = getCheckoutUrls();

@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
 import { isProduction, optionalEnv, requireEnv } from "../../../../lib/env";
+import { getSql } from "../../../../lib/db";
 import { getStripe, applySubscriptionToUser, markSubscriptionInactive } from "../../../../lib/stripe";
+import { updateStripeCustomerByClerkId } from "../../../../lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -15,39 +17,32 @@ function stripeObjectId(value: string | { id: string } | null | undefined) {
 }
 
 async function markEventProcessed(event: Stripe.Event) {
-  const { prisma } = await import("../../../../lib/db");
-  try {
-    await prisma.stripeEvent.create({
-      data: {
-        id: event.id,
-        type: event.type,
-      },
-    });
-    return true;
-  } catch (error) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "P2002"
-    ) {
-      return false;
-    }
-    throw error;
-  }
+  const sql = getSql();
+  const rows = (await sql`
+    INSERT INTO "StripeEvent" (
+      "id",
+      "type",
+      "createdAt"
+    )
+    VALUES (
+      ${event.id},
+      ${event.type},
+      now()
+    )
+    ON CONFLICT ("id") DO NOTHING
+    RETURNING "id"
+  `) as Array<{ id: string }>;
+
+  return rows.length === 1;
 }
 
 async function updateCustomerFromSession(session: Stripe.Checkout.Session) {
-  const { prisma } = await import("../../../../lib/db");
   const clerkUserId =
     session.client_reference_id ?? session.metadata?.clerkUserId ?? null;
   const customerId = stripeObjectId(session.customer);
 
   if (clerkUserId && customerId) {
-    await prisma.user.updateMany({
-      where: { clerkUserId },
-      data: { stripeCustomerId: customerId },
-    });
+    await updateStripeCustomerByClerkId(clerkUserId, customerId);
   }
 
   const subscriptionId = stripeObjectId(session.subscription);

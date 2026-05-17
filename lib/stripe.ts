@@ -1,6 +1,12 @@
 import Stripe from "stripe";
 
+import { getSql } from "./db";
 import { getAppUrl, requireEnv } from "./env";
+import {
+  findUserByClerkId,
+  findUserByStripeCustomerId,
+  mapUser,
+} from "./users";
 
 let stripeClient: Stripe | null = null;
 
@@ -64,58 +70,56 @@ export async function applySubscriptionToUser(
     clerkUserId?: string | null;
   } = {},
 ) {
-  const { prisma } = await import("./db");
   const customerId = stripeId(subscription.customer);
   const clerkUserId =
     options.clerkUserId ?? subscription.metadata?.clerkUserId ?? null;
   const user =
-    (clerkUserId
-      ? await prisma.user.findUnique({ where: { clerkUserId } })
-      : null) ??
-    (customerId
-      ? await prisma.user.findFirst({ where: { stripeCustomerId: customerId } })
-      : null);
+    (clerkUserId ? await findUserByClerkId(clerkUserId) : null) ??
+    (customerId ? await findUserByStripeCustomerId(customerId) : null);
 
   if (!user) {
     return null;
   }
 
-  return prisma.user.update({
-    where: {
-      id: user.id,
-    },
-    data: {
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: subscription.id,
-      stripePriceId: getSubscriptionPriceId(subscription),
-      subscriptionStatus: subscription.status,
-      currentPeriodEnd: getSubscriptionPeriodEnd(subscription),
-    },
-  });
+  const sql = getSql();
+  const rows = (await sql`
+    UPDATE "User"
+    SET
+      "stripeCustomerId" = ${customerId},
+      "stripeSubscriptionId" = ${subscription.id},
+      "stripePriceId" = ${getSubscriptionPriceId(subscription)},
+      "subscriptionStatus" = ${subscription.status},
+      "currentPeriodEnd" = ${getSubscriptionPeriodEnd(subscription)},
+      "updatedAt" = now()
+    WHERE "id" = ${user.id}
+    RETURNING *
+  `) as Parameters<typeof mapUser>[0][];
+
+  return rows[0] ? mapUser(rows[0]) : null;
 }
 
 export async function markSubscriptionInactive(subscription: Stripe.Subscription) {
-  const { prisma } = await import("./db");
   const customerId = stripeId(subscription.customer);
 
-  const user = customerId
-    ? await prisma.user.findFirst({ where: { stripeCustomerId: customerId } })
-    : null;
+  const user = customerId ? await findUserByStripeCustomerId(customerId) : null;
 
   if (!user) {
     return null;
   }
 
-  return prisma.user.update({
-    where: {
-      id: user.id,
-    },
-    data: {
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: subscription.id,
-      stripePriceId: getSubscriptionPriceId(subscription),
-      subscriptionStatus: "canceled",
-      currentPeriodEnd: getSubscriptionPeriodEnd(subscription),
-    },
-  });
+  const sql = getSql();
+  const rows = (await sql`
+    UPDATE "User"
+    SET
+      "stripeCustomerId" = ${customerId},
+      "stripeSubscriptionId" = ${subscription.id},
+      "stripePriceId" = ${getSubscriptionPriceId(subscription)},
+      "subscriptionStatus" = 'canceled',
+      "currentPeriodEnd" = ${getSubscriptionPeriodEnd(subscription)},
+      "updatedAt" = now()
+    WHERE "id" = ${user.id}
+    RETURNING *
+  `) as Parameters<typeof mapUser>[0][];
+
+  return rows[0] ? mapUser(rows[0]) : null;
 }
