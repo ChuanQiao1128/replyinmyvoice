@@ -145,5 +145,15 @@ Date: 2026-05-18
   - unauthenticated `/api/rewrite`: 401
   - `/api/stripe/webhook` GET: 200
   - `/api/health/db`: 200
+- Worker deployment:
+  - URL: `https://replyinmyvoice-app.qc1128qc.workers.dev`
+  - Latest deployed version ID observed: `c4b14fa9-a58d-4d4e-8597-e48baf7c5098`
+  - Remote `/`: 200
+  - Remote `/pricing`: 200
+  - Remote `/sign-in`: 200
+  - Remote `/app`: 307 auth redirect when signed out
+  - Remote unauthenticated `/api/rewrite`: 401
+  - Remote `/api/stripe/webhook` GET: 200
+  - Remote `/api/health/db`: 200
 - Banned-term scan over `app`, `components`, `public`, and `lib` source paths: clean
 - Current deployment blockers: none for independent Worker deployment; final custom-domain cutover remains blocked by launch guardrail and should be manual/dashboard-confirmed
