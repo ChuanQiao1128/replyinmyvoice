@@ -6,5 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 await rm(path.join(root, ".open-next"), {
   force: true,
+  maxRetries: 5,
   recursive: true,
+  retryDelay: 200,
 });
