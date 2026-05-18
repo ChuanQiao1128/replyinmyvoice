@@ -260,10 +260,54 @@ The fallback rewrite pass must use only request-provided facts and must not cont
 The fallback is intentionally implemented as an internal rewrite pass/subroutine, not a separate external agent, so cost and latency remain bounded. Reconsider a dedicated rewrite subagent only if future evaluation shows the two-pass workflow cannot meet the target on expanded samples.
 
 Current complete measured result:
-- samples evaluated: 8
-- average AI-like signal reduction: 69 points
-- rewrites below 50% AI-like signal: 6/8
+- samples evaluated: 26
+- long cases: 10
+- long customer-support cases: 5
+- average AI-like signal reduction: 60 points
+- rewrites below 50% AI-like signal: 20/26
+- final selected rewrites worse than draft: 0/26
+- Priya billing/proration regression: passed at 89% -> 0%
 - target met: yes
+```
+
+### Rewrite/Repair Strategy Memory
+
+The rewrite engine should accumulate measured strategy learning over time.
+
+Source of truth:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/rewrite-strategy-memory.md
+```
+
+This document records the current internal design for:
+
+```text
+Rewrite Agent
+Repair Agent
+Strategy Memory Agent
+diagnosis tags
+repair playbook
+scenario-specific lessons
+promotion rules for moving a strategy into production
+```
+
+Future rewrite quality work must update this document when evaluation or real QA discovers a reusable lesson.
+
+Important rule:
+
+```text
+Do not silently train or self-modify production prompts from private user content.
+Use curated eval cases, internal QA, aggregate non-content telemetry, or user-approved feedback examples.
+The Strategy Memory Agent may propose prompt/rule changes, but stable lessons must be promoted through docs, tests, evaluation, and code review.
+```
+
+Product design direction:
+
+```text
+The system should become better over time by preserving measured rewrite/repair lessons.
+This is the product advantage over a simple GPT rewrite prompt:
+diagnosis -> targeted rewrite -> measurement -> repair -> gated selection -> documented strategy memory.
 ```
 
 Possible new env vars:

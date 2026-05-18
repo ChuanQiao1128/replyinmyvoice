@@ -76,3 +76,16 @@ Latest implementation notes:
 - Added safe failure behavior for quality-gate misses; these requests are not charged as successful usage.
 - Added deterministic fallback handling for partner updates, export-support replies, invoice/proration support replies, and sales follow-ups when general rewrite attempts stay too generic.
 - Added a `testing` subscription status for internal QA accounts with a 10,000 rewrite quota.
+
+## Strategy Memory
+
+Reusable rewrite and repair lessons from these optimization rounds are now tracked in:
+
+```text
+docs/rewrite-strategy-memory.md
+```
+
+Future evaluation rounds should update both files:
+
+- `docs/optimization-notes.md` for measured round-level results
+- `docs/rewrite-strategy-memory.md` for reusable diagnosis, repair, and promotion lessons

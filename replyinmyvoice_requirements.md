@@ -140,6 +140,25 @@ Development optimization requirement:
 - If the target is not met within the evaluation budget, keep the best measured strategy, document measured results in `docs/optimization-notes.md`, and continue building the product.
 - Treat this as core product R&D, not optional polishing.
 
+Rewrite strategy memory:
+
+- Maintain `docs/rewrite-strategy-memory.md` as the long-term strategy memory for the rewrite and repair engine.
+- After measured evaluation rounds, manual QA regressions, or user-approved feedback cases, update the strategy memory with:
+  - the failure pattern
+  - diagnosis tags
+  - repair strategy tried
+  - whether it worked
+  - facts-preservation risks
+  - whether the lesson should be promoted into production prompts, guardrails, tests, or fallback logic
+- Treat the production rewrite system as a bounded internal agent loop:
+  - Rewrite Agent: diagnose, plan, and generate targeted candidate.
+  - Repair Agent: analyze rejected candidates and repair the observed failure pattern.
+  - Strategy Memory Agent: offline/development process that summarizes eval learning and proposes reusable rules.
+- Do not silently train or self-modify production prompts from private live user content.
+- Live user content may become strategy memory only if explicitly user-approved as a feedback or test case.
+- Prefer aggregate non-content telemetry for production learning, such as scenario, tone, score delta, diagnosis tags, repair-used flag, pass/fail, and quality-gate rejection reason.
+- Stable lessons must be promoted through documentation, tests, measured evaluation, and code review before changing production behavior.
+
 Product focus:
 
 - The MVP is a general reply assistant.
