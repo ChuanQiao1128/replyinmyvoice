@@ -1025,3 +1025,110 @@ Sapling feature boundary:
 ## Open Items To Add Before Coding
 
 The user mentioned there are more things to change. Before starting implementation, append any additional feedback under this section and then turn the full brief into an implementation plan.
+
+## Next Rewrite Quality Fix — Signal Must Improve
+
+This is the next required development goal before further commercial polish.
+
+### Problem To Fix
+
+Real testing found a serious failure mode:
+
+- A long customer-support draft measured about 89% AI-like signal.
+- The first rewrite and retry measured 99-100%.
+- The UI still returned the rewritten text as if the request had succeeded.
+
+That must not happen. A rewrite that increases the AI-like signal is a failed product result, not a successful rewrite.
+
+### Required Product Behavior
+
+When writing-signal scores are available, a successful user-visible rewrite must satisfy at least one:
+
+- final rewrite is below 50% AI-like signal, or
+- final rewrite is at least 30 points lower than the draft.
+
+Hard rejection rules:
+
+- Reject any candidate where `rewriteSignal >= draftSignal`.
+- Reject or repair any candidate where `rewriteSignal > 50` and reduction is less than 30 points.
+- Never display an increased signal result as `Lower AI-like signal`.
+- If every bounded internal attempt fails, show a safe failure state instead of returning a bad rewrite.
+- Do not charge usage when the request fails because every candidate is rejected by quality gates.
+
+### Required Engine Change
+
+Upgrade the engine from simple retry to:
+
+`draft measurement -> diagnosis -> rewrite plan -> candidate rewrite -> candidate measurement -> failure analysis -> targeted repair -> remeasurement -> gated selection`
+
+Repair must be specific. It should receive:
+
+- the original draft
+- the rejected candidate
+- draft score
+- candidate score
+- diagnosis tags
+- failure reason
+- required facts
+- scenario guardrails
+
+The repair prompt/strategy must directly remove the observed failure pattern. For long customer-support replies, it must avoid macro-like patterns such as:
+
+- `I see how this can be confusing`
+- `From what you described`
+- `It seems`
+- `To help clarify`
+- `For next steps`
+- overly balanced paragraph rhythm
+- polished support-template phrasing
+
+The repaired reply must still preserve concrete facts, billing details, dates, numbers, user counts, and next steps.
+
+### Evaluation Requirement
+
+Before push/deploy, update `docs/scenario-evaluation-results.md`.
+
+Minimum measured evaluation:
+
+- at least 25 total measured cases
+- at least 10 long cases of 300-900 words
+- at least 5 long customer-support cases
+- include the Priya billing/proration regression case that previously failed with `89 -> 99/100`
+- include at least 3 cases where the first candidate fails and a targeted repair pass improves it
+
+Each case must record:
+
+- scenario
+- tone
+- approximate word/character count
+- diagnosis tags
+- rewrite plan summary
+- draft AI-like signal
+- first candidate AI-like signal
+- repaired candidate AI-like signal if used
+- final selected AI-like signal
+- score change
+- rejected candidate reason if any
+- expected facts
+- facts preserved
+- unsupported facts introduced
+- final decision: pass/fail
+
+### Deployment Criteria
+
+Do not push/deploy this rewrite-engine update unless:
+
+- average measured reduction is at least 30 points
+- at least 70% of measured rewrites are below 50% AI-like signal
+- no measured case selects a final rewrite that is worse than the draft
+- the Priya long customer-support regression passes
+- tests cover candidate rejection, repair invocation, safe failure, no usage charge on quality failure, and Naturalness Check rendering for worse/no-improvement states
+
+Development can use additional OpenAI and Sapling calls to find the strategy. This is acceptable during R&D. Production requests must remain bounded:
+
+- 1 draft writing-signal call
+- up to 2 initial rewrite candidates
+- up to 2 targeted repair candidates
+- up to 4 rewrite writing-signal calls
+
+If the bounded production loop cannot produce a passing candidate, fail safely and do not charge usage.

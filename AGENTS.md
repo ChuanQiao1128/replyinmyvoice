@@ -1769,3 +1769,125 @@ Current documented run in `docs/scenario-evaluation-results.md`:
 - average AI-like signal drop: 64 points
 - 11/15 rewrites below 50%
 - 11/15 case pass count
+
+## Next Rewrite Quality Fix — No Bad Result Gate
+
+This section is the next required rewrite-engine priority. It exists because real user testing produced long customer-support rewrites where the draft measured around 89% AI-like signal and the rewrite measured 99-100%. That outcome must be treated as a product failure, even if earlier aggregate evaluation targets were met.
+
+### Product Principle
+
+Reply In My Voice must not present a rewrite as successful when the measured AI-like signal gets worse or remains high without meaningful improvement.
+
+The core product value is not a generic rewrite. It is:
+
+1. diagnose why the draft reads like AI-generated writing,
+2. create a targeted rewrite plan,
+3. produce a candidate rewrite,
+4. measure the before/after writing signal,
+5. repair the specific failure patterns,
+6. return only a usable result that improves the signal and preserves facts.
+
+If the system cannot produce an improved candidate within the allowed internal attempts, it should fail safely instead of showing a bad result as success.
+
+### Hard Success Criteria For Production Requests
+
+When Sapling/writing-signal scores are available, a user-visible successful rewrite must satisfy at least one of these:
+
+- rewrite AI-like signal is below 50%, or
+- rewrite AI-like signal is at least 30 points lower than the draft.
+
+Additionally:
+
+- If `rewriteSignal >= draftSignal`, reject that candidate.
+- If `rewriteSignal > 50` and the reduction is less than 30 points, reject or repair that candidate.
+- If all internal candidates fail these gates, do not show the result as a successful rewrite.
+- Do not label the Naturalness Check as improved when the rewrite score is higher than the draft score.
+- Do not charge user usage for a request that fails because all candidates were rejected by quality gates.
+
+If Sapling is unavailable or times out:
+
+- return the best fact-preserving rewrite only if generation succeeded,
+- show `Signal unavailable`,
+- do not count the run as target-met in evaluation,
+- do not use unavailable-score results to justify deployment quality.
+
+### Required Signal-Aware Repair Flow
+
+The next implementation must upgrade the rewrite workflow from a simple retry to a measured repair loop:
+
+1. Measure the draft.
+2. Diagnose the draft with tags such as:
+   - stock support opening
+   - customer-service macro voice
+   - overly balanced structure
+   - uniform paragraph rhythm
+   - over-explained support wording
+   - generic transition phrases
+   - over-polished corporate phrasing
+   - defensive hedging
+   - too much summary-like structure
+3. Generate a targeted candidate using scenario guardrails.
+4. Measure the candidate.
+5. If the candidate fails the hard success criteria, run a repair pass that receives:
+   - draft score
+   - candidate score
+   - diagnosis tags
+   - rejected candidate text
+   - concrete failure reason
+   - required facts to preserve
+6. Measure repaired candidate.
+7. Select the best candidate only if it passes quality gates and preserves facts.
+
+Retries must be strategy changes, not blind repeats. For example, if a customer-support reply remains high, the repair should explicitly remove macro-like phrasing such as `I see how this can be confusing`, `From what you described`, `It seems`, `To help clarify`, and `For next steps`, while preserving the needed billing explanation and next step.
+
+### Long-Text Evaluation Requirement
+
+The next development run must expand evaluation beyond the previous 15-case set.
+
+Minimum evaluation before push/deploy:
+
+- At least 25 total measured cases.
+- At least 10 long cases of 300-900 words.
+- At least 5 long customer-support cases.
+- Include the Priya billing/proration case that previously failed with `89 -> 99/100`.
+- Include at least 3 cases where the first candidate fails and a repair pass must improve it.
+
+For every case, update `docs/scenario-evaluation-results.md` with:
+
+- scenario
+- tone
+- input word/character count
+- diagnosis tags
+- rewrite plan summary
+- draft AI-like signal
+- first candidate AI-like signal
+- repair candidate AI-like signal when used
+- final selected AI-like signal
+- score change
+- whether a candidate was rejected and why
+- expected facts
+- facts preserved
+- unsupported facts introduced
+- final decision: pass/fail
+
+### Deployment Gate
+
+Do not push and deploy the next rewrite-engine update unless all of these are true:
+
+- Average measured reduction is at least 30 points.
+- At least 70% of measured rewrites are below 50% AI-like signal.
+- 100% of measured cases avoid a final selected rewrite that is worse than the draft when scores are available.
+- The Priya long customer-support regression case passes.
+- All rejected-candidate behavior is documented in `docs/scenario-evaluation-results.md`.
+- Unit tests cover candidate rejection, repair pass invocation, no-usage-charge on quality failure, and UI rendering for non-improved signal states.
+
+Development evaluation may spend additional OpenAI and Sapling calls to find a reliable strategy. That is acceptable for this phase. However, the production API must remain bounded and must not run an unbounded loop per user request.
+
+Production request cap for the next implementation:
+
+- 1 draft writing-signal call
+- up to 2 initial rewrite candidates
+- up to 2 targeted repair candidates
+- up to 4 rewrite writing-signal calls
+
+If the bounded production loop cannot produce a passing candidate, fail safely and do not charge usage.
