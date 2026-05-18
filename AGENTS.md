@@ -50,6 +50,102 @@ Use `claude-heavy-planning-handoff` when:
 The task is broad enough to span more than three modules or services, requires architecture planning before implementation, changes Azure/backend/auth/billing/queue architecture, or should be routed from Codex to Claude Code for heavy planning.
 ```
 
+### Routine Skill Routing Rules
+
+Use these project-level aliases when discussing the Agent Studio workflow:
+
+```text
+requirements-to-system-plan = system-spec-synthesis
+resilience-test-writer = resilience-test-generation
+state-machine-and-data-model-review = state-machine-modeling + data-module-review
+cloud-readiness-review = deployment readiness checklist until a dedicated skill exists
+```
+
+For any non-trivial development run, follow this routine:
+
+```text
+1. Requirements and system planning:
+   Use system-spec-synthesis before implementation when the task changes architecture, API contracts, data models, deployment flow, or multi-module behavior.
+
+2. State and data correctness:
+   Use state-machine-modeling and data-module-review before changing quota, subscription, webhook, usage reservation, rewrite attempt, queue job, EF Core/Prisma schema, migrations, or persistence invariants.
+
+3. Resilience and failure tests:
+   Use resilience-test-generation before or during implementation whenever the change touches retries, timeouts, provider failures, idempotency, webhook replay, queue redelivery, quota races, concurrent requests, or recovery behavior.
+
+4. Cloud/deployment readiness:
+   Before CI/CD, Azure, Cloudflare, database migration, or production-readiness changes, run a cloud-readiness review using README.md, docs/manual-setup.md, docs/dotnet-azure-blocker-preflight.md, docs/business-qa-and-deploy-result.md, and the relevant skills above. Do not claim a dedicated cloud-readiness-review skill was used unless that skill is created and followed later.
+
+5. Claude Code handoff:
+   Use claude-heavy-planning-handoff only for broad planning or architecture-heavy work that should be routed from Codex to Claude Code. Codex remains responsible for local implementation, tests, commits, CI/CD setup, and deployment unless the user says otherwise.
+
+6. Evidence rule:
+   In final answers, run docs, resume bullets, and interview notes, only claim a named skill was used if the agent explicitly opened/followed that skill or produced its required output. If the agent only followed the same idea manually, describe it as a checklist or workflow, not as a used skill.
+
+7. Learning rule:
+   When a reusable lesson is found during rewrite quality, quota correctness, webhook replay, deployment, or resilience work, update the relevant project docs before finishing, especially docs/rewrite-strategy-memory.md, docs/business-qa-and-deploy-result.md, or the active run target document.
+```
+
+### Claude Code CLI Automation
+
+Codex can call the local Claude Code CLI for architecture-heavy planning when the user explicitly asks for Claude involvement or when `claude-heavy-planning-handoff` applies.
+
+Verified local capability:
+
+```text
+Date checked: 2026-05-19
+Claude Code CLI: 2.1.143
+Non-interactive command mode: claude -p / --print works
+Smoke result: Codex launched Claude Code and received a JSON result successfully
+```
+
+Default automation pattern:
+
+```text
+1. Codex reads project context and prepares a sanitized handoff prompt.
+2. Codex must not include secret values, .env contents, API tokens, private keys, or raw credential notes in the prompt.
+3. For first-pass planning, prefer disabling Claude tools and passing summarized context:
+   claude -p --tools "" --permission-mode dontAsk --no-session-persistence --max-budget-usd 0.20 --output-format json "<sanitized planning prompt>"
+4. Save any material Claude planning output under docs/claude-planning-result-<topic>.md or another clearly named docs file.
+5. Codex reviews the result, maps it back to repo constraints, and remains responsible for implementation, tests, commits, CI/CD, and deployment.
+```
+
+Safety rules:
+
+```text
+Do not use Claude CLI automation for small edits that Codex can finish directly.
+Do not use --dangerously-skip-permissions for this project.
+Do not let Claude read or print .env.local, .dev.vars, globalapikey/, Azure credentials, Stripe secrets, Clerk secrets, OpenAI keys, Sapling keys, or GitHub secrets.
+Use --max-budget-usd for non-interactive Claude calls.
+If Claude CLI auth fails, budget is exceeded, or non-interactive mode fails, fall back to writing a handoff document only.
+Only claim Claude Code participated if a Claude CLI call was actually run or a Claude handoff/result document was produced.
+```
+
+### Skill Smoke Verification
+
+These five skills are expected to be used during real development, but not every small edit needs all five. Full backend, quota, billing, queue, deployment, or resilience runs should normally use the relevant planning, state/data, resilience, and cloud-readiness routines; Claude Code involvement is reserved for broad planning or explicit user requests.
+
+Latest local smoke result:
+
+```text
+Date checked: 2026-05-19
+
+system-spec-synthesis:
+  Passed. scripts/spec_outline.py produced the required implementation-spec headings.
+
+resilience-test-generation:
+  Passed. scripts/resilience_matrix.py produced timeout, retry, duplicate, partial-success, concurrency, and malformed-payload failure rows.
+
+state-machine-modeling:
+  Passed. scripts/state_machine_template.py produced states, events, transitions, invariants, and illegal-transition sections.
+
+data-module-review:
+  Passed after optimization. scripts/scan_data_risks.py now excludes generated/build/vendor output by default and supports --limit / --include-generated.
+
+claude-heavy-planning-handoff:
+  Passed. scripts/build_handoff_brief.py produced a sanitized handoff brief, and Codex successfully called local Claude Code non-interactively with claude -p.
+```
+
 ### Interview Demo Prompts
 
 Use these exact prompts to demonstrate the skills without touching production systems:

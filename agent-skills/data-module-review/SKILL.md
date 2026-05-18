@@ -48,7 +48,7 @@ Suggested Tests
 
 ## Bundled Resources
 
-- Use `scripts/scan_data_risks.py` for a quick local scan of common persistence risk signals.
+- Use `scripts/scan_data_risks.py` for a quick local scan of common persistence risk signals. It excludes generated/build/vendor output by default and prints at most 120 rows; use `--limit 0` for a full scan or `--include-generated` when generated clients are intentionally under review.
 - Use `references/demo-prompts.md` for interview-safe demo prompts.
 
 ## Common Mistakes

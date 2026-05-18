@@ -402,6 +402,113 @@ function generateMessageReplyFallback(input: RewriteRequestInput) {
   return [greeting, sentence(first), rest].filter(Boolean).join("\n\n");
 }
 
+function isTeacherParentGradeContext(context: string) {
+  return textIncludes(context.toLowerCase(), [
+    "low grade",
+    "current grade",
+    "missing assignments",
+    "reading response",
+    "vocabulary practice",
+    "reflection paragraph",
+    "partial credit",
+    "after class",
+    "during lunch",
+  ]);
+}
+
+function extractStudentName(context: string, recipientName: string) {
+  const explicit = firstMatch(context, [
+    /\b([A-Z][a-z]+)\s+(?:has|is|was|can|could|should|needs?|turn(?:ed|s)?|submit(?:ted|s)?)\b/,
+    /\bfor\s+([A-Z][a-z]+)'s\s+grade\b/,
+    /\babout\s+([A-Z][a-z]+)'s\s+grade\b/,
+  ]);
+
+  if (explicit && explicit !== recipientName) {
+    return explicit;
+  }
+
+  const titledNames = Array.from(
+    context.matchAll(/\b(?:Ms|Mr|Mrs|Dr)\.?\s+([A-Z][a-z]+)\b/g),
+  ).map((match) => match[1]);
+
+  const matches = Array.from(context.matchAll(/\b[A-Z][a-z]+\b/g))
+    .map((match) => match[0])
+    .filter(
+      (name) =>
+        ![
+          "Hi",
+          "Hello",
+          "Dear",
+          "Thank",
+          "Thanks",
+          "Ms",
+          "Mr",
+          "Mrs",
+          "Dr",
+          "Monica",
+          recipientName,
+          ...titledNames,
+        ].includes(name),
+    );
+
+  return matches[0] ?? "the student";
+}
+
+function extractMissingWork(context: string) {
+  const including = context.match(
+    /including\s+(.+?)(?:\.|\n|$)/i,
+  )?.[1];
+
+  if (including) {
+    return including
+      .replace(/,\s*the\s+/gi, ", ")
+      .replace(/,\s*and\s+/i, ", and ")
+      .trim();
+  }
+
+  const knownItems = [
+    /reading response/i.test(context) ? "the reading response" : "",
+    /vocabulary practice/i.test(context) ? "vocabulary practice" : "",
+    /reflection paragraph/i.test(context)
+      ? /short reflection paragraph from Friday/i.test(context)
+        ? "the short reflection paragraph from Friday"
+        : "the reflection paragraph"
+      : "",
+  ].filter(Boolean);
+
+  return knownItems.length ? knownItems.join(", ") : "the missing work";
+}
+
+function generateTeacherParentFallback(input: RewriteRequestInput, context: string) {
+  const recipientName = extractRecipientName(input);
+  const greeting = recipientName ? `Hi ${recipientName},` : "Hi,";
+  const studentName = extractStudentName(context, recipientName);
+  const missingWork = extractMissingWork(context);
+  const duePhrase = /end of this week/i.test(context)
+    ? "by the end of this week"
+    : "soon";
+  const creditPhrase = /partial credit/i.test(context)
+    ? "for partial credit"
+    : "";
+  const helpPhrase =
+    /after class/i.test(context) && /during lunch/i.test(context)
+      ? "He can also come by after class or during lunch if any instructions are unclear."
+      : /after class/i.test(context)
+        ? "He can also come by after class if any instructions are unclear."
+        : /during lunch/i.test(context)
+          ? "He can also come by during lunch if any instructions are unclear."
+          : "";
+
+  return [
+    greeting,
+    `${studentName} is missing ${missingWork}.`,
+    `If he turns those in ${duePhrase}${creditPhrase ? `, I can still accept them ${creditPhrase}` : ""}.`,
+    helpPhrase,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function generateSalesReplyFallback(input: RewriteRequestInput, context: string) {
   const name = extractRecipientName(input);
   const greeting = name ? `Hi ${name},` : "Hi,";
@@ -598,7 +705,9 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
   if (input.scenario === "Blank / custom") {
     rewrittenText = generateBlankFallback(input);
   } else if (input.scenario === "Email or message reply") {
-    if (
+    if (isTeacherParentGradeContext(rawContext)) {
+      rewrittenText = generateTeacherParentFallback(input, rawContext);
+    } else if (
       textIncludes(rawContext.toLowerCase(), [
         "reporting feature",
         "team templates",

@@ -149,6 +149,14 @@ Lessons promoted from this run:
 - Length completeness must be scenario-specific. Long customer-support replies still need substantial explanatory answers, but long sales replies, work updates, and policy notes can be compact if they preserve the exact required facts.
 - Critical-fact extraction must include operational phrases, not only numbers and dates. Added phrases include course policy, old pilot workspace, billing report folder, weekly partner updates, two other vendors, pause the campaign, 2pm launch check, and related work/support facts.
 
+Live teacher-parent regression promoted on 2026-05-19:
+
+- User reproduced a teacher reply that stayed at 100% -> 100% when using the `Friendly` tone preset from the app UI.
+- Root cause: the frontend sends only the scenario, message, draft, and tone preset. Without the optional context fields, `Email or message reply` entered the generic message fallback before teacher/parent grade rules could run.
+- Fix: route grade/missing-work parent replies to a dedicated teacher-parent deterministic fallback before the generic email fallback. Preserve the parent name, student name, missing work, make-up timing, partial-credit rule, and help availability.
+- Smoke result with the same front-end-shaped request: 100% draft signal -> 2% rewrite signal while preserving Jordan, the reading response, vocabulary practice, short reflection paragraph from Friday, end-of-week partial credit, and after-class/lunch help.
+- Guardrail: title names such as `Ms. Carter` must not be mistaken for the student name.
+
 Remaining strategy work:
 
 - Blank update notes and some cover-letter rewrites still often preserve facts but fail to reduce the third-party signal enough.

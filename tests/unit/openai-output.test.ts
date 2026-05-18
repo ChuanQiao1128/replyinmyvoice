@@ -153,6 +153,46 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).not.toContain("Please advise");
   });
 
+  it("uses a teacher-parent fallback instead of returning a polished grade memo", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Email or message reply",
+        messageToReplyTo:
+          "Hi Ms. Carter, Jordan has a low grade and told me he turned in most assignments. What is missing, and is there still time to make up the work?",
+        roughDraftReply: [
+          "Hi Monica,",
+          "Thank you for reaching out and sharing your concerns about Jordan’s current grade.",
+          "At this point, Jordan is missing several assignments from the past two weeks, including the reading response, the vocabulary practice, and the short reflection paragraph from Friday.",
+          "He has participated in class discussions, but the missing written work is having a significant impact on his overall grade.",
+          "If he turns these in by the end of this week, I will still accept them for partial credit.",
+          "I also encourage him to speak with me after class or during lunch if he needs clarification.",
+        ].join("\n\n"),
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "warm",
+        tonePreset: "Friendly",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Hi Monica");
+    expect(result.rewrittenText).toContain("Jordan is missing");
+    expect(result.rewrittenText).toContain("reading response");
+    expect(result.rewrittenText).toContain("vocabulary practice");
+    expect(result.rewrittenText).toContain("reflection paragraph");
+    expect(result.rewrittenText).toContain("end of this week");
+    expect(result.rewrittenText).toContain("partial credit");
+    expect(result.rewrittenText).toContain("after class or during lunch");
+    expect(result.rewrittenText).not.toContain("Carter is missing");
+    expect(result.rewrittenText).not.toContain("I appreciate you reaching out");
+    expect(result.rewrittenText).not.toContain("overall grade");
+    expect(result.rewrittenText).not.toContain("clear plan and consistent effort");
+  });
+
   it("builds a facts-first support rewrite from extracted billing facts", async () => {
     const factsFirst = getRewriteStrategies().find(
       (strategy) => strategy.id === "facts_first",
