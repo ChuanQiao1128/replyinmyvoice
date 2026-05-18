@@ -1013,7 +1013,7 @@ Use these defaults in the next development round:
 - Footer should include: `Operated by TimeAwake Ltd.`
 - Support/contact email: `info@timeawake.co.nz`.
 - Add or expose simple footer links for Privacy and Terms if the pages already exist or can be created safely.
-- Privacy/Terms can be concise MVP pages. They should explain that pasted messages and rewritten replies are processed for the request but are not saved to the database.
+- Privacy/Terms can be concise MVP pages. They must explain the current product truth: pasted messages, drafts, rewritten replies, writing-signal results, and rewrite metadata may be stored internally for quality improvement and are not exposed publicly, sold, or used in marketing without explicit approval.
 
 Sapling feature boundary:
 
@@ -1025,6 +1025,224 @@ Sapling feature boundary:
 ## Open Items To Add Before Coding
 
 The user mentioned there are more things to change. Before starting implementation, append any additional feedback under this section and then turn the full brief into an implementation plan.
+
+## LearningOps V1 — DB-Backed Strategy Learning And Promotion
+
+This section records the next product/system direction for rewrite learning. It supersedes any interpretation that "Codex memory" is the source of learning.
+
+### Core Decision
+
+Learning must come from production rewrite data stored by the app, not from Codex remembering chat history.
+
+Production strategy changes must not become active by reading a new rule from the database at request time. A learned strategy only becomes production behavior after:
+
+1. reading stored learning samples,
+2. identifying a repeated failure pattern or severe regression,
+3. adding or updating evaluation cases and tests,
+4. changing the rewrite/repair code or prompt guardrails,
+5. running the full validation suite,
+6. pushing to GitHub,
+7. deploying to Cloudflare.
+
+In short:
+
+```text
+DB learning sample -> analysis -> strategy candidate -> code change -> tests -> push -> deploy
+```
+
+Do not implement:
+
+```text
+DB learning sample -> live prompt/rule hot update
+```
+
+### Why This Matters
+
+The product should get smarter from real customer failures, but it must not let one noisy or private live sample silently change production behavior.
+
+The correct model is:
+
+- The website writes rewrite outcomes into the database.
+- A scheduled LearningOps job reads those outcomes.
+- The job proposes or applies bounded code changes only through the normal engineering pipeline.
+- Production behavior changes only after tests and deployment.
+
+This keeps the product learning loop real while preserving stability, testability, and rollback.
+
+### Existing Source Of Truth
+
+Current production sample table:
+
+- `RewriteLearningSample`
+
+Current fields already available:
+
+- user id
+- scenario
+- tone preset
+- optional context/message
+- rough draft
+- rewritten text
+- draft AI-like signal
+- rewrite AI-like signal
+- signal change
+- diagnosis tags
+- rewrite plan summary
+- candidate signal metadata
+- internal strategy count
+- repair count
+- rejected candidate count
+- status
+- error code
+
+The next LearningOps work should continue treating this table as the source of customer failure/success data.
+
+### LearningOps V1 Scope
+
+Add a first-class internal learning pipeline for Reply In My Voice.
+
+Recommended components:
+
+1. `Learning Sample Reader`
+   - Reads recent `RewriteLearningSample` rows.
+   - Focuses on failures, no-improvement results, worse-than-draft cases, high final signal, and repaired successes.
+   - Does not print secrets.
+   - Avoids dumping full user content into public docs or logs.
+
+2. `Learning Analyzer`
+   - Groups samples by scenario, diagnosis tags, tone preset, status, and signal outcome.
+   - Detects repeated failure patterns.
+   - Detects repair patterns that worked.
+   - Separates weak one-off samples from promotable patterns.
+
+3. `Strategy Candidate Generator`
+   - Produces internal strategy candidates.
+   - Each candidate must include:
+     - failure pattern
+     - affected scenario
+     - evidence count
+     - sample ids or safe references
+     - proposed rewrite/repair change
+     - required regression/eval case
+     - risk level
+     - promotion recommendation: `no-op`, `docs-only`, `test-needed`, `code-change`
+
+4. `Promotion Planner`
+   - Converts approved/promotable findings into development work:
+     - update `docs/rewrite-strategy-memory.md`
+     - add or update scenario evaluation cases
+     - add unit/regression tests where possible
+     - update `lib/rewrite.ts`, `lib/openai.ts`, `lib/rewrite-diagnosis.ts`, or scenario guardrail modules
+   - Does not edit production strategy dynamically from DB rows.
+
+5. `Validation And Deployment Gate`
+   - A strategy promotion can only deploy if:
+     - typecheck passes
+     - lint passes
+     - unit tests pass
+     - e2e tests pass
+     - Next build passes
+     - Cloudflare/OpenNext build passes
+     - banned-term scan passes
+     - relevant scenario evaluation passes
+   - If validation fails, do not deploy.
+
+### Suggested Data Model Additions
+
+Keep `RewriteLearningSample` as the raw event table.
+
+Consider adding these tables in the next implementation:
+
+- `LearningRun`
+  - one row per daily/offline learning job
+  - stores startedAt, finishedAt, status, sample count, findings count, promotion decision, validation status
+
+- `LearningFinding`
+  - one row per detected pattern
+  - stores scenario, diagnosis tags, failure type, evidence count, severity, recommendation
+
+- `StrategyCandidate`
+  - one row per proposed strategy change
+  - stores finding id, proposed change summary, risk level, status, linked test/eval path, linked commit hash if promoted
+
+Do not add a live `RewriteStrategyRule` table that production reads dynamically unless a future design explicitly adds a reviewed, versioned, test-gated release mechanism. For now, production strategy lives in code.
+
+### Scheduled Execution
+
+The daily scheduled job should run every 24 hours and do this:
+
+1. Read recent learning samples from the production database.
+2. Generate or update `docs/rewrite-memory-digest.md`.
+3. Write structured findings to the database or a committed internal artifact.
+4. If no strong learning signal exists, stop after the digest/finding update.
+5. If a strong repeated pattern or severe regression exists:
+   - update strategy memory docs,
+   - add/update eval or regression tests,
+   - implement the minimal code/prompt guardrail change,
+   - run validation,
+   - commit and push,
+   - deploy only if all gates pass.
+
+The scheduled system may use Codex or a local agent runner as the execution backend, but the product learning source must remain the production database.
+
+### Confirmed Automation Policy
+
+The daily LearningOps workflow should be automatic, including GitHub push and Cloudflare deploy when qualified.
+
+However, it must not deploy unconditionally every day.
+
+Allowed automatic outcomes:
+
+- `digest_only`
+  - no strong learning signal found
+  - update digest/finding records only
+  - no production deploy
+- `docs_only`
+  - learning signal is useful but not enough for code promotion
+  - update internal docs/report only
+  - no production deploy
+- `promoted`
+  - strong repeated pattern or severe reproducible regression found
+  - code/tests/eval updated
+  - full validation passed
+  - push to GitHub and deploy to Cloudflare
+- `blocked`
+  - validation failed, provider unavailable, sample evidence too weak, or change is outside rewrite-quality scope
+  - write reason to docs/report
+  - no push/deploy unless only safe report artifacts changed
+
+Hard rule:
+
+```text
+Run every 24 hours automatically.
+Push/deploy automatically only when a qualified strategy promotion passes all gates.
+Never deploy just because the scheduled job ran.
+```
+
+### Safety Rules
+
+- Do not expose raw user samples publicly.
+- Do not use user samples in marketing.
+- Do not log secrets.
+- Do not auto-promote based on one weak sample.
+- Severe regressions can trigger a targeted patch from one sample only when:
+  - the failure is reproducible,
+  - facts are preserved in the fix,
+  - an eval/regression case is added,
+  - full validation passes.
+- Do not change Stripe, Clerk, DNS, pricing, payment behavior, or unrelated product behavior from the learning job.
+- If the learning job cannot validate the change, it must stop before deploy and write the reason to docs.
+
+### Acceptance Criteria For LearningOps V1
+
+- Learning data flow is documented as:
+  `user rewrite -> RewriteLearningSample -> LearningOps job -> strategy candidate -> code/test promotion`.
+- The app never hot-loads unverified rewrite strategy from the database.
+- A daily/offline command can read `RewriteLearningSample` and produce a useful digest/finding report.
+- Strategy candidates include evidence, scenario, failure pattern, proposed change, risk, and required tests.
+- A promoted strategy always creates or updates at least one regression/evaluation case.
+- A promoted strategy only reaches production after GitHub push and Cloudflare deploy.
+- Privacy/Terms copy accurately states that submitted content and rewrites may be stored internally for quality improvement.
 
 ## Next Rewrite Quality Fix — Signal Must Improve
 

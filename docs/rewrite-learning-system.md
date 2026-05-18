@@ -22,6 +22,7 @@ The system should learn which rewrite and repair strategies work for real commun
 - The Privacy page must disclose that submitted content and rewrites may be stored and reviewed internally to improve quality.
 - Do not expose internal learning samples publicly.
 - Do not let production prompts self-modify automatically from one live sample.
+- Learned strategies must become active only through a code change, tests, GitHub push, and Cloudflare deploy. Do not hot-load live rewrite strategy from database rows.
 
 ## Architecture
 
@@ -84,6 +85,8 @@ evals/*
 
 Do not promote a strategy directly from one live sample into production.
 
+Do not make production behavior change by reading a new strategy rule from the database at request time. The database is the learning source and audit trail, not the live prompt-control surface.
+
 Promotion path:
 
 1. Store the learning sample.
@@ -92,7 +95,40 @@ Promotion path:
 4. Add an evaluation case or unit test.
 5. Update prompt guardrails, repair instructions, or fallback logic.
 6. Run tests and scenario evaluation.
-7. Deploy only if quality gates pass.
+7. Commit and push the verified code change.
+8. Deploy only if quality gates pass.
+
+Required promotion shape:
+
+```text
+RewriteLearningSample -> analysis -> strategy candidate -> code/test change -> validation -> push -> deploy
+```
+
+Forbidden promotion shape:
+
+```text
+RewriteLearningSample -> database rule -> production prompt changes immediately
+```
+
+### LearningOps V1 Direction
+
+The next system iteration should turn the current script-based memory workflow into a first-class internal LearningOps pipeline.
+
+Recommended V1 components:
+
+- `LearningRun`
+  - records each daily/offline learning job
+  - stores sample counts, findings count, status, validation result, and promotion decision
+- `LearningFinding`
+  - records repeated failure patterns or successful repair patterns
+  - groups by scenario, tone, diagnosis tags, status, and signal outcome
+- `StrategyCandidate`
+  - records proposed changes before they become code
+  - includes evidence, risk level, required eval/test coverage, and promotion status
+
+The production rewrite API should continue using code-based strategy modules such as rewrite diagnosis, scenario guardrails, OpenAI prompt construction, repair logic, and fallback logic. Strategy candidates are promoted into those modules only after validation.
+
+The scheduled job may use Codex or another local agent runner as the execution backend, but the source of learning is the production database.
 
 ## Data Stored For Learning
 

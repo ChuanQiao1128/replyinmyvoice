@@ -46,6 +46,70 @@ model StripeEvent {
   createdAt DateTime @default(now())
 }
 
+model LearningRun {
+  id                 String              @id @default(cuid())
+  startedAt          DateTime            @default(now())
+  finishedAt         DateTime?
+  status             String
+  sampleCount        Int                 @default(0)
+  measuredCount      Int                 @default(0)
+  findingCount       Int                 @default(0)
+  candidateCount     Int                 @default(0)
+  promotionDecision  String
+  validationStatus   String?
+  digestPath         String?
+  errorMessage       String?
+  findings           LearningFinding[]
+
+  @@index([startedAt])
+  @@index([status])
+  @@index([promotionDecision])
+}
+
+model LearningFinding {
+  id                      String              @id @default(cuid())
+  runId                   String
+  scenario                String?
+  failureType             String
+  diagnosisTags           String
+  evidenceCount           Int                 @default(0)
+  severity                String
+  recommendation          String
+  promotionRecommendation String
+  sampleRefs              String
+  createdAt               DateTime            @default(now())
+  run                     LearningRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  candidates              StrategyCandidate[]
+
+  @@index([createdAt])
+  @@index([scenario])
+  @@index([failureType])
+  @@index([severity])
+  @@index([promotionRecommendation])
+  @@index([runId])
+}
+
+model StrategyCandidate {
+  id                    String          @id @default(cuid())
+  findingId             String
+  title                 String
+  scenario              String?
+  proposedChangeSummary String
+  riskLevel             String
+  status                String
+  requiredEval          String
+  evidenceCount         Int             @default(0)
+  linkedCommitHash      String?
+  createdAt             DateTime        @default(now())
+  finding               LearningFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([scenario])
+  @@index([riskLevel])
+  @@index([status])
+  @@index([findingId])
+}
+
 model RewriteLearningSample {
   id                    String   @id @default(cuid())
   userId                String?
