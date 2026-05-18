@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { PaywallCard } from "../../components/app/paywall-card";
 import { RewriteWorkspace } from "../../components/app/rewrite-workspace";
+import { SiteHeader } from "../../components/site-header";
 import { getUsageStatus, isPaidSubscriptionStatus } from "../../lib/quota";
 import { getCurrentAppUser } from "../../lib/users";
 
@@ -19,22 +20,28 @@ export default async function AppPage() {
 
   if (usage.exhausted && !paid) {
     return (
-      <PaywallCard
-        description="Your 3 free rewrites have been used. Upgrade to keep using the workspace for everyday replies."
-        status="Free quota used"
-        title="Keep writing in your own voice."
-      />
+      <>
+        <SiteHeader />
+        <PaywallCard
+          description="Your 3 free rewrites have been used. Upgrade to keep using the workspace for everyday replies."
+          status="Free quota used"
+          title="Keep writing in your own voice."
+        />
+      </>
     );
   }
 
   if (usage.exhausted && paid) {
     return (
-      <PaywallCard
-        action="portal"
-        description="Your monthly rewrite quota has been used for this billing period. You can manage billing or come back when the next period starts."
-        status="Monthly quota used"
-        title="Your monthly limit has been reached."
-      />
+      <>
+        <SiteHeader />
+        <PaywallCard
+          action="portal"
+          description="Your monthly rewrite quota has been used for this billing period. You can manage billing or come back when the next period starts."
+          status="Monthly quota used"
+          title="Your monthly limit has been reached."
+        />
+      </>
     );
   }
 
@@ -43,10 +50,13 @@ export default async function AppPage() {
     : `${usage.remaining} of ${usage.quota} free rewrites remaining`;
 
   return (
-    <RewriteWorkspace
-      paid={paid}
-      subscriptionStatus={user.subscriptionStatus}
-      usageLabel={usageLabel}
-    />
+    <>
+      <SiteHeader />
+      <RewriteWorkspace
+        paid={paid}
+        subscriptionStatus={user.subscriptionStatus}
+        usageLabel={usageLabel}
+      />
+    </>
   );
 }

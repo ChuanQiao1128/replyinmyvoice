@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clipboard,
   CopyCheck,
+  FilePlus2,
   Loader2,
   RefreshCw,
   Send,
@@ -24,7 +25,7 @@ import { Card } from "../ui/card";
 import { Textarea } from "../ui/textarea";
 import { SubscriptionStatus } from "./subscription-status";
 
-const HISTORY_KEY = "rimv.rewrite.history.v2";
+const HISTORY_KEY = "rimv.rewrite.history.v1";
 
 const limits = {
   messageToReplyTo: 5000,
@@ -326,17 +327,31 @@ export function RewriteWorkspace({
     localStorage.removeItem(HISTORY_KEY);
   }
 
+  function resetWorkspace() {
+    setForm(initialForm);
+    setResult(null);
+    setQualityFailure(null);
+    setError("");
+    setCopied(false);
+  }
+
   const visibleNaturalness = result?.naturalness ?? qualityFailure?.naturalness;
 
   return (
     <main className="min-h-screen bg-paper text-ink">
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-8">
-        <div className="mb-5">
-          <h1 className="text-3xl font-semibold">Rewrite workspace</h1>
-          <p className="mt-2 text-sm text-ink/60">
-            Paste a draft, choose the writing job, and keep the facts intact.
-            Context is optional.
-          </p>
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-semibold">Rewrite workspace</h1>
+            <p className="mt-2 text-sm text-ink/60">
+              Paste a draft, choose the writing job, and keep the facts intact.
+              Context is optional.
+            </p>
+          </div>
+          <Button onClick={resetWorkspace} type="button" variant="secondary">
+            <FilePlus2 className="h-4 w-4" aria-hidden="true" />
+            New draft
+          </Button>
         </div>
         <SubscriptionStatus
           paid={paid}

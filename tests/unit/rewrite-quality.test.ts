@@ -99,6 +99,25 @@ describe("isCandidateCompleteEnough", () => {
 
     expect(isCandidateCompleteEnough(input, candidate)).toBe(true);
   });
+
+  it("allows compact non-support replies when required facts are preserved", () => {
+    const input: RewriteRequestInput = {
+      scenario: "Email or message reply",
+      messageToReplyTo:
+        "We like the reporting feature and team templates, but we are comparing two other vendors and cannot decide until the first week of June.",
+      roughDraftReply: "Long sales draft. ".repeat(80),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Friendly",
+    };
+    const candidate =
+      "Hi Jordan,\n\nI can send a shorter summary of the two plan options. Glad the reporting feature and team templates are still useful while you compare the two other vendors before the first week of June.";
+
+    expect(isCandidateCompleteEnough(input, candidate)).toBe(true);
+  });
 });
 
 describe("rewriteWithOptimization quality gate", () => {
@@ -157,7 +176,7 @@ describe("rewriteWithOptimization quality gate", () => {
     expect(result.rewrittenText).toContain("NZD $126");
   });
 
-  it("returns the best complete candidate instead of an empty quality failure", async () => {
+  it("keeps the original draft instead of returning a complete but worse candidate", async () => {
     mocks.generateRewriteCandidate
       .mockResolvedValueOnce({
         rewrittenText:
@@ -201,8 +220,8 @@ describe("rewriteWithOptimization quality gate", () => {
     const result = await rewriteWithOptimization(longPriyaInput);
 
     expect(mocks.generateRepairCandidate).toHaveBeenCalledTimes(2);
-    expect(result.rewrittenText).toContain("NZD $126");
-    expect(result.naturalness.rewriteAiLikePercent).toBe(95);
+    expect(result.rewrittenText).toBe(longPriyaInput.roughDraftReply);
+    expect(result.naturalness.rewriteAiLikePercent).toBe(89);
     expect(result.optimization.selectionStatus).toBe("best_available");
     expect(result.riskNotes).toContain(
       "The writing signal is still high; review before sending.",
@@ -281,5 +300,59 @@ describe("rewriteWithOptimization quality gate", () => {
     expect(result.rewrittenText).toContain("NZD $126");
     expect(result.optimization.selectionStatus).toBe("best_available");
     expect(result.optimization.candidateSignals.at(-1)?.stage).toBe("fallback");
+  });
+
+  it("does not return a measured candidate that worsens an already-low draft", async () => {
+    const lowSignalInput = inputWithDraft(
+      "The April export is missing the custom tags column. Please send the export settings before Monday at 10am so we can check the report path.",
+    );
+    mocks.generateRewriteCandidate
+      .mockResolvedValueOnce({
+        rewrittenText:
+          "Thank you for contacting us regarding the April export issue. We understand that the custom tags column is missing, and our team will review the export settings before Monday at 10am.",
+        changeSummary: ["Rewrote the support reply."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText:
+          "We are investigating the April export and custom tags column before Monday at 10am.",
+        changeSummary: ["Shortened the reply."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText:
+          "The April export is missing the custom tags column. Please send the export settings before Monday at 10am.",
+        changeSummary: ["Facts-first fallback."],
+        riskNotes: ["Review."],
+      });
+    mocks.generateRepairCandidate
+      .mockResolvedValueOnce({
+        rewrittenText:
+          "Thank you for the note. The April export is missing the custom tags column, and we can check it before Monday at 10am.",
+        changeSummary: ["Repair."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText:
+          "The April export has a custom tags column issue. Send settings before Monday at 10am.",
+        changeSummary: ["Repair."],
+        riskNotes: ["Review."],
+      });
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 12 })
+      .mockResolvedValueOnce({ aiLikePercent: 74 })
+      .mockResolvedValueOnce({ aiLikePercent: 68 })
+      .mockResolvedValueOnce({ aiLikePercent: 64 })
+      .mockResolvedValueOnce({ aiLikePercent: 58 })
+      .mockResolvedValueOnce({ aiLikePercent: 30 });
+
+    const result = await rewriteWithOptimization(lowSignalInput);
+
+    expect(result.rewrittenText).toBe(lowSignalInput.roughDraftReply);
+    expect(result.naturalness.rewriteAiLikePercent).toBe(12);
+    expect(result.optimization.selectionStatus).toBe("best_available");
+    expect(result.optimization.candidateSignals.at(-1)?.reason).toContain(
+      "worsened the writing signal",
+    );
   });
 });

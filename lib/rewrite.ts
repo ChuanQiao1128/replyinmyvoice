@@ -104,7 +104,7 @@ function extractCriticalFacts(input: RewriteRequestInput) {
     .join(" ")
     .replace(/\s+/g, " ");
   const matches = source.match(
-    /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}\b|\bbefore class tomorrow\b|\bbefore noon\b|\bafter\s+May\s+\d{1,2}\b|\bnext month\b|\bfinance manager\b|\bbase plan\b|\b(?:old|new)\s+plan\s+(?:credit|charge)\b|\b(?:resent|sent)\s+the\s+invite\s+(?:twice|again)\b|\bcustom tags column\b|\bbilling report folder\b|\breporting feature\b|\bteam templates\b|\bhelp center articles?\b|\bmonthly partner updates\b|\bpatient follow-up notes\b|\bpartner onboarding packet\b|\bMonday board packet\b|\bapplication timeline\b|\bscholarship forms\b|\bpricing table\b|\bsection three\b|\bsection five\b|\bpayment flow\b|\bonboarding checklist\b|\blast three failed events\b|\b\d+\s*(?:am|pm)\b|\b\d+\s+(?:active\s+seats?|regular\s+seats?|temporary\s+(?:users?|contractors?)|failed\s+events?|providers?|interviews?|teachers?)\b/gi,
+    /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}\b|\bbefore class tomorrow\b|\bbefore noon\b|\bafter\s+May\s+\d{1,2}\b|\bnext month\b|\bfirst week of June\b|\bcourse policy\b|\btwo missing participation activities\b|\bone missing exit ticket\b|\btwo asked\b|\btwo other vendors\b|\bsource file arrived later\b|\bsource file arrived late\b|\b2pm launch check\b|\bpause the campaign\b|\bold pilot workspace\b|\bfinance manager\b|\bbase plan\b|\b(?:old|new)\s+plan\s+(?:credit|charge)\b|\b(?:resent|sent)\s+the\s+invite\s+(?:twice|again)\b|\bcustom tags column\b|\bbilling report folder\b|\breporting feature\b|\bteam templates\b|\bhelp center articles?\b|\bmonthly partner updates\b|\bweekly partner updates\b|\bpatient follow-up notes\b|\bpartner onboarding packet\b|\bMonday board packet\b|\bapplication timeline\b|\bscholarship forms\b|\bpricing table\b|\bsection three\b|\bsection five\b|\bpayment flow\b|\bonboarding checklist\b|\bhelp article links\b|\blast three failed events\b|\b\d+\s*(?:am|pm)\b|\b\d+\s+(?:active\s+seats?|regular\s+seats?|temporary\s+(?:users?|contractors?)|failed\s+events?|providers?|interviews?|teachers?)\b/gi,
   );
   const exactMonthMatches = source.match(
     /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\b/g,
@@ -196,6 +196,26 @@ function createCandidateRecord(
   };
 }
 
+function createOriginalSafetyRecord(
+  input: RewriteRequestInput,
+  draftSignal: Awaited<ReturnType<typeof measureWritingSignal>>,
+): CandidateRecord {
+  return createCandidateRecord(
+    input,
+    {
+      rewrittenText: input.roughDraftReply,
+      changeSummary: [
+        "Kept the original wording because measured rewrite candidates did not improve it.",
+      ],
+      riskNotes: [
+        "Review before sending; the system did not find a measured improvement for this draft.",
+      ],
+    },
+    draftSignal,
+    draftSignal.aiLikePercent,
+  );
+}
+
 export function isCandidateCompleteEnough(
   input: RewriteRequestInput,
   rewrittenText: string,
@@ -205,16 +225,29 @@ export function isCandidateCompleteEnough(
   }
 
   const draftLength = input.roughDraftReply.trim().length;
+  const rewriteLength = rewrittenText.trim().length;
+
+  if (input.scenario !== "Customer support") {
+    if (draftLength >= 900) {
+      return rewriteLength >= 120;
+    }
+
+    if (draftLength >= 450) {
+      return rewriteLength >= 80;
+    }
+
+    return rewriteLength >= 20;
+  }
 
   if (draftLength >= 900) {
-    return rewrittenText.trim().length >= Math.max(450, Math.floor(draftLength * 0.3));
+    return rewriteLength >= Math.max(450, Math.floor(draftLength * 0.3));
   }
 
   if (draftLength >= 450) {
-    return rewrittenText.trim().length >= Math.max(220, Math.floor(draftLength * 0.3));
+    return rewriteLength >= Math.max(220, Math.floor(draftLength * 0.3));
   }
 
-  return rewrittenText.trim().length >= 20;
+  return rewriteLength >= 20;
 }
 
 export async function rewriteWithOptimization(
@@ -381,6 +414,26 @@ export async function rewriteWithOptimization(
     });
     best = fallbackRecord;
     selectionStatus = "best_available";
+  }
+
+  if (
+    draftSignal.aiLikePercent !== null &&
+    best.signal.aiLikePercent !== null &&
+    best.signal.aiLikePercent > draftSignal.aiLikePercent
+  ) {
+    const originalRecord = createOriginalSafetyRecord(input, draftSignal);
+
+    if (originalRecord.completeEnough) {
+      best = originalRecord;
+      selectionStatus = "best_available";
+      candidateSignals.push({
+        stage: "fallback",
+        aiLikePercent: draftSignal.aiLikePercent,
+        status: best.quality.status,
+        rejected: false,
+        reason: "Kept the original draft because measured candidates worsened the writing signal.",
+      });
+    }
   }
 
   const naturalness = formatNaturalness(

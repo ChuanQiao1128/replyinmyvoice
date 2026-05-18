@@ -18,6 +18,17 @@ describe("evaluateSignalQuality", () => {
     expect(shouldRepairCandidate(result)).toBe(false);
   });
 
+  it("passes an already-low candidate when it does not worsen the draft", () => {
+    const result = evaluateSignalQuality({
+      draftPercent: 0,
+      rewritePercent: 0,
+    });
+
+    expect(result.status).toBe("pass_below_threshold");
+    expect(result.changePoints).toBe(0);
+    expect(shouldRejectCandidate(result)).toBe(false);
+  });
+
   it("passes a candidate with at least a 30 point reduction", () => {
     const result = evaluateSignalQuality({
       draftPercent: 95,

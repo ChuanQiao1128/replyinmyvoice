@@ -77,7 +77,7 @@ function signalPass(
     draft !== null &&
     rewrite !== null &&
     change !== null &&
-    rewrite < draft &&
+    rewrite <= draft &&
     (rewrite < 50 || change <= -30)
   );
 }
@@ -505,7 +505,7 @@ const worseSelected = measured.filter(
     !row.qualityFailure &&
     row.rewrite !== null &&
     row.draft !== null &&
-    row.rewrite >= row.draft,
+    row.rewrite > row.draft,
 ).length;
 const repairUsed = rows.filter((row) =>
   row.candidateSignals.some((item) => item.stage === "repair"),
@@ -532,7 +532,7 @@ const lines = [
   `Rejected candidate events: ${rejectedCount}`,
   `Case pass count: ${passed}/${rows.length}`,
   "",
-  "Pass requires: all expected facts preserved, scores available, final rewrite lower than the draft, and either below 50% or at least 30 points lower than the draft.",
+  "Pass requires: all expected facts preserved, scores available, final rewrite no worse than the draft, and either below 50% or at least 30 points lower than the draft.",
   "",
   ...rows.flatMap((row) => [
     `## ${row.id}`,

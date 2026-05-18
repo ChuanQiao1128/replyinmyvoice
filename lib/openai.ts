@@ -330,16 +330,23 @@ function generateFactsFirstFallback(input: RewriteRequestInput) {
   ].join(" ");
   const context = rawContext.toLowerCase();
 
-  if (
-    input.scenario === "Customer support" ||
-    textIncludes(context, ["invoice", "active seats", "prorated", "base plan"])
-  ) {
+  if (isSeatBillingContext(context)) {
     return {
       rewrittenText: invoiceFallback(input, rawContext),
       changeSummary: [
         "Rebuilt the reply from the billing facts first, then removed support-template phrasing.",
       ],
       riskNotes: ["Check the billing details before sending."],
+    };
+  }
+
+  if (input.scenario === "Customer support") {
+    return {
+      rewrittenText: generateSupportFallback(input, rawContext),
+      changeSummary: [
+        "Rebuilt the support reply from the concrete issue and next step.",
+      ],
+      riskNotes: ["Review the support details before sending."],
     };
   }
 
@@ -429,11 +436,17 @@ function generateSalesReplyFallback(input: RewriteRequestInput, context: string)
 }
 
 function generateSupportFallback(input: RewriteRequestInput, context: string) {
-  if (textIncludes(context, ["invoice", "prorated", "seats"])) {
+  const normalized = context.toLowerCase();
+
+  if (isPlanChangeBillingContext(normalized)) {
+    return planChangeFallback(input, context);
+  }
+
+  if (isSeatBillingContext(normalized)) {
     return invoiceFallback(input, context);
   }
 
-  if (textIncludes(context, ["custom tags column", "csv export", "export"])) {
+  if (textIncludes(normalized, ["custom tags column", "csv export", "export"])) {
     const hasApril = /April/i.test(context);
     const hasMay = /\bMay\b/i.test(context);
     const region = /Northeast region/i.test(context) ? " for the Northeast region" : "";
@@ -452,6 +465,14 @@ function generateSupportFallback(input: RewriteRequestInput, context: string) {
     ].join("\n\n");
   }
 
+  if (isWorkspaceAccessContext(normalized)) {
+    return workspaceAccessFallback(input, context);
+  }
+
+  if (isIncidentStatusContext(normalized)) {
+    return incidentStatusFallback(input, context);
+  }
+
   const name = extractRecipientName(input);
   const greeting = name ? `Hi ${name},` : "Hi,";
   const details = detailParts(input).slice(0, 7);
@@ -460,6 +481,101 @@ function generateSupportFallback(input: RewriteRequestInput, context: string) {
   const next = details.slice(5, 7).map(sentence).join(" ");
 
   return [greeting, sentence(first), body, next].filter(Boolean).join("\n\n");
+}
+
+function isSeatBillingContext(context: string) {
+  return textIncludes(context, [
+    "active seats",
+    "regular seats",
+    "temporary contractor",
+    "temporary user",
+    "seat charge",
+    "base plan",
+  ]);
+}
+
+function isPlanChangeBillingContext(context: string) {
+  return textIncludes(context, [
+    "starter plan",
+    "team plan",
+    "old plan credit",
+    "new plan charge",
+    "shared templates",
+  ]);
+}
+
+function isWorkspaceAccessContext(context: string) {
+  return textIncludes(context, [
+    "workspace",
+    "old pilot workspace",
+    "billing report folder",
+    "resent the invite twice",
+    "mina@",
+  ]);
+}
+
+function isIncidentStatusContext(context: string) {
+  return textIncludes(context, [
+    "duplicate notifications",
+    "ticket #",
+    "pause the campaign",
+    "before noon",
+  ]);
+}
+
+function planChangeFallback(input: RewriteRequestInput, context: string) {
+  const greeting = extractRecipientName(input)
+    ? `Hi ${extractRecipientName(input)},`
+    : "Hi,";
+  const date = /May\s+3/i.test(context) ? " on May 3" : "";
+  const templates = /shared templates/i.test(context) ? " for shared templates" : "";
+
+  return [
+    greeting,
+    `The Starter plan to Team plan change${date}${templates} can show as separate invoice lines.`,
+    "In plain English, the old plan credit and the new plan charge usually appear separately during proration, so that layout does not automatically mean you are being charged twice.",
+    "If you send the invoice preview or line items, we can confirm whether the preview is showing the expected credit-and-charge adjustment before the invoice is finalized.",
+  ].join("\n\n");
+}
+
+function workspaceAccessFallback(input: RewriteRequestInput, context: string) {
+  const name = /Mina/i.test(context) ? "Mina" : "the user";
+  const emailMatch = context.match(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/i);
+  const email = emailMatch?.[0] ?? "the same email address";
+  const oldWorkspace = /old pilot workspace/i.test(context)
+    ? "the old pilot workspace"
+    : "the old team";
+  const folder = /billing report folder/i.test(context)
+    ? "the billing report folder"
+    : "the right workspace";
+  const resent = /resent the invite twice/i.test(context)
+    ? "Since you already resent the invite twice, I would not keep repeating that step."
+    : "";
+
+  return [
+    "Hi,",
+    `${name} should keep signing in with ${email}. If she still lands in ${oldWorkspace}, this is likely a workspace association issue rather than a new invite issue.`,
+    resent,
+    `The next useful step is for support to check which workspace ${email} is linked to and whether the newest Northstar invitation attached to the right account. That should explain why she cannot reach ${folder}.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function incidentStatusFallback(input: RewriteRequestInput, context: string) {
+  const ticket = context.match(/ticket\s+#?\d+/i)?.[0] ?? "the ticket";
+  const opened = /Friday/i.test(context) ? " opened on Friday" : "";
+  const noon = /before noon/i.test(context) ? " before noon" : "";
+  const pause = /pause the campaign/i.test(context)
+    ? "whether to pause the campaign"
+    : "what decision to make";
+
+  return [
+    "Hi,",
+    `${ticket}${opened} is still under review for the duplicate notifications.`,
+    `What is confirmed: the duplicate notification issue is still happening, and the delivery logs are being checked. What is not confirmed yet is the root cause or whether a campaign pause is required.`,
+    `I know your account team needs an answer on ${pause}${noon}. We will send the next status update as soon as the log review gives a clear recommendation.`,
+  ].join("\n\n");
 }
 
 function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {

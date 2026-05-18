@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  generateGuaranteedRewriteCandidate,
   generateRewriteCandidate,
   getRewriteStrategies,
   normalizeRewriteOutput,
@@ -191,5 +192,52 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).toContain("names or email addresses");
     expect(result.rewrittenText).not.toContain("Based on what");
     expect(result.rewrittenText).not.toContain("For the next step");
+  });
+
+  it("does not route every customer-support fallback through invoice billing", () => {
+    const result = generateGuaranteedRewriteCandidate({
+      scenario: "Customer support",
+      messageToReplyTo:
+        "Mina was added to our workspace yesterday, but she still sees the old pilot workspace after logging in with mina@northstar.example. We resent the invite twice and she cannot access the billing report folder.",
+      roughDraftReply:
+        "Hello, thank you for contacting support. It may be related to the user's previous workspace association.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "direct",
+      tonePreset: "Concise",
+    });
+
+    expect(result.rewrittenText).toContain("Mina");
+    expect(result.rewrittenText).toContain("mina@northstar.example");
+    expect(result.rewrittenText).toContain("resent the invite twice");
+    expect(result.rewrittenText).toContain("billing report folder");
+    expect(result.rewrittenText).not.toContain("invoice preview");
+    expect(result.rewrittenText).not.toContain("temporary users");
+  });
+
+  it("uses a plan-change billing fallback instead of seat billing language", () => {
+    const result = generateGuaranteedRewriteCandidate({
+      scenario: "Customer support",
+      messageToReplyTo:
+        "We switched from the Starter plan to the Team plan on May 3 because our manager wanted shared templates. The invoice preview shows the old plan credit and new plan charge separately.",
+      roughDraftReply:
+        "Thank you for reaching out regarding the invoice preview after your recent plan change from Starter to Team.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    });
+
+    expect(result.rewrittenText).toContain("Starter plan");
+    expect(result.rewrittenText).toContain("Team plan");
+    expect(result.rewrittenText).toContain("May 3");
+    expect(result.rewrittenText).toContain("shared templates");
+    expect(result.rewrittenText).toContain("old plan credit");
+    expect(result.rewrittenText).toContain("new plan charge");
+    expect(result.rewrittenText).not.toContain("active seats");
   });
 });

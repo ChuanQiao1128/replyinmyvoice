@@ -76,5 +76,21 @@ This app targets Cloudflare Workers through OpenNext:
 - Config: `wrangler.jsonc`
 - Runtime output: `.open-next/worker.js`
 - Deploy command: `npm run cf:deploy`
+- Current Worker URL: `https://replyinmyvoice-app.qc1128qc.workers.dev`
+- Production domain: `https://replyinmyvoice.com`
 
 `LAUNCH_CONFIRMED=false` means the existing `replyinmyvoice.com` holding page and DNS must not be changed.
+
+Do not `source .env.local` before running `npm run cf:deploy`; exporting
+`NODE_ENV` from `.env.local` can break OpenNext's production build. Pass only
+the Cloudflare auth variables to the deploy process, or use GitHub Actions.
+
+## CI/CD
+
+GitHub Actions workflows:
+
+- `.github/workflows/cloudflare-worker.yml`: runs Node build/typecheck/tests and deploys the Cloudflare Worker on pushes to `main`.
+- `.github/workflows/dotnet-azure.yml`: builds/tests the .NET backend and deploys the Azure dev App Service on pushes to `main`.
+
+Required Cloudflare/Next secrets and variables are stored in GitHub Actions. Do
+not commit `.env.local` or copy secret values into workflow files.

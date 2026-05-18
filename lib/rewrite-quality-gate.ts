@@ -37,6 +37,19 @@ export function evaluateSignalQuality({
 
   const changePoints = rewritePercent - draftPercent;
 
+  if (
+    rewritePercent < SIGNAL_PASS_THRESHOLD &&
+    rewritePercent <= draftPercent
+  ) {
+    return {
+      status: "pass_below_threshold",
+      draftPercent,
+      rewritePercent,
+      changePoints,
+      reason: "Rewrite AI-like signal is below the target threshold.",
+    };
+  }
+
   if (rewritePercent >= draftPercent) {
     return {
       status: "fail_worse",

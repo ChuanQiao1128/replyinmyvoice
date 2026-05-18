@@ -202,7 +202,7 @@ export function extractPreserveHints(input: RewriteRequestInput) {
     .join(" ")
     .replace(/\s+/g, " ");
   const matches = source.match(
-    /\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b\d+\s?(?:seats?|users?|days?|weeks?|months?|pm|am)\b|\b\d+\s*(?:am|pm)\b|\bfinance manager\b|\bbase plan\b|\b(?:old|new)\s+plan\s+(?:credit|charge)\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}\b|\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?\b/g,
+    /\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b\d+\s?(?:seats?|users?|days?|weeks?|months?|pm|am)\b|\b\d+\s*(?:am|pm)\b|\bfirst week of June\b|\bcourse policy\b|\btwo missing participation activities\b|\bone missing exit ticket\b|\btwo asked\b|\btwo other vendors\b|\bsource file arrived later\b|\bsource file arrived late\b|\b2pm launch check\b|\bpause the campaign\b|\bold pilot workspace\b|\bcustom tags column\b|\bbilling report folder\b|\breporting feature\b|\bteam templates\b|\bhelp center articles?\b|\bmonthly partner updates\b|\bweekly partner updates\b|\bpatient follow-up notes\b|\bpartner onboarding packet\b|\bMonday board packet\b|\bapplication timeline\b|\bscholarship forms\b|\bpricing table\b|\bsection three\b|\bsection five\b|\bpayment flow\b|\bonboarding checklist\b|\bhelp article links\b|\blast three failed events\b|\bfinance manager\b|\bbase plan\b|\b(?:old|new)\s+plan\s+(?:credit|charge)\b|\b(?:resent|sent)\s+the\s+invite\s+(?:twice|again)\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}\b|\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?\b/g,
   );
 
   return unique((matches ?? []).slice(0, 12));

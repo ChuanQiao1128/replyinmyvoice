@@ -19,6 +19,17 @@ async function openBillingPortal() {
   window.location.href = payload.url;
 }
 
+async function openCheckout() {
+  const response = await fetch("/api/stripe/checkout", { method: "POST" });
+  const payload = (await response.json()) as { url?: string; error?: string };
+
+  if (!response.ok || !payload.url) {
+    throw new Error(payload.error ?? "Could not open checkout.");
+  }
+
+  window.location.href = payload.url;
+}
+
 export function SubscriptionStatus({ status, usageLabel, paid }: Props) {
   return (
     <div className="rounded-lg border border-line bg-white/75 p-4">
@@ -44,10 +55,14 @@ export function SubscriptionStatus({ status, usageLabel, paid }: Props) {
             Manage billing
           </Button>
         ) : (
-          <div className="flex items-center gap-2 rounded-md bg-paper px-3 py-2 text-xs font-medium text-ink/55">
-            <RefreshCcw className="h-4 w-4 text-clay" aria-hidden="true" />
-            Upgrade anytime
-          </div>
+          <Button
+            onClick={() => void openCheckout()}
+            type="button"
+            variant="secondary"
+          >
+            <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+            Upgrade
+          </Button>
         )}
       </div>
     </div>

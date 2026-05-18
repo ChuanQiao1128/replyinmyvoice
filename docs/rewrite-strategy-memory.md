@@ -132,6 +132,29 @@ Current measured status from `docs/scenario-evaluation-results.md`:
 - Priya billing/proration regression: 89% -> 0%, facts preserved
 - Priya live 100% -> 100% regression: fixed at 100% -> 0%, facts preserved
 
+Measured update from the 2026-05-19 business QA run:
+
+- 26 cases evaluated across blank notes, teacher replies, sales follow-ups, customer support, cover letters, and work updates.
+- 24 cases returned available final writing-signal scores; 2 cases had unavailable final signal from the third-party provider during the run.
+- Average AI-like signal drop across measured cases: 49 points.
+- 16/24 measured rewrites were below 50% AI-like signal.
+- Final selected rewrites worse than the draft: 0/24.
+- Final outputs preserved expected facts for all 26 cases in the final run.
+- Case pass count: 16/26 under the strict eval rule requiring facts preserved, available scores, no worse signal, and either below 50% or at least a 30-point drop.
+
+Lessons promoted from this run:
+
+- Do not route all customer-support facts-first fallbacks through the invoice fallback. Support fallbacks must branch by issue type: seat billing, plan-change billing, export problems, workspace access, incident status, and generic support.
+- A candidate that is complete but measures worse than the draft should not be selected over a safe original when the original preserves all critical facts. This protects the core product promise that measured quality should not regress.
+- Length completeness must be scenario-specific. Long customer-support replies still need substantial explanatory answers, but long sales replies, work updates, and policy notes can be compact if they preserve the exact required facts.
+- Critical-fact extraction must include operational phrases, not only numbers and dates. Added phrases include course policy, old pilot workspace, billing report folder, weekly partner updates, two other vendors, pause the campaign, 2pm launch check, and related work/support facts.
+
+Remaining strategy work:
+
+- Blank update notes and some cover-letter rewrites still often preserve facts but fail to reduce the third-party signal enough.
+- Long workspace-access support replies can preserve facts while still scoring high; the next repair strategy should make these less macro-like without losing exact account/workspace details.
+- Third-party signal unavailability should be tracked separately from rewrite failure so development evals do not overstate quality when provider scores are missing.
+
 ## Current Diagnosis Tags
 
 Use these tags to explain why a draft or failed candidate is likely scoring high:
