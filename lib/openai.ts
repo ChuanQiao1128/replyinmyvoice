@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { optionalEnv, requireEnv } from "./env";
+import type { SignalQualityResult } from "./rewrite-quality-gate";
 import type { RewritePlan } from "./rewrite-diagnosis";
 import type { RewriteRequestInput } from "./validation";
 
@@ -93,6 +94,71 @@ function buildUserPrompt(
     "",
     "Facts to preserve:",
     input.factsToPreserve || "(not provided)",
+  ].join("\n");
+}
+
+export type RepairPromptInput = {
+  input: RewriteRequestInput;
+  plan: RewritePlan;
+  rejectedText: string;
+  draftPercent: number | null;
+  candidatePercent: number | null;
+  quality: SignalQualityResult;
+};
+
+function scoreText(value: number | null) {
+  return value === null ? "unavailable" : `${value}%`;
+}
+
+export function buildRepairUserPrompt({
+  input,
+  plan,
+  rejectedText,
+  draftPercent,
+  candidatePercent,
+  quality,
+}: RepairPromptInput) {
+  return [
+    "Repair a rejected rewrite. This is not a general polish pass.",
+    "",
+    `Scenario: ${input.scenario}`,
+    `Tone preset: ${input.tonePreset}`,
+    `Draft score: ${scoreText(draftPercent)}`,
+    `Rejected candidate score: ${scoreText(candidatePercent)}`,
+    `Failure reason: ${quality.reason}`,
+    "",
+    "Diagnosis tags:",
+    plan.tags.length ? plan.tags.join(", ") : "(none)",
+    "",
+    "Scenario guardrails:",
+    plan.guardrails.map((item) => `- ${item}`).join("\n"),
+    "",
+    "Required facts to preserve:",
+    plan.preserve.length ? plan.preserve.join("; ") : "(none extracted)",
+    "",
+    "Repair instructions:",
+    "- Rewrite from the original draft and context, not from the rejected text alone.",
+    "- Remove the pattern that caused the rejected score.",
+    "- Keep concrete names, dates, amounts, counts, billing details, user counts, and next steps.",
+    "- Do not add promises, account changes, refunds, timelines, names, or policy claims.",
+    "- Use plainer, less symmetrical wording with natural paragraph breaks.",
+    "- Do not make the answer too short to be useful.",
+    ...(input.scenario === "Customer support"
+      ? [
+          "- Remove these macro-like patterns: I see how this can be confusing; From what you described; It seems; To help clarify; For next steps; please check whether.",
+          "- For customer support, keep the billing explanation, the concrete reason, and preserve the requested next step.",
+          "- Prefer a staff-written note over a polished support-template reply.",
+        ]
+      : []),
+    "",
+    "Message to reply to:",
+    input.messageToReplyTo || "(not provided)",
+    "",
+    "Original draft:",
+    input.roughDraftReply,
+    "",
+    "Rejected candidate:",
+    rejectedText,
   ].join("\n");
 }
 
@@ -525,6 +591,48 @@ export async function generateRewriteCandidate(
     parsed = JSON.parse(rawContent);
   } catch {
     throw new Error("OpenAI returned invalid JSON.");
+  }
+
+  return normalizeRewriteOutput(parsed);
+}
+
+export async function generateRepairCandidate(
+  repairInput: RepairPromptInput,
+): Promise<RewriteCandidate> {
+  const model = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");
+
+  const completion = await createChatCompletion({
+    model,
+    temperature: 0.62,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are ReplyInMyVoice repairing a rejected rewrite.\n" +
+          "Return a better send-ready rewrite that preserves facts and avoids polished template wording.\n" +
+          "Do not invent details, names, promises, account actions, refunds, or timelines.\n" +
+          "Do not add a sign-off unless the original draft had one.\n" +
+          "Use natural, practical wording and varied sentence length.\n" +
+          "Return strict JSON only with keys: rewrittenText, changeSummary, riskNotes.",
+      },
+      {
+        role: "user",
+        content: buildRepairUserPrompt(repairInput),
+      },
+    ],
+  });
+
+  const rawContent = completion.choices?.at(0)?.message?.content;
+  if (!rawContent) {
+    throw new Error("OpenAI returned no repair content.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch {
+    throw new Error("OpenAI returned invalid repair JSON.");
   }
 
   return normalizeRewriteOutput(parsed);
