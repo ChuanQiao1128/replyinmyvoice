@@ -6,6 +6,80 @@ Project name: **Reply In My Voice**
 
 Domain: `replyinmyvoice.com`
 
+## Codex And Claude Code Skill Policy
+
+This project uses real, reusable agent skills stored in:
+
+```text
+/Users/qc/Desktop/CloudFlare/agent-skills
+/Users/qc/.codex/skills
+/Users/qc/.claude/skills
+```
+
+Use the matching skill before coding, planning, or reviewing when a task matches one of these triggers. If the current agent session has not indexed a newly created skill yet, read the project source skill at `agent-skills/<skill-name>/SKILL.md` and follow it as the fallback.
+
+### Required Skill Triggers
+
+Use `system-spec-synthesis` when:
+
+```text
+The task asks for a system spec, architecture summary, implementation-ready requirements, API/data/job contract design, Azure backend planning, or converting loose product notes into an executable engineering plan.
+```
+
+Use `resilience-test-generation` when:
+
+```text
+The task changes or tests retries, timeouts, rate limits, provider failures, Stripe webhook replay, Azure Service Bus redelivery, OpenAI/Sapling failures, quota races, idempotency, or recovery behavior.
+```
+
+Use `state-machine-modeling` when:
+
+```text
+The task changes or reviews subscription states, free/paid quota states, usage reservations, rewrite attempts, queue jobs, webhook lifecycle, deployment lifecycle, or any multi-step workflow with statuses and transitions.
+```
+
+Use `data-module-review` when:
+
+```text
+The task changes or reviews Prisma schema, Entity Framework models, migrations, data access services, usage counters, idempotency tables, transactions, indexes, or persistence invariants.
+```
+
+Use `claude-heavy-planning-handoff` when:
+
+```text
+The task is broad enough to span more than three modules or services, requires architecture planning before implementation, changes Azure/backend/auth/billing/queue architecture, or should be routed from Codex to Claude Code for heavy planning.
+```
+
+### Interview Demo Prompts
+
+Use these exact prompts to demonstrate the skills without touching production systems:
+
+```text
+Use system-spec-synthesis to turn the current Azure backend migration notes into an implementation-ready system spec.
+Use resilience-test-generation to design tests for the rewrite request flow when OpenAI fails after quota reservation.
+Use state-machine-modeling to model subscription status, free quota, paid quota, and rewrite reservation lifecycle.
+Use data-module-review to review the quota, usage reservation, and Stripe event persistence model in this repo.
+Use claude-heavy-planning-handoff to prepare a Claude Code planning brief for migrating the rewrite backend to Azure App Service, Azure Service Bus, and a .NET worker.
+```
+
+## Current Long-Run Target
+
+The next autonomous C#/.NET Azure backend run must use this target document as the source of truth:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/dotnet-azure-full-run-target.md
+```
+
+Before starting that long run, also read the latest blocker preflight:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/dotnet-azure-blocker-preflight.md
+```
+
+When the user explicitly starts the long autonomous run, do not treat the work as a staged Phase 1 / Phase 2 effort. The AutoRun target is the full end-to-end backend goal in that document: ASP.NET Core API, EF Core/Azure SQL persistence, quota reservation/idempotency correctness, Stripe webhook idempotency and entitlement sync, Azure Service Bus queued rewrite processing, worker deployment, App Service deployment, Application Insights, CI/CD preparation, tests, migrations, and remote smoke verification.
+
+Continue autonomously until the target is complete or a stop condition in `docs/dotnet-azure-full-run-target.md` is reached. Ordinary build errors, test failures, package issues, Azure CLI syntax issues, migration errors, App Service deployment errors, Service Bus setup errors, and worker packaging problems are not stop conditions; investigate, fix, and continue without asking the user.
+
 Core positioning:
 
 > Replies that still sound like you.
@@ -1960,3 +2034,5 @@ Production request cap for the next implementation:
 - up to 5 rewrite writing-signal calls
 
 If the bounded production loop cannot produce a passing candidate, return the best complete or guaranteed facts-first fallback with a review note. Do not leave the user with a blank result.
+
+## Imported Claude Cowork project instructions

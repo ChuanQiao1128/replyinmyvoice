@@ -1,0 +1,4 @@
+interface:
+  display_name: "State Machine Modeling"
+  short_description: "Model lifecycles and transitions."
+  default_prompt: "Use state-machine-modeling to model this lifecycle as states, transitions, invariants, and tests."

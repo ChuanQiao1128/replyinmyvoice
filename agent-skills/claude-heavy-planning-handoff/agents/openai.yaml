@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claude Heavy Planning Handoff"
+  short_description: "Prepare large tasks for Claude Code."
+  default_prompt: "Use claude-heavy-planning-handoff to prepare a Claude Code planning brief for this large engineering task."

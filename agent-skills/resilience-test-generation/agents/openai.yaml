@@ -1,0 +1,4 @@
+interface:
+  display_name: "Resilience Test Generation"
+  short_description: "Generate failure and recovery tests."
+  default_prompt: "Use resilience-test-generation to design and implement resilience tests for this behavior."

@@ -1,0 +1,82 @@
+name: dotnet-azure
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore backend-dotnet/ReplyInMyVoice.sln
+      - name: Build
+        run: dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --no-build
+      - name: Publish API
+        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj --configuration Release --output backend-dotnet/artifacts/api
+      - name: Publish Worker
+        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Worker/ReplyInMyVoice.Worker.csproj --configuration Release --output backend-dotnet/artifacts/worker
+
+  deploy:
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Build deployment package
+        run: |
+          dotnet publish backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj --configuration Release --output backend-dotnet/artifacts/api
+          dotnet publish backend-dotnet/src/ReplyInMyVoice.Worker/ReplyInMyVoice.Worker.csproj --configuration Release --output backend-dotnet/artifacts/worker
+          mkdir -p backend-dotnet/artifacts/api/App_Data/jobs/continuous/RewriteWorker
+          cp -R backend-dotnet/artifacts/worker/. backend-dotnet/artifacts/api/App_Data/jobs/continuous/RewriteWorker/
+          printf "dotnet ReplyInMyVoice.Worker.dll\n" > backend-dotnet/artifacts/api/App_Data/jobs/continuous/RewriteWorker/run.cmd
+          cd backend-dotnet/artifacts/api
+          zip -qr ../replyinmyvoice-api-webjob.zip .
+      - name: Apply database migrations
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_SQL_SERVER_NAME: ${{ vars.AZURE_SQL_SERVER_NAME }}
+          AZURE_SQL_DATABASE_NAME: ${{ vars.AZURE_SQL_DATABASE_NAME }}
+          AZURE_KEY_VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
+        run: |
+          dotnet tool install --global dotnet-ef --version 8.*
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          SQL_ADMIN_USER="$(az keyvault secret show --vault-name "$AZURE_KEY_VAULT_NAME" --name "sql-admin-user" --query value -o tsv)"
+          SQL_ADMIN_PASSWORD="$(az keyvault secret show --vault-name "$AZURE_KEY_VAULT_NAME" --name "sql-admin-password" --query value -o tsv)"
+          SQL_CONNECTION="Server=tcp:${AZURE_SQL_SERVER_NAME}.database.windows.net,1433;Initial Catalog=${AZURE_SQL_DATABASE_NAME};Persist Security Info=False;User ID=${SQL_ADMIN_USER};Password=${SQL_ADMIN_PASSWORD};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+          ConnectionStrings__DefaultConnection="$SQL_CONNECTION" dotnet ef database update \
+            --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
+            --startup-project backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj \
+            --context AppDbContext
+      - name: Deploy to Azure App Service
+        run: |
+          az webapp deploy \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_APP_SERVICE_NAME }}" \
+            --src-path backend-dotnet/artifacts/replyinmyvoice-api-webjob.zip \
+            --type zip \
+            --async false
+      - name: Smoke test
+        run: curl --fail "https://${{ vars.AZURE_APP_SERVICE_NAME }}.azurewebsites.net/health"

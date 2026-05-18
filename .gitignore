@@ -21,6 +21,9 @@ build/
 coverage/
 test-results/
 tsconfig.tsbuildinfo
+**/bin/
+**/obj/
+backend-dotnet/artifacts/
 
 # Logs
 *.log

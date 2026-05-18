@@ -1,0 +1,4 @@
+interface:
+  display_name: "System Spec Synthesis"
+  short_description: "Create implementation-ready specs."
+  default_prompt: "Use system-spec-synthesis to turn this requirement and repository context into an implementation-ready system spec."

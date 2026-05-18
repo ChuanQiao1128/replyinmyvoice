@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-ReplyInMyVoice.Worker-d467ee3c-b422-41a5-944c-979a1b1c85b6</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ReplyInMyVoice.Domain\ReplyInMyVoice.Domain.csproj" />
+    <ProjectReference Include="..\ReplyInMyVoice.Infrastructure\ReplyInMyVoice.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

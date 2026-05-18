@@ -156,6 +156,40 @@ EVAL_MAX_WALLCLOCK_MINUTES=60
 - `LAUNCH_CONFIRMED=false` is intentionally set for safe autonomous development. The code agent must not change `replyinmyvoice.com` DNS records or the existing Pages custom domain while it is false.
 - Evaluation limits are intentionally set to avoid unbounded OpenAI/Sapling optimization loops.
 
+## Future .NET / Azure Phase Inputs
+
+The next-phase planning document is:
+
+- `/Users/qc/Desktop/CloudFlare/docs/dotnet-azure-next-phase.md`
+
+Do not paste Azure, Stripe, OpenAI, Sapling, Clerk, or database secret values into this markdown file. Record only variable names and setup notes here.
+
+When the .NET/Azure phase starts, ask the user for these non-secret decisions first:
+
+```env
+AZURE_SUBSCRIPTION_ID=subscription_id_goes_in_local_env_only
+AZURE_TENANT_ID=tenant_id_goes_in_local_env_only
+AZURE_LOCATION=preferred_azure_region
+AZURE_RESOURCE_GROUP=resource_group_name
+AZURE_BUDGET_LIMIT=monthly_budget_confirmation
+AZURE_ALLOW_PAID_RESOURCES=false
+```
+
+If deployment automation is approved, collect or configure these through Azure CLI login, GitHub OIDC, Azure Key Vault, or GitHub Secrets rather than storing plaintext secrets in docs:
+
+```env
+AZURE_APP_SERVICE_NAME=app_service_name
+AZURE_APP_SERVICE_PLAN_NAME=app_service_plan_name
+AZURE_SQL_SERVER_NAME=sql_server_name
+AZURE_SQL_DATABASE_NAME=sql_database_name
+AZURE_KEY_VAULT_NAME=key_vault_name
+AZURE_APPLICATION_INSIGHTS_NAME=application_insights_name
+AZURE_SERVICE_BUS_NAMESPACE=optional_service_bus_namespace
+AZURE_SERVICE_BUS_QUEUE=optional_service_bus_queue
+```
+
+The existing Neon database should remain untouched until the .NET/Azure backend has a verified migration path. For a resume-aligned Azure backend, prefer Azure SQL Database plus EF Core for the new implementation.
+
 ## How To Prepare Each Key
 
 Fill values in `/Users/qc/Desktop/CloudFlare/.env.local`. Do not paste secret values into this markdown file or into chat.

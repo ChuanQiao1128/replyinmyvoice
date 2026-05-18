@@ -1,0 +1,4 @@
+interface:
+  display_name: "Data Module Review"
+  short_description: "Review schema and data access risks."
+  default_prompt: "Use data-module-review to review this data model, migration, or data access change for correctness risks."
