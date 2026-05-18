@@ -1,5 +1,15 @@
-import { generateRewriteCandidate, getRewriteStrategies } from "./openai";
+import {
+  generateRepairCandidate,
+  generateRewriteCandidate,
+  getRewriteStrategies,
+} from "./openai";
 import { createRewritePlan, type DiagnosisTag } from "./rewrite-diagnosis";
+import {
+  evaluateSignalQuality,
+  shouldRejectCandidate,
+  shouldRepairCandidate,
+  type SignalQualityResult,
+} from "./rewrite-quality-gate";
 import type { RewriteRequestInput } from "./validation";
 import {
   formatNaturalness,
@@ -19,21 +29,34 @@ export type RewriteResponsePayload = {
   };
   optimization: {
     internalStrategiesTried: number;
+    repairCandidatesTried: number;
+    rejectedCandidates: number;
     userUsageCharged: 1;
     diagnosisTags: DiagnosisTag[];
     rewritePlanSummary: string;
   };
 };
 
-function shouldTryAnother(
-  draftPercent: number | null,
-  rewritePercent: number | null,
-) {
-  if (draftPercent === null || rewritePercent === null) {
-    return false;
-  }
+export class RewriteQualityError extends Error {
+  naturalness: RewriteResponsePayload["naturalness"];
+  rejectedCandidates: number;
+  repairCandidatesTried: number;
 
-  return rewritePercent > 50 || rewritePercent > draftPercent - 30;
+  constructor({
+    naturalness,
+    rejectedCandidates,
+    repairCandidatesTried,
+  }: {
+    naturalness: RewriteResponsePayload["naturalness"];
+    rejectedCandidates: number;
+    repairCandidatesTried: number;
+  }) {
+    super("Could not produce a rewrite that improved the writing signal.");
+    this.name = "RewriteQualityError";
+    this.naturalness = naturalness;
+    this.rejectedCandidates = rejectedCandidates;
+    this.repairCandidatesTried = repairCandidatesTried;
+  }
 }
 
 function isBetterCandidate(
@@ -106,6 +129,51 @@ function repairMissingCriticalFacts<
   };
 }
 
+type CandidateRecord = {
+  candidate: Awaited<ReturnType<typeof generateRewriteCandidate>>;
+  signal: Awaited<ReturnType<typeof measureWritingSignal>>;
+  quality: SignalQualityResult;
+  completeEnough: boolean;
+};
+
+function isPassingCandidate(record: CandidateRecord) {
+  return record.completeEnough && !shouldRejectCandidate(record.quality);
+}
+
+function pickBetterRecord(current: CandidateRecord | null, next: CandidateRecord) {
+  if (!isPassingCandidate(next)) {
+    return current;
+  }
+
+  if (!current) {
+    return next;
+  }
+
+  return isBetterCandidate(
+    current.signal.aiLikePercent,
+    next.signal.aiLikePercent,
+  )
+    ? next
+    : current;
+}
+
+function createCandidateRecord(
+  input: RewriteRequestInput,
+  candidate: Awaited<ReturnType<typeof generateRewriteCandidate>>,
+  signal: Awaited<ReturnType<typeof measureWritingSignal>>,
+  draftPercent: number | null,
+): CandidateRecord {
+  return {
+    candidate,
+    signal,
+    quality: evaluateSignalQuality({
+      draftPercent,
+      rewritePercent: signal.aiLikePercent,
+    }),
+    completeEnough: isCandidateCompleteEnough(input, candidate.rewrittenText),
+  };
+}
+
 export function isCandidateCompleteEnough(
   input: RewriteRequestInput,
   rewrittenText: string,
@@ -133,11 +201,12 @@ export async function rewriteWithOptimization(
   const rewritePlan = createRewritePlan(input);
   const draftSignal = await measureWritingSignal(input.roughDraftReply);
   const strategies = getRewriteStrategies().slice(0, 2);
-  let best: Awaited<ReturnType<typeof generateRewriteCandidate>> | null = null;
-  let bestSignal: Awaited<ReturnType<typeof measureWritingSignal>> | null = null;
-  let backup: Awaited<ReturnType<typeof generateRewriteCandidate>> | null = null;
-  let backupSignal: Awaited<ReturnType<typeof measureWritingSignal>> | null = null;
+  let best: CandidateRecord | null = null;
+  let unavailableBackup: CandidateRecord | null = null;
+  let bestRejected: CandidateRecord | null = null;
   let tried = 0;
+  let repairTried = 0;
+  let rejectedCandidates = 0;
 
   for (const strategy of strategies) {
     tried += 1;
@@ -146,55 +215,115 @@ export async function rewriteWithOptimization(
       await generateRewriteCandidate(input, strategy, rewritePlan),
     );
     const candidateSignal = await measureWritingSignal(candidate.rewrittenText);
-    const completeEnough = isCandidateCompleteEnough(input, candidate.rewrittenText);
+    const record = createCandidateRecord(
+      input,
+      candidate,
+      candidateSignal,
+      draftSignal.aiLikePercent,
+    );
 
-    if (
-      !backup ||
-      isBetterCandidate(backupSignal?.aiLikePercent ?? null, candidateSignal.aiLikePercent)
-    ) {
-      backup = candidate;
-      backupSignal = candidateSignal;
+    if (record.quality.status === "signal_unavailable" && record.completeEnough) {
+      unavailableBackup = unavailableBackup ?? record;
     }
 
-    if (
-      completeEnough &&
-      (!best ||
-      isBetterCandidate(bestSignal?.aiLikePercent ?? null, candidateSignal.aiLikePercent)
-      )
-    ) {
-      best = candidate;
-      bestSignal = candidateSignal;
+    if (shouldRejectCandidate(record.quality) || !record.completeEnough) {
+      rejectedCandidates += 1;
+      bestRejected =
+        !bestRejected ||
+        isBetterCandidate(
+          bestRejected.signal.aiLikePercent,
+          record.signal.aiLikePercent,
+        )
+          ? record
+          : bestRejected;
     }
 
-    if (
-      completeEnough &&
-      !shouldTryAnother(draftSignal.aiLikePercent, candidateSignal.aiLikePercent)
-    ) {
+    best = pickBetterRecord(best, record);
+
+    if (isPassingCandidate(record)) {
       break;
     }
+
+    if (shouldRepairCandidate(record.quality) && repairTried < 2) {
+      repairTried += 1;
+      const repaired = repairMissingCriticalFacts(
+        input,
+        await generateRepairCandidate({
+          input,
+          plan: rewritePlan,
+          rejectedText: record.candidate.rewrittenText,
+          draftPercent: draftSignal.aiLikePercent,
+          candidatePercent: record.signal.aiLikePercent,
+          quality: record.quality,
+        }),
+      );
+      const repairedSignal = await measureWritingSignal(repaired.rewrittenText);
+      const repairedRecord = createCandidateRecord(
+        input,
+        repaired,
+        repairedSignal,
+        draftSignal.aiLikePercent,
+      );
+
+      if (
+        repairedRecord.quality.status === "signal_unavailable" &&
+        repairedRecord.completeEnough
+      ) {
+        unavailableBackup = unavailableBackup ?? repairedRecord;
+      }
+
+      if (
+        shouldRejectCandidate(repairedRecord.quality) ||
+        !repairedRecord.completeEnough
+      ) {
+        rejectedCandidates += 1;
+        bestRejected =
+          !bestRejected ||
+          isBetterCandidate(
+            bestRejected.signal.aiLikePercent,
+            repairedRecord.signal.aiLikePercent,
+          )
+            ? repairedRecord
+            : bestRejected;
+      }
+
+      best = pickBetterRecord(best, repairedRecord);
+
+      if (isPassingCandidate(repairedRecord)) {
+        break;
+      }
+    }
+  }
+
+  if (!best && unavailableBackup) {
+    best = unavailableBackup;
   }
 
   if (!best) {
-    best = backup;
-    bestSignal = backupSignal;
-  }
-
-  if (!best) {
-    throw new Error("No rewrite candidate was produced.");
+    throw new RewriteQualityError({
+      naturalness: formatNaturalness(
+        draftSignal.aiLikePercent,
+        bestRejected?.signal.aiLikePercent ?? null,
+      ),
+      rejectedCandidates,
+      repairCandidatesTried: repairTried,
+    });
   }
 
   const naturalness = formatNaturalness(
     draftSignal.aiLikePercent,
-    bestSignal?.aiLikePercent ?? null,
+    best.signal.aiLikePercent,
   );
 
   return {
-    rewrittenText: best.rewrittenText,
-    changeSummary: best.changeSummary,
-    riskNotes: best.riskNotes,
+    rewrittenText: best.candidate.rewrittenText,
+    changeSummary: best.candidate.changeSummary,
+    riskNotes: best.candidate.riskNotes,
     naturalness,
     optimization: {
       internalStrategiesTried: tried,
+      repairCandidatesTried: repairTried,
+      rejectedCandidates,
       userUsageCharged: 1,
       diagnosisTags: rewritePlan.tags,
       rewritePlanSummary: rewritePlan.summary,
