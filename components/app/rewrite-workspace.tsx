@@ -48,6 +48,13 @@ type RewriteResponse = {
     userUsageCharged: 1;
     diagnosisTags?: string[];
     rewritePlanSummary?: string;
+    candidateSignals?: Array<{
+      stage: "initial" | "repair";
+      aiLikePercent: number | null;
+      status: string;
+      rejected: boolean;
+      reason: string;
+    }>;
   };
 };
 

@@ -34,6 +34,13 @@ export type RewriteResponsePayload = {
     userUsageCharged: 1;
     diagnosisTags: DiagnosisTag[];
     rewritePlanSummary: string;
+    candidateSignals: Array<{
+      stage: "initial" | "repair";
+      aiLikePercent: number | null;
+      status: SignalQualityResult["status"];
+      rejected: boolean;
+      reason: string;
+    }>;
   };
 };
 
@@ -207,6 +214,7 @@ export async function rewriteWithOptimization(
   let tried = 0;
   let repairTried = 0;
   let rejectedCandidates = 0;
+  const candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"] = [];
 
   for (const strategy of strategies) {
     tried += 1;
@@ -221,6 +229,15 @@ export async function rewriteWithOptimization(
       candidateSignal,
       draftSignal.aiLikePercent,
     );
+    candidateSignals.push({
+      stage: "initial",
+      aiLikePercent: record.signal.aiLikePercent,
+      status: record.quality.status,
+      rejected: shouldRejectCandidate(record.quality) || !record.completeEnough,
+      reason: record.completeEnough
+        ? record.quality.reason
+        : "Rewrite dropped required details or became too short.",
+    });
 
     if (record.quality.status === "signal_unavailable" && record.completeEnough) {
       unavailableBackup = unavailableBackup ?? record;
@@ -264,6 +281,17 @@ export async function rewriteWithOptimization(
         repairedSignal,
         draftSignal.aiLikePercent,
       );
+      candidateSignals.push({
+        stage: "repair",
+        aiLikePercent: repairedRecord.signal.aiLikePercent,
+        status: repairedRecord.quality.status,
+        rejected:
+          shouldRejectCandidate(repairedRecord.quality) ||
+          !repairedRecord.completeEnough,
+        reason: repairedRecord.completeEnough
+          ? repairedRecord.quality.reason
+          : "Repair dropped required details or became too short.",
+      });
 
       if (
         repairedRecord.quality.status === "signal_unavailable" &&
@@ -307,6 +335,7 @@ export async function rewriteWithOptimization(
       ),
       rejectedCandidates,
       repairCandidatesTried: repairTried,
+      candidateSignals,
     });
   }
 
@@ -327,6 +356,7 @@ export async function rewriteWithOptimization(
       userUsageCharged: 1,
       diagnosisTags: rewritePlan.tags,
       rewritePlanSummary: rewritePlan.summary,
+      candidateSignals,
     },
   };
 }
