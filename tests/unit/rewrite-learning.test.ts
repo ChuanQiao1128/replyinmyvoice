@@ -32,6 +32,7 @@ const response: RewriteResponsePayload = {
     repairCandidatesTried: 1,
     rejectedCandidates: 1,
     userUsageCharged: 1,
+    selectionStatus: "passed",
     diagnosisTags: ["support_template_voice", "corporate_polish"],
     rewritePlanSummary: "Keep billing facts and remove macro phrasing.",
     candidateSignals: [

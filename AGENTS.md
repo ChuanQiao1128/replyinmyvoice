@@ -203,8 +203,8 @@ Potential implementation:
 Recommended cap:
 
 ```text
-Start with a maximum of 2 internal rewrite strategies per user request in MVP.
-The production MVP cap is 2 internal strategies per user request, charged as 1 user usage attempt.
+Start with a bounded set of internal rewrite strategies per user request in MVP.
+The production MVP cap is up to 3 initial strategies plus up to 2 targeted repairs per user request, charged as 1 user usage attempt.
 Development/evaluation scripts may try more strategies per sample while searching for better prompts and scoring.
 Do not create an unbounded loop chasing a third-party score.
 ```
@@ -251,13 +251,16 @@ If the target is not met, keep running alternative prompts, strategy ordering, a
 Production rewrite strategy selected on 2026-05-18:
 
 ```text
-Use a bounded two-pass workflow in /api/rewrite:
+Use a bounded measured workflow in /api/rewrite:
 1. OpenAI plain email-thread note using the user's supplied context.
-2. Deterministic fallback rewrite pass when the first pass remains above 50% AI-like signal or improves by less than 30 points.
+2. Deterministic thread/facts-first rewrite passes when the first pass remains above 50% AI-like signal or improves by less than 30 points.
+3. Targeted repair when a candidate is worse, still too high, too short, or missing critical facts.
+4. Best-available safety when strict gates cannot pass but a complete candidate exists.
+5. Guaranteed facts-first fallback when all measured candidates are incomplete.
 
 The fallback rewrite pass must use only request-provided facts and must not contain sample-specific hardcoded facts such as dates, times, people, product quantities, invoice details, or policy outcomes.
 
-The fallback is intentionally implemented as an internal rewrite pass/subroutine, not a separate external agent, so cost and latency remain bounded. Reconsider a dedicated rewrite subagent only if future evaluation shows the two-pass workflow cannot meet the target on expanded samples.
+The fallback is intentionally implemented as an internal rewrite pass/subroutine, not a separate external agent, so cost and latency remain bounded. Reconsider a dedicated rewrite subagent only if future evaluation shows the bounded workflow cannot meet the target on expanded samples.
 
 Current complete measured result:
 - samples evaluated: 26
@@ -267,6 +270,7 @@ Current complete measured result:
 - rewrites below 50% AI-like signal: 20/26
 - final selected rewrites worse than draft: 0/26
 - Priya billing/proration regression: passed at 89% -> 0%
+- Priya live 100% -> 100% regression: fixed at 100% -> 0% by preserving `finance manager` in facts-first fallback
 - target met: yes
 ```
 
@@ -1344,7 +1348,7 @@ EVAL_MAX_WALLCLOCK_MINUTES=60
 
 The default long-run guardrail is stricter than the env ceiling: run at most 3 full prompt/strategy evaluation rounds before continuing.
 
-Production cap remains 2 internal rewrite strategies per user request.
+Production cap remains bounded: up to 3 initial strategies plus up to 2 targeted repairs per user request.
 
 If the target reduction is not met within the evaluation budget or wall-clock limit, keep the best measured strategy, write measured results and tradeoffs to `docs/optimization-notes.md`, and continue building the product.
 
@@ -1847,9 +1851,9 @@ The core product value is not a generic rewrite. It is:
 3. produce a candidate rewrite,
 4. measure the before/after writing signal,
 5. repair the specific failure patterns,
-6. return only a usable result that improves the signal and preserves facts.
+6. return the best usable result that improves the signal and preserves facts whenever possible.
 
-If the system cannot produce an improved candidate within the allowed internal attempts, it should fail safely instead of showing a bad result as success.
+If the system cannot produce an improved candidate within the allowed internal attempts, it must still avoid an empty rewrite panel when a complete candidate exists. Return the best complete candidate with a review note, or generate a guaranteed facts-first fallback from the original request fields.
 
 ### Hard Success Criteria For Production Requests
 
@@ -1862,9 +1866,10 @@ Additionally:
 
 - If `rewriteSignal >= draftSignal`, reject that candidate.
 - If `rewriteSignal > 50` and the reduction is less than 30 points, reject or repair that candidate.
-- If all internal candidates fail these gates, do not show the result as a successful rewrite.
+- If all internal candidates fail these gates but a complete candidate exists, return it as best available with a review note instead of showing an empty failure state.
+- If all measured candidates are incomplete, generate a guaranteed facts-first fallback from the original request fields.
 - Do not label the Naturalness Check as improved when the rewrite score is higher than the draft score.
-- Do not charge user usage for a request that fails because all candidates were rejected by quality gates.
+- Do not charge user usage for provider/server errors. A best-available or guaranteed fallback response is still a successful user-visible rewrite.
 
 If Sapling is unavailable or times out:
 
@@ -1898,7 +1903,9 @@ The next implementation must upgrade the rewrite workflow from a simple retry to
    - concrete failure reason
    - required facts to preserve
 6. Measure repaired candidate.
-7. Select the best candidate only if it passes quality gates and preserves facts.
+7. Select the best candidate that passes quality gates and preserves facts.
+8. If no strict passing candidate exists, return the best complete candidate with a review note.
+9. If no measured candidate is complete, generate a guaranteed facts-first fallback and return it with a review note.
 
 Retries must be strategy changes, not blind repeats. For example, if a customer-support reply remains high, the repair should explicitly remove macro-like phrasing such as `I see how this can be confusing`, `From what you described`, `It seems`, `To help clarify`, and `For next steps`, while preserving the needed billing explanation and next step.
 
@@ -1948,8 +1955,8 @@ Development evaluation may spend additional OpenAI and Sapling calls to find a r
 Production request cap for the next implementation:
 
 - 1 draft writing-signal call
-- up to 2 initial rewrite candidates
+- up to 3 initial rewrite candidates
 - up to 2 targeted repair candidates
-- up to 4 rewrite writing-signal calls
+- up to 5 rewrite writing-signal calls
 
-If the bounded production loop cannot produce a passing candidate, fail safely and do not charge usage.
+If the bounded production loop cannot produce a passing candidate, return the best complete or guaranteed facts-first fallback with a review note. Do not leave the user with a blank result.

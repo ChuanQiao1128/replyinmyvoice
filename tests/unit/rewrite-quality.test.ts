@@ -5,6 +5,7 @@ import type { RewriteRequestInput } from "../../lib/validation";
 const mocks = vi.hoisted(() => ({
   generateRewriteCandidate: vi.fn(),
   generateRepairCandidate: vi.fn(),
+  generateGuaranteedRewriteCandidate: vi.fn(),
   measureWritingSignal: vi.fn(),
 }));
 
@@ -12,9 +13,11 @@ vi.mock("../../lib/openai", () => ({
   getRewriteStrategies: () => [
     { id: "plain_note", temperature: 0.68, instruction: "plain" },
     { id: "thread_reply", temperature: 0.45, instruction: "thread" },
+    { id: "facts_first", temperature: 0, instruction: "facts first" },
   ],
   generateRewriteCandidate: mocks.generateRewriteCandidate,
   generateRepairCandidate: mocks.generateRepairCandidate,
+  generateGuaranteedRewriteCandidate: mocks.generateGuaranteedRewriteCandidate,
 }));
 
 vi.mock("../../lib/writing-signal", () => ({
@@ -40,7 +43,6 @@ vi.mock("../../lib/writing-signal", () => ({
 
 import {
   isCandidateCompleteEnough,
-  RewriteQualityError,
   rewriteWithOptimization,
 } from "../../lib/rewrite";
 
@@ -72,6 +74,7 @@ const longPriyaInput = inputWithDraft(
 beforeEach(() => {
   mocks.generateRewriteCandidate.mockReset();
   mocks.generateRepairCandidate.mockReset();
+  mocks.generateGuaranteedRewriteCandidate.mockReset();
   mocks.measureWritingSignal.mockReset();
 });
 
@@ -154,7 +157,7 @@ describe("rewriteWithOptimization quality gate", () => {
     expect(result.rewrittenText).toContain("NZD $126");
   });
 
-  it("throws a quality error instead of returning a worse candidate", async () => {
+  it("returns the best complete candidate instead of an empty quality failure", async () => {
     mocks.generateRewriteCandidate
       .mockResolvedValueOnce({
         rewrittenText:
@@ -167,6 +170,12 @@ describe("rewriteWithOptimization quality gate", () => {
           "Hi Priya,\n\nI see how this can be confusing. It seems the billing issue may be related to temporary users.",
         changeSummary: ["Second attempt."],
         riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText:
+          "Hi Priya,\n\nThe jump looks tied to the three temporary contractors being counted during May, not a base plan change.\n\nThat explains the 15 approved seats showing as 18 active seats. The NZD $126 increase looks like prorated seat usage for the days those accounts had access.\n\nIf you send the names or email addresses, we can help confirm whether they are still active.",
+        changeSummary: ["Facts-first fallback."],
+        riskNotes: ["Signal still needs review."],
       });
     mocks.generateRepairCandidate
       .mockResolvedValueOnce({
@@ -186,11 +195,91 @@ describe("rewriteWithOptimization quality gate", () => {
       .mockResolvedValueOnce({ aiLikePercent: 99 })
       .mockResolvedValueOnce({ aiLikePercent: 98 })
       .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 97 })
+      .mockResolvedValueOnce({ aiLikePercent: 95 });
+
+    const result = await rewriteWithOptimization(longPriyaInput);
+
+    expect(mocks.generateRepairCandidate).toHaveBeenCalledTimes(2);
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.naturalness.rewriteAiLikePercent).toBe(95);
+    expect(result.optimization.selectionStatus).toBe("best_available");
+    expect(result.riskNotes).toContain(
+      "The writing signal is still high; review before sending.",
+    );
+  });
+
+  it("continues to deterministic strategies when the first model attempt fails", async () => {
+    mocks.generateRewriteCandidate
+      .mockRejectedValueOnce(new Error("provider timeout"))
+      .mockResolvedValueOnce({
+        rewrittenText:
+          "Hi Priya,\n\nThe jump looks tied to the three temporary contractors being counted during May, not a base plan change.\n\nThat explains the 15 regular seats showing as 18 active seats. The NZD $126 increase looks like prorated seat usage for the days those accounts had access.\n\nIf you send the names or email addresses, we can help confirm whether they are still active.",
+        changeSummary: ["Used the deterministic thread fallback."],
+        riskNotes: ["Check the billing details before sending."],
+      });
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 24 });
+
+    const result = await rewriteWithOptimization(longPriyaInput);
+
+    expect(mocks.generateRewriteCandidate).toHaveBeenCalledTimes(2);
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.naturalness.rewriteAiLikePercent).toBe(24);
+    expect(result.optimization.candidateSignals.at(0)?.reason).toBe(
+      "Candidate generation failed before signal check.",
+    );
+  });
+
+  it("returns a guaranteed fallback when no measured candidate is complete enough", async () => {
+    mocks.generateRewriteCandidate
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi Priya, the invoice changed.",
+        changeSummary: ["Too short."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi Priya, please check the accounts.",
+        changeSummary: ["Too short."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi Priya, thanks.",
+        changeSummary: ["Too short."],
+        riskNotes: ["Review."],
+      });
+    mocks.generateRepairCandidate
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi Priya, the seat count changed.",
+        changeSummary: ["Still too short."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi Priya, the invoice needs checking.",
+        changeSummary: ["Still too short."],
+        riskNotes: ["Review."],
+      });
+    mocks.generateGuaranteedRewriteCandidate.mockResolvedValueOnce({
+      rewrittenText:
+        "Hi Priya,\n\nThe jump looks tied to the three temporary contractors being counted during May, not a base plan change.\n\nThat explains the 15 regular seats showing as 18 active seats. The NZD $126 increase looks like prorated seat usage for the days those accounts had access.\n\nIf you send the names or email addresses, we can help confirm whether they are still active.",
+      changeSummary: ["Used the guaranteed facts-first fallback."],
+      riskNotes: ["Review the facts before sending."],
+    });
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 99 })
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 99 })
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
       .mockResolvedValueOnce({ aiLikePercent: 97 });
 
-    await expect(rewriteWithOptimization(longPriyaInput)).rejects.toBeInstanceOf(
-      RewriteQualityError,
-    );
-    expect(mocks.generateRepairCandidate).toHaveBeenCalledTimes(2);
+    const result = await rewriteWithOptimization(longPriyaInput);
+
+    expect(mocks.generateGuaranteedRewriteCandidate).toHaveBeenCalledTimes(1);
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.optimization.selectionStatus).toBe("best_available");
+    expect(result.optimization.candidateSignals.at(-1)?.stage).toBe("fallback");
   });
 });

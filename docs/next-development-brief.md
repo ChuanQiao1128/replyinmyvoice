@@ -1127,8 +1127,8 @@ Do not push/deploy this rewrite-engine update unless:
 Development can use additional OpenAI and Sapling calls to find the strategy. This is acceptable during R&D. Production requests must remain bounded:
 
 - 1 draft writing-signal call
-- up to 2 initial rewrite candidates
+- up to 3 initial rewrite candidates
 - up to 2 targeted repair candidates
-- up to 4 rewrite writing-signal calls
+- up to 5 rewrite writing-signal calls
 
 If the bounded production loop cannot produce a passing candidate, fail safely and do not charge usage.

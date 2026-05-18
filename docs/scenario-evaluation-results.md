@@ -51,6 +51,73 @@ After:
 
 ```
 
+## live-priya-billing-100-regression
+
+Scenario: Customer support
+Tone: Warm
+Input word count: 284
+Input character count: 1854
+Diagnosis tags: support_template_voice, corporate_polish, too_balanced_structure
+Rewrite plan: Preserve the billing facts first, then rewrite as a plain support reply with the finance-manager explanation and requested next step intact.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -100 pts
+Rejected candidate reasons: initial model candidate remained high and missed critical completeness; repair remained high; deterministic facts-first candidate passed after preserving `finance manager`.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: not detected
+Quality failure state: no
+Pass: yes
+
+Expected facts:
+- Priya
+- three contractor accounts
+- first week of May / May
+- 18 active seats
+- 15 regular seats
+- base plan
+- NZD $126
+- finance manager
+- invoice finalized
+- names or email addresses
+- no changes unless requested
+
+Before:
+
+```text
+Hi Priya,
+
+Thanks for explaining the situation clearly.
+
+Based on what you described, the increase is most likely related to the three contractor accounts that were added during the first week of May. Even if those users were only added temporarily, they may still count as active seats for the days they had access to the workspace. That would explain why the dashboard is showing 18 active seats instead of the 15 regular seats your team approved.
+
+In plain English, this looks like a prorated seat charge rather than a change to your base plan. So the extra NZD $126 is likely coming from the three temporary users being active for part of the billing period, not from the plan price itself changing.
+
+You could explain it to your finance manager like this:
+
+"The May invoice preview appears to be higher because three temporary contractor users were active in the workspace during the month. The extra charge looks like a prorated seat charge for those users, rather than a change to the base plan."
+
+For the next step, please check whether those three contractor accounts are still active in the workspace. If they are, they should be removed or deactivated before the invoice is finalized so they do not continue to affect billing going forward.
+
+We will not make any changes yet, as requested. If you send over the names or email addresses of the three contractors, we can help confirm whether they are still active.
+```
+
+After:
+
+```text
+Hi Priya,
+
+Thanks for laying this out. The jump looks tied to the three contractor accounts being counted during May, not a base plan change.
+
+That explains why the dashboard shows 18 active seats instead of the 15 regular seats your team approved. The NZD $126 increase looks like the prorated charge for the days those accounts had access.
+
+For your finance manager, you can say: "The May invoice preview is higher because the three contractor accounts were active during the month. The extra charge appears to be prorated seat usage, not a change to the base plan."
+
+Before the invoice is finalized, check whether those contractor accounts are still active. They may still be active if they were not removed after the short project ended. If you send over their names or email addresses, we can help confirm their status. We will not change anything unless you ask us to.
+```
+
 ## blank-02-community-note
 
 Scenario: Blank / custom

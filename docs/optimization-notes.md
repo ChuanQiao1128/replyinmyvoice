@@ -21,6 +21,7 @@ Date: 2026-05-18
 | 7 | Long client-support prompt guardrail | 1 live manual sample | 89 pts | 1/1 | yes | Real billing-support test dropped from 89% to 0%, but the first output over-compressed the explanation. Prompt now preserves long support explanations, forwardable summaries, and requested next steps. |
 | 8 | Workspace V2 scenario guardrails plus diagnosis/repair/select flow | 15 | 64 pts | 11/15 | yes | Five-scenario evaluation passed the internal target. Critical-fact repair restores emails, dates, amounts, counts, and requested details before selection. |
 | 9 | No-bad-result quality gate plus targeted repair | 26 | 60 pts | 20/26 | yes | Expanded to 10 long cases and 5 long support cases. Rejects worse/high candidates, repairs failed candidates, and fails safely without charging usage when no candidate passes. Priya long billing/proration regression passed at 89% -> 0%. |
+| 10 | Facts-first complete fallback for live Priya regression | 1 live manual sample | 100 pts | 1/1 | yes | User reproduced a 100% -> 100% empty-result failure. Root cause: low-signal deterministic candidates were rejected as incomplete because `finance manager` was not preserved. Fixed fact preservation and changed selection so the API returns the best complete fallback instead of an empty quality failure. Smoke result: 100% -> 0%. |
 
 ## Final Selected Strategy
 
@@ -40,6 +41,10 @@ Production API uses a bounded diagnosis-driven rewrite workflow:
    - only runs when the first pass remains above 50% AI-like signal or improves by less than 30 points
    - uses only the provided request fields
    - creates a short opening, blank line, and concrete fact/next-step structure
+5. Best-available safety:
+   - never show an empty rewrite panel when a complete candidate exists
+   - if a strict signal target cannot be met, return the best complete candidate and include a review note
+   - if all candidates are incomplete, generate a facts-first fallback and show it rather than a blank quality failure
 
 The fallback is intentionally not a separate external agent in this MVP. It behaves like an internal rewrite pass/subroutine so production latency and cost stay bounded.
 
@@ -51,6 +56,7 @@ The fallback is intentionally not a separate external agent in this MVP. It beha
 - Workplace delay replies improved when the source-file/timing facts were preserved as direct lines.
 - Invoice replies improved only after the fallback stopped using sample-specific wording and rebuilt the reply from the provided seat/date/proration facts.
 - A live client-support test showed that optimizing too hard for a short thread style can remove useful explanation. Long support and billing replies now ask the model to keep 3 to 5 short paragraphs and preserve forwardable summaries plus detail requests.
+- A later live Priya support test showed a different failure: the low-signal fallback scored 0% but was rejected because it shortened `finance manager` to `finance`. The fact gate was correct to notice the loss; the fallback now preserves that phrase so the low-signal candidate can be selected.
 
 ## Current Status
 
@@ -64,6 +70,7 @@ Final valid complete run:
 - Final selected rewrites worse than draft: 0/26
 - Case pass count: 14/26
 - Priya long billing/proration regression: passed
+- Priya live 100% -> 100% regression: passed after facts-first preservation fix
 - Internal target met: yes
 
 Provider note: after repeated development evaluation calls, Sapling returned `429` capacity errors. The app already handles provider failure by returning the rewrite with an unavailable signal state, and evaluation results with unavailable scores must not be counted as target-met runs.
@@ -76,6 +83,8 @@ Latest implementation notes:
 - Added safe failure behavior for quality-gate misses; these requests are not charged as successful usage.
 - Added deterministic fallback handling for partner updates, export-support replies, invoice/proration support replies, and sales follow-ups when general rewrite attempts stay too generic.
 - Added a `testing` subscription status for internal QA accounts with a 10,000 rewrite quota.
+- Added no-empty-result fallback behavior: provider/model failures continue to deterministic strategies, and quality-gate misses return the best complete or guaranteed facts-first candidate instead of a blank failure.
+- Added a regression rule from the Priya live test: preserving `finance manager` matters because the fact gate treats it as critical context; replacing it with only `finance` can reject an otherwise strong low-signal candidate.
 
 ## Strategy Memory
 

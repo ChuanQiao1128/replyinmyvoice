@@ -121,9 +121,12 @@ Naturalness optimization:
   - tone matches `Warm` or `Direct`
   - concise, natural, send-ready reply
   - no invented promises, names, timelines, policies, discounts, or outcomes
+- Do not leave the user with an empty rewrite result when a copyable, fact-preserving candidate can be produced.
+- If strict signal gates cannot pass but a complete candidate exists, return the best available candidate with a review note.
+- If all measured candidates are incomplete, generate a guaranteed facts-first fallback from the original request fields.
 - Do not create an unbounded loop chasing a third-party score.
 - Do not promise a specific percentage reduction to users.
-- Production MVP runtime cap: up to 2 internal rewrite strategies per user request, charged as 1 user usage attempt.
+- Production MVP runtime cap: up to 3 initial strategies plus up to 2 targeted repairs per user request, charged as 1 user usage attempt.
 - Development and evaluation scripts may try more than 2 strategies per sample while searching for stronger prompts and scoring approaches.
 
 Development optimization requirement:

@@ -38,7 +38,8 @@ measure candidate
 repair rejected candidates
 remeasure repair
 select passing candidate
-safe-fail if no candidate passes
+return best available complete candidate if strict gates do not pass
+generate guaranteed facts-first fallback if no measured candidate is complete
 log learning sample
 ```
 
@@ -133,4 +134,6 @@ Rules:
 - `npm run memory:rewrite` creates a useful digest from stored samples.
 - Privacy page discloses internal quality storage.
 - Strategy memory docs explain how learning becomes production improvements.
+- A rewrite request should not show an empty quality-failure panel when a copyable facts-preserving candidate can be produced.
+- Live regressions that expose missing fact preservation, such as the Priya `finance manager` case, must become tests plus strategy-memory updates before deployment.
 - Typecheck, lint, unit tests, build, OpenNext build, and production smoke tests pass before deployment.

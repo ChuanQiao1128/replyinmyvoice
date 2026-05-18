@@ -1,4 +1,5 @@
 import {
+  generateGuaranteedRewriteCandidate,
   generateRepairCandidate,
   generateRewriteCandidate,
   getRewriteStrategies,
@@ -32,10 +33,11 @@ export type RewriteResponsePayload = {
     repairCandidatesTried: number;
     rejectedCandidates: number;
     userUsageCharged: 1;
+    selectionStatus: "passed" | "best_available";
     diagnosisTags: DiagnosisTag[];
     rewritePlanSummary: string;
     candidateSignals: Array<{
-      stage: "initial" | "repair";
+      stage: "initial" | "repair" | "fallback";
       aiLikePercent: number | null;
       status: SignalQualityResult["status"];
       rejected: boolean;
@@ -157,6 +159,26 @@ function pickBetterRecord(current: CandidateRecord | null, next: CandidateRecord
     : current;
 }
 
+function pickBetterCompleteRecord(
+  current: CandidateRecord | null,
+  next: CandidateRecord,
+) {
+  if (!next.completeEnough) {
+    return current;
+  }
+
+  if (!current) {
+    return next;
+  }
+
+  return isBetterCandidate(
+    current.signal.aiLikePercent,
+    next.signal.aiLikePercent,
+  )
+    ? next
+    : current;
+}
+
 function createCandidateRecord(
   input: RewriteRequestInput,
   candidate: Awaited<ReturnType<typeof generateRewriteCandidate>>,
@@ -200,10 +222,10 @@ export async function rewriteWithOptimization(
 ): Promise<RewriteResponsePayload> {
   const rewritePlan = createRewritePlan(input);
   const draftSignal = await measureWritingSignal(input.roughDraftReply);
-  const strategies = getRewriteStrategies().slice(0, 2);
+  const strategies = getRewriteStrategies().slice(0, 3);
   let best: CandidateRecord | null = null;
+  let bestAvailable: CandidateRecord | null = null;
   let unavailableBackup: CandidateRecord | null = null;
-  let bestRejected: CandidateRecord | null = null;
   let tried = 0;
   let repairTried = 0;
   let rejectedCandidates = 0;
@@ -211,7 +233,20 @@ export async function rewriteWithOptimization(
 
   for (const strategy of strategies) {
     tried += 1;
-    const candidate = await generateRewriteCandidate(input, strategy, rewritePlan);
+    let candidate: Awaited<ReturnType<typeof generateRewriteCandidate>>;
+    try {
+      candidate = await generateRewriteCandidate(input, strategy, rewritePlan);
+    } catch {
+      candidateSignals.push({
+        stage: "initial",
+        aiLikePercent: null,
+        status: "signal_unavailable",
+        rejected: true,
+        reason: "Candidate generation failed before signal check.",
+      });
+      continue;
+    }
+
     const candidateSignal = await measureWritingSignal(candidate.rewrittenText);
     const record = createCandidateRecord(
       input,
@@ -235,17 +270,10 @@ export async function rewriteWithOptimization(
 
     if (shouldRejectCandidate(record.quality) || !record.completeEnough) {
       rejectedCandidates += 1;
-      bestRejected =
-        !bestRejected ||
-        isBetterCandidate(
-          bestRejected.signal.aiLikePercent,
-          record.signal.aiLikePercent,
-        )
-          ? record
-          : bestRejected;
     }
 
     best = pickBetterRecord(best, record);
+    bestAvailable = pickBetterCompleteRecord(bestAvailable, record);
 
     if (isPassingCandidate(record)) {
       break;
@@ -256,14 +284,27 @@ export async function rewriteWithOptimization(
       repairTried < 2
     ) {
       repairTried += 1;
-      const repaired = await generateRepairCandidate({
-        input,
-        plan: rewritePlan,
-        rejectedText: record.candidate.rewrittenText,
-        draftPercent: draftSignal.aiLikePercent,
-        candidatePercent: record.signal.aiLikePercent,
-        quality: record.quality,
-      });
+      let repaired: Awaited<ReturnType<typeof generateRepairCandidate>>;
+      try {
+        repaired = await generateRepairCandidate({
+          input,
+          plan: rewritePlan,
+          rejectedText: record.candidate.rewrittenText,
+          draftPercent: draftSignal.aiLikePercent,
+          candidatePercent: record.signal.aiLikePercent,
+          quality: record.quality,
+        });
+      } catch {
+        candidateSignals.push({
+          stage: "repair",
+          aiLikePercent: null,
+          status: "signal_unavailable",
+          rejected: true,
+          reason: "Repair generation failed before signal check.",
+        });
+        continue;
+      }
+
       const repairedSignal = await measureWritingSignal(repaired.rewrittenText);
       const repairedRecord = createCandidateRecord(
         input,
@@ -295,17 +336,10 @@ export async function rewriteWithOptimization(
         !repairedRecord.completeEnough
       ) {
         rejectedCandidates += 1;
-        bestRejected =
-          !bestRejected ||
-          isBetterCandidate(
-            bestRejected.signal.aiLikePercent,
-            repairedRecord.signal.aiLikePercent,
-          )
-            ? repairedRecord
-            : bestRejected;
       }
 
       best = pickBetterRecord(best, repairedRecord);
+      bestAvailable = pickBetterCompleteRecord(bestAvailable, repairedRecord);
 
       if (isPassingCandidate(repairedRecord)) {
         break;
@@ -317,35 +351,63 @@ export async function rewriteWithOptimization(
     best = unavailableBackup;
   }
 
+  let selectionStatus: RewriteResponsePayload["optimization"]["selectionStatus"] =
+    "passed";
+
+  if (!best && bestAvailable) {
+    best = bestAvailable;
+    selectionStatus = "best_available";
+  }
+
   if (!best) {
-    throw new RewriteQualityError({
-      naturalness: formatNaturalness(
-        draftSignal.aiLikePercent,
-        bestRejected?.signal.aiLikePercent ?? null,
-      ),
-      rejectedCandidates,
-      repairCandidatesTried: repairTried,
-      candidateSignals,
-      diagnosisTags: rewritePlan.tags,
-      rewritePlanSummary: rewritePlan.summary,
+    const fallback = await generateGuaranteedRewriteCandidate(input);
+    const fallbackSignal = await measureWritingSignal(fallback.rewrittenText);
+    const fallbackRecord = createCandidateRecord(
+      input,
+      fallback,
+      fallbackSignal,
+      draftSignal.aiLikePercent,
+    );
+    candidateSignals.push({
+      stage: "fallback",
+      aiLikePercent: fallbackRecord.signal.aiLikePercent,
+      status: fallbackRecord.quality.status,
+      rejected:
+        shouldRejectCandidate(fallbackRecord.quality) ||
+        !fallbackRecord.completeEnough,
+      reason: fallbackRecord.completeEnough
+        ? fallbackRecord.quality.reason
+        : "Fallback may be missing required details or became too short.",
     });
+    best = fallbackRecord;
+    selectionStatus = "best_available";
   }
 
   const naturalness = formatNaturalness(
     draftSignal.aiLikePercent,
     best.signal.aiLikePercent,
   );
+  const bestAvailableRiskNote = shouldRejectCandidate(best.quality)
+    ? "The writing signal is still high; review before sending."
+    : "This fallback was selected to preserve the reply details; review before sending.";
 
   return {
     rewrittenText: best.candidate.rewrittenText,
     changeSummary: best.candidate.changeSummary,
-    riskNotes: best.candidate.riskNotes,
+    riskNotes:
+      selectionStatus === "best_available"
+        ? [
+            ...best.candidate.riskNotes,
+            bestAvailableRiskNote,
+          ]
+        : best.candidate.riskNotes,
     naturalness,
     optimization: {
       internalStrategiesTried: tried,
       repairCandidatesTried: repairTried,
       rejectedCandidates,
       userUsageCharged: 1,
+      selectionStatus,
       diagnosisTags: rewritePlan.tags,
       rewritePlanSummary: rewritePlan.summary,
       candidateSignals,

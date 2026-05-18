@@ -25,7 +25,7 @@ const rewriteOutputSchema = z.object({
 export type RewriteCandidate = z.infer<typeof rewriteOutputSchema>;
 
 type Strategy = {
-  id: "plain_note" | "thread_reply";
+  id: "plain_note" | "thread_reply" | "facts_first";
   temperature: number;
   instruction: string;
 };
@@ -42,6 +42,12 @@ const STRATEGIES: Strategy[] = [
     temperature: 0.45,
     instruction:
       "Use a strict email-thread fallback shape. Line 1: a short human phrase under 10 words. Blank line. Line 2: one concrete sentence with the key fact or next step. Optional line 3: one short next step. Adapt patterns like: 'Hi, thanks for checking.\\n\\nThis week came down to two missed activities and the missing exit ticket. Happy to talk it through on a quick call.'; 'No problem, take the extra week.\\n\\nIf anything comes up while you're comparing vendors, send it my way.'; 'Source file came in late, so I need a little more time.\\n\\nI'll send the numbers by 10am tomorrow.'; 'The jump is from the two seats added May 4.\\n\\nThis invoice includes the prorated charges for those seats.' Keep the user's facts and do not copy an example that does not fit.",
+  },
+  {
+    id: "facts_first",
+    temperature: 0,
+    instruction:
+      "Rebuild the reply from extracted facts first, then write it as a plain human note. Preserve facts before style. Avoid template openings and formal transitions.",
   },
 ];
 
@@ -257,6 +263,8 @@ function extractInvoiceFacts(context: string) {
   const temporaryUsers = firstMatch(context, [
     /\b(three temporary contractors)\b/i,
     /\b(3 temporary contractors)\b/i,
+    /\b(three contractor accounts)\b/i,
+    /\b(3 contractor accounts)\b/i,
     /\b(three temporary users)\b/i,
     /\b(3 temporary users)\b/i,
   ]);
@@ -286,20 +294,17 @@ function invoiceFallback(input: RewriteRequestInput, context: string) {
     input.factsToPreserve || input.whatHappened ? detailParts(input) : [];
   const greeting = name ? `Hi ${name},` : "Hi,";
   const changeExplanation = suppliedDetails[0]
-    ? `${sentence(suppliedDetails[0])} Based on that, the higher invoice preview is most likely from prorated seat usage rather than a base plan change.`
-    : `Based on what you described, the higher invoice preview is most likely from ${facts.temporaryUsers} being counted as active seats during May, rather than a base plan change.`;
-  const approvedSeatPhrase =
-    facts.approvedSeats ? ` Your team approved ${facts.approvedSeats} regular seats.` : "";
-  const supportingDetail = suppliedDetails[1] ? `${sentence(suppliedDetails[1])} ` : "";
+    ? `${sentence(suppliedDetails[0])} The higher invoice preview looks tied to prorated seat usage, not a base plan change.`
+    : `The jump looks tied to ${facts.temporaryUsers} being counted during May, not a base plan change.`;
   const activeSeatPhrase =
     facts.activeSeats && facts.approvedSeats
-      ? `That would explain why the dashboard shows ${facts.activeSeats} active seats instead of the ${facts.approvedSeats} regular seats your team approved.`
+      ? `That explains why the dashboard shows ${facts.activeSeats} active seats instead of the ${facts.approvedSeats} regular seats your team approved.`
       : "That would explain the higher active-seat count in the invoice preview.";
   const amountPhrase = facts.amount
-    ? `It also lines up with the ${facts.amount} increase you are seeing.`
-    : "It also lines up with the increase you are seeing.";
+    ? `The ${facts.amount} increase looks like the prorated charge for the days those accounts had access.`
+    : "The increase looks like the prorated charge for the days those accounts had access.";
   const financeSummary = context.includes("finance")
-    ? `A simple note for the finance manager would be: "The invoice preview increased because ${facts.temporaryUsers} were active during the month. The extra charge appears to be prorated seat usage, not a change to the base plan."`
+    ? `For your finance manager, you can say: "The May invoice preview is higher because ${facts.temporaryUsers} were active during the month. The extra charge appears to be prorated seat usage, not a change to the base plan."`
     : "";
   const datePhrase = facts.removalDate
     ? `They may still be active if they were not removed after ${facts.removalDate}.`
@@ -307,13 +312,44 @@ function invoiceFallback(input: RewriteRequestInput, context: string) {
 
   return [
     greeting,
-    `Thanks for laying this out. ${changeExplanation}${approvedSeatPhrase}`,
-    `${supportingDetail}Even if someone only has access for part of the month, that access can still create a prorated seat charge for the days they were active. ${activeSeatPhrase} ${amountPhrase}`,
+    `Thanks for laying this out. ${changeExplanation}`,
+    `${activeSeatPhrase} ${amountPhrase}`,
     financeSummary,
-    `For the next step, check whether those contractor accounts are still active. ${datePhrase} If you want us to help confirm, send over their names or email addresses and we can check their status. We will not change anything unless you ask us to.`,
+    `Before the invoice is finalized, check whether those contractor accounts are still active. ${datePhrase} If you send over their names or email addresses, we can help confirm their status. We will not change anything unless you ask us to.`,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function generateFactsFirstFallback(input: RewriteRequestInput) {
+  const rawContext = [
+    input.messageToReplyTo,
+    input.roughDraftReply,
+    input.whatHappened,
+    input.factsToPreserve,
+  ].join(" ");
+  const context = rawContext.toLowerCase();
+
+  if (
+    input.scenario === "Customer support" ||
+    textIncludes(context, ["invoice", "active seats", "prorated", "base plan"])
+  ) {
+    return {
+      rewrittenText: invoiceFallback(input, rawContext),
+      changeSummary: [
+        "Rebuilt the reply from the billing facts first, then removed support-template phrasing.",
+      ],
+      riskNotes: ["Check the billing details before sending."],
+    };
+  }
+
+  return generateThreadFallback(input);
+}
+
+export function generateGuaranteedRewriteCandidate(
+  input: RewriteRequestInput,
+): RewriteCandidate {
+  return generateFactsFirstFallback(input);
 }
 
 function generateBlankFallback(input: RewriteRequestInput) {
@@ -611,6 +647,10 @@ export async function generateRewriteCandidate(
 ): Promise<RewriteCandidate> {
   if (strategy.id === "thread_reply") {
     return generateThreadFallback(input);
+  }
+
+  if (strategy.id === "facts_first") {
+    return generateFactsFirstFallback(input);
   }
 
   const model = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");

@@ -18,7 +18,8 @@ Reply In My Voice should become better through measured experience:
 4. measure the before/after writing signal
 5. repair the candidate if it failed
 6. select only a usable candidate
-7. record the strategy lesson for future runs
+7. return a best-available facts-first candidate rather than a blank result when strict selection cannot pass
+8. record the strategy lesson for future runs
 
 This is the product advantage over asking a general chatbot for another rewrite. The app uses measurement, failure analysis, scenario guardrails, quality gates, and accumulated strategy memory.
 
@@ -117,7 +118,8 @@ The current production-grade strategy is:
 7. repair failed candidates using the failure reason and critical facts
 8. remeasure repaired candidates
 9. select the best candidate that passes quality gates
-10. fail safely and do not charge usage if no bounded candidate passes
+10. when strict gates fail but a complete candidate exists, return the best available candidate with a review note rather than an empty rewrite panel
+11. when all measured candidates are incomplete, build a guaranteed facts-first fallback from the original request fields
 
 Current measured status from `docs/scenario-evaluation-results.md`:
 
@@ -128,6 +130,7 @@ Current measured status from `docs/scenario-evaluation-results.md`:
 - 20/26 rewrites below 50%
 - 0/26 final selected rewrites worse than the draft
 - Priya billing/proration regression: 89% -> 0%, facts preserved
+- Priya live 100% -> 100% regression: fixed at 100% -> 0%, facts preserved
 
 ## Current Diagnosis Tags
 
@@ -220,6 +223,8 @@ Important lesson from Priya billing/proration:
 - A very short response can score low but be a bad product result.
 - The repair must preserve dates, counts, amounts, billing period, proration explanation, and the next-step request.
 - The final answer should still be useful enough for the recipient to forward internally.
+- If the draft says the explanation is for a `finance manager`, preserve that phrase. Shortening it to only `finance` can make the fact gate reject an otherwise low-signal candidate.
+- Do not leave the user with a blank failure state. If strict signal selection fails, return the best complete candidate with a review note; if every measured candidate is incomplete, use a guaranteed facts-first fallback from the user's own facts.
 
 ### Low Specificity
 

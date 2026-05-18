@@ -151,4 +151,45 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).toContain("next month");
     expect(result.rewrittenText).not.toContain("Please advise");
   });
+
+  it("builds a facts-first support rewrite from extracted billing facts", async () => {
+    const factsFirst = getRewriteStrategies().find(
+      (strategy) => strategy.id === "facts_first",
+    );
+    expect(factsFirst).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Customer support",
+        messageToReplyTo: "",
+        roughDraftReply: [
+          "Hi Priya,",
+          "Thanks for explaining the situation clearly.",
+          "Based on what you've described, the increase is most likely related to the three contractor accounts that were added during the first week of May.",
+          "That would explain why the dashboard is showing 18 active seats instead of the 15 regular seats your team approved.",
+          "In plain English, this looks like a prorated seat charge rather than a change to your base plan.",
+          "So the extra NZD $126 is likely coming from the three temporary users being active for part of the billing period.",
+          "You could explain it to your finance manager like this.",
+          "For the next step, please check whether those three contractor accounts are still active.",
+          "If you send over the names or email addresses of the three contractors, we can help confirm whether they are still active.",
+        ].join("\n\n"),
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "warm",
+        tonePreset: "Warm",
+      },
+      factsFirst!,
+    );
+
+    expect(result.rewrittenText).toContain("Priya");
+    expect(result.rewrittenText).toContain("18 active seats");
+    expect(result.rewrittenText).toContain("15 regular seats");
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.rewrittenText).toContain("finance manager");
+    expect(result.rewrittenText).toContain("names or email addresses");
+    expect(result.rewrittenText).not.toContain("Based on what");
+    expect(result.rewrittenText).not.toContain("For the next step");
+  });
 });

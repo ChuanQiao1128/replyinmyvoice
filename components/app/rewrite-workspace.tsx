@@ -46,6 +46,7 @@ type RewriteResponse = {
   optimization: {
     internalStrategiesTried: number;
     userUsageCharged: 1;
+    selectionStatus?: "passed" | "best_available";
     diagnosisTags?: string[];
     rewritePlanSummary?: string;
     candidateSignals?: Array<{
@@ -641,6 +642,7 @@ export function RewriteWorkspace({
                         optimization: {
                           internalStrategiesTried: 1,
                           userUsageCharged: 1,
+                          selectionStatus: "passed",
                         },
                       })
                     }
