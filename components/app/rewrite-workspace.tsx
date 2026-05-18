@@ -51,6 +51,11 @@ type RewriteResponse = {
   };
 };
 
+type QualityFailure = {
+  error: string;
+  naturalness?: Naturalness;
+};
+
 type HistoryItem = {
   scenario: ScenarioOption;
   roughDraftReply: string;
@@ -147,7 +152,7 @@ function labelForNaturalness(naturalness?: Naturalness) {
   if (naturalness.label === "low_signal") {
     return "Low AI-like signal";
   }
-  return "High AI-like signal";
+  return "Still high AI-like signal";
 }
 
 export function RewriteWorkspace({
@@ -157,6 +162,9 @@ export function RewriteWorkspace({
 }: Props) {
   const [form, setForm] = useState(initialForm);
   const [result, setResult] = useState<RewriteResponse | null>(null);
+  const [qualityFailure, setQualityFailure] = useState<QualityFailure | null>(
+    null,
+  );
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -226,6 +234,7 @@ export function RewriteWorkspace({
 
     setLoading(true);
     setError("");
+    setQualityFailure(null);
 
     try {
       const response = await fetch("/api/rewrite", {
@@ -242,13 +251,27 @@ export function RewriteWorkspace({
         }),
       });
       const payload = (await response.json()) as RewriteResponse & {
+        code?: string;
         error?: string;
+        naturalness?: Naturalness;
       };
 
       if (!response.ok) {
+        if (response.status === 422 && payload.code === "quality_gate_failed") {
+          setResult(null);
+          setQualityFailure({
+            error:
+              payload.error ??
+              "We could not produce a better version yet. Try again or adjust the draft.",
+            naturalness: payload.naturalness,
+          });
+          setError("");
+          return;
+        }
         throw new Error(payload.error ?? "Could not rewrite this draft.");
       }
 
+      setQualityFailure(null);
       setResult(payload);
       saveHistory(payload);
     } catch (submitError) {
@@ -269,6 +292,7 @@ export function RewriteWorkspace({
   function updateScenario(value: ScenarioOption) {
     setForm((current) => ({ ...current, scenario: value }));
     setResult(null);
+    setQualityFailure(null);
     setError("");
   }
 
@@ -293,6 +317,8 @@ export function RewriteWorkspace({
     setHistory([]);
     localStorage.removeItem(HISTORY_KEY);
   }
+
+  const visibleNaturalness = result?.naturalness ?? qualityFailure?.naturalness;
 
   return (
     <main className="min-h-screen bg-paper text-ink">
@@ -512,6 +538,17 @@ export function RewriteWorkspace({
                 </div>
               ) : (
                 result?.rewrittenText ??
+                (qualityFailure ? (
+                  <div className="flex h-48 flex-col items-center justify-center text-center text-ink/55">
+                    <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
+                    <p className="font-semibold text-ink">
+                      Still high AI-like signal
+                    </p>
+                    <p className="mt-1 max-w-md text-xs">
+                      {qualityFailure.error}
+                    </p>
+                  </div>
+                ) : null) ??
                 "Your rewritten text will appear here after you run the workspace."
               )}
             </div>
@@ -521,26 +558,26 @@ export function RewriteWorkspace({
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-semibold">Naturalness Check</h2>
               <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-sage">
-                {labelForNaturalness(result?.naturalness)}
+                {labelForNaturalness(visibleNaturalness)}
               </span>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <SignalBar
                 label="Draft AI-like signal"
-                value={result?.naturalness.draftAiLikePercent ?? null}
+                value={visibleNaturalness?.draftAiLikePercent ?? null}
               />
               <SignalBar
                 label="Rewrite AI-like signal"
-                value={result?.naturalness.rewriteAiLikePercent ?? null}
+                value={visibleNaturalness?.rewriteAiLikePercent ?? null}
                 variant="sage"
               />
             </div>
             <p className="mt-4 text-sm text-ink/60">
               Change:{" "}
-              {result?.naturalness.changePoints === null ||
-              result?.naturalness.changePoints === undefined
+              {visibleNaturalness?.changePoints === null ||
+              visibleNaturalness?.changePoints === undefined
                 ? "Unavailable"
-                : `${result.naturalness.changePoints} pts`}
+                : `${visibleNaturalness.changePoints} pts`}
             </p>
             <p className="mt-2 text-xs leading-5 text-ink/50">
               A third-party reference signal that helps compare how natural the

@@ -23,4 +23,9 @@ describe("workspace V2 surface copy", () => {
     expect(workspaceSource).not.toContain("Firm but polite");
     expect(workspaceSource).not.toContain("Apologetic");
   });
+
+  it("has a safe failure state when the signal does not improve", () => {
+    expect(workspaceSource).toContain("Still high AI-like signal");
+    expect(workspaceSource).toContain("We could not produce a better version yet");
+  });
 });

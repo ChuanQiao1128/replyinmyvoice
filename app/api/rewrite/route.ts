@@ -9,7 +9,10 @@ import {
   ensureQuotaAvailable,
   QuotaExceededError,
 } from "../../../lib/quota";
-import { rewriteWithOptimization } from "../../../lib/rewrite";
+import {
+  RewriteQualityError,
+  rewriteWithOptimization,
+} from "../../../lib/rewrite";
 import { getCurrentAppUser } from "../../../lib/users";
 import { rewriteRequestSchema } from "../../../lib/validation";
 
@@ -79,6 +82,23 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof QuotaExceededError) {
       return jsonError("Rewrite quota exhausted.", 402);
+    }
+
+    if (error instanceof RewriteQualityError) {
+      console.info("quality_gate_failed", {
+        rejectedCandidates: error.rejectedCandidates,
+        repairCandidatesTried: error.repairCandidatesTried,
+      });
+
+      return NextResponse.json(
+        {
+          code: "quality_gate_failed",
+          error:
+            "We could not produce a better version yet. Try again or adjust the draft.",
+          naturalness: error.naturalness,
+        },
+        { status: 422 },
+      );
     }
 
     console.error("rewrite_failed", {
