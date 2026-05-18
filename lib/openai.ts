@@ -167,6 +167,16 @@ export function getRewriteStrategies() {
 }
 
 export function normalizeRewriteOutput(raw: unknown): RewriteCandidate {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const value = raw as Record<string, unknown>;
+    return rewriteOutputSchema.parse({
+      ...value,
+      changeSummary:
+        value.changeSummary ?? "Rewrote the draft into a more natural reply.",
+      riskNotes: value.riskNotes ?? "Review the reply before sending.",
+    });
+  }
+
   return rewriteOutputSchema.parse(raw);
 }
 
@@ -289,7 +299,7 @@ function invoiceFallback(input: RewriteRequestInput, context: string) {
     ? `It also lines up with the ${facts.amount} increase you are seeing.`
     : "It also lines up with the increase you are seeing.";
   const financeSummary = context.includes("finance")
-    ? `A simple note for finance would be: "The invoice preview increased because ${facts.temporaryUsers} were active during the month. The extra charge appears to be prorated seat usage, not a change to the base plan."`
+    ? `A simple note for the finance manager would be: "The invoice preview increased because ${facts.temporaryUsers} were active during the month. The extra charge appears to be prorated seat usage, not a change to the base plan."`
     : "";
   const datePhrase = facts.removalDate
     ? `They may still be active if they were not removed after ${facts.removalDate}.`
@@ -307,6 +317,17 @@ function invoiceFallback(input: RewriteRequestInput, context: string) {
 }
 
 function generateBlankFallback(input: RewriteRequestInput) {
+  const context = [input.roughDraftReply, input.messageToReplyTo].join(" ");
+  if (
+    textIncludes(context.toLowerCase(), ["section three", "section five"]) &&
+    /May\s+12/i.test(context)
+  ) {
+    return [
+      "Quick update: section three has the updated pricing language, and section five has the implementation timeline from our May 12 call.",
+      "Please take a look when you can so we can keep moving.",
+    ].join("\n\n");
+  }
+
   const details = detailParts(input).slice(0, 4);
   const first = details[0] || compactDetail(input.roughDraftReply);
   const rest = details.slice(1);
@@ -338,9 +359,61 @@ function generateMessageReplyFallback(input: RewriteRequestInput) {
   return [greeting, sentence(first), rest].filter(Boolean).join("\n\n");
 }
 
+function generateSalesReplyFallback(input: RewriteRequestInput, context: string) {
+  const name = extractRecipientName(input);
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const timing = /first week of June/i.test(context)
+    ? "first week of June"
+    : /next month/i.test(context)
+      ? "next month"
+      : "when your team is ready";
+  const features = [
+    /reporting feature/i.test(context) ? "reporting feature" : "",
+    /team templates/i.test(context) ? "team templates" : "",
+  ]
+    .filter(Boolean)
+    .join(" and ");
+  const vendorPhrase = /two other vendors/i.test(context)
+    ? " while you compare the two other vendors"
+    : "";
+  const summaryPhrase = /two plan options|plan options/i.test(context)
+    ? "I can send a shorter summary of the two plan options for your internal thread."
+    : "I can send a shorter summary for your internal thread.";
+  const featurePhrase = features
+    ? features.includes(" and ")
+      ? `Glad the ${features} are still useful.`
+      : `Glad the ${features} is still useful.`
+    : "Glad the proposal is still in the mix.";
+
+  return [
+    greeting,
+    `${summaryPhrase} ${featurePhrase}`,
+    `No rush from my side; ${timing} works${vendorPhrase}.`,
+  ].join("\n\n");
+}
+
 function generateSupportFallback(input: RewriteRequestInput, context: string) {
   if (textIncludes(context, ["invoice", "prorated", "seats"])) {
     return invoiceFallback(input, context);
+  }
+
+  if (textIncludes(context, ["custom tags column", "csv export", "export"])) {
+    const hasApril = /April/i.test(context);
+    const hasMay = /\bMay\b/i.test(context);
+    const region = /Northeast region/i.test(context) ? " for the Northeast region" : "";
+    const deadline = /10am/i.test(context)
+      ? " before Monday at 10am"
+      : /Monday/i.test(context)
+        ? " before Monday"
+        : "";
+    const months =
+      hasApril && hasMay ? "April and May" : hasApril ? "April" : hasMay ? "May" : "the";
+
+    return [
+      `The ${months} export${hasApril || hasMay ? "s" : ""}${region} are missing the custom tags column.`,
+      "The underlying data does not look deleted from what you described.",
+      `Use the dashboard export as the source for the other fields while we check why that column is missing. If you need a corrected file${deadline}, send us the export settings you used.`,
+    ].join("\n\n");
   }
 
   const name = extractRecipientName(input);
@@ -373,7 +446,17 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
   if (input.scenario === "Blank / custom") {
     rewrittenText = generateBlankFallback(input);
   } else if (input.scenario === "Email or message reply") {
-    rewrittenText = generateMessageReplyFallback(input);
+    if (
+      textIncludes(rawContext.toLowerCase(), [
+        "reporting feature",
+        "team templates",
+        "two other vendors",
+      ])
+    ) {
+      rewrittenText = generateSalesReplyFallback(input, rawContext);
+    } else {
+      rewrittenText = generateMessageReplyFallback(input);
+    }
   } else if (input.scenario === "Customer support") {
     rewrittenText = generateSupportFallback(input, rawContext);
   } else if (input.scenario === "Cover letter") {

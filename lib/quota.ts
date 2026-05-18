@@ -4,8 +4,9 @@ import { createId, getSql, nullableDate, requiredDate } from "./db";
 
 export const FREE_REWRITE_LIMIT = 3;
 export const PAID_REWRITE_LIMIT = 100;
+export const TESTING_REWRITE_LIMIT = 10_000;
 
-const ACTIVE_STATUSES = new Set(["active", "trialing"]);
+const ACTIVE_STATUSES = new Set(["active", "trialing", "testing"]);
 
 export class QuotaExceededError extends Error {
   constructor() {
@@ -62,6 +63,17 @@ export function isPaidSubscriptionStatus(status: string | null | undefined) {
 }
 
 export function getUsagePlan(user: UsageSubject): UsagePlan {
+  if (user.subscriptionStatus === "testing") {
+    return {
+      allowed: true,
+      scope: "paid",
+      quota: TESTING_REWRITE_LIMIT,
+      periodKey: `testing:${user.id}`,
+      periodStart: null,
+      periodEnd: null,
+    };
+  }
+
   if (isPaidSubscriptionStatus(user.subscriptionStatus)) {
     const subscriptionId = user.stripeSubscriptionId ?? `user_${user.id}`;
     const periodEnd = user.currentPeriodEnd ?? null;

@@ -1764,11 +1764,14 @@ The internal quality target is met when the measured set has:
 
 Current documented run in `docs/scenario-evaluation-results.md`:
 
-- 15 cases evaluated
-- 15 measured
-- average AI-like signal drop: 64 points
-- 11/15 rewrites below 50%
-- 11/15 case pass count
+- 26 cases evaluated
+- 26 measured
+- 10 long cases of 300+ words
+- 5 long customer-support cases of 300+ words
+- average AI-like signal drop: 60 points
+- 20/26 rewrites below 50%
+- 0/26 final selected rewrites worse than draft
+- Priya long billing/proration regression passed
 
 ## Next Rewrite Quality Fix — No Bad Result Gate
 

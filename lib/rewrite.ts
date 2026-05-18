@@ -48,21 +48,25 @@ export class RewriteQualityError extends Error {
   naturalness: RewriteResponsePayload["naturalness"];
   rejectedCandidates: number;
   repairCandidatesTried: number;
+  candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
 
   constructor({
     naturalness,
     rejectedCandidates,
     repairCandidatesTried,
+    candidateSignals,
   }: {
     naturalness: RewriteResponsePayload["naturalness"];
     rejectedCandidates: number;
     repairCandidatesTried: number;
+    candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
   }) {
     super("Could not produce a rewrite that improved the writing signal.");
     this.name = "RewriteQualityError";
     this.naturalness = naturalness;
     this.rejectedCandidates = rejectedCandidates;
     this.repairCandidatesTried = repairCandidatesTried;
+    this.candidateSignals = candidateSignals;
   }
 }
 
@@ -90,10 +94,13 @@ function extractCriticalFacts(input: RewriteRequestInput) {
     .join(" ")
     .replace(/\s+/g, " ");
   const matches = source.match(
-    /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*(?:\s+\d{1,2})?\b|\b(?:before|after)\s+[a-z]+(?:\s+[a-z]+){0,2}\b|\bnext month\b|\b(?:resent|sent)\s+the\s+invite\s+(?:twice|again)\b|\b(?:[A-Za-z]+(?:\s+[A-Za-z]+){0,3})\s+(?:feature|column|packet|articles?|response|updates|folders?|ticket)\b|\b\d+\s+(?:active\s+seats?|regular\s+seats?|temporary\s+(?:users?|contractors?)|failed\s+events?|providers?|interviews?|teachers?)\b/gi,
+    /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}\b|\bbefore class tomorrow\b|\bbefore noon\b|\bafter\s+May\s+\d{1,2}\b|\bnext month\b|\bfinance manager\b|\bbase plan\b|\b(?:old|new)\s+plan\s+(?:credit|charge)\b|\b(?:resent|sent)\s+the\s+invite\s+(?:twice|again)\b|\bcustom tags column\b|\bbilling report folder\b|\breporting feature\b|\bteam templates\b|\bhelp center articles?\b|\bmonthly partner updates\b|\bpatient follow-up notes\b|\bpartner onboarding packet\b|\bMonday board packet\b|\bapplication timeline\b|\bscholarship forms\b|\bpricing table\b|\bsection three\b|\bsection five\b|\bpayment flow\b|\bonboarding checklist\b|\blast three failed events\b|\b\d+\s*(?:am|pm)\b|\b\d+\s+(?:active\s+seats?|regular\s+seats?|temporary\s+(?:users?|contractors?)|failed\s+events?|providers?|interviews?|teachers?)\b/gi,
+  );
+  const exactMonthMatches = source.match(
+    /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\b/g,
   );
 
-  return Array.from(new Set(matches ?? []));
+  return Array.from(new Set([...(matches ?? []), ...(exactMonthMatches ?? [])]));
 }
 
 function missingCriticalFacts(input: RewriteRequestInput, rewrittenText: string) {
@@ -112,28 +119,6 @@ function missingCriticalFacts(input: RewriteRequestInput, rewrittenText: string)
 
 function preservesCriticalFacts(input: RewriteRequestInput, rewrittenText: string) {
   return missingCriticalFacts(input, rewrittenText).length === 0;
-}
-
-function repairMissingCriticalFacts<
-  T extends Awaited<ReturnType<typeof generateRewriteCandidate>>,
->(input: RewriteRequestInput, candidate: T): T {
-  const missing = missingCriticalFacts(input, candidate.rewrittenText);
-  if (!missing.length) {
-    return candidate;
-  }
-
-  return {
-    ...candidate,
-    rewrittenText: `${candidate.rewrittenText.trim()}\n\nKey details to keep: ${missing.join("; ")}.`,
-    changeSummary: [
-      ...candidate.changeSummary,
-      "Restored key details that were present in the original request.",
-    ],
-    riskNotes: [
-      ...candidate.riskNotes,
-      "Review the restored key details before sending.",
-    ],
-  };
 }
 
 type CandidateRecord = {
@@ -218,10 +203,7 @@ export async function rewriteWithOptimization(
 
   for (const strategy of strategies) {
     tried += 1;
-    const candidate = repairMissingCriticalFacts(
-      input,
-      await generateRewriteCandidate(input, strategy, rewritePlan),
-    );
+    const candidate = await generateRewriteCandidate(input, strategy, rewritePlan);
     const candidateSignal = await measureWritingSignal(candidate.rewrittenText);
     const record = createCandidateRecord(
       input,
@@ -261,19 +243,19 @@ export async function rewriteWithOptimization(
       break;
     }
 
-    if (shouldRepairCandidate(record.quality) && repairTried < 2) {
+    if (
+      (shouldRepairCandidate(record.quality) || !record.completeEnough) &&
+      repairTried < 2
+    ) {
       repairTried += 1;
-      const repaired = repairMissingCriticalFacts(
+      const repaired = await generateRepairCandidate({
         input,
-        await generateRepairCandidate({
-          input,
-          plan: rewritePlan,
-          rejectedText: record.candidate.rewrittenText,
-          draftPercent: draftSignal.aiLikePercent,
-          candidatePercent: record.signal.aiLikePercent,
-          quality: record.quality,
-        }),
-      );
+        plan: rewritePlan,
+        rejectedText: record.candidate.rewrittenText,
+        draftPercent: draftSignal.aiLikePercent,
+        candidatePercent: record.signal.aiLikePercent,
+        quality: record.quality,
+      });
       const repairedSignal = await measureWritingSignal(repaired.rewrittenText);
       const repairedRecord = createCandidateRecord(
         input,

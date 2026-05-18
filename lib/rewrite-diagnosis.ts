@@ -202,7 +202,7 @@ export function extractPreserveHints(input: RewriteRequestInput) {
     .join(" ")
     .replace(/\s+/g, " ");
   const matches = source.match(
-    /\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b\d+\s?(?:seats?|users?|days?|weeks?|months?|pm|am)\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\b|\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?\b/g,
+    /\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b\d+\s?(?:seats?|users?|days?|weeks?|months?|pm|am)\b|\b\d+\s*(?:am|pm)\b|\bfinance manager\b|\bbase plan\b|\b(?:old|new)\s+plan\s+(?:credit|charge)\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}\b|\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?\b/g,
   );
 
   return unique((matches ?? []).slice(0, 12));

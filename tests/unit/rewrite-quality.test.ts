@@ -126,6 +126,34 @@ describe("rewriteWithOptimization quality gate", () => {
     expect(result.optimization.repairCandidatesTried).toBe(1);
   });
 
+  it("does not ship internal fact-restoration notes as the final rewrite", async () => {
+    const input = inputWithDraft(
+      "Hi Priya, The invoice preview is NZD $126 higher because the dashboard shows 18 active seats instead of the 15 regular seats your team approved. The three temporary contractors were supposed to be removed after May 8.",
+    );
+    mocks.generateRewriteCandidate.mockResolvedValueOnce({
+      rewrittenText:
+        "Hi Priya,\n\nThe invoice preview is higher because of temporary users.",
+      changeSummary: ["First attempt."],
+      riskNotes: ["Review."],
+    });
+    mocks.generateRepairCandidate.mockResolvedValueOnce({
+      rewrittenText:
+        "Hi Priya,\n\nThe higher invoice preview is most likely from the three temporary contractors being counted during May, not a base plan change.\n\nThat would explain the move from 15 regular seats to 18 active seats and the NZD $126 increase. If they were not removed after May 8, send the contractor names or emails and we can help confirm whether they are still active.",
+      changeSummary: ["Restored missing billing details."],
+      riskNotes: ["Check the seat details before sending."],
+    });
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 89 })
+      .mockResolvedValueOnce({ aiLikePercent: 12 })
+      .mockResolvedValueOnce({ aiLikePercent: 18 });
+
+    const result = await rewriteWithOptimization(input);
+
+    expect(mocks.generateRepairCandidate).toHaveBeenCalledTimes(1);
+    expect(result.rewrittenText).not.toContain("Key details to keep");
+    expect(result.rewrittenText).toContain("NZD $126");
+  });
+
   it("throws a quality error instead of returning a worse candidate", async () => {
     mocks.generateRewriteCandidate
       .mockResolvedValueOnce({

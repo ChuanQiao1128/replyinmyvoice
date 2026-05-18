@@ -48,4 +48,17 @@ describe("getUsagePlan", () => {
     expect(plan.scope).toBe("paid");
     expect(plan.quota).toBe(100);
   });
+
+  it("allows internal testing accounts to run a high rewrite quota", () => {
+    const plan = getUsagePlan({
+      id: "user_test",
+      subscriptionStatus: "testing",
+      stripeSubscriptionId: null,
+      currentPeriodEnd: null,
+    });
+
+    expect(plan.scope).toBe("paid");
+    expect(plan.quota).toBe(10_000);
+    expect(plan.periodKey).toBe("testing:user_test");
+  });
 });

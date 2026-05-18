@@ -20,6 +20,7 @@ Date: 2026-05-18
 | 6 | Post-budget provider check | 8 | unavailable | unavailable | not scored | Sapling returned 429 capacity errors after repeated evaluation calls; not used as a quality result. |
 | 7 | Long client-support prompt guardrail | 1 live manual sample | 89 pts | 1/1 | yes | Real billing-support test dropped from 89% to 0%, but the first output over-compressed the explanation. Prompt now preserves long support explanations, forwardable summaries, and requested next steps. |
 | 8 | Workspace V2 scenario guardrails plus diagnosis/repair/select flow | 15 | 64 pts | 11/15 | yes | Five-scenario evaluation passed the internal target. Critical-fact repair restores emails, dates, amounts, counts, and requested details before selection. |
+| 9 | No-bad-result quality gate plus targeted repair | 26 | 60 pts | 20/26 | yes | Expanded to 10 long cases and 5 long support cases. Rejects worse/high candidates, repairs failed candidates, and fails safely without charging usage when no candidate passes. Priya long billing/proration regression passed at 89% -> 0%. |
 
 ## Final Selected Strategy
 
@@ -55,10 +56,23 @@ The fallback is intentionally not a separate external agent in this MVP. It beha
 
 Final valid complete run:
 
-- Samples evaluated: 15
-- Average AI-like signal reduction: 64 points
-- Rewrites below 50% AI-like signal: 11/15
-- Case pass count: 11/15
+- Samples evaluated: 26
+- Long cases: 10
+- Long customer-support cases: 5
+- Average AI-like signal reduction: 60 points
+- Rewrites below 50% AI-like signal: 20/26
+- Final selected rewrites worse than draft: 0/26
+- Case pass count: 14/26
+- Priya long billing/proration regression: passed
 - Internal target met: yes
 
 Provider note: after repeated development evaluation calls, Sapling returned `429` capacity errors. The app already handles provider failure by returning the rewrite with an unavailable signal state, and evaluation results with unavailable scores must not be counted as target-met runs.
+
+Latest implementation notes:
+
+- Removed the old internal fact-restoration append behavior so user-visible output never includes `Key details to keep`.
+- Added a bounded measured repair loop: diagnose, candidate, measure, repair, remeasure, select.
+- Tightened candidate selection so a measured successful response must be below 50% AI-like signal or at least 30 points lower than the draft.
+- Added safe failure behavior for quality-gate misses; these requests are not charged as successful usage.
+- Added deterministic fallback handling for partner updates, export-support replies, invoice/proration support replies, and sales follow-ups when general rewrite attempts stay too generic.
+- Added a `testing` subscription status for internal QA accounts with a 10,000 rewrite quota.

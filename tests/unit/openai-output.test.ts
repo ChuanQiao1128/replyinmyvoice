@@ -31,6 +31,17 @@ describe("normalizeRewriteOutput", () => {
 
     expect(result.riskNotes).toEqual(["Review the reply before sending."]);
   });
+
+  it("fills safe defaults when the model omits metadata but returns rewritten text", () => {
+    const result = normalizeRewriteOutput({
+      rewrittenText: "I can send the corrected file before Monday at 10am.",
+    });
+
+    expect(result.changeSummary).toEqual([
+      "Rewrote the draft into a more natural reply.",
+    ]);
+    expect(result.riskNotes).toEqual(["Review the reply before sending."]);
+  });
 });
 
 describe("thread fallback rewrite pass", () => {
@@ -85,5 +96,59 @@ describe("thread fallback rewrite pass", () => {
 
     expect(result.rewrittenText).toContain("4pm Friday");
     expect(result.rewrittenText).not.toContain("10am tomorrow");
+  });
+
+  it("keeps export support facts in the deterministic support fallback", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Customer support",
+        messageToReplyTo:
+          "The April and May CSV exports are missing the custom tags column for the Northeast region, and we need a corrected file before Monday at 10am.",
+        roughDraftReply:
+          "Thank you for contacting us regarding the missing custom tags column. Our team is investigating and will provide an update.",
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "direct",
+        tonePreset: "Professional",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("custom tags column");
+    expect(result.rewrittenText).toContain("April");
+    expect(result.rewrittenText).toContain("May");
+    expect(result.rewrittenText).toContain("Northeast region");
+    expect(result.rewrittenText).toContain("Monday");
+    expect(result.rewrittenText).toContain("10am");
+  });
+
+  it("answers sales follow-up context instead of repeating generic proposal language", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Email or message reply",
+        messageToReplyTo:
+          "We like the reporting feature, but the team is comparing two other vendors and probably will not decide until next month.",
+        roughDraftReply:
+          "Hello Jordan, I am following up on our previous communication regarding the proposal. Please advise whether you would like to proceed with the proposal as discussed.",
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "warm",
+        tonePreset: "Friendly",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Jordan");
+    expect(result.rewrittenText).toContain("reporting feature");
+    expect(result.rewrittenText).toContain("next month");
+    expect(result.rewrittenText).not.toContain("Please advise");
   });
 });
