@@ -26,7 +26,13 @@ test("privacy page explains local history and database storage boundaries", asyn
 
   await expect(page.getByRole("heading", { name: "Privacy" })).toBeVisible();
   await expect(
-    page.getByText("Reply content is not saved to our database"),
+    page.getByText("Reply content and quality improvement"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("may store submitted message context"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Local history" }),
   ).toBeVisible();
   await expect(page.getByText("TimeAwake Ltd.", { exact: true })).toBeVisible();
 });

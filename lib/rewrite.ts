@@ -49,17 +49,23 @@ export class RewriteQualityError extends Error {
   rejectedCandidates: number;
   repairCandidatesTried: number;
   candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
+  diagnosisTags: DiagnosisTag[];
+  rewritePlanSummary: string;
 
   constructor({
     naturalness,
     rejectedCandidates,
     repairCandidatesTried,
     candidateSignals,
+    diagnosisTags,
+    rewritePlanSummary,
   }: {
     naturalness: RewriteResponsePayload["naturalness"];
     rejectedCandidates: number;
     repairCandidatesTried: number;
     candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
+    diagnosisTags: DiagnosisTag[];
+    rewritePlanSummary: string;
   }) {
     super("Could not produce a rewrite that improved the writing signal.");
     this.name = "RewriteQualityError";
@@ -67,6 +73,8 @@ export class RewriteQualityError extends Error {
     this.rejectedCandidates = rejectedCandidates;
     this.repairCandidatesTried = repairCandidatesTried;
     this.candidateSignals = candidateSignals;
+    this.diagnosisTags = diagnosisTags;
+    this.rewritePlanSummary = rewritePlanSummary;
   }
 }
 
@@ -318,6 +326,8 @@ export async function rewriteWithOptimization(
       rejectedCandidates,
       repairCandidatesTried: repairTried,
       candidateSignals,
+      diagnosisTags: rewritePlan.tags,
+      rewritePlanSummary: rewritePlan.summary,
     });
   }
 

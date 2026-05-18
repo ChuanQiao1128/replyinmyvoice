@@ -143,6 +143,7 @@ Development optimization requirement:
 Rewrite strategy memory:
 
 - Maintain `docs/rewrite-strategy-memory.md` as the long-term strategy memory for the rewrite and repair engine.
+- Maintain `docs/rewrite-learning-system.md` as the architecture note for request-time repair and offline strategy learning.
 - After measured evaluation rounds, manual QA regressions, or user-approved feedback cases, update the strategy memory with:
   - the failure pattern
   - diagnosis tags
@@ -154,9 +155,11 @@ Rewrite strategy memory:
   - Rewrite Agent: diagnose, plan, and generate targeted candidate.
   - Repair Agent: analyze rejected candidates and repair the observed failure pattern.
   - Strategy Memory Agent: offline/development process that summarizes eval learning and proposes reusable rules.
-- Do not silently train or self-modify production prompts from private live user content.
-- Live user content may become strategy memory only if explicitly user-approved as a feedback or test case.
-- Prefer aggregate non-content telemetry for production learning, such as scenario, tone, score delta, diagnosis tags, repair-used flag, pass/fail, and quality-gate rejection reason.
+- Store submitted content, rewrites, scores, diagnosis tags, and repair metadata as internal learning samples when `REWRITE_LEARNING_LOG_ENABLED` is not false.
+- Disclose this internal quality storage on the Privacy page.
+- Do not sell, publish, or expose internal learning samples publicly.
+- Do not silently train or self-modify production prompts from one live user sample.
+- Run `npm run memory:rewrite` to create `docs/rewrite-memory-digest.md` from stored learning samples.
 - Stable lessons must be promoted through documentation, tests, measured evaluation, and code review before changing production behavior.
 
 Product focus:

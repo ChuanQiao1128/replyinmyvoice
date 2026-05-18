@@ -278,6 +278,7 @@ Source of truth:
 
 ```text
 /Users/qc/Desktop/CloudFlare/docs/rewrite-strategy-memory.md
+/Users/qc/Desktop/CloudFlare/docs/rewrite-learning-system.md
 ```
 
 This document records the current internal design for:
@@ -294,11 +295,25 @@ promotion rules for moving a strategy into production
 
 Future rewrite quality work must update this document when evaluation or real QA discovers a reusable lesson.
 
+Implemented learning-system direction:
+
+```text
+Request-time learning:
+- Each rewrite request runs a bounded diagnose -> rewrite -> measure -> repair -> select loop.
+- Bad measured candidates are repaired or rejected.
+- Quality-gate failures are not charged as successful usage.
+
+Offline learning:
+- Successful rewrites and quality-gate failures are stored as internal learning samples when REWRITE_LEARNING_LOG_ENABLED is not false.
+- Run `npm run memory:rewrite` to create docs/rewrite-memory-digest.md from stored learning samples.
+- The digest summarizes patterns and recommendations without printing user-submitted text.
+```
+
 Important rule:
 
 ```text
 Do not silently train or self-modify production prompts from private user content.
-Use curated eval cases, internal QA, aggregate non-content telemetry, or user-approved feedback examples.
+Use stored internal learning samples, curated eval cases, internal QA, and aggregate telemetry to propose changes.
 The Strategy Memory Agent may propose prompt/rule changes, but stable lessons must be promoted through docs, tests, evaluation, and code review.
 ```
 

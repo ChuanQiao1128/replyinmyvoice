@@ -23,6 +23,7 @@ model User {
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
   usages                 RewriteUsage[]
+  learningSamples        RewriteLearningSample[]
 }
 
 model RewriteUsage {
@@ -43,4 +44,33 @@ model StripeEvent {
   id        String   @id
   type      String
   createdAt DateTime @default(now())
+}
+
+model RewriteLearningSample {
+  id                    String   @id @default(cuid())
+  userId                String?
+  scenario              String
+  tonePreset            String
+  messageToReplyTo      String?
+  roughDraftReply       String
+  rewrittenText         String?
+  draftAiLikePercent    Int?
+  rewriteAiLikePercent  Int?
+  changePoints          Int?
+  label                 String?
+  diagnosisTags         String
+  rewritePlanSummary    String?
+  candidateSignals      String
+  internalStrategies    Int      @default(0)
+  repairCandidates      Int      @default(0)
+  rejectedCandidates    Int      @default(0)
+  status                String
+  errorCode             String?
+  createdAt             DateTime @default(now())
+  user                  User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([scenario])
+  @@index([status])
+  @@index([userId])
 }

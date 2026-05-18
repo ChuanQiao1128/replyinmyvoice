@@ -21,6 +21,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "eval:naturalness": "tsx scripts/eval-naturalness.ts",
     "eval:scenarios": "tsx scripts/eval-scenarios.ts",
+    "memory:rewrite": "tsx scripts/rewrite-memory-agent.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

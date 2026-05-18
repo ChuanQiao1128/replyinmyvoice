@@ -72,18 +72,31 @@ Responsibilities:
 - propose production prompt or rule changes
 - propose regression tests for newly discovered failure modes
 
-The Strategy Memory Agent must not silently rewrite production prompts from unreviewed live user content. It should write proposed lessons and test cases first. A developer or controlled automation then promotes stable lessons into code, tests, and prompt guardrails.
+Implemented MVP command:
+
+```bash
+npm run memory:rewrite
+```
+
+This command reads stored internal learning samples and writes:
+
+```text
+docs/rewrite-memory-digest.md
+```
+
+The Strategy Memory Agent must not silently rewrite production prompts from one unreviewed live sample. It should write proposed lessons and test cases first. A developer or controlled automation then promotes stable lessons into code, tests, and prompt guardrails.
 
 ## Privacy Rule For Learning
 
 MVP policy:
 
-- Do not save users' pasted messages, drafts, or rewrites to the database.
-- Do not use live user content as training memory unless the user explicitly submits it as feedback or a test case.
-- Production can store aggregate, non-content telemetry such as scenario, tone, score delta, pass/fail, diagnosis tags, and repair-used flag if privacy policy and implementation allow it later.
-- Strategy memory should normally be built from curated eval samples, internal QA, and user-approved examples.
+- The app may store submitted message context, rough drafts, rewritten replies, writing-signal results, and rewrite metadata for internal quality improvement.
+- The Privacy page must disclose this internal storage.
+- Do not sell, publish, or expose learning samples publicly.
+- Do not use learning samples in marketing without explicit user approval.
+- Do not store payment details.
 
-The system can become smarter without storing private message content by learning from patterns:
+The system should prefer pattern-level learning whenever possible. Even when internal samples include submitted content for quality work, production strategy updates should be promoted from repeatable patterns such as:
 
 - which diagnosis tags are common
 - which repair strategies reduce the signal

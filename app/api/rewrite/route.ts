@@ -13,6 +13,7 @@ import {
   RewriteQualityError,
   rewriteWithOptimization,
 } from "../../../lib/rewrite";
+import { tryLogRewriteLearningSample } from "../../../lib/rewrite-learning";
 import { getCurrentAppUser } from "../../../lib/users";
 import { rewriteRequestSchema } from "../../../lib/validation";
 
@@ -78,6 +79,13 @@ export async function POST(request: Request) {
       await chargeSuccessfulRewrite(user);
     }
 
+    await tryLogRewriteLearningSample({
+      user,
+      input,
+      status: "success",
+      response: rewrite,
+    });
+
     return NextResponse.json(rewrite);
   } catch (error) {
     if (error instanceof QuotaExceededError) {
@@ -88,6 +96,13 @@ export async function POST(request: Request) {
       console.info("quality_gate_failed", {
         rejectedCandidates: error.rejectedCandidates,
         repairCandidatesTried: error.repairCandidatesTried,
+      });
+
+      await tryLogRewriteLearningSample({
+        user,
+        input,
+        status: "quality_failed",
+        qualityError: error,
       });
 
       return NextResponse.json(

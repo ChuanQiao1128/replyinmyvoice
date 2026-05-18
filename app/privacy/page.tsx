@@ -15,12 +15,16 @@ const sections = [
     text: "When you use the rewrite workspace, the app processes the message context, rough draft, tone preference, and facts you provide so it can produce a revised reply and writing signal.",
   },
   {
-    title: "Reply content is not saved to our database",
-    text: "The app does not save pasted incoming messages, rough drafts, or rewritten replies to the application database. Recent rewrite history is stored only in your browser local storage so you can revisit your last few outputs on the same device.",
+    title: "Reply content and quality improvement",
+    text: "The app may store submitted message context, rough drafts, rewritten replies, writing-signal results, and rewrite metadata for internal quality improvement, debugging, and strategy evaluation. This helps us improve the rewrite and repair system over time. We do not sell this content or publish it publicly.",
   },
   {
     title: "Account and billing data",
     text: "The app stores account identifiers, subscription status, usage counts, and Stripe event records needed to run access control and billing. Payment details are handled by Stripe.",
+  },
+  {
+    title: "Local history",
+    text: "Your recent workspace history may also be stored in your browser local storage so you can revisit recent outputs on the same device. You can clear this local history from the app workspace.",
   },
   {
     title: "Safety reminder",
