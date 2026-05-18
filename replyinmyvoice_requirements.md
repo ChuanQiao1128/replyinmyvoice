@@ -1201,3 +1201,69 @@ Sapling is only a third-party reference writing signal provider for the Naturaln
 - `docs/sample-cases.md` includes sample counts and Sapling usage/cost estimates.
 - FAQ uses a list/accordion pattern instead of card grid.
 - Commercial footer/contact uses TimeAwake Ltd. and `info@timeawake.co.nz`.
+
+## Workspace Redesign V2 And Diagnosis-Driven Rewrite
+
+This section supersedes the previous Quick context workspace flow.
+
+### Workspace Requirements
+
+- Delete Quick context from the app workspace.
+- Keep a one-page flow.
+- Provide five scenario choices:
+  - `Blank / custom`
+  - `Email or message reply`
+  - `Customer support`
+  - `Cover letter`
+  - `Work update`
+- `Context or message` is optional.
+- `Draft to rewrite` is required.
+- Tone choices are limited to:
+  - `Warm`
+  - `Professional`
+  - `Friendly`
+  - `Concise`
+- Show results vertically:
+  - rewritten text
+  - Naturalness Check
+  - change summary and risk notes
+  - collapsed local history
+
+### Backend Rewrite Strategy
+
+Each scenario has backend prompt guardrails so the user does not need to fill out many fields.
+
+The production rewrite engine should run:
+
+1. diagnose draft patterns
+2. create rewrite plan
+3. targeted rewrite
+4. measure writing signal
+5. repair missing critical facts if needed
+6. select the best candidate
+
+Critical facts must be preserved when provided, including names, emails, currency, dates/months, counts, product/reporting details, and requested next steps.
+
+### Evaluation Requirement
+
+Create `docs/scenario-evaluation-results.md` with at least 15 cases:
+
+- 3 cases for each of the 5 scenarios
+- before and after text
+- diagnosis tags
+- rewrite plan
+- draft and rewrite AI-like signal
+- facts preserved/missing
+- pass/fail
+
+Quality target:
+
+- average AI-like signal reduction at least 30 points
+- majority of measured rewrites below 50%
+
+Latest documented run:
+
+- 15 cases evaluated
+- average AI-like signal drop: 64 points
+- 11/15 rewrites below 50%
+- 11/15 case pass count

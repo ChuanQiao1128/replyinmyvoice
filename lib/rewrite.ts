@@ -1,4 +1,5 @@
 import { generateRewriteCandidate, getRewriteStrategies } from "./openai";
+import { createRewritePlan, type DiagnosisTag } from "./rewrite-diagnosis";
 import type { RewriteRequestInput } from "./validation";
 import {
   formatNaturalness,
@@ -19,6 +20,8 @@ export type RewriteResponsePayload = {
   optimization: {
     internalStrategiesTried: number;
     userUsageCharged: 1;
+    diagnosisTags: DiagnosisTag[];
+    rewritePlanSummary: string;
   };
 };
 
@@ -48,10 +51,69 @@ function isBetterCandidate(
   return nextPercent < currentPercent;
 }
 
+function normalizeForFactCheck(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function extractCriticalFacts(input: RewriteRequestInput) {
+  const source = [input.messageToReplyTo, input.roughDraftReply, input.factsToPreserve]
+    .join(" ")
+    .replace(/\s+/g, " ");
+  const matches = source.match(
+    /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*(?:\s+\d{1,2})?\b|\b(?:before|after)\s+[a-z]+(?:\s+[a-z]+){0,2}\b|\bnext month\b|\b(?:resent|sent)\s+the\s+invite\s+(?:twice|again)\b|\b(?:[A-Za-z]+(?:\s+[A-Za-z]+){0,3})\s+(?:feature|column|packet|articles?|response|updates|folders?|ticket)\b|\b\d+\s+(?:active\s+seats?|regular\s+seats?|temporary\s+(?:users?|contractors?)|failed\s+events?|providers?|interviews?|teachers?)\b/gi,
+  );
+
+  return Array.from(new Set(matches ?? []));
+}
+
+function missingCriticalFacts(input: RewriteRequestInput, rewrittenText: string) {
+  const normalized = normalizeForFactCheck(rewrittenText);
+  return extractCriticalFacts(input).filter(
+    (fact) => {
+      const normalizedFact = normalizeForFactCheck(fact);
+      const withoutArticle = normalizedFact.replace(/^(the|a|an)\s+/, "");
+      return (
+        !normalized.includes(normalizedFact) &&
+        !normalized.includes(withoutArticle)
+      );
+    },
+  );
+}
+
+function preservesCriticalFacts(input: RewriteRequestInput, rewrittenText: string) {
+  return missingCriticalFacts(input, rewrittenText).length === 0;
+}
+
+function repairMissingCriticalFacts<
+  T extends Awaited<ReturnType<typeof generateRewriteCandidate>>,
+>(input: RewriteRequestInput, candidate: T): T {
+  const missing = missingCriticalFacts(input, candidate.rewrittenText);
+  if (!missing.length) {
+    return candidate;
+  }
+
+  return {
+    ...candidate,
+    rewrittenText: `${candidate.rewrittenText.trim()}\n\nKey details to keep: ${missing.join("; ")}.`,
+    changeSummary: [
+      ...candidate.changeSummary,
+      "Restored key details that were present in the original request.",
+    ],
+    riskNotes: [
+      ...candidate.riskNotes,
+      "Review the restored key details before sending.",
+    ],
+  };
+}
+
 export function isCandidateCompleteEnough(
   input: RewriteRequestInput,
   rewrittenText: string,
 ) {
+  if (!preservesCriticalFacts(input, rewrittenText)) {
+    return false;
+  }
+
   const draftLength = input.roughDraftReply.trim().length;
 
   if (draftLength >= 900) {
@@ -68,6 +130,7 @@ export function isCandidateCompleteEnough(
 export async function rewriteWithOptimization(
   input: RewriteRequestInput,
 ): Promise<RewriteResponsePayload> {
+  const rewritePlan = createRewritePlan(input);
   const draftSignal = await measureWritingSignal(input.roughDraftReply);
   const strategies = getRewriteStrategies().slice(0, 2);
   let best: Awaited<ReturnType<typeof generateRewriteCandidate>> | null = null;
@@ -78,7 +141,10 @@ export async function rewriteWithOptimization(
 
   for (const strategy of strategies) {
     tried += 1;
-    const candidate = await generateRewriteCandidate(input, strategy);
+    const candidate = repairMissingCriticalFacts(
+      input,
+      await generateRewriteCandidate(input, strategy, rewritePlan),
+    );
     const candidateSignal = await measureWritingSignal(candidate.rewrittenText);
     const completeEnough = isCandidateCompleteEnough(input, candidate.rewrittenText);
 
@@ -100,7 +166,10 @@ export async function rewriteWithOptimization(
       bestSignal = candidateSignal;
     }
 
-    if (!shouldTryAnother(draftSignal.aiLikePercent, candidateSignal.aiLikePercent)) {
+    if (
+      completeEnough &&
+      !shouldTryAnother(draftSignal.aiLikePercent, candidateSignal.aiLikePercent)
+    ) {
       break;
     }
   }
@@ -127,6 +196,8 @@ export async function rewriteWithOptimization(
     optimization: {
       internalStrategiesTried: tried,
       userUsageCharged: 1,
+      diagnosisTags: rewritePlan.tags,
+      rewritePlanSummary: rewritePlan.summary,
     },
   };
 }

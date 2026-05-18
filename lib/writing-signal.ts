@@ -61,6 +61,10 @@ function timeoutSignal(seconds: number) {
   };
 }
 
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 export async function measureWritingSignal(
   text: string,
 ): Promise<WritingSignalResult> {
@@ -72,34 +76,61 @@ export async function measureWritingSignal(
   }
 
   const timeoutSeconds = Number(optionalEnv("WRITING_SIGNAL_TIMEOUT_SEC", "10"));
-  const timeout = timeoutSignal(Number.isFinite(timeoutSeconds) ? timeoutSeconds : 10);
 
-  try {
-    const response = await fetch("https://api.sapling.ai/api/v1/aidetect", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        key: apiKey,
-        text,
-      }),
-      signal: timeout.signal,
-    });
+  const retryCount = Math.max(
+    0,
+    Math.min(Number(optionalEnv("WRITING_SIGNAL_RETRY_COUNT", "1")), 2),
+  );
 
-    if (!response.ok) {
-      return { aiLikePercent: null, unavailableReason: "provider_error" };
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    const timeout = timeoutSignal(
+      Number.isFinite(timeoutSeconds) ? timeoutSeconds : 10,
+    );
+
+    try {
+      const response = await fetch("https://api.sapling.ai/api/v1/aidetect", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          key: apiKey,
+          text,
+        }),
+        signal: timeout.signal,
+      });
+
+      if (!response.ok) {
+        if (
+          attempt < retryCount &&
+          (response.status === 429 || response.status >= 500)
+        ) {
+          timeout.clear();
+          await sleep(800 * (attempt + 1));
+          continue;
+        }
+
+        return { aiLikePercent: null, unavailableReason: "provider_error" };
+      }
+
+      const payload = (await response.json()) as { score?: unknown };
+      if (typeof payload.score !== "number") {
+        return { aiLikePercent: null, unavailableReason: "schema_changed" };
+      }
+
+      return { aiLikePercent: scoreToPercent(payload.score) };
+    } catch {
+      if (attempt < retryCount) {
+        timeout.clear();
+        await sleep(800 * (attempt + 1));
+        continue;
+      }
+
+      return { aiLikePercent: null, unavailableReason: "timeout_or_network" };
+    } finally {
+      timeout.clear();
     }
-
-    const payload = (await response.json()) as { score?: unknown };
-    if (typeof payload.score !== "number") {
-      return { aiLikePercent: null, unavailableReason: "schema_changed" };
-    }
-
-    return { aiLikePercent: scoreToPercent(payload.score) };
-  } catch {
-    return { aiLikePercent: null, unavailableReason: "timeout_or_network" };
-  } finally {
-    timeout.clear();
   }
+
+  return { aiLikePercent: null, unavailableReason: "provider_error" };
 }

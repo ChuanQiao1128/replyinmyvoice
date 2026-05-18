@@ -1,9 +1,10 @@
 import { z } from "zod";
 
-import { tonePresetOptions } from "./rewrite-presets";
+import { scenarioOptions, tonePresetOptions } from "./rewrite-presets";
 
 export const rewriteRequestSchema = z
   .object({
+    scenario: z.enum(scenarioOptions).optional().default("Blank / custom"),
     messageToReplyTo: z.string().max(5000).optional().default(""),
     roughDraftReply: z.string().min(10).max(5000),
     audience: z.string().max(300).optional().default(""),

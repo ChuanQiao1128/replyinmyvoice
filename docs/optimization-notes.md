@@ -19,18 +19,25 @@ Date: 2026-05-18
 | 5 | Generalized fallback rewrite pass using request facts only | 8 | 69 pts | 6/8 | yes | Final production strategy: target met while avoiding hardcoded sample details. |
 | 6 | Post-budget provider check | 8 | unavailable | unavailable | not scored | Sapling returned 429 capacity errors after repeated evaluation calls; not used as a quality result. |
 | 7 | Long client-support prompt guardrail | 1 live manual sample | 89 pts | 1/1 | yes | Real billing-support test dropped from 89% to 0%, but the first output over-compressed the explanation. Prompt now preserves long support explanations, forwardable summaries, and requested next steps. |
+| 8 | Workspace V2 scenario guardrails plus diagnosis/repair/select flow | 15 | 64 pts | 11/15 | yes | Five-scenario evaluation passed the internal target. Critical-fact repair restores emails, dates, amounts, counts, and requested details before selection. |
 
 ## Final Selected Strategy
 
-Production API uses a bounded two-pass rewrite workflow:
+Production API uses a bounded diagnosis-driven rewrite workflow:
 
-1. OpenAI plain email-thread note:
+1. Draft diagnosis:
+   - tags stock openings, corporate polish, uniform rhythm, over-explaining, generic transitions, policy memo voice, low specificity, over-safe tone, support template voice, and application cliches
+   - applies scenario-specific backend guardrails
+2. OpenAI targeted rewrite:
    - compact concrete paragraphs
    - thread-like wording
    - preserves facts from the user fields
-2. Deterministic fallback rewrite pass:
+3. Measure and repair:
+   - measures draft and candidate AI-like signal
+   - restores missing critical facts before selection
+4. Deterministic fallback rewrite pass:
    - only runs when the first pass remains above 50% AI-like signal or improves by less than 30 points
-   - uses only `messageToReplyTo`, `roughDraftReply`, `whatHappened`, and `factsToPreserve`
+   - uses only the provided request fields
    - creates a short opening, blank line, and concrete fact/next-step structure
 
 The fallback is intentionally not a separate external agent in this MVP. It behaves like an internal rewrite pass/subroutine so production latency and cost stay bounded.
@@ -48,9 +55,10 @@ The fallback is intentionally not a separate external agent in this MVP. It beha
 
 Final valid complete run:
 
-- Samples evaluated: 8
-- Average AI-like signal reduction: 69 points
-- Rewrites below 50% AI-like signal: 6/8
+- Samples evaluated: 15
+- Average AI-like signal reduction: 64 points
+- Rewrites below 50% AI-like signal: 11/15
+- Case pass count: 11/15
 - Internal target met: yes
 
 Provider note: after repeated development evaluation calls, Sapling returned `429` capacity errors. The app already handles provider failure by returning the rewrite with an unavailable signal state, and evaluation results with unavailable scores must not be counted as target-met runs.

@@ -43,6 +43,7 @@ describe("thread fallback rewrite pass", () => {
 
     const result = await generateRewriteCandidate(
       {
+        scenario: "Customer support",
         messageToReplyTo: "Why is this invoice higher than last month?",
         roughDraftReply:
           "Thank you for contacting us regarding your invoice. The amount may vary based on service usage.",
@@ -52,7 +53,7 @@ describe("thread fallback rewrite pass", () => {
         factsToPreserve:
           "Three seats added June 2. Includes prorated seat charges.",
         tone: "direct",
-        tonePreset: "Direct",
+        tonePreset: "Professional",
       },
       threadFallback!,
     );
@@ -68,6 +69,7 @@ describe("thread fallback rewrite pass", () => {
 
     const result = await generateRewriteCandidate(
       {
+        scenario: "Work update",
         messageToReplyTo: "Can you send the numbers today?",
         roughDraftReply:
           "Unfortunately, due to unforeseen circumstances, the requested numbers cannot be provided today.",

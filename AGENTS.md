@@ -1677,3 +1677,95 @@ When the next development run finishes, include:
 - FAQ layout changes
 - tests/screenshots run
 - GitHub push status
+
+## Workspace Redesign V2 And Diagnosis-Driven Rewrite Engine
+
+This section supersedes earlier Quick context workspace notes.
+
+### Workspace V2
+
+- Remove Quick context from the user-facing workspace.
+- Keep the workspace as one page.
+- Context or message is optional.
+- Draft to rewrite is required.
+- Use five broad scenarios:
+  - `Blank / custom`
+  - `Email or message reply`
+  - `Customer support`
+  - `Cover letter`
+  - `Work update`
+- Use four visible tone presets only:
+  - `Warm`
+  - `Professional`
+  - `Friendly`
+  - `Concise`
+- Results should be vertical:
+  - rewritten text
+  - Naturalness Check
+  - change summary and risk notes
+  - collapsed local history
+
+### Scenario Guardrails
+
+Each scenario must carry backend guardrails, not extra user burden:
+
+- Blank / custom: preserve facts and do not add a recipient, relationship, timeline, or promise.
+- Email or message reply: answer the actual thread and do not add a name unless provided.
+- Customer support: preserve amounts, counts, dates, product names, policy limits, and next steps; avoid new promises or account changes.
+- Cover letter: preserve real experience only; do not invent achievements.
+- Work update: preserve ownership, deadlines, blockers, status, and requested action.
+
+### Diagnosis-Driven Engine
+
+Production rewrite flow must follow:
+
+1. diagnose draft patterns
+2. create rewrite plan
+3. targeted rewrite
+4. measure writing signal
+5. repair if needed
+6. select best candidate
+
+Diagnosis tags include stock openings, corporate polish, uniform rhythm, over-explaining, generic transitions, policy memo voice, low specificity, over-safe tone, support template voice, and application cliches.
+
+Selection must prefer candidates that both lower the AI-like signal and preserve critical facts. Critical facts include emails, currency, months/dates, seat/user counts, named timing, product/reporting details, and scenario-specific details discovered in the request.
+
+If a low-signal candidate drops critical facts, repair the candidate by restoring those details before measuring/selecting. Do not charge extra user usage for internal repair.
+
+### Evaluation Record
+
+Create or update `docs/scenario-evaluation-results.md` during development.
+
+The required evaluation set is:
+
+- five scenarios
+- at least three cases per scenario
+- at least 15 total cases
+
+For each case record:
+
+- scenario
+- tone
+- diagnosis tags
+- rewrite plan
+- draft AI-like signal
+- rewrite AI-like signal
+- change in points
+- expected facts
+- facts preserved
+- missing facts
+- pass/fail
+- before and after text
+
+The internal quality target is met when the measured set has:
+
+- average AI-like signal reduction of at least 30 points
+- a majority of rewrites below 50% AI-like signal
+
+Current documented run in `docs/scenario-evaluation-results.md`:
+
+- 15 cases evaluated
+- 15 measured
+- average AI-like signal drop: 64 points
+- 11/15 rewrites below 50%
+- 11/15 case pass count

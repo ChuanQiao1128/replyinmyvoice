@@ -2,7 +2,6 @@
 
 import {
   CheckCircle2,
-  ChevronDown,
   Clipboard,
   CopyCheck,
   Loader2,
@@ -10,37 +9,26 @@ import {
   Send,
   Sparkles,
   Trash2,
-  WandSparkles,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
-  audienceOptions,
-  formatMustKeep,
-  mustKeepOptions,
-  purposeOptions,
+  scenarioOptions,
   tonePresetOptions,
   tonePresetToTone,
-  type AudienceOption,
-  type MustKeepOption,
-  type PurposeOption,
+  type ScenarioOption,
   type TonePreset,
 } from "../../lib/rewrite-presets";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { SubscriptionStatus } from "./subscription-status";
 
-const HISTORY_KEY = "rimv.rewrite.history.v1";
+const HISTORY_KEY = "rimv.rewrite.history.v2";
 
 const limits = {
   messageToReplyTo: 5000,
   roughDraftReply: 5000,
-  audience: 300,
-  purpose: 500,
-  whatHappened: 1000,
-  factsToPreserve: 1000,
 };
 
 type Naturalness = {
@@ -58,10 +46,13 @@ type RewriteResponse = {
   optimization: {
     internalStrategiesTried: number;
     userUsageCharged: 1;
+    diagnosisTags?: string[];
+    rewritePlanSummary?: string;
   };
 };
 
 type HistoryItem = {
+  scenario: ScenarioOption;
   roughDraftReply: string;
   rewrittenText: string;
   tone: "warm" | "direct";
@@ -73,26 +64,14 @@ type HistoryItem = {
 };
 
 type FormState = {
+  scenario: ScenarioOption;
   messageToReplyTo: string;
   roughDraftReply: string;
-  audience: string;
-  audiencePreset: AudienceOption;
-  purpose: string;
-  purposePreset: PurposeOption;
-  whatHappened: string;
-  factsToPreserve: string;
-  mustKeepSelections: MustKeepOption[];
   tone: "warm" | "direct";
   tonePreset: TonePreset;
 };
 
-type StringFormField =
-  | "messageToReplyTo"
-  | "roughDraftReply"
-  | "audience"
-  | "purpose"
-  | "whatHappened"
-  | "factsToPreserve";
+type StringFormField = "messageToReplyTo" | "roughDraftReply";
 
 type Props = {
   usageLabel: string;
@@ -101,108 +80,28 @@ type Props = {
 };
 
 const initialForm: FormState = {
-  messageToReplyTo:
-    "Hi, I missed the deadline because I had a family issue this week. Is there any way I can still submit the reflection?",
-  roughDraftReply:
-    "Dear student, I acknowledge your message. Late submissions are generally not accepted according to course policy. Please provide additional details for consideration.",
-  audience: "Student",
-  audiencePreset: "Student",
-  purpose: "Reply clearly",
-  purposePreset: "Reply clearly",
-  whatHappened: "They had a family issue and asked whether they can still submit.",
-  factsToPreserve: "Late work policy matters. I can review the situation tomorrow.",
-  mustKeepSelections: ["Policy details", "Next step", "No new promises"],
-  tone: "warm" as const,
+  scenario: "Blank / custom",
+  messageToReplyTo: "",
+  roughDraftReply: "",
+  tone: "warm",
   tonePreset: "Warm",
 };
 
-const templates: Array<{
-  label: string;
-  description: string;
-  form: FormState;
-}> = [
-  {
-    label: "Teacher reply",
-    description: "A student missed a deadline and needs a firm but kind answer.",
-    form: initialForm,
-  },
-  {
-    label: "Sales follow-up",
-    description: "A buyer needs a specific, relationship-aware nudge.",
-    form: {
-      messageToReplyTo:
-        "Thanks for the proposal. We are still comparing options and may come back next month.",
-      roughDraftReply:
-        "Hello, I am following up on the proposal and would like to know if you have any updates about whether you will proceed.",
-      audience: "Prospect",
-      audiencePreset: "Prospect",
-      purpose: "Follow up",
-      purposePreset: "Follow up",
-      whatHappened:
-        "They are comparing options and said they may revisit the decision next month.",
-      factsToPreserve:
-        "Proposal was sent last week. They may revisit next month. Offer to simplify the options.",
-      mustKeepSelections: ["Next step", "No new promises"],
-      tone: "warm",
-      tonePreset: "Friendly",
-    },
-  },
-  {
-    label: "Workplace update",
-    description: "A teammate needs a clear status reply with timing.",
-    form: {
-      messageToReplyTo:
-        "Can you send the revised numbers today? I need them for the partner update.",
-      roughDraftReply:
-        "Unfortunately, the requested numbers are not available at this time due to delayed source information.",
-      audience: "Teammate",
-      audiencePreset: "Teammate",
-      purpose: "Explain a delay",
-      purposePreset: "Explain a delay",
-      whatHappened: "The source file arrived late and still needs one check.",
-      factsToPreserve: "Send the revised numbers by 4pm Friday.",
-      mustKeepSelections: ["Dates and times", "Next step"],
-      tone: "direct",
-      tonePreset: "Concise",
-    },
-  },
-  {
-    label: "Client support",
-    description: "A client reported a problem and needs a careful reply.",
-    form: {
-      messageToReplyTo:
-        "The report totals look different from last month. Can someone explain what changed?",
-      roughDraftReply:
-        "Thank you for contacting us. Our team is currently reviewing the matter and will provide an update as soon as possible.",
-      audience: "Customer or client",
-      audiencePreset: "Customer or client",
-      purpose: "Clarify a misunderstanding",
-      purposePreset: "Clarify a misunderstanding",
-      whatHappened: "The new report includes a category that was hidden last month.",
-      factsToPreserve:
-        "Report includes a newly visible category. Send a line-by-line note today.",
-      mustKeepSelections: ["No new promises", "Next step"],
-      tone: "warm",
-      tonePreset: "Professional",
-    },
-  },
-];
-
-const CUSTOM_TEMPLATE_LABEL = "Custom input";
+const scenarioHelp: Record<ScenarioOption, string> = {
+  "Blank / custom": "Use this when you only have a draft or the text is not a reply.",
+  "Email or message reply": "For everyday replies where the thread matters.",
+  "Customer support": "For billing, account, product, or service replies.",
+  "Cover letter": "For job applications that need to sound specific and real.",
+  "Work update": "For internal status notes, blockers, and next-step messages.",
+};
 
 const progressSteps = [
-  "Reading the thread",
-  "Rewriting in your voice",
-  "Checking the writing signal",
+  "Reading the draft",
+  "Diagnosing the writing pattern",
+  "Rewriting and checking the signal",
 ];
 
-function Remaining({
-  value,
-  max,
-}: {
-  value: string;
-  max: number;
-}) {
+function Remaining({ value, max }: { value: string; max: number }) {
   return (
     <span className="text-xs text-ink/45">
       {Math.max(max - value.length, 0)} left
@@ -262,19 +161,14 @@ export function RewriteWorkspace({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const [activeTemplate, setActiveTemplate] = useState(templates[0].label);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
 
   const combinedLength = useMemo(
-    () =>
-      form.messageToReplyTo.length +
-      form.roughDraftReply.length +
-      form.audience.length +
-      form.purpose.length +
-      form.whatHappened.length +
-      formatMustKeep(form.mustKeepSelections, form.factsToPreserve).length,
-    [form],
+    () => form.messageToReplyTo.length + form.roughDraftReply.length,
+    [form.messageToReplyTo, form.roughDraftReply],
   );
+  const canSubmit =
+    !loading && form.roughDraftReply.trim().length >= 10 && combinedLength <= 10000;
 
   useEffect(() => {
     try {
@@ -309,6 +203,7 @@ export function RewriteWorkspace({
 
   function saveHistory(response: RewriteResponse) {
     const nextItem: HistoryItem = {
+      scenario: form.scenario,
       roughDraftReply: form.roughDraftReply,
       rewrittenText: response.rewrittenText,
       tone: form.tone,
@@ -325,25 +220,26 @@ export function RewriteWorkspace({
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
+    if (!canSubmit) {
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
-      const requestPayload = {
-        ...form,
-        tone: tonePresetToTone(form.tonePreset),
-        factsToPreserve: formatMustKeep(
-          form.mustKeepSelections,
-          form.factsToPreserve,
-        ),
-      };
-
       const response = await fetch("/api/rewrite", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify({
+          scenario: form.scenario,
+          messageToReplyTo: form.messageToReplyTo,
+          roughDraftReply: form.roughDraftReply,
+          tone: tonePresetToTone(form.tonePreset),
+          tonePreset: form.tonePreset,
+        }),
       });
       const payload = (await response.json()) as RewriteResponse & {
         error?: string;
@@ -367,44 +263,13 @@ export function RewriteWorkspace({
   }
 
   function updateField(name: StringFormField, value: string) {
-    const shouldResetTemplateContext =
-      activeTemplate !== CUSTOM_TEMPLATE_LABEL &&
-      (name === "messageToReplyTo" || name === "roughDraftReply");
-
-    if (shouldResetTemplateContext) {
-      setActiveTemplate(CUSTOM_TEMPLATE_LABEL);
-    }
-
-    setForm((current) => {
-      const next = { ...current, [name]: value };
-
-      if (shouldResetTemplateContext) {
-        return {
-          ...next,
-          whatHappened: "",
-          factsToPreserve: "",
-          mustKeepSelections: [],
-        };
-      }
-
-      return next;
-    });
+    setForm((current) => ({ ...current, [name]: value }));
   }
 
-  function updateAudiencePreset(value: AudienceOption) {
-    setForm((current) => ({
-      ...current,
-      audiencePreset: value,
-      audience: value === "Other" ? "" : value,
-    }));
-  }
-
-  function updatePurposePreset(value: PurposeOption) {
-    setForm((current) => ({
-      ...current,
-      purposePreset: value,
-      purpose: value === "Other" ? "" : value,
-    }));
+  function updateScenario(value: ScenarioOption) {
+    setForm((current) => ({ ...current, scenario: value }));
+    setResult(null);
+    setError("");
   }
 
   function updateTonePreset(value: TonePreset) {
@@ -413,27 +278,6 @@ export function RewriteWorkspace({
       tonePreset: value,
       tone: tonePresetToTone(value),
     }));
-  }
-
-  function toggleMustKeep(value: MustKeepOption) {
-    setForm((current) => {
-      const exists = current.mustKeepSelections.includes(value);
-
-      return {
-        ...current,
-        mustKeepSelections: exists
-          ? current.mustKeepSelections.filter((item) => item !== value)
-          : [...current.mustKeepSelections, value],
-      };
-    });
-  }
-
-  function applyTemplate(template: (typeof templates)[number]) {
-    setForm({ ...template.form });
-    setActiveTemplate(template.label);
-    setResult(null);
-    setError("");
-    setCopied(false);
   }
 
   async function copyReply() {
@@ -452,12 +296,12 @@ export function RewriteWorkspace({
 
   return (
     <main className="min-h-screen bg-paper text-ink">
-      <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
+      <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-8">
         <div className="mb-5">
           <h1 className="text-3xl font-semibold">Rewrite workspace</h1>
           <p className="mt-2 text-sm text-ink/60">
-            Avoid pasting passwords, payment details, or highly sensitive
-            personal information.
+            Paste a draft, choose the writing job, and keep the facts intact.
+            Context is optional.
           </p>
         </div>
         <SubscriptionStatus
@@ -465,272 +309,105 @@ export function RewriteWorkspace({
           status={subscriptionStatus}
           usageLabel={usageLabel}
         />
-        <form className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.9fr]" onSubmit={submit}>
-          <section className="space-y-4">
-            <Card className="p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="flex items-center gap-2 text-sm font-semibold">
-                    <WandSparkles className="h-4 w-4 text-clay" aria-hidden="true" />
-                    Starter scenarios
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-ink/50">
-                    Use a realistic email workflow as a starting point, then
-                    replace the details with your own.
-                  </p>
-                </div>
-                <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/55">
-                  {activeTemplate}
+        <form className="mt-5 space-y-5" onSubmit={submit}>
+          <Card className="p-4 md:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Scenario</h2>
+                <p className="mt-1 text-sm text-ink/55">
+                  Pick the closest writing job. The rewrite rules change behind
+                  the scenes.
+                </p>
+              </div>
+              <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
+                {combinedLength}/10000
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-5">
+              {scenarioOptions.map((scenario) => (
+                <button
+                  aria-pressed={form.scenario === scenario}
+                  className={`rounded-lg border p-3 text-left transition ${
+                    form.scenario === scenario
+                      ? "border-ink bg-ink text-paper"
+                      : "border-line bg-white text-ink hover:bg-paper"
+                  }`}
+                  key={scenario}
+                  onClick={() => updateScenario(scenario)}
+                  type="button"
+                >
+                  <span className="block text-sm font-semibold">{scenario}</span>
+                  <span className="mt-2 block text-xs leading-5 opacity-70">
+                    {scenarioHelp[scenario]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-4 md:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <label
+                className="text-base font-semibold"
+                htmlFor="messageToReplyTo"
+              >
+                Context or message
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
+                  Optional
                 </span>
-              </div>
-              <div className="mt-4 grid gap-2 md:grid-cols-2">
-                {templates.map((template) => (
-                  <button
-                    className={`rounded-lg border p-3 text-left transition ${
-                      activeTemplate === template.label
-                        ? "border-ink bg-ink text-paper"
-                        : "border-line bg-white text-ink hover:bg-paper"
-                    }`}
-                    key={template.label}
-                    onClick={() => applyTemplate(template)}
-                    type="button"
-                  >
-                    <span className="text-sm font-semibold">{template.label}</span>
-                    <span className="mt-1 block text-xs leading-5 opacity-75">
-                      {template.description}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <label className="text-sm font-semibold" htmlFor="messageToReplyTo">
-                  Message to reply to
-                </label>
                 <Remaining
                   max={limits.messageToReplyTo}
                   value={form.messageToReplyTo}
                 />
               </div>
-              <Textarea
-                id="messageToReplyTo"
-                maxLength={limits.messageToReplyTo}
-                onChange={(event) =>
-                  updateField("messageToReplyTo", event.target.value)
-                }
-                rows={6}
-                value={form.messageToReplyTo}
-              />
-            </Card>
-            <Card className="p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <label className="text-sm font-semibold" htmlFor="roughDraftReply">
-                  Rough draft reply
-                </label>
-                <Remaining
-                  max={limits.roughDraftReply}
-                  value={form.roughDraftReply}
-                />
-              </div>
-              <Textarea
-                id="roughDraftReply"
-                maxLength={limits.roughDraftReply}
-                minLength={10}
-                onChange={(event) =>
-                  updateField("roughDraftReply", event.target.value)
-                }
-                required
-                rows={7}
-                value={form.roughDraftReply}
-              />
-            </Card>
-            <Card className="p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold">Quick context</h2>
-                  <p className="mt-1 text-xs leading-5 text-ink/50">
-                    Optional, but useful. Pick what fits; you can leave the rest
-                    blank.
-                  </p>
-                </div>
-                <p className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/50">
-                  {combinedLength}/10000
-                </p>
-              </div>
+            </div>
+            <Textarea
+              id="messageToReplyTo"
+              maxLength={limits.messageToReplyTo}
+              onChange={(event) =>
+                updateField("messageToReplyTo", event.target.value)
+              }
+              placeholder="Optional. Paste the email, note, job post, or situation you are responding to."
+              rows={6}
+              value={form.messageToReplyTo}
+            />
+          </Card>
 
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-xs font-semibold text-ink/65" htmlFor="audiencePreset">
-                    Audience
-                  </label>
-                  <select
-                    className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm text-ink outline-none focus:border-clay"
-                    id="audiencePreset"
-                    onChange={(event) =>
-                      updateAudiencePreset(event.target.value as AudienceOption)
-                    }
-                    value={form.audiencePreset}
-                  >
-                    {audienceOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                  {form.audiencePreset === "Other" ? (
-                    <div className="mt-2">
-                      <div className="mb-1 flex items-center justify-between">
-                        <label className="text-xs font-medium text-ink/55" htmlFor="audience">
-                          Custom audience
-                        </label>
-                        <Remaining max={limits.audience} value={form.audience} />
-                      </div>
-                      <Input
-                        id="audience"
-                        maxLength={limits.audience}
-                        onChange={(event) =>
-                          updateField("audience", event.target.value)
-                        }
-                        placeholder="Example: finance lead reviewing renewal terms"
-                        value={form.audience}
-                      />
-                    </div>
-                  ) : null}
-                </div>
+          <Card className="p-4 md:p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <label className="text-base font-semibold" htmlFor="roughDraftReply">
+                Draft to rewrite
+              </label>
+              <Remaining max={limits.roughDraftReply} value={form.roughDraftReply} />
+            </div>
+            <Textarea
+              id="roughDraftReply"
+              maxLength={limits.roughDraftReply}
+              minLength={10}
+              onChange={(event) =>
+                updateField("roughDraftReply", event.target.value)
+              }
+              placeholder="Required. Paste the draft that sounds too stiff, generic, or over-polished."
+              required
+              rows={9}
+              value={form.roughDraftReply}
+            />
+          </Card>
 
-                <div>
-                  <label className="mb-2 block text-xs font-semibold text-ink/65" htmlFor="purposePreset">
-                    Purpose
-                  </label>
-                  <select
-                    className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm text-ink outline-none focus:border-clay"
-                    id="purposePreset"
-                    onChange={(event) =>
-                      updatePurposePreset(event.target.value as PurposeOption)
-                    }
-                    value={form.purposePreset}
-                  >
-                    {purposeOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                  {form.purposePreset === "Other" ? (
-                    <div className="mt-2">
-                      <div className="mb-1 flex items-center justify-between">
-                        <label className="text-xs font-medium text-ink/55" htmlFor="purpose">
-                          Custom purpose
-                        </label>
-                        <Remaining max={limits.purpose} value={form.purpose} />
-                      </div>
-                      <Input
-                        id="purpose"
-                        maxLength={limits.purpose}
-                        onChange={(event) =>
-                          updateField("purpose", event.target.value)
-                        }
-                        placeholder="Example: explain the delay without overpromising"
-                        value={form.purpose}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <p className="text-xs font-semibold text-ink/65">
-                  What must stay the same
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {mustKeepOptions.map((option) => {
-                    const selected = form.mustKeepSelections.includes(option);
-
-                    return (
-                      <button
-                        aria-pressed={selected}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                          selected
-                            ? "border-sage bg-sage text-paper"
-                            : "border-line bg-white text-ink/62 hover:text-ink"
-                        }`}
-                        key={option}
-                        onClick={() => toggleMustKeep(option)}
-                        type="button"
-                      >
-                        {option}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="text-xs font-medium text-ink/55" htmlFor="factsToPreserve">
-                      Specific details
-                    </label>
-                    <Remaining
-                      max={limits.factsToPreserve}
-                      value={form.factsToPreserve}
-                    />
-                  </div>
-                  <Textarea
-                    id="factsToPreserve"
-                    maxLength={limits.factsToPreserve}
-                    onChange={(event) =>
-                      updateField("factsToPreserve", event.target.value)
-                    }
-                    placeholder="Optional: add specific dates, numbers, policy details, or promises to avoid."
-                    rows={2}
-                    value={form.factsToPreserve}
-                  />
-                </div>
-              </div>
-
-              <details className="mt-5 rounded-lg border border-line bg-white p-3">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold">
-                  <span>Extra context</span>
-                  <span className="flex items-center gap-2 text-xs font-medium text-ink/45">
-                    Optional
-                    <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                </summary>
-                <p className="mt-2 text-xs leading-5 text-ink/50">
-                  Add anything the reply should understand but not over-explain.
-                </p>
-                <div className="mt-3 mb-2 flex items-center justify-between">
-                  <label className="text-xs font-medium text-ink/55" htmlFor="whatHappened">
-                    Details
-                  </label>
-                  <Remaining
-                    max={limits.whatHappened}
-                    value={form.whatHappened}
-                  />
-                </div>
-                <Textarea
-                  id="whatHappened"
-                  maxLength={limits.whatHappened}
-                  onChange={(event) =>
-                    updateField("whatHappened", event.target.value)
-                  }
-                  placeholder="Optional. Leave blank if there is no extra context."
-                  rows={3}
-                  value={form.whatHappened}
-                />
-              </details>
-            </Card>
-
-            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <Card className="p-4 md:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold">Tone preset</p>
-                <p className="mt-1 text-xs text-ink/50">
-                  Choose the style closest to the relationship and situation.
+                <h2 className="text-base font-semibold">Tone</h2>
+                <p className="mt-1 text-sm text-ink/55">
+                  Keep this simple. The scenario handles the detailed rules.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {tonePresetOptions.map((tonePreset) => (
                   <button
-                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                    className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
                       form.tonePreset === tonePreset
                         ? "border-ink bg-ink text-paper"
                         : "border-line bg-white text-ink/65 hover:text-ink"
@@ -743,190 +420,205 @@ export function RewriteWorkspace({
                   </button>
                 ))}
               </div>
-              <Button disabled={loading || combinedLength > 10000} type="submit">
+              <Button disabled={!canSubmit} type="submit">
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
                   <Send className="h-4 w-4" aria-hidden="true" />
                 )}
-                Rewrite
+                Begin rewrite
               </Button>
-              {loading ? (
-                <div
-                  aria-live="polite"
-                  className="w-full rounded-lg border border-line bg-white px-3 py-3"
-                >
-                  <div className="grid gap-2 md:grid-cols-3">
-                    {progressSteps.map((step, index) => (
-                      <div
-                        className={`flex items-center gap-2 text-xs font-semibold ${
-                          index === loadingStepIndex ? "text-ink" : "text-ink/40"
-                        }`}
-                        key={step}
-                      >
-                        {index < loadingStepIndex ? (
-                          <CheckCircle2 className="h-4 w-4 text-sage" aria-hidden="true" />
-                        ) : index === loadingStepIndex ? (
-                          <Loader2
-                            className="h-4 w-4 animate-spin text-clay"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <span className="h-4 w-4 rounded-full border border-line" />
-                        )}
-                        {step}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </Card>
-            {error ? (
-              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </p>
-            ) : null}
-          </section>
-          <section className="space-y-4">
-            <Card className="p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="font-semibold">Rewritten reply</h2>
-                <div className="flex gap-2">
-                  <Button
-                    disabled={!result?.rewrittenText}
-                    onClick={() => void copyReply()}
-                    type="button"
-                    variant="secondary"
-                  >
-                    {copied ? (
-                      <CopyCheck className="h-4 w-4" aria-hidden="true" />
-                    ) : (
-                      <Clipboard className="h-4 w-4" aria-hidden="true" />
-                    )}
-                    {copied ? "Copied" : "Copy"}
-                  </Button>
-                  <Button
-                    disabled={loading}
-                    onClick={() => void submit()}
-                    type="button"
-                    variant="secondary"
-                  >
-                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                    Try again
-                  </Button>
-                </div>
-              </div>
-              <div className="min-h-52 rounded-lg border border-line bg-white p-4 text-sm leading-7 text-ink">
-                {loading ? (
-                  <div className="flex h-44 flex-col items-center justify-center text-center text-ink/55">
-                    <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
-                    <p className="font-semibold text-ink">
-                      {progressSteps[loadingStepIndex]}
-                    </p>
-                    <p className="mt-1 text-xs">
-                      The workspace is preserving the facts you provided.
-                    </p>
-                  </div>
-                ) : (
-                  result?.rewrittenText ??
-                  "Your rewritten reply will appear here after you run the workspace."
-                )}
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-semibold">Naturalness Check</h2>
-                <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-sage">
-                  {labelForNaturalness(result?.naturalness)}
-                </span>
-              </div>
-              <div className="space-y-3">
-                <SignalBar
-                  label="Draft AI-like signal"
-                  value={result?.naturalness.draftAiLikePercent ?? null}
-                />
-                <SignalBar
-                  label="Rewrite AI-like signal"
-                  value={result?.naturalness.rewriteAiLikePercent ?? null}
-                  variant="sage"
-                />
-              </div>
-              <p className="mt-3 text-sm text-ink/60">
-                Change:{" "}
-                {result?.naturalness.changePoints === null ||
-                result?.naturalness.changePoints === undefined
-                  ? "Unavailable"
-                  : `${result.naturalness.changePoints} pts`}
-              </p>
-              <p className="mt-2 text-xs leading-5 text-ink/50">
-                A third-party reference signal that helps compare how natural the
-                draft and rewrite feel. It is not a guarantee; review the reply
-                before sending.
-              </p>
-            </Card>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              <Card className="p-4">
-                <h2 className="font-semibold">Change summary</h2>
-                <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                  {(result?.changeSummary ?? ["No rewrite yet."]).map((item) => (
-                    <li key={item}>- {item}</li>
-                  ))}
-                </ul>
-              </Card>
-              <Card className="p-4">
-                <h2 className="font-semibold">Risk notes</h2>
-                <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                  {(result?.riskNotes ?? ["Review facts before sending."]).map(
-                    (item) => (
-                      <li key={item}>- {item}</li>
-                    ),
-                  )}
-                </ul>
-              </Card>
             </div>
-            <Card className="p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="font-semibold">History</h2>
-                <Button onClick={clearHistory} type="button" variant="ghost">
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  Clear history
+            {loading ? (
+              <div
+                aria-live="polite"
+                className="mt-4 rounded-lg border border-line bg-white px-3 py-3"
+              >
+                <div className="grid gap-2 md:grid-cols-3">
+                  {progressSteps.map((step, index) => (
+                    <div
+                      className={`flex items-center gap-2 text-xs font-semibold ${
+                        index === loadingStepIndex ? "text-ink" : "text-ink/40"
+                      }`}
+                      key={step}
+                    >
+                      {index < loadingStepIndex ? (
+                        <CheckCircle2
+                          className="h-4 w-4 text-sage"
+                          aria-hidden="true"
+                        />
+                      ) : index === loadingStepIndex ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin text-clay"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <span className="h-4 w-4 rounded-full border border-line" />
+                      )}
+                      {step}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </Card>
+
+          {error ? (
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </p>
+          ) : null}
+        </form>
+
+        <section className="mt-5 space-y-5">
+          <Card className="p-4 md:p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold">Rewritten text</h2>
+              <div className="flex gap-2">
+                <Button
+                  disabled={!result?.rewrittenText}
+                  onClick={() => void copyReply()}
+                  type="button"
+                  variant="secondary"
+                >
+                  {copied ? (
+                    <CopyCheck className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Clipboard className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+                <Button
+                  disabled={!canSubmit}
+                  onClick={() => void submit()}
+                  type="button"
+                  variant="secondary"
+                >
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                  Retry
                 </Button>
               </div>
-              <div className="space-y-3">
-                {history.length ? (
-                  history.map((item) => (
-                    <button
-                      className="w-full rounded-lg border border-line bg-white p-3 text-left text-sm hover:bg-paper"
-                      key={item.createdAt}
-                      onClick={() =>
-                        setResult({
-                          rewrittenText: item.rewrittenText,
-                          changeSummary: item.changeSummary,
-                          riskNotes: item.riskNotes,
-                          naturalness: item.naturalness,
-                          optimization: {
-                            internalStrategiesTried: 1,
-                            userUsageCharged: 1,
-                          },
-                        })
-                      }
-                      type="button"
-                    >
-                      <p className="font-medium">
-                        {item.tonePreset ?? item.tone}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-ink/60">
-                        {item.rewrittenText}
-                      </p>
-                    </button>
-                  ))
-                ) : (
-                  <p className="text-sm text-ink/55">No saved rewrites yet.</p>
-                )}
-              </div>
+            </div>
+            <div className="min-h-60 whitespace-pre-wrap rounded-lg border border-line bg-white p-4 text-sm leading-7 text-ink md:text-base md:leading-8">
+              {loading ? (
+                <div className="flex h-48 flex-col items-center justify-center text-center text-ink/55">
+                  <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
+                  <p className="font-semibold text-ink">
+                    {progressSteps[loadingStepIndex]}
+                  </p>
+                  <p className="mt-1 text-xs">
+                    The rewrite is preserving your facts and checking the signal.
+                  </p>
+                </div>
+              ) : (
+                result?.rewrittenText ??
+                "Your rewritten text will appear here after you run the workspace."
+              )}
+            </div>
+          </Card>
+
+          <Card className="p-4 md:p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-xl font-semibold">Naturalness Check</h2>
+              <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-sage">
+                {labelForNaturalness(result?.naturalness)}
+              </span>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <SignalBar
+                label="Draft AI-like signal"
+                value={result?.naturalness.draftAiLikePercent ?? null}
+              />
+              <SignalBar
+                label="Rewrite AI-like signal"
+                value={result?.naturalness.rewriteAiLikePercent ?? null}
+                variant="sage"
+              />
+            </div>
+            <p className="mt-4 text-sm text-ink/60">
+              Change:{" "}
+              {result?.naturalness.changePoints === null ||
+              result?.naturalness.changePoints === undefined
+                ? "Unavailable"
+                : `${result.naturalness.changePoints} pts`}
+            </p>
+            <p className="mt-2 text-xs leading-5 text-ink/50">
+              A third-party reference signal that helps compare how natural the
+              draft and rewrite feel. It is not a guarantee; review before sending.
+            </p>
+          </Card>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <Card className="p-4 md:p-5">
+              <h2 className="font-semibold">Change summary</h2>
+              <ul className="mt-3 space-y-2 text-sm text-ink/65">
+                {(result?.changeSummary ?? ["No rewrite yet."]).map((item) => (
+                  <li key={item}>- {item}</li>
+                ))}
+              </ul>
             </Card>
-          </section>
-        </form>
+            <Card className="p-4 md:p-5">
+              <h2 className="font-semibold">Risk notes</h2>
+              <ul className="mt-3 space-y-2 text-sm text-ink/65">
+                {(result?.riskNotes ?? ["Review facts before sending."]).map(
+                  (item) => (
+                    <li key={item}>- {item}</li>
+                  ),
+                )}
+              </ul>
+            </Card>
+          </div>
+
+          <details className="rounded-lg border border-line bg-white/70 p-4 shadow-soft">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">
+              <span>Recent rewrites</span>
+              <span className="text-xs font-medium text-ink/45">
+                {history.length ? `${history.length} saved locally` : "Empty"}
+              </span>
+            </summary>
+            <div className="mt-4 flex justify-end">
+              <Button onClick={clearHistory} type="button" variant="ghost">
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                Clear
+              </Button>
+            </div>
+            <div className="mt-3 space-y-3">
+              {history.length ? (
+                history.map((item) => (
+                  <button
+                    className="w-full rounded-lg border border-line bg-white p-3 text-left text-sm hover:bg-paper"
+                    key={item.createdAt}
+                    onClick={() =>
+                      setResult({
+                        rewrittenText: item.rewrittenText,
+                        changeSummary: item.changeSummary,
+                        riskNotes: item.riskNotes,
+                        naturalness: item.naturalness,
+                        optimization: {
+                          internalStrategiesTried: 1,
+                          userUsageCharged: 1,
+                        },
+                      })
+                    }
+                    type="button"
+                  >
+                    <p className="font-medium">
+                      {item.scenario} - {item.tonePreset}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-ink/60">
+                      {item.rewrittenText}
+                    </p>
+                  </button>
+                ))
+              ) : (
+                <p className="text-sm text-ink/55">
+                  Rewrites stay in this browser only and are not saved to the
+                  database.
+                </p>
+              )}
+            </div>
+          </details>
+        </section>
       </div>
     </main>
   );

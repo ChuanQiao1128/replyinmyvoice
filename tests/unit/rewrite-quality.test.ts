@@ -5,6 +5,7 @@ import type { RewriteRequestInput } from "../../lib/validation";
 
 function inputWithDraft(roughDraftReply: string): RewriteRequestInput {
   return {
+    scenario: "Customer support",
     messageToReplyTo: "",
     roughDraftReply,
     audience: "Customer or client",

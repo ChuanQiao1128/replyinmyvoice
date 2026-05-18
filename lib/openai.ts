@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { optionalEnv, requireEnv } from "./env";
+import type { RewritePlan } from "./rewrite-diagnosis";
 import type { RewriteRequestInput } from "./validation";
 
 const stringListSchema = z
@@ -43,7 +44,11 @@ const STRATEGIES: Strategy[] = [
   },
 ];
 
-function buildUserPrompt(input: RewriteRequestInput, strategy: Strategy) {
+function buildUserPrompt(
+  input: RewriteRequestInput,
+  strategy: Strategy,
+  plan?: RewritePlan,
+) {
   const roughLength = input.roughDraftReply.length;
   const lengthGuidance =
     roughLength >= 900
@@ -54,9 +59,22 @@ function buildUserPrompt(input: RewriteRequestInput, strategy: Strategy) {
 
   return [
     `Strategy: ${strategy.instruction}`,
+    `Scenario: ${input.scenario}`,
     `Tone: ${input.tone}`,
     `Tone preset: ${input.tonePreset}`,
     `Length guidance: ${lengthGuidance}`,
+    "",
+    "Scenario guardrails:",
+    plan?.guardrails.map((item) => `- ${item}`).join("\n") || "(use general fact-preserving rules)",
+    "",
+    "Diagnosis tags:",
+    plan?.tags.length ? plan.tags.join(", ") : "(none)",
+    "",
+    "Rewrite plan:",
+    plan?.steps.map((item) => `- ${item}`).join("\n") || "(make the draft natural and factual)",
+    "",
+    "Details to preserve when present:",
+    plan?.preserve.join("; ") || "(none extracted)",
     "",
     "Message to reply to:",
     input.messageToReplyTo || "(not provided)",
@@ -101,8 +119,14 @@ function compactDetail(value: string) {
 }
 
 function detailParts(input: RewriteRequestInput) {
-  const source =
-    input.factsToPreserve || input.whatHappened || input.roughDraftReply;
+  const source = [
+    input.factsToPreserve,
+    input.whatHappened,
+    input.roughDraftReply,
+    input.messageToReplyTo,
+  ]
+    .join("\n")
+    .trim();
 
   return source
     .split(/[.!?]\s+|\n+/)
@@ -188,6 +212,8 @@ function invoiceFallback(input: RewriteRequestInput, context: string) {
   const changeExplanation = suppliedDetails[0]
     ? `${sentence(suppliedDetails[0])} Based on that, the higher invoice preview is most likely from prorated seat usage rather than a base plan change.`
     : `Based on what you described, the higher invoice preview is most likely from ${facts.temporaryUsers} being counted as active seats during May, rather than a base plan change.`;
+  const approvedSeatPhrase =
+    facts.approvedSeats ? ` Your team approved ${facts.approvedSeats} regular seats.` : "";
   const supportingDetail = suppliedDetails[1] ? `${sentence(suppliedDetails[1])} ` : "";
   const activeSeatPhrase =
     facts.activeSeats && facts.approvedSeats
@@ -205,13 +231,60 @@ function invoiceFallback(input: RewriteRequestInput, context: string) {
 
   return [
     greeting,
-    `Thanks for laying this out. ${changeExplanation}`,
+    `Thanks for laying this out. ${changeExplanation}${approvedSeatPhrase}`,
     `${supportingDetail}Even if someone only has access for part of the month, that access can still create a prorated seat charge for the days they were active. ${activeSeatPhrase} ${amountPhrase}`,
     financeSummary,
     `For the next step, check whether those contractor accounts are still active. ${datePhrase} If you want us to help confirm, send over their names or email addresses and we can check their status. We will not change anything unless you ask us to.`,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function generateBlankFallback(input: RewriteRequestInput) {
+  const details = detailParts(input).slice(0, 4);
+  const first = details[0] || compactDetail(input.roughDraftReply);
+  const rest = details.slice(1);
+
+  if (input.tonePreset === "Concise") {
+    return [
+      `Quick note: ${sentence(first)}`,
+      rest.map(sentence).join(" "),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  return [
+    `Quick update: ${sentence(first)}`,
+    rest.map(sentence).join(" "),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function generateMessageReplyFallback(input: RewriteRequestInput) {
+  const name = extractRecipientName(input);
+  const details = detailParts(input).slice(0, 6);
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const first = details[0] || compactDetail(input.roughDraftReply);
+  const rest = details.slice(1, 6).map(sentence).join(" ");
+
+  return [greeting, sentence(first), rest].filter(Boolean).join("\n\n");
+}
+
+function generateSupportFallback(input: RewriteRequestInput, context: string) {
+  if (textIncludes(context, ["invoice", "prorated", "seats"])) {
+    return invoiceFallback(input, context);
+  }
+
+  const name = extractRecipientName(input);
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const details = detailParts(input).slice(0, 7);
+  const first = details[0] || compactDetail(input.roughDraftReply);
+  const body = details.slice(1, 5).map(sentence).join(" ");
+  const next = details.slice(5, 7).map(sentence).join(" ");
+
+  return [greeting, sentence(first), body, next].filter(Boolean).join("\n\n");
 }
 
 function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
@@ -231,7 +304,17 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
   const firstDetail = details[0] ?? compactDetail(input.roughDraftReply);
   const secondDetail = details[1] ?? "";
 
-  if (textIncludes(context, ["participation", "exit ticket", "parent"])) {
+  if (input.scenario === "Blank / custom") {
+    rewrittenText = generateBlankFallback(input);
+  } else if (input.scenario === "Email or message reply") {
+    rewrittenText = generateMessageReplyFallback(input);
+  } else if (input.scenario === "Customer support") {
+    rewrittenText = generateSupportFallback(input, rawContext);
+  } else if (input.scenario === "Cover letter") {
+    rewrittenText = generateCoverLetterFallback(input);
+  } else if (input.scenario === "Work update") {
+    rewrittenText = generateWorkUpdateFallback(input);
+  } else if (textIncludes(context, ["participation", "exit ticket", "parent"])) {
     rewrittenText = threadNote("Hi, thanks for checking.", [
       details.length
         ? `This week came down to ${details.join(" and ")}`
@@ -269,7 +352,7 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
     ]);
   } else {
     const detail = compactDetail(input.factsToPreserve || input.whatHappened);
-    const opening = ["Warm", "Friendly", "Apologetic"].includes(input.tonePreset)
+    const opening = ["Warm", "Friendly"].includes(input.tonePreset)
       ? "Thanks for the note."
       : "Got it.";
     rewrittenText = detail
@@ -284,6 +367,51 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
     ],
     riskNotes: ["Review before sending if the context needs more detail."],
   };
+}
+
+function cleanDraftSentences(input: RewriteRequestInput, maxSentences = 5) {
+  return detailParts(input)
+    .map((part) =>
+      part
+        .replace(/^thank you for (?:reaching out|contacting us)[,.]?\s*/i, "")
+        .replace(/^i am writing to express my interest in\s*/i, "I am interested in ")
+        .replace(/\bpassionate and results-driven\b/gi, "focused")
+        .replace(/\bproven track record\b/gi, "experience")
+        .replace(/\bat your earliest convenience\b/gi, "when you can")
+        .trim(),
+    )
+    .filter(Boolean)
+    .slice(0, maxSentences);
+}
+
+function generateCoverLetterFallback(input: RewriteRequestInput) {
+  const details = cleanDraftSentences(input, 5);
+  const context = input.messageToReplyTo.trim();
+  const opening = context
+    ? "I'm interested in this role because the day-to-day work matches things I've already done."
+    : "I'm interested in the role and wanted to share why my background fits.";
+  const body = details.length
+    ? details.map(sentence).join(" ")
+    : sentence(compactDetail(input.roughDraftReply));
+
+  return [opening, body, "I'd be glad to talk through how I could help."]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function generateWorkUpdateFallback(input: RewriteRequestInput) {
+  const details = cleanDraftSentences(input, 4);
+  const first = details[0] || compactDetail(input.roughDraftReply);
+  const second = details[1] || "";
+  const third = details[2] || "";
+
+  return [
+    `Quick update: ${sentence(first)}`,
+    second ? sentence(second) : "",
+    third ? sentence(third) : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function timeoutSignal(seconds: number) {
@@ -330,6 +458,7 @@ async function createChatCompletion(body: unknown) {
 export async function generateRewriteCandidate(
   input: RewriteRequestInput,
   strategy: Strategy,
+  plan?: RewritePlan,
 ): Promise<RewriteCandidate> {
   if (strategy.id === "thread_reply") {
     return generateThreadFallback(input);
@@ -360,6 +489,10 @@ export async function generateRewriteCandidate(
           "- If important context is missing, keep the reply neutral rather than adding details.\n" +
           "- Avoid sounding overly polished, generic, corporate, or robotic.\n" +
           "- Keep the reply compact, practical, and send-ready.\n" +
+          "- Do not add a sign-off, team name, or closing sentence unless the draft already has one.\n" +
+          "- Use the provided scenario guardrails and rewrite plan as internal instructions.\n" +
+          "- If diagnosis tags are present, directly repair those causes instead of doing a general polish pass.\n" +
+          "- Before returning, check that names, numbers, dates, amounts, role details, and requested next steps still match the input.\n" +
           "- Prefer a short email-thread shape over a formal paragraph; line breaks are allowed inside rewrittenText.\n" +
           "- A good reply may be two brief paragraphs, each with one sentence.\n" +
           "- When the topic is a parent, student, customer, or teammate reply, a brief human thread phrase is usually better than a formal explanation.\n" +
@@ -373,13 +506,11 @@ export async function generateRewriteCandidate(
           "- Tone preset is the user's visible style choice. Follow it unless it would add facts or make the reply unsafe.\n" +
           "- Professional: polished but not stiff.\n" +
           "- Friendly: approachable and conversational.\n" +
-          "- Firm but polite: clear boundary, no extra edge.\n" +
-          "- Apologetic: accountable without overpromising.\n" +
           "- Concise: shorter and direct.",
       },
       {
         role: "user",
-        content: buildUserPrompt(input, strategy),
+        content: buildUserPrompt(input, strategy, plan),
       },
     ],
   });
