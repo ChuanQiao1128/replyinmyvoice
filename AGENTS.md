@@ -176,7 +176,7 @@ When the user explicitly starts this long autonomous run, prioritize the current
 
 Do not deploy as final while any known evaluation sample fails. Ordinary bad rewrite outputs, low evaluation pass rate, model failures, provider errors, build/test failures, and deployment command errors are not stop conditions; investigate, fix, document learning, rerun evaluation, and continue until the target document's completion criteria or stop conditions are reached.
 
-Latest unified rewrite-quality result:
+Latest unified rewrite-quality result before the v2 strategy change:
 
 ```text
 Date: 2026-05-19
@@ -188,7 +188,20 @@ Final selected rewrites worse than draft: 0/66
 Strict signal pass count: 42/66
 ```
 
-For future rewrite work, treat customer-usable pass and strict signal pass as separate metrics. Strict Sapling failures are still optimization signals, but they are not automatically product failures when the selected result preserves facts, adds no unsupported facts, and is not worse than the draft. Continue improving strict signal pass without weakening the unified fact gate.
+Latest rewrite strategy decision on 2026-05-19:
+
+```text
+Implement fact_reconstruct as the default production rewrite workflow:
+extract facts -> classify scenario -> load style card -> generate 3 candidates -> review -> finalize -> deterministic and LLM fact gates -> Sapling Naturalness Check gate -> one bounded strong-model escalation -> quality failure with no charge if still below the quality bar.
+```
+
+For future rewrite work, Sapling is a final reference gate, not prompt input and not a model optimization target. A user-visible successful rewrite must pass fact gates and the Naturalness Check rule: if the draft is above `NATURALNESS_THRESHOLD` (default 40%), the rewrite must be at or below that threshold; if the draft is already at or below the threshold, the rewrite must not raise the signal. If Sapling is unavailable in the fact-reconstruct production route, return a quality-failure response and do not charge usage.
+
+Current long-run implementation target:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/fact-reconstruct-rewrite-target.md
+```
 
 ## Previous .NET/Azure Long-Run Target
 
@@ -450,7 +463,7 @@ Do not accept the first prompt if the measured reduction is weak.
 If the target is not met, keep running alternative prompts, strategy ordering, and composite scoring until results improve or a hard provider/cost limit is documented.
 ```
 
-Production rewrite strategy selected on 2026-05-18:
+Superseded production rewrite strategy selected on 2026-05-18:
 
 ```text
 Use a bounded measured workflow in /api/rewrite:
@@ -475,6 +488,8 @@ Current complete measured result:
 - Priya live 100% -> 100% regression: fixed at 100% -> 0% by preserving `finance manager` in facts-first fallback
 - target met: yes
 ```
+
+This 2026-05-18 strategy is retained as history only. The active production route should use `fact_reconstruct` as documented near the top of this file.
 
 ### Rewrite/Repair Strategy Memory
 
@@ -566,7 +581,7 @@ Do not optimize solely for this score, but treat meaningful signal reduction as 
 Charge one usage attempt per user Rewrite request.
 Automatically run bounded internal optimization strategies when the first candidate does not reduce the AI-like signal enough.
 If the user manually clicks Try again, that is a new usage attempt.
-If the third-party signal provider is missing or fails, still return the rewrite and show a neutral "signal unavailable" state.
+For the current `fact_reconstruct` production route, if the third-party signal provider is missing or fails, return a quality-failure/no-charge response instead of a successful rewrite. The UI may show a neutral "Signal unavailable" quality state, but the attempt must not be charged as a successful rewrite.
 ```
 
 ### Product Focus
@@ -1419,7 +1434,7 @@ Preflight rules:
 - Local webhook fallback without signature is allowed only when `NODE_ENV !== "production"`.
 - Sapling must be called server-side only.
 - Convert Sapling `score` from 0..1 to 0..100 if that is the observed response shape.
-- If Sapling fails, still return the rewrite and show `Signal unavailable`.
+- In the current `fact_reconstruct` production route, if Sapling fails, return a quality-failure/no-charge response and show `Signal unavailable` if the UI displays the Naturalness Check panel.
 - Usage quota must be enforced server-side, never from localStorage.
 - Count exactly one successful user rewrite request after a successful response is ready.
 - Do not count validation errors, auth failures, payment failures, provider errors, or server errors.
@@ -1753,13 +1768,19 @@ Use `WRITING_SIGNAL_TIMEOUT_SEC` for Sapling.
 
 Add `OPENAI_TIMEOUT_SEC=25` to `.env.example` if needed.
 
-One production user request may perform at most:
+One production user request using `fact_reconstruct` may perform at most:
 
 - 1 draft writing-signal call
-- up to 2 OpenAI rewrite attempts
+- one fact extraction call
+- one scenario classification call
+- one three-candidate generation call
+- one reviewer call
+- one finalizer call
+- one LLM fact-check call
+- one strong-model escalation call when the first final misses the quality bar
 - up to 2 rewrite writing-signal calls
 
-If Sapling times out, return the best rewrite with `naturalness.label = "unavailable"`.
+If Sapling times out in the fact-reconstruct production route, return a quality-failure/no-charge response with `naturalness.label = "unavailable"` when available.
 
 If OpenAI fails, do not charge usage.
 
@@ -2044,7 +2065,7 @@ This section is the next required rewrite-engine priority. It exists because rea
 
 ### Product Principle
 
-Reply In My Voice must not present a rewrite as successful when the measured AI-like signal gets worse or remains high without meaningful improvement.
+Reply In My Voice must not present a rewrite as successful when the measured AI-like signal gets worse or remains above the current internal quality bar.
 
 The core product value is not a generic rewrite. It is:
 
@@ -2055,28 +2076,27 @@ The core product value is not a generic rewrite. It is:
 5. repair the specific failure patterns,
 6. return the best usable result that improves the signal and preserves facts whenever possible.
 
-If the system cannot produce an improved candidate within the allowed internal attempts, it must still avoid an empty rewrite panel when a complete candidate exists. Return the best complete candidate with a review note, or generate a guaranteed facts-first fallback from the original request fields.
+If the system cannot produce an improved, fact-safe candidate within the allowed internal attempts, return a quality-failure/no-charge response rather than presenting a weak rewrite as successful.
 
 ### Hard Success Criteria For Production Requests
 
-When Sapling/writing-signal scores are available, a user-visible successful rewrite must satisfy at least one of these:
+When Sapling/writing-signal scores are available, a user-visible successful rewrite must satisfy the current threshold rule:
 
-- rewrite AI-like signal is below 50%, or
-- rewrite AI-like signal is at least 30 points lower than the draft.
+- if the draft AI-like signal is above `NATURALNESS_THRESHOLD` (default 40%), the rewrite AI-like signal must be at or below that threshold.
+- if the draft AI-like signal is already at or below `NATURALNESS_THRESHOLD`, the rewrite AI-like signal must not be higher than the draft.
 
 Additionally:
 
 - If `rewriteSignal >= draftSignal`, reject that candidate.
-- If `rewriteSignal > 50` and the reduction is less than 30 points, reject or repair that candidate.
-- If all internal candidates fail these gates but a complete candidate exists, return it as best available with a review note instead of showing an empty failure state.
-- If all measured candidates are incomplete, generate a guaranteed facts-first fallback from the original request fields.
+- If `draftSignal > NATURALNESS_THRESHOLD` and `rewriteSignal > NATURALNESS_THRESHOLD`, reject or repair that candidate.
+- If all internal candidates fail these gates, return a quality-failure/no-charge response.
 - Do not label the Naturalness Check as improved when the rewrite score is higher than the draft score.
-- Do not charge user usage for provider/server errors. A best-available or guaranteed fallback response is still a successful user-visible rewrite.
+- Do not charge user usage for provider/server errors or quality-gate failures.
 
 If Sapling is unavailable or times out:
 
-- return the best fact-preserving rewrite only if generation succeeded,
-- show `Signal unavailable`,
+- return a quality-failure/no-charge response in the fact-reconstruct production route,
+- show `Signal unavailable` if a Naturalness Check panel is visible,
 - do not count the run as target-met in evaluation,
 - do not use unavailable-score results to justify deployment quality.
 
@@ -2146,7 +2166,7 @@ For every case, update `docs/scenario-evaluation-results.md` with:
 Do not push and deploy the next rewrite-engine update unless all of these are true:
 
 - Average measured reduction is at least 30 points.
-- At least 70% of measured rewrites are below 50% AI-like signal.
+- At least 70% of measured rewrites satisfy the current 40% Naturalness Check threshold rule.
 - 100% of measured cases avoid a final selected rewrite that is worse than the draft when scores are available.
 - The Priya long customer-support regression case passes.
 - All rejected-candidate behavior is documented in `docs/scenario-evaluation-results.md`.

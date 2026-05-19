@@ -49,7 +49,7 @@ type RewriteResponse = {
     diagnosisTags?: string[];
     rewritePlanSummary?: string;
     candidateSignals?: Array<{
-      stage: "initial" | "repair";
+      stage: "initial" | "repair" | "fallback";
       aiLikePercent: number | null;
       status: string;
       rejected: boolean;
@@ -61,6 +61,8 @@ type RewriteResponse = {
 type QualityFailure = {
   error: string;
   naturalness?: Naturalness;
+  reason?: string;
+  charged?: false;
 };
 
 type HistoryItem = {
@@ -98,9 +100,9 @@ const initialForm: FormState = {
 };
 
 const progressSteps = [
-  "Reading the draft",
-  "Diagnosing the writing pattern",
-  "Rewriting and checking the signal",
+  "Extracting the facts",
+  "Building candidate replies",
+  "Reviewing quality gates",
 ];
 
 function Remaining({ value, max }: { value: string; max: number }) {
@@ -150,6 +152,16 @@ function labelForNaturalness(naturalness?: Naturalness) {
     return "Low AI-like signal";
   }
   return "Still high AI-like signal";
+}
+
+function titleForQualityFailure(reason?: string) {
+  if (reason === "signal_unavailable") {
+    return "Signal unavailable";
+  }
+  if (reason === "fact_check_failed") {
+    return "Facts need another pass";
+  }
+  return "Quality bar not met";
 }
 
 export function RewriteWorkspace({
@@ -251,6 +263,8 @@ export function RewriteWorkspace({
         code?: string;
         error?: string;
         naturalness?: Naturalness;
+        reason?: string;
+        charged?: false;
       };
 
       if (!response.ok) {
@@ -261,6 +275,8 @@ export function RewriteWorkspace({
               payload.error ??
               "We could not produce a better version yet. Try again or adjust the draft.",
             naturalness: payload.naturalness,
+            reason: payload.reason,
+            charged: payload.charged,
           });
           setError("");
           return;
@@ -506,7 +522,7 @@ export function RewriteWorkspace({
                     {progressSteps[loadingStepIndex]}
                   </p>
                   <p className="mt-1 text-xs">
-                    The rewrite is preserving your facts and checking the signal.
+                    The rewrite is preserving your facts and checking quality.
                   </p>
                 </div>
               ) : (
@@ -515,7 +531,7 @@ export function RewriteWorkspace({
                   <div className="flex h-48 flex-col items-center justify-center text-center text-ink/55">
                     <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
                     <p className="font-semibold text-ink">
-                      Still high AI-like signal
+                      {titleForQualityFailure(qualityFailure.reason)}
                     </p>
                     <p className="mt-1 max-w-md text-xs">
                       {qualityFailure.error}

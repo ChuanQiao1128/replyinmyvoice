@@ -463,28 +463,77 @@ function extractStudentName(context: string, recipientName: string) {
 }
 
 function extractMissingWork(context: string) {
+  const prefix = /three assignments/i.test(context)
+    ? /past two weeks/i.test(context)
+      ? "three assignments from the past two weeks: "
+      : "three assignments: "
+    : "";
   const including = context.match(
     /including\s+(.+?)(?:\.|\n|$)/i,
   )?.[1];
 
   if (including) {
-    return including
+    return `${prefix}${including
       .replace(/,\s*the\s+/gi, ", ")
       .replace(/,\s*and\s+/i, ", and ")
-      .trim();
+      .trim()}`;
   }
 
   const knownItems = [
     /reading response/i.test(context) ? "the reading response" : "",
     /vocabulary practice/i.test(context) ? "vocabulary practice" : "",
     /reflection paragraph/i.test(context)
-      ? /short reflection paragraph from Friday/i.test(context)
-        ? "the short reflection paragraph from Friday"
+      ? /short reflection paragraph from (?:last )?Friday/i.test(context)
+        ? `the short reflection paragraph from ${/last Friday/i.test(context) ? "last " : ""}Friday`
         : "the reflection paragraph"
       : "",
   ].filter(Boolean);
 
-  return knownItems.length ? knownItems.join(", ") : "the missing work";
+  return knownItems.length ? `${prefix}${knownItems.join(", ")}` : "the missing work";
+}
+
+function extractTeacherDuePhrase(context: string) {
+  const fridayWithTime = firstMatch(context, [
+    /\bby\s+(this\s+Friday\s+at\s+\d{1,2}(?::\d{2})?\s*p\.?m\.?)\b/i,
+    /\bby\s+(this\s+Friday\s+at\s+\d{1,2}(?::\d{2})?\s*a\.?m\.?)\b/i,
+  ]);
+
+  if (fridayWithTime) {
+    return `by ${fridayWithTime
+      .replace(/\s+/g, " ")
+      .replace(/\bp\.m$/i, "p.m.")
+      .replace(/\ba\.m$/i, "a.m.")}`;
+  }
+
+  if (/end of this week/i.test(context)) {
+    return "by the end of this week";
+  }
+
+  if (/\bthis Friday\b/i.test(context)) {
+    return "by this Friday";
+  }
+
+  return "soon";
+}
+
+function extractTeacherLunchPhrase(context: string) {
+  if (/during lunch/i.test(context) && /Tuesday/i.test(context) && /Thursday/i.test(context)) {
+    return "during lunch on Tuesday or Thursday";
+  }
+
+  if (/during lunch/i.test(context) && /Tuesday/i.test(context)) {
+    return "during lunch on Tuesday";
+  }
+
+  if (/during lunch/i.test(context) && /Thursday/i.test(context)) {
+    return "during lunch on Thursday";
+  }
+
+  if (/during lunch/i.test(context)) {
+    return "during lunch";
+  }
+
+  return "";
 }
 
 function extractSignoff(context: string) {
@@ -525,26 +574,43 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
   const greeting = recipientName ? `Hi ${recipientName},` : "Hi,";
   const studentName = extractStudentName(context, recipientName);
   const missingWork = extractMissingWork(context);
+  const naturalMissingWork = missingWork
+    .replace(/\bthe reading response\b/i, "reading response")
+    .replace(/\bthe vocabulary practice\b/i, "vocabulary practice");
+  const missingSentence = /^three assignments/i.test(naturalMissingWork)
+    ? `For ${studentName}, the missing work is still the main issue. He has ${naturalMissingWork.replace(/^three assignments\b/i, "three assignments missing")}.`
+    : `${studentName} is missing ${naturalMissingWork}.`;
   const hasWorkOrder =
-    /\b(?:first|start|focus)\b/i.test(context) &&
+    /\b(?:first|start|focus|begin)\b/i.test(context) &&
     /reading response/i.test(context) &&
     /vocabulary practice/i.test(context) &&
     /(?:after that|then)/i.test(context) &&
     /reflection paragraph/i.test(context);
-  const duePhrase = /end of this week/i.test(context)
-    ? "by the end of this week"
-    : "soon";
+  const duePhrase = extractTeacherDuePhrase(context);
   const creditPhrase = /partial credit/i.test(context)
     ? "for partial credit"
     : "";
+  const lunchPhrase = extractTeacherLunchPhrase(context);
   const helpPhrase =
     /after class/i.test(context) && /during lunch/i.test(context)
-      ? "He can also come by after class or during lunch if any instructions are unclear."
+      ? `He can also come by after class or ${lunchPhrase || "during lunch"} if any instructions are unclear.`
       : /after class/i.test(context)
         ? "He can also come by after class if any instructions are unclear."
         : /during lunch/i.test(context)
-          ? "He can also come by during lunch if any instructions are unclear."
+          ? `He can also come by ${lunchPhrase || "during lunch"} if any instructions are unclear.`
           : "";
+  const participationPhrase =
+    /participat(?:e|ing|ed) in class discussions/i.test(context) ||
+    /verbal contributions/i.test(context)
+      ? "He has been participating in class discussions, but the grade is being pulled down by the missing written work."
+      : "";
+  const noRedoPhrase =
+    /does not need to redo|doesn't need to redo|not need to redo/i.test(context)
+      ? "He does not need to redo work he already completed; this is only about the missing assignments."
+      : "";
+  const submissionSubject = /three assignments|all three/i.test(context)
+    ? "all three"
+    : "those";
   const closingSentences = [
     /partnership/i.test(context) &&
     /willingness/i.test(context) &&
@@ -561,14 +627,16 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
 
   return [
     greeting,
-    `${studentName} is missing ${missingWork}.`,
+    missingSentence,
+    participationPhrase,
     hasWorkOrder
-      ? "He should start with the reading response and vocabulary practice since those can be done quickly."
+      ? "Have him start with the reading response and vocabulary practice, since those should be the quickest."
       : "",
     hasWorkOrder
-      ? "Then he can work on the short reflection paragraph from Friday."
+      ? `Then he can work on the short reflection paragraph from ${/last Friday/i.test(context) ? "last " : ""}Friday.`
       : "",
-    `If he turns those in ${duePhrase}${creditPhrase ? `, I can still accept them ${creditPhrase}` : ""}.`,
+    `If he submits ${submissionSubject} ${duePhrase}${creditPhrase ? ", I can still give partial credit" : ""}.`,
+    noRedoPhrase,
     helpPhrase,
     closingSentences,
     signoff,

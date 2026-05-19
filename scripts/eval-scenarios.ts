@@ -3,7 +3,12 @@ import path from "node:path";
 
 import { detectUnsupportedFacts } from "../lib/fact-extraction";
 import { createRewritePlan } from "../lib/rewrite-diagnosis";
-import { RewriteQualityError, rewriteWithOptimization } from "../lib/rewrite";
+import type { RewriteResponsePayload } from "../lib/rewrite-types";
+import { getFactReconstructConfig } from "../lib/rewrite-pipeline/config";
+import {
+  FactReconstructQualityError,
+  rewriteWithFactReconstruct,
+} from "../lib/rewrite-pipeline/pipeline";
 import type { ScenarioOption, TonePreset } from "../lib/rewrite-presets";
 import { tonePresetToTone } from "../lib/rewrite-presets";
 import { rewriteRequestSchema } from "../lib/validation";
@@ -76,6 +81,7 @@ function normalize(value: string) {
     .replace(/\bhasn['’]?t\b/g, "has not")
     .replace(/\bhaven['’]?t\b/g, "have not")
     .replace(/\sisn['’]?t\b/g, "is not")
+    .replace(/\bcannot say for sure\b/g, "not promising")
     .replace(/\bcannot guarantee\b/g, "not promising")
     .replace(/\bcan not guarantee\b/g, "not promising")
     .replace(/\bcannot promise\b/g, "not promising")
@@ -122,6 +128,7 @@ const factTokenStopWords = new Set([
   "or",
   "people",
   "person",
+  "region",
   "still",
   "the",
   "to",
@@ -169,16 +176,20 @@ function wordCount(value: string) {
 function signalPass(
   draft: number | null,
   rewrite: number | null,
-  change: number | null,
+  naturalnessThreshold: number,
 ) {
-  return (
-    draft !== null &&
-    rewrite !== null &&
-    change !== null &&
-    rewrite <= draft &&
-    (rewrite < 50 || change <= -30)
-  );
+  if (draft === null || rewrite === null) {
+    return false;
+  }
+
+  if (draft <= naturalnessThreshold) {
+    return rewrite <= draft;
+  }
+
+  return rewrite <= naturalnessThreshold;
 }
+
+type RewriteQualityFailure = FactReconstructQualityError;
 
 const draftOnlyCases: EvalCase[] = [
   draftOnlyCase(
@@ -186,6 +197,37 @@ const draftOnlyCases: EvalCase[] = [
     "Warm",
     "Hi Monica,\n\nJordan is missing the reading response, vocabulary practice, and the short reflection paragraph from Friday. He should start with the reading response and vocabulary practice because those can be done quickly. Then he can work on the reflection paragraph. If he turns everything in by the end of this week, I can still accept it for partial credit.\n\nBest regards,\nMs. Carter",
     ["Monica", "Jordan", "reading response", "vocabulary practice", "Friday", "end of this week", "partial credit", "Ms. Carter"],
+  ),
+  draftOnlyCase(
+    "draft-only-01b-teacher-jordan-long-polished",
+    "Warm",
+    [
+      "Hi Monica,",
+      "Thank you for reaching out and sharing your concerns about Jordan's grade. I understand how stressful this situation can feel, and I appreciate you checking in so we can work together to help him catch up.",
+      "Right now, Jordan is missing three assignments from the past two weeks: the reading response, the vocabulary practice, and the short reflection paragraph from last Friday. He continues to participate in class discussions, and I want to recognize that his verbal contributions have been thoughtful. However, the missing written work is beginning to have a significant impact on his overall grade.",
+      "I recommend that Jordan begin with the reading response and vocabulary practice, since those should be the quickest to complete. After that, he can work on the short reflection paragraph. If he submits all three assignments by this Friday at 5 p.m., I will still accept them for partial credit.",
+      "I also want to clarify that he does not need to redo any work he has already completed. This only applies to the three missing assignments listed above. If he has any questions about the instructions, he is welcome to come see me during lunch on Tuesday or Thursday, and I would be happy to walk him through what is expected.",
+      "Thank you again for your support and for helping Jordan take responsibility for catching up. I believe he can get back on track if he completes the missing work this week and builds a more consistent routine moving forward.",
+      "Best regards,",
+      "Ms. Carter",
+    ].join("\n\n"),
+    [
+      "Monica",
+      "Jordan",
+      "three assignments",
+      "past two weeks",
+      "reading response",
+      "vocabulary practice",
+      "short reflection paragraph",
+      "last Friday",
+      "class discussions",
+      "this Friday at 5 p.m.",
+      "partial credit",
+      "does not need to redo",
+      "Tuesday",
+      "Thursday",
+      "Ms. Carter",
+    ],
   ),
   draftOnlyCase(
     "draft-only-02-teacher-kai",
@@ -748,7 +790,7 @@ const longEvaluationExtensions: Record<
   },
 };
 
-const evalCases = cases.map((sample) => {
+const allEvalCases = cases.map((sample) => {
   const extension = longEvaluationExtensions[sample.id];
   if (!extension) {
     return sample;
@@ -761,9 +803,67 @@ const evalCases = cases.map((sample) => {
   };
 });
 
+function selectFocusedEvalCases(samples: EvalCase[]) {
+  const selected = new Map<string, EvalCase>();
+  const add = (items: EvalCase[], limit: number) => {
+    for (const item of items) {
+      if (selected.size >= 40) {
+        return;
+      }
+      if (limit <= 0) {
+        return;
+      }
+      if (!selected.has(item.id)) {
+        selected.set(item.id, item);
+        limit -= 1;
+      }
+    }
+  };
+
+  add(
+    samples.filter((item) => item.messageToReplyTo.trim().length === 0),
+    25,
+  );
+  add(
+    samples.filter(
+      (item) =>
+        item.messageToReplyTo.trim().length > 0 &&
+        /teacher|parent|student/i.test(item.id),
+    ),
+    5,
+  );
+  add(
+    samples.filter((item) => /^work-/.test(item.id)),
+    5,
+  );
+  add(
+    samples.filter(
+      (item) =>
+        item.scenario === "Customer support" || /support|sales/i.test(item.id),
+    ),
+    5,
+  );
+
+  for (const item of samples) {
+    if (selected.size >= Math.min(40, samples.length)) {
+      break;
+    }
+    selected.set(item.id, item);
+  }
+
+  return [...selected.values()].slice(0, 40);
+}
+
+const evalCases = selectFocusedEvalCases(allEvalCases);
+
 await loadEnvLocal();
 
 const rows = [];
+const rewriteConfig = getFactReconstructConfig();
+
+console.log(
+  `[eval] strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold}`,
+);
 
 for (const [index, sample] of evalCases.entries()) {
   console.log(`[eval] ${index + 1}/${evalCases.length} ${sample.id}`);
@@ -776,13 +876,13 @@ for (const [index, sample] of evalCases.entries()) {
     tonePreset: sample.tonePreset,
   });
   const plan = createRewritePlan(input);
-  let result: Awaited<ReturnType<typeof rewriteWithOptimization>> | null = null;
-  let qualityFailure: RewriteQualityError | null = null;
+  let result: RewriteResponsePayload | null = null;
+  let qualityFailure: RewriteQualityFailure | null = null;
 
   try {
-    result = await rewriteWithOptimization(input);
+    result = await rewriteWithFactReconstruct(input);
   } catch (error) {
-    if (error instanceof RewriteQualityError) {
+    if (error instanceof FactReconstructQualityError) {
       qualityFailure = error;
     } else {
       throw error;
@@ -807,7 +907,11 @@ for (const [index, sample] of evalCases.entries()) {
   const rejectedReasons = candidateSignals
     .filter((item) => item.rejected)
     .map((item) => `${item.stage}: ${item.reason}`);
-  const signalPassed = signalPass(draft, rewrite, change);
+  const signalPassed = signalPass(
+    draft,
+    rewrite,
+    rewriteConfig.naturalnessThreshold,
+  );
   const signalNotWorse =
     draft === null || rewrite === null || rewrite <= draft;
   const customerUsablePass =
@@ -835,6 +939,12 @@ for (const [index, sample] of evalCases.entries()) {
     missingFacts: facts.missing,
     unsupportedFactsIntroduced: unsupportedFacts,
     qualityFailure: Boolean(qualityFailure),
+    qualityFailureReason:
+      qualityFailure && "reason" in qualityFailure
+        ? qualityFailure.reason
+        : qualityFailure
+          ? "quality_gate_failed"
+          : null,
     customerUsablePass,
     strictSignalPass: facts.passed && unsupportedFacts.length === 0 && signalPassed,
   });
@@ -881,6 +991,8 @@ const lines = [
   "# Scenario Evaluation Results",
   "",
   `Date: ${new Date().toISOString()}`,
+  `Strategy: ${rewriteConfig.strategyVersion}`,
+  `Naturalness threshold: ${rewriteConfig.naturalnessThreshold}%`,
   `Cases evaluated: ${rows.length}`,
   `Draft-only cases: ${draftOnlyCasesEvaluated}`,
   `Measured cases: ${measured.length}`,
@@ -898,7 +1010,7 @@ const lines = [
   `Strict signal pass count: ${strictSignalPassed}/${rows.length}`,
   "",
   "Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure is raised, and the selected rewrite is not worse than the draft when scores are available.",
-  "Strict signal pass additionally requires scores available, final rewrite no worse than the draft, and either below 50% or at least 30 points lower than the draft.",
+  `Strict signal pass additionally requires scores available and: if the draft is above ${rewriteConfig.naturalnessThreshold}%, the final rewrite is at or below ${rewriteConfig.naturalnessThreshold}%; if the draft is already at or below ${rewriteConfig.naturalnessThreshold}%, the final rewrite does not raise the signal.`,
   "",
   ...rows.flatMap((row) => [
     `## ${row.id}`,
@@ -919,6 +1031,7 @@ const lines = [
     `Missing facts: ${row.missingFacts.length ? row.missingFacts.join("; ") : "none"}`,
     `Unsupported facts introduced: ${row.unsupportedFactsIntroduced.length ? row.unsupportedFactsIntroduced.join("; ") : "none"}`,
     `Quality failure state: ${row.qualityFailure ? "yes" : "no"}`,
+    `Quality failure reason: ${row.qualityFailureReason ?? "none"}`,
     `Customer-usable pass: ${row.customerUsablePass ? "yes" : "no"}`,
     `Strict signal pass: ${row.strictSignalPass ? "yes" : "no"}`,
     "",

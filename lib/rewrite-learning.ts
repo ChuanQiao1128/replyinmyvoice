@@ -1,6 +1,7 @@
 import { optionalEnv } from "./env";
 import { createId, getSql } from "./db";
-import type { RewriteResponsePayload, RewriteQualityError } from "./rewrite";
+import type { FactReconstructQualityError } from "./rewrite-pipeline/pipeline";
+import type { RewriteResponsePayload } from "./rewrite-types";
 import type { RewriteRequestInput } from "./validation";
 
 type LearningUser = {
@@ -14,7 +15,7 @@ export type RewriteLearningEvent = {
   input: RewriteRequestInput;
   status: RewriteLearningStatus;
   response?: RewriteResponsePayload;
-  qualityError?: RewriteQualityError;
+  qualityError?: FactReconstructQualityError;
 };
 
 export type RewriteLearningSampleValues = {

@@ -10,9 +10,9 @@ import {
   QuotaExceededError,
 } from "../../../lib/quota";
 import {
-  RewriteQualityError,
-  rewriteWithOptimization,
-} from "../../../lib/rewrite";
+  FactReconstructQualityError,
+  rewriteWithFactReconstruct,
+} from "../../../lib/rewrite-pipeline/pipeline";
 import { tryLogRewriteLearningSample } from "../../../lib/rewrite-learning";
 import { getCurrentAppUser } from "../../../lib/users";
 import { rewriteRequestSchema } from "../../../lib/validation";
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
       await ensureQuotaAvailable(user);
     }
 
-    const rewrite = await rewriteWithOptimization(input);
+    const rewrite = await rewriteWithFactReconstruct(input);
 
     if (!skipQuotaForLocalDev) {
       await chargeSuccessfulRewrite(user);
@@ -92,10 +92,11 @@ export async function POST(request: Request) {
       return jsonError("Rewrite quota exhausted.", 402);
     }
 
-    if (error instanceof RewriteQualityError) {
+    if (error instanceof FactReconstructQualityError) {
       console.info("quality_gate_failed", {
         rejectedCandidates: error.rejectedCandidates,
         repairCandidatesTried: error.repairCandidatesTried,
+        reason: error.reason,
       });
 
       await tryLogRewriteLearningSample({
@@ -108,8 +109,10 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           code: "quality_gate_failed",
+          charged: false,
+          reason: error.reason,
           error:
-            "We could not produce a better version yet. Try again or adjust the draft.",
+            "We couldn't produce a rewrite that met our internal quality bar. This attempt was not charged.",
           naturalness: error.naturalness,
         },
         { status: 422 },

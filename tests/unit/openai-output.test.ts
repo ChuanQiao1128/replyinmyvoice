@@ -7,7 +7,7 @@ import {
   getRewriteStrategies,
   normalizeRewriteOutput,
 } from "../../lib/openai";
-import { isCandidateCompleteEnough } from "../../lib/rewrite";
+import { isCandidateCompleteEnough } from "../../lib/rewrite-completeness";
 
 describe("normalizeRewriteOutput", () => {
   it("accepts string summaries from the model and normalizes them to arrays", () => {
@@ -311,7 +311,7 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).toContain(
       "start with the reading response and vocabulary practice",
     );
-    expect(result.rewrittenText).toContain("since those can be done quickly");
+    expect(result.rewrittenText).toContain("since those should be the quickest");
     expect(result.rewrittenText).toContain(
       "Then he can work on the short reflection paragraph from Friday",
     );
@@ -330,6 +330,46 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).not.toContain("Carter is missing");
     expect(result.rewrittenText).not.toContain("I appreciate you reaching out");
     expect(result.rewrittenText).not.toContain("overall grade");
+  });
+
+  it("keeps long teacher draft facts in the deterministic fallback", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Monica,",
+        "Thank you for reaching out and sharing your concerns about Jordan's grade. I understand how stressful this situation can feel, and I appreciate you checking in so we can work together to help him catch up.",
+        "Right now, Jordan is missing three assignments from the past two weeks: the reading response, the vocabulary practice, and the short reflection paragraph from last Friday. He continues to participate in class discussions, and I want to recognize that his verbal contributions have been thoughtful. However, the missing written work is beginning to have a significant impact on his overall grade.",
+        "I recommend that Jordan begin with the reading response and vocabulary practice, since those should be the quickest to complete. After that, he can work on the short reflection paragraph. If he submits all three assignments by this Friday at 5 p.m., I will still accept them for partial credit.",
+        "I also want to clarify that he does not need to redo any work he has already completed. This only applies to the three missing assignments listed above. If he has any questions about the instructions, he is welcome to come see me during lunch on Tuesday or Thursday, and I would be happy to walk him through what is expected.",
+        "Thank you again for your support and for helping Jordan take responsibility for catching up. I believe he can get back on track if he completes the missing work this week and builds a more consistent routine moving forward.",
+        "Best regards,",
+        "Ms. Carter",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Hi Monica");
+    expect(result.rewrittenText).toContain("Jordan");
+    expect(result.rewrittenText).toContain("three assignments");
+    expect(result.rewrittenText).toContain("past two weeks");
+    expect(result.rewrittenText).toContain("reading response");
+    expect(result.rewrittenText).toContain("vocabulary practice");
+    expect(result.rewrittenText).toContain("short reflection paragraph from last Friday");
+    expect(result.rewrittenText).toContain("this Friday at 5 p.m.");
+    expect(result.rewrittenText).toContain("partial credit");
+    expect(result.rewrittenText).toContain("does not need to redo");
+    expect(result.rewrittenText).toContain("Tuesday or Thursday");
+    expect(result.rewrittenText).toContain("Best regards");
+    expect(result.rewrittenText).toContain("Ms. Carter");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
   });
 
   it("builds a facts-first support rewrite from extracted billing facts", async () => {

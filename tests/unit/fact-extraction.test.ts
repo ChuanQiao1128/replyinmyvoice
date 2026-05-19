@@ -85,6 +85,16 @@ describe("extractRequiredFacts", () => {
     );
   });
 
+  it("allows natural signoff wording changes when the signer name remains", () => {
+    const input = draftOnly("Best regards,\nMs. Carter");
+
+    const missing = missingRequiredFacts(input, "Best,\nMs. Carter");
+
+    expect(missing.map((fact) => fact.normalizedText)).not.toContain(
+      "best regards ms. carter",
+    );
+  });
+
   it("detects unsupported dates, amounts, and names added by a rewrite", () => {
     const input = draftOnly(
       "The tax line increased because the billing address changed to Australia. The base subscription is unchanged.",
@@ -126,6 +136,80 @@ describe("extractRequiredFacts", () => {
     );
   });
 
+  it("does not treat capitalized transition words in polished drafts as required facts", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        [
+          "Hi Monica,",
+          "Right now, Jordan is missing three assignments from the past two weeks: the reading response, the vocabulary practice, and the short reflection paragraph from last Friday.",
+          "However, the missing written work is beginning to have a significant impact on his overall grade.",
+          "After that, he can work on the short reflection paragraph.",
+          "If he submits all three assignments by this Friday at 5 p.m., I will still accept them for partial credit.",
+          "He is welcome to come see me during lunch on Tuesday or Thursday.",
+          "Best regards,",
+          "Ms. Carter",
+        ].join("\n\n"),
+      ),
+    );
+
+    const factText = facts.map((fact) => fact.normalizedText);
+
+    expect(factText).toContain("monica");
+    expect(factText).toContain("jordan");
+    expect(factText).toContain("friday");
+    expect(factText).toContain("tuesday");
+    expect(factText).not.toEqual(
+      expect.arrayContaining(["right", "however", "after", "if"]),
+    );
+  });
+
+  it("does not treat capitalized ordinary words in rewrites as unsupported names", () => {
+    const input = draftOnly(
+      "Hi Monica, Jordan is missing three assignments and can get partial credit by Friday.",
+    );
+    const unsupported = detectUnsupportedFacts(
+      input,
+      [
+        "Hi Monica,",
+        "Missing work is the main issue right now.",
+        "Just to clarify, Jordan can still get partial credit by Friday.",
+        "Looking forward to helping him catch up.",
+      ].join("\n\n"),
+    );
+
+    expect(unsupported.map((fact) => fact.normalizedText)).not.toEqual(
+      expect.arrayContaining(["missing", "just", "looking"]),
+    );
+  });
+
+  it("does not treat ticket labels as unsupported people", () => {
+    const input = draftOnly("Hi Claire, ticket #4821 is still open.");
+
+    const unsupported = detectUnsupportedFacts(
+      input,
+      "Hi Claire,\n\nTicket #4821 is still open.",
+    );
+
+    expect(unsupported.map((fact) => fact.normalizedText)).not.toContain(
+      "ticket",
+    );
+  });
+
+  it("does not treat sentence-starting number words as unsupported people", () => {
+    const input = draftOnly(
+      "Four teachers said the onboarding copy felt too technical, and two asked for a sample response.",
+    );
+
+    const unsupported = detectUnsupportedFacts(
+      input,
+      "Four teachers said the copy felt too technical. Two asked if they could see a sample response.",
+    );
+
+    expect(unsupported.map((fact) => fact.normalizedText)).not.toEqual(
+      expect.arrayContaining(["four", "two"]),
+    );
+  });
+
   it("normalizes articles inside deadline facts", () => {
     const input = draftOnly(
       "We need a corrected file before the Monday deadline and before Monday at 10am if possible.",
@@ -138,6 +222,36 @@ describe("extractRequiredFacts", () => {
 
     expect(missing.map((fact) => fact.normalizedText)).not.toContain(
       "before the monday",
+    );
+  });
+
+  it("does not treat a shorter same-day deadline as unsupported when a more specific deadline was provided", () => {
+    const input = draftOnly(
+      "If Jordan submits the assignments by this Friday at 5 p.m., I can accept them for partial credit.",
+    );
+
+    const unsupported = detectUnsupportedFacts(
+      input,
+      "Jordan can submit the assignments by this Friday for partial credit.",
+    );
+
+    expect(unsupported.map((fact) => fact.normalizedText)).not.toContain(
+      "by friday",
+    );
+  });
+
+  it("does not treat before-day wording as unsupported when the original only names the same day", () => {
+    const input = draftOnly(
+      "I recommend updating the first screen and adding one short example before the next test on Wednesday.",
+    );
+
+    const unsupported = detectUnsupportedFacts(
+      input,
+      "I think the first screen should be updated before Wednesday, with one short example added.",
+    );
+
+    expect(unsupported.map((fact) => fact.normalizedText)).not.toContain(
+      "before wednesday",
     );
   });
 
@@ -202,6 +316,22 @@ describe("extractRequiredFacts", () => {
     expect(factText).toContain("second quote");
   });
 
+  it("extracts sales renewal facts that should not disappear from concise rewrites", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "Hi Jordan, thanks for looking at the renewal proposal. I will send a shorter summary of the two plan options for your finance thread. I know your team is also comparing two other vendors, and the earliest decision point is the first week of June.",
+      ),
+    );
+
+    const factText = facts.map((fact) => fact.normalizedText);
+
+    expect(factText).toContain("renewal proposal");
+    expect(factText).toContain("two plan options");
+    expect(factText).toContain("finance thread");
+    expect(factText).toContain("two other vendors");
+    expect(factText).toContain("first week of june");
+  });
+
   it("normalizes low-risk equivalent wording used in natural rewrites", () => {
     expect(normalizeFactText("The retry worker is on hold.")).toContain(
       "retry worker is paused",
@@ -215,5 +345,8 @@ describe("extractRequiredFacts", () => {
     expect(
       normalizeFactText("We haven't pinned down the root cause yet."),
     ).toContain("root cause is not confirmed");
+    expect(normalizeFactText("I can't say for sure today.")).toContain(
+      "not promising today",
+    );
   });
 });

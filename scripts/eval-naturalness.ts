@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { rewriteWithOptimization } from "../lib/rewrite";
+import { rewriteWithFactReconstruct } from "../lib/rewrite-pipeline/pipeline";
 import { rewriteRequestSchema } from "../lib/validation";
 
 type Sample = {
@@ -50,7 +50,7 @@ for (const sample of selectedSamples) {
   }
 
   const input = rewriteRequestSchema.parse(sample);
-  const result = await rewriteWithOptimization(input);
+  const result = await rewriteWithFactReconstruct(input);
   rows.push({
     id: sample.id,
     tone: sample.tone,

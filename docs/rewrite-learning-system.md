@@ -32,19 +32,20 @@ Production rewrite requests run a bounded loop:
 
 ```text
 measure draft
-diagnose draft
-create rewrite plan
-generate candidate
-measure candidate
-repair rejected candidates
-remeasure repair
-select passing candidate
-return best available complete candidate if strict gates do not pass
-generate guaranteed facts-first fallback if no measured candidate is complete
+extract facts
+classify scenario
+load style card
+generate three candidates
+review and select
+finalize
+run deterministic and LLM fact gates
+measure final candidate
+run one strong-model escalation if the Naturalness Check gate misses
+return quality failure with no charge if the escalated result still misses the fact or Naturalness Check gate
 log learning sample
 ```
 
-This is the part that feels "real-time smarter" to the user. If the first candidate is bad, the request does not end there; the repair pass receives the failure reason and tries to fix that exact problem.
+This is the part that feels "real-time smarter" to the user. If the first final candidate is bad, the request does not end there; a bounded escalation tries again from facts and style guidance. Sapling/Naturalness Check scores are not fed into prompts and are not used to rank candidates; they are a final reference gate.
 
 ### Offline Strategy Memory Agent
 
@@ -170,9 +171,9 @@ Rules:
 - `npm run memory:rewrite` creates a useful digest from stored samples.
 - Privacy page discloses internal quality storage.
 - Strategy memory docs explain how learning becomes production improvements.
-- A rewrite request should not show an empty quality-failure panel when a copyable facts-preserving candidate can be produced.
+- A rewrite request should return a quality-failure/no-charge response if the bounded `fact_reconstruct` workflow cannot produce a fact-safe result that satisfies the Naturalness Check quality bar.
 - Live regressions that expose missing fact preservation, such as the Priya `finance manager` case, must become tests plus strategy-memory updates before deployment.
-- Evaluation reports must distinguish customer-usable pass from strict signal pass. A strict Sapling miss is still a learning signal, but it is not the same as a product failure when facts are preserved, no unsupported facts are added, and the selected rewrite is not worse than the draft.
+- Evaluation reports must distinguish fact failures, Naturalness Check quality failures, signal-unavailable failures, and provider/server failures. In `fact_reconstruct`, a Naturalness Check miss is a product quality failure for that request and should not be charged as a successful rewrite.
 - Reusable semantic-equivalence lessons from evaluation, such as `can't guarantee` -> `not promising` and `on hold` -> `paused`, must be promoted through tests and code-based normalization rather than being silently stored as live prompt rules.
 - Typecheck, lint, unit tests, build, OpenNext build, and production smoke tests pass before deployment.
 
@@ -190,4 +191,26 @@ The unified fact-preserving run promoted these learning outcomes:
   - final selected rewrites worse than draft: 0/66
   - strict signal pass count: 42/66
   - average AI-like signal drop: 50 points
-- Learning conclusion: the current product-quality gate should prioritize fact preservation, unsupported-fact prevention, and no worse selected signal. Strict Sapling improvement remains an optimization target, but the score alone cannot decide whether a reply is usable.
+- Learning conclusion at the time: the previous product-quality gate prioritized fact preservation, unsupported-fact prevention, and no worse selected signal. This has been superseded by the stricter Naturalness Check threshold rule plus fact gates.
+
+## 2026-05-19 Fact Reconstruct Decision
+
+The next rewrite engine is `fact_reconstruct`:
+
+- Sapling is a final reference gate only, not prompt input and not a model optimization target.
+- Default model roles are config-driven:
+  - `cheap_structured`: fact extraction, scenario classification, reviewer, LLM fact check.
+  - `mid_writer`: candidate generation and finalization.
+  - `strong_escalation`: one bounded escalation when the first final misses the quality bar.
+- Default threshold is `NATURALNESS_THRESHOLD=40`.
+- If the draft starts above the threshold, the rewrite must finish at or below the threshold.
+- If the draft starts at or below the threshold, the rewrite must not raise the signal.
+- If Sapling is unavailable or the escalated result still misses the gate, the API returns quality failure and no usage charge.
+
+## 2026-05-19 Fact-Reconstruct Eval Lessons
+
+- The official rewrite engine is now the fact-reconstruct pipeline; the old `rewriteWithOptimization` production engine has been removed.
+- The focused 40-case evaluation reached 38/40 strict passes, 40/40 measured outputs below 50% AI-like signal, and 0/40 selected rewrites worse than the draft.
+- Parser normalization now filters placeholder fact values (`Not specified`, `unknown`, `N/A`, `none`) and boolean values inside fact arrays.
+- The fallback layer now tries an extractive facts-first candidate before richer deterministic scenario fallbacks.
+- Strategy updates from this run were encoded as tests rather than silently learned from live user content.

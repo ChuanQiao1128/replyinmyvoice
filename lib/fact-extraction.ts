@@ -44,14 +44,17 @@ const properNameStopWords = new Set([
   "chrome",
   "clarify",
   "customer",
+  "currently",
   "csv",
   "direct",
   "even",
   "friday",
   "for",
   "from",
+  "have",
   "hello",
   "hi",
+  "however",
   "if",
   "i",
   "i'd",
@@ -73,6 +76,9 @@ const properNameStopWords = new Set([
   "no",
   "northstar",
   "monday",
+  "just",
+  "looking",
+  "missing",
   "my",
   "nzd",
   "our",
@@ -81,6 +87,7 @@ const properNameStopWords = new Set([
   "product",
   "quick",
   "reply",
+  "right",
   "role",
   "safari",
   "saas",
@@ -93,7 +100,15 @@ const properNameStopWords = new Set([
   "thank",
   "the",
   "they",
+  "then",
   "this",
+  "ticket",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
   "thursday",
   "to",
   "tuesday",
@@ -103,6 +118,7 @@ const properNameStopWords = new Set([
   "we",
   "what",
   "voice",
+  "while",
 ]);
 
 const phraseFacts: Array<{
@@ -165,6 +181,9 @@ const phraseFacts: Array<{
   { category: "quoted_phrase", pattern: /\bold pilot workspace\b/i, text: "old pilot workspace" },
   { category: "quoted_phrase", pattern: /\breporting feature\b/i, text: "reporting feature" },
   { category: "quoted_phrase", pattern: /\bteam templates\b/i, text: "team templates" },
+  { category: "quoted_phrase", pattern: /\brenewal proposal\b/i, text: "renewal proposal" },
+  { category: "quoted_phrase", pattern: /\btwo plan options\b/i, text: "two plan options" },
+  { category: "quoted_phrase", pattern: /\bfinance thread\b/i, text: "finance thread" },
   { category: "quoted_phrase", pattern: /\btwo other vendors\b/i, text: "two other vendors" },
   {
     category: "constraint",
@@ -177,11 +196,21 @@ const phraseFacts: Array<{
   { category: "quoted_phrase", pattern: /\bpause the campaign\b/i, text: "pause the campaign" },
 ];
 
+const orderedStepStopWords = new Set([
+  "after",
+  "that",
+  "then",
+  "with",
+  "work",
+  "short",
+]);
+
 function normalize(value: string) {
   return value
     .toLowerCase()
     .replace(/[’]/g, "'")
     .replace(/\bcan['’]?t\b/g, "cannot")
+    .replace(/\bcannot say for sure\b/g, "not promising")
     .replace(/\bcannot guarantee\b/g, "not promising")
     .replace(/\bcan not guarantee\b/g, "not promising")
     .replace(/\bcannot promise\b/g, "not promising")
@@ -386,6 +415,16 @@ function factPresent(fact: RequiredFact, rewrittenText: string) {
     return true;
   }
 
+  if (
+    fact.category === "deadline" &&
+    /^(before|by|after)\s+/.test(factText)
+  ) {
+    const deadlineTarget = factText.replace(/^(before|by|after)\s+/, "");
+    if (rewritten.includes(deadlineTarget)) {
+      return true;
+    }
+  }
+
   if (rewrittenWithoutPunctuation.includes(factWithoutPunctuation)) {
     return true;
   }
@@ -393,8 +432,23 @@ function factPresent(fact: RequiredFact, rewrittenText: string) {
   if (fact.category === "ordered_step") {
     return factText
       .split(/\s+/)
-      .filter((word) => word.length > 3)
+      .map((word) => word.replace(/[^\w'-]/g, ""))
+      .filter((word) => word.length > 3 && !orderedStepStopWords.has(word))
       .every((word) => rewritten.includes(word));
+  }
+
+  if (fact.category === "signoff") {
+    const signerTokens = factText
+      .split(/\s+/)
+      .map((word) => word.replace(/[^\w'.-]/g, ""))
+      .filter(
+        (word) =>
+          word.length > 1 &&
+          !["best", "regards", "sincerely"].includes(word),
+      );
+
+    return signerTokens.length > 0 &&
+      signerTokens.every((word) => rewritten.includes(word));
   }
 
   return false;
@@ -431,8 +485,7 @@ export function detectUnsupportedFacts(
   input: RewriteRequestInput,
   rewrittenText: string,
 ): UnsupportedFact[] {
-  const sourceFacts = new Set(
-    extractUnsupportedComparables(
+  const sourceComparables = extractUnsupportedComparables(
       [
         input.messageToReplyTo,
         input.roughDraftReply,
@@ -443,11 +496,29 @@ export function detectUnsupportedFacts(
       ]
         .filter(Boolean)
         .join("\n"),
-    ).map((fact) => fact.id),
   );
+  const sourceFacts = new Set(sourceComparables.map((fact) => fact.id));
+  const sourceText = sourceComparables.map((fact) => fact.normalizedText).join(" ");
 
   return extractUnsupportedComparables(rewrittenText)
-    .filter((fact) => !sourceFacts.has(fact.id))
+    .filter((fact) => {
+      if (sourceFacts.has(fact.id)) {
+        return false;
+      }
+
+      if (
+        fact.category === "deadline" &&
+        /^(before|by|after)\s+/.test(fact.normalizedText)
+      ) {
+        const deadlineTarget = fact.normalizedText.replace(
+          /^(before|by|after)\s+/,
+          "",
+        );
+        return !sourceText.includes(deadlineTarget);
+      }
+
+      return true;
+    })
     .map((fact) => ({
       text: fact.text,
       normalizedText: fact.normalizedText,

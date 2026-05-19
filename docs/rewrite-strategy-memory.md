@@ -18,7 +18,7 @@ Reply In My Voice should become better through measured experience:
 4. measure the before/after writing signal
 5. repair the candidate if it failed
 6. select only a usable candidate
-7. return a best-available facts-first candidate rather than a blank result when strict selection cannot pass
+7. return a quality-failure/no-charge response when the bounded workflow cannot produce a fact-safe result under the Naturalness Check quality bar
 8. record the strategy lesson for future runs
 
 This is the product advantage over asking a general chatbot for another rewrite. The app uses measurement, failure analysis, scenario guardrails, quality gates, and accumulated strategy memory.
@@ -107,21 +107,30 @@ The system should prefer pattern-level learning whenever possible. Even when int
 
 ## Current Pipeline
 
-The current production-grade strategy is:
+The current production-grade strategy selected on 2026-05-19 is `fact_reconstruct`:
 
-1. measure draft signal
-2. diagnose AI-like causes
-3. create a rewrite plan
-4. generate a targeted candidate
-5. measure candidate signal
-6. reject candidates that are worse or still too high without enough reduction
-7. repair failed candidates using the failure reason and critical facts
-8. remeasure repaired candidates
-9. select the best candidate that passes quality gates
-10. when strict gates fail but a complete candidate exists, return the best available candidate with a review note rather than an empty rewrite panel
-11. when all measured candidates are incomplete, build a guaranteed facts-first fallback from the original request fields
+1. measure the draft Naturalness Check signal
+2. extract facts from all available user-provided fields
+3. classify the scenario for style/risk only, not for deciding which facts matter
+4. load a scenario style card, with `general_professional_reply` as the low-confidence fallback
+5. generate three candidates from facts plus style card, without feeding the original wording into the writer prompt
+6. run an internal reviewer for factual accuracy, tone, concision, low-template feel, and clarity
+7. finalize the selected candidate with light edits only
+8. run deterministic checks and an LLM fact-consistency gate
+9. measure the final Naturalness Check signal
+10. if the signal misses the threshold, run one bounded strong-model escalation from facts only
+11. if the escalated result still misses the fact or Naturalness Check gate, return quality failure with no charge
 
-Current measured status from `docs/scenario-evaluation-results.md`:
+Sapling is a final reference gate only. Do not put Sapling scores, thresholds, or detector-specific language into prompts.
+
+Production success rule:
+
+- If the draft AI-like signal is above `NATURALNESS_THRESHOLD` (default 40%), the rewrite must be at or below the threshold.
+- If the draft AI-like signal is already at or below the threshold, the rewrite must not raise the signal.
+- Fact gates and reviewer gates must also pass.
+- Signal unavailability is a quality failure in the fact-reconstruct production route and must not charge usage.
+
+Previous measured status from `docs/scenario-evaluation-results.md` before `fact_reconstruct`:
 
 - 66 cases evaluated
 - 44 draft-only cases
@@ -164,9 +173,9 @@ Live teacher-parent regression promoted on 2026-05-19:
 
 Remaining strategy work:
 
-- Some teacher, support, cover-letter, and operational status cases still preserve facts but fail the strict Sapling signal rule. Keep this as an R&D metric, not the sole product pass/fail definition.
-- Continue improving strict signal pass without weakening the fact gate. Do not choose a lower-score candidate if it drops required facts or adds unsupported details.
-- Third-party signal unavailability should be tracked separately from rewrite failure so development evals do not overstate quality when provider scores are missing.
+- Re-run the full scenario evaluation through `fact_reconstruct` and document the new measured pass/fail set.
+- Continue improving Naturalness Check pass rate without weakening the fact gate. Do not choose a lower-score candidate if it drops required facts or adds unsupported details.
+- Third-party signal unavailability is tracked separately in evaluation and is a quality-failure/no-charge condition in production.
 
 ## Unified Fact-Gate Lessons Promoted On 2026-05-19
 
@@ -174,6 +183,31 @@ Remaining strategy work:
 - Internal mode inference is allowed for style and risk guardrails only. It must not decide which facts can be ignored.
 - Draft-only usage is first-class. Many users paste only their own draft, so the system must infer people, dates, constraints, tasks, negative promises, signoffs, and ordered steps from the draft alone.
 - Fact gates must catch short constraints that models often soften away: `not promising`, `cannot approve`, `not a duplicate charge`, `invoice screenshot`, `not push for a decision`, `logo color has not changed`, `base plan did not change`, `not be recalculated`, `second quote`, and similar phrases.
+
+## Fact-Reconstruct Evaluation Run On 2026-05-19
+
+Latest focused evaluation result from `docs/scenario-evaluation-results.md`:
+
+- 40 cases evaluated.
+- 29 draft-only cases.
+- 40/40 measured cases returned available Naturalness Check scores.
+- 40/40 rewrites finished below 50% AI-like signal.
+- Average AI-like signal drop: 89 points.
+- Final selected rewrites worse than draft: 0/40.
+- Customer-usable pass count: 38/40.
+- Strict signal pass count: 38/40.
+
+Lessons promoted:
+
+- Reviewer-threshold misses should not stop immediately. They should try the deterministic facts-first fallback and still pass the same fact and Naturalness Check gates.
+- A deterministic fallback should prefer extractive rewrites before richer scenario fallbacks for short factual drafts, because extractive rewrites preserve names, dates, counts, and constraints with less hallucination risk.
+- Model fact extraction must ignore placeholder values such as `Not specified`, `unknown`, `N/A`, and boolean `false` when they appear inside fact arrays.
+- Short teacher and work-update drafts need reusable extractive patterns for make-up quiz scheduling, parent grade explanations, and teacher-interview research summaries.
+- Evaluation equivalence needs continued improvement for semantically equivalent wording such as `manager approval` versus `manager approves`.
+
+Remaining risk:
+
+- The `work-03-research-summary` case can still fail conservatively when the LLM fact checker produces inconsistent fact-gate output. The current production behavior is safe because it returns a quality failure and no charge rather than exposing a weak rewrite.
 - Preserve contacts and workspace/account identifiers such as email addresses, `old pilot workspace`, `billing report folder`, and repeated-invite facts.
 - Evaluation can normalize safe semantic equivalents, for example `can't guarantee` as `not promising`, `on hold` as `paused`, and `not to cut down` as `not cutting down`. This is not permission to drop facts; it prevents false failures when natural wording keeps the same fact.
 - If all measured candidates are incomplete and the original draft also lacks message/context facts, the API must raise a quality failure instead of returning an incomplete original as success.

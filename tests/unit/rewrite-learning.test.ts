@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { RewriteQualityError, type RewriteResponsePayload } from "../../lib/rewrite";
+import { FactReconstructQualityError } from "../../lib/rewrite-pipeline/pipeline";
+import type { RewriteResponsePayload } from "../../lib/rewrite-types";
 import { buildRewriteLearningSample } from "../../lib/rewrite-learning";
 import type { RewriteRequestInput } from "../../lib/validation";
 
@@ -76,7 +77,7 @@ describe("rewrite learning samples", () => {
   });
 
   it("builds a quality-failure sample without a rewritten result", () => {
-    const qualityError = new RewriteQualityError({
+    const qualityError = new FactReconstructQualityError({
       naturalness: {
         draftAiLikePercent: 89,
         rewriteAiLikePercent: 99,
@@ -96,6 +97,7 @@ describe("rewrite learning samples", () => {
       ],
       diagnosisTags: ["uniform_rhythm"],
       rewritePlanSummary: "Break template rhythm.",
+      reason: "naturalness_gate_failed",
     });
 
     const sample = buildRewriteLearningSample({

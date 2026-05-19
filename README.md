@@ -39,7 +39,17 @@ npm run cf:build
 npm run cf:preview
 npm run cf:deploy
 npm run eval:naturalness
+npm run eval:scenarios
 ```
+
+## Rewrite Strategy
+
+The default production strategy is `fact_reconstruct`: extract facts, infer a
+lightweight scenario/style card, generate three candidates, review/finalize,
+run fact gates, then use Sapling as a final Naturalness Check gate. Sapling
+scores are not fed into prompts. If the bounded workflow cannot produce a
+fact-safe rewrite under the configured quality bar, the API returns a
+quality-failure response and does not charge usage.
 
 ## Database
 

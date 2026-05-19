@@ -7,10 +7,13 @@ const routeSource = readFileSync(
 );
 
 describe("rewrite API quality failure handling", () => {
-  it("handles rewrite quality failures before usage is charged", () => {
-    expect(routeSource).toContain("RewriteQualityError");
+  it("uses only the fact-reconstruct pipeline and charges after quality gates pass", () => {
+    expect(routeSource).toContain("FactReconstructQualityError");
+    expect(routeSource).toContain("rewriteWithFactReconstruct");
+    expect(routeSource).not.toContain("rewriteWithOptimization");
+    expect(routeSource).not.toContain("isFactReconstructV2Enabled");
     expect(
-      routeSource.indexOf("const rewrite = await rewriteWithOptimization"),
+      routeSource.indexOf("const rewrite = await rewriteWithFactReconstruct(input)"),
     ).toBeLessThan(
       routeSource.indexOf("await chargeSuccessfulRewrite"),
     );
