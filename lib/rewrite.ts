@@ -99,6 +99,21 @@ function normalizeForFactCheck(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function extractNormalizedSignoff(value: string) {
+  const match = value.match(
+    /\b(best regards|regards|sincerely),?\s+((?:mr|ms|mrs|dr)\.?\s+[a-z][a-z.'-]+|[a-z][a-z.'-]+(?:\s+[a-z][a-z.'-]+){0,2})\b/i,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    signoff: normalizeForFactCheck(match[1]),
+    name: normalizeForFactCheck(match[2]),
+  };
+}
+
 function extractCriticalFacts(input: RewriteRequestInput) {
   const source = [input.messageToReplyTo, input.roughDraftReply, input.factsToPreserve]
     .join(" ")
@@ -158,6 +173,38 @@ function missingTeacherParentActionFacts(
 
   if (sourceHasSecondWorkStep && !rewriteHasSecondWorkStep) {
     missing.push("second work step");
+  }
+
+  const sourceHasPartnershipClosing =
+    source.includes("partnership") &&
+    source.includes("willingness") &&
+    source.includes("take responsibility");
+  const rewriteHasPartnershipClosing =
+    rewritten.includes("partnership") &&
+    rewritten.includes("take responsibility");
+
+  if (sourceHasPartnershipClosing && !rewriteHasPartnershipClosing) {
+    missing.push("partnership and responsibility closing");
+  }
+
+  const sourceHasPlanClosing =
+    source.includes("clear plan") && /steady follow[- ]through/i.test(source);
+  const rewriteHasPlanClosing =
+    rewritten.includes("clear plan") &&
+    /steady follow[- ]through/i.test(rewritten);
+
+  if (sourceHasPlanClosing && !rewriteHasPlanClosing) {
+    missing.push("clear plan and steady follow-through closing");
+  }
+
+  const sourceSignoff = extractNormalizedSignoff(source);
+  const rewriteHasTeacherSignoff =
+    !sourceSignoff ||
+    (rewritten.includes(sourceSignoff.signoff) &&
+      rewritten.includes(sourceSignoff.name));
+
+  if (sourceSignoff && !rewriteHasTeacherSignoff) {
+    missing.push("teacher signoff");
   }
 
   return missing;

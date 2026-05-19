@@ -170,6 +170,10 @@ describe("thread fallback rewrite pass", () => {
           "After that, he can work on the short reflection paragraph from Friday.",
           "If he turns these in by the end of this week, I will still accept them for partial credit.",
           "I also encourage him to speak with me after class or during lunch if he needs clarification.",
+          "I appreciate your partnership and your willingness to help Jordan take responsibility.",
+          "I believe he can get back on track with a clear plan and steady follow-through.",
+          "Best regards,",
+          "Ms. Carter",
         ].join("\n\n"),
         audience: "",
         purpose: "",
@@ -196,10 +200,15 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).toContain("end of this week");
     expect(result.rewrittenText).toContain("partial credit");
     expect(result.rewrittenText).toContain("after class or during lunch");
+    expect(result.rewrittenText).toContain("partnership");
+    expect(result.rewrittenText).toContain("take responsibility");
+    expect(result.rewrittenText).toContain("clear plan");
+    expect(result.rewrittenText).toContain("steady follow-through");
+    expect(result.rewrittenText).toContain("Best regards");
+    expect(result.rewrittenText).toContain("Ms. Carter");
     expect(result.rewrittenText).not.toContain("Carter is missing");
     expect(result.rewrittenText).not.toContain("I appreciate you reaching out");
     expect(result.rewrittenText).not.toContain("overall grade");
-    expect(result.rewrittenText).not.toContain("clear plan and consistent effort");
   });
 
   it("builds a facts-first support rewrite from extracted billing facts", async () => {

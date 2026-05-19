@@ -306,6 +306,8 @@ Use when the user only pastes a generic draft. Since there may be no context, pr
 
 Preserve the relationship signal. Do not add names. Keep the reply natural enough to send as an actual message, not a statement.
 
+Teacher-parent grade replies need a stricter preservation rule than generic email replies. If the draft gives an action order, keep the order and the reason for the order. If the draft includes a supportive closing or teacher signoff, keep those elements unless the user explicitly removes them; they carry relationship tone and sender identity even when they are not numeric facts.
+
 ### Customer Support
 
 This is the hardest scenario because support text naturally becomes polished and macro-like.

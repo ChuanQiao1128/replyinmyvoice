@@ -479,6 +479,39 @@ function extractMissingWork(context: string) {
   return knownItems.length ? knownItems.join(", ") : "the missing work";
 }
 
+function extractSignoff(context: string) {
+  const inlineSignoff = context.match(
+    /\b(best regards|regards|sincerely),?\s+((?:Mr|Ms|Mrs|Dr)\.?\s+[A-Z][A-Za-z.'-]+|[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\b/i,
+  );
+
+  if (inlineSignoff) {
+    const signoff = inlineSignoff[1];
+    const formattedSignoff =
+      signoff.charAt(0).toUpperCase() + signoff.slice(1).toLowerCase();
+    return `${formattedSignoff},\n${inlineSignoff[2]}`;
+  }
+
+  const lines = context
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const signoff = lines[index].match(
+      /^(best regards|regards|sincerely|thank you|thanks),?$/i,
+    )?.[1];
+    const name = lines[index + 1];
+
+    if (signoff && /^[A-Z][A-Za-z.' -]{1,60}$/.test(name)) {
+      const formattedSignoff =
+        signoff.charAt(0).toUpperCase() + signoff.slice(1).toLowerCase();
+      return `${formattedSignoff},\n${name}`;
+    }
+  }
+
+  return "";
+}
+
 function generateTeacherParentFallback(input: RewriteRequestInput, context: string) {
   const recipientName = extractRecipientName(input);
   const greeting = recipientName ? `Hi ${recipientName},` : "Hi,";
@@ -504,6 +537,19 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
         : /during lunch/i.test(context)
           ? "He can also come by during lunch if any instructions are unclear."
           : "";
+  const closingSentences = [
+    /partnership/i.test(context) &&
+    /willingness/i.test(context) &&
+    /take responsibility/i.test(context)
+      ? `I appreciate your partnership and your willingness to help ${studentName} take responsibility.`
+      : "",
+    /clear plan/i.test(context) && /steady follow[- ]through/i.test(context)
+      ? "I believe he can get back on track with a clear plan and steady follow-through."
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const signoff = extractSignoff(context);
 
   return [
     greeting,
@@ -516,6 +562,8 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
       : "",
     `If he turns those in ${duePhrase}${creditPhrase ? `, I can still accept them ${creditPhrase}` : ""}.`,
     helpPhrase,
+    closingSentences,
+    signoff,
   ]
     .filter(Boolean)
     .join("\n\n");

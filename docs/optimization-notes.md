@@ -88,6 +88,7 @@ Latest implementation notes:
 - Added a regression rule from the Priya live test: preserving `finance manager` matters because the fact gate treats it as critical context; replacing it with only `finance` can reject an otherwise strong low-signal candidate.
 - Added a regression rule from the teacher-parent live test: app UI requests may not include optional context fields, so teacher/parent grade replies need a deterministic fallback that extracts the student name, missing work, make-up timing, partial credit, and help availability from the message/draft alone.
 - Tightened the teacher-parent fact gate so candidates that preserve the missing assignments but drop the recommended work order are rejected before they can be shown to the user.
+- Tightened the same teacher-parent path again after manual review: candidates that drop the supportive partnership/responsibility closing, clear-plan follow-through sentence, or teacher signoff are rejected; the deterministic fallback now preserves these elements. Smoke result on the full teacher sample: 100% -> 0%, passed selection, 2 rejected incomplete candidates.
 
 ## Strategy Memory
 

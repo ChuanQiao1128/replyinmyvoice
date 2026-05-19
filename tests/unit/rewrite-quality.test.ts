@@ -148,6 +148,41 @@ describe("isCandidateCompleteEnough", () => {
 
     expect(isCandidateCompleteEnough(input, candidate)).toBe(false);
   });
+
+  it("rejects teacher-parent candidates that drop the supportive closing and signature", () => {
+    const input: RewriteRequestInput = {
+      scenario: "Email or message reply",
+      messageToReplyTo:
+        "Jordan has a low grade. What is missing, and can he make up the work?",
+      roughDraftReply: [
+        "Hi Monica,",
+        "I would recommend that Jordan first focus on the reading response and vocabulary practice, since those can be completed more quickly.",
+        "After that, he can work on the short reflection paragraph from Friday.",
+        "If he turns these in by the end of this week, I will still accept them for partial credit.",
+        "I also encourage him to speak with me after class or during lunch if he needs clarification.",
+        "I appreciate your partnership and your willingness to help Jordan take responsibility.",
+        "I believe he can get back on track with a clear plan and steady follow-through.",
+        "Best regards,",
+        "Ms. Carter",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Friendly",
+    };
+
+    const candidate = [
+      "Hi Monica,",
+      "Jordan should start with the reading response and vocabulary practice since those can be done quickly.",
+      "Then he can work on the short reflection paragraph from Friday.",
+      "If he turns those in by the end of this week, I can still accept them for partial credit.",
+      "He can also come by after class or during lunch if any instructions are unclear.",
+    ].join("\n\n");
+
+    expect(isCandidateCompleteEnough(input, candidate)).toBe(false);
+  });
 });
 
 describe("rewriteWithOptimization quality gate", () => {
