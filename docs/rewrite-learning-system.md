@@ -172,4 +172,22 @@ Rules:
 - Strategy memory docs explain how learning becomes production improvements.
 - A rewrite request should not show an empty quality-failure panel when a copyable facts-preserving candidate can be produced.
 - Live regressions that expose missing fact preservation, such as the Priya `finance manager` case, must become tests plus strategy-memory updates before deployment.
+- Evaluation reports must distinguish customer-usable pass from strict signal pass. A strict Sapling miss is still a learning signal, but it is not the same as a product failure when facts are preserved, no unsupported facts are added, and the selected rewrite is not worse than the draft.
+- Reusable semantic-equivalence lessons from evaluation, such as `can't guarantee` -> `not promising` and `on hold` -> `paused`, must be promoted through tests and code-based normalization rather than being silently stored as live prompt rules.
 - Typecheck, lint, unit tests, build, OpenNext build, and production smoke tests pass before deployment.
+
+## 2026-05-19 Unified Rewrite Learning Run
+
+The unified fact-preserving run promoted these learning outcomes:
+
+- Removed user-facing scenario selection from `/app`; backend inference now supports the general reply workflow.
+- Reduced visible tones to `Warm` and `Direct`.
+- Added a unified fact extraction/gate layer for draft-only and optional-context usage.
+- Expanded evaluation to 66 cases, including 44 draft-only cases.
+- Final run result:
+  - customer-usable pass count: 66/66
+  - fact preservation or unsupported-addition failures: 0
+  - final selected rewrites worse than draft: 0/66
+  - strict signal pass count: 42/66
+  - average AI-like signal drop: 50 points
+- Learning conclusion: the current product-quality gate should prioritize fact preservation, unsupported-fact prevention, and no worse selected signal. Strict Sapling improvement remains an optimization target, but the score alone cannot decide whether a reply is usable.

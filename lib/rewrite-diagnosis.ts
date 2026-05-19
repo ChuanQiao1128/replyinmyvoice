@@ -27,6 +27,12 @@ export type RewritePlan = {
 };
 
 const scenarioGuardrails: Record<ScenarioOption, string[]> = {
+  "General reply": [
+    "extract required facts from all user-provided text before rewriting",
+    "preserve names, roles, dates, amounts, counts, ordered steps, constraints, and sign-offs",
+    "do not add a recipient, relationship, timeline, promise, or outcome that was not provided",
+    "infer the reply mode only for tone and risk guardrails, never to decide which facts matter",
+  ],
   "Blank / custom": [
     "preserve the user's exact facts, names, numbers, dates, and requested next step",
     "do not add a recipient, relationship, timeline, promise, or sign-off that was not provided",
@@ -84,7 +90,7 @@ function unique<T>(items: T[]) {
 }
 
 export function getScenarioGuardrails(scenario: ScenarioOption) {
-  return scenarioGuardrails[scenario] ?? scenarioGuardrails["Blank / custom"];
+  return scenarioGuardrails[scenario] ?? scenarioGuardrails["General reply"];
 }
 
 export function analyzeDraftForRewrite(input: RewriteRequestInput): DiagnosisTag[] {

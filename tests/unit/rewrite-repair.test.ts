@@ -16,7 +16,7 @@ const priyaInput: RewriteRequestInput = {
   whatHappened: "",
   factsToPreserve: "",
   tone: "warm",
-  tonePreset: "Friendly",
+  tonePreset: "Warm",
 };
 
 describe("buildRepairUserPrompt", () => {

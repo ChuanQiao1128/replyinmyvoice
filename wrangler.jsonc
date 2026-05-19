@@ -15,5 +15,12 @@
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
+  },
+  "vars": {
+    "OPENAI_MODEL_PRIMARY": "gpt-4o-mini",
+    "OPENAI_MODEL_REPAIR": "gpt-4o",
+    "OPENAI_MODEL_ESCALATION": "gpt-4o",
+    "OPENAI_ENABLE_FINAL_STRONG_MODEL": "false",
+    "OPENAI_MAX_MODEL_CALLS_PER_REWRITE": "3"
   }
 }

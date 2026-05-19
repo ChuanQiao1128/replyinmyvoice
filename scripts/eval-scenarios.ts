@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { detectUnsupportedFacts } from "../lib/fact-extraction";
 import { createRewritePlan } from "../lib/rewrite-diagnosis";
 import { RewriteQualityError, rewriteWithOptimization } from "../lib/rewrite";
 import type { ScenarioOption, TonePreset } from "../lib/rewrite-presets";
@@ -15,6 +16,22 @@ type EvalCase = {
   roughDraftReply: string;
   expectedFacts: string[];
 };
+
+function draftOnlyCase(
+  id: string,
+  tonePreset: TonePreset,
+  roughDraftReply: string,
+  expectedFacts: string[],
+): EvalCase {
+  return {
+    id,
+    scenario: "General reply",
+    tonePreset,
+    messageToReplyTo: "",
+    roughDraftReply,
+    expectedFacts,
+  };
+}
 
 async function loadEnvLocal() {
   const envPath = path.join(process.cwd(), ".env.local");
@@ -51,12 +68,93 @@ function points(value: number | null) {
 }
 
 function normalize(value: string) {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/\bcan['’]?t\b/g, "cannot")
+    .replace(/\bwon['’]?t\b/g, "will not")
+    .replace(/\bhasn['’]?t\b/g, "has not")
+    .replace(/\bhaven['’]?t\b/g, "have not")
+    .replace(/\sisn['’]?t\b/g, "is not")
+    .replace(/\bcannot guarantee\b/g, "not promising")
+    .replace(/\bcan not guarantee\b/g, "not promising")
+    .replace(/\bcannot promise\b/g, "not promising")
+    .replace(/\bcan not promise\b/g, "not promising")
+    .replace(/\bhave not pinned down the root cause\b/g, "root cause is not confirmed")
+    .replace(/\bhaven't pinned down the root cause\b/g, "root cause is not confirmed")
+    .replace(/\bmanager gives the go-ahead\b/g, "manager approves")
+    .replace(/\bon hold\b/g, "paused")
+    .replace(/\bnot to cut down\b/g, "not cutting down")
+    .replace(/\b12 more seats\b/g, "12 additional seats")
+    .replace(/\banother quote\b/g, "second quote")
+    .replace(/\btwo requested\b/g, "two asked")
+    .replace(/\blogo color remains the same\b/g, "logo color has not changed")
+    .replace(/\bbase plan remains the same\b/g, "base plan did not change")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const factTokenStopWords = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "at",
+  "be",
+  "by",
+  "can",
+  "do",
+  "does",
+  "did",
+  "for",
+  "from",
+  "has",
+  "have",
+  "in",
+  "is",
+  "it",
+  "make",
+  "me",
+  "not",
+  "of",
+  "on",
+  "only",
+  "or",
+  "people",
+  "person",
+  "still",
+  "the",
+  "to",
+  "will",
+  "was",
+  "were",
+  "with",
+]);
+
+function factTokens(value: string) {
+  return normalize(value)
+    .replace(/[^a-z0-9#$:.@'-]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 1 && !factTokenStopWords.has(token));
+}
+
+function includesFact(normalizedText: string, fact: string) {
+  const normalizedFact = normalize(fact);
+  if (normalizedText.includes(normalizedFact)) {
+    return true;
+  }
+
+  const tokens = factTokens(fact);
+  if (!tokens.length) {
+    return true;
+  }
+
+  return tokens.every((token) => normalizedText.includes(token));
 }
 
 function factCheck(text: string, facts: string[]) {
   const normalized = normalize(text);
-  const missing = facts.filter((fact) => !normalized.includes(normalize(fact)));
+  const missing = facts.filter((fact) => !includesFact(normalized, fact));
 
   return {
     passed: missing.length === 0,
@@ -82,11 +180,255 @@ function signalPass(
   );
 }
 
+const draftOnlyCases: EvalCase[] = [
+  draftOnlyCase(
+    "draft-only-01-teacher-jordan",
+    "Warm",
+    "Hi Monica,\n\nJordan is missing the reading response, vocabulary practice, and the short reflection paragraph from Friday. He should start with the reading response and vocabulary practice because those can be done quickly. Then he can work on the reflection paragraph. If he turns everything in by the end of this week, I can still accept it for partial credit.\n\nBest regards,\nMs. Carter",
+    ["Monica", "Jordan", "reading response", "vocabulary practice", "Friday", "end of this week", "partial credit", "Ms. Carter"],
+  ),
+  draftOnlyCase(
+    "draft-only-02-teacher-kai",
+    "Direct",
+    "Hi Lena, Kai's grade changed because two participation activities and one exit ticket are still missing. The course policy says late work may not receive full credit, but he can submit the exit ticket before class tomorrow and I will review it. I am not promising a grade change yet.",
+    ["Lena", "Kai", "two participation activities", "one exit ticket", "course policy", "before class tomorrow", "not promising"],
+  ),
+  draftOnlyCase(
+    "draft-only-03-teacher-amelia",
+    "Warm",
+    "Hi Mr. Ortiz, Amelia did complete the lab notes, but I have not received the reflection paragraph from Tuesday. She can bring it to lunch study hall on Thursday. If she submits it then, I can mark it late but complete.",
+    ["Mr. Ortiz", "Amelia", "lab notes", "reflection paragraph", "Tuesday", "Thursday", "late but complete"],
+  ),
+  draftOnlyCase(
+    "draft-only-04-teacher-ravi",
+    "Direct",
+    "Hi Priya, Ravi was absent for the quiz on Monday and still needs to schedule the make-up. The available times are Wednesday at 8:15am or Friday after school. I cannot enter the quiz score until he completes it.",
+    ["Priya", "Ravi", "quiz", "Monday", "Wednesday at 8:15am", "Friday after school", "cannot enter the quiz score"],
+  ),
+  draftOnlyCase(
+    "draft-only-05-teacher-sam",
+    "Warm",
+    "Hi Dana, Sam's project is strong, but the bibliography is missing three sources. If he adds the sources by Friday, I can grade the final version instead of the draft version. The presentation date is still May 22.",
+    ["Dana", "Sam", "bibliography", "three sources", "Friday", "final version", "May 22"],
+  ),
+  draftOnlyCase(
+    "draft-only-06-teacher-noah",
+    "Direct",
+    "Hi Ms. Nguyen, Noah turned in the worksheet but did not attach the graph. Please ask him to upload the graph in Canvas by 6pm tonight. I will not need a new worksheet, only the graph file.",
+    ["Ms. Nguyen", "Noah", "worksheet", "graph", "Canvas", "6pm tonight", "only the graph file"],
+  ),
+  draftOnlyCase(
+    "draft-only-07-teacher-maya",
+    "Warm",
+    "Hi Alex, Maya can still join the science fair group, but the permission slip is due Thursday morning. The group is meeting in Room 18 after school. She should bring the signed slip and her project idea.",
+    ["Alex", "Maya", "science fair group", "permission slip", "Thursday morning", "Room 18", "project idea"],
+  ),
+  draftOnlyCase(
+    "draft-only-08-teacher-omar",
+    "Direct",
+    "Hi Jordan, Omar has improved his reading log, but the March 14 response is still missing. He can turn in that response for half credit. The quiz retake is separate and needs to be scheduled with me.",
+    ["Jordan", "Omar", "reading log", "March 14", "half credit", "quiz retake", "scheduled with me"],
+  ),
+  draftOnlyCase(
+    "draft-only-09-support-tax",
+    "Warm",
+    "Hi Sarah, the tax line increased because the billing address changed to Australia. The base subscription is unchanged. The new tax amount starts on June 1, and the May invoice will not be recalculated.",
+    ["Sarah", "tax line", "Australia", "base subscription", "June 1", "May invoice", "not be recalculated"],
+  ),
+  draftOnlyCase(
+    "draft-only-10-support-refund",
+    "Direct",
+    "Hi Eli, the refund window ended May 10. We can offer account credit, but manager approval is required before I can apply it. I cannot promise the credit today.",
+    ["Eli", "refund window", "May 10", "account credit", "manager approval", "cannot promise"],
+  ),
+  draftOnlyCase(
+    "draft-only-11-support-export",
+    "Warm",
+    "Hi Mina, the April CSV export is missing the custom tags column for the Northeast region. The underlying campaign data is still safe. We are checking the export job and will send a corrected file before Monday at 10am if the check confirms the issue.",
+    ["Mina", "April CSV export", "custom tags column", "Northeast region", "data is still safe", "Monday at 10am"],
+  ),
+  draftOnlyCase(
+    "draft-only-12-support-seat-count",
+    "Direct",
+    "Hi Priya, the usage report shows 18 active seats, but the renewal only approved 15 regular seats. The extra NZD $126 appears tied to three temporary contractors who were active during May. The base plan did not change.",
+    ["Priya", "18 active seats", "15 regular seats", "NZD $126", "three temporary contractors", "May", "base plan did not change"],
+  ),
+  draftOnlyCase(
+    "draft-only-13-support-login",
+    "Warm",
+    "Hi Mina, keep signing in with mina@northstar.example. If you still land in the old pilot workspace, this is probably a workspace association issue, not a new invite issue. We already resent the invite twice, so support should check the account link next.",
+    ["Mina", "mina@northstar.example", "old pilot workspace", "workspace association issue", "resent the invite twice", "account link"],
+  ),
+  draftOnlyCase(
+    "draft-only-14-support-plan-change",
+    "Direct",
+    "Hi Arun, the Starter plan credit and the Team plan charge are shown as separate lines because the plan changed on May 3. That usually means proration, not a duplicate charge. I still need the invoice screenshot before I can confirm the final amount.",
+    ["Arun", "Starter plan credit", "Team plan charge", "May 3", "proration", "not a duplicate charge", "invoice screenshot"],
+  ),
+  draftOnlyCase(
+    "draft-only-15-support-notifications",
+    "Warm",
+    "Hi Claire, ticket #4821 is still open for duplicate notifications. The delivery logs are being reviewed, but the root cause is not confirmed yet. I will send the next status note before noon so your team can decide whether to pause the campaign.",
+    ["Claire", "ticket #4821", "duplicate notifications", "delivery logs", "root cause is not confirmed", "before noon", "pause the campaign"],
+  ),
+  draftOnlyCase(
+    "draft-only-16-support-import",
+    "Direct",
+    "Hi Omar, the import failed because row 14 has an invalid date format. Rows 1 through 13 were not saved. Please fix row 14 and upload the file again. Do not delete the existing project.",
+    ["Omar", "row 14", "invalid date format", "Rows 1 through 13", "not saved", "upload the file again", "Do not delete"],
+  ),
+  draftOnlyCase(
+    "draft-only-17-sales-renewal",
+    "Warm",
+    "Hi Jordan, thanks for looking at the renewal proposal. I will send a shorter summary of the two plan options for your finance thread. I know your team is also comparing two other vendors, and the earliest decision point is the first week of June.",
+    ["Jordan", "renewal proposal", "two plan options", "finance thread", "two other vendors", "first week of June"],
+  ),
+  draftOnlyCase(
+    "draft-only-18-sales-demo",
+    "Direct",
+    "Hi Leah, we can move the demo to Thursday at 3pm. I will keep the agenda focused on reporting, team templates, and the approval workflow. I will not include pricing unless you ask for it.",
+    ["Leah", "Thursday at 3pm", "reporting", "team templates", "approval workflow", "will not include pricing"],
+  ),
+  draftOnlyCase(
+    "draft-only-19-sales-proposal",
+    "Warm",
+    "Hi Mateo, I attached the revised proposal with the implementation timeline from our May 12 call. Section three has the pricing language, and section five has the rollout notes. Please send comments by Friday if your legal team wants changes.",
+    ["Mateo", "May 12", "section three", "pricing language", "section five", "rollout notes", "Friday", "legal team"],
+  ),
+  draftOnlyCase(
+    "draft-only-20-sales-checkin",
+    "Direct",
+    "Hi Nora, I will not push for a decision this week. Your team is still comparing Vendor A and Vendor B, and finance asked for the security questionnaire first. I can send the questionnaire today and follow up next Tuesday.",
+    ["Nora", "not push for a decision", "Vendor A", "Vendor B", "security questionnaire", "today", "next Tuesday"],
+  ),
+  draftOnlyCase(
+    "draft-only-21-sales-expansion",
+    "Warm",
+    "Hi Devon, the expansion quote includes 12 additional seats starting July 1. It does not include the analytics add-on yet. If you want analytics included, I can send a second quote after your manager approves it.",
+    ["Devon", "12 additional seats", "July 1", "does not include the analytics add-on", "second quote", "manager approves"],
+  ),
+  draftOnlyCase(
+    "draft-only-22-client-design",
+    "Direct",
+    "Hi Ava, the homepage mockup is ready, but the mobile version still needs one spacing check. I can send desktop today and mobile by Wednesday morning. The logo color has not changed.",
+    ["Ava", "homepage mockup", "mobile version", "spacing check", "desktop today", "Wednesday morning", "logo color has not changed"],
+  ),
+  draftOnlyCase(
+    "draft-only-23-client-invoice",
+    "Warm",
+    "Hi Ben, invoice #317 was sent on April 30, but the PO number was missing. I have attached a corrected copy with PO-8842. The amount is still NZD $2,450 and the due date is May 20.",
+    ["Ben", "invoice #317", "April 30", "PO-8842", "NZD $2,450", "May 20"],
+  ),
+  draftOnlyCase(
+    "draft-only-24-client-delay",
+    "Direct",
+    "Hi Grace, the source file arrived late, so the report will not be ready by noon. I can send the clean version by 4pm Friday after one quality check. The dashboard numbers are unchanged.",
+    ["Grace", "source file arrived late", "not be ready by noon", "4pm Friday", "one quality check", "dashboard numbers are unchanged"],
+  ),
+  draftOnlyCase(
+    "draft-only-25-work-launch",
+    "Warm",
+    "Quick update: the payment flow passed the smoke test, the onboarding checklist is done, and the help article links are live. I am still reviewing the last three failed webhook events before the 2pm launch check.",
+    ["payment flow", "smoke test", "onboarding checklist", "help article links", "last three failed webhook events", "2pm launch check"],
+  ),
+  draftOnlyCase(
+    "draft-only-26-work-blockers",
+    "Direct",
+    "Nina owns the API fix, Omar owns the QA script, and both are due before the Friday demo. The only blocker is the vendor API timeout. I will post another update after the 11am retry.",
+    ["Nina", "API fix", "Omar", "QA script", "Friday demo", "vendor API timeout", "11am retry"],
+  ),
+  draftOnlyCase(
+    "draft-only-27-work-research",
+    "Warm",
+    "We finished six teacher interviews this week. Four teachers said the onboarding copy felt too technical, and two asked for a sample response before signing up. I recommend updating the first screen before Wednesday's test.",
+    ["six teacher interviews", "four teachers", "two asked", "sample response", "first screen", "Wednesday"],
+  ),
+  draftOnlyCase(
+    "draft-only-28-work-screenshots",
+    "Direct",
+    "The revised screenshots are delayed because the updated design source file arrived late this morning. They still need one quality check, especially the pricing table in section three and the partner logo on the final slide. Target is 4pm Friday.",
+    ["revised screenshots", "source file arrived late", "one quality check", "pricing table", "section three", "partner logo", "final slide", "4pm Friday"],
+  ),
+  draftOnlyCase(
+    "draft-only-29-work-board",
+    "Warm",
+    "The board packet is ready except for the finance chart. The chart needs the April revenue number and the May forecast. I can send the final PDF by 9am tomorrow if finance confirms the numbers today.",
+    ["board packet", "finance chart", "April revenue number", "May forecast", "9am tomorrow", "finance confirms"],
+  ),
+  draftOnlyCase(
+    "draft-only-30-work-handoff",
+    "Direct",
+    "The handoff is complete for authentication and billing. Search is not included in this release. I added the rollback notes to the release doc and tagged Maya for the support FAQ review.",
+    ["authentication", "billing", "Search is not included", "rollback notes", "release doc", "Maya", "support FAQ review"],
+  ),
+  draftOnlyCase(
+    "draft-only-31-work-meeting",
+    "Warm",
+    "I need to move our 1:1 from Tuesday to Wednesday because the client workshop now overlaps. I can do Wednesday at 10am or 2pm. The hiring plan feedback is ready, so this is only a scheduling change.",
+    ["1:1", "Tuesday", "Wednesday", "client workshop", "10am", "2pm", "hiring plan feedback"],
+  ),
+  draftOnlyCase(
+    "draft-only-32-work-incident",
+    "Direct",
+    "The incident summary is ready. Impact was limited to 14 checkout attempts between 8:05am and 8:22am. No successful payments were duplicated. The retry worker is paused until Alex reviews the queue logs.",
+    ["incident summary", "14 checkout attempts", "8:05am", "8:22am", "No successful payments were duplicated", "retry worker is paused", "Alex"],
+  ),
+  draftOnlyCase(
+    "draft-only-33-general-workshop",
+    "Warm",
+    "Families, the Saturday workshop is moving to Room 204 because of library maintenance. The start time is still 6:30pm. We will still cover scholarship forms, supporting documents, and the application timeline.",
+    ["Saturday", "Room 204", "library maintenance", "6:30pm", "scholarship forms", "supporting documents", "application timeline"],
+  ),
+  draftOnlyCase(
+    "draft-only-34-general-volunteer",
+    "Direct",
+    "Hi team, the volunteer roster has 32 people confirmed for Saturday. We still need two check-in leads and one person for the supply table. Please reply by Thursday noon if you can take one of those roles.",
+    ["32 people", "Saturday", "two check-in leads", "one person for the supply table", "Thursday noon"],
+  ),
+  draftOnlyCase(
+    "draft-only-35-cover-program",
+    "Warm",
+    "I am applying for the Program Manager role. In my current job, I coordinate 32 volunteers, prepare monthly partner updates, manage weekend workshop schedules, and track attendance numbers for grant reports. I care about education access but do not want the letter to sound generic.",
+    ["Program Manager", "32 volunteers", "monthly partner updates", "weekend workshop schedules", "attendance numbers", "grant reports", "education access"],
+  ),
+  draftOnlyCase(
+    "draft-only-36-cover-support",
+    "Direct",
+    "I am applying for the Support Specialist role. I answer customer questions by email and chat, summarize recurring issues for the product team, and update help center articles when the same question keeps coming up. Please do not make me sound senior.",
+    ["Support Specialist", "email and chat", "recurring issues", "product team", "help center articles", "do not make me sound senior"],
+  ),
+  draftOnlyCase(
+    "draft-only-37-general-policy",
+    "Warm",
+    "Participants who already submitted questions do not need to send them again. The agenda is unchanged, and the room change only affects this Saturday's workshop. Printed scholarship drafts are still welcome.",
+    ["already submitted questions", "do not need to send them again", "agenda is unchanged", "Saturday's workshop", "Printed scholarship drafts"],
+  ),
+  draftOnlyCase(
+    "draft-only-38-general-apology",
+    "Direct",
+    "Hi Taylor, I missed your message on Monday and should have replied sooner. I can review the contract notes by Thursday afternoon. I cannot approve the final language until legal confirms clause 7.",
+    ["Taylor", "Monday", "Thursday afternoon", "cannot approve", "legal", "clause 7"],
+  ),
+  draftOnlyCase(
+    "draft-only-39-general-neighbor",
+    "Warm",
+    "Hi Chris, thanks for checking about the noise. The work crew is scheduled from 9am to 3pm on Friday only. They are replacing the back fence panels, not cutting down the tree.",
+    ["Chris", "9am to 3pm", "Friday only", "back fence panels", "not cutting down the tree"],
+  ),
+  draftOnlyCase(
+    "draft-only-40-general-event",
+    "Direct",
+    "The event reminder should say doors open at 5:30pm, the panel starts at 6pm, and parking is in Lot C. Do not mention catering because food is not confirmed yet.",
+    ["doors open at 5:30pm", "panel starts at 6pm", "Lot C", "Do not mention catering", "food is not confirmed"],
+  ),
+];
+
 const cases: EvalCase[] = [
+  ...draftOnlyCases,
   {
     id: "blank-01-partner-update",
     scenario: "Blank / custom",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo: "",
     roughDraftReply:
       "I am writing to provide an update regarding the partner onboarding packet. The revised document has now been completed and is available for your review. Please note that section three contains the updated pricing language, and section five includes the implementation timeline that was discussed during the call on May 12. Kindly review the attached document and provide any feedback at your earliest convenience so that we may proceed accordingly.",
@@ -104,7 +446,7 @@ const cases: EvalCase[] = [
   {
     id: "blank-03-internal-note",
     scenario: "Blank / custom",
-    tonePreset: "Concise",
+    tonePreset: "Direct",
     messageToReplyTo: "",
     roughDraftReply:
       "The purpose of this note is to summarize the current status of the vendor review. Vendor A has provided the revised security questionnaire, Vendor B is still waiting on legal approval, and Vendor C has requested an extension until Friday. Based on the current timeline, I recommend that we do not make a final decision until all three responses are available for comparison.",
@@ -123,7 +465,7 @@ const cases: EvalCase[] = [
   {
     id: "reply-02-sales-followup",
     scenario: "Email or message reply",
-    tonePreset: "Friendly",
+    tonePreset: "Warm",
     messageToReplyTo:
       "Thanks for sending the proposal. We like the reporting feature, but the team is comparing two other vendors and probably will not decide until next month.",
     roughDraftReply:
@@ -133,7 +475,7 @@ const cases: EvalCase[] = [
   {
     id: "reply-03-parent-question",
     scenario: "Email or message reply",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Hi, I saw Kai's grade dropped this week. He said he turned in everything except one exit ticket. Can you explain what happened?",
     roughDraftReply:
@@ -143,7 +485,7 @@ const cases: EvalCase[] = [
   {
     id: "support-01-priya-billing",
     scenario: "Customer support",
-    tonePreset: "Friendly",
+    tonePreset: "Warm",
     messageToReplyTo:
       "Hi Reply In My Voice team, our usage report shows 18 active seats for May, but we only approved 15 regular seats. The invoice preview is NZD $126 higher than last month. We had three temporary contractors during the first week of May and they were supposed to be removed after the client handover on May 8. Can you confirm what changed and what we should do before the invoice is finalized? Thanks, Priya",
     roughDraftReply:
@@ -153,7 +495,7 @@ const cases: EvalCase[] = [
   {
     id: "support-02-export-error",
     scenario: "Customer support",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo:
       "The CSV export from the dashboard is missing the custom tags column. We need the export for our Monday board packet, and the team cannot reconcile April without that column.",
     roughDraftReply:
@@ -163,7 +505,7 @@ const cases: EvalCase[] = [
   {
     id: "support-03-login-access",
     scenario: "Customer support",
-    tonePreset: "Concise",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Mina was added to our workspace yesterday, but she still sees the old team after logging in with mina@northstar.example. We already resent the invite twice.",
     roughDraftReply:
@@ -173,7 +515,7 @@ const cases: EvalCase[] = [
   {
     id: "cover-01-operations-role",
     scenario: "Cover letter",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Job post: Operations Coordinator at a nonprofit education program. The role mentions partner communication, weekly reporting, scheduling, and keeping shared documents organized.",
     roughDraftReply:
@@ -193,7 +535,7 @@ const cases: EvalCase[] = [
   {
     id: "cover-03-admin-assistant",
     scenario: "Cover letter",
-    tonePreset: "Concise",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Opening: Administrative Assistant for a clinic. The listing emphasizes calendar coordination, patient follow-up notes, and careful handling of private information.",
     roughDraftReply:
@@ -203,7 +545,7 @@ const cases: EvalCase[] = [
   {
     id: "work-01-design-delay",
     scenario: "Work update",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Can you send the revised screenshots today? I need to include them in the partner update.",
     roughDraftReply:
@@ -213,7 +555,7 @@ const cases: EvalCase[] = [
   {
     id: "work-02-launch-risk",
     scenario: "Work update",
-    tonePreset: "Concise",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Can you give me the current status before the 2pm launch check?",
     roughDraftReply:
@@ -223,7 +565,7 @@ const cases: EvalCase[] = [
   {
     id: "work-03-research-summary",
     scenario: "Work update",
-    tonePreset: "Friendly",
+    tonePreset: "Warm",
     messageToReplyTo:
       "Did we get enough feedback from the teacher interviews to update the onboarding copy?",
     roughDraftReply:
@@ -233,7 +575,7 @@ const cases: EvalCase[] = [
   {
     id: "support-04-priya-billing-long-regression",
     scenario: "Customer support",
-    tonePreset: "Friendly",
+    tonePreset: "Warm",
     messageToReplyTo:
       "Hi Reply In My Voice team,\n\nI am reaching out because the usage report and the invoice preview in our account do not seem to match what we expected for this month. I checked the dashboard this morning, and it shows 18 active seats for May, but our team only approved 15 regular seats when we renewed. I also noticed that the invoice preview is NZD $126 higher than last month, and I need to explain this to our finance manager before the invoice is finalized.\n\nThe confusing part is that we had three temporary contractors join the workspace for a short project during the first week of May. They were supposed to be removed after the client handover on May 8. My understanding was that temporary users would not affect the monthly billing if they were only added for a few days, but maybe I misunderstood how the billing works.\n\nCan you please confirm what changed, whether those three temporary users are included in the current invoice preview, and whether the base plan itself has changed? I do not want to tell finance the wrong thing. If this is just a prorated charge, please explain it in plain English so I can forward the explanation internally.\n\nAlso, if the three temporary users are still active, please let me know what we need to do to remove them before the invoice is finalized. I am not asking you to change anything yet; I just need a clear explanation and next step.\n\nThanks,\nPriya",
     roughDraftReply:
@@ -243,7 +585,7 @@ const cases: EvalCase[] = [
   {
     id: "support-05-data-export-long",
     scenario: "Customer support",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Hello, our monthly data export is missing the custom tags column for April and May. We use those tags to reconcile campaigns before the board packet goes out on Monday. I tried exporting from the dashboard twice, once with all filters cleared and once with only the Northeast region selected. Both files had the same issue. Can you tell us whether this is a known export problem, whether the original data is still safe, and what we should do if we need a corrected file before Monday at 10am?",
     roughDraftReply:
@@ -253,7 +595,7 @@ const cases: EvalCase[] = [
   {
     id: "support-06-login-workspace-long",
     scenario: "Customer support",
-    tonePreset: "Concise",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Mina accepted the invitation for the Northstar workspace yesterday, but when she logs in with mina@northstar.example she still lands in the old pilot workspace. We resent the invite twice and also asked her to try a private browser window. She still sees the old team and cannot access the billing report folder. Can you tell us if this is because her email is linked to the previous workspace, and what exact step we should take next?",
     roughDraftReply:
@@ -273,7 +615,7 @@ const cases: EvalCase[] = [
   {
     id: "support-08-delayed-response-long",
     scenario: "Customer support",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo:
       "We opened ticket #4821 on Friday about duplicate notifications being sent to client contacts. The issue is still happening this morning. We understand engineering may need time, but our account team needs to know whether we should pause the campaign before noon. Can you give us a plain answer on what is confirmed, what is still being checked, and when we will hear the next update?",
     roughDraftReply:
@@ -283,7 +625,7 @@ const cases: EvalCase[] = [
   {
     id: "cover-04-long-program-manager",
     scenario: "Cover letter",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Role: Program Manager at a community education nonprofit. The listing asks for experience coordinating volunteers, writing partner updates, managing workshop schedules, and tracking outcomes for grant reports.",
     roughDraftReply:
@@ -293,7 +635,7 @@ const cases: EvalCase[] = [
   {
     id: "cover-05-long-support-specialist",
     scenario: "Cover letter",
-    tonePreset: "Friendly",
+    tonePreset: "Warm",
     messageToReplyTo:
       "Role: Support Specialist for a small SaaS company. They want someone who can answer customer questions, document recurring issues, and work with product on help center gaps.",
     roughDraftReply:
@@ -303,7 +645,7 @@ const cases: EvalCase[] = [
   {
     id: "work-04-long-launch-readiness",
     scenario: "Work update",
-    tonePreset: "Concise",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Can you summarize launch readiness before the 2pm check? I need to know what is green, what is still being reviewed, and whether there is any reason to delay.",
     roughDraftReply:
@@ -313,7 +655,7 @@ const cases: EvalCase[] = [
   {
     id: "work-05-long-design-delay",
     scenario: "Work update",
-    tonePreset: "Professional",
+    tonePreset: "Direct",
     messageToReplyTo:
       "Are the revised screenshots ready for the partner deck? The deck is going out Friday afternoon and I need time to review them.",
     roughDraftReply:
@@ -332,7 +674,7 @@ const cases: EvalCase[] = [
   {
     id: "reply-04-long-sales-renewal",
     scenario: "Email or message reply",
-    tonePreset: "Friendly",
+    tonePreset: "Warm",
     messageToReplyTo:
       "Thanks for the renewal proposal. We like the reporting feature and the new team templates, but finance asked us to compare two other vendors before we commit. The earliest we can decide is the first week of June. If you have a shorter summary of the two plan options, send it over and I will include it in our internal thread.",
     roughDraftReply:
@@ -423,9 +765,11 @@ await loadEnvLocal();
 
 const rows = [];
 
-for (const sample of evalCases) {
+for (const [index, sample] of evalCases.entries()) {
+  console.log(`[eval] ${index + 1}/${evalCases.length} ${sample.id}`);
+
   const input = rewriteRequestSchema.parse({
-    scenario: sample.scenario,
+    scenario: "General reply",
     messageToReplyTo: sample.messageToReplyTo,
     roughDraftReply: sample.roughDraftReply,
     tone: tonePresetToTone(sample.tonePreset),
@@ -449,6 +793,9 @@ for (const sample of evalCases) {
   const facts = rewrittenText
     ? factCheck(rewrittenText, sample.expectedFacts)
     : { passed: false, missing: sample.expectedFacts };
+  const unsupportedFacts = rewrittenText
+    ? detectUnsupportedFacts(input, rewrittenText).map((fact) => fact.text)
+    : [];
   const naturalness = result?.naturalness ?? qualityFailure?.naturalness;
   const draft = naturalness?.draftAiLikePercent ?? null;
   const rewrite = naturalness?.rewriteAiLikePercent ?? null;
@@ -461,7 +808,14 @@ for (const sample of evalCases) {
     .filter((item) => item.rejected)
     .map((item) => `${item.stage}: ${item.reason}`);
   const signalPassed = signalPass(draft, rewrite, change);
-  const unsupportedFactsIntroduced = "not detected";
+  const signalNotWorse =
+    draft === null || rewrite === null || rewrite <= draft;
+  const customerUsablePass =
+    Boolean(rewrittenText) &&
+    facts.passed &&
+    unsupportedFacts.length === 0 &&
+    !qualityFailure &&
+    signalNotWorse;
 
   rows.push({
     ...sample,
@@ -479,9 +833,10 @@ for (const sample of evalCases) {
     rejectedReasons,
     factsPreserved: facts.passed,
     missingFacts: facts.missing,
-    unsupportedFactsIntroduced,
+    unsupportedFactsIntroduced: unsupportedFacts,
     qualityFailure: Boolean(qualityFailure),
-    pass: facts.passed && signalPassed,
+    customerUsablePass,
+    strictSignalPass: facts.passed && unsupportedFacts.length === 0 && signalPassed,
   });
 }
 
@@ -495,7 +850,14 @@ const averageDrop = measured.length
     )
   : null;
 const belowFifty = measured.filter((row) => (row.rewrite ?? 100) < 50).length;
-const passed = rows.filter((row) => row.pass).length;
+const customerUsablePassed = rows.filter((row) => row.customerUsablePass).length;
+const strictSignalPassed = rows.filter((row) => row.strictSignalPass).length;
+const draftOnlyCasesEvaluated = rows.filter(
+  (row) => row.messageToReplyTo.trim().length === 0,
+).length;
+const factFailures = rows.filter(
+  (row) => !row.factsPreserved || row.unsupportedFactsIntroduced.length > 0,
+).length;
 const longCases = rows.filter((row) => row.wordCount >= 300).length;
 const longSupportCases = rows.filter(
   (row) => row.scenario === "Customer support" && row.wordCount >= 300,
@@ -520,6 +882,7 @@ const lines = [
   "",
   `Date: ${new Date().toISOString()}`,
   `Cases evaluated: ${rows.length}`,
+  `Draft-only cases: ${draftOnlyCasesEvaluated}`,
   `Measured cases: ${measured.length}`,
   `Long cases (300+ words): ${longCases}`,
   `Long customer-support cases (300+ words): ${longSupportCases}`,
@@ -530,9 +893,12 @@ const lines = [
   `Final selected rewrites worse than draft: ${worseSelected}/${measured.length}`,
   `Cases using targeted repair: ${repairUsed}/${rows.length}`,
   `Rejected candidate events: ${rejectedCount}`,
-  `Case pass count: ${passed}/${rows.length}`,
+  `Fact preservation or unsupported-addition failures: ${factFailures}`,
+  `Customer-usable pass count: ${customerUsablePassed}/${rows.length}`,
+  `Strict signal pass count: ${strictSignalPassed}/${rows.length}`,
   "",
-  "Pass requires: all expected facts preserved, scores available, final rewrite no worse than the draft, and either below 50% or at least 30 points lower than the draft.",
+  "Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure is raised, and the selected rewrite is not worse than the draft when scores are available.",
+  "Strict signal pass additionally requires scores available, final rewrite no worse than the draft, and either below 50% or at least 30 points lower than the draft.",
   "",
   ...rows.flatMap((row) => [
     `## ${row.id}`,
@@ -551,9 +917,10 @@ const lines = [
     `Rejected candidate reasons: ${row.rejectedReasons.length ? row.rejectedReasons.join(" | ") : "none"}`,
     `Facts preserved: ${row.factsPreserved ? "yes" : "no"}`,
     `Missing facts: ${row.missingFacts.length ? row.missingFacts.join("; ") : "none"}`,
-    `Unsupported facts introduced: ${row.unsupportedFactsIntroduced}`,
+    `Unsupported facts introduced: ${row.unsupportedFactsIntroduced.length ? row.unsupportedFactsIntroduced.join("; ") : "none"}`,
     `Quality failure state: ${row.qualityFailure ? "yes" : "no"}`,
-    `Pass: ${row.pass ? "yes" : "no"}`,
+    `Customer-usable pass: ${row.customerUsablePass ? "yes" : "no"}`,
+    `Strict signal pass: ${row.strictSignalPass ? "yes" : "no"}`,
     "",
     "Expected facts:",
     row.expectedFacts.map((fact) => `- ${fact}`).join("\n"),

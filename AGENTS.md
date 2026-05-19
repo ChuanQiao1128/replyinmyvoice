@@ -158,7 +158,39 @@ Use data-module-review to review the quota, usage reservation, and Stripe event 
 Use claude-heavy-planning-handoff to prepare a Claude Code planning brief for migrating the rewrite backend to Azure App Service, Azure Service Bus, and a .NET worker.
 ```
 
-## Current Long-Run Target
+## Current Rewrite-Quality Long-Run Target
+
+The next autonomous rewrite-quality/product run must use this target document as the source of truth:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/unified-fact-rewrite-long-run-target.md
+```
+
+It is backed by the detailed implementation plan:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/superpowers/plans/2026-05-19-unified-fact-preserving-rewrite.md
+```
+
+When the user explicitly starts this long autonomous run, prioritize the current rewrite-quality target over the older .NET/Azure backend target. The run goal is to remove user-facing scenario selection, reduce visible tones to Warm/Direct, make draft-only usage first-class, implement unified fact extraction and fact gates, evaluate at least 60 known samples with at least 40 draft-only cases, fix all known failures, update learning docs, push, deploy to Cloudflare, verify active backend workflows, and run remote smoke tests.
+
+Do not deploy as final while any known evaluation sample fails. Ordinary bad rewrite outputs, low evaluation pass rate, model failures, provider errors, build/test failures, and deployment command errors are not stop conditions; investigate, fix, document learning, rerun evaluation, and continue until the target document's completion criteria or stop conditions are reached.
+
+Latest unified rewrite-quality result:
+
+```text
+Date: 2026-05-19
+Evaluation cases: 66
+Draft-only cases: 44
+Customer-usable pass count: 66/66
+Fact preservation or unsupported-addition failures: 0
+Final selected rewrites worse than draft: 0/66
+Strict signal pass count: 42/66
+```
+
+For future rewrite work, treat customer-usable pass and strict signal pass as separate metrics. Strict Sapling failures are still optimization signals, but they are not automatically product failures when the selected result preserves facts, adds no unsupported facts, and is not worse than the draft. Continue improving strict signal pass without weakening the unified fact gate.
+
+## Previous .NET/Azure Long-Run Target
 
 The next autonomous C#/.NET Azure backend run must use this target document as the source of truth:
 

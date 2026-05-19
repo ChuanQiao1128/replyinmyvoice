@@ -14,7 +14,7 @@ const input: RewriteRequestInput = {
   whatHappened: "",
   factsToPreserve: "",
   tone: "warm",
-  tonePreset: "Professional",
+  tonePreset: "Direct",
 };
 
 const response: RewriteResponsePayload = {
@@ -58,7 +58,7 @@ describe("rewrite learning samples", () => {
 
     expect(sample.userId).toBe("user_123");
     expect(sample.scenario).toBe("Customer support");
-    expect(sample.tonePreset).toBe("Professional");
+    expect(sample.tonePreset).toBe("Direct");
     expect(sample.messageToReplyTo).toContain("May invoice");
     expect(sample.roughDraftReply).toContain("billing discrepancy");
     expect(sample.rewrittenText).toContain("May invoice preview");

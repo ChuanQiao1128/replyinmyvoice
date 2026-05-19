@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   generateGuaranteedRewriteCandidate,
   generateRewriteCandidate,
+  getOpenAiModelForStage,
   getRewriteStrategies,
   normalizeRewriteOutput,
 } from "../../lib/openai";
+import { isCandidateCompleteEnough } from "../../lib/rewrite";
 
 describe("normalizeRewriteOutput", () => {
   it("accepts string summaries from the model and normalizes them to arrays", () => {
@@ -45,10 +47,129 @@ describe("normalizeRewriteOutput", () => {
   });
 });
 
+describe("OpenAI model configuration", () => {
+  it("supports staged model overrides with legacy fallback", () => {
+    const original = {
+      OPENAI_MODEL: process.env.OPENAI_MODEL,
+      OPENAI_MODEL_PRIMARY: process.env.OPENAI_MODEL_PRIMARY,
+      OPENAI_MODEL_REPAIR: process.env.OPENAI_MODEL_REPAIR,
+      OPENAI_MODEL_ESCALATION: process.env.OPENAI_MODEL_ESCALATION,
+      OPENAI_MODEL_FINAL_STRONG: process.env.OPENAI_MODEL_FINAL_STRONG,
+    };
+
+    try {
+      process.env.OPENAI_MODEL = "legacy-model";
+      process.env.OPENAI_MODEL_PRIMARY = "primary-model";
+      process.env.OPENAI_MODEL_REPAIR = "repair-model";
+      process.env.OPENAI_MODEL_ESCALATION = "escalation-model";
+      process.env.OPENAI_MODEL_FINAL_STRONG = "strong-model";
+
+      expect(getOpenAiModelForStage("primary")).toBe("primary-model");
+      expect(getOpenAiModelForStage("repair")).toBe("repair-model");
+      expect(getOpenAiModelForStage("escalation")).toBe("escalation-model");
+      expect(getOpenAiModelForStage("final_strong")).toBe("strong-model");
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+});
+
 describe("thread fallback rewrite pass", () => {
   const threadFallback = getRewriteStrategies().find(
     (strategy) => strategy.id === "thread_reply",
   );
+
+  it("infers a teacher-parent reply from a general draft-only request", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "General reply",
+        messageToReplyTo: "",
+        roughDraftReply: [
+          "Hi Monica,",
+          "Jordan is missing the reading response, vocabulary practice, and the short reflection paragraph from Friday.",
+          "He should start with the reading response and vocabulary practice because those can be done quickly.",
+          "Then he can work on the reflection paragraph.",
+          "If he turns everything in by the end of this week, I can still accept it for partial credit.",
+          "Best regards,",
+          "Ms. Carter",
+        ].join("\n\n"),
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "warm",
+        tonePreset: "Warm",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Hi Monica");
+    expect(result.rewrittenText).toContain("Jordan");
+    expect(result.rewrittenText).toContain("reading response");
+    expect(result.rewrittenText).toContain("vocabulary practice");
+    expect(result.rewrittenText).toContain("end of this week");
+    expect(result.rewrittenText).toContain("partial credit");
+    expect(result.rewrittenText).toContain("Ms. Carter");
+  });
+
+  it("infers a support reply from a general billing request", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "General reply",
+        messageToReplyTo: "",
+        roughDraftReply:
+          "Hi Priya, the usage report shows 18 active seats, but the renewal only approved 15 regular seats. The extra NZD $126 appears tied to three temporary contractors who were active during May. The base plan did not change.",
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "direct",
+        tonePreset: "Direct",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Priya");
+    expect(result.rewrittenText).toContain("18 active seats");
+    expect(result.rewrittenText).toContain("15 regular seats");
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.rewrittenText).toContain("base plan");
+  });
+
+  it("infers export support from a general request and keeps message facts", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "General reply",
+        messageToReplyTo:
+          "The CSV export from the dashboard is missing the custom tags column. We need the export for our Monday board packet, and the team cannot reconcile April without that column.",
+        roughDraftReply:
+          "Thank you for reaching out. We apologize for any inconvenience caused by the missing custom tags column in your CSV export. Our team is currently investigating the matter and will provide an update.",
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "direct",
+        tonePreset: "Direct",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("custom tags column");
+    expect(result.rewrittenText).toContain("Monday");
+    expect(result.rewrittenText).toContain("April");
+  });
 
   it("uses invoice facts from the request instead of hardcoded sample details", async () => {
     expect(threadFallback).toBeDefined();
@@ -65,7 +186,7 @@ describe("thread fallback rewrite pass", () => {
         factsToPreserve:
           "Three seats added June 2. Includes prorated seat charges.",
         tone: "direct",
-        tonePreset: "Professional",
+        tonePreset: "Direct",
       },
       threadFallback!,
     );
@@ -114,7 +235,7 @@ describe("thread fallback rewrite pass", () => {
         whatHappened: "",
         factsToPreserve: "",
         tone: "direct",
-        tonePreset: "Professional",
+        tonePreset: "Direct",
       },
       threadFallback!,
     );
@@ -142,7 +263,7 @@ describe("thread fallback rewrite pass", () => {
         whatHappened: "",
         factsToPreserve: "",
         tone: "warm",
-        tonePreset: "Friendly",
+        tonePreset: "Warm",
       },
       threadFallback!,
     );
@@ -180,7 +301,7 @@ describe("thread fallback rewrite pass", () => {
         whatHappened: "",
         factsToPreserve: "",
         tone: "warm",
-        tonePreset: "Friendly",
+        tonePreset: "Warm",
       },
       threadFallback!,
     );
@@ -253,7 +374,7 @@ describe("thread fallback rewrite pass", () => {
   });
 
   it("does not route every customer-support fallback through invoice billing", () => {
-    const result = generateGuaranteedRewriteCandidate({
+    const input = {
       scenario: "Customer support",
       messageToReplyTo:
         "Mina was added to our workspace yesterday, but she still sees the old pilot workspace after logging in with mina@northstar.example. We resent the invite twice and she cannot access the billing report folder.",
@@ -264,8 +385,9 @@ describe("thread fallback rewrite pass", () => {
       whatHappened: "",
       factsToPreserve: "",
       tone: "direct",
-      tonePreset: "Concise",
-    });
+      tonePreset: "Direct",
+    } as const;
+    const result = generateGuaranteedRewriteCandidate(input);
 
     expect(result.rewrittenText).toContain("Mina");
     expect(result.rewrittenText).toContain("mina@northstar.example");
@@ -273,6 +395,7 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).toContain("billing report folder");
     expect(result.rewrittenText).not.toContain("invoice preview");
     expect(result.rewrittenText).not.toContain("temporary users");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
   });
 
   it("uses a plan-change billing fallback instead of seat billing language", () => {
@@ -297,5 +420,83 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).toContain("old plan credit");
     expect(result.rewrittenText).toContain("new plan charge");
     expect(result.rewrittenText).not.toContain("active seats");
+  });
+
+  it("keeps long billing facts without rejecting plain-English wording as a name", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Priya needs to explain why the invoice preview shows 18 active seats instead of 15 regular seats. The preview is NZD $126 higher, the three temporary contractors were supposed to be removed after May 8, and she needs a plain English explanation for her finance manager. The base plan has not changed.",
+      roughDraftReply:
+        "Hi Priya, thank you for reaching out about the invoice preview. From what you described, the increase is probably a prorated charge from three temporary contractors, not a base plan change. Please check whether those contractor accounts are still active before the invoice is finalized.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Priya");
+    expect(result.rewrittenText).toContain("18 active seats");
+    expect(result.rewrittenText).toContain("15 regular seats");
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.rewrittenText).toContain("finance manager");
+    expect(result.rewrittenText).toContain("base plan");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps long export facts including region, months, and deadline", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "The April and May CSV exports are missing the custom tags column for the Northeast region. We need a corrected file before Monday at 10am, and the original data should remain safe.",
+      roughDraftReply:
+        "Thank you for contacting us regarding the missing custom tags column in your April and May CSV exports. We are investigating the export behavior and can provide a workaround for the Monday board packet.",
+      audience: "",
+      purpose: "",
+      whatHappened:
+        "The operations team imports the CSV into a spreadsheet, checks each campaign against its custom tag, and then sends the reconciled numbers to finance and the board assistant.",
+      factsToPreserve: "",
+      tone: "direct",
+      tonePreset: "Direct",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("April and May");
+    expect(result.rewrittenText).toContain("Northeast region");
+    expect(result.rewrittenText).toContain("custom tags column");
+    expect(result.rewrittenText).toContain("Monday at 10am");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps sales renewal facts from message context during general fallback", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Thanks for the renewal proposal. We like the reporting feature and the new team templates, but finance asked us to compare two other vendors before we commit. The earliest we can decide is the first week of June. If you have a shorter summary of the two plan options, send it over and I will include it in our internal thread.",
+      roughDraftReply:
+        "Hello Jordan, I am following up regarding the renewal proposal. We appreciate your interest in the reporting feature and the new team templates. We understand that your finance team is comparing multiple vendors before making a final decision during the first week of June.",
+      audience: "",
+      purpose: "",
+      whatHappened:
+        "Keep the reporting feature, team templates, finance review, two other vendors, and first week of June. This should sound like a real sales follow-up.",
+      factsToPreserve:
+        "Preserve Jordan's name if it appears in the draft. Do not invent a company.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Jordan");
+    expect(result.rewrittenText).toContain("reporting feature");
+    expect(result.rewrittenText).toContain("team templates");
+    expect(result.rewrittenText).toContain("two other vendors");
+    expect(result.rewrittenText).toContain("first week of June");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
   });
 });

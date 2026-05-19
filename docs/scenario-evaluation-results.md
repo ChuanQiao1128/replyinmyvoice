@@ -1,27 +1,132 @@
 # Scenario Evaluation Results
 
-Date: 2026-05-18T19:43:22.108Z
-Cases evaluated: 26
-Measured cases: 24
+Date: 2026-05-19T04:55:07.874Z
+Cases evaluated: 66
+Draft-only cases: 44
+Measured cases: 66
 Long cases (300+ words): 10
 Long customer-support cases (300+ words): 5
-Average AI-like signal drop: 49 pts
-Rewrite below 50% AI-like signal: 16/24
-Final selected rewrites worse than draft: 0/24
-Cases using targeted repair: 23/26
-Rejected candidate events: 73
-Case pass count: 16/26
+Average AI-like signal drop: 50 pts
+Rewrite below 50% AI-like signal: 40/66
+Final selected rewrites worse than draft: 0/66
+Cases using targeted repair: 64/66
+Rejected candidate events: 210
+Fact preservation or unsupported-addition failures: 0
+Customer-usable pass count: 66/66
+Strict signal pass count: 42/66
 
-Pass requires: all expected facts preserved, scores available, final rewrite no worse than the draft, and either below 50% or at least 30 points lower than the draft.
+Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure is raised, and the selected rewrite is not worse than the draft when scores are available.
+Strict signal pass additionally requires scores available, final rewrite no worse than the draft, and either below 50% or at least 30 points lower than the draft.
 
-## blank-01-partner-update
+## draft-only-01-teacher-jordan
 
-Scenario: Blank / custom
-Tone: Professional
-Input word count: 70
-Input character count: 449
-Diagnosis tags: corporate_polish
-Rewrite plan: Target corporate_polish while preserving the user's facts.
+Scenario: General reply
+Tone: Warm
+Input word count: 64
+Input character count: 387
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 89%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -89 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Monica
+- Jordan
+- reading response
+- vocabulary practice
+- Friday
+- end of this week
+- partial credit
+- Ms. Carter
+
+Before:
+
+```text
+Hi Monica,
+
+Jordan is missing the reading response, vocabulary practice, and the short reflection paragraph from Friday. He should start with the reading response and vocabulary practice because those can be done quickly. Then he can work on the reflection paragraph. If he turns everything in by the end of this week, I can still accept it for partial credit.
+
+Best regards,
+Ms. Carter
+```
+
+After:
+
+```text
+Hi Monica,
+
+Jordan is missing the reading response, vocabulary practice, the short reflection paragraph from Friday.
+
+He should start with the reading response and vocabulary practice since those can be done quickly.
+
+Then he can work on the short reflection paragraph from Friday.
+
+If he turns those in by the end of this week, I can still accept them for partial credit.
+
+Best regards,
+Ms. Carter
+```
+
+## draft-only-02-teacher-kai
+
+Scenario: General reply
+Tone: Direct
+Input word count: 50
+Input character count: 284
+Diagnosis tags: policy_memo_voice
+Rewrite plan: Target policy_memo_voice while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | fallback: Fallback may be missing required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Lena
+- Kai
+- two participation activities
+- one exit ticket
+- course policy
+- before class tomorrow
+- not promising
+
+Before:
+
+```text
+Hi Lena, Kai's grade changed because two participation activities and one exit ticket are still missing. The course policy says late work may not receive full credit, but he can submit the exit ticket before class tomorrow and I will review it. I am not promising a grade change yet.
+```
+
+After:
+
+```text
+Hi Lena, Kai's grade changed because two participation activities and one exit ticket are still missing. The course policy says late work may not receive full credit, but he can submit the exit ticket before class tomorrow and I will review it. I am not promising a grade change yet.
+```
+
+## draft-only-03-teacher-amelia
+
+Scenario: General reply
+Tone: Warm
+Input word count: 41
+Input character count: 219
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
@@ -30,9 +135,1701 @@ Change: 0 pts
 Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite dropped required details or became too short. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Mr. Ortiz
+- Amelia
+- lab notes
+- reflection paragraph
+- Tuesday
+- Thursday
+- late but complete
+
+Before:
+
+```text
+Hi Mr. Ortiz, Amelia did complete the lab notes, but I have not received the reflection paragraph from Tuesday. She can bring it to lunch study hall on Thursday. If she submits it then, I can mark it late but complete.
+```
+
+After:
+
+```text
+Hi Mr. Ortiz,
+
+Amelia finished the lab notes, but I'm still waiting on the reflection paragraph from Tuesday. She can bring it to lunch study hall on Thursday, and if she submits it then, I can mark it as late but complete.
+
+
+```
+
+## draft-only-04-teacher-ravi
+
+Scenario: General reply
+Tone: Direct
+Input word count: 38
+Input character count: 211
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Priya
+- Ravi
+- quiz
+- Monday
+- Wednesday at 8:15am
+- Friday after school
+- cannot enter the quiz score
+
+Before:
+
+```text
+Hi Priya, Ravi was absent for the quiz on Monday and still needs to schedule the make-up. The available times are Wednesday at 8:15am or Friday after school. I cannot enter the quiz score until he completes it.
+```
+
+After:
+
+```text
+Quick note: Hi Priya, Ravi was absent for the quiz on Monday and still needs to schedule the make-up.
+
+The available times are Wednesday at 8:15am or Friday after school. I cannot enter the quiz score until he completes it.
+```
+
+## draft-only-05-teacher-sam
+
+Scenario: General reply
+Tone: Warm
+Input word count: 38
+Input character count: 214
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 89%
+Change: -11 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal stayed high and did not drop enough.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Dana
+- Sam
+- bibliography
+- three sources
+- Friday
+- final version
+- May 22
+
+Before:
+
+```text
+Hi Dana, Sam's project is strong, but the bibliography is missing three sources. If he adds the sources by Friday, I can grade the final version instead of the draft version. The presentation date is still May 22.
+```
+
+After:
+
+```text
+Quick update: Hi Dana, Sam's project is strong, but the bibliography is missing three sources.
+
+If he adds the sources by Friday, I can grade the final version instead of the draft version. The presentation date is still May 22.
+```
+
+## draft-only-06-teacher-noah
+
+Scenario: General reply
+Tone: Direct
+Input word count: 37
+Input character count: 189
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 4%
+First candidate AI-like signal: 24%
+Repair candidate AI-like signal: 0%
+Final selected AI-like signal: 0%
+Change: -4 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Ms. Nguyen
+- Noah
+- worksheet
+- graph
+- Canvas
+- 6pm tonight
+- only the graph file
+
+Before:
+
+```text
+Hi Ms. Nguyen, Noah turned in the worksheet but did not attach the graph. Please ask him to upload the graph in Canvas by 6pm tonight. I will not need a new worksheet, only the graph file.
+```
+
+After:
+
+```text
+Quick note: Hi Ms. Nguyen, Noah turned in the worksheet but did not attach the graph.
+
+Please ask him to upload the graph in Canvas by 6pm tonight. I will not need a new worksheet, only the graph file.
+```
+
+## draft-only-07-teacher-maya
+
+Scenario: General reply
+Tone: Warm
+Input word count: 37
+Input character count: 203
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 98%
+First candidate AI-like signal: 97%
+Repair candidate AI-like signal: 1%
+Final selected AI-like signal: 0%
+Change: -98 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Alex
+- Maya
+- science fair group
+- permission slip
+- Thursday morning
+- Room 18
+- project idea
+
+Before:
+
+```text
+Hi Alex, Maya can still join the science fair group, but the permission slip is due Thursday morning. The group is meeting in Room 18 after school. She should bring the signed slip and her project idea.
+```
+
+After:
+
+```text
+Quick update: Hi Alex, Maya can still join the science fair group, but the permission slip is due Thursday morning.
+
+The group is meeting in Room 18 after school. She should bring the signed slip and her project idea.
+```
+
+## draft-only-08-teacher-omar
+
+Scenario: General reply
+Tone: Direct
+Input word count: 37
+Input character count: 199
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 93%
+First candidate AI-like signal: 2%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -93 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Jordan
+- Omar
+- reading log
+- March 14
+- half credit
+- quiz retake
+- scheduled with me
+
+Before:
+
+```text
+Hi Jordan, Omar has improved his reading log, but the March 14 response is still missing. He can turn in that response for half credit. The quiz retake is separate and needs to be scheduled with me.
+```
+
+After:
+
+```text
+Quick note: Hi Jordan, Omar has improved his reading log, but the March 14 response is still missing.
+
+He can turn in that response for half credit. The quiz retake is separate and needs to be scheduled with me.
+```
+
+## draft-only-09-support-tax
+
+Scenario: General reply
+Tone: Warm
+Input word count: 34
+Input character count: 202
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: 98%
+Final selected AI-like signal: 11%
+Change: -89 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Sarah
+- tax line
+- Australia
+- base subscription
+- June 1
+- May invoice
+- not be recalculated
+
+Before:
+
+```text
+Hi Sarah, the tax line increased because the billing address changed to Australia. The base subscription is unchanged. The new tax amount starts on June 1, and the May invoice will not be recalculated.
+```
+
+After:
+
+```text
+Hi Sarah,
+
+Hi Sarah, the tax line increased because the billing address changed to Australia.
+
+The base subscription is unchanged. The new tax amount starts on June 1, and the May invoice will not be recalculated.
+```
+
+## draft-only-10-support-refund
+
+Scenario: General reply
+Tone: Direct
+Input word count: 29
+Input character count: 160
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 94%
+Final selected AI-like signal: 0%
+Change: -100 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal stayed high and did not drop enough.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Eli
+- refund window
+- May 10
+- account credit
+- manager approval
+- cannot promise
+
+Before:
+
+```text
+Hi Eli, the refund window ended May 10. We can offer account credit, but manager approval is required before I can apply it. I cannot promise the credit today.
+```
+
+After:
+
+```text
+Hi Eli,
+
+Hi Eli, the refund window ended May 10.
+
+We can offer account credit, but manager approval is required before I can apply it. I cannot promise the credit today.
+```
+
+## draft-only-11-support-export
+
+Scenario: General reply
+Tone: Warm
+Input word count: 45
+Input character count: 251
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 97%
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 97%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | fallback: Fallback may be missing required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Mina
+- April CSV export
+- custom tags column
+- Northeast region
+- data is still safe
+- Monday at 10am
+
+Before:
+
+```text
+Hi Mina, the April CSV export is missing the custom tags column for the Northeast region. The underlying campaign data is still safe. We are checking the export job and will send a corrected file before Monday at 10am if the check confirms the issue.
+```
+
+After:
+
+```text
+Hi Mina, the April CSV export is missing the custom tags column for the Northeast region. The underlying campaign data is still safe. We are checking the export job and will send a corrected file before Monday at 10am if the check confirms the issue.
+```
+
+## draft-only-12-support-seat-count
+
+Scenario: General reply
+Tone: Direct
+Input word count: 38
+Input character count: 219
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 98%
+Repair candidate AI-like signal: 19%
+Final selected AI-like signal: 14%
+Change: -86 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Priya
+- 18 active seats
+- 15 regular seats
+- NZD $126
+- three temporary contractors
+- May
+- base plan did not change
+
+Before:
+
+```text
+Hi Priya, the usage report shows 18 active seats, but the renewal only approved 15 regular seats. The extra NZD $126 appears tied to three temporary contractors who were active during May. The base plan did not change.
+```
+
+After:
+
+```text
+Hi Priya,
+
+Thanks for laying this out. The jump looks tied to the three temporary contractors being counted during May, not a base plan change.
+
+That explains why the dashboard shows 18 active seats instead of the 15 regular seats your team approved. The NZD $126 increase looks like the prorated charge for the days those accounts had access. The base plan did not change.
+
+Before the invoice is finalized, check whether those contractor accounts are still active. They may still be active if they were not removed after the short project ended. If you send over their names or email addresses, we can help confirm their status. We will not change anything unless you ask us to.
+```
+
+## draft-only-13-support-login
+
+Scenario: General reply
+Tone: Warm
+Input word count: 42
+Input character count: 255
+Diagnosis tags: low_specificity
+Rewrite plan: Target low_specificity while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: 0%
+Final selected AI-like signal: 1%
+Change: -99 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Mina
+- mina@northstar.example
+- old pilot workspace
+- workspace association issue
+- resent the invite twice
+- account link
+
+Before:
+
+```text
+Hi Mina, keep signing in with mina@northstar.example. If you still land in the old pilot workspace, this is probably a workspace association issue, not a new invite issue. We already resent the invite twice, so support should check the account link next.
+```
+
+After:
+
+```text
+Hi,
+
+Mina should keep signing in with mina@northstar.example. If she still lands in the old pilot workspace, this is likely a workspace association issue rather than a new invite issue.
+
+Since you already resent the invite twice, I would not keep repeating that step.
+
+The next useful step is for support to check which workspace mina@northstar.example is linked to and whether the newest Northstar invitation attached to the right account. That should explain why she cannot reach the right workspace.
+```
+
+## draft-only-14-support-plan-change
+
+Scenario: General reply
+Tone: Direct
+Input word count: 44
+Input character count: 250
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -100 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Arun
+- Starter plan credit
+- Team plan charge
+- May 3
+- proration
+- not a duplicate charge
+- invoice screenshot
+
+Before:
+
+```text
+Hi Arun, the Starter plan credit and the Team plan charge are shown as separate lines because the plan changed on May 3. That usually means proration, not a duplicate charge. I still need the invoice screenshot before I can confirm the final amount.
+```
+
+After:
+
+```text
+Hi Arun,
+
+The Starter plan to Team plan change on May 3 can show as separate invoice lines.
+
+In plain English, the old plan credit and the new plan charge usually appear separately during proration, so that layout is usually not a duplicate charge.
+
+If you send the invoice screenshot, we can confirm whether the preview is showing the expected credit-and-charge adjustment before the invoice is finalized.
+```
+
+## draft-only-15-support-notifications
+
+Scenario: General reply
+Tone: Warm
+Input word count: 43
+Input character count: 246
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | fallback: Fallback may be missing required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Claire
+- ticket #4821
+- duplicate notifications
+- delivery logs
+- root cause is not confirmed
+- before noon
+- pause the campaign
+
+Before:
+
+```text
+Hi Claire, ticket #4821 is still open for duplicate notifications. The delivery logs are being reviewed, but the root cause is not confirmed yet. I will send the next status note before noon so your team can decide whether to pause the campaign.
+```
+
+After:
+
+```text
+Hi Claire, ticket #4821 is still open for duplicate notifications. The delivery logs are being reviewed, but the root cause is not confirmed yet. I will send the next status note before noon so your team can decide whether to pause the campaign.
+```
+
+## draft-only-16-support-import
+
+Scenario: General reply
+Tone: Direct
+Input word count: 35
+Input character count: 185
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 90%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 2%
+Change: -98 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Omar
+- row 14
+- invalid date format
+- Rows 1 through 13
+- not saved
+- upload the file again
+- Do not delete
+
+Before:
+
+```text
+Hi Omar, the import failed because row 14 has an invalid date format. Rows 1 through 13 were not saved. Please fix row 14 and upload the file again. Do not delete the existing project.
+```
+
+After:
+
+```text
+Hi Omar,
+
+Hi Omar, the import failed because row 14 has an invalid date format.
+
+Rows 1 through 13 were not saved. Please fix row 14 and upload the file again. Do not delete the existing project.
+```
+
+## draft-only-17-sales-renewal
+
+Scenario: General reply
+Tone: Warm
+Input word count: 45
+Input character count: 247
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 55%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -55 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Jordan
+- renewal proposal
+- two plan options
+- finance thread
+- two other vendors
+- first week of June
+
+Before:
+
+```text
+Hi Jordan, thanks for looking at the renewal proposal. I will send a shorter summary of the two plan options for your finance thread. I know your team is also comparing two other vendors, and the earliest decision point is the first week of June.
+```
+
+After:
+
+```text
+Hi Jordan,
+
+Thanks for looking at the renewal proposal. I can send a shorter summary of the two plan options for your finance thread. Glad the proposal is still in the mix.
+
+No rush from my side; first week of June works while you compare the two other vendors.
+```
+
+## draft-only-18-sales-demo
+
+Scenario: General reply
+Tone: Direct
+Input word count: 35
+Input character count: 188
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 96%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -96 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Leah
+- Thursday at 3pm
+- reporting
+- team templates
+- approval workflow
+- will not include pricing
+
+Before:
+
+```text
+Hi Leah, we can move the demo to Thursday at 3pm. I will keep the agenda focused on reporting, team templates, and the approval workflow. I will not include pricing unless you ask for it.
+```
+
+After:
+
+```text
+Quick update: Hi Leah, we can move the demo to Thursday at 3pm.
+
+I will keep the agenda focused on reporting, team templates, and the approval workflow.
+
+I will not include pricing unless you ask for it.
+```
+
+## draft-only-19-sales-proposal
+
+Scenario: General reply
+Tone: Warm
+Input word count: 40
+Input character count: 242
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 2%
+Repair candidate AI-like signal: 3%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | fallback: Fallback may be missing required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Mateo
+- May 12
+- section three
+- pricing language
+- section five
+- rollout notes
+- Friday
+- legal team
+
+Before:
+
+```text
+Hi Mateo, I attached the revised proposal with the implementation timeline from our May 12 call. Section three has the pricing language, and section five has the rollout notes. Please send comments by Friday if your legal team wants changes.
+```
+
+After:
+
+```text
+Hi Mateo, I attached the revised proposal with the implementation timeline from our May 12 call. Section three has the pricing language, and section five has the rollout notes. Please send comments by Friday if your legal team wants changes.
+```
+
+## draft-only-20-sales-checkin
+
+Scenario: General reply
+Tone: Direct
+Input word count: 40
+Input character count: 222
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 94%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -94 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Nora
+- not push for a decision
+- Vendor A
+- Vendor B
+- security questionnaire
+- today
+- next Tuesday
+
+Before:
+
+```text
+Hi Nora, I will not push for a decision this week. Your team is still comparing Vendor A and Vendor B, and finance asked for the security questionnaire first. I can send the questionnaire today and follow up next Tuesday.
+```
+
+After:
+
+```text
+Hi Nora,
+
+I will not push for a decision this week.
+
+Your team is still comparing Vendor A and Vendor B, and finance asked for the security questionnaire first. I can send the questionnaire today and follow up next Tuesday.
+```
+
+## draft-only-21-sales-expansion
+
+Scenario: General reply
+Tone: Warm
+Input word count: 36
+Input character count: 212
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 94%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 0%
+Final selected AI-like signal: 0%
+Change: -94 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Devon
+- 12 additional seats
+- July 1
+- does not include the analytics add-on
+- second quote
+- manager approves
+
+Before:
+
+```text
+Hi Devon, the expansion quote includes 12 additional seats starting July 1. It does not include the analytics add-on yet. If you want analytics included, I can send a second quote after your manager approves it.
+```
+
+After:
+
+```text
+Quick update: Hi Devon, the expansion quote includes 12 additional seats starting July 1.
+
+It does not include the analytics add-on yet. If you want analytics included, I can send a second quote after your manager approves it.
+```
+
+## draft-only-22-client-design
+
+Scenario: General reply
+Tone: Direct
+Input word count: 32
+Input character count: 182
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 46%
+First candidate AI-like signal: 23%
+Repair candidate AI-like signal: 98%
+Final selected AI-like signal: 0%
+Change: -46 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Ava
+- homepage mockup
+- mobile version
+- spacing check
+- desktop today
+- Wednesday morning
+- logo color has not changed
+
+Before:
+
+```text
+Hi Ava, the homepage mockup is ready, but the mobile version still needs one spacing check. I can send desktop today and mobile by Wednesday morning. The logo color has not changed.
+```
+
+After:
+
+```text
+Quick note: Hi Ava, the homepage mockup is ready, but the mobile version still needs one spacing check.
+
+I can send desktop today and mobile by Wednesday morning. The logo color has not changed.
+```
+
+## draft-only-23-client-invoice
+
+Scenario: General reply
+Tone: Warm
+Input word count: 36
+Input character count: 180
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 99%
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: unavailable
+Final selected AI-like signal: 0%
+Change: -99 pts
+Rejected candidate reasons: none
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Ben
+- invoice #317
+- April 30
+- PO-8842
+- NZD $2,450
+- May 20
+
+Before:
+
+```text
+Hi Ben, invoice #317 was sent on April 30, but the PO number was missing. I have attached a corrected copy with PO-8842. The amount is still NZD $2,450 and the due date is May 20.
+```
+
+After:
+
+```text
+Hi Ben,
+
+I wanted to let you know that invoice #317 was sent on April 30, but it was missing the PO number. I've attached a corrected copy now with PO-8842 included. The amount remains NZD $2,450, and the due date is still May 20.
+
+Best,
+```
+
+## draft-only-24-client-delay
+
+Scenario: General reply
+Tone: Direct
+Input word count: 34
+Input character count: 186
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 95%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 13%
+Change: -87 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Grace
+- source file arrived late
+- not be ready by noon
+- 4pm Friday
+- one quality check
+- dashboard numbers are unchanged
+
+Before:
+
+```text
+Hi Grace, the source file arrived late, so the report will not be ready by noon. I can send the clean version by 4pm Friday after one quality check. The dashboard numbers are unchanged.
+```
+
+After:
+
+```text
+Quick update: Hi Grace, the source file arrived late, so the report will not be ready by noon.
+
+I can send the clean version by 4pm Friday after one quality check.
+
+The dashboard numbers are unchanged.
+```
+
+## draft-only-25-work-launch
+
+Scenario: General reply
+Tone: Warm
+Input word count: 36
+Input character count: 212
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 93%
+First candidate AI-like signal: 98%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -93 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- payment flow
+- smoke test
+- onboarding checklist
+- help article links
+- last three failed webhook events
+- 2pm launch check
+
+Before:
+
+```text
+Quick update: the payment flow passed the smoke test, the onboarding checklist is done, and the help article links are live. I am still reviewing the last three failed webhook events before the 2pm launch check.
+```
+
+After:
+
+```text
+Quick update: Quick update: the payment flow passed the smoke test, the onboarding checklist is done, and the help article links are live.
+
+I am still reviewing the last three failed webhook events before the 2pm launch check.
+```
+
+## draft-only-26-work-blockers
+
+Scenario: General reply
+Tone: Direct
+Input word count: 35
+Input character count: 182
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 1%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -100 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Nina
+- API fix
+- Omar
+- QA script
+- Friday demo
+- vendor API timeout
+- 11am retry
+
+Before:
+
+```text
+Nina owns the API fix, Omar owns the QA script, and both are due before the Friday demo. The only blocker is the vendor API timeout. I will post another update after the 11am retry.
+```
+
+After:
+
+```text
+Quick update: Nina owns the API fix, Omar owns the QA script, and both are due before the Friday demo.
+
+The only blocker is the vendor API timeout.
+
+I will post another update after the 11am retry.
+```
+
+## draft-only-27-work-research
+
+Scenario: General reply
+Tone: Warm
+Input word count: 35
+Input character count: 223
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- six teacher interviews
+- four teachers
+- two asked
+- sample response
+- first screen
+- Wednesday
+
+Before:
+
+```text
+We finished six teacher interviews this week. Four teachers said the onboarding copy felt too technical, and two asked for a sample response before signing up. I recommend updating the first screen before Wednesday's test.
+```
+
+After:
+
+```text
+Quick update: We finished six teacher interviews this week.
+
+Four teachers said the onboarding copy felt too technical, and two asked for a sample response before signing up. I recommend updating the first screen before Wednesday's test.
+```
+
+## draft-only-28-work-screenshots
+
+Scenario: General reply
+Tone: Direct
+Input word count: 40
+Input character count: 246
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -100 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- revised screenshots
+- source file arrived late
+- one quality check
+- pricing table
+- section three
+- partner logo
+- final slide
+- 4pm Friday
+
+Before:
+
+```text
+The revised screenshots are delayed because the updated design source file arrived late this morning. They still need one quality check, especially the pricing table in section three and the partner logo on the final slide. Target is 4pm Friday.
+```
+
+After:
+
+```text
+Quick update: The revised screenshots are delayed because the updated design source file arrived late this morning.
+
+They still need one quality check, especially the pricing table in section three and the partner logo on the final slide.
+
+Target is 4pm Friday.
+```
+
+## draft-only-29-work-board
+
+Scenario: General reply
+Tone: Warm
+Input word count: 36
+Input character count: 199
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 69%
+Change: -31 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- board packet
+- finance chart
+- April revenue number
+- May forecast
+- 9am tomorrow
+- finance confirms
+
+Before:
+
+```text
+The board packet is ready except for the finance chart. The chart needs the April revenue number and the May forecast. I can send the final PDF by 9am tomorrow if finance confirms the numbers today.
+```
+
+After:
+
+```text
+Quick update: The board packet is ready except for the finance chart.
+
+The chart needs the April revenue number and the May forecast.
+
+I can send the final PDF by 9am tomorrow if finance confirms the numbers today.
+```
+
+## draft-only-30-work-handoff
+
+Scenario: General reply
+Tone: Direct
+Input word count: 32
+Input character count: 186
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 0%
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: 0%
+Final selected AI-like signal: 0%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- authentication
+- billing
+- Search is not included
+- rollback notes
+- release doc
+- Maya
+- support FAQ review
+
+Before:
+
+```text
+The handoff is complete for authentication and billing. Search is not included in this release. I added the rollback notes to the release doc and tagged Maya for the support FAQ review.
+```
+
+After:
+
+```text
+Hi,
+
+The handoff is complete for authentication and billing.
+
+Search is not included in this release. I added the rollback notes to the release doc and tagged Maya for the support FAQ review.
+```
+
+## draft-only-31-work-meeting
+
+Scenario: General reply
+Tone: Warm
+Input word count: 37
+Input character count: 198
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- 1:1
+- Tuesday
+- Wednesday
+- client workshop
+- 10am
+- 2pm
+- hiring plan feedback
+
+Before:
+
+```text
+I need to move our 1:1 from Tuesday to Wednesday because the client workshop now overlaps. I can do Wednesday at 10am or 2pm. The hiring plan feedback is ready, so this is only a scheduling change.
+```
+
+After:
+
+```text
+I need to reschedule our 1:1 from Tuesday to Wednesday since the client workshop overlaps. I’m available on Wednesday at either 10am or 2pm.
+
+The hiring plan feedback is ready, so this is just a scheduling change.
+```
+
+## draft-only-32-work-incident
+
+Scenario: General reply
+Tone: Direct
+Input word count: 32
+Input character count: 203
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | fallback: Fallback may be missing required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- incident summary
+- 14 checkout attempts
+- 8:05am
+- 8:22am
+- No successful payments were duplicated
+- retry worker is paused
+- Alex
+
+Before:
+
+```text
+The incident summary is ready. Impact was limited to 14 checkout attempts between 8:05am and 8:22am. No successful payments were duplicated. The retry worker is paused until Alex reviews the queue logs.
+```
+
+After:
+
+```text
+The incident summary is ready. Impact was limited to 14 checkout attempts between 8:05am and 8:22am. No successful payments were duplicated. The retry worker is paused until Alex reviews the queue logs.
+```
+
+## draft-only-33-general-workshop
+
+Scenario: General reply
+Tone: Warm
+Input word count: 31
+Input character count: 209
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 99%
+Final selected AI-like signal: 1%
+Change: -99 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Saturday
+- Room 204
+- library maintenance
+- 6:30pm
+- scholarship forms
+- supporting documents
+- application timeline
+
+Before:
+
+```text
+Families, the Saturday workshop is moving to Room 204 because of library maintenance. The start time is still 6:30pm. We will still cover scholarship forms, supporting documents, and the application timeline.
+```
+
+After:
+
+```text
+Hi,
+
+Families, the Saturday workshop is moving to Room 204 because of library maintenance.
+
+The start time is still 6:30pm. We will still cover scholarship forms, supporting documents, and the application timeline.
+```
+
+## draft-only-34-general-volunteer
+
+Scenario: General reply
+Tone: Direct
+Input word count: 37
+Input character count: 204
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 2%
+Repair candidate AI-like signal: unavailable
+Final selected AI-like signal: 2%
+Change: -98 pts
+Rejected candidate reasons: none
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- 32 people
+- Saturday
+- two check-in leads
+- one person for the supply table
+- Thursday noon
+
+Before:
+
+```text
+Hi team, the volunteer roster has 32 people confirmed for Saturday. We still need two check-in leads and one person for the supply table. Please reply by Thursday noon if you can take one of those roles.
+```
+
+After:
+
+```text
+Hi team, we have 32 volunteers confirmed for Saturday.
+
+We still need two check-in leads and one person for the supply table. Please let me know by Thursday noon if you can take one of those roles.
+```
+
+## draft-only-35-cover-program
+
+Scenario: General reply
+Tone: Warm
+Input word count: 45
+Input character count: 282
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 99%
+Change: -1 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Program Manager
+- 32 volunteers
+- monthly partner updates
+- weekend workshop schedules
+- attendance numbers
+- grant reports
+- education access
+
+Before:
+
+```text
+I am applying for the Program Manager role. In my current job, I coordinate 32 volunteers, prepare monthly partner updates, manage weekend workshop schedules, and track attendance numbers for grant reports. I care about education access but do not want the letter to sound generic.
+```
+
+After:
+
+```text
+I'm interested in the role and wanted to share why my background fits.
+
+I am applying for the Program Manager role. In my current job, I coordinate 32 volunteers, prepare monthly partner updates, manage weekend workshop schedules, and track attendance numbers for grant reports. I care about education access but do not want the letter to sound generic.
+
+I'd be glad to talk through how I could help.
+```
+
+## draft-only-36-cover-support
+
+Scenario: General reply
+Tone: Direct
+Input word count: 42
+Input character count: 251
+Diagnosis tags: low_specificity
+Rewrite plan: Target low_specificity while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -100 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Support Specialist
+- email and chat
+- recurring issues
+- product team
+- help center articles
+- do not make me sound senior
+
+Before:
+
+```text
+I am applying for the Support Specialist role. I answer customer questions by email and chat, summarize recurring issues for the product team, and update help center articles when the same question keeps coming up. Please do not make me sound senior.
+```
+
+After:
+
+```text
+Hi,
+
+I am applying for the Support Specialist role.
+
+I answer customer questions by email and chat, summarize recurring issues for the product team, and update help center articles when the same question keeps coming up. Please do not make me sound senior.
+```
+
+## draft-only-37-general-policy
+
+Scenario: General reply
+Tone: Warm
+Input word count: 31
+Input character count: 207
+Diagnosis tags: low_specificity
+Rewrite plan: Target low_specificity while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 99%
+Final selected AI-like signal: 89%
+Change: -11 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- already submitted questions
+- do not need to send them again
+- agenda is unchanged
+- Saturday's workshop
+- Printed scholarship drafts
+
+Before:
+
+```text
+Participants who already submitted questions do not need to send them again. The agenda is unchanged, and the room change only affects this Saturday's workshop. Printed scholarship drafts are still welcome.
+```
+
+After:
+
+```text
+Quick update: Participants who already submitted questions do not need to send them again.
+
+The agenda is unchanged, and the room change only affects this Saturday's workshop. Printed scholarship drafts are still welcome.
+```
+
+## draft-only-38-general-apology
+
+Scenario: General reply
+Tone: Direct
+Input word count: 33
+Input character count: 197
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
+
+Expected facts:
+- Taylor
+- Monday
+- Thursday afternoon
+- cannot approve
+- legal
+- clause 7
+
+Before:
+
+```text
+Hi Taylor, I missed your message on Monday and should have replied sooner. I can review the contract notes by Thursday afternoon. I cannot approve the final language until legal confirms clause 7.
+```
+
+After:
+
+```text
+Hi Taylor,
+
+I missed your message on Monday and should have replied sooner. I can review the contract notes by Thursday afternoon.
+
+I can’t approve the final language until legal confirms clause 7.
+```
+
+## draft-only-39-general-neighbor
+
+Scenario: General reply
+Tone: Warm
+Input word count: 32
+Input character count: 175
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 99%
+First candidate AI-like signal: 44%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 17%
+Change: -82 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- Chris
+- 9am to 3pm
+- Friday only
+- back fence panels
+- not cutting down the tree
+
+Before:
+
+```text
+Hi Chris, thanks for checking about the noise. The work crew is scheduled from 9am to 3pm on Friday only. They are replacing the back fence panels, not cutting down the tree.
+```
+
+After:
+
+```text
+Quick update: Hi Chris, thanks for checking about the noise.
+
+The work crew is scheduled from 9am to 3pm on Friday only. They are replacing the back fence panels, not cutting down the tree.
+```
+
+## draft-only-40-general-event
+
+Scenario: General reply
+Tone: Direct
+Input word count: 30
+Input character count: 161
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -100 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Expected facts:
+- doors open at 5:30pm
+- panel starts at 6pm
+- Lot C
+- Do not mention catering
+- food is not confirmed
+
+Before:
+
+```text
+The event reminder should say doors open at 5:30pm, the panel starts at 6pm, and parking is in Lot C. Do not mention catering because food is not confirmed yet.
+```
+
+After:
+
+```text
+Quick note: The event reminder should say doors open at 5:30pm, the panel starts at 6pm, and parking is in Lot C.
+
+Do not mention catering because food is not confirmed yet.
+```
+
+## blank-01-partner-update
+
+Scenario: Blank / custom
+Tone: Direct
+Input word count: 70
+Input character count: 449
+Diagnosis tags: corporate_polish
+Rewrite plan: Target corporate_polish while preserving the user's facts.
+Draft AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 0%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | fallback: Fallback may be missing required details or became too short.
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Quality failure state: no
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - section three
@@ -48,9 +1845,7 @@ I am writing to provide an update regarding the partner onboarding packet. The r
 After:
 
 ```text
-I wanted to give you an update on the partner onboarding packet. The revised document is now ready for your review.
-
-Section three has the updated pricing language, and section five includes the implementation timeline we discussed on May 12. Kindly take a look at the attached document and share any feedback so we can proceed accordingly.
+I am writing to provide an update regarding the partner onboarding packet. The revised document has now been completed and is available for your review. Please note that section three contains the updated pricing language, and section five includes the implementation timeline that was discussed during the call on May 12. Kindly review the attached document and provide any feedback at your earliest convenience so that we may proceed accordingly.
 ```
 
 ## blank-02-community-note
@@ -62,16 +1857,17 @@ Input character count: 371
 Diagnosis tags: corporate_polish
 Rewrite plan: Target corporate_polish while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: 100%
-Repair candidate AI-like signal: 99%
-Final selected AI-like signal: 99%
-Change: -1 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal stayed high and did not drop enough. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal is not lower than the draft.
+First candidate AI-like signal: 96%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 96%
+Change: -4 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - Thursday
@@ -87,13 +1883,17 @@ This message is to inform families that the Thursday workshop will be moved to R
 After:
 
 ```text
-This is to let families know that the Thursday workshop is being relocated to Room 204 due to maintenance in the library. The start time will still be 6:30pm. We will discuss scholarship forms, supporting documents, and the application timeline during the session. Thank you for your understanding regarding this change.
+Hi everyone,
+
+I wanted to let you know that the Thursday workshop is now in Room 204 because of maintenance in the library. The start time is still 6:30pm, and we'll cover scholarship forms, supporting documents, and the application timeline.
+
+Thanks for your understanding!
 ```
 
 ## blank-03-internal-note
 
 Scenario: Blank / custom
-Tone: Concise
+Tone: Direct
 Input word count: 63
 Input character count: 375
 Diagnosis tags: none
@@ -101,14 +1901,15 @@ Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 15%
-Change: -85 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Final selected AI-like signal: 8%
+Change: -92 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - Vendor A
@@ -125,9 +1926,11 @@ The purpose of this note is to summarize the current status of the vendor review
 After:
 
 ```text
-Quick note: The purpose of this note is to summarize the current status of the vendor review.
+Quick update: The purpose of this note is to summarize the current status of the vendor review.
 
-Vendor A has provided the revised security questionnaire, Vendor B is still waiting on legal approval, and Vendor C has requested an extension until Friday. Based on the current timeline, I recommend that we do not make a final decision until all three responses are available for comparison.
+Vendor A has provided the revised security questionnaire, Vendor B is still waiting on legal approval, and Vendor C has requested an extension until Friday.
+
+Based on the current timeline, I recommend that we do not make a final decision until all three responses are available for comparison.
 ```
 
 ## reply-01-teacher-extension
@@ -141,14 +1944,15 @@ Rewrite plan: Target stock_opening, corporate_polish, policy_memo_voice while pr
 Draft AI-like signal: 100%
 First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 100%
-Change: 0 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite dropped required details or became too short. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite dropped required details or became too short.
+Final selected AI-like signal: 0%
+Change: -100 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - family issue
@@ -164,30 +1968,33 @@ Dear Student, I acknowledge receipt of your email regarding the missed reflectio
 After:
 
 ```text
-Hi there, I got your message about missing the reflection deadline due to a family issue.
+Hi Student,
 
-I understand that circumstances can be challenging. While the course policy typically doesn’t allow for late submissions, I’ll take a look at your situation and get back to you. Just keep in mind that submitting before class tomorrow doesn’t guarantee acceptance.
+Dear Student, I acknowledge receipt of your email regarding the missed reflection deadline.
+
+Late submissions are generally subject to the course policy and may not be accepted. However, I understand that you have indicated a family issue. I will review the situation and respond accordingly. Please be advised that submitting before class tomorrow does not guarantee that it will be accepted. Hi Professor, I missed the reflection deadline because of a family issue this week.
 ```
 
 ## reply-02-sales-followup
 
 Scenario: Email or message reply
-Tone: Friendly
+Tone: Warm
 Input word count: 71
 Input character count: 446
 Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: 39%
-Repair candidate AI-like signal: 100%
+First candidate AI-like signal: 99%
+Repair candidate AI-like signal: 97%
 Final selected AI-like signal: 0%
 Change: -100 pts
 Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - Jordan
@@ -213,22 +2020,23 @@ No rush from my side; next month works while you compare the two other vendors.
 ## reply-03-parent-question
 
 Scenario: Email or message reply
-Tone: Professional
+Tone: Direct
 Input word count: 70
 Input character count: 420
 Diagnosis tags: stock_opening, corporate_polish, low_specificity
 Rewrite plan: Target stock_opening, corporate_polish, low_specificity while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: 10%
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 10%
-Change: -90 pts
-Rejected candidate reasons: none
+First candidate AI-like signal: 97%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 96%
+Change: -4 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - Kai
@@ -244,30 +2052,31 @@ Thank you for reaching out regarding Kai's grade. I understand your concern. The
 After:
 
 ```text
-Hi, thanks for your message about Kai's grade.
+Hi, thanks for checking.
 
-The grade change is due to two missing participation activities and one missing exit ticket. If you need more details or want to discuss this further, just let me know.
+Kai's grade changed because of two missing participation activities and one missing exit ticket. I can share more detail or talk it through if that helps.
 ```
 
 ## support-01-priya-billing
 
 Scenario: Customer support
-Tone: Friendly
+Tone: Warm
 Input word count: 169
 Input character count: 965
-Diagnosis tags: support_template_voice
-Rewrite plan: Target support_template_voice while preserving the user's facts.
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: 100%
-Repair candidate AI-like signal: 98%
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: 0%
 Final selected AI-like signal: 12%
 Change: -88 pts
 Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - Priya
@@ -297,22 +2106,23 @@ Before the invoice is finalized, check whether those contractor accounts are sti
 ## support-02-export-error
 
 Scenario: Customer support
-Tone: Professional
+Tone: Direct
 Input word count: 86
 Input character count: 505
-Diagnosis tags: stock_opening, corporate_polish, support_template_voice
-Rewrite plan: Target stock_opening, corporate_polish, support_template_voice while preserving the user's facts.
+Diagnosis tags: stock_opening, corporate_polish
+Rewrite plan: Target stock_opening, corporate_polish while preserving the user's facts.
 Draft AI-like signal: 32%
-First candidate AI-like signal: 1%
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 1%
-Change: -31 pts
-Rejected candidate reasons: none
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -32 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - custom tags column
@@ -328,30 +2138,33 @@ Thank you for reaching out. We apologize for any inconvenience caused by the mis
 After:
 
 ```text
-I see the custom tags column is missing from your CSV export.
+The April exports are missing the custom tags column.
 
-We're looking into this issue, as it's essential for your Monday board packet and reconciling April. While we investigate, you might try exporting the report again from the dashboard settings page.
+The underlying data does not look deleted from what you described.
+
+Use the dashboard export as the source for the other fields while we check why that column is missing. If you need a corrected file for the Monday board packet, send us the export settings you used.
 ```
 
 ## support-03-login-access
 
 Scenario: Customer support
-Tone: Concise
+Tone: Direct
 Input word count: 75
 Input character count: 484
 Diagnosis tags: over_safe_tone
 Rewrite plan: Target over_safe_tone while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: 99%
-Repair candidate AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 98%
 Final selected AI-like signal: 5%
 Change: -95 pts
-Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Rewrite AI-like signal is not lower than the draft.
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - Mina
@@ -379,22 +2192,23 @@ The next useful step is for support to check which workspace mina@northstar.exam
 ## cover-01-operations-role
 
 Scenario: Cover letter
-Tone: Professional
+Tone: Direct
 Input word count: 89
 Input character count: 601
-Diagnosis tags: low_specificity, application_cliche
-Rewrite plan: Target low_specificity, application_cliche while preserving the user's facts.
+Diagnosis tags: low_specificity
+Rewrite plan: Target low_specificity while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 100%
-Change: 0 pts
-Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal is not lower than the draft.
+Final selected AI-like signal: 81%
+Change: -19 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - weekly partner updates
@@ -410,11 +2224,13 @@ I am writing to express my interest in the Operations Coordinator position. I am
 After:
 
 ```text
-I'm interested in this role because the day-to-day work matches things I've already done.
+Hi,
 
-I am interested in the Operations Coordinator position. I am a focused professional with a experience of managing communication, coordinating schedules, and supporting team success. In my last role, I prepared weekly partner updates, kept shared folders organized, and helped schedule meetings for a team of eight.
+I am writing to express my interest in the Operations Coordinator position.
 
-I'd be glad to talk through how I could help.
+I am a passionate and results-driven professional with a proven track record of managing communication, coordinating schedules, and supporting team success. In my last role, I prepared weekly partner updates, kept shared folders organized, and helped schedule meetings for a team of eight. I believe I would be a perfect fit for your dynamic team. Job post: Operations Coordinator at a nonprofit education program.
+
+The role mentions partner communication, weekly reporting, scheduling, and keeping shared documents organized.
 ```
 
 ## cover-02-customer-success
@@ -423,19 +2239,20 @@ Scenario: Cover letter
 Tone: Warm
 Input word count: 89
 Input character count: 565
-Diagnosis tags: low_specificity, application_cliche
-Rewrite plan: Target low_specificity, application_cliche while preserving the user's facts.
+Diagnosis tags: low_specificity
+Rewrite plan: Target low_specificity while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 2%
-Change: -98 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Final selected AI-like signal: 98%
+Change: -2 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - summarize action items
@@ -453,7 +2270,7 @@ After:
 ```text
 I'm interested in this role because the day-to-day work matches things I've already done.
 
-I am excited to apply for the Customer Success Associate role. I have always been passionate about helping customers and delivering excellent service. In my current position, I respond to customer questions, summarize action items after calls, and update our help center articles when a pattern appears.
+I am excited to apply for the Customer Success Associate role. I have always been passionate about helping customers and delivering excellent service. In my current position, I respond to customer questions, summarize action items after calls, and update our help center articles when a pattern appears. I am confident that my communication skills and positive attitude would make me a strong addition to the team. Role: Customer Success Associate at a B2B SaaS company.
 
 I'd be glad to talk through how I could help.
 ```
@@ -461,22 +2278,23 @@ I'd be glad to talk through how I could help.
 ## cover-03-admin-assistant
 
 Scenario: Cover letter
-Tone: Concise
+Tone: Direct
 Input word count: 79
 Input character count: 592
 Diagnosis tags: low_specificity
 Rewrite plan: Target low_specificity while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: unavailable
-Change: unavailable
-Rejected candidate reasons: none
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - three providers
@@ -492,15 +2310,19 @@ Please accept my application for the Administrative Assistant position. I am hig
 After:
 
 ```text
-I'm excited to apply for the Administrative Assistant position. I’m highly organized and detail-oriented, with extensive experience in supporting administrative workflows.
+Hi,
 
-In my previous clinic, I managed calendars for three providers, prepared patient follow-up notes, and carefully handled private information according to office procedures. I would love the chance to bring my skills to your organization.
+Please accept my application for the Administrative Assistant position.
+
+I am highly organized and detail oriented, and I have extensive experience supporting administrative workflows. At my previous clinic, I managed calendars for three providers, prepared patient follow-up notes, and handled private information carefully according to office procedures. I would welcome the opportunity to bring my skills to your organization. Opening: Administrative Assistant for a clinic.
+
+The listing emphasizes calendar coordination, patient follow-up notes, and careful handling of private information.
 ```
 
 ## work-01-design-delay
 
 Scenario: Work update
-Tone: Professional
+Tone: Direct
 Input word count: 70
 Input character count: 406
 Diagnosis tags: none
@@ -510,12 +2332,13 @@ First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -100 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - source file arrived late
@@ -541,7 +2364,7 @@ I expect to send the screenshots by 4pm Friday if there are no further issues.
 ## work-02-launch-risk
 
 Scenario: Work update
-Tone: Concise
+Tone: Direct
 Input word count: 69
 Input character count: 384
 Diagnosis tags: none
@@ -551,12 +2374,13 @@ First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 4%
 Change: -96 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - payment flow
@@ -582,22 +2406,23 @@ At this time, I do not recommend changing the launch decision until that review 
 ## work-03-research-summary
 
 Scenario: Work update
-Tone: Friendly
+Tone: Warm
 Input word count: 73
 Input character count: 436
 Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: 100%
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: unavailable
-Change: unavailable
-Rejected candidate reasons: initial: Rewrite dropped required details or became too short.
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - six interviews
@@ -614,28 +2439,33 @@ I am writing to inform you that the teacher interview notes are now ready for re
 After:
 
 ```text
-The teacher interview notes are ready for you to review. We completed six interviews this week. Four teachers said the onboarding copy seemed too technical, while two asked for a sample response before they sign up. I think we should update the first screen and include a brief example before the next test on Wednesday.
+Hi,
+
+I am writing to inform you that the teacher interview notes are now ready for review.
+
+We completed six interviews this week. Four teachers mentioned that the onboarding copy felt too technical, and two asked for a sample response before signing up. I recommend updating the first screen and adding one short example before the next test on Wednesday. Did we get enough feedback from the teacher interviews to update the onboarding copy.
 ```
 
 ## support-04-priya-billing-long-regression
 
 Scenario: Customer support
-Tone: Friendly
+Tone: Warm
 Input word count: 541
 Input character count: 3056
 Diagnosis tags: stock_opening, over_explained, over_safe_tone
 Rewrite plan: Target stock_opening, over_explained, over_safe_tone while preserving the user's facts.
 Draft AI-like signal: 89%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 0%
 Final selected AI-like signal: 0%
 Change: -89 pts
 Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - Priya
@@ -686,22 +2516,23 @@ Before the invoice is finalized, check whether those contractor accounts are sti
 ## support-05-data-export-long
 
 Scenario: Customer support
-Tone: Professional
+Tone: Direct
 Input word count: 383
 Input character count: 2253
-Diagnosis tags: over_safe_tone, support_template_voice
-Rewrite plan: Target over_safe_tone, support_template_voice while preserving the user's facts.
+Diagnosis tags: over_safe_tone
+Rewrite plan: Target over_safe_tone while preserving the user's facts.
 Draft AI-like signal: 0%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 0%
 Final selected AI-like signal: 0%
 Change: 0 pts
-Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | fallback: Fallback may be missing required details or became too short.
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - custom tags column
@@ -732,22 +2563,23 @@ Use the dashboard export as the source for the other fields while we check why t
 ## support-06-login-workspace-long
 
 Scenario: Customer support
-Tone: Concise
+Tone: Direct
 Input word count: 337
 Input character count: 2074
 Diagnosis tags: over_safe_tone
 Rewrite plan: Target over_safe_tone while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: 95%
+First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 98%
 Change: -2 pts
 Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal stayed high and did not drop enough.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - Mina
@@ -786,15 +2618,16 @@ Diagnosis tags: stock_opening, over_safe_tone
 Rewrite plan: Target stock_opening, over_safe_tone while preserving the user's facts.
 Draft AI-like signal: 0%
 First candidate AI-like signal: 100%
-Repair candidate AI-like signal: 100%
+Repair candidate AI-like signal: 98%
 Final selected AI-like signal: 0%
 Change: 0 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | fallback: Fallback may be missing required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - Starter plan
@@ -815,34 +2648,31 @@ A good answer should explain the likely invoice structure without sounding defen
 After:
 
 ```text
-Hi,
+Thank you for reaching out regarding the invoice preview after your recent plan change from Starter to Team. We understand that billing adjustments can be confusing when prorated charges and credits appear as separate invoice lines. The invoice preview may show both the credit for unused time on the Starter plan and the charge for the Team plan for the remaining portion of the billing period. This does not necessarily mean that you are being charged twice. Rather, it may reflect the standard prorated adjustment process. Please review the line items carefully, and contact us if you would like additional assistance.
 
-The Starter plan to Team plan change on May 3 for shared templates can show as separate invoice lines.
-
-In plain English, the old plan credit and the new plan charge usually appear separately during proration, so that layout does not automatically mean you are being charged twice.
-
-If you send the invoice preview or line items, we can confirm whether the preview is showing the expected credit-and-charge adjustment before the invoice is finalized.
+A good answer should explain the likely invoice structure without sounding defensive. It should say that separate credit and charge lines can appear during a mid-cycle plan change, and that this usually reflects proration rather than double billing. It should preserve May 3, Starter, Team, shared templates, old plan credit, and new plan charge. It should invite the customer to send a screenshot or invoice line items if they want the team to confirm the preview, but it should not promise an adjustment or refund.
 ```
 
 ## support-08-delayed-response-long
 
 Scenario: Customer support
-Tone: Professional
+Tone: Direct
 Input word count: 308
 Input character count: 1918
 Diagnosis tags: corporate_polish
 Rewrite plan: Target corporate_polish while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: 100%
-Repair candidate AI-like signal: 88%
+First candidate AI-like signal: 25%
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -100 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal stayed high and did not drop enough.
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - ticket #4821
@@ -874,22 +2704,23 @@ I know your account team needs an answer on whether to pause the campaign before
 ## cover-04-long-program-manager
 
 Scenario: Cover letter
-Tone: Professional
+Tone: Direct
 Input word count: 399
 Input character count: 2683
-Diagnosis tags: over_safe_tone, application_cliche
-Rewrite plan: Target over_safe_tone, application_cliche while preserving the user's facts.
+Diagnosis tags: over_safe_tone
+Rewrite plan: Target over_safe_tone while preserving the user's facts.
 Draft AI-like signal: 98%
 First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 98%
 Change: 0 pts
-Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft.
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - 32 people
@@ -921,22 +2752,23 @@ It should also keep the application focused on the employer's needs. The reader 
 ## cover-05-long-support-specialist
 
 Scenario: Cover letter
-Tone: Friendly
+Tone: Warm
 Input word count: 367
 Input character count: 2388
-Diagnosis tags: low_specificity, application_cliche
-Rewrite plan: Target low_specificity, application_cliche while preserving the user's facts.
+Diagnosis tags: low_specificity
+Rewrite plan: Target low_specificity while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 1%
-Change: -99 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Final selected AI-like signal: 100%
+Change: 0 pts
+Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal is not lower than the draft.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - email and chat
@@ -957,32 +2789,33 @@ The final letter can be warm, but it should still feel like a real applicant wro
 After:
 
 ```text
-I'm interested in this role because the day-to-day work matches things I've already done.
+I’m excited to apply for the Support Specialist role. This position feels like a great fit because I enjoy helping customers understand our products, especially when things get complicated.
 
-I am excited to submit my application for the Support Specialist role. I have always been passionate about helping customers succeed and providing excellent service. In my previous position, I answered customer questions through email and chat, summarized recurring issues for our product team, and updated help center articles when we noticed the same question coming up repeatedly.
+In my previous job, I answered customer questions via email and chat. I also documented recurring issues for our product team and updated help center articles whenever we noticed the same questions coming up. I believe this experience equips me well to contribute to your small team.
 
-I'd be glad to talk through how I could help.
+I’d love to discuss my qualifications further and see how I can support your customers effectively.
 ```
 
 ## work-04-long-launch-readiness
 
 Scenario: Work update
-Tone: Concise
+Tone: Direct
 Input word count: 376
 Input character count: 2178
 Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 99%
-First candidate AI-like signal: 100%
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 99%
-Change: 0 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite dropped required details or became too short.
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: 0%
+Final selected AI-like signal: 51%
+Change: -48 pts
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - payment flow
@@ -1004,17 +2837,19 @@ If the text uses bullets, keep them short. If it uses paragraphs, make each para
 After:
 
 ```text
-The current launch readiness status is as follows. The payment flow passed the latest smoke test, the onboarding checklist has been reviewed, and the help article links have been updated in the footer. The remaining item is the webhook retry log, where I am reviewing the last three failed events from this morning. I expect to post the result before the 2pm launch check. At this time, I do not recommend delaying the launch unless the retry log shows a repeated payment event failure.
+Hi,
 
-The rewrite should keep the payment flow, onboarding checklist, help article links, webhook retry log, last three failed events, and 2pm launch check. It should not add new test results. It should make the update easier to scan, but it should not turn into a formal status report with too many headings. The final message should be clear enough that a manager can see what is ready and what is still being checked.
+The current launch readiness status is as follows.
 
-If the text uses bullets, keep them short. If it uses paragraphs, make each paragraph do a different job: ready items, pending review, and launch recommendation. Do not make the launch sound approved if the retry log still has to be checked.
+The payment flow passed the latest smoke test, the onboarding checklist has been reviewed, and the help article links have been updated in the footer. The remaining item is the webhook retry log, where I am reviewing the last three failed events from this morning. I expect to post the result before the 2pm launch check. At this time, I do not recommend delaying the launch unless the retry log shows a repeated payment event failure.
+
+The rewrite should keep the payment flow, onboarding checklist, help article links, webhook retry log, last three failed events, and 2pm launch check. It should not add new test results.
 ```
 
 ## work-05-long-design-delay
 
 Scenario: Work update
-Tone: Professional
+Tone: Direct
 Input word count: 348
 Input character count: 2055
 Diagnosis tags: none
@@ -1024,12 +2859,13 @@ First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 3%
 Change: -97 pts
-Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Rewrite AI-like signal is not lower than the draft.
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - source file arrived later
@@ -1071,12 +2907,13 @@ First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 96%
 Change: 0 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft. | initial: Rewrite AI-like signal is not lower than the draft.
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft. | repair: Repair dropped required details or became too short. | initial: Rewrite AI-like signal is not lower than the draft.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: no
+Customer-usable pass: yes
+Strict signal pass: no
 
 Expected facts:
 - Saturday
@@ -1108,22 +2945,23 @@ The note will be sent by text and email, so it needs to be easy to understand wi
 ## reply-04-long-sales-renewal
 
 Scenario: Email or message reply
-Tone: Friendly
+Tone: Warm
 Input word count: 408
 Input character count: 2418
 Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 0%
 First candidate AI-like signal: 100%
-Repair candidate AI-like signal: 100%
+Repair candidate AI-like signal: 92%
 Final selected AI-like signal: 0%
 Change: 0 pts
-Rejected candidate reasons: initial: Rewrite AI-like signal is not lower than the draft. | repair: Rewrite AI-like signal is not lower than the draft.
+Rejected candidate reasons: initial: Rewrite dropped required details or became too short. | repair: Repair dropped required details or became too short.
 Facts preserved: yes
 Missing facts: none
-Unsupported facts introduced: not detected
+Unsupported facts introduced: none
 Quality failure state: no
-Pass: yes
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - Jordan
@@ -1147,7 +2985,7 @@ After:
 ```text
 Hi Jordan,
 
-I can send a shorter summary of the two plan options for your internal thread. Glad the reporting feature and team templates are still useful.
+Thanks for looking at the renewal proposal. I can send a shorter summary of the two plan options for your internal thread. Glad the reporting feature and team templates are still useful.
 
 No rush from my side; first week of June works while you compare the two other vendors.
 ```

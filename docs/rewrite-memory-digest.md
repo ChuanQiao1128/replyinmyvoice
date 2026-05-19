@@ -1,37 +1,46 @@
 # Rewrite Memory Digest
 
-Generated: 2026-05-18T04:34:09.257Z
+Generated: 2026-05-19T04:58:03.790Z
 
-Learning run: 6ca63151-1ead-4431-8455-9b0be666e909
-
-This digest is generated from internally stored rewrite learning samples. It summarizes patterns and does not print user-submitted text.
+This digest is generated from internally stored rewrite learning samples. It intentionally summarizes patterns and does not print user-submitted text.
 
 ## Summary
 
-- Samples scanned: 4
-- Measured samples: 4
-- Successful rewrites: 4
+- Samples scanned: 12
+- Successful rewrites: 12
 - Quality-gate failures: 0
-- Average signal drop: 49 pts
-- Rewrites below 50% AI-like signal: 3/4
-- Measured rewrites worse than draft: 1/4
-- Promotion decision: promoted_candidate
+- Measured samples: 12
+- Average signal drop: 33 pts
+- Rewrites below 50% AI-like signal: 5/12
+- Measured rewrites worse than draft: 7/12
 
-## Findings
+## By Scenario
 
-| Failure type | Scenario | Severity | Evidence | Recommendation | Diagnosis tags |
-| --- | --- | --- | --- | --- | --- |
-| worse_than_draft | Blank / custom | high | 1 | code-change | n/a |
-
-## Strategy Candidates
-
-| Title | Scenario | Risk | Evidence | Status |
+| Scenario | Samples | Avg drop | Below 50% | Quality fails |
 | --- | --- | --- | --- | --- |
-| Prevent worse-than-draft rewrite selection for Blank / custom | Blank / custom | high | 1 | proposed |
+| Email or message reply | 4 | 73 | 3/4 | 0 |
+| Blank / custom | 7 | 0 | 1/7 | 0 |
+| Cover letter | 1 | 100 | 1/1 | 0 |
 
-## Promotion Policy
+## By Diagnosis Tag
 
-- Run every 24 hours automatically.
-- Push/deploy automatically only when a qualified strategy promotion passes all gates.
-- Never deploy just because the scheduled job ran.
-- Production strategy is promoted through code, tests, GitHub push, and Cloudflare deploy. It is not hot-loaded from database rows.
+| Diagnosis tag | Samples | Avg drop | Quality fails |
+| --- | --- | --- | --- |
+| stock_opening | 10 | 29 | 0 |
+| over_safe_tone | 2 | 48 | 0 |
+| over_explained | 1 | 100 | 0 |
+
+## Recommendations
+
+- Investigate 7 measured sample(s) where rewrite signal was not lower than draft signal.
+- Improve scenario guardrails for Blank / custom; fewer than 70% of measured samples are below 50%.
+
+## Promotion Rule
+
+Any recommendation must be promoted through:
+
+1. update `docs/rewrite-strategy-memory.md`
+2. add or update an evaluation case
+3. add a deterministic test where possible
+4. update prompt guardrails, repair logic, or fallback rules
+5. rerun tests and scenario evaluation

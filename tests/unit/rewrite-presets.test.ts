@@ -7,31 +7,20 @@ import {
 } from "../../lib/rewrite-presets";
 
 describe("rewrite presets", () => {
-  it("offers the five broad workspace scenarios", () => {
-    expect([...scenarioOptions]).toEqual([
-      "Blank / custom",
-      "Email or message reply",
-      "Customer support",
-      "Cover letter",
-      "Work update",
-    ]);
+  it("keeps scenario options internal and defaults to the reply workflow", () => {
+    expect([...scenarioOptions]).toContain("General reply");
+    expect(scenarioOptions[0]).toBe("General reply");
   });
 
-  it("maps every visible tone preset to a valid API tone fallback", () => {
-    expect([...tonePresetOptions]).toEqual([
-      "Warm",
-      "Professional",
-      "Friendly",
-      "Concise",
-    ]);
+  it("shows only the two stable tone presets", () => {
+    expect([...tonePresetOptions]).toEqual(["Warm", "Direct"]);
 
     const mapped = tonePresetOptions.map((option) => tonePresetToTone(option));
 
     expect(mapped.every((value) => value === "warm" || value === "direct")).toBe(
       true,
     );
-    expect(tonePresetToTone("Friendly")).toBe("warm");
-    expect(tonePresetToTone("Professional")).toBe("direct");
-    expect(tonePresetToTone("Concise")).toBe("direct");
+    expect(tonePresetToTone("Warm")).toBe("warm");
+    expect(tonePresetToTone("Direct")).toBe("direct");
   });
 });

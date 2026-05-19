@@ -43,6 +43,7 @@ vi.mock("../../lib/writing-signal", () => ({
 
 import {
   isCandidateCompleteEnough,
+  RewriteQualityError,
   rewriteWithOptimization,
 } from "../../lib/rewrite";
 
@@ -56,7 +57,7 @@ function inputWithDraft(roughDraftReply: string): RewriteRequestInput {
     whatHappened: "",
     factsToPreserve: "",
     tone: "warm",
-    tonePreset: "Professional",
+    tonePreset: "Warm",
   };
 }
 
@@ -66,6 +67,7 @@ const longPriyaInput = inputWithDraft(
     "Thank you for contacting us regarding the usage report and invoice preview in your account.",
     "We understand that there appears to be a discrepancy between the number of active seats shown in the dashboard and the number of seats approved during your renewal.",
     "The most likely explanation is that the three temporary contractors were counted as active seats during May.",
+    "That would explain why the dashboard shows 18 active seats instead of the 15 regular seats your team approved, and why the preview is NZD $126 higher.",
     "Even if a user only joins for part of the month, prorated charges may apply.",
     "Please check whether the contractors are still active and send us their names if you would like assistance.",
   ].join(" "),
@@ -86,7 +88,6 @@ describe("isCandidateCompleteEnough", () => {
   });
 
   it("allows substantial candidates for long customer-support drafts", () => {
-    const input = inputWithDraft("A long support draft. ".repeat(80));
     const candidate = [
       "Hi Priya,",
       "",
@@ -97,7 +98,7 @@ describe("isCandidateCompleteEnough", () => {
       "For the next step, check whether those contractor accounts are still active. If you want us to help confirm, send over their names or email addresses and we can check their status.",
     ].join("\n");
 
-    expect(isCandidateCompleteEnough(input, candidate)).toBe(true);
+    expect(isCandidateCompleteEnough(longPriyaInput, candidate)).toBe(true);
   });
 
   it("allows compact non-support replies when required facts are preserved", () => {
@@ -111,10 +112,10 @@ describe("isCandidateCompleteEnough", () => {
       whatHappened: "",
       factsToPreserve: "",
       tone: "warm",
-      tonePreset: "Friendly",
+      tonePreset: "Warm",
     };
     const candidate =
-      "Hi Jordan,\n\nI can send a shorter summary of the two plan options. Glad the reporting feature and team templates are still useful while you compare the two other vendors before the first week of June.";
+      "I can send a shorter summary of the two plan options. Glad the reporting feature and team templates are still useful while you compare the two other vendors before the first week of June.";
 
     expect(isCandidateCompleteEnough(input, candidate)).toBe(true);
   });
@@ -136,7 +137,7 @@ describe("isCandidateCompleteEnough", () => {
       whatHappened: "",
       factsToPreserve: "",
       tone: "warm",
-      tonePreset: "Friendly",
+      tonePreset: "Warm",
     };
 
     const candidate = [
@@ -170,7 +171,7 @@ describe("isCandidateCompleteEnough", () => {
       whatHappened: "",
       factsToPreserve: "",
       tone: "warm",
-      tonePreset: "Friendly",
+      tonePreset: "Warm",
     };
 
     const candidate = [
@@ -195,7 +196,7 @@ describe("rewriteWithOptimization quality gate", () => {
     });
     mocks.generateRepairCandidate.mockResolvedValueOnce({
       rewrittenText:
-        "Hi Priya,\n\nThe higher preview is likely from the three temporary contractor seats being counted during May, not a base plan change.\n\nThat would explain the move from 15 approved seats to 18 active seats and the NZD $126 increase. If you send the contractor names or emails, we can help confirm whether they are still active.",
+          "Hi Priya,\n\nThe higher preview is likely from the three temporary contractor seats being counted during May, not a base plan change.\n\nThat would explain the move from 15 regular seats to 18 active seats and the NZD $126 increase. If you send the contractor names or emails, we can help confirm whether they are still active.",
       changeSummary: ["Removed support-template wording."],
       riskNotes: ["Check the seat details before sending."],
     });
@@ -257,7 +258,7 @@ describe("rewriteWithOptimization quality gate", () => {
       })
       .mockResolvedValueOnce({
         rewrittenText:
-          "Hi Priya,\n\nThe jump looks tied to the three temporary contractors being counted during May, not a base plan change.\n\nThat explains the 15 approved seats showing as 18 active seats. The NZD $126 increase looks like prorated seat usage for the days those accounts had access.\n\nIf you send the names or email addresses, we can help confirm whether they are still active.",
+          "Hi Priya,\n\nThe jump looks tied to the three temporary contractors being counted during May, not a base plan change.\n\nThat explains the 15 regular seats showing as 18 active seats. The NZD $126 increase looks like prorated seat usage for the days those accounts had access.\n\nIf you send the names or email addresses, we can help confirm whether they are still active.",
         changeSummary: ["Facts-first fallback."],
         riskNotes: ["Signal still needs review."],
       });
@@ -365,6 +366,67 @@ describe("rewriteWithOptimization quality gate", () => {
     expect(result.rewrittenText).toContain("NZD $126");
     expect(result.optimization.selectionStatus).toBe("best_available");
     expect(result.optimization.candidateSignals.at(-1)?.stage).toBe("fallback");
+  });
+
+  it("raises a quality failure instead of returning the original when message facts are missing", async () => {
+    const input: RewriteRequestInput = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Mina was added to the workspace with mina@northstar.example, and the invite was resent twice.",
+      roughDraftReply:
+        "Hello, thank you for contacting support. It may be related to a previous workspace association.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "direct",
+      tonePreset: "Direct",
+    };
+
+    mocks.generateRewriteCandidate
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi, please check the workspace.",
+        changeSummary: ["Too short."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi, the account may be linked elsewhere.",
+        changeSummary: ["Too short."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi, support can check the workspace link.",
+        changeSummary: ["Too short."],
+        riskNotes: ["Review."],
+      });
+    mocks.generateRepairCandidate
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi, ask Mina to try again.",
+        changeSummary: ["Still missing facts."],
+        riskNotes: ["Review."],
+      })
+      .mockResolvedValueOnce({
+        rewrittenText: "Hi, the invite may need checking.",
+        changeSummary: ["Still missing facts."],
+        riskNotes: ["Review."],
+      });
+    mocks.generateGuaranteedRewriteCandidate.mockResolvedValueOnce({
+      rewrittenText: "Hi, support can check the workspace.",
+      changeSummary: ["Fallback."],
+      riskNotes: ["Review."],
+    });
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 99 })
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 99 })
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 98 });
+
+    await expect(rewriteWithOptimization(input)).rejects.toBeInstanceOf(
+      RewriteQualityError,
+    );
   });
 
   it("does not return a measured candidate that worsens an already-low draft", async () => {

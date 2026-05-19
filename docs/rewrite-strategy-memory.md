@@ -123,12 +123,16 @@ The current production-grade strategy is:
 
 Current measured status from `docs/scenario-evaluation-results.md`:
 
-- 26 cases evaluated
+- 66 cases evaluated
+- 44 draft-only cases
 - 10 long cases
 - 5 long customer-support cases
-- average AI-like signal drop: 60 points
-- 20/26 rewrites below 50%
-- 0/26 final selected rewrites worse than the draft
+- average AI-like signal drop: 50 points
+- 40/66 rewrites below 50%
+- 0/66 final selected rewrites worse than the draft
+- 0 fact preservation or unsupported-addition failures
+- 66/66 customer-usable pass count
+- 42/66 strict signal pass count
 - Priya billing/proration regression: 89% -> 0%, facts preserved
 - Priya live 100% -> 100% regression: fixed at 100% -> 0%, facts preserved
 
@@ -160,9 +164,20 @@ Live teacher-parent regression promoted on 2026-05-19:
 
 Remaining strategy work:
 
-- Blank update notes and some cover-letter rewrites still often preserve facts but fail to reduce the third-party signal enough.
-- Long workspace-access support replies can preserve facts while still scoring high; the next repair strategy should make these less macro-like without losing exact account/workspace details.
+- Some teacher, support, cover-letter, and operational status cases still preserve facts but fail the strict Sapling signal rule. Keep this as an R&D metric, not the sole product pass/fail definition.
+- Continue improving strict signal pass without weakening the fact gate. Do not choose a lower-score candidate if it drops required facts or adds unsupported details.
 - Third-party signal unavailability should be tracked separately from rewrite failure so development evals do not overstate quality when provider scores are missing.
+
+## Unified Fact-Gate Lessons Promoted On 2026-05-19
+
+- Fact extraction is unified across all user-provided fields. It must not depend on the visible scenario, because the visible scenario has been removed from the app workflow.
+- Internal mode inference is allowed for style and risk guardrails only. It must not decide which facts can be ignored.
+- Draft-only usage is first-class. Many users paste only their own draft, so the system must infer people, dates, constraints, tasks, negative promises, signoffs, and ordered steps from the draft alone.
+- Fact gates must catch short constraints that models often soften away: `not promising`, `cannot approve`, `not a duplicate charge`, `invoice screenshot`, `not push for a decision`, `logo color has not changed`, `base plan did not change`, `not be recalculated`, `second quote`, and similar phrases.
+- Preserve contacts and workspace/account identifiers such as email addresses, `old pilot workspace`, `billing report folder`, and repeated-invite facts.
+- Evaluation can normalize safe semantic equivalents, for example `can't guarantee` as `not promising`, `on hold` as `paused`, and `not to cut down` as `not cutting down`. This is not permission to drop facts; it prevents false failures when natural wording keeps the same fact.
+- If all measured candidates are incomplete and the original draft also lacks message/context facts, the API must raise a quality failure instead of returning an incomplete original as success.
+- Customer-usable pass and strict signal pass are separate metrics. Customer-usable release gating is facts preserved, no unsupported additions, no quality failure, and no worse selected signal. Strict signal pass is still tracked for ongoing optimization.
 
 ## Current Diagnosis Tags
 

@@ -5,14 +5,13 @@ import { rewriteRequestSchema } from "../../lib/validation";
 describe("rewriteRequestSchema", () => {
   it("accepts a draft-only custom rewrite request", () => {
     const parsed = rewriteRequestSchema.parse({
-      scenario: "Blank / custom",
       roughDraftReply:
         "Thank you for your consideration. I am writing to confirm that the attached document has been completed and is available for review.",
       tone: "direct",
-      tonePreset: "Concise",
+      tonePreset: "Direct",
     });
 
-    expect(parsed.scenario).toBe("Blank / custom");
+    expect(parsed.scenario).toBe("General reply");
     expect(parsed.messageToReplyTo).toBe("");
     expect(parsed.roughDraftReply).toContain("attached document");
   });

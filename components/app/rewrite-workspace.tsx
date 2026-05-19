@@ -14,10 +14,8 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
-  scenarioOptions,
   tonePresetOptions,
   tonePresetToTone,
-  type ScenarioOption,
   type TonePreset,
 } from "../../lib/rewrite-presets";
 import { Button } from "../ui/button";
@@ -66,7 +64,7 @@ type QualityFailure = {
 };
 
 type HistoryItem = {
-  scenario: ScenarioOption;
+  mode: "General reply";
   roughDraftReply: string;
   rewrittenText: string;
   tone: "warm" | "direct";
@@ -78,7 +76,6 @@ type HistoryItem = {
 };
 
 type FormState = {
-  scenario: ScenarioOption;
   messageToReplyTo: string;
   roughDraftReply: string;
   tone: "warm" | "direct";
@@ -94,19 +91,10 @@ type Props = {
 };
 
 const initialForm: FormState = {
-  scenario: "Blank / custom",
   messageToReplyTo: "",
   roughDraftReply: "",
   tone: "warm",
   tonePreset: "Warm",
-};
-
-const scenarioHelp: Record<ScenarioOption, string> = {
-  "Blank / custom": "Use this when you only have a draft or the text is not a reply.",
-  "Email or message reply": "For everyday replies where the thread matters.",
-  "Customer support": "For billing, account, product, or service replies.",
-  "Cover letter": "For job applications that need to sound specific and real.",
-  "Work update": "For internal status notes, blockers, and next-step messages.",
 };
 
 const progressSteps = [
@@ -220,7 +208,7 @@ export function RewriteWorkspace({
 
   function saveHistory(response: RewriteResponse) {
     const nextItem: HistoryItem = {
-      scenario: form.scenario,
+      mode: "General reply",
       roughDraftReply: form.roughDraftReply,
       rewrittenText: response.rewrittenText,
       tone: form.tone,
@@ -252,7 +240,7 @@ export function RewriteWorkspace({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          scenario: form.scenario,
+          scenario: "General reply",
           messageToReplyTo: form.messageToReplyTo,
           roughDraftReply: form.roughDraftReply,
           tone: tonePresetToTone(form.tonePreset),
@@ -298,13 +286,6 @@ export function RewriteWorkspace({
     setForm((current) => ({ ...current, [name]: value }));
   }
 
-  function updateScenario(value: ScenarioOption) {
-    setForm((current) => ({ ...current, scenario: value }));
-    setResult(null);
-    setQualityFailure(null);
-    setError("");
-  }
-
   function updateTonePreset(value: TonePreset) {
     setForm((current) => ({
       ...current,
@@ -344,8 +325,8 @@ export function RewriteWorkspace({
           <div>
             <h1 className="text-3xl font-semibold">Rewrite workspace</h1>
             <p className="mt-2 text-sm text-ink/60">
-              Paste a draft, choose the writing job, and keep the facts intact.
-              Context is optional.
+              Paste the message if you have it, then paste the draft. The rewrite
+              keeps the facts intact.
             </p>
           </div>
           <Button onClick={resetWorkspace} type="button" variant="secondary">
@@ -360,41 +341,6 @@ export function RewriteWorkspace({
         />
         <form className="mt-5 space-y-5" onSubmit={submit}>
           <Card className="p-4 md:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Scenario</h2>
-                <p className="mt-1 text-sm text-ink/55">
-                  Pick the closest writing job. The rewrite rules change behind
-                  the scenes.
-                </p>
-              </div>
-              <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
-                {combinedLength}/10000
-              </span>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-5">
-              {scenarioOptions.map((scenario) => (
-                <button
-                  aria-pressed={form.scenario === scenario}
-                  className={`rounded-lg border p-3 text-left transition ${
-                    form.scenario === scenario
-                      ? "border-ink bg-ink text-paper"
-                      : "border-line bg-white text-ink hover:bg-paper"
-                  }`}
-                  key={scenario}
-                  onClick={() => updateScenario(scenario)}
-                  type="button"
-                >
-                  <span className="block text-sm font-semibold">{scenario}</span>
-                  <span className="mt-2 block text-xs leading-5 opacity-70">
-                    {scenarioHelp[scenario]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          <Card className="p-4 md:p-5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <label
                 className="text-base font-semibold"
@@ -403,6 +349,9 @@ export function RewriteWorkspace({
                 Context or message
               </label>
               <div className="flex items-center gap-2">
+                <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
+                  {combinedLength}/10000
+                </span>
                 <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
                   Optional
                 </span>
@@ -450,7 +399,8 @@ export function RewriteWorkspace({
               <div>
                 <h2 className="text-base font-semibold">Tone</h2>
                 <p className="mt-1 text-sm text-ink/55">
-                  Keep this simple. The scenario handles the detailed rules.
+                  Warm adds a little relationship tone. Direct removes padding
+                  without removing facts.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -664,7 +614,7 @@ export function RewriteWorkspace({
                     type="button"
                   >
                     <p className="font-medium">
-                      {item.scenario} - {item.tonePreset}
+                      {item.mode} - {item.tonePreset}
                     </p>
                     <p className="mt-1 line-clamp-2 text-ink/60">
                       {item.rewrittenText}

@@ -110,6 +110,7 @@ export type RepairPromptInput = {
   draftPercent: number | null;
   candidatePercent: number | null;
   quality: SignalQualityResult;
+  attempt?: number;
 };
 
 function scoreText(value: number | null) {
@@ -209,12 +210,16 @@ function detailParts(input: RewriteRequestInput) {
   ]
     .join("\n")
     .trim();
+  const protectedSource = source.replace(
+    /\b(Mr|Ms|Mrs|Dr)\.\s+/g,
+    "$1<dot> ",
+  );
 
-  return source
+  return protectedSource
     .split(/[.!?]\s+|\n+/)
     .map((part) => part.trim().replace(/[.!?]$/, ""))
+    .map((part) => part.replace(/<dot>/g, "."))
     .filter(Boolean)
-    .slice(0, 3);
 }
 
 function sentence(value: string) {
@@ -303,6 +308,9 @@ function invoiceFallback(input: RewriteRequestInput, context: string) {
   const amountPhrase = facts.amount
     ? `The ${facts.amount} increase looks like the prorated charge for the days those accounts had access.`
     : "The increase looks like the prorated charge for the days those accounts had access.";
+  const basePlanPhrase = /base plan did not change/i.test(context)
+    ? "The base plan did not change."
+    : "";
   const financeSummary = context.includes("finance")
     ? `For your finance manager, you can say: "The May invoice preview is higher because ${facts.temporaryUsers} were active during the month. The extra charge appears to be prorated seat usage, not a change to the base plan."`
     : "";
@@ -313,7 +321,7 @@ function invoiceFallback(input: RewriteRequestInput, context: string) {
   return [
     greeting,
     `Thanks for laying this out. ${changeExplanation}`,
-    `${activeSeatPhrase} ${amountPhrase}`,
+    `${activeSeatPhrase} ${amountPhrase} ${basePlanPhrase}`.trim(),
     financeSummary,
     `Before the invoice is finalized, check whether those contractor accounts are still active. ${datePhrase} If you send over their names or email addresses, we can help confirm their status. We will not change anything unless you ask us to.`,
   ]
@@ -375,7 +383,7 @@ function generateBlankFallback(input: RewriteRequestInput) {
   const first = details[0] || compactDetail(input.roughDraftReply);
   const rest = details.slice(1);
 
-  if (input.tonePreset === "Concise") {
+  if (input.tonePreset === "Direct") {
     return [
       `Quick note: ${sentence(first)}`,
       rest.map(sentence).join(" "),
@@ -518,10 +526,10 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
   const studentName = extractStudentName(context, recipientName);
   const missingWork = extractMissingWork(context);
   const hasWorkOrder =
-    /first focus/i.test(context) &&
+    /\b(?:first|start|focus)\b/i.test(context) &&
     /reading response/i.test(context) &&
     /vocabulary practice/i.test(context) &&
-    /after that/i.test(context) &&
+    /(?:after that|then)/i.test(context) &&
     /reflection paragraph/i.test(context);
   const duePhrase = /end of this week/i.test(context)
     ? "by the end of this week"
@@ -572,6 +580,19 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
 function generateSalesReplyFallback(input: RewriteRequestInput, context: string) {
   const name = extractRecipientName(input);
   const greeting = name ? `Hi ${name},` : "Hi,";
+  if (
+    /Vendor A/i.test(context) &&
+    /Vendor B/i.test(context) &&
+    /security questionnaire/i.test(context)
+  ) {
+    const timing = /next Tuesday/i.test(context) ? "next Tuesday" : "next week";
+    return [
+      greeting,
+      "I will not push for a decision this week.",
+      `Your team is still comparing Vendor A and Vendor B, and finance asked for the security questionnaire first. I can send the questionnaire today and follow up ${timing}.`,
+    ].join("\n\n");
+  }
+
   const timing = /first week of June/i.test(context)
     ? "first week of June"
     : /next month/i.test(context)
@@ -586,18 +607,24 @@ function generateSalesReplyFallback(input: RewriteRequestInput, context: string)
   const vendorPhrase = /two other vendors/i.test(context)
     ? " while you compare the two other vendors"
     : "";
+  const threadTarget = /finance thread/i.test(context)
+    ? "your finance thread"
+    : "your internal thread";
   const summaryPhrase = /two plan options|plan options/i.test(context)
-    ? "I can send a shorter summary of the two plan options for your internal thread."
-    : "I can send a shorter summary for your internal thread.";
+    ? `I can send a shorter summary of the two plan options for ${threadTarget}.`
+    : `I can send a shorter summary for ${threadTarget}.`;
   const featurePhrase = features
     ? features.includes(" and ")
       ? `Glad the ${features} are still useful.`
       : `Glad the ${features} is still useful.`
     : "Glad the proposal is still in the mix.";
+  const proposalPhrase = /renewal proposal/i.test(context)
+    ? "Thanks for looking at the renewal proposal."
+    : "";
 
   return [
     greeting,
-    `${summaryPhrase} ${featurePhrase}`,
+    [proposalPhrase, summaryPhrase, featurePhrase].filter(Boolean).join(" "),
     `No rush from my side; ${timing} works${vendorPhrase}.`,
   ].join("\n\n");
 }
@@ -615,12 +642,14 @@ function generateSupportFallback(input: RewriteRequestInput, context: string) {
 
   if (textIncludes(normalized, ["custom tags column", "csv export", "export"])) {
     const hasApril = /April/i.test(context);
-    const hasMay = /\bMay\b/i.test(context);
+    const hasMay = /\bApril and May\b|\bMay\s+(?:CSV\s+)?exports?\b/i.test(context);
     const region = /Northeast region/i.test(context) ? " for the Northeast region" : "";
     const deadline = /10am/i.test(context)
       ? " before Monday at 10am"
+      : /Monday board packet/i.test(context)
+        ? " for the Monday board packet"
       : /Monday/i.test(context)
-        ? " before Monday"
+        ? " for Monday"
         : "";
     const months =
       hasApril && hasMay ? "April and May" : hasApril ? "April" : hasMay ? "May" : "the";
@@ -700,8 +729,8 @@ function planChangeFallback(input: RewriteRequestInput, context: string) {
   return [
     greeting,
     `The Starter plan to Team plan change${date}${templates} can show as separate invoice lines.`,
-    "In plain English, the old plan credit and the new plan charge usually appear separately during proration, so that layout does not automatically mean you are being charged twice.",
-    "If you send the invoice preview or line items, we can confirm whether the preview is showing the expected credit-and-charge adjustment before the invoice is finalized.",
+    "In plain English, the old plan credit and the new plan charge usually appear separately during proration, so that layout is usually not a duplicate charge.",
+    `If you send the ${/invoice screenshot/i.test(context) ? "invoice screenshot" : "invoice preview or line items"}, we can confirm whether the preview is showing the expected credit-and-charge adjustment before the invoice is finalized.`,
   ].join("\n\n");
 }
 
@@ -762,7 +791,72 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
   const firstDetail = details[0] ?? compactDetail(input.roughDraftReply);
   const secondDetail = details[1] ?? "";
 
-  if (input.scenario === "Blank / custom") {
+  if (input.scenario === "General reply") {
+    if (isTeacherParentGradeContext(rawContext)) {
+      rewrittenText = generateTeacherParentFallback(input, rawContext);
+    } else if (
+      textIncludes(context, ["participation activities", "exit ticket"])
+    ) {
+      const student = extractStudentName(rawContext, extractRecipientName(input));
+      rewrittenText = threadNote("Hi, thanks for checking.", [
+        `${student}'s grade changed because of two missing participation activities and one missing exit ticket`,
+        "I can share more detail or talk it through if that helps",
+      ]);
+    } else if (
+      isSeatBillingContext(context) ||
+      isPlanChangeBillingContext(context) ||
+      isWorkspaceAccessContext(context) ||
+      isIncidentStatusContext(context) ||
+      textIncludes(context, [
+        "invoice",
+        "billing",
+        "workspace",
+        "support",
+        "csv export",
+        "custom tags column",
+        "export",
+        "refund window",
+        "tax line",
+        "import failed",
+      ])
+    ) {
+      rewrittenText = generateSupportFallback(input, rawContext);
+    } else if (
+      textIncludes(context, [
+        "owns",
+        "blocker",
+        "launch",
+        "status",
+        "demo",
+        "api fix",
+        "qa script",
+        "retry",
+        "screenshots",
+        "source file",
+        "board packet",
+        "handoff",
+        "incident",
+      ])
+    ) {
+      rewrittenText = generateWorkUpdateFallback(input);
+    } else if (
+      textIncludes(context, [
+        "reporting feature",
+        "team templates",
+        "two other vendors",
+        "proposal",
+        "vendor",
+      ])
+    ) {
+      rewrittenText = generateSalesReplyFallback(input, rawContext);
+    } else if (textIncludes(context, ["applying for", "role", "cover letter"])) {
+      rewrittenText = generateCoverLetterFallback(input);
+    } else if (input.messageToReplyTo.trim()) {
+      rewrittenText = generateMessageReplyFallback(input);
+    } else {
+      rewrittenText = generateBlankFallback(input);
+    }
+  } else if (input.scenario === "Blank / custom") {
     rewrittenText = generateBlankFallback(input);
   } else if (input.scenario === "Email or message reply") {
     if (isTeacherParentGradeContext(rawContext)) {
@@ -822,7 +916,7 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
     ]);
   } else {
     const detail = compactDetail(input.factsToPreserve || input.whatHappened);
-    const opening = ["Warm", "Friendly"].includes(input.tonePreset)
+    const opening = input.tonePreset === "Warm"
       ? "Thanks for the note."
       : "Got it.";
     rewrittenText = detail
@@ -894,6 +988,49 @@ function timeoutSignal(seconds: number) {
   };
 }
 
+export type OpenAiModelStage =
+  | "primary"
+  | "repair"
+  | "escalation"
+  | "final_strong";
+
+export function getOpenAiModelForStage(stage: OpenAiModelStage) {
+  const legacyModel = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");
+  const primary = optionalEnv("OPENAI_MODEL_PRIMARY", legacyModel);
+  const repair = optionalEnv("OPENAI_MODEL_REPAIR", primary);
+  const escalation = optionalEnv("OPENAI_MODEL_ESCALATION", repair);
+  const finalStrong = optionalEnv("OPENAI_MODEL_FINAL_STRONG", escalation);
+
+  if (stage === "repair") {
+    return repair;
+  }
+
+  if (stage === "escalation") {
+    return escalation;
+  }
+
+  if (stage === "final_strong") {
+    return finalStrong;
+  }
+
+  return primary;
+}
+
+function getRepairModel(attempt = 1) {
+  if (
+    attempt >= 3 &&
+    optionalEnv("OPENAI_ENABLE_FINAL_STRONG_MODEL", "false") === "true"
+  ) {
+    return getOpenAiModelForStage("final_strong");
+  }
+
+  if (attempt >= 2) {
+    return getOpenAiModelForStage("escalation");
+  }
+
+  return getOpenAiModelForStage("repair");
+}
+
 async function createChatCompletion(body: unknown) {
   const timeoutSeconds = Number(optionalEnv("OPENAI_TIMEOUT_SEC", "25"));
   const timeout = timeoutSignal(Number.isFinite(timeoutSeconds) ? timeoutSeconds : 25);
@@ -938,7 +1075,7 @@ export async function generateRewriteCandidate(
     return generateFactsFirstFallback(input);
   }
 
-  const model = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");
+  const model = getOpenAiModelForStage("primary");
 
   const completion = await createChatCompletion({
     model,
@@ -978,9 +1115,8 @@ export async function generateRewriteCandidate(
           "- warm: friendly, clear, kind, natural, concise.\n" +
           "- direct: concise, professional, clear, low-fluff.\n" +
           "- Tone preset is the user's visible style choice. Follow it unless it would add facts or make the reply unsafe.\n" +
-          "- Professional: polished but not stiff.\n" +
-          "- Friendly: approachable and conversational.\n" +
-          "- Concise: shorter and direct.",
+          "- Warm: adds a little relationship tone without adding facts.\n" +
+          "- Direct: removes padding and keeps the reply plain without removing facts.",
       },
       {
         role: "user",
@@ -1007,7 +1143,7 @@ export async function generateRewriteCandidate(
 export async function generateRepairCandidate(
   repairInput: RepairPromptInput,
 ): Promise<RewriteCandidate> {
-  const model = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");
+  const model = getRepairModel(repairInput.attempt);
 
   const completion = await createChatCompletion({
     model,

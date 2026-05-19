@@ -11,6 +11,10 @@ import {
   shouldRepairCandidate,
   type SignalQualityResult,
 } from "./rewrite-quality-gate";
+import {
+  detectUnsupportedFacts,
+  missingRequiredFacts,
+} from "./fact-extraction";
 import type { RewriteRequestInput } from "./validation";
 import {
   formatNaturalness,
@@ -95,137 +99,14 @@ function isBetterCandidate(
   return nextPercent < currentPercent;
 }
 
-function normalizeForFactCheck(value: string) {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function extractNormalizedSignoff(value: string) {
-  const match = value.match(
-    /\b(best regards|regards|sincerely),?\s+((?:mr|ms|mrs|dr)\.?\s+[a-z][a-z.'-]+|[a-z][a-z.'-]+(?:\s+[a-z][a-z.'-]+){0,2})\b/i,
-  );
-
-  if (!match) {
-    return null;
-  }
-
-  return {
-    signoff: normalizeForFactCheck(match[1]),
-    name: normalizeForFactCheck(match[2]),
-  };
-}
-
-function extractCriticalFacts(input: RewriteRequestInput) {
-  const source = [input.messageToReplyTo, input.roughDraftReply, input.factsToPreserve]
-    .join(" ")
-    .replace(/\s+/g, " ");
-  const matches = source.match(
-    /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}\b|\bbefore class tomorrow\b|\bbefore noon\b|\bafter\s+May\s+\d{1,2}\b|\bnext month\b|\bfirst week of June\b|\bcourse policy\b|\btwo missing participation activities\b|\bone missing exit ticket\b|\btwo asked\b|\btwo other vendors\b|\bsource file arrived later\b|\bsource file arrived late\b|\b2pm launch check\b|\bpause the campaign\b|\bold pilot workspace\b|\bfinance manager\b|\bbase plan\b|\b(?:old|new)\s+plan\s+(?:credit|charge)\b|\b(?:resent|sent)\s+the\s+invite\s+(?:twice|again)\b|\bcustom tags column\b|\bbilling report folder\b|\breporting feature\b|\bteam templates\b|\bhelp center articles?\b|\bmonthly partner updates\b|\bweekly partner updates\b|\bpatient follow-up notes\b|\bpartner onboarding packet\b|\bMonday board packet\b|\bapplication timeline\b|\bscholarship forms\b|\bpricing table\b|\bsection three\b|\bsection five\b|\bpayment flow\b|\bonboarding checklist\b|\bhelp article links\b|\blast three failed events\b|\b\d+\s*(?:am|pm)\b|\b\d+\s+(?:active\s+seats?|regular\s+seats?|temporary\s+(?:users?|contractors?)|failed\s+events?|providers?|interviews?|teachers?)\b/gi,
-  );
-  const exactMonthMatches = source.match(
-    /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\b/g,
-  );
-
-  return Array.from(new Set([...(matches ?? []), ...(exactMonthMatches ?? [])]));
-}
-
-function missingTeacherParentActionFacts(
-  input: RewriteRequestInput,
-  rewrittenText: string,
-) {
-  const source = normalizeForFactCheck(
-    [
-      input.messageToReplyTo,
-      input.roughDraftReply,
-      input.factsToPreserve,
-    ].join(" "),
-  );
-  const rewritten = normalizeForFactCheck(rewrittenText);
-  const missing: string[] = [];
-
-  const sourceHasFirstWorkStep =
-    /first (?:focus|start|work)/i.test(source) &&
-    source.includes("reading response") &&
-    source.includes("vocabulary practice");
-  const rewriteHasFirstWorkStep =
-    /(first|start|begin|focus)/i.test(rewritten) &&
-    rewritten.includes("reading response") &&
-    rewritten.includes("vocabulary practice");
-
-  if (sourceHasFirstWorkStep && !rewriteHasFirstWorkStep) {
-    missing.push("recommended first work step");
-  }
-
-  const sourceHasQuickReason =
-    source.includes("completed more quickly") ||
-    source.includes("done more quickly");
-  const rewriteHasQuickReason = /quick/i.test(rewritten);
-
-  if (sourceHasQuickReason && !rewriteHasQuickReason) {
-    missing.push("quick-completion reason for first work step");
-  }
-
-  const sourceHasSecondWorkStep =
-    /after that|then/i.test(source) &&
-    source.includes("reflection paragraph");
-  const rewriteHasSecondWorkStep =
-    /(after that|then|next)/i.test(rewritten) &&
-    rewritten.includes("reflection paragraph");
-
-  if (sourceHasSecondWorkStep && !rewriteHasSecondWorkStep) {
-    missing.push("second work step");
-  }
-
-  const sourceHasPartnershipClosing =
-    source.includes("partnership") &&
-    source.includes("willingness") &&
-    source.includes("take responsibility");
-  const rewriteHasPartnershipClosing =
-    rewritten.includes("partnership") &&
-    rewritten.includes("take responsibility");
-
-  if (sourceHasPartnershipClosing && !rewriteHasPartnershipClosing) {
-    missing.push("partnership and responsibility closing");
-  }
-
-  const sourceHasPlanClosing =
-    source.includes("clear plan") && /steady follow[- ]through/i.test(source);
-  const rewriteHasPlanClosing =
-    rewritten.includes("clear plan") &&
-    /steady follow[- ]through/i.test(rewritten);
-
-  if (sourceHasPlanClosing && !rewriteHasPlanClosing) {
-    missing.push("clear plan and steady follow-through closing");
-  }
-
-  const sourceSignoff = extractNormalizedSignoff(source);
-  const rewriteHasTeacherSignoff =
-    !sourceSignoff ||
-    (rewritten.includes(sourceSignoff.signoff) &&
-      rewritten.includes(sourceSignoff.name));
-
-  if (sourceSignoff && !rewriteHasTeacherSignoff) {
-    missing.push("teacher signoff");
-  }
-
-  return missing;
-}
-
 function missingCriticalFacts(input: RewriteRequestInput, rewrittenText: string) {
-  const normalized = normalizeForFactCheck(rewrittenText);
-  const exactMissing = extractCriticalFacts(input).filter(
-    (fact) => {
-      const normalizedFact = normalizeForFactCheck(fact);
-      const withoutArticle = normalizedFact.replace(/^(the|a|an)\s+/, "");
-      return (
-        !normalized.includes(normalizedFact) &&
-        !normalized.includes(withoutArticle)
-      );
-    },
-  );
-
   return [
-    ...exactMissing,
-    ...missingTeacherParentActionFacts(input, rewrittenText),
+    ...missingRequiredFacts(input, rewrittenText).map(
+      (fact) => `missing:${fact.normalizedText}`,
+    ),
+    ...detectUnsupportedFacts(input, rewrittenText).map(
+      (fact) => `unsupported:${fact.normalizedText}`,
+    ),
   ];
 }
 
@@ -428,6 +309,7 @@ export async function rewriteWithOptimization(
           draftPercent: draftSignal.aiLikePercent,
           candidatePercent: record.signal.aiLikePercent,
           quality: record.quality,
+          attempt: repairTried,
         });
       } catch {
         candidateSignals.push({
@@ -514,7 +396,35 @@ export async function rewriteWithOptimization(
         ? fallbackRecord.quality.reason
         : "Fallback may be missing required details or became too short.",
     });
-    best = fallbackRecord;
+
+    if (
+      shouldRejectCandidate(fallbackRecord.quality) ||
+      !fallbackRecord.completeEnough
+    ) {
+      rejectedCandidates += 1;
+    }
+
+    if (fallbackRecord.completeEnough) {
+      best = fallbackRecord;
+    } else {
+      const originalRecord = createOriginalSafetyRecord(input, draftSignal);
+
+      if (!originalRecord.completeEnough) {
+        throw new RewriteQualityError({
+          naturalness: formatNaturalness(
+            draftSignal.aiLikePercent,
+            fallbackRecord.signal.aiLikePercent,
+          ),
+          rejectedCandidates,
+          repairCandidatesTried: repairTried,
+          candidateSignals,
+          diagnosisTags: rewritePlan.tags,
+          rewritePlanSummary: rewritePlan.summary,
+        });
+      }
+
+      best = originalRecord;
+    }
     selectionStatus = "best_available";
   }
 

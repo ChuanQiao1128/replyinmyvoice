@@ -23,6 +23,7 @@ Date: 2026-05-18
 | 9 | No-bad-result quality gate plus targeted repair | 26 | 60 pts | 20/26 | yes | Expanded to 10 long cases and 5 long support cases. Rejects worse/high candidates, repairs failed candidates, and fails safely without charging usage when no candidate passes. Priya long billing/proration regression passed at 89% -> 0%. |
 | 10 | Facts-first complete fallback for live Priya regression | 1 live manual sample | 100 pts | 1/1 | yes | User reproduced a 100% -> 100% empty-result failure. Root cause: low-signal deterministic candidates were rejected as incomplete because `finance manager` was not preserved. Fixed fact preservation and changed selection so the API returns the best complete fallback instead of an empty quality failure. Smoke result: 100% -> 0%. |
 | 11 | Teacher-parent grade reply deterministic fallback | 1 live manual sample | 100 pts | 1/1 | yes | User reproduced a Friendly/Warm teacher reply that stayed 100% -> 100% through the app UI. Root cause: front-end-shaped requests lacked optional context fields and hit the generic email fallback. Added a grade/missing-work parent fallback and fact gate for work-order details. Smoke result: 100% -> 0%. |
+| 12 | Unified fact gate, draft-only suite, and semantic fact normalization | 66 | 50 pts | 40/66 | customer-usable yes | Expanded to 44 draft-only cases and 10 long cases. Customer-usable pass: 66/66. Fact preservation failures: 0. Unsupported additions: 0. Final selected rewrites worse than draft: 0/66. Strict signal pass remains 42/66, so Sapling score is tracked separately from product usability. |
 
 ## Final Selected Strategy
 
@@ -63,13 +64,17 @@ The fallback is intentionally not a separate external agent in this MVP. It beha
 
 Final valid complete run:
 
-- Samples evaluated: 26
+- Samples evaluated: 66
+- Draft-only cases: 44
 - Long cases: 10
 - Long customer-support cases: 5
-- Average AI-like signal reduction: 60 points
-- Rewrites below 50% AI-like signal: 20/26
-- Final selected rewrites worse than draft: 0/26
-- Case pass count: 14/26
+- Average AI-like signal reduction: 50 points
+- Rewrites below 50% AI-like signal: 40/66
+- Final selected rewrites worse than draft: 0/66
+- Customer-usable pass count: 66/66
+- Strict signal pass count: 42/66
+- Fact preservation or unsupported-addition failures: 0
+- Tested model routing: primary `gpt-4o-mini`, repair `gpt-4o`, escalation `gpt-4o`, final strong disabled
 - Priya long billing/proration regression: passed
 - Priya live 100% -> 100% regression: passed after facts-first preservation fix
 - Internal target met: yes
@@ -89,6 +94,10 @@ Latest implementation notes:
 - Added a regression rule from the teacher-parent live test: app UI requests may not include optional context fields, so teacher/parent grade replies need a deterministic fallback that extracts the student name, missing work, make-up timing, partial credit, and help availability from the message/draft alone.
 - Tightened the teacher-parent fact gate so candidates that preserve the missing assignments but drop the recommended work order are rejected before they can be shown to the user.
 - Tightened the same teacher-parent path again after manual review: candidates that drop the supportive partnership/responsibility closing, clear-plan follow-through sentence, or teacher signoff are rejected; the deterministic fallback now preserves these elements. Smoke result on the full teacher sample: 100% -> 0%, passed selection, 2 rejected incomplete candidates.
+- Added unified fact extraction across all user-provided text instead of scenario-specific fact selection. Facts now include names, contacts, dates, deadlines, amounts, counts, tasks, ordered steps, constraints, signoffs, and must-keep phrases.
+- Removed the visible app scenario selector and reduced visible tones to Warm and Direct; scenario/mode is now inferred internally only for style and risk guardrails.
+- Promoted semantic fact normalization for safe equivalents such as `can't guarantee` -> `not promising`, `on hold` -> `paused`, and `not to cut down` -> `not cutting down`, so eval and fact gates do not reject natural but fact-preserving wording.
+- Split evaluation reporting into customer-usable pass and strict signal pass. Strict Sapling pass is a useful R&D metric, but product release gating is fact preservation, no unsupported additions, no quality failure, and no worse selected signal.
 
 ## Strategy Memory
 
