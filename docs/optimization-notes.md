@@ -22,7 +22,7 @@ Date: 2026-05-18
 | 8 | Workspace V2 scenario guardrails plus diagnosis/repair/select flow | 15 | 64 pts | 11/15 | yes | Five-scenario evaluation passed the internal target. Critical-fact repair restores emails, dates, amounts, counts, and requested details before selection. |
 | 9 | No-bad-result quality gate plus targeted repair | 26 | 60 pts | 20/26 | yes | Expanded to 10 long cases and 5 long support cases. Rejects worse/high candidates, repairs failed candidates, and fails safely without charging usage when no candidate passes. Priya long billing/proration regression passed at 89% -> 0%. |
 | 10 | Facts-first complete fallback for live Priya regression | 1 live manual sample | 100 pts | 1/1 | yes | User reproduced a 100% -> 100% empty-result failure. Root cause: low-signal deterministic candidates were rejected as incomplete because `finance manager` was not preserved. Fixed fact preservation and changed selection so the API returns the best complete fallback instead of an empty quality failure. Smoke result: 100% -> 0%. |
-| 11 | Teacher-parent grade reply deterministic fallback | 1 live manual sample | 98 pts | 1/1 | yes | User reproduced a Friendly teacher reply that stayed 100% -> 100% through the app UI. Root cause: front-end-shaped requests lacked optional context fields and hit the generic email fallback. Added a grade/missing-work parent fallback. Smoke result: 100% -> 2%. |
+| 11 | Teacher-parent grade reply deterministic fallback | 1 live manual sample | 100 pts | 1/1 | yes | User reproduced a Friendly/Warm teacher reply that stayed 100% -> 100% through the app UI. Root cause: front-end-shaped requests lacked optional context fields and hit the generic email fallback. Added a grade/missing-work parent fallback and fact gate for work-order details. Smoke result: 100% -> 0%. |
 
 ## Final Selected Strategy
 
@@ -87,6 +87,7 @@ Latest implementation notes:
 - Added no-empty-result fallback behavior: provider/model failures continue to deterministic strategies, and quality-gate misses return the best complete or guaranteed facts-first candidate instead of a blank failure.
 - Added a regression rule from the Priya live test: preserving `finance manager` matters because the fact gate treats it as critical context; replacing it with only `finance` can reject an otherwise strong low-signal candidate.
 - Added a regression rule from the teacher-parent live test: app UI requests may not include optional context fields, so teacher/parent grade replies need a deterministic fallback that extracts the student name, missing work, make-up timing, partial credit, and help availability from the message/draft alone.
+- Tightened the teacher-parent fact gate so candidates that preserve the missing assignments but drop the recommended work order are rejected before they can be shown to the user.
 
 ## Strategy Memory
 

@@ -484,6 +484,12 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
   const greeting = recipientName ? `Hi ${recipientName},` : "Hi,";
   const studentName = extractStudentName(context, recipientName);
   const missingWork = extractMissingWork(context);
+  const hasWorkOrder =
+    /first focus/i.test(context) &&
+    /reading response/i.test(context) &&
+    /vocabulary practice/i.test(context) &&
+    /after that/i.test(context) &&
+    /reflection paragraph/i.test(context);
   const duePhrase = /end of this week/i.test(context)
     ? "by the end of this week"
     : "soon";
@@ -502,6 +508,12 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
   return [
     greeting,
     `${studentName} is missing ${missingWork}.`,
+    hasWorkOrder
+      ? "He should start with the reading response and vocabulary practice since those can be done quickly."
+      : "",
+    hasWorkOrder
+      ? "Then he can work on the short reflection paragraph from Friday."
+      : "",
     `If he turns those in ${duePhrase}${creditPhrase ? `, I can still accept them ${creditPhrase}` : ""}.`,
     helpPhrase,
   ]

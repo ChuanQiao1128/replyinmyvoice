@@ -166,6 +166,8 @@ describe("thread fallback rewrite pass", () => {
           "Thank you for reaching out and sharing your concerns about Jordan’s current grade.",
           "At this point, Jordan is missing several assignments from the past two weeks, including the reading response, the vocabulary practice, and the short reflection paragraph from Friday.",
           "He has participated in class discussions, but the missing written work is having a significant impact on his overall grade.",
+          "I would recommend that Jordan first focus on the reading response and vocabulary practice, since those can be completed more quickly.",
+          "After that, he can work on the short reflection paragraph from Friday.",
           "If he turns these in by the end of this week, I will still accept them for partial credit.",
           "I also encourage him to speak with me after class or during lunch if he needs clarification.",
         ].join("\n\n"),
@@ -181,6 +183,13 @@ describe("thread fallback rewrite pass", () => {
 
     expect(result.rewrittenText).toContain("Hi Monica");
     expect(result.rewrittenText).toContain("Jordan is missing");
+    expect(result.rewrittenText).toContain(
+      "start with the reading response and vocabulary practice",
+    );
+    expect(result.rewrittenText).toContain("since those can be done quickly");
+    expect(result.rewrittenText).toContain(
+      "Then he can work on the short reflection paragraph from Friday",
+    );
     expect(result.rewrittenText).toContain("reading response");
     expect(result.rewrittenText).toContain("vocabulary practice");
     expect(result.rewrittenText).toContain("reflection paragraph");

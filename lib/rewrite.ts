@@ -113,9 +113,59 @@ function extractCriticalFacts(input: RewriteRequestInput) {
   return Array.from(new Set([...(matches ?? []), ...(exactMonthMatches ?? [])]));
 }
 
+function missingTeacherParentActionFacts(
+  input: RewriteRequestInput,
+  rewrittenText: string,
+) {
+  const source = normalizeForFactCheck(
+    [
+      input.messageToReplyTo,
+      input.roughDraftReply,
+      input.factsToPreserve,
+    ].join(" "),
+  );
+  const rewritten = normalizeForFactCheck(rewrittenText);
+  const missing: string[] = [];
+
+  const sourceHasFirstWorkStep =
+    /first (?:focus|start|work)/i.test(source) &&
+    source.includes("reading response") &&
+    source.includes("vocabulary practice");
+  const rewriteHasFirstWorkStep =
+    /(first|start|begin|focus)/i.test(rewritten) &&
+    rewritten.includes("reading response") &&
+    rewritten.includes("vocabulary practice");
+
+  if (sourceHasFirstWorkStep && !rewriteHasFirstWorkStep) {
+    missing.push("recommended first work step");
+  }
+
+  const sourceHasQuickReason =
+    source.includes("completed more quickly") ||
+    source.includes("done more quickly");
+  const rewriteHasQuickReason = /quick/i.test(rewritten);
+
+  if (sourceHasQuickReason && !rewriteHasQuickReason) {
+    missing.push("quick-completion reason for first work step");
+  }
+
+  const sourceHasSecondWorkStep =
+    /after that|then/i.test(source) &&
+    source.includes("reflection paragraph");
+  const rewriteHasSecondWorkStep =
+    /(after that|then|next)/i.test(rewritten) &&
+    rewritten.includes("reflection paragraph");
+
+  if (sourceHasSecondWorkStep && !rewriteHasSecondWorkStep) {
+    missing.push("second work step");
+  }
+
+  return missing;
+}
+
 function missingCriticalFacts(input: RewriteRequestInput, rewrittenText: string) {
   const normalized = normalizeForFactCheck(rewrittenText);
-  return extractCriticalFacts(input).filter(
+  const exactMissing = extractCriticalFacts(input).filter(
     (fact) => {
       const normalizedFact = normalizeForFactCheck(fact);
       const withoutArticle = normalizedFact.replace(/^(the|a|an)\s+/, "");
@@ -125,6 +175,11 @@ function missingCriticalFacts(input: RewriteRequestInput, rewrittenText: string)
       );
     },
   );
+
+  return [
+    ...exactMissing,
+    ...missingTeacherParentActionFacts(input, rewrittenText),
+  ];
 }
 
 function preservesCriticalFacts(input: RewriteRequestInput, rewrittenText: string) {

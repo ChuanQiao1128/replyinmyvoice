@@ -156,6 +156,7 @@ Live teacher-parent regression promoted on 2026-05-19:
 - Fix: route grade/missing-work parent replies to a dedicated teacher-parent deterministic fallback before the generic email fallback. Preserve the parent name, student name, missing work, make-up timing, partial-credit rule, and help availability.
 - Smoke result with the same front-end-shaped request: 100% draft signal -> 2% rewrite signal while preserving Jordan, the reading response, vocabulary practice, short reflection paragraph from Friday, end-of-week partial credit, and after-class/lunch help.
 - Guardrail: title names such as `Ms. Carter` must not be mistaken for the student name.
+- Follow-up fact-preservation fix: the first fallback over-compressed the reply and lost the recommended work order. Teacher-parent replies must preserve action sequence facts such as first doing the reading response and vocabulary practice because those can be done quickly, then doing the reflection paragraph. Candidates that drop this sequence are incomplete and must be rejected before display.
 
 Remaining strategy work:
 
