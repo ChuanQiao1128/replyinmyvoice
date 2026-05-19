@@ -11,19 +11,24 @@ import {
 import { getFactReconstructConfig } from "./config";
 import {
   classifyScenario,
+  diagnoseHighRiskSentences,
   escalateCandidate,
   extractFacts,
   finalizeCandidate,
   generateCandidates,
   llmFactCheck,
+  repairHighRiskSentences,
   reviewCandidates,
 } from "./model";
 import { getStyleCard } from "./style-cards";
+import { selectHighRiskSentences } from "./targeted-repair";
 import type {
   CandidateKey,
   FactReconstructConfig,
   LlmFactCheckResult,
   ReviewResult,
+  ScenarioClassification,
+  StyleCard,
 } from "./types";
 
 type FactReconstructQualityFailureReason =
@@ -289,6 +294,77 @@ async function tryGuaranteedFallback({
     factSafe: false,
     passes: false,
     signal: { aiLikePercent: null },
+  };
+}
+
+async function tryTargetedSentenceRepair({
+  config,
+  draftPercent,
+  facts,
+  finalEmail,
+  finalSignal,
+  input,
+  scenario,
+  styleCard,
+}: {
+  config: FactReconstructConfig;
+  draftPercent: number;
+  facts: Parameters<typeof deterministicCheck>[1];
+  finalEmail: string;
+  finalSignal: Awaited<ReturnType<typeof measureWritingSignal>>;
+  input: RewriteRequestInput;
+  scenario: ScenarioClassification;
+  styleCard: StyleCard;
+}) {
+  const highRiskSentences = selectHighRiskSentences({
+    signal: finalSignal,
+    threshold: config.naturalnessThreshold,
+  });
+
+  if (highRiskSentences.length === 0) {
+    return null;
+  }
+
+  const diagnostics = await diagnoseHighRiskSentences({
+    facts,
+    scenario,
+    styleCard,
+    highRiskSentences,
+    config,
+  });
+  const repairedEmail = await repairHighRiskSentences({
+    facts,
+    scenario,
+    styleCard,
+    finalEmail,
+    diagnostics,
+    config,
+  });
+  const deterministic = deterministicCheck(input, facts, repairedEmail, styleCard);
+  const factCheck = await llmFactCheck({
+    facts,
+    finalEmail: repairedEmail,
+    config,
+  });
+  const signal = await measureWritingSignal(repairedEmail);
+  const factSafe = factCheckSafe({
+    deterministicSafe: deterministic.safe,
+    llmResult: factCheck,
+  });
+  const passes = factSafe &&
+    naturalnessPasses({
+      config,
+      draftPercent,
+      rewritePercent: signal.aiLikePercent,
+    });
+
+  return {
+    diagnostics,
+    factSafe,
+    highRiskSentences,
+    passes,
+    repairedEmail,
+    signal,
   };
 }
 
@@ -592,6 +668,52 @@ export async function rewriteWithFactReconstruct(
     });
   }
 
+  const targetedRepairAttempt = await tryTargetedSentenceRepair({
+    config,
+    draftPercent: draftSignal.aiLikePercent,
+    facts,
+    finalEmail,
+    finalSignal,
+    input,
+    scenario,
+    styleCard,
+  });
+  const targetedRepairTried = targetedRepairAttempt ? 1 : 0;
+
+  if (targetedRepairAttempt) {
+    candidateSignals.push({
+      stage: "targeted_repair",
+      aiLikePercent: targetedRepairAttempt.signal.aiLikePercent,
+      status: targetedRepairAttempt.passes
+        ? "pass_below_threshold"
+        : "fail_insufficient_reduction",
+      rejected: !targetedRepairAttempt.passes,
+      reason:
+        "Targeted repair of high-risk sentences after the first final missed the naturalness gate.",
+    });
+
+    if (targetedRepairAttempt.passes) {
+      return buildPassedResponse({
+        rewrittenText: targetedRepairAttempt.repairedEmail,
+        changeSummary: [
+          "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
+          "Repaired only the highest-risk sentences after the first final missed the internal quality bar.",
+        ],
+        riskNotes: review.risk_notes.length
+          ? review.risk_notes
+          : ["Review before sending."],
+        draftPercent: draftSignal.aiLikePercent,
+        rewritePercent: targetedRepairAttempt.signal.aiLikePercent,
+        internalStrategiesTried: 4,
+        repairCandidatesTried: 1,
+        rejectedCandidates: 1,
+        diagnosisTags,
+        rewritePlanSummary,
+        candidateSignals,
+      });
+    }
+  }
+
   if (config.maxEscalations > 0) {
     const escalatedEmail = await escalateCandidate({
       facts,
@@ -646,8 +768,8 @@ export async function rewriteWithFactReconstruct(
         draftPercent: draftSignal.aiLikePercent,
         rewritePercent: escalatedSignal.aiLikePercent,
         internalStrategiesTried: 3,
-        repairCandidatesTried: 1,
-        rejectedCandidates: 1,
+        repairCandidatesTried: targetedRepairTried + 1,
+        rejectedCandidates: targetedRepairTried + 1,
         diagnosisTags,
         rewritePlanSummary,
         candidateSignals,
@@ -685,8 +807,8 @@ export async function rewriteWithFactReconstruct(
         draftPercent: draftSignal.aiLikePercent,
         rewritePercent: fallbackAttempt.signal.aiLikePercent,
         internalStrategiesTried: 4,
-        repairCandidatesTried: 2,
-        rejectedCandidates: 2,
+        repairCandidatesTried: targetedRepairTried + 2,
+        rejectedCandidates: targetedRepairTried + 2,
         diagnosisTags,
         rewritePlanSummary,
         candidateSignals,
@@ -698,8 +820,8 @@ export async function rewriteWithFactReconstruct(
       diagnosisTags,
       draftPercent: draftSignal.aiLikePercent,
       rewritePercent: fallbackAttempt.signal.aiLikePercent,
-      rejectedCandidates: 3,
-      repairCandidatesTried: 2,
+      rejectedCandidates: targetedRepairTried + 3,
+      repairCandidatesTried: targetedRepairTried + 2,
       rewritePlanSummary,
       reason: fallbackAttempt.factSafe
         ? "naturalness_gate_failed"

@@ -1,6 +1,6 @@
 # Scenario Evaluation Results
 
-Date: 2026-05-19T11:27:10.299Z
+Date: 2026-05-19T23:49:58.799Z
 Strategy: fact_reconstruct
 Naturalness threshold: 40%
 Cases evaluated: 40
@@ -11,11 +11,11 @@ Long customer-support cases (300+ words): 0
 Average AI-like signal drop: 89 pts
 Rewrite below 50% AI-like signal: 40/40
 Final selected rewrites worse than draft: 0/40
-Cases using targeted repair: 36/40
-Rejected candidate events: 38
-Fact preservation or unsupported-addition failures: 2
-Customer-usable pass count: 38/40
-Strict signal pass count: 38/40
+Cases using targeted repair: 37/40
+Rejected candidate events: 39
+Fact preservation or unsupported-addition failures: 0
+Customer-usable pass count: 40/40
+Strict signal pass count: 40/40
 
 Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure is raised, and the selected rewrite is not worse than the draft when scores are available.
 Strict signal pass additionally requires scores available and: if the draft is above 40%, the final rewrite is at or below 40%; if the draft is already at or below 40%, the final rewrite does not raise the signal.
@@ -30,7 +30,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 89%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 88%
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -89 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -171,11 +171,11 @@ Input character count: 284
 Diagnosis tags: policy_memo_voice
 Rewrite plan: Target policy_memo_voice while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
+First candidate AI-like signal: 100%
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
+Rejected candidate reasons: initial: Fact reconstruct final naturalness gate. | targeted_repair: Targeted repair of high-risk sentences after the first final missed the naturalness gate. | repair: Strong-model escalation naturalness and fact gate.
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -415,7 +415,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 98%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 5%
+Repair candidate AI-like signal: 98%
 Final selected AI-like signal: 0%
 Change: -98 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -464,7 +464,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 93%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 99%
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -93 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -513,7 +513,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
+Repair candidate AI-like signal: 12%
 Final selected AI-like signal: 2%
 Change: -98 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -562,7 +562,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -100 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -610,9 +610,9 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 97%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 0%
-Change: -97 pts
+Repair candidate AI-like signal: 8%
+Final selected AI-like signal: 8%
+Change: -89 pts
 Rejected candidate reasons: none
 Facts preserved: yes
 Missing facts: none
@@ -639,13 +639,11 @@ Hi Mina, the April CSV export is missing the custom tags column for the Northeas
 After:
 
 ```text
-Hi Mina,
+Mina,
 
-The April CSV export is missing the custom tags column for the Northeast region.
+The custom tags column is missing in the April CSV export for the Northeast. Please check the export job before Monday at 10am. The underlying campaign data is still safe.
 
-The underlying campaign data is still safe.
-
-We are checking the export job and will send a corrected file before Monday at 10am if the check confirms the issue.
+Thank you.
 ```
 
 ## draft-only-12-support-seat-count
@@ -707,7 +705,7 @@ Diagnosis tags: low_specificity
 Rewrite plan: Target low_specificity while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 8%
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -100 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -904,7 +902,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 55%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 4%
+Repair candidate AI-like signal: 58%
 Final selected AI-like signal: 0%
 Change: -55 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -951,11 +949,11 @@ Input character count: 188
 Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 96%
-First candidate AI-like signal: 100%
-Repair candidate AI-like signal: 100%
+First candidate AI-like signal: unavailable
+Repair candidate AI-like signal: 98%
 Final selected AI-like signal: 0%
 Change: -96 pts
-Rejected candidate reasons: initial: Fact reconstruct final naturalness gate. | repair: Strong-model escalation naturalness and fact gate.
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1050,10 +1048,10 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 94%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
+Repair candidate AI-like signal: 93%
 Final selected AI-like signal: 0%
 Change: -94 pts
-Rejected candidate reasons: none
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1099,17 +1097,17 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 94%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 1%
-Final selected AI-like signal: 1%
-Change: -93 pts
-Rejected candidate reasons: none
-Facts preserved: no
-Missing facts: manager approves
+Repair candidate AI-like signal: 100%
+Final selected AI-like signal: 0%
+Change: -94 pts
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
+Facts preserved: yes
+Missing facts: none
 Unsupported facts introduced: none
 Quality failure state: no
 Quality failure reason: none
-Customer-usable pass: no
-Strict signal pass: no
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - Devon
@@ -1128,13 +1126,13 @@ Hi Devon, the expansion quote includes 12 additional seats starting July 1. It d
 After:
 
 ```text
-Devon,
+Hi Devon,
 
-I am reaching out to discuss the expansion quote and the analytics add-on. We are planning to add 12 additional seats starting July 1, but the analytics add-on is not included in the initial quote. We will need to obtain manager approval for the analytics add-on before I can send a second quote.
+The expansion quote includes 12 additional seats starting July 1.
 
-Please let me know if you have any questions or need further clarification.
+It doesn't include the analytics add-on yet.
 
-Best regards,
+If you want analytics included, I can send a second quote after your manager approves it.
 ```
 
 ## draft-only-22-client-design
@@ -1147,7 +1145,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 46%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -46 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -1196,7 +1194,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 99%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 10%
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -99 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -1458,17 +1456,17 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 90%
+Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 1%
 Change: -99 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. | fallback: Deterministic facts-first fallback after escalation miss.
-Facts preserved: no
-Missing facts: six interviews; four teachers; two asked; Wednesday
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
+Facts preserved: yes
+Missing facts: none
 Unsupported facts introduced: none
-Quality failure state: yes
-Quality failure reason: fact_check_failed
-Customer-usable pass: no
-Strict signal pass: no
+Quality failure state: no
+Quality failure reason: none
+Customer-usable pass: yes
+Strict signal pass: yes
 
 Expected facts:
 - six interviews
@@ -1485,7 +1483,13 @@ I am writing to inform you that the teacher interview notes are now ready for re
 After:
 
 ```text
+Quick update from the six interviews with teachers this week:
 
+The teacher interview notes are ready for review.
+
+Four teachers said the onboarding copy felt too technical. Two asked if they could see a sample response before signing up.
+
+I think the first screen should be updated before Wednesday, with one short example added.
 ```
 
 ## work-04-long-launch-readiness
@@ -1660,7 +1664,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
+Repair candidate AI-like signal: 99%
 Final selected AI-like signal: 0%
 Change: -100 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -1750,7 +1754,7 @@ Diagnosis tags: stock_opening, corporate_polish
 Rewrite plan: Target stock_opening, corporate_polish while preserving the user's facts.
 Draft AI-like signal: 32%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
+Repair candidate AI-like signal: 98%
 Final selected AI-like signal: 0%
 Change: -32 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
@@ -1882,10 +1886,10 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
+Repair candidate AI-like signal: unavailable
 Final selected AI-like signal: 0%
 Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.
+Rejected candidate reasons: none
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1929,7 +1933,7 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
+Repair candidate AI-like signal: 86%
 Final selected AI-like signal: 1%
 Change: -99 pts
 Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate.

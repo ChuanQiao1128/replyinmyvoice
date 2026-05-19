@@ -302,6 +302,16 @@ describe("extractRequiredFacts", () => {
     expect(facts.map((fact) => fact.normalizedText)).toContain("two asked");
   });
 
+  it("does not extract sentence-starting question words as names", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "Did we get enough feedback from the teacher interviews to update the onboarding copy?",
+      ),
+    );
+
+    expect(facts.map((fact) => fact.normalizedText)).not.toContain("did");
+  });
+
   it("extracts sales and teacher constraints that should not be softened away", () => {
     const facts = extractRequiredFacts(
       draftOnly(
@@ -330,6 +340,72 @@ describe("extractRequiredFacts", () => {
     expect(factText).toContain("finance thread");
     expect(factText).toContain("two other vendors");
     expect(factText).toContain("first week of june");
+  });
+
+  it("extracts negative pricing constraints in sales demos", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "Hi Leah, we can move the demo to Thursday at 3pm. I will keep the agenda focused on reporting, team templates, and the approval workflow. I will not include pricing unless you ask for it.",
+      ),
+    );
+
+    expect(facts.map((fact) => fact.normalizedText)).toContain(
+      "will not include pricing",
+    );
+  });
+
+  it("reports missing negative pricing constraints in sales demos", () => {
+    const input = draftOnly(
+      "Hi Leah, we can move the demo to Thursday at 3pm. I will keep the agenda focused on reporting, team templates, and the approval workflow. I will not include pricing unless you ask for it.",
+    );
+
+    const missing = missingRequiredFacts(
+      input,
+      "Hi Leah,\n\nThe demo is now Thursday at 3pm. The agenda will cover reporting, team templates, and the approval workflow.",
+    );
+
+    expect(missing.map((fact) => fact.normalizedText)).toContain(
+      "will not include pricing",
+    );
+  });
+
+  it("extracts same-day desktop delivery facts that should not disappear", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "Hi Ava, the homepage mockup is ready, but the mobile version still needs one spacing check. I can send desktop today and mobile by Wednesday morning. The logo color has not changed.",
+      ),
+    );
+
+    expect(facts.map((fact) => fact.normalizedText)).toContain(
+      "desktop today",
+    );
+  });
+
+  it("reports missing same-day desktop delivery facts", () => {
+    const input = draftOnly(
+      "Hi Ava, the homepage mockup is ready, but the mobile version still needs one spacing check. I can send desktop today and mobile by Wednesday morning. The logo color has not changed.",
+    );
+
+    const missing = missingRequiredFacts(
+      input,
+      "Ava,\n\nThe homepage mockup and mobile version are ready for your review. They require one final spacing check by Wednesday morning. The logo color has not changed.",
+    );
+
+    expect(missing.map((fact) => fact.normalizedText)).toContain(
+      "desktop today",
+    );
+  });
+
+  it("extracts permission slip as a required school form fact", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "Hi Alex, Maya can still join the science fair group, but the permission slip is due Thursday morning.",
+      ),
+    );
+
+    expect(facts.map((fact) => fact.normalizedText)).toContain(
+      "permission slip",
+    );
   });
 
   it("normalizes low-risk equivalent wording used in natural rewrites", () => {

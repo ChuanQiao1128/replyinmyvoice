@@ -95,6 +95,17 @@ export type LlmFactCheckResult = {
   required_repairs: string[];
 };
 
+export type SentenceRiskDiagnosis = {
+  sentence: string;
+  issue_tags: string[];
+  repair_instruction: string;
+};
+
+export type SentenceRiskReview = {
+  sentence_diagnostics: SentenceRiskDiagnosis[];
+  overall_notes: string[];
+};
+
 export type FactReconstructModelRole =
   | "cheap_structured"
   | "mid_writer"

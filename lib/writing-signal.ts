@@ -5,6 +5,12 @@ export type SignalLabel = "lower" | "low_signal" | "still_high" | "unavailable";
 export type WritingSignalResult = {
   aiLikePercent: number | null;
   unavailableReason?: string;
+  sentenceScores?: Array<{
+    sentence: string;
+    aiLikePercent: number;
+  }>;
+  tokens?: string[];
+  tokenProbabilities?: number[];
 };
 
 export function scoreToPercent(score: number): number {
@@ -96,6 +102,8 @@ export async function measureWritingSignal(
         body: JSON.stringify({
           key: apiKey,
           text,
+          sent_scores: true,
+          score_string: false,
         }),
         signal: timeout.signal,
       });
@@ -113,12 +121,51 @@ export async function measureWritingSignal(
         return { aiLikePercent: null, unavailableReason: "provider_error" };
       }
 
-      const payload = (await response.json()) as { score?: unknown };
+      const payload = (await response.json()) as {
+        score?: unknown;
+        sentence_scores?: unknown;
+        tokens?: unknown;
+        token_probs?: unknown;
+      };
       if (typeof payload.score !== "number") {
         return { aiLikePercent: null, unavailableReason: "schema_changed" };
       }
 
-      return { aiLikePercent: scoreToPercent(payload.score) };
+      const sentenceScores = Array.isArray(payload.sentence_scores)
+        ? payload.sentence_scores.flatMap((item) => {
+            if (
+              typeof item === "object" &&
+              item !== null &&
+              typeof (item as { sentence?: unknown }).sentence === "string" &&
+              typeof (item as { score?: unknown }).score === "number"
+            ) {
+              return [
+                {
+                  sentence: (item as { sentence: string }).sentence.trim(),
+                  aiLikePercent: scoreToPercent((item as { score: number }).score),
+                },
+              ];
+            }
+
+            return [];
+          })
+        : undefined;
+      const tokens = Array.isArray(payload.tokens)
+        ? payload.tokens.filter((token): token is string => typeof token === "string")
+        : undefined;
+      const tokenProbabilities = Array.isArray(payload.token_probs)
+        ? payload.token_probs.filter(
+            (probability): probability is number =>
+              typeof probability === "number" && Number.isFinite(probability),
+          )
+        : undefined;
+
+      return {
+        aiLikePercent: scoreToPercent(payload.score),
+        ...(sentenceScores ? { sentenceScores } : {}),
+        ...(tokens ? { tokens } : {}),
+        ...(tokenProbabilities ? { tokenProbabilities } : {}),
+      };
     } catch {
       if (attempt < retryCount) {
         timeout.clear();

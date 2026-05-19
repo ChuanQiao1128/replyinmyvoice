@@ -49,7 +49,7 @@ type RewriteResponse = {
     diagnosisTags?: string[];
     rewritePlanSummary?: string;
     candidateSignals?: Array<{
-      stage: "initial" | "repair" | "fallback";
+      stage: "initial" | "targeted_repair" | "repair" | "fallback";
       aiLikePercent: number | null;
       status: string;
       rejected: boolean;

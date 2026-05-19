@@ -11,23 +11,27 @@ import type { RewriteRequestInput } from "../../lib/validation";
 
 const mocks = vi.hoisted(() => ({
   classifyScenario: vi.fn(),
+  diagnoseHighRiskSentences: vi.fn(),
   escalateCandidate: vi.fn(),
   extractFacts: vi.fn(),
   finalizeCandidate: vi.fn(),
   generateCandidates: vi.fn(),
   generateGuaranteedRewriteCandidate: vi.fn(),
   llmFactCheck: vi.fn(),
+  repairHighRiskSentences: vi.fn(),
   reviewCandidates: vi.fn(),
   measureWritingSignal: vi.fn(),
 }));
 
 vi.mock("../../lib/rewrite-pipeline/model", () => ({
   classifyScenario: mocks.classifyScenario,
+  diagnoseHighRiskSentences: mocks.diagnoseHighRiskSentences,
   escalateCandidate: mocks.escalateCandidate,
   extractFacts: mocks.extractFacts,
   finalizeCandidate: mocks.finalizeCandidate,
   generateCandidates: mocks.generateCandidates,
   llmFactCheck: mocks.llmFactCheck,
+  repairHighRiskSentences: mocks.repairHighRiskSentences,
   reviewCandidates: mocks.reviewCandidates,
 }));
 
@@ -181,6 +185,21 @@ beforeEach(() => {
   mocks.reviewCandidates.mockResolvedValue(review);
   mocks.finalizeCandidate.mockResolvedValue(candidates.candidate_c_natural);
   mocks.escalateCandidate.mockResolvedValue(candidates.candidate_a_concise);
+  mocks.diagnoseHighRiskSentences.mockResolvedValue({
+    sentence_diagnostics: [
+      {
+        sentence:
+          "For Jordan, the missing work is still the main issue.",
+        issue_tags: ["low_specificity"],
+        repair_instruction:
+          "Make this sentence more concrete without changing the facts.",
+      },
+    ],
+    overall_notes: [],
+  });
+  mocks.repairHighRiskSentences.mockResolvedValue(
+    candidates.candidate_a_concise,
+  );
   mocks.llmFactCheck.mockResolvedValue(safeFactCheck);
   mocks.generateGuaranteedRewriteCandidate.mockReturnValue({
     rewrittenText: candidates.candidate_a_concise,
@@ -225,6 +244,45 @@ describe("rewriteWithFactReconstruct", () => {
     expect(result.optimization.selectionStatus).toBe("passed");
     expect(result.optimization.repairCandidatesTried).toBe(1);
     expect(mocks.escalateCandidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("repairs high-risk sentences before using strong escalation when the final signal stays high", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+
+    const targetedRepair =
+      "Hi Monica,\n\nJordan is missing three assignments from the past two weeks: the reading response, vocabulary practice, and the short reflection paragraph from last Friday.\n\nIf he submits all three by this Friday at 5 p.m., I can still give partial credit. He can stop by during lunch on Tuesday or Thursday if he needs help.\n\nBest regards,\nMs. Carter";
+    mocks.repairHighRiskSentences.mockResolvedValue(targetedRepair);
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({
+        aiLikePercent: 72,
+        sentenceScores: [
+          {
+            sentence:
+              "For Jordan, the missing work is still the main issue.",
+            aiLikePercent: 91,
+          },
+          {
+            sentence:
+              "If he submits all three by this Friday at 5 p.m., I can still give partial credit.",
+            aiLikePercent: 12,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ aiLikePercent: 18 });
+
+    const result = await rewriteWithFactReconstruct(input);
+
+    expect(result.rewrittenText).toBe(targetedRepair);
+    expect(result.naturalness.rewriteAiLikePercent).toBe(18);
+    expect(mocks.diagnoseHighRiskSentences).toHaveBeenCalledTimes(1);
+    expect(mocks.repairHighRiskSentences).toHaveBeenCalledTimes(1);
+    expect(mocks.escalateCandidate).not.toHaveBeenCalled();
+    expect(result.optimization.candidateSignals.at(-1)?.stage).toBe(
+      "targeted_repair",
+    );
   });
 
   it("uses strong escalation once when the first final fails fact gates", async () => {

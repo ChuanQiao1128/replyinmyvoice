@@ -9,9 +9,11 @@ import type {
   LlmFactCheckResult,
   ReviewResult,
   FactReconstructConfig,
+  SentenceRiskReview,
   ScenarioClassification,
   StyleCard,
 } from "./types";
+import type { HighRiskSentence } from "./targeted-repair";
 
 function collectStringValues(value: unknown): string[] {
   if (value === null || value === undefined) {
@@ -278,6 +280,84 @@ const llmFactCheckSchema: z.ZodType<
   required_repairs: stringArraySchema,
 });
 
+function normalizeSentenceRiskPayload(value: unknown) {
+  if (Array.isArray(value)) {
+    return {
+      sentence_diagnostics: value,
+      overall_notes: [],
+    };
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const diagnostics =
+    value.sentence_diagnostics ??
+    value.sentenceDiagnostics ??
+    value.diagnostics ??
+    value.sentences ??
+    [];
+
+  return {
+    ...value,
+    sentence_diagnostics: diagnostics,
+    overall_notes: value.overall_notes ?? value.overallNotes ?? value.notes ?? [],
+  };
+}
+
+function normalizeSentenceRiskItem(value: unknown) {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  return {
+    ...value,
+    sentence:
+      value.sentence ??
+      value.text ??
+      value.high_risk_sentence ??
+      value.highRiskSentence,
+    issue_tags:
+      value.issue_tags ??
+      value.issueTags ??
+      value.tags ??
+      value.reasons ??
+      value.reason ??
+      value.diagnosis ??
+      [],
+    repair_instruction:
+      value.repair_instruction ??
+      value.repairInstruction ??
+      value.suggestion ??
+      value.repair_suggestion ??
+      value.instruction ??
+      value.guidance ??
+      "",
+  };
+}
+
+const sentenceRiskReviewSchema: z.ZodType<
+  SentenceRiskReview,
+  z.ZodTypeDef,
+  unknown
+> = z.preprocess(
+  normalizeSentenceRiskPayload,
+  z.object({
+    sentence_diagnostics: z.array(
+      z.preprocess(
+        normalizeSentenceRiskItem,
+        z.object({
+          sentence: textSchema,
+          issue_tags: stringArraySchema,
+          repair_instruction: textSchema,
+        }),
+      ),
+    ),
+    overall_notes: stringArraySchema,
+  }),
+);
+
 function timeoutSignal(seconds: number) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), seconds * 1000);
@@ -526,6 +606,76 @@ export async function llmFactCheck({
       `Final email:\n${finalEmail}`,
     ].join("\n"),
   });
+}
+
+export async function diagnoseHighRiskSentences({
+  facts,
+  scenario,
+  styleCard,
+  highRiskSentences,
+  config,
+}: {
+  facts: ExtractedFacts;
+  scenario: ScenarioClassification;
+  styleCard: StyleCard;
+  highRiskSentences: HighRiskSentence[];
+  config: FactReconstructConfig;
+}) {
+  return createJsonCompletion<SentenceRiskReview>({
+    model: config.models.cheap_structured,
+    temperature: 0.1,
+    schema: sentenceRiskReviewSchema,
+    system:
+      "You are an internal email quality reviewer. Diagnose why specific sentences feel generic or template-like. Do not optimize for third-party scoring tools. Return valid JSON only.",
+    user: [
+      "For each sentence, assign concise issue_tags and a repair_instruction.",
+      "Allowed issue tag examples: generic_empathy, corporate_template, over_polished, vague_filler, repeated_appreciation, too_symmetric, low_specificity, policy_statement_voice.",
+      "Do not suggest adding facts. Repairs must preserve the extracted facts.",
+      "",
+      `Facts:\n${JSON.stringify(facts)}`,
+      `Scenario:\n${JSON.stringify(scenario)}`,
+      `Style card:\n${JSON.stringify(styleCard)}`,
+      `Sentences to diagnose:\n${JSON.stringify(highRiskSentences)}`,
+    ].join("\n"),
+  });
+}
+
+export async function repairHighRiskSentences({
+  facts,
+  scenario,
+  styleCard,
+  finalEmail,
+  diagnostics,
+  config,
+}: {
+  facts: ExtractedFacts;
+  scenario: ScenarioClassification;
+  styleCard: StyleCard;
+  finalEmail: string;
+  diagnostics: SentenceRiskReview;
+  config: FactReconstructConfig;
+}) {
+  const result = await createJsonCompletion<{ final_email: string }>({
+    model: config.models.mid_writer,
+    temperature: 0.35,
+    schema: finalEmailSchema,
+    system:
+      "You are a targeted sentence editor. Replace only the diagnosed weak sentences while preserving the rest of the email. Return valid JSON only with final_email.",
+    user: [
+      "Repair only the diagnosed sentences. Keep all other sentences and paragraph order as stable as possible.",
+      "Do not add facts. Do not remove facts. Preserve all names, dates, deadlines, amounts, conditions, policies, support times, and signoffs.",
+      "Make the repaired sentences simpler, more specific, and less template-like without becoming casual or sloppy.",
+      "Do not add subject lines, titles, headings, or explanations.",
+      "",
+      `Facts:\n${JSON.stringify(facts)}`,
+      `Scenario:\n${JSON.stringify(scenario)}`,
+      `Style card:\n${JSON.stringify(styleCard)}`,
+      `Current final email:\n${finalEmail}`,
+      `Sentence diagnostics:\n${JSON.stringify(diagnostics)}`,
+    ].join("\n"),
+  });
+
+  return result.final_email;
 }
 
 export async function escalateCandidate({

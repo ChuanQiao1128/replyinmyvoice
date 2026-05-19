@@ -51,6 +51,12 @@ function preservesMustNotChange(text: string, facts: ExtractedFacts) {
   });
 }
 
+function hasDanglingClosing(text: string) {
+  return /(?:^|\n)\s*(best regards|best|regards|sincerely|thanks|thank you),?\s*$/i.test(
+    text.trim(),
+  );
+}
+
 export function deterministicCheck(
   input: RewriteRequestInput,
   facts: ExtractedFacts,
@@ -65,11 +71,15 @@ export function deterministicCheck(
   );
   const missingLockedFacts = preservesMustNotChange(rewrittenText, facts);
   const limitedPhrases = containsLimitedPhrase(rewrittenText, styleCard);
+  const malformedIssues = hasDanglingClosing(rewrittenText)
+    ? ["malformed:dangling_closing"]
+    : [];
   const issues = [
     ...missingFacts.map((fact) => `missing:${fact}`),
     ...unsupportedFacts.map((fact) => `unsupported:${fact}`),
     ...missingLockedFacts.map((fact) => `missing_locked:${fact}`),
     ...limitedPhrases.map((phrase) => `template_phrase:${phrase}`),
+    ...malformedIssues,
   ];
 
   return {

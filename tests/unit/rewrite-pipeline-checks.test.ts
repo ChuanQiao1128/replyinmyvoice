@@ -65,6 +65,37 @@ describe("deterministicCheck", () => {
     expect(result.safe).toBe(true);
     expect(result.issues).toEqual([]);
   });
+
+  it("rejects a dangling closing without a sender name", () => {
+    const facts: ExtractedFacts = {
+      recipient_name: "Ava",
+      sender_name_or_role: "",
+      people_mentioned: ["Ava"],
+      main_purpose: "Send design status.",
+      key_facts: ["The homepage mockup is ready."],
+      required_actions: [],
+      deadlines: ["desktop today"],
+      dates_times: ["today", "Wednesday morning"],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: ["desktop today"],
+      sensitive_points: [],
+      original_tone: "",
+    };
+
+    const result = deterministicCheck(
+      input,
+      facts,
+      "Ava,\n\nThe homepage mockup is ready.\n\nBest regards,",
+      styleCard,
+    );
+
+    expect(result.safe).toBe(false);
+    expect(result.issues).toContain("malformed:dangling_closing");
+  });
 });
 
 describe("llmFactCheckPasses", () => {

@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   classifyScenario,
+  diagnoseHighRiskSentences,
   extractFacts,
   generateCandidates,
   llmFactCheck,
+  repairHighRiskSentences,
   reviewCandidates,
 } from "../../lib/rewrite-pipeline/model";
 import type {
@@ -425,6 +427,221 @@ describe("fact-reconstruct model parsing", () => {
       tone_problem: false,
       issues: [],
       required_repairs: [],
+    });
+  });
+
+  it("diagnoses and repairs only high-risk sentences with the configured model roles", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  sentence_diagnostics: [
+                    {
+                      sentence:
+                        "I completely understand your concern and appreciate your partnership moving forward.",
+                      issue_tags: ["generic_empathy", "corporate_template"],
+                      repair_instruction:
+                        "Use a simpler concrete opening without changing facts.",
+                    },
+                  ],
+                  overall_notes: ["Repair the template opener only."],
+                }),
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  final_email:
+                    "Hi Monica,\n\nThanks for checking in about Jordan's grade.\n\nJordan is missing the reading response.",
+                }),
+              },
+            },
+          ],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const facts: ExtractedFacts = {
+      recipient_name: "Monica",
+      sender_name_or_role: "Ms. Carter",
+      people_mentioned: ["Monica", "Jordan"],
+      main_purpose: "Reply to a parent.",
+      key_facts: ["Jordan is missing the reading response."],
+      required_actions: [],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const scenario: ScenarioClassification = {
+      domain: "education",
+      intent: "general_reply",
+      format: "email",
+      relationship: "teacher_to_parent",
+      risk: "medium",
+      confidence: 0.86,
+      style_card_id: "teacher_parent_email_default",
+      needs_action_steps: true,
+      needs_empathy: true,
+      needs_deadline_preservation: true,
+      notes: [],
+    };
+    const styleCard: StyleCard = {
+      style_card_id: "teacher_parent_email_default",
+      voice: "clear",
+      paragraph_style: "short",
+      sentence_style: "varied",
+      opening_style: "specific",
+      body_style: "facts first",
+      closing_style: "brief",
+      good_phrases: [],
+      phrases_to_avoid_or_limit: [],
+      rules: [],
+    };
+
+    const diagnostics = await diagnoseHighRiskSentences({
+      facts,
+      scenario,
+      styleCard,
+      highRiskSentences: [
+        {
+          sentence:
+            "I completely understand your concern and appreciate your partnership moving forward.",
+          aiLikePercent: 93,
+        },
+      ],
+      config,
+    });
+    const repaired = await repairHighRiskSentences({
+      facts,
+      scenario,
+      styleCard,
+      finalEmail:
+        "Hi Monica,\n\nI completely understand your concern and appreciate your partnership moving forward.\n\nJordan is missing the reading response.",
+      diagnostics,
+      config,
+    });
+
+    expect(diagnostics.sentence_diagnostics[0].issue_tags).toEqual([
+      "generic_empathy",
+      "corporate_template",
+    ]);
+    expect(repaired).toContain("Thanks for checking in");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).model).toBe(
+      "test-structured-model",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).model).toBe(
+      "test-writer-model",
+    );
+  });
+
+  it("normalizes alternate sentence-diagnosis response shapes", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  diagnostics: [
+                    {
+                      text: "Thank you for your partnership moving forward.",
+                      tags: "corporate_template",
+                      suggestion: "Use simpler wording.",
+                    },
+                  ],
+                  notes: "Repair only this sentence.",
+                }),
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    const facts: ExtractedFacts = {
+      recipient_name: "Monica",
+      sender_name_or_role: "Ms. Carter",
+      people_mentioned: ["Monica", "Jordan"],
+      main_purpose: "Reply to a parent.",
+      key_facts: ["Jordan is missing the reading response."],
+      required_actions: [],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const scenario: ScenarioClassification = {
+      domain: "education",
+      intent: "general_reply",
+      format: "email",
+      relationship: "teacher_to_parent",
+      risk: "medium",
+      confidence: 0.86,
+      style_card_id: "teacher_parent_email_default",
+      needs_action_steps: true,
+      needs_empathy: true,
+      needs_deadline_preservation: true,
+      notes: [],
+    };
+    const styleCard: StyleCard = {
+      style_card_id: "teacher_parent_email_default",
+      voice: "clear",
+      paragraph_style: "short",
+      sentence_style: "varied",
+      opening_style: "specific",
+      body_style: "facts first",
+      closing_style: "brief",
+      good_phrases: [],
+      phrases_to_avoid_or_limit: [],
+      rules: [],
+    };
+
+    const diagnostics = await diagnoseHighRiskSentences({
+      facts,
+      scenario,
+      styleCard,
+      highRiskSentences: [
+        {
+          sentence: "Thank you for your partnership moving forward.",
+          aiLikePercent: 88,
+        },
+      ],
+      config,
+    });
+
+    expect(diagnostics).toEqual({
+      sentence_diagnostics: [
+        {
+          sentence: "Thank you for your partnership moving forward.",
+          issue_tags: ["corporate_template"],
+          repair_instruction: "Use simpler wording.",
+        },
+      ],
+      overall_notes: ["Repair only this sentence."],
     });
   });
 });

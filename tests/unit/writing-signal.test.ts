@@ -1,9 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getSignalLabel,
+  measureWritingSignal,
   scoreToPercent,
 } from "../../lib/writing-signal";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  delete process.env.WRITING_SIGNAL_PROVIDER;
+  delete process.env.SAPLING_API_KEY;
+  delete process.env.WRITING_SIGNAL_TIMEOUT_SEC;
+  delete process.env.WRITING_SIGNAL_RETRY_COUNT;
+});
 
 describe("scoreToPercent", () => {
   it("converts a 0 to 1 score to a percentage", () => {
@@ -35,5 +44,41 @@ describe("getSignalLabel", () => {
 
   it("returns unavailable when either value is missing", () => {
     expect(getSignalLabel(null, 32)).toBe("unavailable");
+  });
+});
+
+describe("measureWritingSignal", () => {
+  it("requests and parses Sapling sentence scores without enabling score_string", async () => {
+    process.env.WRITING_SIGNAL_PROVIDER = "sapling";
+    process.env.SAPLING_API_KEY = "test-sapling-key";
+
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        score: 0.73,
+        sentence_scores: [
+          { sentence: "This sounds polished.", score: 0.91 },
+          { sentence: "Jordan can come by Tuesday.", score: 0.12 },
+        ],
+        tokens: ["This", " sounds"],
+        token_probs: [0.9, 0.88],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await measureWritingSignal("This sounds polished.");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestInit = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    expect(JSON.parse(String(requestInit.body))).toMatchObject({
+      key: "test-sapling-key",
+      text: "This sounds polished.",
+      sent_scores: true,
+      score_string: false,
+    });
+    expect(result.aiLikePercent).toBe(73);
+    expect(result.sentenceScores).toEqual([
+      { sentence: "This sounds polished.", aiLikePercent: 91 },
+      { sentence: "Jordan can come by Tuesday.", aiLikePercent: 12 },
+    ]);
   });
 });

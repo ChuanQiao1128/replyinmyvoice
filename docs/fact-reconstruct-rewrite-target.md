@@ -231,9 +231,19 @@ Latest focused evaluation:
 - Average AI-like signal drop: 89 pts
 - Rewrites below 50% AI-like signal: 40/40
 - Final selected rewrites worse than draft: 0/40
-- Customer-usable pass count: 38/40
-- Strict signal pass count: 38/40
+- Cases using targeted repair: 37/40
+- Fact preservation or unsupported-addition failures: 0
+- Customer-usable pass count: 40/40
+- Strict signal pass count: 40/40
 - Report: `docs/scenario-evaluation-results.md`
+
+Targeted repair update:
+
+- Sapling sentence scores are parsed internally.
+- Users still see only the final rewrite and before/after Naturalness Check.
+- If the first final misses the Naturalness Check gate, the pipeline selects up to three high-risk sentences, diagnoses template/generic causes internally, repairs only those sentences, reruns fact gates, and then reruns the Naturalness Check.
+- Strong escalation now runs after targeted sentence repair misses.
+- New deterministic lessons promoted from eval: preserve `desktop today`, `will not include pricing`, and `permission slip`; ignore sentence-starting `Did` as a name; reject dangling closings.
 
 Verification completed:
 

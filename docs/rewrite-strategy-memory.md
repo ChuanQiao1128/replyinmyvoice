@@ -305,7 +305,7 @@ Important lesson from Priya billing/proration:
 - The repair must preserve dates, counts, amounts, billing period, proration explanation, and the next-step request.
 - The final answer should still be useful enough for the recipient to forward internally.
 - If the draft says the explanation is for a `finance manager`, preserve that phrase. Shortening it to only `finance` can make the fact gate reject an otherwise low-signal candidate.
-- Do not leave the user with a blank failure state. If strict signal selection fails, return the best complete candidate with a review note; if every measured candidate is incomplete, use a guaranteed facts-first fallback from the user's own facts.
+- Do not return a weak rewrite as a successful result. If targeted repair, escalation, and fallback still miss the fact or Naturalness Check gate, return quality failure/no charge.
 
 ### Low Specificity
 
@@ -418,3 +418,34 @@ Do not promote strategies that:
 - Add a Strategy Memory Agent as an offline maintenance task.
 - Split prompt modules into scenario guardrails, diagnosis rules, repair rules, and selection policy.
 - Add dashboards for pass rate by scenario and repair type.
+
+## 2026-05-20 Sentence-Level Targeted Repair
+
+Problem:
+
+- Whole-message escalation can be slower and can churn facts that were already correct.
+- A high Naturalness Check score is often caused by a few generic or overly polished sentences, not the whole reply.
+
+Promoted strategy:
+
+- Request Sapling sentence scores internally.
+- Do not show sentence scores or reason tags to users.
+- Select at most three high-risk sentences above the current Naturalness Check threshold.
+- Diagnose those sentences with internal tags such as `generic_empathy`, `corporate_template`, `over_polished`, `vague_filler`, `low_specificity`, and `policy_statement_voice`.
+- Repair only the diagnosed sentences, then rerun fact gates and the Naturalness Check.
+- Use strong escalation only after targeted repair misses.
+
+Eval lessons promoted into tests:
+
+- Preserve `desktop today`; do not collapse it into only `Wednesday morning`.
+- Preserve `will not include pricing`; do not move that constraint onto unrelated agenda items.
+- Preserve `permission slip`; do not generalize it to `signed slip`.
+- Do not extract sentence-starting `Did` as a person/name fact.
+- Reject dangling closings such as `Best regards,` with no sender name.
+
+Latest focused evaluation:
+
+- 40/40 customer-usable pass
+- 40/40 strict signal pass
+- 0 fact preservation or unsupported-addition failures
+- 37/40 cases used targeted repair

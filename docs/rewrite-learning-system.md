@@ -214,3 +214,43 @@ The next rewrite engine is `fact_reconstruct`:
 - Parser normalization now filters placeholder fact values (`Not specified`, `unknown`, `N/A`, `none`) and boolean values inside fact arrays.
 - The fallback layer now tries an extractive facts-first candidate before richer deterministic scenario fallbacks.
 - Strategy updates from this run were encoded as tests rather than silently learned from live user content.
+
+## 2026-05-20 Sentence-Level Targeted Repair
+
+The fact-reconstruct pipeline now uses Sapling sentence-level scores internally.
+User-facing output is unchanged: users still see only the final rewrite and the
+before/after Naturalness Check.
+
+Internal repair order:
+
+```text
+final candidate
+-> full-text Naturalness Check
+-> select up to 3 high-risk sentences from sentence scores
+-> diagnose generic/template causes with cheap_structured
+-> repair only those sentences with mid_writer
+-> rerun deterministic and LLM fact gates
+-> rerun Naturalness Check
+-> strong escalation only if targeted repair misses
+-> facts-first fallback only if escalation misses
+```
+
+Promoted lessons:
+
+- Sentence scores are used for localization, not as prompt-visible score targets.
+- Targeted repair should preserve the rest of the email and avoid whole-message churn.
+- Deterministic fact gates must include school/work-specific phrases discovered during eval, including `desktop today`, `will not include pricing`, and `permission slip`.
+- Sentence-starting question words such as `Did` must not be treated as proper-name facts.
+- Dangling closings such as `Best regards,` without a sender name are malformed and must be rejected before returning a successful rewrite.
+
+Latest focused result:
+
+- cases evaluated: 40
+- draft-only cases: 29
+- cases using targeted repair: 37/40
+- average AI-like signal drop: 89 pts
+- rewrites below 50% AI-like signal: 40/40
+- final selected rewrites worse than draft: 0/40
+- fact preservation or unsupported-addition failures: 0
+- customer-usable pass count: 40/40
+- strict signal pass count: 40/40
