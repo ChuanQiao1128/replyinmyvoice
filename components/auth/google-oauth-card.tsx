@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useSignIn } from "@clerk/nextjs";
+import { useSignIn } from "@clerk/nextjs/legacy";
 
 export function GoogleOAuthCard() {
-  const { fetchStatus, signIn } = useSignIn();
+  const { isLoaded, signIn } = useSignIn();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,15 +17,13 @@ export function GoogleOAuthCard() {
     setError(null);
 
     try {
-      const result = await signIn.sso({
+      await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
-        redirectCallbackUrl: "/sso-callback",
-        redirectUrl: "/app",
+        redirectUrl: "/sso-callback",
+        redirectUrlComplete: "/app",
+        continueSignIn: true,
+        continueSignUp: true,
       });
-
-      if (result.error) {
-        setError("Google sign-in could not start. Please try again.");
-      }
     } catch {
       setError("Google sign-in could not start. Please try again.");
       setIsSubmitting(false);
@@ -49,7 +47,7 @@ export function GoogleOAuthCard() {
         <button
           type="button"
           onClick={continueWithGoogle}
-          disabled={fetchStatus === "fetching" || isSubmitting}
+          disabled={!isLoaded || isSubmitting}
           className="mt-8 flex w-full items-center justify-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-base font-semibold text-ink shadow-sm transition hover:bg-paper disabled:cursor-not-allowed disabled:opacity-60"
         >
           <span aria-hidden="true" className="text-xl">G</span>
