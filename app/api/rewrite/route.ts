@@ -13,7 +13,13 @@ import {
   FactReconstructQualityError,
   rewriteWithFactReconstruct,
 } from "../../../lib/rewrite-pipeline/pipeline";
+import { getFactReconstructConfig } from "../../../lib/rewrite-pipeline/config";
 import { tryLogRewriteLearningSample } from "../../../lib/rewrite-learning";
+import {
+  createRewriteTelemetryCollector,
+  type RewriteTelemetryCollector,
+  tryPersistRewriteCostLog,
+} from "../../../lib/observability/rewrite-telemetry";
 import { getCurrentAppUser } from "../../../lib/users";
 import { rewriteRequestSchema } from "../../../lib/validation";
 
@@ -67,24 +73,37 @@ export async function POST(request: Request) {
   }
 
   const skipQuotaForLocalDev = allowDevQuotaOverride();
+  const telemetry: RewriteTelemetryCollector = createRewriteTelemetryCollector();
+  const strategyVersion = getFactReconstructConfig().strategyVersion;
 
   try {
     if (!skipQuotaForLocalDev) {
       await ensureQuotaAvailable(user);
     }
 
-    const rewrite = await rewriteWithFactReconstruct(input);
+    const rewrite = await rewriteWithFactReconstruct(input, { telemetry });
 
     if (!skipQuotaForLocalDev) {
       await chargeSuccessfulRewrite(user);
     }
 
-    await tryLogRewriteLearningSample({
+    const learningSampleId = await tryLogRewriteLearningSample({
       user,
       input,
       status: "success",
       response: rewrite,
     });
+
+    await tryPersistRewriteCostLog(
+      telemetry.finish({
+        userId: user.id,
+        learningSampleId,
+        input,
+        status: "success",
+        response: rewrite,
+        strategyVersion,
+      }),
+    );
 
     return NextResponse.json(rewrite);
   } catch (error) {
@@ -99,12 +118,23 @@ export async function POST(request: Request) {
         reason: error.reason,
       });
 
-      await tryLogRewriteLearningSample({
+      const learningSampleId = await tryLogRewriteLearningSample({
         user,
         input,
         status: "quality_failed",
         qualityError: error,
       });
+
+      await tryPersistRewriteCostLog(
+        telemetry.finish({
+          userId: user.id,
+          learningSampleId,
+          input,
+          status: "quality_failed",
+          qualityError: error,
+          strategyVersion,
+        }),
+      );
 
       return NextResponse.json(
         {
@@ -123,6 +153,16 @@ export async function POST(request: Request) {
       name: error instanceof Error ? error.name : "UnknownError",
       message: safeErrorMessage(error),
     });
+
+    await tryPersistRewriteCostLog(
+      telemetry.finish({
+        userId: user.id,
+        input,
+        status: "server_failed",
+        errorCode: error instanceof Error ? error.name : "UnknownError",
+        strategyVersion,
+      }),
+    );
 
     return jsonError("Could not rewrite this draft right now.", 500);
   }

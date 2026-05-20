@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PaywallCard } from "../../components/app/paywall-card";
 import { RewriteWorkspace } from "../../components/app/rewrite-workspace";
 import { SiteHeader } from "../../components/site-header";
+import { shouldShowAdminEntry } from "../../lib/admin-visible";
 import { getUsageStatus, isPaidSubscriptionStatus } from "../../lib/quota";
 import { getCurrentAppUser } from "../../lib/users";
 
@@ -17,11 +18,15 @@ export default async function AppPage() {
 
   const usage = await getUsageStatus(user);
   const paid = isPaidSubscriptionStatus(user.subscriptionStatus);
+  const showAdmin = shouldShowAdminEntry({
+    clerkUserId: user.clerkUserId,
+    email: user.email,
+  });
 
   if (usage.exhausted && !paid) {
     return (
       <>
-        <SiteHeader />
+        <SiteHeader showAdmin={showAdmin} />
         <PaywallCard
           description="Your 3 free rewrites have been used. Upgrade to keep using the workspace for everyday replies."
           status="Free quota used"
@@ -34,7 +39,7 @@ export default async function AppPage() {
   if (usage.exhausted && paid) {
     return (
       <>
-        <SiteHeader />
+        <SiteHeader showAdmin={showAdmin} />
         <PaywallCard
           action="portal"
           description="Your monthly rewrite quota has been used for this billing period. You can manage billing or come back when the next period starts."
@@ -51,7 +56,7 @@ export default async function AppPage() {
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader showAdmin={showAdmin} />
       <RewriteWorkspace
         paid={paid}
         subscriptionStatus={user.subscriptionStatus}

@@ -93,7 +93,7 @@ export function buildRewriteLearningSample({
 
 export async function logRewriteLearningSample(event: RewriteLearningEvent) {
   if (!isRewriteLearningEnabled()) {
-    return;
+    return null;
   }
 
   const sample = buildRewriteLearningSample(event);
@@ -143,14 +143,17 @@ export async function logRewriteLearningSample(event: RewriteLearningEvent) {
       ${sample.errorCode}
     )
   `;
+
+  return sample.id;
 }
 
 export async function tryLogRewriteLearningSample(event: RewriteLearningEvent) {
   try {
-    await logRewriteLearningSample(event);
+    return await logRewriteLearningSample(event);
   } catch (error) {
     console.warn("rewrite_learning_log_failed", {
       message: error instanceof Error ? error.message.slice(0, 180) : "Unknown",
     });
+    return null;
   }
 }

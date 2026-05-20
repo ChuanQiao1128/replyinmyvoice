@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { optionalEnv, requireEnv } from "../env";
+import type { RewriteTelemetryCollector } from "../observability/rewrite-telemetry";
+import { estimateOpenAiCostUsd } from "../observability/rewrite-cost";
 import type { RewriteRequestInput } from "../validation";
 import type {
   CandidateKey,
@@ -370,20 +372,43 @@ function timeoutSignal(seconds: number) {
 }
 
 async function createJsonCompletion<T>({
+  config,
   model,
+  role,
   schema,
+  telemetry,
   temperature,
   system,
   user,
 }: {
+  config: FactReconstructConfig;
   model: string;
+  role: keyof FactReconstructConfig["models"];
     schema: z.ZodType<T, z.ZodTypeDef, unknown>;
+  telemetry?: RewriteTelemetryCollector;
   temperature: number;
   system: string;
   user: string;
 }) {
   const timeoutSeconds = Number(optionalEnv("OPENAI_TIMEOUT_SEC", "35"));
   const timeout = timeoutSignal(Number.isFinite(timeoutSeconds) ? timeoutSeconds : 35);
+  const startedAt = Date.now();
+
+  function latencyMs() {
+    return Math.max(0, Date.now() - startedAt);
+  }
+
+  function recordFailedCall(errorCode: string) {
+    telemetry?.recordProviderCall({
+      provider: "openai",
+      role,
+      model,
+      estimatedCostUsd: 0,
+      latencyMs: latencyMs(),
+      success: false,
+      errorCode,
+    });
+  }
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -409,18 +434,49 @@ async function createJsonCompletion<T>({
         | { error?: { type?: string; code?: string; message?: string } }
         | null;
       const errorType = payload?.error?.type ?? payload?.error?.code ?? response.status;
+      recordFailedCall(String(errorType));
       throw new Error(`OpenAI request failed: ${errorType}`);
     }
 
     const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string | null } }>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+      };
     };
+    const inputTokens = payload.usage?.prompt_tokens ?? 0;
+    const outputTokens = payload.usage?.completion_tokens ?? 0;
+    const pricing = config.pricing[role];
+    telemetry?.recordProviderCall({
+      provider: "openai",
+      role,
+      model,
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd: estimateOpenAiCostUsd({
+        inputTokens,
+        outputTokens,
+        inputPer1M: pricing.inputPer1M,
+        outputPer1M: pricing.outputPer1M,
+      }),
+      latencyMs: latencyMs(),
+      success: true,
+    });
+
     const rawContent = payload.choices?.at(0)?.message?.content;
     if (!rawContent) {
       throw new Error("OpenAI returned no content.");
     }
 
     return schema.parse(JSON.parse(rawContent));
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof z.ZodError) {
+      recordFailedCall("bad_json");
+    } else if (error instanceof DOMException && error.name === "AbortError") {
+      recordFailedCall("timeout");
+    }
+    throw error;
   } finally {
     timeout.clear();
   }
@@ -442,9 +498,13 @@ function inputText(input: RewriteRequestInput) {
 export async function extractFacts(
   input: RewriteRequestInput,
   config: FactReconstructConfig,
+  telemetry?: RewriteTelemetryCollector,
 ) {
   return createJsonCompletion<ExtractedFacts>({
+    config,
     model: config.models.cheap_structured,
+    role: "cheap_structured",
+    telemetry,
     temperature: 0.1,
     schema: extractedFactsSchema,
     system:
@@ -461,9 +521,13 @@ export async function extractFacts(
 export async function classifyScenario(
   facts: ExtractedFacts,
   config: FactReconstructConfig,
+  telemetry?: RewriteTelemetryCollector,
 ) {
   return createJsonCompletion<ScenarioClassification>({
+    config,
     model: config.models.cheap_structured,
+    role: "cheap_structured",
+    telemetry,
     temperature: 0.1,
     schema: scenarioSchema,
     system:
@@ -485,6 +549,7 @@ export async function generateCandidates({
   strategy,
   strategyGuidance,
   config,
+  telemetry,
 }: {
   facts: ExtractedFacts;
   scenario: ScenarioClassification;
@@ -492,9 +557,13 @@ export async function generateCandidates({
   strategy?: RewriteStrategy;
   strategyGuidance?: string[];
   config: FactReconstructConfig;
+  telemetry?: RewriteTelemetryCollector;
 }) {
   return createJsonCompletion<CandidateSet>({
+    config,
     model: config.models.mid_writer,
+    role: "mid_writer",
+    telemetry,
     temperature: 0.7,
     schema: candidateSetSchema,
     system:
@@ -530,15 +599,20 @@ export async function reviewCandidates({
   styleCard,
   candidates,
   config,
+  telemetry,
 }: {
   facts: ExtractedFacts;
   scenario: ScenarioClassification;
   styleCard: StyleCard;
   candidates: CandidateSet;
   config: FactReconstructConfig;
+  telemetry?: RewriteTelemetryCollector;
 }) {
   return createJsonCompletion<ReviewResult>({
+    config,
     model: config.models.cheap_structured,
+    role: "cheap_structured",
+    telemetry,
     temperature: 0.1,
     schema: reviewSchema,
     system:
@@ -565,6 +639,7 @@ export async function finalizeCandidate({
   selectedCandidate,
   requiredEdits,
   config,
+  telemetry,
 }: {
   facts: ExtractedFacts;
   scenario: ScenarioClassification;
@@ -572,9 +647,13 @@ export async function finalizeCandidate({
   selectedCandidate: string;
   requiredEdits: string[];
   config: FactReconstructConfig;
+  telemetry?: RewriteTelemetryCollector;
 }) {
   const result = await createJsonCompletion<{ final_email: string }>({
+    config,
     model: config.models.mid_writer,
+    role: "mid_writer",
+    telemetry,
     temperature: 0.25,
     schema: finalEmailSchema,
     system:
@@ -601,13 +680,18 @@ export async function llmFactCheck({
   facts,
   finalEmail,
   config,
+  telemetry,
 }: {
   facts: ExtractedFacts;
   finalEmail: string;
   config: FactReconstructConfig;
+  telemetry?: RewriteTelemetryCollector;
 }) {
   return createJsonCompletion<LlmFactCheckResult>({
+    config,
     model: config.models.cheap_structured,
+    role: "cheap_structured",
+    telemetry,
     temperature: 0.1,
     schema: llmFactCheckSchema,
     system:
@@ -628,15 +712,20 @@ export async function diagnoseHighRiskSentences({
   styleCard,
   highRiskSentences,
   config,
+  telemetry,
 }: {
   facts: ExtractedFacts;
   scenario: ScenarioClassification;
   styleCard: StyleCard;
   highRiskSentences: HighRiskSentence[];
   config: FactReconstructConfig;
+  telemetry?: RewriteTelemetryCollector;
 }) {
   return createJsonCompletion<SentenceRiskReview>({
+    config,
     model: config.models.cheap_structured,
+    role: "cheap_structured",
+    telemetry,
     temperature: 0.1,
     schema: sentenceRiskReviewSchema,
     system:
@@ -661,6 +750,7 @@ export async function repairHighRiskSentences({
   finalEmail,
   diagnostics,
   config,
+  telemetry,
 }: {
   facts: ExtractedFacts;
   scenario: ScenarioClassification;
@@ -668,9 +758,13 @@ export async function repairHighRiskSentences({
   finalEmail: string;
   diagnostics: SentenceRiskReview;
   config: FactReconstructConfig;
+  telemetry?: RewriteTelemetryCollector;
 }) {
   const result = await createJsonCompletion<{ final_email: string }>({
+    config,
     model: config.models.mid_writer,
+    role: "mid_writer",
+    telemetry,
     temperature: 0.35,
     schema: finalEmailSchema,
     system:
@@ -702,6 +796,7 @@ export async function escalateCandidate({
   strategy,
   strategyGuidance,
   config,
+  telemetry,
 }: {
   facts: ExtractedFacts;
   scenario: ScenarioClassification;
@@ -711,9 +806,13 @@ export async function escalateCandidate({
   strategy?: RewriteStrategy;
   strategyGuidance?: string[];
   config: FactReconstructConfig;
+  telemetry?: RewriteTelemetryCollector;
 }) {
   const result = await createJsonCompletion<{ final_email: string }>({
+    config,
     model: config.models.strong_escalation,
+    role: "strong_escalation",
+    telemetry,
     temperature: 0.45,
     schema: finalEmailSchema,
     system:

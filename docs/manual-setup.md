@@ -65,6 +65,13 @@ Set production runtime variables/secrets for the Worker:
 - `WRITING_SIGNAL_PROVIDER`
 - `SAPLING_API_KEY`
 - `WRITING_SIGNAL_TIMEOUT_SEC`
+- `REWRITE_LEARNING_LOG_ENABLED`
+- `REWRITE_COST_LOG_ENABLED`
+- `ADMIN_EMAILS`
+- `ADMIN_CLERK_USER_IDS`
+- `ADMIN_ALLOW_RAW_REWRITE_TEXT`
+- `SAPLING_PRICE_PER_1000_CHARS_USD`
+- `ADMIN_NZD_PER_USD`
 - `STRIPE_TIMEOUT_SEC` optional, defaults to 25 seconds
 - `LAUNCH_CONFIRMED`
 - `EVAL_MAX_PROMPT_ITERATIONS`
@@ -83,6 +90,19 @@ Launch update on 2026-05-18:
 - Worker `replyinmyvoice-app` has the required runtime secret names configured.
 - `NODE_ENV` was corrected to `production` in Worker secrets.
 - Secret values were not printed or committed.
+
+## Internal Admin Dashboard
+
+- Route: `https://replyinmyvoice.com/admin`
+- Entry point: signed-in admins see an `Admin` button in the `/app` header.
+- Non-admin users do not see the entry and cannot access `/admin` directly.
+- Admin access is controlled by:
+  - `ADMIN_EMAILS`
+  - `ADMIN_CLERK_USER_IDS`
+- Raw rewrite text is hidden by default. Keep `ADMIN_ALLOW_RAW_REWRITE_TEXT=false` unless debugging an approved internal case.
+- Cost values are estimates for product/pricing decisions, not accounting-grade invoices.
+- `SAPLING_PRICE_PER_1000_CHARS_USD` controls Sapling cost estimates.
+- `ADMIN_NZD_PER_USD` optionally converts stored USD estimates for display.
 
 ## Database Runtime Note
 

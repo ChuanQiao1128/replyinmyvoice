@@ -2,9 +2,10 @@ import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { PenLine } from "lucide-react";
 import Link from "next/link";
 
+import { AdminEntry } from "./app/admin-entry";
 import { LinkButton } from "./ui/button";
 
-export function SiteHeader() {
+export function SiteHeader({ showAdmin = false }: { showAdmin?: boolean }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
@@ -27,6 +28,7 @@ export function SiteHeader() {
             </LinkButton>
           </SignedOut>
           <SignedIn>
+            <AdminEntry visible={showAdmin} />
             <LinkButton href="/app" variant="secondary">
               Open app
             </LinkButton>

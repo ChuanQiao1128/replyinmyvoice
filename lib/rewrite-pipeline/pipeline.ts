@@ -1,6 +1,7 @@
 import { generateGuaranteedRewriteCandidate } from "../openai";
 import { generateExtractiveFallbackCandidate } from "../rewrite-extractive-fallback";
 import type { RewriteResponsePayload } from "../rewrite-types";
+import type { RewriteTelemetryCollector } from "../observability/rewrite-telemetry";
 import { formatNaturalness, measureWritingSignal } from "../writing-signal";
 import type { RewriteRequestInput } from "../validation";
 import {
@@ -405,12 +406,14 @@ async function tryGuaranteedFallback({
   facts,
   input,
   styleCard,
+  telemetry,
 }: {
   config: FactReconstructConfig;
   draftPercent: number;
   facts: Parameters<typeof deterministicCheck>[1];
   input: RewriteRequestInput;
   styleCard: Parameters<typeof deterministicCheck>[3];
+  telemetry?: RewriteTelemetryCollector;
 }) {
   const modelFallback = withRestoredRecipientGreeting(
     generateGuaranteedRewriteCandidate(input),
@@ -440,6 +443,8 @@ async function tryGuaranteedFallback({
     const policyGate = runPolicyIntentGate(input, fallback.rewrittenText);
     const signal = await measureWritingSignal(fallback.rewrittenText, {
       calibrateSentenceScores: true,
+      role: "repair_signal",
+      telemetry,
     });
     const factSafe = deterministic.safe && policyGate.safe;
     const passes = factSafe &&
@@ -482,6 +487,7 @@ async function tryTargetedSentenceRepair({
       input,
       scenario,
       styleCard,
+      telemetry,
 }: {
   config: FactReconstructConfig;
   draftPercent: number;
@@ -491,6 +497,7 @@ async function tryTargetedSentenceRepair({
   input: RewriteRequestInput;
   scenario: ScenarioClassification;
   styleCard: StyleCard;
+  telemetry?: RewriteTelemetryCollector;
 }) {
   const highRiskSentences = selectHighRiskSentences({
     signal: finalSignal,
@@ -507,6 +514,7 @@ async function tryTargetedSentenceRepair({
     styleCard,
     highRiskSentences,
     config,
+    telemetry,
   });
   const repairedEmail = await repairHighRiskSentences({
     facts,
@@ -515,16 +523,20 @@ async function tryTargetedSentenceRepair({
     finalEmail,
     diagnostics,
     config,
+    telemetry,
   });
   const deterministic = deterministicCheck(input, facts, repairedEmail, styleCard);
   const factCheck = await llmFactCheck({
     facts,
     finalEmail: repairedEmail,
     config,
+    telemetry,
   });
   const policyGate = runPolicyIntentGate(input, repairedEmail);
   const signal = await measureWritingSignal(repairedEmail, {
     calibrateSentenceScores: true,
+    role: "repair_signal",
+    telemetry,
   });
   const factSafe = factCheckSafe({
     deterministicSafe: deterministic.safe && policyGate.safe,
@@ -550,8 +562,10 @@ async function tryTargetedSentenceRepair({
 
 export async function rewriteWithFactReconstruct(
   input: RewriteRequestInput,
+  options: { telemetry?: RewriteTelemetryCollector } = {},
 ): Promise<RewriteResponsePayload> {
   const config = getFactReconstructConfig();
+  const telemetry = options.telemetry;
   const analysis = analyzeRewriteInput(input);
   const budget = createRewriteBudget(analysis);
   let budgetState = createInitialBudgetState();
@@ -564,7 +578,10 @@ export async function rewriteWithFactReconstruct(
     previousStrategies,
   });
   budgetState = initialApproval.budgetState;
-  const draftSignal = await measureWritingSignal(input.roughDraftReply);
+  const draftSignal = await measureWritingSignal(input.roughDraftReply, {
+    role: "draft_signal",
+    telemetry,
+  });
   const candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"] = [];
 
   if (draftSignal.aiLikePercent === null) {
@@ -581,8 +598,8 @@ export async function rewriteWithFactReconstruct(
     });
   }
 
-  const facts = await extractFacts(input, config);
-  const scenario = await classifyScenario(facts, config);
+  const facts = await extractFacts(input, config, telemetry);
+  const scenario = await classifyScenario(facts, config, telemetry);
   const styleCard = getStyleCard(scenario);
   const diagnosisTags = diagnosisTagsForScenario(scenario.domain);
   const rewritePlanSummary = [
@@ -598,6 +615,7 @@ export async function rewriteWithFactReconstruct(
     strategy: initialDecision.strategy,
     strategyGuidance: strategyGuidance(initialDecision.strategy),
     config,
+    telemetry,
   });
   const review = await reviewCandidates({
     facts,
@@ -605,6 +623,7 @@ export async function rewriteWithFactReconstruct(
     styleCard,
     candidates,
     config,
+    telemetry,
   });
   const bestKey: CandidateKey = review.best_candidate_key;
   const bestCandidate = candidates[bestKey];
@@ -617,6 +636,7 @@ export async function rewriteWithFactReconstruct(
       facts,
       input,
       styleCard,
+      telemetry,
     });
 
     candidateSignals.push({
@@ -671,6 +691,7 @@ export async function rewriteWithFactReconstruct(
     selectedCandidate: bestCandidate,
     requiredEdits: review.required_edits,
     config,
+    telemetry,
   });
   const deterministic = deterministicCheck(input, facts, finalEmail, styleCard);
   const policyGate = runPolicyIntentGate(input, finalEmail);
@@ -678,6 +699,7 @@ export async function rewriteWithFactReconstruct(
     facts,
     finalEmail,
     config,
+    telemetry,
   });
 
   if (
@@ -720,6 +742,7 @@ export async function rewriteWithFactReconstruct(
         strategy: repairDecision.strategy,
         strategyGuidance: strategyGuidance(repairDecision.strategy),
         config,
+        telemetry,
       });
       const escalatedDeterministic = deterministicCheck(
         input,
@@ -732,9 +755,12 @@ export async function rewriteWithFactReconstruct(
         facts,
         finalEmail: escalatedEmail,
         config,
+        telemetry,
       });
       const escalatedSignal = await measureWritingSignal(escalatedEmail, {
         calibrateSentenceScores: true,
+        role: "repair_signal",
+        telemetry,
       });
       const escalatedFactSafe = factCheckSafe({
         deterministicSafe:
@@ -798,6 +824,7 @@ export async function rewriteWithFactReconstruct(
         facts,
         input,
         styleCard,
+        telemetry,
       });
 
       candidateSignals.push({
@@ -859,6 +886,8 @@ export async function rewriteWithFactReconstruct(
 
   const finalSignal = await measureWritingSignal(finalEmail, {
     calibrateSentenceScores: true,
+    role: "final_signal",
+    telemetry,
   });
   candidateSignals.push({
     stage: "initial",
@@ -917,6 +946,7 @@ export async function rewriteWithFactReconstruct(
     input,
     scenario,
     styleCard,
+    telemetry,
   });
   const targetedRepairTried = targetedRepairAttempt ? 1 : 0;
 
@@ -976,6 +1006,7 @@ export async function rewriteWithFactReconstruct(
       strategy: naturalnessDecision.strategy,
       strategyGuidance: strategyGuidance(naturalnessDecision.strategy),
       config,
+      telemetry,
     });
     const escalatedDeterministic = deterministicCheck(
       input,
@@ -988,9 +1019,12 @@ export async function rewriteWithFactReconstruct(
       facts,
       finalEmail: escalatedEmail,
       config,
+      telemetry,
     });
     const escalatedSignal = await measureWritingSignal(escalatedEmail, {
       calibrateSentenceScores: true,
+      role: "repair_signal",
+      telemetry,
     });
     const escalatedPasses = factCheckSafe({
       deterministicSafe:
@@ -1041,6 +1075,7 @@ export async function rewriteWithFactReconstruct(
       facts,
       input,
       styleCard,
+      telemetry,
     });
 
     candidateSignals.push({

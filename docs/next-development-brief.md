@@ -1350,3 +1350,296 @@ Development can use additional OpenAI and Sapling calls to find the strategy. Th
 - up to 5 rewrite writing-signal calls
 
 If the bounded production loop cannot produce a passing candidate, fail safely and do not charge usage.
+
+## Admin Cost Observability And Internal Operations Dashboard
+
+This section records the next development requirement for cost tracking and an internal admin dashboard. It should be implemented before making final live pricing decisions, because the adaptive rewrite orchestrator can use multiple OpenAI calls, Sapling calls, targeted repairs, and one strong-model escalation.
+
+### Product Decision
+
+Add DB-backed rewrite cost telemetry and an internal admin dashboard.
+
+The dashboard is for the operator/developer only. It is not a customer-facing page and must not be linked from the public marketing navigation.
+
+Primary question it must answer:
+
+```text
+For each rewrite request, who used it, when it ran, what scenario/tone was used,
+whether it succeeded, how much the AI-like signal changed, how many internal
+strategies/repairs/escalations ran, and what the estimated OpenAI + Sapling cost was.
+```
+
+### Why This Is Needed
+
+Pricing cannot be set only from theoretical model prices. The product needs real request-level cost data:
+
+- OpenAI input/output tokens by model role.
+- Sapling character counts and call counts.
+- Whether a strong-model escalation was used.
+- Whether a request succeeded, quality-failed, or provider-failed.
+- Average cost per successful rewrite.
+- Cost distribution by scenario, tone, and input length.
+- Heavy users and expensive requests.
+- Gross-margin estimate for the current subscription quota.
+
+### Admin Page Scope
+
+Create an internal route:
+
+```text
+/admin
+```
+
+Recommended subpages:
+
+```text
+/admin
+/admin/rewrites
+/admin/rewrites/[id]
+/admin/users
+/admin/costs
+/admin/learning
+```
+
+MVP can ship with `/admin` and `/admin/rewrites` first, as long as the data model supports later expansion.
+
+### Admin Entry Point
+
+The admin dashboard entry should appear only after the user signs in.
+
+Placement:
+
+```text
+/app top header/account area
+```
+
+Behavior:
+
+- If the signed-in user's email is in `ADMIN_EMAILS`, show a small `Admin` icon/button in the app header near the user/account controls.
+- The button links to `/admin`.
+- If the signed-in user is not an admin, do not render the button at all.
+- Do not show the admin entry on the public landing page, pricing page, sign-in page, or sign-up page.
+- Do not show disabled or hidden-placeholder admin UI for non-admins.
+
+Recommended UI:
+
+```text
+Icon button or compact "Admin" button
+Tooltip/title: Admin dashboard
+Destination: /admin
+```
+
+This lets the owner sign in with `ADMIN_EMAILS=chuanqiao1128@gmail.com` and access the dashboard from the normal app UI, while every other user sees only the standard product workspace.
+
+### Admin Access Control
+
+Admin access must require Clerk authentication plus an explicit allowlist.
+
+Recommended env vars:
+
+```env
+ADMIN_EMAILS=
+ADMIN_CLERK_USER_IDS=
+ADMIN_ALLOW_RAW_REWRITE_TEXT=false
+```
+
+Rules:
+
+- If the signed-in Clerk user is not in `ADMIN_EMAILS` or `ADMIN_CLERK_USER_IDS`, return 404 or redirect to `/app`.
+- Do not use subscription status as admin authorization.
+- Do not expose admin pages to crawlers.
+- Do not put admin links in the public header.
+- Non-admin users must not see the `/app` admin entry.
+- Manual navigation to `/admin` by a non-admin must be denied server-side.
+- Default `ADMIN_ALLOW_RAW_REWRITE_TEXT=false` in production.
+
+### Data To Log Per Rewrite Request
+
+Add request-level telemetry, separate from the existing learning sample table.
+
+Recommended aggregate table:
+
+```text
+RewriteCostLog
+```
+
+Fields:
+
+```text
+id
+userId
+learningSampleId nullable
+requestId
+strategyVersion
+scenario
+tonePreset
+status
+errorCode nullable
+startedAt
+finishedAt nullable
+durationMs nullable
+inputCharCount
+draftWordCount
+rewriteWordCount nullable
+draftAiLikePercent nullable
+rewriteAiLikePercent nullable
+changePoints nullable
+internalStrategies
+repairCandidates
+rejectedCandidates
+usedEscalation
+openAiInputTokens
+openAiOutputTokens
+openAiCostUsd
+saplingCallCount
+saplingCharacters
+saplingCostUsd
+totalEstimatedCostUsd
+modelsUsedJson
+providerCallsJson
+createdAt
+updatedAt
+```
+
+Recommended detailed provider-call table:
+
+```text
+RewriteProviderCall
+```
+
+Fields:
+
+```text
+id
+costLogId
+provider
+role
+model nullable
+inputTokens nullable
+outputTokens nullable
+characters nullable
+estimatedCostUsd
+latencyMs nullable
+success
+errorCode nullable
+createdAt
+```
+
+This gives both:
+
+- Fast dashboard cards from `RewriteCostLog`.
+- Debuggable call-level cost breakdown from `RewriteProviderCall`.
+
+### Cost Estimation Rules
+
+OpenAI:
+
+- Use actual `usage.prompt_tokens` and `usage.completion_tokens` from OpenAI responses when available.
+- Map the pipeline role to current pricing config:
+  - `cheap_structured`
+  - `mid_writer`
+  - `strong_escalation`
+- Pricing should continue to come from env/config, not hardcoded directly in dashboard components.
+
+Sapling:
+
+- Count the characters sent to Sapling for each Naturalness Check call.
+- Estimate cost from a config value such as:
+
+```env
+SAPLING_PRICE_PER_1000_CHARS_USD=0.005
+```
+
+Exchange rate:
+
+- Keep stored request costs in USD first.
+- Add optional display conversion:
+
+```env
+ADMIN_NZD_PER_USD=
+```
+
+If conversion is missing, show USD only.
+
+### Admin Dashboard Metrics
+
+The `/admin` overview should show:
+
+- Total rewrite requests today / 7 days / 30 days.
+- Successful rewrites.
+- Quality failures.
+- Provider/server failures.
+- Average AI-like signal drop.
+- Percentage below 50% final signal.
+- Average estimated cost per successful rewrite.
+- P95 estimated cost per rewrite.
+- Total estimated OpenAI cost.
+- Total estimated Sapling cost.
+- Total estimated AI cost.
+- Average internal strategies per request.
+- Escalation rate.
+- Top expensive scenarios.
+
+The `/admin/rewrites` table should show:
+
+- Date/time.
+- User email or user id.
+- Scenario.
+- Tone.
+- Status.
+- Draft signal.
+- Rewrite signal.
+- Signal change.
+- Internal strategies / repairs / rejected candidates.
+- Used escalation.
+- Estimated cost.
+- Duration.
+- Link to detail.
+
+The `/admin/rewrites/[id]` detail page should show:
+
+- Request metadata.
+- Cost breakdown by provider call.
+- Candidate/signal metadata.
+- Diagnosis tags and rewrite plan summary.
+- Learning sample id if linked.
+- Raw input/output only when `ADMIN_ALLOW_RAW_REWRITE_TEXT=true`.
+
+### Privacy And Data Minimization
+
+Because rewrite samples can contain sensitive user text:
+
+- The overview/table should not show full user-submitted text.
+- Show short previews only if needed, and avoid rendering long raw text in list views.
+- Detail pages may show full raw input/output only for allowlisted admins and only when the explicit env flag is enabled.
+- Never show secrets, API keys, Stripe ids beyond safe object ids, or raw provider payloads containing credentials.
+- Do not expose admin API responses to unauthenticated users.
+
+### Pricing Decision Support
+
+The dashboard should include a simple pricing support panel:
+
+- Current plan price, quota, and Stripe fee estimate.
+- Estimated average variable cost per successful rewrite.
+- Estimated cost at 40, 50, and 100 rewrites/month.
+- Estimated gross margin for the current plan.
+
+This panel is internal only. It helps decide whether the public plan should be:
+
+- `NZD $9/month` with a lower quota,
+- `NZD $12/month` with about 50 successful rewrites,
+- or `NZD $19/month` with about 100 successful rewrites.
+
+### Acceptance Criteria
+
+- Every successful and quality-failed rewrite creates or updates a `RewriteCostLog`.
+- OpenAI token usage is captured when the OpenAI API returns usage fields.
+- Sapling call count and character count are captured for draft/final/repair measurements.
+- The admin dashboard is inaccessible to non-admin signed-in users.
+- `/admin` shows aggregate cost and quality metrics.
+- `/admin/rewrites` shows recent request-level rows.
+- A request detail view shows provider-call cost breakdown.
+- Raw user text is hidden by default in production.
+- Unit tests cover cost estimation and admin authorization.
+- Route tests cover non-admin denial and admin access.
+- Deployment docs list the required admin env vars without secret values.

@@ -9,6 +9,10 @@ import {
   markSubscriptionInactive,
   retrieveStripeSubscription,
 } from "../../../../lib/stripe";
+import {
+  buildStripeEventUpdate,
+  safeStripeEventError,
+} from "../../../../lib/stripe-events";
 import { updateStripeCustomerByClerkId } from "../../../../lib/users";
 
 export const dynamic = "force-dynamic";
@@ -21,24 +25,76 @@ function stripeObjectId(value: string | { id: string } | null | undefined) {
   return typeof value === "string" ? value : value.id;
 }
 
-async function markEventProcessed(event: Stripe.Event) {
+async function claimStripeEvent(event: Stripe.Event) {
   const sql = getSql();
   const rows = (await sql`
     INSERT INTO "StripeEvent" (
       "id",
       "type",
-      "createdAt"
+      "status",
+      "attemptCount",
+      "stripeMode",
+      "createdAt",
+      "updatedAt"
     )
     VALUES (
       ${event.id},
       ${event.type},
+      'processing',
+      1,
+      ${event.livemode ? "live" : "test"},
+      now(),
       now()
     )
-    ON CONFLICT ("id") DO NOTHING
+    ON CONFLICT ("id") DO UPDATE SET
+      "status" = 'processing',
+      "attemptCount" = "StripeEvent"."attemptCount" + 1,
+      "lastError" = NULL,
+      "updatedAt" = now()
+    WHERE "StripeEvent"."status" = 'failed'
     RETURNING "id"
   `) as Array<{ id: string }>;
 
   return rows.length === 1;
+}
+
+async function markStripeEventProcessed(event: Stripe.Event) {
+  const sql = getSql();
+  const update = buildStripeEventUpdate({
+    status: "processed",
+    now: new Date(),
+  });
+
+  await sql`
+    UPDATE "StripeEvent"
+    SET
+      "status" = ${update.status},
+      "processedAt" = ${update.processedAt},
+      "failedAt" = ${update.failedAt},
+      "lastError" = ${update.lastError},
+      "updatedAt" = now()
+    WHERE "id" = ${event.id}
+  `;
+}
+
+async function markStripeEventFailed(event: Stripe.Event, error: unknown) {
+  const sql = getSql();
+  const update = buildStripeEventUpdate({
+    status: "failed",
+    error,
+    now: new Date(),
+  });
+
+  await sql`
+    UPDATE "StripeEvent"
+    SET
+      "status" = ${update.status},
+      "processedAt" = ${update.processedAt},
+      "failedAt" = ${update.failedAt},
+      "lastError" = ${update.lastError},
+      "updatedAt" = now()
+    WHERE "id" = ${event.id}
+  `;
 }
 
 async function updateCustomerFromSession(session: Stripe.Checkout.Session) {
@@ -123,9 +179,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid webhook event." }, { status: 400 });
   }
 
-  const shouldProcess = await markEventProcessed(event);
-  if (shouldProcess) {
+  const shouldProcess = await claimStripeEvent(event);
+  if (!shouldProcess) {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
+  try {
     await handleStripeEvent(event);
+    await markStripeEventProcessed(event);
+  } catch (error) {
+    await markStripeEventFailed(event, error);
+    console.error("stripe_webhook_processing_failed", {
+      eventId: event.id,
+      type: event.type,
+      message: safeStripeEventError(error),
+    });
+    return NextResponse.json(
+      { error: "Webhook event processing failed." },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ received: true });

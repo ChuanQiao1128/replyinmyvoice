@@ -1,4 +1,6 @@
 import { optionalEnv } from "./env";
+import { estimateSaplingCostUsd } from "./observability/rewrite-cost";
+import type { RewriteTelemetryCollector } from "./observability/rewrite-telemetry";
 
 export type SignalLabel = "lower" | "low_signal" | "still_high" | "unavailable";
 
@@ -16,6 +18,8 @@ export type WritingSignalResult = {
 
 type MeasureWritingSignalOptions = {
   calibrateSentenceScores?: boolean;
+  role?: "draft_signal" | "candidate_signal" | "repair_signal" | "final_signal";
+  telemetry?: RewriteTelemetryCollector;
 };
 
 export function scoreToPercent(score: number): number {
@@ -93,11 +97,23 @@ export async function measureWritingSignal(
     0,
     Math.min(Number(optionalEnv("WRITING_SIGNAL_RETRY_COUNT", "1")), 2),
   );
+  const role = options.role ?? "candidate_signal";
+  const pricePer1000Chars = Number(
+    optionalEnv("SAPLING_PRICE_PER_1000_CHARS_USD", "0.005"),
+  );
+  const estimatedCostUsd = estimateSaplingCostUsd({
+    characters: text.length,
+    pricePer1000Chars: Number.isFinite(pricePer1000Chars)
+      ? pricePer1000Chars
+      : 0.005,
+  });
 
   for (let attempt = 0; attempt <= retryCount; attempt += 1) {
     const timeout = timeoutSignal(
       Number.isFinite(timeoutSeconds) ? timeoutSeconds : 10,
     );
+    const startedAt = Date.now();
+    const latencyMs = () => Math.max(0, Date.now() - startedAt);
 
     try {
       const response = await fetch("https://api.sapling.ai/api/v1/aidetect", {
@@ -115,6 +131,16 @@ export async function measureWritingSignal(
       });
 
       if (!response.ok) {
+        options.telemetry?.recordProviderCall({
+          provider: "sapling",
+          role,
+          characters: text.length,
+          estimatedCostUsd,
+          latencyMs: latencyMs(),
+          success: false,
+          errorCode: String(response.status),
+        });
+
         if (
           attempt < retryCount &&
           (response.status === 429 || response.status >= 500)
@@ -134,6 +160,15 @@ export async function measureWritingSignal(
         token_probs?: unknown;
       };
       if (typeof payload.score !== "number") {
+        options.telemetry?.recordProviderCall({
+          provider: "sapling",
+          role,
+          characters: text.length,
+          estimatedCostUsd,
+          latencyMs: latencyMs(),
+          success: false,
+          errorCode: "schema_changed",
+        });
         return { aiLikePercent: null, unavailableReason: "schema_changed" };
       }
 
@@ -173,6 +208,15 @@ export async function measureWritingSignal(
         sentenceScores,
       });
 
+      options.telemetry?.recordProviderCall({
+        provider: "sapling",
+        role,
+        characters: text.length,
+        estimatedCostUsd,
+        latencyMs: latencyMs(),
+        success: true,
+      });
+
       return {
         aiLikePercent: calibratedAiLikePercent,
         ...(calibratedAiLikePercent !== rawAiLikePercent
@@ -183,6 +227,15 @@ export async function measureWritingSignal(
         ...(tokenProbabilities ? { tokenProbabilities } : {}),
       };
     } catch {
+      options.telemetry?.recordProviderCall({
+        provider: "sapling",
+        role,
+        characters: text.length,
+        estimatedCostUsd,
+        latencyMs: latencyMs(),
+        success: false,
+        errorCode: "timeout_or_network",
+      });
       if (attempt < retryCount) {
         timeout.clear();
         await sleep(800 * (attempt + 1));
