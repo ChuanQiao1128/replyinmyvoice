@@ -18,6 +18,8 @@ Detailed child plans:
 
 - `docs/superpowers/plans/2026-05-20-dotnet-backend-reliability-fixes.md`
 - `docs/superpowers/plans/2026-05-20-clean-final-quality-gate.md`
+- `docs/superpowers/plans/2026-05-20-adaptive-rewrite-agent-orchestrator.md`
+- `docs/superpowers/plans/2026-05-20-send-ready-structure-rewrite.md`
 
 This file should be updated again if the user adds more required changes before the long run starts.
 
@@ -68,7 +70,8 @@ Do the work in this order. The first two are blocking because they affect every 
 7. Verify and redeploy Azure dev backend.
 8. Package AI Agent Studio evidence.
 9. Implement clean-final rewrite quality gate and redeploy Cloudflare app.
-10. Re-check resume wording against actual deployment architecture.
+10. Implement adaptive rewrite-agent orchestrator with dynamic strategy routing, send-ready gates, and long support-policy eval coverage.
+11. Re-check resume wording against actual deployment architecture.
 
 ## Task 1: Restore `.NET` Buildability
 
@@ -464,6 +467,41 @@ Required:
 - [ ] rerun focused eval;
 - [ ] deploy Cloudflare production app;
 - [ ] smoke `https://replyinmyvoice.com`.
+
+## Task 10: Implement Adaptive Rewrite-Agent Orchestrator
+
+This is the next rewrite-quality track discovered from manual website QA and follow-up design discussion. It must be completed before claiming the rewrite engine can handle varied real customer inputs without manual prompt tuning.
+
+Detailed plan:
+
+```text
+docs/superpowers/plans/2026-05-20-adaptive-rewrite-agent-orchestrator.md
+```
+
+Required:
+
+- [ ] add a bounded adaptive orchestrator around the current fact-reconstruct pipeline;
+- [ ] add an Input Analyzer that selects the initial strategy before first generation;
+- [ ] add a Budget Manager that controls retries, strong-model escalation, and Naturalness Check call counts;
+- [ ] add a Policy / Intent Gate for refund, transfer, cancellation, eligibility, and no-change-without-confirmation cases;
+- [ ] add deterministic checks for broken numbered lists, sentence-per-paragraph formatting, broken quote boundaries, and weak line-split paraphrases;
+- [ ] add a bounded `Rewrite Quality Strategist Agent` that diagnoses failed candidates and chooses targeted sentence repair, full structure rewrite, facts-first reconstruct, support-policy rewrite, strong-model restructure, or quality failure;
+- [ ] add a strategy catalog for targeted sentence repair, full structure rewrite, facts-first reconstruct, support-policy/options rewrite, quote/list-safe rewrite, messy-thread cleanup rewrite, strong-model restructure, and quality failure;
+- [ ] add or refine a customer-support policy/options style card;
+- [ ] update generator/reviewer/finalizer/escalation prompts so long support replies are rebuilt from facts into grouped, send-ready email paragraphs;
+- [ ] route structural failures through the strategist to full restructure escalation instead of sentence-only repair;
+- [ ] add Daniel course-transfer/refund as a named regression case;
+- [ ] expand eval to 60 total cases with staged smoke/focused/full modes, including at least 12 long support-policy cases, at least 6 messy input cases, low-signal original cases, quote/list-heavy cases, and negative-constraint cases;
+- [ ] make customer-usable pass require structural send-readiness, not only fact preservation and Naturalness Check score;
+- [ ] make eval failures automatically create diagnosis tags, strategy decisions, regression tests, and strategy-memory updates during the long run;
+- [ ] record OpenAI/Sapling call counts and estimated cost in the eval output so the 60-case suite is not run wastefully;
+- [ ] deploy Cloudflare production app only after the Daniel regression and expanded long-support eval pass.
+
+The narrower send-ready plan remains useful implementation detail, but is superseded by:
+
+```text
+docs/superpowers/plans/2026-05-20-adaptive-rewrite-agent-orchestrator.md
+```
 
 ## Verification Commands
 

@@ -197,6 +197,40 @@ extract facts -> classify scenario -> load style card -> generate 3 candidates -
 
 For future rewrite work, Sapling is a final reference gate, not prompt input and not a model optimization target. A user-visible successful rewrite must pass fact gates and the Naturalness Check rule: if the draft is above `NATURALNESS_THRESHOLD` (default 40%), the rewrite must be at or below that threshold; if the draft is already at or below the threshold, the rewrite must not raise the signal. If Sapling is unavailable in the fact-reconstruct production route, return a quality-failure response and do not charge usage.
 
+Latest rewrite strategy update on 2026-05-20:
+
+```text
+The rewrite engine must be treated as a bounded adaptive rewrite-agent orchestrator, not a fixed prompt chain. Long support, policy, refund, cancellation, transfer, options, and eligibility-review replies must be rebuilt into send-ready email structure from extracted facts. Do not accept a candidate just because it preserves facts and lowers the Naturalness Check signal if it is only the original text split into many one-sentence paragraphs, contains broken numbered lists, breaks quoted-summary boundaries, or reads like a mechanical support macro.
+```
+
+Required adaptive strategy:
+
+```text
+normalize input -> Input Analyzer -> extract facts with critical/supporting/optional importance -> Style / Intent Card -> Initial Strategy Router -> Budget Manager -> generate candidates -> structured reviewer -> fact gates -> structural send-ready gates -> Policy / Intent Gate -> Naturalness Check gate -> Rewrite Quality Strategist Agent -> selected strategy retry -> final gates -> success or quality failure/no charge.
+```
+
+For long support-policy messages, the generation strategy must group related facts into natural paragraphs:
+
+```text
+1. acknowledge the concrete situation briefly,
+2. explain current status,
+3. explain available options or policy constraints,
+4. ask for the user's preferred next step or confirmation,
+5. preserve any no-change-without-confirmation constraint.
+```
+
+Do not rely on sentence-level repair when the problem is structural. If a candidate has detached numbered-list markers, sentence-per-paragraph formatting, broken quote boundaries, or weak line-split paraphrasing, route it to a full restructure pass from facts instead of repairing one or two sentences.
+
+The rewrite pipeline must include a bounded internal `Rewrite Quality Strategist Agent`. It diagnoses failed candidates using failure kinds such as `fact_loss`, `unsupported_fact`, `broken_numbered_list`, `broken_quote_boundary`, `sentence_per_paragraph`, `line_split_paraphrase`, `support_macro_voice`, `messy_thread_leak`, `quote_or_list_risk`, `signal_not_improved`, and `low_signal_got_worse`, then chooses one allowed next strategy: targeted sentence repair, full structure rewrite, facts-first reconstruct, support-policy/options rewrite, quote/list-safe rewrite, messy-thread cleanup rewrite, strong-model restructure, or quality failure. This agent is the automation layer for eval-driven improvement: during long runs, failed eval cases should produce diagnosis tags, strategy decisions, regression tests, prompt/style-card/routing updates, and strategy-memory notes without waiting for manual website testing from the user.
+
+The Strategy Router must run twice: once before first generation using `InputAnalysis`, and again after failures using gate/reviewer evidence. The runtime loop must include a Budget Manager; adaptive does not mean unlimited retries. For long-run evaluation, expand to a 60-case suite but use staged modes (`smoke`, `focused`, `full`) and record OpenAI/Sapling call counts and estimated cost. The full 60-case suite should run before push/deploy or after major strategy changes, not after every tiny prompt edit.
+
+The next implementation plan for this is:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/superpowers/plans/2026-05-20-adaptive-rewrite-agent-orchestrator.md
+```
+
 Current long-run implementation target:
 
 ```text
@@ -2074,7 +2108,7 @@ The core product value is not a generic rewrite. It is:
 3. produce a candidate rewrite,
 4. measure the before/after writing signal,
 5. repair the specific failure patterns,
-6. return the best usable result that improves the signal and preserves facts whenever possible.
+6. return only a fact-safe, structurally send-ready result that improves the signal whenever possible.
 
 If the system cannot produce an improved, fact-safe candidate within the allowed internal attempts, return a quality-failure/no-charge response rather than presenting a weak rewrite as successful.
 
@@ -2126,8 +2160,8 @@ The next implementation must upgrade the rewrite workflow from a simple retry to
    - required facts to preserve
 6. Measure repaired candidate.
 7. Select the best candidate that passes quality gates and preserves facts.
-8. If no strict passing candidate exists, return the best complete candidate with a review note.
-9. If no measured candidate is complete, generate a guaranteed facts-first fallback and return it with a review note.
+8. If no strict passing candidate exists, generate a guaranteed facts-first structured fallback and run the same fact, structural, and Naturalness Check gates.
+9. If the guaranteed fallback is still not fact-safe, structurally send-ready, or signal-safe, return a quality-failure/no-charge response rather than presenting a weak rewrite as successful.
 
 Retries must be strategy changes, not blind repeats. For example, if a customer-support reply remains high, the repair should explicitly remove macro-like phrasing such as `I see how this can be confusing`, `From what you described`, `It seems`, `To help clarify`, and `For next steps`, while preserving the needed billing explanation and next step.
 
@@ -2140,7 +2174,9 @@ Minimum evaluation before push/deploy:
 - At least 25 total measured cases.
 - At least 10 long cases of 300-900 words.
 - At least 5 long customer-support cases.
+- At least 12 long support-policy/options cases before the next rewrite-quality deployment.
 - Include the Priya billing/proration case that previously failed with `89 -> 99/100`.
+- Include the Daniel course-transfer/refund regression with cohort dates, refund policy, options, quoted-summary risk, and no-change-without-confirmation facts.
 - Include at least 3 cases where the first candidate fails and a repair pass must improve it.
 
 For every case, update `docs/scenario-evaluation-results.md` with:
@@ -2159,6 +2195,7 @@ For every case, update `docs/scenario-evaluation-results.md` with:
 - expected facts
 - facts preserved
 - unsupported facts introduced
+- send-ready structural issues such as broken numbered lists, sentence-per-paragraph formatting, broken quote boundaries, and weak line-split paraphrasing
 - final decision: pass/fail
 
 ### Deployment Gate
@@ -2169,6 +2206,8 @@ Do not push and deploy the next rewrite-engine update unless all of these are tr
 - At least 70% of measured rewrites satisfy the current 40% Naturalness Check threshold rule.
 - 100% of measured cases avoid a final selected rewrite that is worse than the draft when scores are available.
 - The Priya long customer-support regression case passes.
+- The Daniel long support-policy regression case passes.
+- 0 successful eval outputs contain broken numbered lists, sentence-per-paragraph formatting, broken quote boundaries, or weak line-split paraphrasing.
 - All rejected-candidate behavior is documented in `docs/scenario-evaluation-results.md`.
 - Unit tests cover candidate rejection, repair pass invocation, no-usage-charge on quality failure, and UI rendering for non-improved signal states.
 
@@ -2181,6 +2220,6 @@ Production request cap for the next implementation:
 - up to 2 targeted repair candidates
 - up to 5 rewrite writing-signal calls
 
-If the bounded production loop cannot produce a passing candidate, return the best complete or guaranteed facts-first fallback with a review note. Do not leave the user with a blank result.
+If the bounded production loop cannot produce a candidate that passes fact, structural send-ready, and Naturalness Check gates, return a quality-failure/no-charge response. Do not return a weak fallback as a successful rewrite.
 
 ## Imported Claude Cowork project instructions

@@ -22,7 +22,7 @@ export function getFactReconstructConfig(): FactReconstructConfig {
   );
 
   return {
-    strategyVersion: "fact_reconstruct",
+    strategyVersion: "adaptive_rewrite_orchestrator",
     naturalnessThreshold: numberEnv("NATURALNESS_THRESHOLD", 40),
     maxEscalations: Math.max(0, numberEnv("MAX_ESCALATIONS", 1)),
     models: {

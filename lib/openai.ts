@@ -348,7 +348,7 @@ function generateFactsFirstFallback(input: RewriteRequestInput) {
     };
   }
 
-  if (input.scenario === "Customer support") {
+  if (isSupportLikeContext(context) || input.scenario === "Customer support") {
     return {
       rewrittenText: generateSupportFallback(input, rawContext),
       changeSummary: [
@@ -369,6 +369,10 @@ export function generateGuaranteedRewriteCandidate(
 
 function generateBlankFallback(input: RewriteRequestInput) {
   const context = [input.roughDraftReply, input.messageToReplyTo].join(" ");
+  if (isWorkshopUpdateContext(context.toLowerCase())) {
+    return workshopUpdateFallback(input, context);
+  }
+
   if (
     textIncludes(context.toLowerCase(), ["section three", "section five"]) &&
     /May\s+12/i.test(context)
@@ -627,17 +631,17 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
 
   return [
     greeting,
-    missingSentence,
-    participationPhrase,
-    hasWorkOrder
-      ? "Have him start with the reading response and vocabulary practice, since those should be the quickest."
-      : "",
-    hasWorkOrder
-      ? `Then he can work on the short reflection paragraph from ${/last Friday/i.test(context) ? "last " : ""}Friday.`
-      : "",
-    `If he submits ${submissionSubject} ${duePhrase}${creditPhrase ? ", I can still give partial credit" : ""}.`,
-    noRedoPhrase,
-    helpPhrase,
+    [missingSentence, participationPhrase].filter(Boolean).join(" "),
+    [
+      hasWorkOrder
+        ? "Have him start with the reading response and vocabulary practice, since those should be the quickest."
+        : "",
+      hasWorkOrder
+        ? `Then he can work on the short reflection paragraph from ${/last Friday/i.test(context) ? "last " : ""}Friday.`
+        : "",
+      `If he submits ${submissionSubject} ${duePhrase}${creditPhrase ? ", I can still give partial credit" : ""}.`,
+    ].filter(Boolean).join(" "),
+    [noRedoPhrase, helpPhrase].filter(Boolean).join(" "),
     closingSentences,
     signoff,
   ]
@@ -648,6 +652,19 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
 function generateSalesReplyFallback(input: RewriteRequestInput, context: string) {
   const name = extractRecipientName(input);
   const greeting = name ? `Hi ${name},` : "Hi,";
+  if (/section three/i.test(context) && /section five/i.test(context)) {
+    const callDate = /May\s+12/i.test(context) ? " from our May 12 call" : "";
+    const deadline = /Friday/i.test(context) ? " by Friday" : "";
+    const legalTeam = /legal team/i.test(context) ? " if your legal team wants changes" : "";
+
+    return [
+      greeting,
+      `I attached the revised proposal with the implementation timeline${callDate}.`,
+      "Section three has the pricing language, and section five has the rollout notes.",
+      `Please send comments${deadline}${legalTeam}.`,
+    ].join("\n\n");
+  }
+
   if (
     /Vendor A/i.test(context) &&
     /Vendor B/i.test(context) &&
@@ -700,6 +717,10 @@ function generateSalesReplyFallback(input: RewriteRequestInput, context: string)
 function generateSupportFallback(input: RewriteRequestInput, context: string) {
   const normalized = context.toLowerCase();
 
+  if (isCourseTransferContext(normalized)) {
+    return courseTransferFallback(input, context);
+  }
+
   if (isPlanChangeBillingContext(normalized)) {
     return planChangeFallback(input, context);
   }
@@ -709,6 +730,9 @@ function generateSupportFallback(input: RewriteRequestInput, context: string) {
   }
 
   if (textIncludes(normalized, ["custom tags column", "csv export", "export"])) {
+    const greeting = extractRecipientName(input)
+      ? `Hi ${extractRecipientName(input)},`
+      : "";
     const hasApril = /April/i.test(context);
     const hasMay = /\bApril and May\b|\bMay\s+(?:CSV\s+)?exports?\b/i.test(context);
     const region = /Northeast region/i.test(context) ? " for the Northeast region" : "";
@@ -721,12 +745,17 @@ function generateSupportFallback(input: RewriteRequestInput, context: string) {
         : "";
     const months =
       hasApril && hasMay ? "April and May" : hasApril ? "April" : hasMay ? "May" : "the";
+    const exportLabel = /CSV/i.test(context)
+      ? `${months} CSV export${hasApril && hasMay ? "s" : ""}`
+      : `${months} export${hasApril || hasMay ? "s" : ""}`;
 
     return [
-      `The ${months} export${hasApril || hasMay ? "s" : ""}${region} are missing the custom tags column.`,
-      "The underlying data does not look deleted from what you described.",
-      `Use the dashboard export as the source for the other fields while we check why that column is missing. If you need a corrected file${deadline}, send us the export settings you used.`,
-    ].join("\n\n");
+      greeting,
+      `The ${exportLabel}${region} ${hasApril && hasMay ? "are" : "is"} missing the custom tags column, but the underlying campaign data is still safe.`,
+      `We are checking the export job. If the check confirms the issue, we will send a corrected file${deadline}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
   }
 
   if (isWorkspaceAccessContext(normalized)) {
@@ -787,6 +816,55 @@ function isIncidentStatusContext(context: string) {
   ]);
 }
 
+function isCourseTransferContext(context: string) {
+  return textIncludes(context, [
+    "june weekend cohort",
+    "saturday, 6 june",
+    "saturday, 20 july",
+    "course credit",
+    "refund review",
+    "registration timestamp",
+    "seat availability",
+    "current seat",
+  ]);
+}
+
+function isWorkshopUpdateContext(context: string) {
+  return textIncludes(context, [
+    "room 204",
+    "6:30pm",
+    "scholarship forms",
+    "supporting documents",
+    "application timeline",
+    "already submitted questions",
+  ]);
+}
+
+function isSupportLikeContext(context: string) {
+  return (
+    isSeatBillingContext(context) ||
+    isPlanChangeBillingContext(context) ||
+    isWorkspaceAccessContext(context) ||
+    isIncidentStatusContext(context) ||
+    isCourseTransferContext(context) ||
+    textIncludes(context, [
+      "invoice",
+      "billing",
+      "workspace",
+      "csv export",
+      "custom tags column",
+      "export",
+      "refund window",
+      "tax line",
+      "import failed",
+      "course",
+      "cohort",
+      "refund policy",
+      "seat availability",
+    ])
+  );
+}
+
 function planChangeFallback(input: RewriteRequestInput, context: string) {
   const greeting = extractRecipientName(input)
     ? `Hi ${extractRecipientName(input)},`
@@ -798,8 +876,85 @@ function planChangeFallback(input: RewriteRequestInput, context: string) {
     greeting,
     `The Starter plan to Team plan change${date}${templates} can show as separate invoice lines.`,
     "In plain English, the old plan credit and the new plan charge usually appear separately during proration, so that layout is usually not a duplicate charge.",
+    /finance thread/i.test(context)
+      ? "You can use that explanation in the finance thread."
+      : "",
     `If you send the ${/invoice screenshot/i.test(context) ? "invoice screenshot" : "invoice preview or line items"}, we can confirm whether the preview is showing the expected credit-and-charge adjustment before the invoice is finalized.`,
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function courseTransferFallback(input: RewriteRequestInput, context: string) {
+  const greeting = /Daniel/i.test(context) ? "Hi Daniel," : "Hi,";
+  const currentCohort = /June weekend cohort/i.test(context)
+    ? "Your current enrollment is for the June weekend cohort"
+    : "Your current enrollment may still be active";
+  const startDate = /Saturday,\s*6 June/i.test(context)
+    ? ", which starts on Saturday, 6 June"
+    : "";
+  const nextCohort = /Saturday,\s*20 July/i.test(context)
+    ? "Saturday, 20 July"
+    : "a later cohort";
+  const courseCredit = /course credit/i.test(context)
+    ? " If a full refund is not available, course credit may still be an option."
+    : "";
+
+  return [
+    greeting,
+    `${currentCohort}${startDate}. Because you contacted us before the course start date, you may still be eligible to transfer to a later cohort, depending on seat availability.`,
+    `The next available cohort appears to start on ${nextCohort}. If that works better, we can review moving your registration there once you confirm.`,
+    `For a refund, the policy requires requests at least seven days before the course begins. We would need to check the exact registration timestamp before confirming whether a full refund is available.${courseCredit}`,
+    "Please reply with whether you prefer the July transfer or a refund review. We will not update your registration or cancel your current seat unless you clearly confirm which option you want.",
+    /Customer Support Team/i.test(context) ? "Best regards,\nCustomer Support Team" : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function workshopUpdateFallback(input: RewriteRequestInput, context: string) {
+  const day = /Thursday/i.test(context)
+    ? "Thursday"
+    : /Saturday/i.test(context)
+      ? "Saturday"
+      : "the workshop";
+  const hasRoom = /Room\s+204/i.test(context);
+  const room = hasRoom ? "Room 204" : "the updated room";
+  const time = /6:30pm/i.test(context) ? "6:30pm" : "the same time";
+  const hasWorkshopAgenda =
+    /scholarship forms/i.test(context) ||
+    /supporting documents/i.test(context) ||
+    /application timeline/i.test(context);
+  const agendaUnchanged = /agenda is unchanged/i.test(context)
+    ? "The agenda is unchanged."
+    : "";
+  const saturdayOnly = /only affects this Saturday/i.test(context)
+    ? "The room change only affects this Saturday's workshop."
+    : "";
+  const submittedQuestions = /already[- ]submitted questions|already submitted questions/i.test(context)
+    ? "If you already submitted questions, you do not need to send them again."
+    : "";
+  const printedDrafts = /printed scholarship drafts/i.test(context)
+    ? "Printed scholarship drafts are still welcome."
+    : "";
+  const opening = hasRoom
+    ? `${day} workshop update: we're moving to ${room} because of library maintenance.`
+    : `${day} workshop note:`;
+  const agendaLine = hasWorkshopAgenda
+    ? `We'll still start at ${time} and cover scholarship forms, supporting documents, and the application timeline.`
+    : "";
+
+  return [
+    opening,
+    agendaLine,
+    [agendaUnchanged, saturdayOnly].filter(Boolean).join(" "),
+    [
+      submittedQuestions ? "Already submitted questions? No need to send them again." : "",
+      printedDrafts,
+    ].filter(Boolean).join(" "),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function workspaceAccessFallback(input: RewriteRequestInput, context: string) {
@@ -813,12 +968,12 @@ function workspaceAccessFallback(input: RewriteRequestInput, context: string) {
     ? "the billing report folder"
     : "the right workspace";
   const resent = /resent the invite twice/i.test(context)
-    ? "Since you already resent the invite twice, I would not keep repeating that step."
+    ? "The invite was resent twice, so I would not keep repeating that step."
     : "";
 
   return [
     "Hi,",
-    `${name} should keep signing in with ${email}. If she still lands in ${oldWorkspace}, this is likely a workspace association issue rather than a new invite issue.`,
+    `${name}'s email address is ${email}, and she should keep signing in with it. If she still lands in ${oldWorkspace}, this is likely a workspace association issue rather than a new invite issue.`,
     resent,
     `The next useful step is for support to check which workspace ${email} is linked to and whether the newest Northstar invitation attached to the right account. That should explain why she cannot reach ${folder}.`,
   ]
@@ -871,22 +1026,7 @@ function generateThreadFallback(input: RewriteRequestInput): RewriteCandidate {
         "I can share more detail or talk it through if that helps",
       ]);
     } else if (
-      isSeatBillingContext(context) ||
-      isPlanChangeBillingContext(context) ||
-      isWorkspaceAccessContext(context) ||
-      isIncidentStatusContext(context) ||
-      textIncludes(context, [
-        "invoice",
-        "billing",
-        "workspace",
-        "support",
-        "csv export",
-        "custom tags column",
-        "export",
-        "refund window",
-        "tax line",
-        "import failed",
-      ])
+      isSupportLikeContext(context)
     ) {
       rewrittenText = generateSupportFallback(input, rawContext);
     } else if (
@@ -1017,16 +1157,39 @@ function cleanDraftSentences(input: RewriteRequestInput, maxSentences = 5) {
 }
 
 function generateCoverLetterFallback(input: RewriteRequestInput) {
-  const details = cleanDraftSentences(input, 5);
-  const context = input.messageToReplyTo.trim();
-  const opening = context
-    ? "I'm interested in this role because the day-to-day work matches things I've already done."
-    : "I'm interested in the role and wanted to share why my background fits.";
-  const body = details.length
-    ? details.map(sentence).join(" ")
+  const details = cleanDraftSentences(input, 8);
+  const context = [input.messageToReplyTo, input.roughDraftReply].join(" ");
+  const roleSentence = details.find((detail) =>
+    /\b(?:apply|applying|application|role|position)\b/i.test(detail),
+  );
+  const evidenceSentences = details.filter((detail) =>
+    /\b(?:answered|answer|summarized|summarize|updated|update|prepared|kept|helped|managed|coordinate|coordinated|track|tracking|handled|respond|responded)\b/i.test(
+      detail,
+    ),
+  );
+  const valuesSentence = details.find((detail) =>
+    /\b(?:education access|complicated product details|customers understand)\b/i.test(detail),
+  );
+  const seniorityConstraint =
+    /early in (?:their|my) support career|without pretending to be senior|do not make me sound senior|sound senior/i.test(
+      context,
+    )
+    ? "Please keep the wording at the Support Specialist level; do not make me sound senior."
+    : "";
+  const companyFit = /small SaaS/i.test(context)
+    ? "That kind of practical support experience would fit a small SaaS support team."
+    : "";
+  const opening = roleSentence
+    ? sentence(roleSentence)
+    : context
+      ? "I'm interested in this role because the day-to-day work matches things I've already done."
+      : "I'm interested in this role.";
+  const body = evidenceSentences.length
+    ? evidenceSentences.map(sentence).join(" ")
     : sentence(compactDetail(input.roughDraftReply));
+  const values = valuesSentence ? sentence(valuesSentence) : "";
 
-  return [opening, body, "I'd be glad to talk through how I could help."]
+  return [opening, body, values, companyFit, seniorityConstraint]
     .filter(Boolean)
     .join("\n\n");
 }

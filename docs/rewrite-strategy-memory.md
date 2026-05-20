@@ -468,3 +468,88 @@ Regression tests:
 - `rewrite-pipeline-checks.test.ts` covers deterministic meta-language detection.
 - `rewrite-pipeline.test.ts` verifies a Sapling-passing meta-language final is repaired before return.
 - `rewrite-pipeline-model.test.ts` verifies finalizer, targeted repair, and escalation prompts forbid internal note leakage.
+
+## 2026-05-20 Send-Ready Structure Rewrite
+
+Problem:
+
+- Manual website QA found a long customer-support course-transfer/refund reply that preserved facts but was not send-ready.
+- The output mostly preserved the original sentence order and split nearly every sentence into its own paragraph.
+- The output broke numbered-list formatting with detached `1.` and `2.` markers.
+- The output broke the quoted-summary boundary by merging a quoted block with the next instruction.
+- The output still sounded like a support macro even though the Naturalness Check/fact gates could pass.
+
+Root cause:
+
+- Previous evaluation focused too heavily on fact preservation and Naturalness Check scores.
+- The 40-case focused eval had many short draft-only samples and not enough long support-policy/options samples.
+- Customer-usable pass did not require realistic email structure.
+- Sentence-level repair can preserve a bad structure when the real problem is paragraph/list/quote organization.
+
+Promoted strategy:
+
+- Treat long support, policy, refund, cancellation, transfer, options, and eligibility-review replies as structured communication tasks.
+- Generate from extracted facts into a fresh email structure instead of paraphrasing sentence by sentence.
+- For long support-policy messages, group facts into natural paragraphs:
+  1. concrete acknowledgement,
+  2. current status,
+  3. available option or policy constraint,
+  4. user confirmation / next step,
+  5. no-change-without-confirmation constraint when present.
+- Reject candidates that only line-split or lightly paraphrase the original.
+- Reject detached numbered-list markers, sentence-per-paragraph formatting, and broken quote boundaries.
+- Route structural failures to full restructure escalation, not targeted sentence repair.
+
+Required regression:
+
+- Add `support-02-daniel-course-transfer-refund` to `scripts/eval-scenarios.ts`.
+- Expected facts include Daniel, changed work schedule, June weekend cohort, Saturday 6 June, Saturday 20 July, seat availability, course access/materials/live session links, seven-day refund rule, exact registration timestamp, full refund, course credit, future session, July cohort transfer, refund review, no update/cancel without clear confirmation, and Customer Support Team.
+
+Verification requirement:
+
+- Expanded eval must include at least 12 long support-policy/options cases.
+- Customer-usable pass must require structural send-readiness, not only fact preservation and signal improvement.
+- 0 successful eval outputs may contain broken numbered lists, sentence-per-paragraph formatting, broken quote boundaries, or weak line-split paraphrasing.
+
+Implementation plan:
+
+- `docs/superpowers/plans/2026-05-20-send-ready-structure-rewrite.md`
+
+## 2026-05-20 Adaptive Rewrite Agent Orchestrator
+
+Updated direction:
+
+- The rewrite system should not be treated as one fixed prompt chain.
+- The safe outer frame stays fixed: facts, review, fact gates, structural gates, Naturalness Check, budget, no-charge quality failure.
+- The inner strategy must be dynamic: the system should diagnose why a candidate failed and choose a different bounded strategy.
+
+Required internal agent:
+
+- `Rewrite Quality Strategist Agent`
+
+Responsibilities:
+
+- use `InputAnalysis` to choose the first strategy before generation;
+- read deterministic issues, reviewer issues, missing facts, unsupported facts, Naturalness Check category, high-risk sentence count, scenario, style card, and failed attempt count;
+- classify failure kinds such as `fact_loss`, `unsupported_fact`, `broken_numbered_list`, `broken_quote_boundary`, `sentence_per_paragraph`, `line_split_paraphrase`, `support_macro_voice`, `messy_thread_leak`, `quote_or_list_risk`, `signal_not_improved`, and `low_signal_got_worse`;
+- choose one allowed next strategy: targeted sentence repair, full structure rewrite, facts-first reconstruct, support-policy/options rewrite, quote/list-safe rewrite, messy-thread cleanup rewrite, strong-model restructure, or quality failure.
+
+Runtime rule:
+
+- Every retry must be a strategy change, not a blind repeat.
+- The orchestrator is bounded; it cannot create unlimited attempts.
+- A Budget Manager must approve retries, strong-model escalation, and additional Naturalness Check calls.
+- Support-policy replies must pass a Policy / Intent Gate for refund/transfer/cancellation/eligibility/no-change-without-confirmation constraints.
+- A successful result must pass fact, unsupported-fact, structural send-ready, and Naturalness Check gates.
+- If no bounded attempt passes, return quality failure/no charge rather than exposing a weak rewrite.
+
+Development rule:
+
+- Eval failures should automatically produce diagnosis tags, strategy decisions, regression tests, prompt/style-card/routing updates, and strategy-memory notes.
+- Do not wait for the user to discover obvious failures through manual website testing.
+- Promote lessons only after regression tests and eval pass.
+- Expand the eval suite to 60 cases, but run it in staged modes (`smoke`, `focused`, `full`) and record OpenAI/Sapling usage so strategy work does not waste calls.
+
+Implementation plan:
+
+- `docs/superpowers/plans/2026-05-20-adaptive-rewrite-agent-orchestrator.md`

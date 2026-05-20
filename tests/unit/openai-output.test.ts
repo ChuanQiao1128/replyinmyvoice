@@ -430,8 +430,9 @@ describe("thread fallback rewrite pass", () => {
     const result = generateGuaranteedRewriteCandidate(input);
 
     expect(result.rewrittenText).toContain("Mina");
+    expect(result.rewrittenText).toContain("email address");
     expect(result.rewrittenText).toContain("mina@northstar.example");
-    expect(result.rewrittenText).toContain("resent the invite twice");
+    expect(result.rewrittenText).toContain("invite was resent twice");
     expect(result.rewrittenText).toContain("billing report folder");
     expect(result.rewrittenText).not.toContain("invoice preview");
     expect(result.rewrittenText).not.toContain("temporary users");
@@ -538,5 +539,33 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).toContain("two other vendors");
     expect(result.rewrittenText).toContain("first week of June");
     expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps support-specialist seniority constraints in cover-letter fallback", () => {
+    const input = {
+      scenario: "Cover letter",
+      messageToReplyTo:
+        "Role: Support Specialist for a small SaaS company. The applicant is early in their support career and wants the letter to sound confident without pretending to be senior. They have direct experience answering email and chat, noticing recurring customer issues, summarizing patterns for the product team, and updating help center articles.",
+      roughDraftReply:
+        "I am excited to submit my application for the Support Specialist role. In my previous position, I answered customer questions through email and chat, summarized recurring issues for our product team, and updated help center articles when we noticed the same question coming up repeatedly. I enjoy making complicated product details easier for customers to understand.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Support Specialist");
+    expect(result.rewrittenText).toContain("email and chat");
+    expect(result.rewrittenText).toContain("recurring issues");
+    expect(result.rewrittenText).toContain("product team");
+    expect(result.rewrittenText).toContain("help center articles");
+    expect(result.rewrittenText).toContain("small SaaS");
+    expect(result.rewrittenText).toMatch(
+      /early in my support career|Support Specialist level|without pretending to be senior|do not make me sound senior/i,
+    );
   });
 });

@@ -81,4 +81,55 @@ describe("measureWritingSignal", () => {
       { sentence: "Jordan can come by Tuesday.", aiLikePercent: 12 },
     ]);
   });
+
+  it("can calibrate high overall scores when all sentence scores are low", async () => {
+    process.env.WRITING_SIGNAL_PROVIDER = "sapling";
+    process.env.SAPLING_API_KEY = "test-sapling-key";
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          score: 1,
+          sentence_scores: [
+            { sentence: "First sentence.", score: 0 },
+            { sentence: "Second sentence.", score: 0.08 },
+            { sentence: "Third sentence.", score: 0 },
+          ],
+        }),
+      ),
+    );
+
+    const raw = await measureWritingSignal("First sentence. Second sentence. Third sentence.");
+    const calibrated = await measureWritingSignal(
+      "First sentence. Second sentence. Third sentence.",
+      { calibrateSentenceScores: true },
+    );
+
+    expect(raw.aiLikePercent).toBe(100);
+    expect(calibrated.aiLikePercent).toBe(3);
+    expect(calibrated.rawAiLikePercent).toBe(100);
+  });
+
+  it("calibrates short rewrites when provider sentence scores are consistently low", async () => {
+    process.env.WRITING_SIGNAL_PROVIDER = "sapling";
+    process.env.SAPLING_API_KEY = "test-sapling-key";
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          score: 1,
+          sentence_scores: [{ sentence: "Short factual rewrite.", score: 0 }],
+        }),
+      ),
+    );
+
+    const result = await measureWritingSignal("Short factual rewrite.", {
+      calibrateSentenceScores: true,
+    });
+
+    expect(result.aiLikePercent).toBe(0);
+    expect(result.rawAiLikePercent).toBe(100);
+  });
 });

@@ -4,6 +4,7 @@ export type SignalLabel = "lower" | "low_signal" | "still_high" | "unavailable";
 
 export type WritingSignalResult = {
   aiLikePercent: number | null;
+  rawAiLikePercent?: number;
   unavailableReason?: string;
   sentenceScores?: Array<{
     sentence: string;
@@ -11,6 +12,10 @@ export type WritingSignalResult = {
   }>;
   tokens?: string[];
   tokenProbabilities?: number[];
+};
+
+type MeasureWritingSignalOptions = {
+  calibrateSentenceScores?: boolean;
 };
 
 export function scoreToPercent(score: number): number {
@@ -73,6 +78,7 @@ function sleep(milliseconds: number) {
 
 export async function measureWritingSignal(
   text: string,
+  options: MeasureWritingSignalOptions = {},
 ): Promise<WritingSignalResult> {
   const provider = optionalEnv("WRITING_SIGNAL_PROVIDER", "sapling");
   const apiKey = optionalEnv("SAPLING_API_KEY");
@@ -160,8 +166,18 @@ export async function measureWritingSignal(
           )
         : undefined;
 
+      const rawAiLikePercent = scoreToPercent(payload.score);
+      const calibratedAiLikePercent = calibrateWithSentenceScores({
+        calibrate: options.calibrateSentenceScores === true,
+        rawAiLikePercent,
+        sentenceScores,
+      });
+
       return {
-        aiLikePercent: scoreToPercent(payload.score),
+        aiLikePercent: calibratedAiLikePercent,
+        ...(calibratedAiLikePercent !== rawAiLikePercent
+          ? { rawAiLikePercent }
+          : {}),
         ...(sentenceScores ? { sentenceScores } : {}),
         ...(tokens ? { tokens } : {}),
         ...(tokenProbabilities ? { tokenProbabilities } : {}),
@@ -180,4 +196,28 @@ export async function measureWritingSignal(
   }
 
   return { aiLikePercent: null, unavailableReason: "provider_error" };
+}
+
+function calibrateWithSentenceScores({
+  calibrate,
+  rawAiLikePercent,
+  sentenceScores,
+}: {
+  calibrate: boolean;
+  rawAiLikePercent: number;
+  sentenceScores?: Array<{ aiLikePercent: number }>;
+}) {
+  if (!calibrate || rawAiLikePercent <= 50 || !sentenceScores?.length) {
+    return rawAiLikePercent;
+  }
+
+  if (sentenceScores.every((sentence) => sentence.aiLikePercent <= 40)) {
+    const average =
+      sentenceScores.reduce((sum, sentence) => sum + sentence.aiLikePercent, 0) /
+      sentenceScores.length;
+
+    return Math.round(average);
+  }
+
+  return rawAiLikePercent;
 }

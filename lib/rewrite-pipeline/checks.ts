@@ -21,6 +21,24 @@ function normalize(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function paragraphs(value: string) {
+  return value
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+function wordCount(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function sentenceCount(value: string) {
+  return value
+    .split(/[.!?]+(?:\s+|$)/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean).length;
+}
+
 function containsLimitedPhrase(text: string, styleCard: StyleCard) {
   const normalizedText = normalize(text);
 
@@ -28,6 +46,17 @@ function containsLimitedPhrase(text: string, styleCard: StyleCard) {
     normalizedText.includes(normalize(phrase)),
   );
 }
+
+const genericLockedFactTokens = new Set([
+  "specific",
+  "there",
+  "are",
+  "clearly",
+  "exactly",
+  "current",
+  "provided",
+  "stated",
+]);
 
 function preservesMustNotChange(text: string, facts: ExtractedFacts) {
   const normalizedText = normalize(text);
@@ -41,7 +70,8 @@ function preservesMustNotChange(text: string, facts: ExtractedFacts) {
     const tokens = normalizedFact
       .replace(/[^a-z0-9:$.'-]+/g, " ")
       .split(/\s+/)
-      .filter((token) => token.length > 2);
+      .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
+      .filter((token) => token.length > 2 && !genericLockedFactTokens.has(token));
 
     if (tokens.length > 5) {
       return false;
@@ -80,6 +110,65 @@ function detectMetaLanguage(text: string) {
     .map(([, issue]) => issue);
 }
 
+export function detectStructureIssues(
+  input: RewriteRequestInput,
+  rewrittenText: string,
+) {
+  const issues: string[] = [];
+  const inputParagraphs = paragraphs(
+    [input.messageToReplyTo, input.roughDraftReply].filter(Boolean).join("\n\n"),
+  );
+  const outputParagraphs = paragraphs(rewrittenText);
+  const outputWords = wordCount(rewrittenText);
+  const detachedNumberedItem =
+    /(?:^|\n)\s*\d+[.)]\s*(?:\n|$)/.test(rewrittenText) ||
+    /\b(?:options?|steps?|choices?)\s*:\s*\d+[.)]\s*(?:\n|$)/i.test(
+      rewrittenText,
+    );
+  const detachedBulletItem = /(?:^|\n)\s*[-*]\s*(?:\n|$)/.test(rewrittenText);
+
+  if (detachedNumberedItem) {
+    issues.push("structure:broken_numbered_list");
+  }
+
+  if (detachedBulletItem) {
+    issues.push("structure:broken_bullet_list");
+  }
+
+  const singleSentenceParagraphs = outputParagraphs.filter(
+    (paragraph) => sentenceCount(paragraph) <= 1 && wordCount(paragraph) <= 45,
+  ).length;
+  if (
+    outputWords >= 110 &&
+    outputParagraphs.length >= 8 &&
+    singleSentenceParagraphs / outputParagraphs.length >= 0.65
+  ) {
+    issues.push("structure:sentence_per_paragraph");
+  }
+
+  if (
+    outputWords >= 140 &&
+    inputParagraphs.length > 0 &&
+    outputParagraphs.length >= Math.max(8, inputParagraphs.length * 1.8)
+  ) {
+    issues.push("structure:line_split_paraphrase");
+  }
+
+  if (/["“][^"”]*\n{2,}[^"”]*["”]/.test(rewrittenText)) {
+    issues.push("structure:broken_quote_boundary");
+  }
+
+  if (
+    /(?:^|\n)\s*(from:|sent:|to:|subject:|on .+ wrote:|[-]{2,}\s*forwarded message|[-]{2,}\s*original message)/i.test(
+      rewrittenText,
+    )
+  ) {
+    issues.push("structure:messy_thread_leak");
+  }
+
+  return issues;
+}
+
 export function deterministicCheck(
   input: RewriteRequestInput,
   facts: ExtractedFacts,
@@ -98,6 +187,7 @@ export function deterministicCheck(
     ? ["malformed:dangling_closing"]
     : [];
   const metaLanguageIssues = detectMetaLanguage(rewrittenText);
+  const structureIssues = detectStructureIssues(input, rewrittenText);
   const issues = [
     ...missingFacts.map((fact) => `missing:${fact}`),
     ...unsupportedFacts.map((fact) => `unsupported:${fact}`),
@@ -105,6 +195,7 @@ export function deterministicCheck(
     ...limitedPhrases.map((phrase) => `template_phrase:${phrase}`),
     ...malformedIssues,
     ...metaLanguageIssues,
+    ...structureIssues,
   ];
 
   return {

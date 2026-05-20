@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  detectStructureIssues,
   deterministicCheck,
   llmFactCheckPasses,
 } from "../../lib/rewrite-pipeline/checks";
@@ -182,6 +183,57 @@ describe("deterministicCheck", () => {
 
     expect(result.safe).toBe(false);
     expect(result.issues).toContain("meta_language:source_reference");
+  });
+
+  it("rejects detached numbered-list markers", () => {
+    const result = deterministicCheck(
+      input,
+      {
+        recipient_name: "",
+        sender_name_or_role: "",
+        people_mentioned: [],
+        main_purpose: "",
+        key_facts: [],
+        required_actions: [],
+        deadlines: [],
+        dates_times: [],
+        positive_notes: [],
+        concerns: [],
+        policies_or_conditions: [],
+        available_support: [],
+        clarifications: [],
+        facts_that_must_not_change: [],
+        sensitive_points: [],
+        original_tone: "",
+      },
+      "In plain terms, you have two possible options: 1.\n\nYou can transfer your enrollment.\n\n2.\n\nYou can request a refund review.",
+      styleCard,
+    );
+
+    expect(result.safe).toBe(false);
+    expect(result.issues).toContain("structure:broken_numbered_list");
+  });
+
+  it("detects sentence-per-paragraph support replies", () => {
+    const rewritten = [
+      "Hi Daniel,",
+      "Thank you for contacting us and explaining your situation.",
+      "Your current enrollment is for the June weekend cohort.",
+      "The cohort is scheduled to begin on Saturday, 6 June.",
+      "You contacted us before the course start date.",
+      "You may still be eligible to move to a later cohort.",
+      "The next available cohort starts on Saturday, 20 July.",
+      "The transfer depends on seat availability.",
+      "Refund requests must be submitted at least seven days before the course begins.",
+      "We need to review the exact registration timestamp before confirming a full refund.",
+      "If a full refund is not available, course credit may still be possible.",
+      "Please confirm whether you prefer a transfer or a refund review.",
+      "We will not update your registration unless you confirm.",
+    ].join("\n\n");
+
+    expect(detectStructureIssues(input, rewritten)).toContain(
+      "structure:sentence_per_paragraph",
+    );
   });
 });
 

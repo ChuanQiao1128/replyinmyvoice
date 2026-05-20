@@ -17,6 +17,41 @@ export type ExtractedFacts = {
   original_tone: string;
 };
 
+export type RequiredFact = {
+  id: string;
+  text: string;
+  importance: "critical" | "supporting" | "optional";
+  canBeRephrased: boolean;
+  evidence?: string;
+};
+
+export type InputAnalysis = {
+  inputKind:
+    | "draft_only"
+    | "reply_with_context"
+    | "messy_thread"
+    | "quote_or_list_heavy";
+  scenarioHint:
+    | "support_policy"
+    | "teacher_parent"
+    | "sales_followup"
+    | "workplace_update"
+    | "cover_letter"
+    | "general";
+  riskLevel: "low" | "medium" | "high";
+  factualDensity: "low" | "medium" | "high";
+  structureRisk: "low" | "medium" | "high";
+  rewriteFreedom: "minimal" | "moderate" | "high";
+  requiresStructurePreservation: boolean;
+  requiresPolicyCare: boolean;
+  containsForwardedThread: boolean;
+  containsListsOrQuotes: boolean;
+  wordCount: number;
+  paragraphCount: number;
+  recommendedInitialStrategy: RewriteStrategy;
+  reasons: string[];
+};
+
 export type ScenarioClassification = {
   domain:
     | "education"
@@ -95,6 +130,70 @@ export type LlmFactCheckResult = {
   required_repairs: string[];
 };
 
+export type RewriteFailureKind =
+  | "fact_loss"
+  | "unsupported_fact"
+  | "changed_policy_or_condition"
+  | "broken_numbered_list"
+  | "broken_quote_boundary"
+  | "sentence_per_paragraph"
+  | "line_split_paraphrase"
+  | "support_macro_voice"
+  | "naturalness_not_improved"
+  | "over_rewritten"
+  | "too_generic"
+  | "provider_unavailable"
+  | "repeated_structure_failure"
+  | "policy_intent_drift";
+
+export type RewriteStrategy =
+  | "minimal_polish"
+  | "facts_first_reconstruct"
+  | "full_structure_rewrite"
+  | "support_policy_options_rewrite"
+  | "quote_list_safe_rewrite"
+  | "messy_thread_cleanup"
+  | "targeted_sentence_repair"
+  | "strong_model_restructure"
+  | "quality_failure";
+
+export type RewriteStrategyDecision = {
+  strategy: RewriteStrategy;
+  reason: string;
+  failureKinds: RewriteFailureKind[];
+  modelTier: "standard" | "strong";
+  maxCandidates: number;
+  preserveFacts: boolean;
+  preserveStructure: boolean;
+  stopReason?:
+    | "budget_exceeded"
+    | "quality_unachievable"
+    | "provider_unavailable";
+};
+
+export type RewriteBudget = {
+  maxAttempts: number;
+  maxCandidatesPerAttempt: number;
+  allowStrongModel: boolean;
+  maxStrongAttempts: number;
+  maxEstimatedUsd: number;
+  reason: string;
+};
+
+export type RewriteBudgetState = {
+  attemptsUsed: number;
+  strongAttemptsUsed: number;
+  estimatedUsdUsed: number;
+};
+
+export type PolicyIntentGateResult = {
+  safe: boolean;
+  issues: Array<{
+    kind: RewriteFailureKind;
+    message: string;
+  }>;
+};
+
 export type SentenceRiskDiagnosis = {
   sentence: string;
   issue_tags: string[];
@@ -112,7 +211,7 @@ export type FactReconstructModelRole =
   | "strong_escalation";
 
 export type FactReconstructConfig = {
-  strategyVersion: "fact_reconstruct";
+  strategyVersion: "fact_reconstruct" | "adaptive_rewrite_orchestrator";
   naturalnessThreshold: number;
   maxEscalations: number;
   models: Record<FactReconstructModelRole, string>;

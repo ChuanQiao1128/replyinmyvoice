@@ -12,6 +12,7 @@ import type {
   SentenceRiskReview,
   ScenarioClassification,
   StyleCard,
+  RewriteStrategy,
 } from "./types";
 import type { HighRiskSentence } from "./targeted-repair";
 
@@ -481,11 +482,15 @@ export async function generateCandidates({
   facts,
   scenario,
   styleCard,
+  strategy,
+  strategyGuidance,
   config,
 }: {
   facts: ExtractedFacts;
   scenario: ScenarioClassification;
   styleCard: StyleCard;
+  strategy?: RewriteStrategy;
+  strategyGuidance?: string[];
   config: FactReconstructConfig;
 }) {
   return createJsonCompletion<CandidateSet>({
@@ -502,8 +507,15 @@ export async function generateCandidates({
       "A simple realistic email is better than a polished template.",
       "Preserve every name, date, deadline, count, assignment name, condition, and support time.",
       "Do not drop policies, conditions, clarifications, support availability, partial-credit rules, or no-redo constraints.",
+      "For long replies, group related ideas into useful paragraphs. Do not split every sentence into a separate paragraph.",
+      "If using a numbered list, keep each number and item on the same line.",
+      "For support and policy replies, separate what is known, what is conditional, and what the recipient should do next.",
       "Do not add subject lines, titles, headings, or unsupported openings.",
       "Do not intentionally add mistakes. Do not make it casual or sloppy.",
+      strategy ? `Selected strategy: ${strategy}.` : "",
+      strategyGuidance?.length
+        ? `Strategy guidance:\n${strategyGuidance.map((item) => `- ${item}`).join("\n")}`
+        : "",
       "",
       `Facts:\n${JSON.stringify(facts)}`,
       `Scenario:\n${JSON.stringify(scenario)}`,
@@ -535,6 +547,7 @@ export async function reviewCandidates({
       "Score each candidate 0-10 for factual_accuracy, naturalness, tone_appropriateness, concision, low_template_feel, clarity_of_action_steps.",
       "Penalize added facts, missing deadlines, changed conditions, corporate language, generic empathy, repeated appreciation, vague motivational filler, and policy-statement tone.",
       "Penalize subject lines, titles, headings, dropped signoffs, dropped partial-credit rules, dropped support times, and dropped clarifications.",
+      "Penalize broken numbered lists, detached list markers, every-sentence-new-paragraph formatting, forwarded-thread headers, and quote fragments.",
       "A slightly simpler email that sounds like a real person is better than a polished template.",
       "",
       `Facts:\n${JSON.stringify(facts)}`,
@@ -686,6 +699,8 @@ export async function escalateCandidate({
   styleCard,
   previousFinalEmail,
   reviewNotes,
+  strategy,
+  strategyGuidance,
   config,
 }: {
   facts: ExtractedFacts;
@@ -693,6 +708,8 @@ export async function escalateCandidate({
   styleCard: StyleCard;
   previousFinalEmail: string;
   reviewNotes: string[];
+  strategy?: RewriteStrategy;
+  strategyGuidance?: string[];
   config: FactReconstructConfig;
 }) {
   const result = await createJsonCompletion<{ final_email: string }>({
@@ -707,9 +724,15 @@ export async function escalateCandidate({
       "Keep it specific and practical. Reduce generic template language.",
       "Preserve every factual detail, including deadlines, names, conditions, and support times.",
       "Restore any missing policy, partial-credit, clarification, support-time, or signoff facts from the extracted facts.",
+      "Fix structural problems such as detached numbered-list markers, quote fragments, and one-sentence-per-paragraph output.",
+      "For long support replies, use a compact send-ready structure instead of line-by-line paraphrasing.",
       "Do not add subject lines, titles, or headings.",
       "Do not make it casual or sloppy.",
       'Do not include internal analysis language such as "is referenced", "was mentioned", "Based on the provided context", "the source says", "extracted facts", or "reviewer notes".',
+      strategy ? `Selected repair strategy: ${strategy}.` : "",
+      strategyGuidance?.length
+        ? `Strategy guidance:\n${strategyGuidance.map((item) => `- ${item}`).join("\n")}`
+        : "",
       "",
       `Facts:\n${JSON.stringify(facts)}`,
       `Scenario:\n${JSON.stringify(scenario)}`,

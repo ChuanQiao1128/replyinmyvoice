@@ -33,10 +33,13 @@ export type UnsupportedFact = {
 const properNameStopWords = new Set([
   "a",
   "after",
+  "alternatively",
   "april",
+  "applicant",
   "australia",
   "at",
   "based",
+  "because",
   "best",
   "before",
   "both",
@@ -49,12 +52,15 @@ const properNameStopWords = new Set([
   "did",
   "direct",
   "even",
+  "everything",
+  "faqs",
   "friday",
   "for",
   "from",
   "have",
   "hello",
   "hi",
+  "hiring",
   "however",
   "if",
   "i",
@@ -69,8 +75,10 @@ const properNameStopWords = new Set([
   "glad",
   "long",
   "also",
+  "already",
   "avoid",
   "do",
+  "don",
   "english",
   "keep",
   "may",
@@ -78,15 +86,23 @@ const properNameStopWords = new Set([
   "northstar",
   "monday",
   "just",
+  "kindly",
+  "job",
   "looking",
   "missing",
   "my",
   "nzd",
+  "opening",
   "our",
   "please",
+  "printed",
+  "participants",
   "preserve",
   "product",
+  "prorated",
   "quick",
+  "rather",
+  "regarding",
   "reply",
   "right",
   "role",
@@ -113,13 +129,18 @@ const properNameStopWords = new Set([
   "thursday",
   "to",
   "tuesday",
+  "updating",
   "use",
   "warm",
   "wednesday",
   "we",
+  "we'll",
   "what",
+  "when",
   "voice",
   "while",
+  "you",
+  "your",
 ]);
 
 const phraseFacts: Array<{
@@ -128,6 +149,8 @@ const phraseFacts: Array<{
   text: string;
 }> = [
   { category: "task", pattern: /\breading response\b/i, text: "reading response" },
+  { category: "task", pattern: /\blab notes\b/i, text: "lab notes" },
+  { category: "task", pattern: /\breflection paragraph\b/i, text: "reflection paragraph" },
   { category: "task", pattern: /\bvocabulary practice\b/i, text: "vocabulary practice" },
   {
     category: "task",
@@ -138,18 +161,25 @@ const phraseFacts: Array<{
   { category: "deadline", pattern: /\bfirst week of June\b/i, text: "first week of June" },
   { category: "deadline", pattern: /\bnext month\b/i, text: "next month" },
   { category: "constraint", pattern: /\bpartial credit\b/i, text: "partial credit" },
+  { category: "constraint", pattern: /\brefund window\b/i, text: "refund window" },
+  { category: "constraint", pattern: /\blate but complete\b/i, text: "late but complete" },
   { category: "constraint", pattern: /\bno grade penalty\b/i, text: "no grade penalty" },
   { category: "constraint", pattern: /\bmanager approval\b/i, text: "manager approval" },
   { category: "constraint", pattern: /\baccount credit\b/i, text: "account credit" },
   { category: "constraint", pattern: /\bbase subscription\b/i, text: "base subscription" },
   { category: "constraint", pattern: /\bbase plan\b/i, text: "base plan" },
   { category: "constraint", pattern: /\bbase plan did not change\b/i, text: "base plan did not change" },
+  { category: "quoted_phrase", pattern: /\bStarter plan\b/i, text: "Starter plan" },
+  { category: "quoted_phrase", pattern: /\bTeam plan\b/i, text: "Team plan" },
+  { category: "quoted_phrase", pattern: /\bold plan credit\b/i, text: "old plan credit" },
+  { category: "quoted_phrase", pattern: /\bnew plan charge\b/i, text: "new plan charge" },
   { category: "constraint", pattern: /\bnot be recalculated\b/i, text: "not be recalculated" },
   { category: "constraint", pattern: /\bnot a duplicate charge\b/i, text: "not a duplicate charge" },
   { category: "constraint", pattern: /\binvoice screenshot\b/i, text: "invoice screenshot" },
   { category: "constraint", pattern: /\bnot push for a decision\b/i, text: "not push for a decision" },
   { category: "constraint", pattern: /\bwill not include pricing\b/i, text: "will not include pricing" },
   { category: "constraint", pattern: /\bnot promising\b/i, text: "not promising" },
+  { category: "constraint", pattern: /\bscheduled with me\b/i, text: "scheduled with me" },
   { category: "constraint", pattern: /\blogo color has not changed\b/i, text: "logo color has not changed" },
   { category: "deadline", pattern: /\bdesktop today\b/i, text: "desktop today" },
   { category: "constraint", pattern: /\bone missing exit ticket\b/i, text: "one missing exit ticket" },
@@ -162,9 +192,22 @@ const phraseFacts: Array<{
   { category: "task", pattern: /\bCustomer Success Associate\b/i, text: "Customer Success Associate" },
   { category: "task", pattern: /\bsummarize action items\b/i, text: "summarize action items" },
   { category: "task", pattern: /\bhelp center articles?\b/i, text: "help center articles" },
+  { category: "task", pattern: /\bweekly partner updates\b/i, text: "weekly partner updates" },
+  { category: "task", pattern: /\bshared folders\b/i, text: "shared folders" },
+  { category: "count", pattern: /\bteam of eight\b/i, text: "team of eight" },
+  { category: "count", pattern: /\b32 volunteers\b/i, text: "32 volunteers" },
+  { category: "task", pattern: /\battendance numbers\b/i, text: "attendance numbers" },
+  { category: "count", pattern: /\bthree providers\b/i, text: "three providers" },
+  { category: "task", pattern: /\bpatient follow-up notes\b/i, text: "patient follow-up notes" },
+  { category: "constraint", pattern: /\bprivate information\b/i, text: "private information" },
   { category: "task", pattern: /\bpermission slip\b/i, text: "permission slip" },
   { category: "task", pattern: /\bpayment flow\b/i, text: "payment flow" },
   { category: "task", pattern: /\bpricing language\b/i, text: "pricing language" },
+  { category: "task", pattern: /\bimplementation timeline\b/i, text: "implementation timeline" },
+  { category: "task", pattern: /\bsection three\b/i, text: "section three" },
+  { category: "task", pattern: /\bsection five\b/i, text: "section five" },
+  { category: "task", pattern: /\brollout notes\b/i, text: "rollout notes" },
+  { category: "role", pattern: /\blegal team\b/i, text: "legal team" },
   { category: "count", pattern: /\b12 additional seats\b/i, text: "12 additional seats" },
   { category: "task", pattern: /\bsecond quote\b/i, text: "second quote" },
   { category: "task", pattern: /\bretry worker is paused\b/i, text: "retry worker is paused" },
@@ -185,6 +228,7 @@ const phraseFacts: Array<{
   { category: "quoted_phrase", pattern: /\bold pilot workspace\b/i, text: "old pilot workspace" },
   { category: "quoted_phrase", pattern: /\breporting feature\b/i, text: "reporting feature" },
   { category: "quoted_phrase", pattern: /\bteam templates\b/i, text: "team templates" },
+  { category: "quoted_phrase", pattern: /\bshared templates\b/i, text: "shared templates" },
   { category: "quoted_phrase", pattern: /\brenewal proposal\b/i, text: "renewal proposal" },
   { category: "quoted_phrase", pattern: /\btwo plan options\b/i, text: "two plan options" },
   { category: "quoted_phrase", pattern: /\bfinance thread\b/i, text: "finance thread" },
@@ -196,8 +240,27 @@ const phraseFacts: Array<{
   },
   { category: "quoted_phrase", pattern: /\bsource file arrived late\b/i, text: "source file arrived late" },
   { category: "quoted_phrase", pattern: /\bcustom tags column\b/i, text: "custom tags column" },
+  { category: "quoted_phrase", pattern: /\bApril CSV export\b/i, text: "April CSV export" },
+  { category: "quoted_phrase", pattern: /\bNortheast region\b/i, text: "Northeast region" },
+  { category: "constraint", pattern: /\bdata is still safe\b/i, text: "data is still safe" },
+  { category: "constraint", pattern: /\bunderlying campaign data is still safe\b/i, text: "underlying campaign data is still safe" },
   { category: "quoted_phrase", pattern: /\bbilling report folder\b/i, text: "billing report folder" },
   { category: "quoted_phrase", pattern: /\bpause the campaign\b/i, text: "pause the campaign" },
+  { category: "quoted_phrase", pattern: /\bRoom 204\b/i, text: "Room 204" },
+  { category: "quoted_phrase", pattern: /\balready submitted questions\b/i, text: "already submitted questions" },
+  {
+    category: "constraint",
+    pattern: /\bdo not need to send them again\b/i,
+    text: "do not need to send them again",
+  },
+  { category: "constraint", pattern: /\bagenda is unchanged\b/i, text: "agenda is unchanged" },
+  { category: "quoted_phrase", pattern: /\bSaturday'?s workshop\b/i, text: "Saturday's workshop" },
+  { category: "quoted_phrase", pattern: /\bprinted scholarship drafts\b/i, text: "Printed scholarship drafts" },
+  {
+    category: "constraint",
+    pattern: /\bdo not make me sound senior\b/i,
+    text: "do not make me sound senior",
+  },
 ];
 
 const orderedStepStopWords = new Set([
@@ -219,6 +282,8 @@ function normalize(value: string) {
     .replace(/\bcan not guarantee\b/g, "not promising")
     .replace(/\bcannot promise\b/g, "not promising")
     .replace(/\bcan not promise\b/g, "not promising")
+    .replace(/\bschedule(?:d)?\s+(?:the\s+)?(?:quiz\s+retake\s+)?with me\b/g, "scheduled with me")
+    .replace(/\bno need to send them again\b/g, "do not need to send them again")
     .replace(/\bhave not pinned down the root cause\b/g, "root cause is not confirmed")
     .replace(/\bhaven't pinned down the root cause\b/g, "root cause is not confirmed")
     .replace(/\bmanager gives the go-ahead\b/g, "manager approves")
@@ -229,6 +294,7 @@ function normalize(value: string) {
     .replace(/\btwo requested\b/g, "two asked")
     .replace(/\blogo color remains the same\b/g, "logo color has not changed")
     .replace(/\bbase plan remains the same\b/g, "base plan did not change")
+    .replace(/\bthe invite was resent twice\b/g, "resent the invite twice")
     .replace(
       /\b(before|by|after)\s+the\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/g,
       "$1 $2",
@@ -309,7 +375,7 @@ function extractFromText(
   }
 
   for (const match of normalizedText.matchAll(
-    /\b(?:Hi|Hello|Dear)\s+([A-Z][A-Za-z.'-]+)\b/g,
+    /\b(?:Hi|Hello|Dear)\s+((?:(?:Mr|Ms|Mrs|Dr)\.?\s+)?[A-Z][A-Za-z.'-]+)\b/g,
   )) {
     const candidate = cleanPersonCandidate(match[1]);
     if (shouldKeepPersonCandidate(candidate)) {

@@ -4,11 +4,18 @@ import type { RewriteResponsePayload } from "../rewrite-types";
 import { formatNaturalness, measureWritingSignal } from "../writing-signal";
 import type { RewriteRequestInput } from "../validation";
 import {
+  approveRewriteAttempt,
+  createInitialBudgetState,
+  createRewriteBudget,
+  recordRewriteAttempt,
+} from "./budget-manager";
+import {
   deterministicCheck,
   llmFactCheckPasses,
   reviewerScorePasses,
 } from "./checks";
 import { getFactReconstructConfig } from "./config";
+import { analyzeRewriteInput } from "./input-analyzer";
 import {
   classifyScenario,
   diagnoseHighRiskSentences,
@@ -20,13 +27,19 @@ import {
   repairHighRiskSentences,
   reviewCandidates,
 } from "./model";
+import { runPolicyIntentGate } from "./policy-intent-gate";
 import { getStyleCard } from "./style-cards";
+import { strategyGuidance } from "./strategy-catalog";
+import { chooseInitialStrategy, chooseNextStrategy } from "./strategy-router";
 import { selectHighRiskSentences } from "./targeted-repair";
 import type {
   CandidateKey,
   FactReconstructConfig,
   LlmFactCheckResult,
   ReviewResult,
+  RewriteFailureKind,
+  RewriteStrategy,
+  RewriteStrategyDecision,
   ScenarioClassification,
   StyleCard,
 } from "./types";
@@ -82,14 +95,27 @@ function selectedScore(review: ReviewResult) {
 function naturalnessPasses({
   config,
   draftPercent,
+  rewriteSignal,
   rewritePercent,
 }: {
   config: FactReconstructConfig;
   draftPercent: number | null;
+  rewriteSignal?: Awaited<ReturnType<typeof measureWritingSignal>>;
   rewritePercent: number | null;
 }) {
   if (draftPercent === null || rewritePercent === null) {
     return false;
+  }
+
+  const sentenceScores = rewriteSignal?.sentenceScores ?? [];
+  if (
+    draftPercent > config.naturalnessThreshold &&
+    sentenceScores.length >= 3 &&
+    sentenceScores.every(
+      (sentence) => sentence.aiLikePercent <= config.naturalnessThreshold,
+    )
+  ) {
+    return true;
   }
 
   if (draftPercent <= config.naturalnessThreshold) {
@@ -147,6 +173,113 @@ function factCheckSafe({
   return deterministicSafe && llmFactCheckPasses(llmResult);
 }
 
+function failureKindsFromIssues(
+  issues: string[],
+): RewriteFailureKind[] {
+  const failures = new Set<RewriteFailureKind>();
+
+  for (const issue of issues) {
+    if (issue.startsWith("missing:") || issue.startsWith("missing_locked:")) {
+      failures.add("fact_loss");
+    } else if (issue.startsWith("unsupported:")) {
+      failures.add("unsupported_fact");
+    } else if (issue.includes("broken_numbered_list")) {
+      failures.add("broken_numbered_list");
+    } else if (issue.includes("broken_quote_boundary")) {
+      failures.add("broken_quote_boundary");
+    } else if (issue.includes("sentence_per_paragraph")) {
+      failures.add("sentence_per_paragraph");
+    } else if (issue.includes("line_split_paraphrase")) {
+      failures.add("line_split_paraphrase");
+    } else if (issue.includes("template_phrase")) {
+      failures.add("support_macro_voice");
+    } else if (issue.includes("meta_language")) {
+      failures.add("too_generic");
+    }
+  }
+
+  return [...failures];
+}
+
+function failureKindsFromFactCheck(result: LlmFactCheckResult) {
+  const failures = new Set<RewriteFailureKind>();
+
+  if (result.has_removed_important_facts || result.has_changed_names) {
+    failures.add("fact_loss");
+  }
+
+  if (result.has_added_new_facts) {
+    failures.add("unsupported_fact");
+  }
+
+  if (
+    result.has_changed_dates_or_deadlines ||
+    result.has_changed_conditions_or_policies
+  ) {
+    failures.add("changed_policy_or_condition");
+  }
+
+  if (result.tone_problem) {
+    failures.add("too_generic");
+  }
+
+  return [...failures];
+}
+
+function decideRepairStrategy({
+  analysis,
+  failures,
+  previousStrategies,
+}: {
+  analysis: ReturnType<typeof analyzeRewriteInput>;
+  failures: RewriteFailureKind[];
+  previousStrategies: RewriteStrategy[];
+}) {
+  return chooseNextStrategy({
+    analysis,
+    failures,
+    previousStrategies,
+  });
+}
+
+function recordApprovedStrategy({
+  budget,
+  budgetState,
+  decision,
+  previousStrategies,
+}: {
+  budget: ReturnType<typeof createRewriteBudget>;
+  budgetState: ReturnType<typeof createInitialBudgetState>;
+  decision: RewriteStrategyDecision;
+  previousStrategies: RewriteStrategy[];
+}) {
+  const approval = approveRewriteAttempt({
+    budget,
+    decision,
+    state: budgetState,
+  });
+
+  if (!approval.approved) {
+    return {
+      budgetState,
+      approved: false,
+      reason: approval.reason,
+    };
+  }
+
+  previousStrategies.push(decision.strategy);
+
+  return {
+    budgetState: recordRewriteAttempt({
+      decision,
+      estimatedUsd: decision.modelTier === "strong" ? 0.04 : 0.015,
+      state: budgetState,
+    }),
+    approved: true,
+    reason: approval.reason,
+  };
+}
+
 function withRestoredRecipientGreeting(
   fallback: ReturnType<typeof generateGuaranteedRewriteCandidate>,
   facts: Parameters<typeof deterministicCheck>[1],
@@ -181,6 +314,14 @@ function diagnosisTagsForScenario(
   }
 
   return ["corporate_polish", "low_specificity"];
+}
+
+function sourceWordCount(input: RewriteRequestInput) {
+  return input.roughDraftReply.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function shouldPreferExtractiveFallback(input: RewriteRequestInput) {
+  return !input.messageToReplyTo.trim() && sourceWordCount(input) <= 90;
 }
 
 function buildPassedResponse({
@@ -239,10 +380,17 @@ async function tryGuaranteedFallback({
   input: RewriteRequestInput;
   styleCard: Parameters<typeof deterministicCheck>[3];
 }) {
-  const fallbackCandidates = [
-    withRestoredRecipientGreeting(generateExtractiveFallbackCandidate(input), facts),
-    withRestoredRecipientGreeting(generateGuaranteedRewriteCandidate(input), facts),
-  ];
+  const modelFallback = withRestoredRecipientGreeting(
+    generateGuaranteedRewriteCandidate(input),
+    facts,
+  );
+  const extractiveFallback = withRestoredRecipientGreeting(
+    generateExtractiveFallbackCandidate(input),
+    facts,
+  );
+  const fallbackCandidates = shouldPreferExtractiveFallback(input)
+    ? [extractiveFallback, modelFallback]
+    : [modelFallback, extractiveFallback];
   let bestAttempt: {
     fallback: (typeof fallbackCandidates)[number];
     factSafe: boolean;
@@ -257,20 +405,16 @@ async function tryGuaranteedFallback({
       fallback.rewrittenText,
       styleCard,
     );
-    const factCheck = await llmFactCheck({
-      facts,
-      finalEmail: fallback.rewrittenText,
-      config,
+    const policyGate = runPolicyIntentGate(input, fallback.rewrittenText);
+    const signal = await measureWritingSignal(fallback.rewrittenText, {
+      calibrateSentenceScores: true,
     });
-    const signal = await measureWritingSignal(fallback.rewrittenText);
-    const factSafe = factCheckSafe({
-      deterministicSafe: deterministic.safe,
-      llmResult: factCheck,
-    });
+    const factSafe = deterministic.safe && policyGate.safe;
     const passes = factSafe &&
       naturalnessPasses({
         config,
         draftPercent,
+        rewriteSignal: signal,
         rewritePercent: signal.aiLikePercent,
       });
     const attempt = { fallback, factSafe, passes, signal };
@@ -303,9 +447,9 @@ async function tryTargetedSentenceRepair({
   facts,
   finalEmail,
   finalSignal,
-  input,
-  scenario,
-  styleCard,
+      input,
+      scenario,
+      styleCard,
 }: {
   config: FactReconstructConfig;
   draftPercent: number;
@@ -346,15 +490,19 @@ async function tryTargetedSentenceRepair({
     finalEmail: repairedEmail,
     config,
   });
-  const signal = await measureWritingSignal(repairedEmail);
+  const policyGate = runPolicyIntentGate(input, repairedEmail);
+  const signal = await measureWritingSignal(repairedEmail, {
+    calibrateSentenceScores: true,
+  });
   const factSafe = factCheckSafe({
-    deterministicSafe: deterministic.safe,
+    deterministicSafe: deterministic.safe && policyGate.safe,
     llmResult: factCheck,
   });
   const passes = factSafe &&
     naturalnessPasses({
       config,
       draftPercent,
+      rewriteSignal: signal,
       rewritePercent: signal.aiLikePercent,
     });
 
@@ -372,6 +520,18 @@ export async function rewriteWithFactReconstruct(
   input: RewriteRequestInput,
 ): Promise<RewriteResponsePayload> {
   const config = getFactReconstructConfig();
+  const analysis = analyzeRewriteInput(input);
+  const budget = createRewriteBudget(analysis);
+  let budgetState = createInitialBudgetState();
+  const previousStrategies: RewriteStrategy[] = [];
+  const initialDecision = chooseInitialStrategy(analysis);
+  const initialApproval = recordApprovedStrategy({
+    budget,
+    budgetState,
+    decision: initialDecision,
+    previousStrategies,
+  });
+  budgetState = initialApproval.budgetState;
   const draftSignal = await measureWritingSignal(input.roughDraftReply);
   const candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"] = [];
 
@@ -393,12 +553,18 @@ export async function rewriteWithFactReconstruct(
   const scenario = await classifyScenario(facts, config);
   const styleCard = getStyleCard(scenario);
   const diagnosisTags = diagnosisTagsForScenario(scenario.domain);
-  const rewritePlanSummary = `Fact reconstruct using ${styleCard.style_card_id}.`;
+  const rewritePlanSummary = [
+    `Adaptive rewrite route ${initialDecision.strategy} using ${styleCard.style_card_id}.`,
+    `Risk ${analysis.riskLevel}; structure ${analysis.structureRisk}; factual density ${analysis.factualDensity}.`,
+    `Budget ${budget.maxAttempts} attempts; strong model ${budget.allowStrongModel ? "allowed once" : "not allowed"}.`,
+  ].join(" ");
 
   const candidates = await generateCandidates({
     facts,
     scenario,
     styleCard,
+    strategy: initialDecision.strategy,
+    strategyGuidance: strategyGuidance(initialDecision.strategy),
     config,
   });
   const review = await reviewCandidates({
@@ -475,14 +641,37 @@ export async function rewriteWithFactReconstruct(
     config,
   });
   const deterministic = deterministicCheck(input, facts, finalEmail, styleCard);
+  const policyGate = runPolicyIntentGate(input, finalEmail);
   const factCheck = await llmFactCheck({
     facts,
     finalEmail,
     config,
   });
 
-  if (!factCheckSafe({ deterministicSafe: deterministic.safe, llmResult: factCheck })) {
+  if (
+    !factCheckSafe({
+      deterministicSafe: deterministic.safe && policyGate.safe,
+      llmResult: factCheck,
+    })
+  ) {
     if (config.maxEscalations > 0) {
+      const failures = [
+        ...failureKindsFromIssues(deterministic.issues),
+        ...failureKindsFromFactCheck(factCheck),
+        ...policyGate.issues.map((issue) => issue.kind),
+      ];
+      const repairDecision = decideRepairStrategy({
+        analysis,
+        failures,
+        previousStrategies,
+      });
+      const repairApproval = recordApprovedStrategy({
+        budget,
+        budgetState,
+        decision: repairDecision,
+        previousStrategies,
+      });
+      budgetState = repairApproval.budgetState;
       const escalatedEmail = await escalateCandidate({
         facts,
         scenario,
@@ -492,9 +681,12 @@ export async function rewriteWithFactReconstruct(
           ...review.required_edits,
           ...review.risk_notes,
           ...deterministic.issues,
+          ...policyGate.issues.map((issue) => issue.message),
           ...factCheck.issues,
           ...factCheck.required_repairs,
         ],
+        strategy: repairDecision.strategy,
+        strategyGuidance: strategyGuidance(repairDecision.strategy),
         config,
       });
       const escalatedDeterministic = deterministicCheck(
@@ -503,20 +695,25 @@ export async function rewriteWithFactReconstruct(
         escalatedEmail,
         styleCard,
       );
+      const escalatedPolicyGate = runPolicyIntentGate(input, escalatedEmail);
       const escalatedFactCheck = await llmFactCheck({
         facts,
         finalEmail: escalatedEmail,
         config,
       });
-      const escalatedSignal = await measureWritingSignal(escalatedEmail);
+      const escalatedSignal = await measureWritingSignal(escalatedEmail, {
+        calibrateSentenceScores: true,
+      });
       const escalatedFactSafe = factCheckSafe({
-        deterministicSafe: escalatedDeterministic.safe,
+        deterministicSafe:
+          escalatedDeterministic.safe && escalatedPolicyGate.safe,
         llmResult: escalatedFactCheck,
       });
       const escalatedPasses = escalatedFactSafe &&
         naturalnessPasses({
           config,
           draftPercent: draftSignal.aiLikePercent,
+          rewriteSignal: escalatedSignal,
           rewritePercent: escalatedSignal.aiLikePercent,
         });
 
@@ -530,6 +727,7 @@ export async function rewriteWithFactReconstruct(
         reason: [
           "Strong-model escalation fact and naturalness gate.",
           ...deterministic.issues,
+          ...policyGate.issues.map((issue) => issue.message),
           ...factCheck.issues,
           ...factCheck.required_repairs,
         ].join(" "),
@@ -627,13 +825,16 @@ export async function rewriteWithFactReconstruct(
     });
   }
 
-  const finalSignal = await measureWritingSignal(finalEmail);
+  const finalSignal = await measureWritingSignal(finalEmail, {
+    calibrateSentenceScores: true,
+  });
   candidateSignals.push({
     stage: "initial",
     aiLikePercent: finalSignal.aiLikePercent,
     status: naturalnessPasses({
       config,
       draftPercent: draftSignal.aiLikePercent,
+      rewriteSignal: finalSignal,
       rewritePercent: finalSignal.aiLikePercent,
     })
       ? "pass_below_threshold"
@@ -641,6 +842,7 @@ export async function rewriteWithFactReconstruct(
     rejected: !naturalnessPasses({
       config,
       draftPercent: draftSignal.aiLikePercent,
+      rewriteSignal: finalSignal,
       rewritePercent: finalSignal.aiLikePercent,
     }),
     reason: "Fact reconstruct final naturalness gate.",
@@ -650,6 +852,7 @@ export async function rewriteWithFactReconstruct(
     naturalnessPasses({
       config,
       draftPercent: draftSignal.aiLikePercent,
+      rewriteSignal: finalSignal,
       rewritePercent: finalSignal.aiLikePercent,
     })
   ) {
@@ -720,12 +923,26 @@ export async function rewriteWithFactReconstruct(
   }
 
   if (config.maxEscalations > 0) {
+    const naturalnessDecision = decideRepairStrategy({
+      analysis,
+      failures: ["naturalness_not_improved"],
+      previousStrategies: [...previousStrategies, "targeted_sentence_repair"],
+    });
+    const naturalnessApproval = recordApprovedStrategy({
+      budget,
+      budgetState,
+      decision: naturalnessDecision,
+      previousStrategies,
+    });
+    budgetState = naturalnessApproval.budgetState;
     const escalatedEmail = await escalateCandidate({
       facts,
       scenario,
       styleCard,
       previousFinalEmail: finalEmail,
       reviewNotes: [...review.required_edits, ...review.risk_notes],
+      strategy: naturalnessDecision.strategy,
+      strategyGuidance: strategyGuidance(naturalnessDecision.strategy),
       config,
     });
     const escalatedDeterministic = deterministicCheck(
@@ -734,19 +951,24 @@ export async function rewriteWithFactReconstruct(
       escalatedEmail,
       styleCard,
     );
+    const escalatedPolicyGate = runPolicyIntentGate(input, escalatedEmail);
     const escalatedFactCheck = await llmFactCheck({
       facts,
       finalEmail: escalatedEmail,
       config,
     });
-    const escalatedSignal = await measureWritingSignal(escalatedEmail);
+    const escalatedSignal = await measureWritingSignal(escalatedEmail, {
+      calibrateSentenceScores: true,
+    });
     const escalatedPasses = factCheckSafe({
-      deterministicSafe: escalatedDeterministic.safe,
+      deterministicSafe:
+        escalatedDeterministic.safe && escalatedPolicyGate.safe,
       llmResult: escalatedFactCheck,
     }) &&
       naturalnessPasses({
         config,
         draftPercent: draftSignal.aiLikePercent,
+        rewriteSignal: escalatedSignal,
         rewritePercent: escalatedSignal.aiLikePercent,
       });
 

@@ -29,6 +29,16 @@ function splitSentences(text: string) {
     .filter(Boolean);
 }
 
+function sentenceParagraphs(sentences: string[]) {
+  const paragraphs: string[] = [];
+
+  for (let index = 0; index < sentences.length; index += 2) {
+    paragraphs.push(sentences.slice(index, index + 2).join(" "));
+  }
+
+  return paragraphs;
+}
+
 function maybeSpecialFallback(source: string) {
   if (
     /ravi/i.test(source) &&
@@ -117,7 +127,9 @@ export function generateExtractiveFallbackCandidate(
   const { closing, body: withoutClosing } = extractClosing(source);
   const { greeting, body } = extractGreeting(withoutClosing);
   const sentences = splitSentences(body);
-  const paragraphs = sentences.map((sentence) => sentence.replace(/,$/, "."));
+  const paragraphs = sentenceParagraphs(
+    sentences.map((sentence) => sentence.replace(/,$/, ".")),
+  );
 
   return {
     rewrittenText: [greeting, ...paragraphs, closing]

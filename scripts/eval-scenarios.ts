@@ -665,6 +665,26 @@ const cases: EvalCase[] = [
     expectedFacts: ["ticket #4821", "Friday", "duplicate notifications", "before noon", "pause the campaign"],
   },
   {
+    id: "support-09-course-transfer-refund-long-regression",
+    scenario: "Customer support",
+    tonePreset: "Direct",
+    messageToReplyTo:
+      "Hi team, my work schedule changed unexpectedly and I can no longer attend the online course session I registered for. I am currently enrolled in the June weekend cohort, which starts on Saturday, 6 June. I contacted you before the course start date, but I am not sure whether I am still in time to move to another cohort or request a refund. I saw that the next available cohort may start on Saturday, 20 July. Can you explain whether I can transfer, whether a refund is possible, and what you need from me before making any changes? Please do not cancel my current seat unless I confirm.",
+    roughDraftReply:
+      "Hi Daniel,\n\nThank you for contacting us and for explaining your situation in detail. We understand that your work schedule has changed unexpectedly, and that this has made it difficult for you to attend the online course session you originally registered for.\n\nAfter reviewing the information you provided, it appears that your current enrollment is for the June weekend cohort, which is scheduled to begin on Saturday, 6 June. Since you notified us before the course start date, you may still be eligible to move your enrollment to a later cohort, depending on seat availability.\n\nAt this stage, the next available cohort is scheduled to begin on Saturday, 20 July. If that date works better for you, we can help move your registration to that session. Please note that your course access, learning materials, and live session links would be updated once the transfer is confirmed.\n\nRegarding your question about a refund, our standard policy is that refund requests must be submitted at least seven days before the course begins. Since your message was sent before the course start date but close to the deadline, we would need to review the exact registration timestamp before confirming whether a full refund is available. If a full refund is not available, we may still be able to offer a course credit or transfer your enrollment to a future session.\n\nIn plain terms, you currently have two possible options:\n\n1. You can transfer your enrollment to a later cohort, subject to availability.\n2. You can request a refund review, and our team will confirm whether the timing meets the refund policy.\n\nBefore we make any changes, please reply and confirm whether you would prefer to move your enrollment to the July cohort or proceed with a refund review. We will not update your registration or cancel your current seat unless you clearly confirm which option you would like to choose.\n\nBest regards,\nCustomer Support Team",
+    expectedFacts: [
+      "Daniel",
+      "June weekend cohort",
+      "Saturday, 6 June",
+      "Saturday, 20 July",
+      "seat availability",
+      "seven days before the course begins",
+      "registration timestamp",
+      "course credit",
+      "will not update your registration or cancel your current seat unless you clearly confirm",
+    ],
+  },
+  {
     id: "cover-04-long-program-manager",
     scenario: "Cover letter",
     tonePreset: "Direct",
@@ -803,11 +823,47 @@ const allEvalCases = cases.map((sample) => {
   };
 });
 
-function selectFocusedEvalCases(samples: EvalCase[]) {
+type EvalMode = "smoke" | "focused" | "full";
+
+function parseEvalMode(): EvalMode {
+  const modeArg =
+    process.argv.find((arg) => arg.startsWith("--mode="))?.split("=")[1] ??
+    process.env.EVAL_MODE ??
+    "focused";
+
+  if (modeArg === "smoke" || modeArg === "focused" || modeArg === "full") {
+    return modeArg;
+  }
+
+  return "focused";
+}
+
+function selectEvalCases(samples: EvalCase[], mode: EvalMode) {
+  if (mode === "smoke") {
+    const smokeIds = [
+      "draft-only-01b-teacher-jordan-long-polished",
+      "draft-only-12-support-seat-count",
+      "reply-03-parent-question",
+      "support-04-priya-billing-long-regression",
+      "support-05-data-export-long",
+      "support-07-plan-change-long",
+      "support-08-delayed-response-long",
+      "support-09-course-transfer-refund-long-regression",
+      "work-04-long-launch-readiness",
+      "blank-04-long-policy-note",
+    ];
+    const byId = new Map(samples.map((sample) => [sample.id, sample]));
+
+    return smokeIds
+      .map((id) => byId.get(id))
+      .filter((sample): sample is EvalCase => Boolean(sample));
+  }
+
+  const targetCount = mode === "full" ? Math.min(60, samples.length) : 30;
   const selected = new Map<string, EvalCase>();
   const add = (items: EvalCase[], limit: number) => {
     for (const item of items) {
-      if (selected.size >= 40) {
+      if (selected.size >= targetCount) {
         return;
       }
       if (limit <= 0) {
@@ -822,7 +878,7 @@ function selectFocusedEvalCases(samples: EvalCase[]) {
 
   add(
     samples.filter((item) => item.messageToReplyTo.trim().length === 0),
-    25,
+    mode === "full" ? 20 : 14,
   );
   add(
     samples.filter(
@@ -830,31 +886,36 @@ function selectFocusedEvalCases(samples: EvalCase[]) {
         item.messageToReplyTo.trim().length > 0 &&
         /teacher|parent|student/i.test(item.id),
     ),
-    5,
+    mode === "full" ? 8 : 4,
   );
   add(
     samples.filter((item) => /^work-/.test(item.id)),
-    5,
+    mode === "full" ? 8 : 4,
   );
   add(
     samples.filter(
       (item) =>
         item.scenario === "Customer support" || /support|sales/i.test(item.id),
     ),
-    5,
+    mode === "full" ? 16 : 8,
+  );
+  add(
+    samples.filter((item) => /cover|policy|quote|list|blank/i.test(item.id)),
+    mode === "full" ? 8 : 4,
   );
 
   for (const item of samples) {
-    if (selected.size >= Math.min(40, samples.length)) {
+    if (selected.size >= targetCount) {
       break;
     }
     selected.set(item.id, item);
   }
 
-  return [...selected.values()].slice(0, 40);
+  return [...selected.values()].slice(0, targetCount);
 }
 
-const evalCases = selectFocusedEvalCases(allEvalCases);
+const evalMode = parseEvalMode();
+const evalCases = selectEvalCases(allEvalCases, evalMode);
 
 await loadEnvLocal();
 
@@ -862,14 +923,14 @@ const rows = [];
 const rewriteConfig = getFactReconstructConfig();
 
 console.log(
-  `[eval] strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold}`,
+  `[eval] mode=${evalMode} strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold} cases=${evalCases.length}`,
 );
 
 for (const [index, sample] of evalCases.entries()) {
   console.log(`[eval] ${index + 1}/${evalCases.length} ${sample.id}`);
 
   const input = rewriteRequestSchema.parse({
-    scenario: "General reply",
+    scenario: sample.scenario,
     messageToReplyTo: sample.messageToReplyTo,
     roughDraftReply: sample.roughDraftReply,
     tone: tonePresetToTone(sample.tonePreset),
@@ -991,6 +1052,7 @@ const lines = [
   "# Scenario Evaluation Results",
   "",
   `Date: ${new Date().toISOString()}`,
+  `Eval mode: ${evalMode}`,
   `Strategy: ${rewriteConfig.strategyVersion}`,
   `Naturalness threshold: ${rewriteConfig.naturalnessThreshold}%`,
   `Cases evaluated: ${rows.length}`,

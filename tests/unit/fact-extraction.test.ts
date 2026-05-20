@@ -278,6 +278,19 @@ describe("extractRequiredFacts", () => {
     expect(factText).toContain("resent the invite twice");
   });
 
+  it("accepts passive invite wording as preserving the repeated-invite fact", () => {
+    const missing = missingRequiredFacts(
+      draftOnly(
+        "Mina was added to the workspace with mina@northstar.example, and we resent the invite twice.",
+      ),
+      "Mina's email address is mina@northstar.example. The invite was resent twice, so support should check the workspace link.",
+    );
+
+    expect(missing.map((fact) => fact.normalizedText)).not.toContain(
+      "resent the invite twice",
+    );
+  });
+
   it("extracts short negative constraints that should survive paraphrase pressure", () => {
     const facts = extractRequiredFacts(
       draftOnly(
@@ -290,6 +303,18 @@ describe("extractRequiredFacts", () => {
     expect(factText).toContain("not be recalculated");
     expect(factText).toContain("base plan did not change");
     expect(factText).toContain("cannot approve");
+  });
+
+  it("extracts refund-window facts so support replies cannot shift the timing", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "Hi Eli, the refund window ended May 10. We can offer account credit, but manager approval is required before I can apply it. I cannot promise the credit today.",
+      ),
+    );
+
+    const factText = facts.map((fact) => fact.normalizedText);
+
+    expect(factText).toContain("refund window");
   });
 
   it("extracts compact count facts that are easy to paraphrase away", () => {
@@ -326,6 +351,24 @@ describe("extractRequiredFacts", () => {
     expect(factText).toContain("second quote");
   });
 
+  it("normalizes quiz scheduling constraints so natural rewrites can preserve them", () => {
+    const input = draftOnly(
+      "The quiz retake is separate and needs to be scheduled with me.",
+    );
+
+    const missing = missingRequiredFacts(
+      input,
+      "The quiz retake is separate, and he should schedule the quiz retake with me.",
+    );
+
+    expect(extractRequiredFacts(input).map((fact) => fact.normalizedText)).toContain(
+      "scheduled with me",
+    );
+    expect(missing.map((fact) => fact.normalizedText)).not.toContain(
+      "scheduled with me",
+    );
+  });
+
   it("extracts sales renewal facts that should not disappear from concise rewrites", () => {
     const facts = extractRequiredFacts(
       draftOnly(
@@ -340,6 +383,71 @@ describe("extractRequiredFacts", () => {
     expect(factText).toContain("finance thread");
     expect(factText).toContain("two other vendors");
     expect(factText).toContain("first week of june");
+  });
+
+  it("extracts compact teacher support facts from short draft-only replies", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "Hi Mr. Ortiz, Amelia did complete the lab notes, but I have not received the reflection paragraph from Tuesday. She can bring it to lunch study hall on Thursday. If she submits it then, I can mark it late but complete.",
+      ),
+    );
+
+    const factText = facts.map((fact) => fact.normalizedText);
+
+    expect(factText).toContain("mr. ortiz");
+    expect(factText).toContain("amelia");
+    expect(factText).toContain("lab notes");
+    expect(factText).toContain("reflection paragraph");
+    expect(factText).toContain("tuesday");
+    expect(factText).toContain("thursday");
+    expect(factText).toContain("late but complete");
+  });
+
+  it("extracts support export and sales proposal details that concise rewrites often drop", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        [
+          "Hi Mina, the April CSV export is missing the custom tags column for the Northeast region. The underlying campaign data is still safe.",
+          "Hi Mateo, I attached the revised proposal with the implementation timeline from our May 12 call. Section three has the pricing language, and section five has the rollout notes. Please send comments by Friday if your legal team wants changes.",
+        ].join(" "),
+      ),
+    );
+
+    const factText = facts.map((fact) => fact.normalizedText);
+
+    expect(factText).toContain("april csv export");
+    expect(factText).toContain("northeast region");
+    expect(factText).toContain("data is still safe");
+    expect(factText).toContain("implementation timeline");
+    expect(factText).toContain("section three");
+    expect(factText).toContain("section five");
+    expect(factText).toContain("rollout notes");
+    expect(factText).toContain("legal team");
+  });
+
+  it("extracts cover-letter seniority constraints as required style facts", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "I am applying for the Support Specialist role. I answer customer questions by email and chat. Please do not make me sound senior.",
+      ),
+    );
+
+    expect(facts.map((fact) => fact.normalizedText)).toContain(
+      "do not make me sound senior",
+    );
+  });
+
+  it("extracts cover-letter numeric responsibility facts", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "I coordinate 32 volunteers, prepare monthly partner updates, manage weekend workshop schedules, and track attendance numbers for grant reports.",
+      ),
+    );
+
+    const factText = facts.map((fact) => fact.normalizedText);
+
+    expect(factText).toContain("32 volunteers");
+    expect(factText).toContain("attendance numbers");
   });
 
   it("extracts negative pricing constraints in sales demos", () => {

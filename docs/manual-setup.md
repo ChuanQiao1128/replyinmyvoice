@@ -119,6 +119,17 @@ Cutover result on 2026-05-18:
 - The apex Pages custom domain was removed because it was still serving the holding page after Worker custom-domain attach.
 - `www.replyinmyvoice.com` remained on Pages at the time of the cutover check.
 
+Deployment verification on 2026-05-20:
+
+- Worker `replyinmyvoice-app` deployed successfully with version `ee305ed6-632e-487e-b12d-805b17bc00af`.
+- Worker preview URL verified at `https://replyinmyvoice-app.qc1128qc.workers.dev`.
+- Apex domain `https://replyinmyvoice.com` returned the Worker app.
+- `/pricing` returned 200.
+- `/app` redirected signed-out users to `/sign-in`.
+- `/api/health/db` returned `{"ok":true}`.
+- `/api/rewrite` returned 401 for a signed-out request with the correct Origin header.
+- The existing `www.replyinmyvoice.com` DNS record still points at the Cloudflare Pages project and can remain as a rollback/holding-page path unless the user explicitly wants `www` cut over too.
+
 Rollback DNS record captured before cutover:
 
 ```text

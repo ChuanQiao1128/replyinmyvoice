@@ -362,6 +362,115 @@ describe("rewriteWithFactReconstruct", () => {
     ).toBe(true);
   });
 
+  it("does not return a Sapling-passing final email with detached numbered-list markers", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    mocks.extractFacts.mockResolvedValue({
+      recipient_name: "Daniel",
+      sender_name_or_role: "",
+      people_mentioned: ["Daniel"],
+      main_purpose: "Explain enrollment transfer and refund review options.",
+      key_facts: ["Daniel has transfer and refund review options."],
+      required_actions: ["Daniel should confirm which option he prefers."],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [
+        "Transfer is subject to availability.",
+        "Registration will not be updated unless Daniel confirms.",
+      ],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [
+        "Daniel",
+        "subject to availability",
+        "will not update your registration unless you confirm",
+      ],
+      sensitive_points: [],
+      original_tone: "",
+    });
+    const fixed =
+      "Hi Daniel,\n\nYou may be eligible to transfer to a later cohort, subject to availability.\n\nYou can also request a refund review.\n\nWe will not update your registration unless you confirm which option you prefer.";
+    mocks.finalizeCandidate.mockResolvedValue(
+      "Hi Daniel,\n\nIn plain terms, you currently have two possible options: 1.\n\nYou can transfer your enrollment.\n\n2.\n\nYou can request a refund review.",
+    );
+    mocks.escalateCandidate.mockResolvedValue(fixed);
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 18 });
+
+    const result = await rewriteWithFactReconstruct({
+      ...input,
+      roughDraftReply:
+        "Hi Daniel, you may be eligible to transfer to a later cohort, subject to availability. You can also request a refund review. We will not update your registration unless you confirm.",
+    });
+
+    expect(result.rewrittenText).toBe(fixed);
+    expect(result.rewrittenText).not.toContain("options: 1.");
+    expect(mocks.escalateCandidate).toHaveBeenCalledTimes(1);
+    expect(
+      result.optimization.candidateSignals.some((signal) =>
+        signal.reason.includes("structure:broken_numbered_list"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not return a policy-drifting refund guarantee", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    mocks.extractFacts.mockResolvedValue({
+      recipient_name: "Daniel",
+      sender_name_or_role: "",
+      people_mentioned: ["Daniel"],
+      main_purpose: "Explain that refund eligibility needs review.",
+      key_facts: [
+        "A refund may be possible depending on the registration timestamp and seven-day policy.",
+      ],
+      required_actions: [],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [
+        "A refund may be possible, but it is not confirmed.",
+        "Transfer may be available depending on seat availability.",
+      ],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [
+        "refund may be possible",
+        "registration timestamp",
+        "seven-day policy",
+        "depending on seat availability",
+      ],
+      sensitive_points: ["Do not promise a refund."],
+      original_tone: "",
+    });
+    const fixed =
+      "Hi Daniel,\n\nA refund may be possible, but we need to review the exact registration timestamp against the seven-day policy before confirming that.\n\nWe can also look at a transfer to a later cohort, depending on seat availability.";
+    mocks.finalizeCandidate.mockResolvedValue(
+      "Hi Daniel,\n\nA full refund is available under the seven-day policy.",
+    );
+    mocks.escalateCandidate.mockResolvedValue(fixed);
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 18 });
+
+    const result = await rewriteWithFactReconstruct({
+      ...input,
+      roughDraftReply:
+        "Hi Daniel, a refund may be possible, but it depends on the exact registration timestamp and the seven-day policy. A transfer may also be available depending on seat availability.",
+    });
+
+    expect(result.rewrittenText).toBe(fixed);
+    expect(result.rewrittenText).toContain("may be possible");
+    expect(result.rewrittenText).not.toContain("full refund is available");
+    expect(mocks.escalateCandidate).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the deterministic facts-first fallback only after model escalation misses the gate", async () => {
     const { rewriteWithFactReconstruct } = await import(
       "../../lib/rewrite-pipeline/pipeline"
