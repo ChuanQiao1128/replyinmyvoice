@@ -20,7 +20,7 @@ const sections = [
   },
   {
     title: "Billing",
-    text: "Paid access is NZD $9/month for 100 successful rewrites per billing month. Subscriptions and payment details are managed through Stripe.",
+    text: "Paid access is NZD $9/month for 40 successful rewrites per billing month. Subscriptions and payment details are managed through Stripe.",
   },
   {
     title: "Content responsibility",

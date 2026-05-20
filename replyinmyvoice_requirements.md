@@ -14,7 +14,7 @@ Final MVP goal:
 - Neon/Postgres subscription and usage tracking.
 - Stripe sandbox-ready checkout, billing portal, and webhook subscription updates.
 - Free signed-in users get 3 lifetime rewrite attempts.
-- Paid users get 100 rewrite attempts per billing month for `NZD $9/month` in the current sandbox/MVP configuration.
+- Paid users get 40 rewrite attempts per billing month for `NZD $9/month` in the current sandbox/MVP configuration.
 - Cloudflare-compatible deployment using Next.js App Router with the appropriate Cloudflare/OpenNext runtime, not a static export.
 
 ReplyInMyVoice is a web app that helps users turn rough, AI-assisted, or too-generic drafts into replies that sound like they personally wrote them. The initial focus is everyday communication: teacher messages, sales follow-ups, workplace email, student/customer/client replies, and other high-context responses.
@@ -74,7 +74,7 @@ Main app workflow:
 Usage limits:
 
 - Signed-in free users get 3 lifetime rewrite attempts.
-- Paid users get 100 rewrite attempts per billing month.
+- Paid users get 40 rewrite attempts per billing month.
 - Price is `NZD $9/month` for MVP/sandbox copy because the current Stripe price is `unit_amount=900`, `currency=nzd`, `interval=month`.
 - One user click on `Rewrite` counts as one usage attempt, even if the server internally tries more than one rewrite strategy to improve quality.
 - The server may run bounded internal optimization attempts for the same user request when the AI-like signal does not improve enough.

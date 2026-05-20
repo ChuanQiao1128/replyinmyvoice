@@ -64,7 +64,7 @@ export function PaywallCard({
             <p className="text-sm font-medium text-ink/60">Reply In My Voice</p>
             <p className="mt-2 text-3xl font-semibold">NZD $9/month</p>
             <p className="mt-2 text-sm text-ink/60">
-              100 rewrites per billing month. Cancel anytime.
+              40 rewrites per billing month. Cancel anytime.
             </p>
             <p className="mt-2 text-xs text-ink/45">
               Operated by TimeAwake Ltd. Payments are managed by Stripe.

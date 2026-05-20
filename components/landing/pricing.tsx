@@ -4,7 +4,7 @@ import { LinkButton } from "../ui/button";
 import { Card } from "../ui/card";
 
 const features = [
-  "100 rewrites per billing month",
+  "40 rewrites per billing month",
   "3 free rewrites after sign-up",
   "Naturalness Check before and after",
   "Teacher, sales, workplace, and client templates",
@@ -34,7 +34,7 @@ export function PricingSection() {
             </div>
             <div className="rounded-lg border border-line bg-white/70 p-3">
               <p className="font-semibold text-ink">Paid plan</p>
-              <p className="mt-1">100 per billing month</p>
+              <p className="mt-1">40 per billing month</p>
             </div>
             <div className="rounded-lg border border-line bg-white/70 p-3">
               <p className="font-semibold text-ink">Company</p>

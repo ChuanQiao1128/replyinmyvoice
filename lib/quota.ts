@@ -3,7 +3,7 @@ import type { RewriteUsage, User } from "./generated/prisma/client";
 import { createId, getSql, nullableDate, requiredDate } from "./db";
 
 export const FREE_REWRITE_LIMIT = 3;
-export const PAID_REWRITE_LIMIT = 100;
+export const PAID_REWRITE_LIMIT = 40;
 export const TESTING_REWRITE_LIMIT = 10_000;
 
 const ACTIVE_STATUSES = new Set(["active", "trialing", "testing"]);

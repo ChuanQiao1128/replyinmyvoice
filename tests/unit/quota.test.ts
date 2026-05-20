@@ -30,7 +30,7 @@ describe("getUsagePlan", () => {
 
     expect(plan).toMatchObject({
       allowed: true,
-      quota: 100,
+      quota: 40,
       periodKey: "paid:sub_123:2026-06-17T00:00:00.000Z",
       scope: "paid",
       periodEnd,
@@ -46,7 +46,7 @@ describe("getUsagePlan", () => {
     });
 
     expect(plan.scope).toBe("paid");
-    expect(plan.quota).toBe(100);
+    expect(plan.quota).toBe(40);
   });
 
   it("allows internal testing accounts to run a high rewrite quota", () => {

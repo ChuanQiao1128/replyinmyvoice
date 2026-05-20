@@ -361,7 +361,7 @@ Candidate plan:
 ```text
 Free users: 3 rewrites
 Paid users: NZD $9/month in the current sandbox/MVP configuration
-Paid quota: 100 rewrites/month
+Paid quota: 40 rewrites/month
 ```
 
 Confirmed MVP decision:
@@ -369,11 +369,11 @@ Confirmed MVP decision:
 ```text
 Require sign-up before free rewrites.
 Give every signed-in user 3 free lifetime successful rewrites.
-Paid users get 100 successful rewrites per billing month.
+Paid users get 40 successful rewrites per billing month.
 One user click/request on Rewrite counts as one usage attempt, even if the server tries multiple bounded internal rewrite strategies for quality.
 Do not count validation errors, auth failures, payment failures, or provider/server errors.
 When free users exhaust 3 lifetime attempts, show a hard paywall.
-When paid users exhaust 100 monthly attempts, show a hard quota/paywall state.
+When paid users exhaust 40 monthly attempts, show a hard quota/paywall state.
 Show simple remaining-usage text in /app.
 ```
 
@@ -1478,7 +1478,7 @@ Preflight rules:
 
 ### Free Quota Vs Paywall
 
-Signed-in inactive users are allowed to use the rewrite workspace until they have used 3 lifetime successful rewrites. Only show the hard paywall after the free lifetime quota is exhausted. Active/trialing paid users get 100 successful rewrites per billing period.
+Signed-in inactive users are allowed to use the rewrite workspace until they have used 3 lifetime successful rewrites. Only show the hard paywall after the free lifetime quota is exhausted. Active/trialing paid users get 40 successful rewrites per billing period.
 
 `POST /api/rewrite` should return:
 

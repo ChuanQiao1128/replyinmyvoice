@@ -137,7 +137,7 @@ Required flow:
 - Start Stripe sandbox checkout.
 - Complete sandbox checkout.
 - Confirm webhook updates subscription state to active or trialing.
-- Confirm paid quota changes to 100 for the billing period.
+- Confirm paid quota changes to 40 for the billing period.
 - Confirm a paid rewrite succeeds.
 
 Record results in `docs/preflight-report.md`.

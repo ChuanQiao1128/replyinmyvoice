@@ -17,7 +17,7 @@ Current project scan on 2026-05-20 found:
 - `app/api/stripe/checkout/route.ts` creates a Stripe customer when the local `User.stripeCustomerId` is empty, then creates a subscription Checkout Session.
 - `app/api/stripe/portal/route.ts` opens Stripe Billing Portal for users with a local `stripeCustomerId`.
 - `app/api/stripe/webhook/route.ts` handles `checkout.session.completed`, subscription create/update/delete, `invoice.paid`, and `invoice.payment_failed`.
-- `lib/quota.ts` treats `active`, `trialing`, and `testing` as paid statuses, and paid users get 100 rewrites per Stripe billing period.
+- `lib/quota.ts` treats `active`, `trialing`, and `testing` as paid statuses, and paid users get 40 rewrites per Stripe billing period.
 - `prisma/schema.prisma` has `User`, `RewriteUsage`, and `StripeEvent`.
 - `.env.local` currently contains Stripe test-mode keys. `local-env.md` is tracked by Git and must not receive live secrets.
 
@@ -32,7 +32,7 @@ Official Stripe launch constraints:
 ## Goals
 
 - Accept real recurring payments for `NZD $9/month`.
-- Keep the product plan at 100 successful rewrites per billing month.
+- Keep the product plan at 40 successful rewrites per billing month.
 - Ensure paid users become active after live Checkout payment and webhook delivery.
 - Ensure canceled/unpaid/failed-payment states revoke or preserve access according to explicit rules.
 - Avoid mixing sandbox customers/subscriptions with live-mode Stripe API calls.
@@ -124,7 +124,7 @@ Quota flow:
 
 ```text
 User.subscriptionStatus active/trialing/testing
-  -> paid quota 100
+  -> paid quota 40
   -> periodKey paid:${subscriptionId}:${currentPeriodEnd}
   -> successful rewrite increments RewriteUsage
 ```
@@ -410,7 +410,7 @@ Manual live-payment smoke, only after user explicitly approves a real payment:
 5. Confirm Stripe dashboard shows live subscription.
 6. Confirm webhook delivery succeeded.
 7. Confirm Neon User.subscriptionStatus is active or trialing.
-8. Confirm /app shows 100 paid rewrites for the billing period.
+8. Confirm /app shows 40 paid rewrites for the billing period.
 9. Open Billing Portal and confirm cancellation/payment-method pages work.
 ```
 

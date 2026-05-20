@@ -1630,6 +1630,8 @@ This panel is internal only. It helps decide whether the public plan should be:
 - `NZD $12/month` with about 50 successful rewrites,
 - or `NZD $19/month` with about 100 successful rewrites.
 
+Current public plan decision: `NZD $9/month` includes 40 successful rewrites per billing month.
+
 ### Acceptance Criteria
 
 - Every successful and quality-failed rewrite creates or updates a `RewriteCostLog`.
