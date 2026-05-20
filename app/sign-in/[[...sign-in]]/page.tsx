@@ -1,14 +1,11 @@
-import { SignIn } from "@clerk/nextjs";
+import { SignUp } from "@clerk/nextjs";
 
 export default function SignInPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper px-6">
-      <SignIn
+      <SignUp
         forceRedirectUrl="/app"
-        signUpForceRedirectUrl="/app"
-        signUpUrl="/sign-up"
-        transferable
-        withSignUp
+        signInUrl="/sign-in"
       />
     </main>
   );
