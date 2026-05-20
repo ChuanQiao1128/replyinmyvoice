@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import {
@@ -17,11 +16,6 @@ export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
   if (originError) {
     return originError;
-  }
-
-  const { userId } = await auth();
-  if (!userId) {
-    return jsonError("Authentication required.", 401);
   }
 
   const user = await getCurrentAppUser();

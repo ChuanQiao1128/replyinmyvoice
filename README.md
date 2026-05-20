@@ -20,7 +20,7 @@ nvm use
 
 ## Required Services
 
-- Clerk for authentication
+- Microsoft Entra External ID with Google sign-in for authentication
 - Neon Postgres for Prisma data
 - Stripe sandbox for Checkout, Billing Portal, and webhooks
 - OpenAI for rewrite generation

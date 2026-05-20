@@ -1,11 +1,13 @@
-import { Show, UserButton } from "@clerk/nextjs";
 import { PenLine } from "lucide-react";
 import Link from "next/link";
 
 import { AdminEntry } from "./app/admin-entry";
 import { LinkButton } from "./ui/button";
+import { getCurrentSession } from "../lib/entra-auth";
 
-export function SiteHeader({ showAdmin = false }: { showAdmin?: boolean }) {
+export async function SiteHeader({ showAdmin = false }: { showAdmin?: boolean }) {
+  const session = await getCurrentSession();
+
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
@@ -19,21 +21,29 @@ export function SiteHeader({ showAdmin = false }: { showAdmin?: boolean }) {
           <Link href="/pricing" className="hidden px-3 py-2 text-sm font-medium text-ink/70 hover:text-ink sm:inline-flex">
             Pricing
           </Link>
-          <Show when="signed-out">
+          {!session ? (
+            <>
             <Link href="/sign-in" className="hidden px-3 py-2 text-sm font-medium text-ink/70 hover:text-ink sm:inline-flex">
               Sign in
             </Link>
             <LinkButton href="/sign-up" variant="primary">
               Start rewriting
             </LinkButton>
-          </Show>
-          <Show when="signed-in">
+            </>
+          ) : (
+            <>
             <AdminEntry visible={showAdmin} />
             <LinkButton href="/app" variant="secondary">
               Open app
             </LinkButton>
-            <UserButton />
-          </Show>
+            <a
+              href="/api/auth/logout"
+              className="px-3 py-2 text-sm font-medium text-ink/70 hover:text-ink"
+            >
+              Sign out
+            </a>
+            </>
+          )}
         </nav>
       </div>
     </header>

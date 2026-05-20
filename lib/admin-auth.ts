@@ -1,6 +1,6 @@
-import { currentUser } from "@clerk/nextjs/server";
 import { notFound } from "next/navigation";
 
+import { getCurrentSession } from "./entra-auth";
 import { optionalEnv } from "./env";
 
 function parseList(value: string | undefined) {
@@ -33,24 +33,19 @@ export function isAdminIdentityAllowed({
 }
 
 export async function getCurrentAdminIdentity() {
-  const user = await currentUser();
-  if (!user) {
+  const session = await getCurrentSession();
+  if (!session) {
     return null;
   }
 
-  const email =
-    user.primaryEmailAddress?.emailAddress ??
-    user.emailAddresses.at(0)?.emailAddress ??
-    null;
-
   const allowed = isAdminIdentityAllowed({
-    clerkUserId: user.id,
-    email,
+    clerkUserId: session.sub,
+    email: session.email,
     adminEmails: optionalEnv("ADMIN_EMAILS", ""),
     adminClerkUserIds: optionalEnv("ADMIN_CLERK_USER_IDS", ""),
   });
 
-  return allowed ? { clerkUserId: user.id, email } : null;
+  return allowed ? { clerkUserId: session.sub, email: session.email } : null;
 }
 
 export async function requireAdminUser() {

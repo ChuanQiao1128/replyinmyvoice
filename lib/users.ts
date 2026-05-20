@@ -1,22 +1,13 @@
-import type { User as ClerkUser } from "@clerk/nextjs/server";
-import { currentUser } from "@clerk/nextjs/server";
 import type { User } from "./generated/prisma/client";
 
 import { createId, getSql, nullableDate, requiredDate } from "./db";
+import { getCurrentSession, type AuthSession } from "./entra-auth";
 
 type UserRow = Omit<User, "currentPeriodEnd" | "createdAt" | "updatedAt"> & {
   currentPeriodEnd: unknown;
   createdAt: unknown;
   updatedAt: unknown;
 };
-
-function primaryEmailFromClerk(user: ClerkUser): string | null {
-  return (
-    user.primaryEmailAddress?.emailAddress ??
-    user.emailAddresses.at(0)?.emailAddress ??
-    null
-  );
-}
 
 export function mapUser(row: UserRow): User {
   return {
@@ -27,7 +18,7 @@ export function mapUser(row: UserRow): User {
   };
 }
 
-export async function upsertUserFromClerk(user: ClerkUser): Promise<User> {
+export async function upsertUserFromAuthSession(session: AuthSession): Promise<User> {
   const sql = getSql();
   const rows = (await sql`
     INSERT INTO "User" (
@@ -39,8 +30,8 @@ export async function upsertUserFromClerk(user: ClerkUser): Promise<User> {
     )
     VALUES (
       ${createId()},
-      ${user.id},
-      ${primaryEmailFromClerk(user)},
+      ${session.sub},
+      ${session.email},
       now(),
       now()
     )
@@ -55,12 +46,12 @@ export async function upsertUserFromClerk(user: ClerkUser): Promise<User> {
 }
 
 export async function getCurrentAppUser(): Promise<User | null> {
-  const user = await currentUser();
-  if (!user) {
+  const session = await getCurrentSession();
+  if (!session) {
     return null;
   }
 
-  return upsertUserFromClerk(user);
+  return upsertUserFromAuthSession(session);
 }
 
 export async function findUserByClerkId(clerkUserId: string) {
