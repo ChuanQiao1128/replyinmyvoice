@@ -26,10 +26,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const clerkProxyUrl = process.env.NEXT_PUBLIC_CLERK_PROXY_URL || undefined;
-  const clerkJsUrl = process.env.NEXT_PUBLIC_CLERK_JS_URL || undefined;
 
   return (
-    <ClerkProvider clerkJSUrl={clerkJsUrl} proxyUrl={clerkProxyUrl}>
+    <ClerkProvider proxyUrl={clerkProxyUrl}>
       <html lang="en">
         <body>{children}</body>
       </html>

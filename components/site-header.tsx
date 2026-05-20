@@ -1,4 +1,4 @@
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { Show, UserButton } from "@clerk/nextjs";
 import { PenLine } from "lucide-react";
 import Link from "next/link";
 
@@ -19,21 +19,21 @@ export function SiteHeader({ showAdmin = false }: { showAdmin?: boolean }) {
           <Link href="/pricing" className="hidden px-3 py-2 text-sm font-medium text-ink/70 hover:text-ink sm:inline-flex">
             Pricing
           </Link>
-          <SignedOut>
+          <Show when="signed-out">
             <Link href="/sign-in" className="hidden px-3 py-2 text-sm font-medium text-ink/70 hover:text-ink sm:inline-flex">
               Sign in
             </Link>
             <LinkButton href="/sign-up" variant="primary">
               Start rewriting
             </LinkButton>
-          </SignedOut>
-          <SignedIn>
+          </Show>
+          <Show when="signed-in">
             <AdminEntry visible={showAdmin} />
             <LinkButton href="/app" variant="secondary">
               Open app
             </LinkButton>
-            <UserButton afterSignOutUrl="/" />
-          </SignedIn>
+            <UserButton />
+          </Show>
         </nav>
       </div>
     </header>
