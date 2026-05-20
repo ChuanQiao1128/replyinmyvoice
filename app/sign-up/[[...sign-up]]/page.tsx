@@ -3,7 +3,10 @@ import { SignUp } from "@clerk/nextjs";
 export default function SignUpPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper px-6">
-      <SignUp />
+      <SignUp
+        forceRedirectUrl="/app"
+        signInUrl="/sign-in"
+      />
     </main>
   );
 }
