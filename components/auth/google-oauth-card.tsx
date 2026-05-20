@@ -21,8 +21,6 @@ export function GoogleOAuthCard() {
         strategy: "oauth_google",
         redirectUrl: "/sso-callback",
         redirectUrlComplete: "/app",
-        continueSignIn: true,
-        continueSignUp: true,
       });
     } catch {
       setError("Google sign-in could not start. Please try again.");
