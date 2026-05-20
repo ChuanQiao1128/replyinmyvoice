@@ -1,6 +1,46 @@
 # Next Development Brief
 
-Last updated: 2026-05-18
+Last updated: 2026-05-20
+
+## Current Priority: Azure Cost Optimization
+
+The next Azure/.NET backend development run should use this plan as the source of truth:
+
+```text
+docs/superpowers/plans/2026-05-20-azure-functions-cost-optimization.md
+```
+
+Immediate decision:
+
+```text
+Delete the costly Windows B1 App Service resources:
+- replyinmyvoice-api-dev
+- replyinmyvoice-plan-dev
+
+Keep the low-cost reliability resources:
+- Azure SQL Basic database
+- Azure Service Bus Basic namespace/queue
+- Key Vault
+- Application Insights / Log Analytics
+```
+
+Target architecture:
+
+```text
+Azure Functions Consumption/Flex Consumption
++ Azure SQL Basic
++ Azure Service Bus Basic
++ Key Vault/app settings
++ Application Insights with low log volume
+```
+
+The main production product remains on Cloudflare + Neon + Clerk. Do not migrate the main product auth/database to Azure in this run.
+
+Cost target:
+
+```text
+Reduce Azure dev run-rate from the Windows App Service B1 risk level to approximately NZD $10-$15/month under low usage.
+```
 
 ## Current Decision
 
@@ -1645,3 +1685,64 @@ Current public plan decision: `NZD $9/month` includes 40 successful rewrites per
 - Unit tests cover cost estimation and admin authorization.
 - Route tests cover non-admin denial and admin access.
 - Deployment docs list the required admin env vars without secret values.
+
+---
+
+## Next Required Plan: Azure Auth And Data Migration
+
+Source plan:
+
+```text
+docs/superpowers/plans/2026-05-20-azure-auth-data-migration.md
+```
+
+Goal:
+
+```text
+Fully remove Clerk and Neon by moving customer authentication to Microsoft Entra External ID and moving the database to Azure Database for PostgreSQL.
+```
+
+Recommended architecture:
+
+```text
+Microsoft Entra External ID for customer auth
+Auth.js as the app-side OIDC session layer
+Azure Database for PostgreSQL Flexible Server
+Azure App Service for the Next.js server runtime
+Cloudflare DNS/proxy can remain after smoke testing
+```
+
+Important constraint:
+
+```text
+Do not start new work on Azure AD B2C unless the user explicitly chooses it. Use Microsoft Entra External ID for the customer-facing identity system.
+```
+
+Current missing inputs:
+
+```text
+AZURE_EXTERNAL_ID_TENANT_ID
+AZURE_EXTERNAL_ID_TENANT_SUBDOMAIN
+AZURE_EXTERNAL_ID_CLIENT_ID
+AZURE_EXTERNAL_ID_CLIENT_SECRET
+AZURE_EXTERNAL_ID_WELL_KNOWN
+AUTH_SECRET
+AZURE_POSTGRES_SERVER_NAME
+AZURE_POSTGRES_DATABASE_NAME
+AZURE_POSTGRES_ADMIN_USER
+AZURE_POSTGRES_ADMIN_PASSWORD
+GOOGLE_CLIENT_ID_FOR_ENTRA
+GOOGLE_CLIENT_SECRET_FOR_ENTRA
+FACEBOOK_APP_ID_FOR_ENTRA
+FACEBOOK_APP_SECRET_FOR_ENTRA
+FACEBOOK_DATA_DELETION_URL
+```
+
+Dashboard-only or permission-sensitive work:
+
+```text
+Create/configure Microsoft Entra External ID external tenant and user flow.
+Configure Google and Facebook identity providers in Entra.
+Create Google OAuth client and Meta app if not already present.
+Confirm Azure CLI account has permission to create App Service and PostgreSQL resources.
+```

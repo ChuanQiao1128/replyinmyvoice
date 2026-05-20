@@ -45,6 +45,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient();
 
         var serviceBusConnection = configuration.GetConnectionString("ServiceBus")
+            ?? configuration["ServiceBus"]
             ?? configuration["SERVICEBUS_CONNECTION_STRING"]
             ?? configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"];
         var queueName = configuration["ServiceBus:QueueName"]

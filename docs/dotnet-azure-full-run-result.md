@@ -6,10 +6,16 @@ Date: 2026-05-19
 
 The long autonomous .NET/Azure backend run completed against the dev Azure environment.
 
-The deployed dev API is:
+The original deployed dev API was:
 
 ```text
 https://replyinmyvoice-api-dev.azurewebsites.net
+```
+
+That Windows B1 App Service backend was deleted on 2026-05-20 to stop fixed monthly run-rate cost. The current low-cost Azure dev backend is:
+
+```text
+https://replyinmyvoice-func-dev.azurewebsites.net
 ```
 
 No Stripe live-mode action, real charge, or production-domain cutover was performed.
@@ -131,7 +137,7 @@ Not done in this run:
 
 The GitHub Actions deployment path is configured but will be fully proven when a workflow runs on `main`.
 
-The current Azure dev backend is suitable for proving the resume backend claims around idempotency, usage reservations, retry safety, webhook replay safety, Service Bus processing, Azure SQL migrations, and App Service deployment.
+The current Azure dev backend is suitable for proving the resume backend claims around idempotency, usage reservations, retry safety, webhook replay safety, Service Bus processing, Azure SQL migrations, and Azure Functions deployment.
 
 ## 2026-05-20 Reliability Gap Closure
 
@@ -153,3 +159,50 @@ Verification:
 - Azure SQL migration applied successfully to `replyinmyvoice-db-dev`.
 - Azure App Service zip deploy completed successfully.
 - Remote health check passed at `https://replyinmyvoice-api-dev.azurewebsites.net/health`.
+
+## 2026-05-21 Azure Functions Cost Optimization
+
+The costly Windows B1 App Service runtime was replaced with an Azure Functions consumption runtime while preserving the Azure SQL, Service Bus, outbox, and quota reservation architecture.
+
+Implemented:
+
+- Deleted `replyinmyvoice-api-dev`.
+- Deleted the empty `replyinmyvoice-plan-dev` Windows B1 App Service Plan.
+- Added `ReplyInMyVoice.Functions` as a .NET 8 isolated worker Function App project.
+- Added HTTP trigger functions for health, rewrite creation, rewrite polling, billing, and Stripe webhook handling.
+- Added Service Bus trigger function for rewrite job processing.
+- Added timer trigger functions for outbox dispatch and expired reservation cleanup.
+- Added Azure Functions provision/deploy scripts.
+- Updated `.github/workflows/dotnet-azure.yml` to publish and deploy the Function App instead of an App Service/WebJob package.
+- Registered `Microsoft.Storage` because Azure Functions requires a storage account.
+- Created Function App `replyinmyvoice-func-dev` on Linux consumption plan `Y1`.
+- Reused `replyinmyvoice-ai-dev` for Application Insights and deleted the duplicate auto-created `replyinmyvoice-func-dev` Application Insights component.
+
+Current retained Azure resources:
+
+```text
+Azure SQL Basic: replyinmyvoice-db-dev
+Azure Service Bus Basic: replyinmyvoice-sb-dev
+Key Vault: replyinmyvoice-kv-dev
+Application Insights: replyinmyvoice-ai-dev
+Storage Account: replyinmyvoicefuncdev
+Function App: replyinmyvoice-func-dev
+Linux Dynamic Consumption Plan: AustraliaEastLinuxDynamicPlan
+```
+
+Verification:
+
+```text
+dotnet build ReplyInMyVoice.sln: passed
+dotnet test ReplyInMyVoice.sln: 34 passed
+GET https://replyinmyvoice-func-dev.azurewebsites.net/api/health: passed
+Remote rewrite smoke: Pending -> Processing -> Succeeded
+```
+
+Cost posture:
+
+```text
+Windows B1 App Service fixed run-rate removed.
+Azure Functions consumption runtime expected to be near zero at low traffic.
+Azure SQL Basic remains the main predictable Azure dev cost.
+```

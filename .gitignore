@@ -8,6 +8,7 @@
 !.env.example
 .dev.vars
 globalapikey/
+local.settings.json
 
 # Dependencies and build output
 node_modules/

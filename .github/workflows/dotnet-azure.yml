@@ -29,6 +29,8 @@ jobs:
         run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj --configuration Release --output backend-dotnet/artifacts/api
       - name: Publish Worker
         run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Worker/ReplyInMyVoice.Worker.csproj --configuration Release --output backend-dotnet/artifacts/worker
+      - name: Publish Functions
+        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions
 
   deploy:
     needs: build-test
@@ -47,13 +49,9 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Build deployment package
         run: |
-          dotnet publish backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj --configuration Release --output backend-dotnet/artifacts/api
-          dotnet publish backend-dotnet/src/ReplyInMyVoice.Worker/ReplyInMyVoice.Worker.csproj --configuration Release --output backend-dotnet/artifacts/worker
-          mkdir -p backend-dotnet/artifacts/api/App_Data/jobs/continuous/RewriteWorker
-          cp -R backend-dotnet/artifacts/worker/. backend-dotnet/artifacts/api/App_Data/jobs/continuous/RewriteWorker/
-          printf "dotnet ReplyInMyVoice.Worker.dll\n" > backend-dotnet/artifacts/api/App_Data/jobs/continuous/RewriteWorker/run.cmd
-          cd backend-dotnet/artifacts/api
-          zip -qr ../replyinmyvoice-api-webjob.zip .
+          dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions
+          cd backend-dotnet/artifacts/functions
+          zip -qr ../replyinmyvoice-functions.zip .
       - name: Apply database migrations
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -70,13 +68,11 @@ jobs:
             --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
             --startup-project backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj \
             --context AppDbContext
-      - name: Deploy to Azure App Service
+      - name: Deploy to Azure Functions
         run: |
-          az webapp deploy \
+          az functionapp deployment source config-zip \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "${{ vars.AZURE_APP_SERVICE_NAME }}" \
-            --src-path backend-dotnet/artifacts/replyinmyvoice-api-webjob.zip \
-            --type zip \
-            --async false
+            --name "${{ vars.AZURE_FUNCTION_APP_NAME }}" \
+            --src backend-dotnet/artifacts/replyinmyvoice-functions.zip
       - name: Smoke test
-        run: curl --fail "https://${{ vars.AZURE_APP_SERVICE_NAME }}.azurewebsites.net/health"
+        run: curl --fail "https://${{ vars.AZURE_FUNCTION_APP_NAME }}.azurewebsites.net/api/health"

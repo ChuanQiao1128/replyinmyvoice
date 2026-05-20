@@ -102,7 +102,7 @@ the Cloudflare auth variables to the deploy process, or use GitHub Actions.
 GitHub Actions workflows:
 
 - `.github/workflows/cloudflare-worker.yml`: runs Node build/typecheck/tests and deploys the Cloudflare Worker on pushes to `main`.
-- `.github/workflows/dotnet-azure.yml`: builds/tests the .NET backend and deploys the Azure dev App Service on pushes to `main`.
+- `.github/workflows/dotnet-azure.yml`: builds/tests the .NET backend and deploys the Azure dev Function App on pushes to `main`.
 
 Required Cloudflare/Next secrets and variables are stored in GitHub Actions. Do
 not commit `.env.local` or copy secret values into workflow files.
