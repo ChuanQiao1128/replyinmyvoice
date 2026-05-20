@@ -23,6 +23,67 @@ function draftOnly(roughDraftReply: string): RewriteRequestInput {
 }
 
 describe("extractRequiredFacts", () => {
+  it("extracts implementation schedule facts without treating list labels as people", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        [
+          "Hi Morgan,",
+          "The training session originally planned for Tuesday, 4 June will need to move.",
+          "The best replacement time is Thursday, 6 June at 10:30 a.m. The backup option is Friday, 7 June after 2 p.m.",
+          "Please do not change the go-live date yet. We are still aiming for Monday, 17 June, as long as the user-permission issue is resolved by the end of next week.",
+          "The warehouse supervisors can see the dashboard, but they cannot approve shift changes.",
+          "The export file is missing the approved by column, which finance needs for the weekly reconciliation report.",
+          "SMS reminders are not part of this phase, and we are not ready to approve the additional NZD $480 setup fee.",
+          "Document SMS reminders as a possible phase-two item because regional managers may ask about it later.",
+          "Could you send an updated implementation note with confirmation that the go-live date is still Monday, 17 June unless the permission issue is not resolved?",
+          "Best,",
+          "Avery",
+        ].join("\n\n"),
+      ),
+    );
+
+    const factText = facts.map((fact) => fact.normalizedText);
+    const personFacts = facts
+      .filter((fact) => fact.category === "person")
+      .map((fact) => fact.normalizedText);
+
+    expect(factText).toContain("morgan");
+    expect(factText).toContain("avery");
+    expect(factText).toContain("tuesday, 4 june");
+    expect(factText).toContain("thursday, 6 june");
+    expect(factText).toContain("10:30 a.m.");
+    expect(factText).toContain("friday, 7 june");
+    expect(factText).toContain("2 p.m.");
+    expect(factText).toContain("monday, 17 june");
+    expect(factText).toContain("user-permission issue");
+    expect(factText).toContain("warehouse supervisors");
+    expect(factText).toContain("cannot approve shift changes");
+    expect(factText).toContain("approved by column");
+    expect(factText).toContain("weekly reconciliation report");
+    expect(factText).toContain("sms reminders are not part of this phase");
+    expect(factText).toContain("nzd $480");
+    expect(factText).toContain("phase-two item");
+    expect(factText).toContain("regional managers");
+    expect(personFacts).not.toContain("sms");
+    expect(personFacts).not.toContain("could");
+    expect(personFacts).not.toContain("confirmation");
+  });
+
+  it("does not treat workshop date and room labels as people", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        "Additional details: the Saturday workshop is in Room 204 at 6:30pm. Families received the original reminder on Tuesday.",
+      ),
+    );
+    const personFacts = facts
+      .filter((fact) => fact.category === "person")
+      .map((fact) => fact.normalizedText);
+
+    expect(personFacts).not.toContain("additional");
+    expect(personFacts).not.toContain("saturday");
+    expect(personFacts).not.toContain("room");
+  });
+
   it("extracts draft-only names, assignments, deadlines, policy limits, and signoff", () => {
     const facts = extractRequiredFacts(
       draftOnly(

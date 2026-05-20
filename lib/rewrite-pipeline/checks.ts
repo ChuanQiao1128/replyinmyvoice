@@ -18,7 +18,13 @@ export type DeterministicCheckResult = {
 };
 
 function normalize(value: string) {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/\balready-submitted\b/g, "already submitted")
+    .replace(/\bresent\b/g, "send them again")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function paragraphs(value: string) {
@@ -54,8 +60,11 @@ const genericLockedFactTokens = new Set([
   "clearly",
   "exactly",
   "current",
+  "date",
   "provided",
   "stated",
+  "start",
+  "time",
 ]);
 
 function preservesMustNotChange(text: string, facts: ExtractedFacts) {

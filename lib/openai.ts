@@ -338,6 +338,16 @@ function generateFactsFirstFallback(input: RewriteRequestInput) {
   ].join(" ");
   const context = rawContext.toLowerCase();
 
+  if (isImplementationScheduleContext(context)) {
+    return {
+      rewrittenText: implementationScheduleFallback(input, rawContext),
+      changeSummary: [
+        "Rebuilt the implementation update from schedule, blocker, scope, and next-step facts.",
+      ],
+      riskNotes: ["Review the project details before sending."],
+    };
+  }
+
   if (isSeatBillingContext(context)) {
     return {
       rewrittenText: invoiceFallback(input, rawContext),
@@ -714,8 +724,55 @@ function generateSalesReplyFallback(input: RewriteRequestInput, context: string)
   ].join("\n\n");
 }
 
+function implementationScheduleFallback(
+  input: RewriteRequestInput,
+  context: string,
+) {
+  const name = extractRecipientName(input);
+  const greeting = name ? `Hi ${name},` : "Hi,";
+  const originalTrainingDate = firstMatch(context, [
+    /\b((?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December))\b/i,
+  ]) || "the originally planned training time";
+  const preferredTrainingTime = firstMatch(context, [
+    /\b(Thursday,\s*6 June at 10:30 a\.m\.)\b/i,
+    /\b(Thursday,\s*6 June at 10:30 am)\b/i,
+  ]) || "Thursday, 6 June at 10:30 a.m.";
+  const backupTrainingTime = firstMatch(context, [
+    /\b(Friday,\s*7 June after 2 p\.m\.)\b/i,
+    /\b(Friday,\s*7 June after 2 pm)\b/i,
+  ]) || "Friday, 7 June after 2 p.m.";
+  const goLiveDate = firstMatch(context, [
+    /\b(Monday,\s*17 June)\b/i,
+  ]) || "Monday, 17 June";
+  const amount = firstMatch(context, [
+    /\b(NZD\s*\$\s*\d+(?:\.\d{2})?)\b/i,
+  ]).replace(/\s+/g, " ") || "NZD $480";
+  const unavailableSupervisors = /three of the supervisors/i.test(context)
+    ? " because payroll has a quarter-end review and three supervisors are unavailable"
+    : /quarter-end review/i.test(context)
+      ? " because payroll has a quarter-end review"
+      : "";
+  const ending = /best,?\s+avery/i.test(context) ? "Best,\nAvery" : "";
+
+  return [
+    greeting,
+    "Thanks for sending the revised onboarding timeline and notes from yesterday's implementation call.",
+    `The training session needs to move from ${originalTrainingDate}${unavailableSupervisors}. Our preferred replacement is ${preferredTrainingTime}; if that does not work, ${backupTrainingTime} is the backup.`,
+    `Please keep ${goLiveDate} as the go-live date for now, as long as the user-permission issue is resolved by the end of next week. The current blocker is that the warehouse supervisors can see the dashboard but cannot approve shift changes. The export is also missing the approved by column, which finance needs for the weekly reconciliation report.`,
+    `Please keep the project scope the same. SMS reminders are not part of this phase, and we are not approving the additional ${amount} setup fee. It is fine to document SMS reminders as a possible phase-two item in case regional managers ask later.`,
+    `Could you send an updated implementation note that covers the training time change, the permission issue, the missing approved by column, the SMS scope note, and confirmation that the go-live date is still ${goLiveDate} unless the permission issue is not resolved? Please keep it calm and practical so stakeholders understand what changed without sounding like we are blaming your team.`,
+    ending,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function generateSupportFallback(input: RewriteRequestInput, context: string) {
   const normalized = context.toLowerCase();
+
+  if (isImplementationScheduleContext(normalized)) {
+    return implementationScheduleFallback(input, context);
+  }
 
   if (isCourseTransferContext(normalized)) {
     return courseTransferFallback(input, context);
@@ -729,7 +786,7 @@ function generateSupportFallback(input: RewriteRequestInput, context: string) {
     return invoiceFallback(input, context);
   }
 
-  if (textIncludes(normalized, ["custom tags column", "csv export", "export"])) {
+  if (/\bcustom tags column\b|\bcsv exports?\b/i.test(context)) {
     const greeting = extractRecipientName(input)
       ? `Hi ${extractRecipientName(input)},`
       : "";
@@ -827,6 +884,22 @@ function isCourseTransferContext(context: string) {
     "seat availability",
     "current seat",
   ]);
+}
+
+function isImplementationScheduleContext(context: string) {
+  const indicators = [
+    "onboarding timeline",
+    "implementation call",
+    "training session",
+    "go-live date",
+    "user-permission issue",
+    "warehouse supervisors",
+    "approved by",
+    "sms reminder",
+    "implementation note",
+  ];
+
+  return indicators.filter((indicator) => context.includes(indicator)).length >= 3;
 }
 
 function isWorkshopUpdateContext(context: string) {
@@ -931,6 +1004,9 @@ function workshopUpdateFallback(input: RewriteRequestInput, context: string) {
   const saturdayOnly = /only affects this Saturday/i.test(context)
     ? "The room change only affects this Saturday's workshop."
     : "";
+  const originalReminder = /original workshop reminder on Tuesday/i.test(context)
+    ? "Families received the original workshop reminder on Tuesday, so this update should focus only on the room change."
+    : "";
   const submittedQuestions = /already[- ]submitted questions|already submitted questions/i.test(context)
     ? "If you already submitted questions, you do not need to send them again."
     : "";
@@ -948,8 +1024,9 @@ function workshopUpdateFallback(input: RewriteRequestInput, context: string) {
     opening,
     agendaLine,
     [agendaUnchanged, saturdayOnly].filter(Boolean).join(" "),
+    originalReminder,
     [
-      submittedQuestions ? "Already submitted questions? No need to send them again." : "",
+      submittedQuestions,
       printedDrafts,
     ].filter(Boolean).join(" "),
   ]

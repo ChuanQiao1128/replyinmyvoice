@@ -34,6 +34,7 @@ const properNameStopWords = new Set([
   "a",
   "after",
   "alternatively",
+  "additional",
   "april",
   "applicant",
   "australia",
@@ -46,14 +47,17 @@ const properNameStopWords = new Set([
   "can",
   "chrome",
   "clarify",
+  "confirmation",
   "customer",
   "currently",
   "csv",
   "did",
   "direct",
+  "could",
   "even",
   "everything",
   "faqs",
+  "families",
   "friday",
   "for",
   "from",
@@ -106,11 +110,14 @@ const properNameStopWords = new Set([
   "reply",
   "right",
   "role",
+  "room",
   "safari",
   "saas",
+  "saturday",
   "sincerely",
   "she",
   "since",
+  "sms",
   "ssO".toLowerCase(),
   "that",
   "thanks",
@@ -204,6 +211,34 @@ const phraseFacts: Array<{
   { category: "task", pattern: /\bpayment flow\b/i, text: "payment flow" },
   { category: "task", pattern: /\bpricing language\b/i, text: "pricing language" },
   { category: "task", pattern: /\bimplementation timeline\b/i, text: "implementation timeline" },
+  { category: "task", pattern: /\bonboarding timeline\b/i, text: "onboarding timeline" },
+  { category: "task", pattern: /\btraining session\b/i, text: "training session" },
+  { category: "deadline", pattern: /\bgo-live date\b/i, text: "go-live date" },
+  { category: "constraint", pattern: /\buser-permission issue\b/i, text: "user-permission issue" },
+  { category: "role", pattern: /\bwarehouse supervisors\b/i, text: "warehouse supervisors" },
+  {
+    category: "constraint",
+    pattern: /\bcannot approve shift changes\b/i,
+    text: "cannot approve shift changes",
+  },
+  { category: "quoted_phrase", pattern: /\bapproved by[”"]?\s+column\b/i, text: "approved by column" },
+  {
+    category: "task",
+    pattern: /\bweekly reconciliation report\b/i,
+    text: "weekly reconciliation report",
+  },
+  {
+    category: "constraint",
+    pattern: /\bSMS reminders? (?:are|is) not part of this phase\b/i,
+    text: "SMS reminders are not part of this phase",
+  },
+  {
+    category: "constraint",
+    pattern: /\badditional NZD\s*\$\s*\d+(?:\.\d{2})? setup fee\b/i,
+    text: "additional NZD $480 setup fee",
+  },
+  { category: "task", pattern: /\bphase-two item\b/i, text: "phase-two item" },
+  { category: "role", pattern: /\bregional managers\b/i, text: "regional managers" },
   { category: "task", pattern: /\bsection three\b/i, text: "section three" },
   { category: "task", pattern: /\bsection five\b/i, text: "section five" },
   { category: "task", pattern: /\brollout notes\b/i, text: "rollout notes" },
@@ -327,7 +362,10 @@ function addFact(
   category: RequiredFactCategory,
   source: RequiredFact["source"],
 ) {
-  const cleaned = text.replace(/\s+/g, " ").trim().replace(/[,.]$/, "");
+  const compacted = text.replace(/\s+/g, " ").trim();
+  const cleaned = /\b[ap]\.m\.$/i.test(compacted)
+    ? compacted
+    : compacted.replace(/[,.]$/, "");
   if (!cleaned) {
     return;
   }
@@ -408,12 +446,24 @@ function extractFromText(
   }
 
   for (const match of normalizedText.matchAll(
+    /\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/gi,
+  )) {
+    addFact(facts, match[0], "date", source);
+  }
+
+  for (const match of normalizedText.matchAll(
+    /\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/gi,
+  )) {
+    addFact(facts, match[0], "date", source);
+  }
+
+  for (const match of normalizedText.matchAll(
     /\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/gi,
   )) {
     addFact(facts, match[0], "date", source);
   }
 
-  for (const match of normalizedText.matchAll(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi)) {
+  for (const match of normalizedText.matchAll(/\b\d{1,2}(?::\d{2})?\s*(?:a\.m\.?|p\.m\.?|am|pm)(?=\s|[.,;:]|$)/gi)) {
     addFact(facts, match[0], "deadline", source);
   }
 
@@ -424,7 +474,7 @@ function extractFromText(
   }
 
   for (const match of normalizedText.matchAll(
-    /\b(?:before|by|after)\s+(?:the\s+)?(?:end of this week|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|noon|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/gi,
+    /\b(?:before|by|after)\s+(?:the\s+)?(?:end of this week|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|noon|\d{1,2}(?::\d{2})?\s*(?:a\.m\.?|p\.m\.?|am|pm)(?=\s|[.,;:]|$))/gi,
   )) {
     addFact(facts, match[0], "deadline", source);
   }

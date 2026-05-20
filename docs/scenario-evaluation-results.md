@@ -1,81 +1,25 @@
 # Scenario Evaluation Results
 
-Date: 2026-05-20T07:16:53.538Z
-Eval mode: full
+Date: 2026-05-20T08:53:13.604Z
+Eval mode: smoke
 Strategy: adaptive_rewrite_orchestrator
 Naturalness threshold: 40%
-Cases evaluated: 60
-Draft-only cases: 38
-Measured cases: 60
-Long cases (300+ words): 10
-Long customer-support cases (300+ words): 6
-Average AI-like signal drop: 85 pts
-Rewrite below 50% AI-like signal: 60/60
-Final selected rewrites worse than draft: 0/60
-Cases using targeted repair: 52/60
-Rejected candidate events: 53
+Cases evaluated: 11
+Draft-only cases: 4
+Measured cases: 11
+Long cases (300+ words): 7
+Long customer-support cases (300+ words): 5
+Average AI-like signal drop: 66 pts
+Rewrite below 50% AI-like signal: 11/11
+Final selected rewrites worse than draft: 0/11
+Cases using targeted repair: 11/11
+Rejected candidate events: 13
 Fact preservation or unsupported-addition failures: 0
-Customer-usable pass count: 60/60
-Strict signal pass count: 60/60
+Customer-usable pass count: 11/11
+Strict signal pass count: 11/11
 
 Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure is raised, and the selected rewrite is not worse than the draft when scores are available.
 Strict signal pass additionally requires scores available and: if the draft is above 40%, the final rewrite is at or below 40%; if the draft is already at or below 40%, the final rewrite does not raise the signal.
-
-## draft-only-01-teacher-jordan
-
-Scenario: General reply
-Tone: Warm
-Input word count: 64
-Input character count: 387
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 89%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -89 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:short reflection paragraph from friday missing:partial credit missing:friday unsupported:these
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Monica
-- Jordan
-- reading response
-- vocabulary practice
-- Friday
-- end of this week
-- partial credit
-- Ms. Carter
-
-Before:
-
-```text
-Hi Monica,
-
-Jordan is missing the reading response, vocabulary practice, and the short reflection paragraph from Friday. He should start with the reading response and vocabulary practice because those can be done quickly. Then he can work on the reflection paragraph. If he turns everything in by the end of this week, I can still accept it for partial credit.
-
-Best regards,
-Ms. Carter
-```
-
-After:
-
-```text
-Hi Monica,
-
-Jordan is missing the reading response, vocabulary practice, and the short reflection paragraph from Friday. He should start with the reading response and vocabulary practice because those can be done quickly.
-
-Then he can work on the reflection paragraph. If he turns everything in by the end of this week, I can still accept it for partial credit.
-
-Best regards,
-Ms. Carter
-```
 
 ## draft-only-01b-teacher-jordan-long-polished
 
@@ -86,11 +30,11 @@ Input character count: 1490
 Diagnosis tags: stock_opening
 Rewrite plan: Target stock_opening while preserving the user's facts.
 Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
+First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 1%
 Change: -99 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:partial credit unsupported:these
+Rejected candidate reasons: initial: Fact reconstruct final naturalness gate. | repair: Strong-model escalation naturalness and fact gate.
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -151,302 +95,20 @@ Best regards,
 Ms. Carter
 ```
 
-## draft-only-02-teacher-kai
-
-Scenario: General reply
-Tone: Direct
-Input word count: 50
-Input character count: 284
-Diagnosis tags: policy_memo_voice
-Rewrite plan: Target policy_memo_voice while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 2%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:not promising unsupported:he unsupported:remember unsupported:let
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Lena
-- Kai
-- two participation activities
-- one exit ticket
-- course policy
-- before class tomorrow
-- not promising
-
-Before:
-
-```text
-Hi Lena, Kai's grade changed because two participation activities and one exit ticket are still missing. The course policy says late work may not receive full credit, but he can submit the exit ticket before class tomorrow and I will review it. I am not promising a grade change yet.
-```
-
-After:
-
-```text
-Hi Lena,
-
-Kai's grade changed because two participation activities and one exit ticket are still missing. The course policy says late work may not receive full credit, but he can submit the exit ticket before class tomorrow and I will review it.
-
-I'm not promising a grade change yet.
-```
-
-## draft-only-03-teacher-amelia
+## draft-only-16b-implementation-schedule-regression
 
 Scenario: General reply
 Tone: Warm
-Input word count: 41
-Input character count: 219
+Input word count: 352
+Input character count: 2027
 Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 3%
-Change: -97 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:lab notes missing:late but complete missing:tuesday unsupported:let
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Mr. Ortiz
-- Amelia
-- lab notes
-- reflection paragraph
-- Tuesday
-- Thursday
-- late but complete
-
-Before:
-
-```text
-Hi Mr. Ortiz, Amelia did complete the lab notes, but I have not received the reflection paragraph from Tuesday. She can bring it to lunch study hall on Thursday. If she submits it then, I can mark it late but complete.
-```
-
-After:
-
-```text
-Hi Mr. Ortiz,
-
-Amelia did complete the lab notes, but I have not received the reflection paragraph from Tuesday. She can bring it to lunch study hall on Thursday.
-
-If she submits it then, I can mark it late but complete.
-```
-
-## draft-only-04-teacher-ravi
-
-Scenario: General reply
-Tone: Direct
-Input word count: 38
-Input character count: 211
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 26%
-Change: -74 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:cannot enter the quiz score unsupported:he malformed:dangling_closing
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Priya
-- Ravi
-- quiz
-- Monday
-- Wednesday at 8:15am
-- Friday after school
-- cannot enter the quiz score
-
-Before:
-
-```text
-Hi Priya, Ravi was absent for the quiz on Monday and still needs to schedule the make-up. The available times are Wednesday at 8:15am or Friday after school. I cannot enter the quiz score until he completes it.
-```
-
-After:
-
-```text
-Hi Priya,
-
-Ravi missed Monday's quiz and still needs to make it up.
-
-The available times are Wednesday at 8:15am or Friday after school. I can't enter the quiz score until he completes it.
-```
-
-## draft-only-05-teacher-sam
-
-Scenario: General reply
-Tone: Warm
-Input word count: 38
-Input character count: 214
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: 0%
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: none
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Dana
-- Sam
-- bibliography
-- three sources
-- Friday
-- final version
-- May 22
-
-Before:
-
-```text
-Hi Dana, Sam's project is strong, but the bibliography is missing three sources. If he adds the sources by Friday, I can grade the final version instead of the draft version. The presentation date is still May 22.
-```
-
-After:
-
-```text
-Hi Dana,
-
-I hope you’re doing well! I wanted to let you know that Sam’s project looks strong, but there are three sources missing in the bibliography. If he can add those by Friday, that would help a lot. Also, please remember I need the final version instead of the draft by May 22.
-
-Thanks!
-```
-
-## draft-only-06-teacher-noah
-
-Scenario: General reply
-Tone: Direct
-Input word count: 37
-Input character count: 189
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 4%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 0%
-Change: -4 pts
-Rejected candidate reasons: none
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Ms. Nguyen
-- Noah
-- worksheet
-- graph
-- Canvas
-- 6pm tonight
-- only the graph file
-
-Before:
-
-```text
-Hi Ms. Nguyen, Noah turned in the worksheet but did not attach the graph. Please ask him to upload the graph in Canvas by 6pm tonight. I will not need a new worksheet, only the graph file.
-```
-
-After:
-
-```text
-Hi Ms. Nguyen,
-
-Noah turned in the worksheet but did not attach the graph. Please ask him to upload the graph in Canvas by 6pm tonight.
-
-I will not need a new worksheet, only the graph file.
-```
-
-## draft-only-07-teacher-maya
-
-Scenario: General reply
-Tone: Warm
-Input word count: 37
-Input character count: 203
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 98%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 0%
-Change: -98 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:alex missing:permission slip
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Alex
-- Maya
-- science fair group
-- permission slip
-- Thursday morning
-- Room 18
-- project idea
-
-Before:
-
-```text
-Hi Alex, Maya can still join the science fair group, but the permission slip is due Thursday morning. The group is meeting in Room 18 after school. She should bring the signed slip and her project idea.
-```
-
-After:
-
-```text
-Hi Alex,
-
-Maya can still join the science fair group, but the permission slip is due Thursday morning. The group is meeting in Room 18 after school.
-
-She should bring the signed slip and her project idea.
-```
-
-## draft-only-08-teacher-omar
-
-Scenario: General reply
-Tone: Direct
-Input word count: 37
-Input character count: 199
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 93%
+Draft AI-like signal: 0%
 First candidate AI-like signal: unavailable
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
-Change: -93 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:scheduled with me unsupported:hey jordan unsupported:let
+Change: 0 pts
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:cannot approve missing:onboarding timeline missing:training session missing:cannot approve shift changes missing:approved by column missing:weekly reconciliation report missing:sms reminders are not part of this phase missing:additional nzd $480 setup fee missing:phase-two item missing:regional managers missing:tuesday, 4 june missing:thursday, 6 june missing:friday, 7 june missing:4 june missing:6 june missing:tuesday missing:thursday missing:friday missing:10:30 a.m. missing:2 p.m. missing:after 2 p.m. missing:avery unsupported:remember unsupported:let unsupported:overall
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -456,167 +118,61 @@ Customer-usable pass: yes
 Strict signal pass: yes
 
 Expected facts:
-- Jordan
-- Omar
-- reading log
-- March 14
-- half credit
-- quiz retake
-- scheduled with me
+- Morgan
+- Tuesday, 4 June
+- Thursday, 6 June at 10:30 a.m.
+- Friday, 7 June after 2 p.m.
+- Monday, 17 June
+- user-permission issue
+- warehouse supervisors
+- cannot approve shift changes
+- approved by column
+- weekly reconciliation report
+- SMS reminders are not part of this phase
+- NZD $480
+- phase-two item
+- regional managers
+- Avery
 
 Before:
 
 ```text
-Hi Jordan, Omar has improved his reading log, but the March 14 response is still missing. He can turn in that response for half credit. The quiz retake is separate and needs to be scheduled with me.
+Hi Morgan,
+
+Thank you for sending over the revised onboarding timeline and the notes from yesterday's implementation call. I reviewed the update with our operations lead this morning, and I want to clarify a few points before we confirm the schedule with the broader team.
+
+The overall timeline still looks workable, but the training session originally planned for Tuesday, 4 June will need to move. Our payroll team has a quarter-end review that afternoon, and three of the supervisors who need the training will not be available. The best replacement time on our side is Thursday, 6 June at 10:30 a.m. If that does not work for your team, the backup option is Friday, 7 June after 2 p.m.
+
+Please do not change the go-live date yet. We are still aiming for Monday, 17 June, as long as the user-permission issue is resolved by the end of next week. The main blocker is that the warehouse supervisors can see the dashboard, but they cannot approve shift changes. We also noticed that the export file is missing the approved by column, which our finance team needs for the weekly reconciliation report.
+
+For now, please keep the project scope the same. We are not adding the SMS reminder feature in this phase, and we are not ready to approve the additional NZD $480 setup fee for that feature. I do want the team to document it as a possible phase-two item, because our regional managers may ask about it later.
+
+Could you send us an updated implementation note that includes the proposed training time change, the current permission issue for warehouse supervisors, the missing approved by column in the export, a clear note that SMS reminders are not part of this phase, and confirmation that the go-live date is still Monday, 17 June unless the permission issue is not resolved?
+
+Please keep the tone calm and practical. I do not want the message to sound like we are blaming your team. I just want the internal stakeholders to understand what changed, what is still blocked, and what we are not approving yet.
+
+Best,
+
+Avery
 ```
 
 After:
 
 ```text
-Hi Jordan,
+Hi Morgan,
 
-Omar has improved his reading log, but the March 14 response is still missing. He can turn in that response for half credit.
+Thanks for sending the revised onboarding timeline and notes from yesterday's implementation call.
 
-The quiz retake is separate and needs to be scheduled with me.
-```
+The training session needs to move from Tuesday, 4 June because payroll has a quarter-end review and three supervisors are unavailable. Our preferred replacement is Thursday, 6 June at 10:30 a.m.; if that does not work, Friday, 7 June after 2 p.m. is the backup.
 
-## draft-only-09-support-tax
+Please keep Monday, 17 June as the go-live date for now, as long as the user-permission issue is resolved by the end of next week. The current blocker is that the warehouse supervisors can see the dashboard but cannot approve shift changes. The export is also missing the approved by column, which finance needs for the weekly reconciliation report.
 
-Scenario: General reply
-Tone: Warm
-Input word count: 34
-Input character count: 202
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 2%
-Change: -98 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:sarah missing:base subscription
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
+Please keep the project scope the same. SMS reminders are not part of this phase, and we are not approving the additional NZD $480 setup fee. It is fine to document SMS reminders as a possible phase-two item in case regional managers ask later.
 
-Expected facts:
-- Sarah
-- tax line
-- Australia
-- base subscription
-- June 1
-- May invoice
-- not be recalculated
+Could you send an updated implementation note that covers the training time change, the permission issue, the missing approved by column, the SMS scope note, and confirmation that the go-live date is still Monday, 17 June unless the permission issue is not resolved? Please keep it calm and practical so stakeholders understand what changed without sounding like we are blaming your team.
 
-Before:
-
-```text
-Hi Sarah, the tax line increased because the billing address changed to Australia. The base subscription is unchanged. The new tax amount starts on June 1, and the May invoice will not be recalculated.
-```
-
-After:
-
-```text
-Hi Sarah,
-
-The tax line increased because the billing address changed to Australia. The base subscription is unchanged.
-
-The new tax amount starts on June 1, and the May invoice will not be recalculated.
-```
-
-## draft-only-10-support-refund
-
-Scenario: General reply
-Tone: Direct
-Input word count: 29
-Input character count: 160
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:refund window missing:may 10 unsupported:good unsupported:let Dropped a no-promise/no-guarantee constraint.
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Eli
-- refund window
-- May 10
-- account credit
-- manager approval
-- cannot promise
-
-Before:
-
-```text
-Hi Eli, the refund window ended May 10. We can offer account credit, but manager approval is required before I can apply it. I cannot promise the credit today.
-```
-
-After:
-
-```text
-Hi Eli,
-
-Hi Eli, the refund window ended May 10.
-
-We can offer account credit, but manager approval is required before I can apply it. I cannot promise the credit today.
-```
-
-## draft-only-11-support-export
-
-Scenario: General reply
-Tone: Warm
-Input word count: 45
-Input character count: 251
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 97%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 0%
-Change: -97 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:mina missing:northeast region missing:data is still safe missing:underlying campaign data is still safe missing:northeast
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Mina
-- April CSV export
-- custom tags column
-- Northeast region
-- data is still safe
-- Monday at 10am
-
-Before:
-
-```text
-Hi Mina, the April CSV export is missing the custom tags column for the Northeast region. The underlying campaign data is still safe. We are checking the export job and will send a corrected file before Monday at 10am if the check confirms the issue.
-```
-
-After:
-
-```text
-Hi Mina,
-
-The April CSV export is missing the custom tags column for the Northeast region. The underlying campaign data is still safe.
-
-We are checking the export job and will send a corrected file before Monday at 10am if the check confirms the issue.
+Best,
+Avery
 ```
 
 ## draft-only-12-support-seat-count
@@ -629,10 +185,10 @@ Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 100%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
+Repair candidate AI-like signal: 1%
 Final selected AI-like signal: 33%
 Change: -67 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:base plan missing:base plan did not change missing:18 active seats missing:15 regular seats unsupported:let missing_locked:did not change
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:base plan missing:base plan did not change missing:18 active seats missing:15 regular seats unsupported:here unsupported:as missing_locked:did not change malformed:dangling_closing
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -666,378 +222,6 @@ The usage report shows 18 active seats, but the renewal only approved 15 regular
 The base plan did not change.
 ```
 
-## draft-only-13-support-login
-
-Scenario: General reply
-Tone: Warm
-Input word count: 42
-Input character count: 255
-Diagnosis tags: low_specificity
-Rewrite plan: Target low_specificity while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 1%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:old pilot workspace missing:resent the invite twice missing:mina@northstar.example unsupported:support
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Mina
-- mina@northstar.example
-- old pilot workspace
-- workspace association issue
-- resent the invite twice
-- account link
-
-Before:
-
-```text
-Hi Mina, keep signing in with mina@northstar.example. If you still land in the old pilot workspace, this is probably a workspace association issue, not a new invite issue. We already resent the invite twice, so support should check the account link next.
-```
-
-After:
-
-```text
-Hi Mina,
-
-Keep signing in with mina@northstar.example. If you still land in the old pilot workspace, this is probably a workspace association issue, not a new invite issue.
-
-We already resent the invite twice, so support should check the account link next.
-```
-
-## draft-only-14-support-plan-change
-
-Scenario: General reply
-Tone: Direct
-Input word count: 44
-Input character count: 250
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: none
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Arun
-- Starter plan credit
-- Team plan charge
-- May 3
-- proration
-- not a duplicate charge
-- invoice screenshot
-
-Before:
-
-```text
-Hi Arun, the Starter plan credit and the Team plan charge are shown as separate lines because the plan changed on May 3. That usually means proration, not a duplicate charge. I still need the invoice screenshot before I can confirm the final amount.
-```
-
-After:
-
-```text
-Hi Arun,
-
-The Starter plan credit and the Team plan charge are shown as separate lines because the plan changed on May 3. That usually means proration, not a duplicate charge.
-
-I still need the invoice screenshot before I can confirm the final amount.
-```
-
-## draft-only-15-support-notifications
-
-Scenario: General reply
-Tone: Warm
-Input word count: 43
-Input character count: 246
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 37%
-Change: -63 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:claire
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Claire
-- ticket #4821
-- duplicate notifications
-- delivery logs
-- root cause is not confirmed
-- before noon
-- pause the campaign
-
-Before:
-
-```text
-Hi Claire, ticket #4821 is still open for duplicate notifications. The delivery logs are being reviewed, but the root cause is not confirmed yet. I will send the next status note before noon so your team can decide whether to pause the campaign.
-```
-
-After:
-
-```text
-Hi Claire,
-
-Ticket #4821 is still open for duplicate notifications. The delivery logs are being reviewed, but the root cause is not confirmed yet.
-
-I will send the next status note before noon so your team can decide whether to pause the campaign.
-```
-
-## draft-only-16-support-import
-
-Scenario: General reply
-Tone: Direct
-Input word count: 35
-Input character count: 185
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 91%
-Final selected AI-like signal: 2%
-Change: -98 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:rows unsupported:remember missing_locked:1 through 13
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Omar
-- row 14
-- invalid date format
-- Rows 1 through 13
-- not saved
-- upload the file again
-- Do not delete
-
-Before:
-
-```text
-Hi Omar, the import failed because row 14 has an invalid date format. Rows 1 through 13 were not saved. Please fix row 14 and upload the file again. Do not delete the existing project.
-```
-
-After:
-
-```text
-Hi Omar,
-
-The import failed because row 14 has an invalid date format. Rows 1 through 13 were not saved.
-
-Please fix row 14 and upload the file again. Do not delete the existing project.
-```
-
-## draft-only-17-sales-renewal
-
-Scenario: General reply
-Tone: Warm
-Input word count: 45
-Input character count: 247
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 55%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -55 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:jordan missing:renewal proposal missing:finance thread unsupported:could
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Jordan
-- renewal proposal
-- two plan options
-- finance thread
-- two other vendors
-- first week of June
-
-Before:
-
-```text
-Hi Jordan, thanks for looking at the renewal proposal. I will send a shorter summary of the two plan options for your finance thread. I know your team is also comparing two other vendors, and the earliest decision point is the first week of June.
-```
-
-After:
-
-```text
-Hi Jordan,
-
-Thanks for looking at the renewal proposal. I will send a shorter summary of the two plan options for your finance thread.
-
-I know your team is also comparing two other vendors, and the earliest decision point is the first week of June.
-```
-
-## draft-only-18-sales-demo
-
-Scenario: General reply
-Tone: Direct
-Input word count: 35
-Input character count: 188
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 96%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 11%
-Final selected AI-like signal: 0%
-Change: -96 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:leah missing:will not include pricing
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Leah
-- Thursday at 3pm
-- reporting
-- team templates
-- approval workflow
-- will not include pricing
-
-Before:
-
-```text
-Hi Leah, we can move the demo to Thursday at 3pm. I will keep the agenda focused on reporting, team templates, and the approval workflow. I will not include pricing unless you ask for it.
-```
-
-After:
-
-```text
-Hi Leah,
-
-We can move the demo to Thursday at 3pm. I will keep the agenda focused on reporting, team templates, and the approval workflow.
-
-I will not include pricing unless you ask for it.
-```
-
-## draft-only-19-sales-proposal
-
-Scenario: General reply
-Tone: Warm
-Input word count: 40
-Input character count: 242
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 2%
-Change: -98 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:mateo missing:pricing language missing:implementation timeline missing:section three missing:section five missing:rollout notes missing:legal team unsupported:attached
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Mateo
-- May 12
-- section three
-- pricing language
-- section five
-- rollout notes
-- Friday
-- legal team
-
-Before:
-
-```text
-Hi Mateo, I attached the revised proposal with the implementation timeline from our May 12 call. Section three has the pricing language, and section five has the rollout notes. Please send comments by Friday if your legal team wants changes.
-```
-
-After:
-
-```text
-Hi Mateo,
-
-I attached the revised proposal with the implementation timeline from our May 12 call. Section three has the pricing language, and section five has the rollout notes.
-
-Please send comments by Friday if your legal team wants changes.
-```
-
-## reply-01-teacher-extension
-
-Scenario: Email or message reply
-Tone: Warm
-Input word count: 99
-Input character count: 596
-Diagnosis tags: stock_opening, corporate_polish, policy_memo_voice
-Rewrite plan: Target stock_opening, corporate_polish, policy_memo_voice while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 98%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:professor missing:student missing:dear student
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- family issue
-- before class tomorrow
-- course policy
-
-Before:
-
-```text
-Dear Student, I acknowledge receipt of your email regarding the missed reflection deadline. Late submissions are generally subject to the course policy and may not be accepted. However, I understand that you have indicated a family issue. I will review the situation and respond accordingly. Please be advised that submitting before class tomorrow does not guarantee that it will be accepted.
-```
-
-After:
-
-```text
-Hi Student,
-
-Dear Student, I acknowledge receipt of your email regarding the missed reflection deadline.
-
-Late submissions are generally subject to the course policy and may not be accepted. However, I understand that you have indicated a family issue. I will review the situation and respond accordingly. Please be advised that submitting before class tomorrow does not guarantee that it will be accepted.
-
-Hi Professor, I missed the reflection deadline because of a family issue this week. I know the policy says late work may not be accepted, but is there any way I can still submit it before class tomorrow.
-```
-
 ## reply-03-parent-question
 
 Scenario: Email or message reply
@@ -1051,7 +235,7 @@ First candidate AI-like signal: unavailable
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 3%
 Change: -97 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:one missing exit ticket unsupported:there
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:one missing exit ticket
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1079,553 +263,6 @@ The grade change is from two missing participation activities and one missing ex
 I can send the details if that would help.
 ```
 
-## work-01-design-delay
-
-Scenario: Work update
-Tone: Direct
-Input word count: 70
-Input character count: 406
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:source file arrived late missing:unfortunately unsupported:could
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- source file arrived late
-- one quality check
-- 4pm Friday
-
-Before:
-
-```text
-Unfortunately, the revised screenshots are not available at this time due to a delay in receiving the updated design file. The source file arrived late this morning and still requires one quality check before it can be shared externally. I expect to send the screenshots by 4pm Friday if there are no further issues.
-```
-
-After:
-
-```text
-Quick update: Unfortunately, the revised screenshots are not available at this time due to a delay in receiving the updated design file.
-
-The source file arrived late this morning and still requires one quality check before it can be shared externally.
-
-I expect to send the screenshots by 4pm Friday if there are no further issues.
-```
-
-## work-02-launch-risk
-
-Scenario: Work update
-Tone: Direct
-Input word count: 69
-Input character count: 384
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 4%
-Change: -96 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:last three failed events
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- payment flow
-- last three failed events
-- 2pm launch check
-
-Before:
-
-```text
-The current launch status is that the payment flow has passed the latest smoke test, but the webhook retry log still needs review. I am checking the last three failed events and will post the result before the 2pm launch check. At this time, I do not recommend changing the launch decision until that review is complete.
-```
-
-After:
-
-```text
-Quick update: The current launch status is that the payment flow has passed the latest smoke test, but the webhook retry log still needs review.
-
-I am checking the last three failed events and will post the result before the 2pm launch check.
-
-At this time, I do not recommend changing the launch decision until that review is complete.
-```
-
-## work-03-research-summary
-
-Scenario: Work update
-Tone: Warm
-Input word count: 73
-Input character count: 436
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 1%
-Change: -99 pts
-Rejected candidate reasons: none
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- six interviews
-- four teachers
-- two asked
-- Wednesday
-
-Before:
-
-```text
-I am writing to inform you that the teacher interview notes are now ready for review. We completed six interviews this week. Four teachers mentioned that the onboarding copy felt too technical, and two asked for a sample response before signing up. I recommend updating the first screen and adding one short example before the next test on Wednesday.
-```
-
-After:
-
-```text
-Quick update from the six interviews with teachers this week:
-
-The teacher interview notes are ready for review.
-
-Four teachers said the onboarding copy felt too technical. Two asked if they could see a sample response before signing up.
-
-I think the first screen should be updated before Wednesday, with one short example added.
-```
-
-## work-04-long-launch-readiness
-
-Scenario: Work update
-Tone: Direct
-Input word count: 376
-Input character count: 2178
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 99%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 1%
-Final selected AI-like signal: 0%
-Change: -99 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:last three failed events missing:help article links unsupported:we've unsupported:let template_phrase:moving forward
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- payment flow
-- onboarding checklist
-- help article links
-- last three failed events
-- 2pm launch check
-
-Before:
-
-```text
-The current launch readiness status is as follows. The payment flow passed the latest smoke test, the onboarding checklist has been reviewed, and the help article links have been updated in the footer. The remaining item is the webhook retry log, where I am reviewing the last three failed events from this morning. I expect to post the result before the 2pm launch check. At this time, I do not recommend delaying the launch unless the retry log shows a repeated payment event failure.
-
-The rewrite should keep the payment flow, onboarding checklist, help article links, webhook retry log, last three failed events, and 2pm launch check. It should not add new test results. It should make the update easier to scan, but it should not turn into a formal status report with too many headings. The final message should be clear enough that a manager can see what is ready and what is still being checked.
-
-If the text uses bullets, keep them short. If it uses paragraphs, make each paragraph do a different job: ready items, pending review, and launch recommendation. Do not make the launch sound approved if the retry log still has to be checked.
-```
-
-After:
-
-```text
-Hi launch team,
-
-The current launch readiness status is as follows.
-
-The payment flow passed the latest smoke test, the onboarding checklist has been reviewed, and the help article links have been updated in the footer. The remaining item is the webhook retry log, where I am reviewing the last three failed events from this morning. I expect to post the result before the 2pm launch check. At this time, I do not recommend delaying the launch unless the retry log shows a repeated payment event failure.
-
-The rewrite should keep the payment flow, onboarding checklist, help article links, webhook retry log, last three failed events, and 2pm launch check. It should not add new test results.
-```
-
-## work-05-long-design-delay
-
-Scenario: Work update
-Tone: Direct
-Input word count: 348
-Input character count: 2055
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 3%
-Change: -97 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:unfortunately unsupported:we're
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- source file arrived later
-- one quality check
-- pricing table
-- section three
-- 4pm Friday
-
-Before:
-
-```text
-Unfortunately, the revised screenshots are not yet available because the updated design source file arrived later than expected this morning. The screen captures still need one quality check before they can be shared externally, especially because the pricing table changed in section three and the partner logo appears on the final slide. I expect to send the screenshots by 4pm Friday if there are no further issues. I will let you know sooner if the quality check reveals anything that changes that timing.
-
-The rewrite should keep the updated design source file arriving late, one quality check, pricing table, section three, partner logo, final slide, and 4pm Friday. It should not promise delivery earlier than 4pm. It should also preserve the note that timing could change if the quality check reveals an issue. The message should sound like a practical work update rather than a formal excuse.
-
-A good version can be direct: what happened, what remains, and when the recipient will get the screenshots. Avoid phrases like unfortunately, at this time, and if there are no further issues if they make the message sound like a customer service macro.
-```
-
-After:
-
-```text
-Quick update: Unfortunately, the revised screenshots are not yet available because the updated design source file arrived later than expected this morning.
-
-The screen captures still need one quality check before they can be shared externally, especially because the pricing table changed in section three and the partner logo appears on the final slide.
-
-I expect to send the screenshots by 4pm Friday if there are no further issues.
-```
-
-## draft-only-20-sales-checkin
-
-Scenario: General reply
-Tone: Direct
-Input word count: 40
-Input character count: 222
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 94%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 0%
-Change: -94 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:nora missing:not push for a decision unsupported:as finance
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Nora
-- not push for a decision
-- Vendor A
-- Vendor B
-- security questionnaire
-- today
-- next Tuesday
-
-Before:
-
-```text
-Hi Nora, I will not push for a decision this week. Your team is still comparing Vendor A and Vendor B, and finance asked for the security questionnaire first. I can send the questionnaire today and follow up next Tuesday.
-```
-
-After:
-
-```text
-Hi Nora,
-
-I will not push for a decision this week. Your team is still comparing Vendor A and Vendor B, and finance asked for the security questionnaire first.
-
-I can send the questionnaire today and follow up next Tuesday.
-```
-
-## draft-only-21-sales-expansion
-
-Scenario: General reply
-Tone: Warm
-Input word count: 36
-Input character count: 212
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 94%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -94 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:devon missing:12 additional seats missing:july 1 missing:july unsupported:once missing_locked:July 1
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Devon
-- 12 additional seats
-- July 1
-- does not include the analytics add-on
-- second quote
-- manager approves
-
-Before:
-
-```text
-Hi Devon, the expansion quote includes 12 additional seats starting July 1. It does not include the analytics add-on yet. If you want analytics included, I can send a second quote after your manager approves it.
-```
-
-After:
-
-```text
-Hi Devon,
-
-The expansion quote includes 12 additional seats starting July 1. It doesn't include the analytics add-on yet.
-
-If you want analytics included, I can send a second quote after your manager approves it.
-```
-
-## draft-only-36-cover-support
-
-Scenario: General reply
-Tone: Direct
-Input word count: 42
-Input character count: 251
-Diagnosis tags: low_specificity
-Rewrite plan: Target low_specificity while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 11%
-Final selected AI-like signal: 1%
-Change: -99 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:do not make me sound senior
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Support Specialist
-- email and chat
-- recurring issues
-- product team
-- help center articles
-- do not make me sound senior
-
-Before:
-
-```text
-I am applying for the Support Specialist role. I answer customer questions by email and chat, summarize recurring issues for the product team, and update help center articles when the same question keeps coming up. Please do not make me sound senior.
-```
-
-After:
-
-```text
-I am applying for the Support Specialist role.
-
-I answer customer questions by email and chat, summarize recurring issues for the product team, and update help center articles when the same question keeps coming up.
-
-Please keep the wording at the Support Specialist level; do not make me sound senior.
-```
-
-## reply-02-sales-followup
-
-Scenario: Email or message reply
-Tone: Warm
-Input word count: 71
-Input character count: 446
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 98%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:reporting feature malformed:dangling_closing
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Jordan
-- reporting feature
-- next month
-
-Before:
-
-```text
-Hello Jordan, I am following up on our previous communication regarding the proposal. Please advise whether you would like to proceed with the proposal as discussed. We are happy to provide any additional information that may assist your decision-making process as you evaluate your options.
-```
-
-After:
-
-```text
-Hi Jordan,
-
-I can send a shorter summary for your internal thread. Glad the reporting feature is still useful.
-
-No rush from my side; next month works while you compare the two other vendors.
-```
-
-## support-01-priya-billing
-
-Scenario: Customer support
-Tone: Warm
-Input word count: 169
-Input character count: 965
-Diagnosis tags: support_template_voice
-Rewrite plan: Target support_template_voice while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 1%
-Final selected AI-like signal: 12%
-Change: -88 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:may 8 missing:15 regular seats missing:priya unsupported:3 users
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Priya
-- 18 active seats
-- 15 regular seats
-- NZD $126
-- May 8
-
-Before:
-
-```text
-Hi Priya, Thank you for contacting us regarding the usage report and invoice preview in your account. We understand that there appears to be a discrepancy between the number of active seats shown in the dashboard and the number of seats approved during your renewal. The most likely explanation is that the three temporary contractors were counted as active seats during May. Even if a user only joins for part of the month, prorated charges may apply. Please check whether the contractors are still active and send us their names if you would like assistance.
-```
-
-After:
-
-```text
-Hi Priya,
-
-Thanks for laying this out. The jump looks tied to the three temporary contractors being counted during May, not a base plan change.
-
-That explains why the dashboard shows 18 active seats instead of the 15 regular seats your team approved. The NZD $126 increase looks like the prorated charge for the days those accounts had access.
-
-Before the invoice is finalized, check whether those contractor accounts are still active. They may still be active if they were not removed after May 8. If you send over their names or email addresses, we can help confirm their status. We will not change anything unless you ask us to.
-```
-
-## support-02-export-error
-
-Scenario: Customer support
-Tone: Direct
-Input word count: 86
-Input character count: 505
-Diagnosis tags: stock_opening, corporate_polish, support_template_voice
-Rewrite plan: Target stock_opening, corporate_polish, support_template_voice while preserving the user's facts.
-Draft AI-like signal: 32%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -32 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:monday unsupported:unfortunately unsupported:sorry
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- custom tags column
-- Monday board packet
-- April
-
-Before:
-
-```text
-Thank you for reaching out. We apologize for any inconvenience caused by the missing custom tags column in your CSV export. Our team is currently investigating the matter and will provide an update as soon as possible. In the meantime, please be advised that you may try exporting the report again from the dashboard settings page.
-```
-
-After:
-
-```text
-The April CSV export is missing the custom tags column, but the underlying campaign data is still safe.
-
-We are checking the export job. If the check confirms the issue, we will send a corrected file for the Monday board packet.
-```
-
-## support-03-login-access
-
-Scenario: Customer support
-Tone: Direct
-Input word count: 75
-Input character count: 484
-Diagnosis tags: over_safe_tone
-Rewrite plan: Target over_safe_tone while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 1%
-Change: -99 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:resent the invite twice unsupported:let unsupported:support
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Mina
-- mina@northstar.example
-- resent the invite twice
-
-Before:
-
-```text
-Hello, thank you for contacting support. We understand the issue regarding Mina's account access and apologize for the inconvenience. It may be related to the user's previous workspace association. Please ensure that the invitation has been accepted correctly and that the user is logging in with the appropriate email address.
-```
-
-After:
-
-```text
-Hi Mina,
-
-Mina's email address is mina@northstar.example, and she should keep signing in with it. If she still lands in the old team, this is likely a workspace association issue rather than a new invite issue.
-
-The invite was resent twice, so I would not keep repeating that step.
-
-The next useful step is for support to check which workspace mina@northstar.example is linked to and whether the newest Northstar invitation attached to the right account. That should explain why she cannot reach the right workspace.
-```
-
 ## support-04-priya-billing-long-regression
 
 Scenario: Customer support
@@ -1639,7 +276,7 @@ First candidate AI-like signal: unavailable
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -89 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:base plan missing:finance manager missing:nzd $126 missing:18 active seats missing:15 regular seats unsupported:let
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:base plan missing:finance manager missing:nzd $126 missing:18 active seats missing:15 regular seats missing:priya unsupported:let missing_locked:No change to the base plan.
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1707,7 +344,7 @@ First candidate AI-like signal: unavailable
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: 0 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:northeast region missing:data is still safe missing:northeast unsupported:updates
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:northeast region missing:data is still safe missing:northeast
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1740,55 +377,6 @@ The April and May CSV exports for the Northeast region are missing the custom ta
 We are checking the export job. If the check confirms the issue, we will send a corrected file before Monday at 10am.
 ```
 
-## support-06-login-workspace-long
-
-Scenario: Customer support
-Tone: Direct
-Input word count: 337
-Input character count: 2074
-Diagnosis tags: over_safe_tone
-Rewrite plan: Target over_safe_tone while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 1%
-Change: -99 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:resent the invite twice unsupported:first
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Mina
-- mina@northstar.example
-- resent the invite twice
-- old pilot workspace
-- billing report folder
-
-Before:
-
-```text
-Hello, thank you for contacting support. We understand the issue regarding Mina's account access and apologize for the inconvenience caused by the workspace mismatch. Based on the information provided, this may be related to the user's previous workspace association or an incomplete invitation acceptance flow. Please ensure that Mina is logging in with the correct email address, mina@northstar.example, and that she has accepted the most recent invitation. If the problem persists, our team can review the account association and provide additional guidance regarding the next steps.
-
-The reply needs to acknowledge the steps already taken without repeating them as if they are new instructions. It should make clear that Mina should keep using mina@northstar.example and that the previous workspace association may be the reason she is landing in the old pilot workspace. It should also preserve the fact that the invite was resent twice and that the missing destination is the billing report folder. Do not promise that support will unlink the account immediately unless the user asks for that change.
-```
-
-After:
-
-```text
-Hi Mina,
-
-Mina's email address is mina@northstar.example, and she should keep signing in with it. If she still lands in the old pilot workspace, this is likely a workspace association issue rather than a new invite issue.
-
-The invite was resent twice, so I would not keep repeating that step.
-
-The next useful step is for support to check which workspace mina@northstar.example is linked to and whether the newest Northstar invitation attached to the right account. That should explain why she cannot reach the billing report folder.
-```
-
 ## support-07-plan-change-long
 
 Scenario: Customer support
@@ -1799,10 +387,10 @@ Diagnosis tags: stock_opening, over_safe_tone
 Rewrite plan: Target stock_opening, over_safe_tone while preserving the user's facts.
 Draft AI-like signal: 0%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
+Repair candidate AI-like signal: 0%
 Final selected AI-like signal: 0%
 Change: 0 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:starter plan missing:old plan credit missing:new plan charge missing:shared templates missing:finance thread missing:starter unsupported:following
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:starter plan missing:shared templates missing:finance thread missing:starter unsupported:following
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1854,7 +442,7 @@ First candidate AI-like signal: 100%
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
 Change: -100 pts
-Rejected candidate reasons: initial: Fact reconstruct final naturalness gate. | targeted_repair: Targeted repair of high-risk sentences after the first final missed the naturalness gate. | repair: Strong-model escalation naturalness and fact gate.
+Rejected candidate reasons: initial: Fact reconstruct final naturalness gate. | repair: Strong-model escalation naturalness and fact gate.
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1900,10 +488,10 @@ Diagnosis tags: support_template_voice
 Rewrite plan: Target support_template_voice while preserving the user's facts.
 Draft AI-like signal: 78%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
+Repair candidate AI-like signal: 16%
 Final selected AI-like signal: 0%
 Change: -78 pts
-Rejected candidate reasons: none
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:best regards customer support team missing:daniel unsupported:let Dropped availability constraint.
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -1964,595 +552,20 @@ Best regards,
 Customer Support Team
 ```
 
-## cover-05-long-support-specialist
+## work-04-long-launch-readiness
 
-Scenario: Cover letter
-Tone: Warm
-Input word count: 367
-Input character count: 2388
-Diagnosis tags: low_specificity, application_cliche
-Rewrite plan: Target low_specificity, application_cliche while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:help center articles
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- email and chat
-- recurring issues
-- product team
-- help center articles
-
-Before:
-
-```text
-I am excited to submit my application for the Support Specialist role. I have always been passionate about helping customers succeed and providing excellent service. In my previous position, I answered customer questions through email and chat, summarized recurring issues for our product team, and updated help center articles when we noticed the same question coming up repeatedly. I enjoy making complicated product details easier for customers to understand. I believe I would be a valuable addition to your team and would appreciate the opportunity to discuss my qualifications further.
-
-The rewrite should remove broad phrases like passionate about helping customers and valuable addition to your team. It should keep the actual work: email and chat support, recurring issues, product team summaries, and help center article updates. It should also keep the idea that the applicant likes making complicated product details easier to understand. Do not add metrics, customer satisfaction scores, management experience, or technical certifications.
-
-The final letter can be warm, but it should still feel like a real applicant wrote it. It should not over-explain every support task. The strongest version will probably have two or three compact paragraphs: why the role fits, what the applicant has done, and why that experience would help a small SaaS support team.
-```
-
-After:
-
-```text
-I am excited to submit my application for the Support Specialist role.
-
-In my previous position, I answered customer questions through email and chat, summarized recurring issues for our product team, and updated help center articles when we noticed the same question coming up repeatedly.
-
-I enjoy making complicated product details easier for customers to understand.
-
-That kind of practical support experience would fit a small SaaS support team.
-
-Please keep the wording at the Support Specialist level; do not make me sound senior.
-```
-
-## reply-04-long-sales-renewal
-
-Scenario: Email or message reply
-Tone: Warm
-Input word count: 408
-Input character count: 2418
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 0%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: 0 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:reporting feature missing:team templates missing:two other vendors unsupported:there unsupported:let
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Jordan
-- reporting feature
-- team templates
-- two other vendors
-- first week of June
-
-Before:
-
-```text
-Hello Jordan, I am following up regarding the renewal proposal and your ongoing evaluation process. We appreciate your interest in the reporting feature and the new team templates. We understand that your finance team is comparing multiple vendors before making a final decision. Please let us know whether you would like to proceed with one of the plan options, and we would be happy to provide any additional information that may assist your decision-making process during the first week of June.
-
-The rewrite should sound like a helpful sales follow-up, not a pressure email. It should acknowledge that they like the reporting feature and team templates, offer to send a shorter plan-options summary, and leave room for the finance comparison. Avoid phrases like decision-making process, proceed with the proposal, and happy to provide any additional information if they make the note feel generic. The best version should sound like one person responding to Jordan's actual message.
-
-Preserve Jordan's name if it appears in the draft, but do not invent a last name or company. Do not claim that the plan options are attached unless the draft says so. A good reply should be short enough to send in a thread but specific enough that it clearly answers the buyer's request.
-```
-
-After:
-
-```text
-Hi Jordan,
-
-Thanks for looking at the renewal proposal. I can send a shorter summary of the two plan options for your internal thread. Glad the reporting feature and team templates are still useful.
-
-No rush from my side; first week of June works while you compare the two other vendors.
-```
-
-## draft-only-35-cover-program
-
-Scenario: General reply
-Tone: Warm
-Input word count: 45
-Input character count: 282
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:32 volunteers missing:attendance numbers unsupported:coordinator
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Program Manager
-- 32 volunteers
-- monthly partner updates
-- weekend workshop schedules
-- attendance numbers
-- grant reports
-- education access
-
-Before:
-
-```text
-I am applying for the Program Manager role. In my current job, I coordinate 32 volunteers, prepare monthly partner updates, manage weekend workshop schedules, and track attendance numbers for grant reports. I care about education access but do not want the letter to sound generic.
-```
-
-After:
-
-```text
-I am applying for the Program Manager role. In my current job, I coordinate 32 volunteers, prepare monthly partner updates, manage weekend workshop schedules, and track attendance numbers for grant reports.
-
-I care about education access but don't want the letter to sound generic.
-```
-
-## draft-only-37-general-policy
-
-Scenario: General reply
-Tone: Warm
-Input word count: 31
-Input character count: 207
-Diagnosis tags: low_specificity
-Rewrite plan: Target low_specificity while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:do not need to send them again missing:agenda is unchanged
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- already submitted questions
-- do not need to send them again
-- agenda is unchanged
-- Saturday's workshop
-- Printed scholarship drafts
-
-Before:
-
-```text
-Participants who already submitted questions do not need to send them again. The agenda is unchanged, and the room change only affects this Saturday's workshop. Printed scholarship drafts are still welcome.
-```
-
-After:
-
-```text
-Saturday workshop note:
-
-The agenda is unchanged. The room change only affects this Saturday's workshop.
-
-Already submitted questions? No need to send them again. Printed scholarship drafts are still welcome.
-```
-
-## blank-01-partner-update
-
-Scenario: Blank / custom
+Scenario: Work update
 Tone: Direct
-Input word count: 70
-Input character count: 449
-Diagnosis tags: corporate_polish
-Rewrite plan: Target corporate_polish while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 1%
-Change: -99 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:section three missing:section five missing:may 12
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- section three
-- section five
-- May 12
-
-Before:
-
-```text
-I am writing to provide an update regarding the partner onboarding packet. The revised document has now been completed and is available for your review. Please note that section three contains the updated pricing language, and section five includes the implementation timeline that was discussed during the call on May 12. Kindly review the attached document and provide any feedback at your earliest convenience so that we may proceed accordingly.
-```
-
-After:
-
-```text
-Quick update: section three has the updated pricing language, and section five has the implementation timeline from our May 12 call.
-
-Please take a look when you can so we can keep moving.
-```
-
-## blank-02-community-note
-
-Scenario: Blank / custom
-Tone: Warm
-Input word count: 57
-Input character count: 371
-Diagnosis tags: corporate_polish
-Rewrite plan: Target corporate_polish while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 99%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. malformed:dangling_closing
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Thursday
-- Room 204
-- 6:30pm
-
-Before:
-
-```text
-This message is to inform families that the Thursday workshop will be moved to Room 204 due to maintenance in the library. The start time remains 6:30pm, and the session will still cover scholarship forms, supporting documents, and the application timeline. We apologize for any inconvenience this change may cause and appreciate your understanding regarding the matter.
-```
-
-After:
-
-```text
-Thursday workshop update: we're moving to Room 204 because of library maintenance.
-
-We'll still start at 6:30pm and cover scholarship forms, supporting documents, and the application timeline.
-```
-
-## blank-03-internal-note
-
-Scenario: Blank / custom
-Tone: Direct
-Input word count: 63
-Input character count: 375
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 15%
-Change: -85 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. unsupported:let
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Vendor A
-- Vendor B
-- Vendor C
-- Friday
-
-Before:
-
-```text
-The purpose of this note is to summarize the current status of the vendor review. Vendor A has provided the revised security questionnaire, Vendor B is still waiting on legal approval, and Vendor C has requested an extension until Friday. Based on the current timeline, I recommend that we do not make a final decision until all three responses are available for comparison.
-```
-
-After:
-
-```text
-Quick note: The purpose of this note is to summarize the current status of the vendor review.
-
-Vendor A has provided the revised security questionnaire, Vendor B is still waiting on legal approval, and Vendor C has requested an extension until Friday. Based on the current timeline, I recommend that we do not make a final decision until all three responses are available for comparison.
-```
-
-## cover-01-operations-role
-
-Scenario: Cover letter
-Tone: Direct
-Input word count: 89
-Input character count: 601
-Diagnosis tags: low_specificity, application_cliche
-Rewrite plan: Target low_specificity, application_cliche while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. unsupported:keeping
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- weekly partner updates
-- shared folders
-- team of eight
-
-Before:
-
-```text
-I am writing to express my interest in the Operations Coordinator position. I am a passionate and results-driven professional with a proven track record of managing communication, coordinating schedules, and supporting team success. In my last role, I prepared weekly partner updates, kept shared folders organized, and helped schedule meetings for a team of eight. I believe I would be a perfect fit for your dynamic team.
-```
-
-After:
-
-```text
-I am interested in the Operations Coordinator position.
-
-In my last role, I prepared weekly partner updates, kept shared folders organized, and helped schedule meetings for a team of eight.
-```
-
-## cover-02-customer-success
-
-Scenario: Cover letter
-Tone: Warm
-Input word count: 89
-Input character count: 565
-Diagnosis tags: low_specificity, application_cliche
-Rewrite plan: Target low_specificity, application_cliche while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 16%
-Change: -84 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:summarize action items unsupported:helping
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- summarize action items
-- help center articles
-- Customer Success Associate
-
-Before:
-
-```text
-I am excited to apply for the Customer Success Associate role. I have always been passionate about helping customers and delivering excellent service. In my current position, I respond to customer questions, summarize action items after calls, and update our help center articles when a pattern appears. I am confident that my communication skills and positive attitude would make me a strong addition to the team.
-```
-
-After:
-
-```text
-I am excited to apply for the Customer Success Associate role.
-
-In my current position, I respond to customer questions, summarize action items after calls, and update our help center articles when a pattern appears. They want someone who can answer customer questions clearly and write helpful follow-up notes.
-```
-
-## cover-03-admin-assistant
-
-Scenario: Cover letter
-Tone: Direct
-Input word count: 79
-Input character count: 592
-Diagnosis tags: low_specificity
-Rewrite plan: Target low_specificity while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: 0%
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: none
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- three providers
-- patient follow-up notes
-- private information
-
-Before:
-
-```text
-Please accept my application for the Administrative Assistant position. I am highly organized and detail oriented, and I have extensive experience supporting administrative workflows. At my previous clinic, I managed calendars for three providers, prepared patient follow-up notes, and handled private information carefully according to office procedures. I would welcome the opportunity to bring my skills to your organization.
-```
-
-After:
-
-```text
-I’m writing to apply for the Administrative Assistant position. I’m highly organized and detail-oriented, with a solid background in supporting administrative workflows. In my previous roles, I managed calendars for three providers and prepared patient follow-up notes. I’ve always handled private information carefully, following office procedures closely. I’m looking forward to the chance to bring my skills to your organization.
-```
-
-## draft-only-22-client-design
-
-Scenario: General reply
-Tone: Direct
-Input word count: 32
-Input character count: 182
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 46%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 0%
-Change: -46 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:ava missing:logo color has not changed missing:desktop today
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Ava
-- homepage mockup
-- mobile version
-- spacing check
-- desktop today
-- Wednesday morning
-- logo color has not changed
-
-Before:
-
-```text
-Hi Ava, the homepage mockup is ready, but the mobile version still needs one spacing check. I can send desktop today and mobile by Wednesday morning. The logo color has not changed.
-```
-
-After:
-
-```text
-Hi Ava,
-
-The homepage mockup is ready, but the mobile version still needs one spacing check. I can send desktop today and mobile by Wednesday morning.
-
-The logo color has not changed.
-```
-
-## draft-only-23-client-invoice
-
-Scenario: General reply
-Tone: Warm
-Input word count: 36
-Input character count: 180
+Input word count: 376
+Input character count: 2178
 Diagnosis tags: none
 Rewrite plan: Make the draft more natural while preserving the user's facts.
 Draft AI-like signal: 99%
 First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 0%
-Change: -99 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:po number missing:april 30
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Ben
-- invoice #317
-- April 30
-- PO-8842
-- NZD $2,450
-- May 20
-
-Before:
-
-```text
-Hi Ben, invoice #317 was sent on April 30, but the PO number was missing. I have attached a corrected copy with PO-8842. The amount is still NZD $2,450 and the due date is May 20.
-```
-
-After:
-
-```text
-Hi Ben,
-
-Hi Ben, invoice #317 was sent on April 30, but the PO number was missing.
-
-I have attached a corrected copy with PO-8842. The amount is still NZD $2,450 and the due date is May 20.
-```
-
-## draft-only-24-client-delay
-
-Scenario: General reply
-Tone: Direct
-Input word count: 34
-Input character count: 186
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 100%
-Final selected AI-like signal: 8%
-Change: -92 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:grace missing:source file arrived late
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Grace
-- source file arrived late
-- not be ready by noon
-- 4pm Friday
-- one quality check
-- dashboard numbers are unchanged
-
-Before:
-
-```text
-Hi Grace, the source file arrived late, so the report will not be ready by noon. I can send the clean version by 4pm Friday after one quality check. The dashboard numbers are unchanged.
-```
-
-After:
-
-```text
-Hi Grace,
-
-The source file arrived late, so the report will not be ready by noon. I can send the clean version by 4pm Friday after one quality check.
-
-The dashboard numbers are unchanged.
-```
-
-## draft-only-25-work-launch
-
-Scenario: General reply
-Tone: Warm
-Input word count: 36
-Input character count: 212
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 93%
-First candidate AI-like signal: unavailable
 Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 0%
-Change: -93 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:2pm launch check missing:2pm missing:before 2pm
+Final selected AI-like signal: 1%
+Change: -98 pts
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:last three failed events missing:help article links unsupported:here
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -2563,264 +576,47 @@ Strict signal pass: yes
 
 Expected facts:
 - payment flow
-- smoke test
 - onboarding checklist
 - help article links
-- last three failed webhook events
+- last three failed events
 - 2pm launch check
 
 Before:
 
 ```text
-Quick update: the payment flow passed the smoke test, the onboarding checklist is done, and the help article links are live. I am still reviewing the last three failed webhook events before the 2pm launch check.
+The current launch readiness status is as follows. The payment flow passed the latest smoke test, the onboarding checklist has been reviewed, and the help article links have been updated in the footer. The remaining item is the webhook retry log, where I am reviewing the last three failed events from this morning. I expect to post the result before the 2pm launch check. At this time, I do not recommend delaying the launch unless the retry log shows a repeated payment event failure.
+
+The rewrite should keep the payment flow, onboarding checklist, help article links, webhook retry log, last three failed events, and 2pm launch check. It should not add new test results. It should make the update easier to scan, but it should not turn into a formal status report with too many headings. The final message should be clear enough that a manager can see what is ready and what is still being checked.
+
+If the text uses bullets, keep them short. If it uses paragraphs, make each paragraph do a different job: ready items, pending review, and launch recommendation. Do not make the launch sound approved if the retry log still has to be checked.
 ```
 
 After:
 
 ```text
-Quick update: the payment flow passed the smoke test, the onboarding checklist is done, and the help article links are live. I am still reviewing the last three failed webhook events before the 2pm launch check.
+Hi launch channel attendees,
+
+The current launch readiness status is as follows.
+
+The payment flow passed the latest smoke test, the onboarding checklist has been reviewed, and the help article links have been updated in the footer. The remaining item is the webhook retry log, where I am reviewing the last three failed events from this morning. I expect to post the result before the 2pm launch check. At this time, I do not recommend delaying the launch unless the retry log shows a repeated payment event failure.
+
+The rewrite should keep the payment flow, onboarding checklist, help article links, webhook retry log, last three failed events, and 2pm launch check. It should not add new test results.
 ```
 
-## draft-only-26-work-blockers
+## blank-04-long-policy-note
 
-Scenario: General reply
-Tone: Direct
-Input word count: 35
-Input character count: 182
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: none
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- Nina
-- API fix
-- Omar
-- QA script
-- Friday demo
-- vendor API timeout
-- 11am retry
-
-Before:
-
-```text
-Nina owns the API fix, Omar owns the QA script, and both are due before the Friday demo. The only blocker is the vendor API timeout. I will post another update after the 11am retry.
-```
-
-After:
-
-```text
-Nina owns the API fix, and Omar is responsible for the QA script. It’s essential that we have everything resolved before the Friday demo. I’m aware of the vendor API timeout issue following the 11am retry, and we should monitor this closely.
-```
-
-## draft-only-27-work-research
-
-Scenario: General reply
+Scenario: Blank / custom
 Tone: Warm
-Input word count: 35
-Input character count: 223
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 1%
-Change: -99 pts
-Rejected candidate reasons: none
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- six teacher interviews
-- four teachers
-- two asked
-- sample response
-- first screen
-- Wednesday
-
-Before:
-
-```text
-We finished six teacher interviews this week. Four teachers said the onboarding copy felt too technical, and two asked for a sample response before signing up. I recommend updating the first screen before Wednesday's test.
-```
-
-After:
-
-```text
-Quick update from the six interviews with teachers this week:
-
-The teacher interview notes are ready for review.
-
-Four teachers said the onboarding copy felt too technical. Two asked if they could see a sample response before signing up.
-
-I think the first screen should be updated before Wednesday, with one short example added.
-```
-
-## draft-only-28-work-screenshots
-
-Scenario: General reply
-Tone: Direct
-Input word count: 40
-Input character count: 246
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 0%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:source file arrived late missing:target
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- revised screenshots
-- source file arrived late
-- one quality check
-- pricing table
-- section three
-- partner logo
-- final slide
-- 4pm Friday
-
-Before:
-
-```text
-The revised screenshots are delayed because the updated design source file arrived late this morning. They still need one quality check, especially the pricing table in section three and the partner logo on the final slide. Target is 4pm Friday.
-```
-
-After:
-
-```text
-The revised screenshots are delayed because the updated design source file arrived late this morning. They still need one quality check, especially the pricing table in section three and the partner logo on the final slide.
-
-Target is 4pm Friday.
-```
-
-## draft-only-29-work-board
-
-Scenario: General reply
-Tone: Warm
-Input word count: 36
-Input character count: 199
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: 99%
-Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:pdf unsupported:board just unsupported:finance
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- board packet
-- finance chart
-- April revenue number
-- May forecast
-- 9am tomorrow
-- finance confirms
-
-Before:
-
-```text
-The board packet is ready except for the finance chart. The chart needs the April revenue number and the May forecast. I can send the final PDF by 9am tomorrow if finance confirms the numbers today.
-```
-
-After:
-
-```text
-The board packet is ready except for the finance chart. The chart needs the April revenue number and the May forecast.
-
-I can send the final PDF by 9am tomorrow if finance confirms the numbers today.
-```
-
-## draft-only-30-work-handoff
-
-Scenario: General reply
-Tone: Direct
-Input word count: 32
-Input character count: 186
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 0%
-First candidate AI-like signal: unavailable
-Repair candidate AI-like signal: unavailable
-Final selected AI-like signal: 0%
-Change: 0 pts
-Rejected candidate reasons: none
-Facts preserved: yes
-Missing facts: none
-Unsupported facts introduced: none
-Quality failure state: no
-Quality failure reason: none
-Customer-usable pass: yes
-Strict signal pass: yes
-
-Expected facts:
-- authentication
-- billing
-- Search is not included
-- rollback notes
-- release doc
-- Maya
-- support FAQ review
-
-Before:
-
-```text
-The handoff is complete for authentication and billing. Search is not included in this release. I added the rollback notes to the release doc and tagged Maya for the support FAQ review.
-```
-
-After:
-
-```text
-The handoff is complete for authentication and billing. Search is not included in this release.
-
-I added the rollback notes to the release doc and tagged Maya for the support FAQ review.
-```
-
-## draft-only-31-work-meeting
-
-Scenario: General reply
-Tone: Warm
-Input word count: 37
-Input character count: 198
-Diagnosis tags: none
-Rewrite plan: Make the draft more natural while preserving the user's facts.
-Draft AI-like signal: 100%
+Input word count: 236
+Input character count: 1469
+Diagnosis tags: corporate_polish
+Rewrite plan: Target corporate_polish while preserving the user's facts.
+Draft AI-like signal: 96%
 First candidate AI-like signal: unavailable
 Repair candidate AI-like signal: 100%
 Final selected AI-like signal: 0%
-Change: -100 pts
-Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. unsupported:let
+Change: -96 pts
+Rejected candidate reasons: repair: Strong-model escalation fact and naturalness gate. missing:agenda is unchanged missing:tuesday unsupported:feel missing_locked:scholarship forms missing_locked:supporting documents missing_locked:application timeline
 Facts preserved: yes
 Missing facts: none
 Unsupported facts introduced: none
@@ -2830,24 +626,32 @@ Customer-usable pass: yes
 Strict signal pass: yes
 
 Expected facts:
-- 1:1
-- Tuesday
-- Wednesday
-- client workshop
-- 10am
-- 2pm
-- hiring plan feedback
+- Saturday
+- Room 204
+- 6:30pm
+- scholarship forms
+- application timeline
 
 Before:
 
 ```text
-I need to move our 1:1 from Tuesday to Wednesday because the client workshop now overlaps. I can do Wednesday at 10am or 2pm. The hiring plan feedback is ready, so this is only a scheduling change.
+This message is to inform participants that the Saturday workshop location has changed due to maintenance in the library. The session will now take place in Room 204, and the start time remains 6:30pm. The agenda is unchanged and will still include scholarship forms, supporting documents, and the application timeline. Participants who already submitted questions do not need to send them again. We apologize for any inconvenience this change may cause and appreciate your understanding regarding the matter.
+
+Additional details for the note: families received the original workshop reminder on Tuesday, so this update should focus only on the room change and not repeat the full registration instructions. The library maintenance is temporary and does not affect the rest of the program schedule. Participants may still bring printed scholarship drafts if they want feedback during the session. The tone should be warm and clear, but the note should not sound like a legal notice or a school district memo.
+
+The note will be sent by text and email, so it needs to be easy to understand without extra context. It should keep Saturday, Room 204, 6:30pm, scholarship forms, supporting documents, application timeline, and the fact that already-submitted questions do not need to be resent. Do not add a new deadline, a new contact person, or a different reason for the room change. The best version should sound like a coordinator giving a practical update to families.
 ```
 
 After:
 
 ```text
-I need to move our 1:1 from Tuesday to Wednesday because the client workshop now overlaps. I can do Wednesday at 10am or 2pm.
+Saturday workshop update: we're moving to Room 204 because of library maintenance.
 
-The hiring plan feedback is ready, so this is only a scheduling change.
+We'll still start at 6:30pm and cover scholarship forms, supporting documents, and the application timeline.
+
+The agenda is unchanged.
+
+Families received the original workshop reminder on Tuesday, so this update should focus only on the room change.
+
+If you already submitted questions, you do not need to send them again. Printed scholarship drafts are still welcome.
 ```

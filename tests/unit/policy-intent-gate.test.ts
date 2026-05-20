@@ -72,4 +72,17 @@ describe("runPolicyIntentGate", () => {
 
     expect(result.safe).toBe(true);
   });
+
+  it("accepts keeping a go-live date while asking for an updated implementation note", () => {
+    const input = makeInput(
+      "Please do not change the go-live date yet. We are still aiming for Monday, 17 June.",
+    );
+    const result = runPolicyIntentGate(
+      input,
+      "Please keep Monday, 17 June as the go-live date for now. Could you send an updated implementation note covering what changed?",
+    );
+
+    expect(result.safe).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
 });

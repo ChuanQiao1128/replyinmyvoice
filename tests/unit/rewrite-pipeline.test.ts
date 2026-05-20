@@ -532,8 +532,8 @@ describe("rewriteWithFactReconstruct", () => {
       riskNotes: ["Review before sending."],
     });
     mocks.measureWritingSignal
-      .mockResolvedValueOnce({ aiLikePercent: 89 })
-      .mockResolvedValueOnce({ aiLikePercent: 0 });
+      .mockResolvedValue({ aiLikePercent: 0 })
+      .mockResolvedValueOnce({ aiLikePercent: 89 });
 
     const result = await rewriteWithFactReconstruct(input);
 
@@ -543,6 +543,51 @@ describe("rewriteWithFactReconstruct", () => {
     expect(result.optimization.repairCandidatesTried).toBe(1);
     expect(result.optimization.candidateSignals.at(-1)?.stage).toBe("fallback");
     expect(mocks.finalizeCandidate).not.toHaveBeenCalled();
+  });
+
+  it("does not reject a fallback only because an LLM locked fact uses noisy labels", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+
+    mocks.extractFacts.mockResolvedValue({
+      ...facts,
+      facts_that_must_not_change: [
+        ...facts.facts_that_must_not_change,
+        "support note label",
+      ],
+    });
+    mocks.reviewCandidates.mockResolvedValue({
+      ...review,
+      scores: {
+        candidate_a_concise: {
+          ...review.scores.candidate_a_concise,
+          factual_accuracy: 8,
+        },
+        candidate_b_warm: {
+          ...review.scores.candidate_b_warm,
+          low_template_feel: 7,
+        },
+        candidate_c_natural: {
+          ...review.scores.candidate_c_natural,
+          tone_appropriateness: 7,
+        },
+      },
+    });
+    mocks.generateGuaranteedRewriteCandidate.mockReturnValue({
+      rewrittenText:
+        "Hi Monica,\n\nJordan is missing three assignments from the past two weeks: the reading response, vocabulary practice, and the short reflection paragraph from last Friday.\n\nIf he submits all three by this Friday at 5 p.m., I can still give partial credit. He can come by during lunch Tuesday or Thursday.\n\nBest regards,\nMs. Carter",
+      changeSummary: ["Used deterministic facts-first fallback."],
+      riskNotes: ["Review before sending."],
+    });
+    mocks.measureWritingSignal
+      .mockResolvedValue({ aiLikePercent: 0 })
+      .mockResolvedValueOnce({ aiLikePercent: 89 });
+
+    const result = await rewriteWithFactReconstruct(input);
+
+    expect(result.optimization.candidateSignals.at(-1)?.stage).toBe("fallback");
+    expect(result.optimization.selectionStatus).toBe("passed");
   });
 
   it("rejects a rewrite that raises an already-low draft signal", async () => {

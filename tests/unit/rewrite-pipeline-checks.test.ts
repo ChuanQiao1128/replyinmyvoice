@@ -67,6 +67,77 @@ describe("deterministicCheck", () => {
     expect(result.issues).toEqual([]);
   });
 
+  it("accepts already-submitted question wording when resent is rewritten as send again", () => {
+    const facts: ExtractedFacts = {
+      recipient_name: "",
+      sender_name_or_role: "",
+      people_mentioned: [],
+      main_purpose: "Workshop update.",
+      key_facts: [],
+      required_actions: [],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [
+        "already-submitted questions do not need to be resent",
+      ],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const workshopInput: RewriteRequestInput = {
+      ...input,
+      roughDraftReply:
+        "Participants who already submitted questions do not need to send them again.",
+    };
+    const rewritten =
+      "If you already submitted questions, you do not need to send them again.";
+
+    const result = deterministicCheck(workshopInput, facts, rewritten, styleCard);
+
+    expect(result.safe).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("accepts label-style locked facts when their concrete date and time remain", () => {
+    const facts: ExtractedFacts = {
+      recipient_name: "",
+      sender_name_or_role: "",
+      people_mentioned: [],
+      main_purpose: "Workshop update.",
+      key_facts: [],
+      required_actions: [],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [
+        "workshop date: Saturday",
+        "workshop start time: 6:30pm",
+      ],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const workshopInput: RewriteRequestInput = {
+      ...input,
+      roughDraftReply:
+        "The Saturday workshop is now in Room 204 and starts at 6:30pm.",
+    };
+    const rewritten =
+      "Saturday workshop update: we are moving to Room 204. We'll still start at 6:30pm.";
+
+    const result = deterministicCheck(workshopInput, facts, rewritten, styleCard);
+
+    expect(result.safe).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
   it("rejects a dangling closing without a sender name", () => {
     const facts: ExtractedFacts = {
       recipient_name: "Ava",

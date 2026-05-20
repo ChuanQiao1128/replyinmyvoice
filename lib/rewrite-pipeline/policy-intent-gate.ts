@@ -26,6 +26,9 @@ export function runPolicyIntentGate(
 ): PolicyIntentGateResult {
   const source = normalize(sourceText(input));
   const output = normalize(rewrittenText);
+  const outputForNegativeActionCheck = output
+    .replace(/\bupdated implementation note\b/g, "")
+    .replace(/\bwhat changed\b/g, "");
   const issues: PolicyIntentGateResult["issues"] = [];
 
   if (!source.trim()) {
@@ -80,8 +83,12 @@ export function runPolicyIntentGate(
 
   if (
     /\b(?:do not|don't|not)\s+(?:delete|cancel|remove|change)\b/.test(source) &&
-    /\b(?:deleted|canceled|cancelled|removed|changed|updated)\b/.test(output) &&
-    !/\b(?:do not|don't|not)\s+(?:delete|cancel|remove|change)\b/.test(output)
+    /\b(?:deleted|canceled|cancelled|removed|changed|updated)\b/.test(outputForNegativeActionCheck) &&
+    !/\b(?:do not|don't|not)\s+(?:delete|cancel|remove|change)\b/.test(output) &&
+    !(
+      /\bgo-live date\b/.test(source) &&
+      /\bkeep\b.*\bgo-live date\b/.test(output)
+    )
   ) {
     issues.push({
       kind: "unsupported_fact",

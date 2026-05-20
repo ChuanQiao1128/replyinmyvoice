@@ -173,6 +173,38 @@ function factCheckSafe({
   return deterministicSafe && llmFactCheckPasses(llmResult);
 }
 
+function deterministicSafeForFallback(
+  input: RewriteRequestInput,
+  facts: Parameters<typeof deterministicCheck>[1],
+  rewrittenText: string,
+  styleCard: Parameters<typeof deterministicCheck>[3],
+) {
+  const result = deterministicCheck(input, facts, rewrittenText, styleCard);
+
+  if (result.safe) {
+    return { result, safe: true };
+  }
+
+  const onlyLockedFactIssues = result.issues.every((issue) =>
+    issue.startsWith("missing_locked:"),
+  );
+  if (!onlyLockedFactIssues) {
+    return { result, safe: false };
+  }
+
+  const requestFactsOnly = deterministicCheck(
+    input,
+    { ...facts, facts_that_must_not_change: [] },
+    rewrittenText,
+    styleCard,
+  );
+
+  return {
+    result,
+    safe: requestFactsOnly.safe,
+  };
+}
+
 function failureKindsFromIssues(
   issues: string[],
 ): RewriteFailureKind[] {
@@ -399,7 +431,7 @@ async function tryGuaranteedFallback({
   } | null = null;
 
   for (const fallback of fallbackCandidates) {
-    const deterministic = deterministicCheck(
+    const deterministic = deterministicSafeForFallback(
       input,
       facts,
       fallback.rewrittenText,

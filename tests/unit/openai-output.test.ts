@@ -514,6 +514,85 @@ describe("thread fallback rewrite pass", () => {
     expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
   });
 
+  it("keeps implementation schedule facts instead of routing a general export mention to CSV support", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Morgan,",
+        "Thank you for sending over the revised onboarding timeline and the notes from yesterday's implementation call.",
+        "The overall timeline still looks workable, but the training session originally planned for Tuesday, 4 June will need to move.",
+        "The best replacement time on our side is Thursday, 6 June at 10:30 a.m. If that does not work for your team, the backup option is Friday, 7 June after 2 p.m.",
+        "Please do not change the go-live date yet. We are still aiming for Monday, 17 June, as long as the user-permission issue is resolved by the end of next week.",
+        "The main blocker is that the warehouse supervisors can see the dashboard, but they cannot approve shift changes.",
+        "We also noticed that the export file is missing the approved by column, which our finance team needs for the weekly reconciliation report.",
+        "We are not adding the SMS reminder feature in this phase, and we are not ready to approve the additional NZD $480 setup fee for that feature.",
+        "I do want the team to document it as a possible phase-two item, because our regional managers may ask about it later.",
+        "Could you send us an updated implementation note that includes the proposed training time change, the permission issue, the missing approved by column, a note that SMS reminders are not part of this phase, and confirmation that the go-live date is still Monday, 17 June unless the permission issue is not resolved?",
+        "Best,",
+        "Avery",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Hi Morgan");
+    expect(result.rewrittenText).toContain("Tuesday, 4 June");
+    expect(result.rewrittenText).toContain("Thursday, 6 June at 10:30 a.m.");
+    expect(result.rewrittenText).toContain("Friday, 7 June after 2 p.m.");
+    expect(result.rewrittenText).toContain("Monday, 17 June");
+    expect(result.rewrittenText).toContain("user-permission issue");
+    expect(result.rewrittenText).toContain("warehouse supervisors");
+    expect(result.rewrittenText).toContain("cannot approve shift changes");
+    expect(result.rewrittenText).toContain("approved by column");
+    expect(result.rewrittenText).toContain("weekly reconciliation report");
+    expect(result.rewrittenText).toContain("SMS reminders are not part of this phase");
+    expect(result.rewrittenText).toContain("NZD $480");
+    expect(result.rewrittenText).toContain("phase-two item");
+    expect(result.rewrittenText).toContain("regional managers");
+    expect(result.rewrittenText).toContain("Avery");
+    expect(result.rewrittenText).not.toContain("custom tags column");
+    expect(result.rewrittenText).not.toContain("underlying campaign data");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps long workshop room-change facts in the deterministic fallback", () => {
+    const input = {
+      scenario: "Blank / custom",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "This message is to inform participants that the Saturday workshop location has changed due to maintenance in the library. The session will now take place in Room 204, and the start time remains 6:30pm. The agenda is unchanged and will still include scholarship forms, supporting documents, and the application timeline. Participants who already submitted questions do not need to send them again.",
+        "Additional details for the note: families received the original workshop reminder on Tuesday, so this update should focus only on the room change and not repeat the full registration instructions.",
+        "Participants may still bring printed scholarship drafts if they want feedback during the session.",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Saturday");
+    expect(result.rewrittenText).toContain("Room 204");
+    expect(result.rewrittenText).toContain("6:30pm");
+    expect(result.rewrittenText).toContain("scholarship forms");
+    expect(result.rewrittenText).toContain("supporting documents");
+    expect(result.rewrittenText).toContain("application timeline");
+    expect(result.rewrittenText).toContain("Tuesday");
+    expect(result.rewrittenText).toContain("do not need to send them again");
+    expect(result.rewrittenText).toContain("Printed scholarship drafts");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
   it("keeps sales renewal facts from message context during general fallback", () => {
     const input = {
       scenario: "General reply",
