@@ -4,6 +4,8 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-05-17",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
   "find_additional_modules": true,
   "rules": [
     {
@@ -16,6 +18,16 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "routes": [
+    {
+      "pattern": "replyinmyvoice.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.replyinmyvoice.com",
+      "custom_domain": true
+    }
+  ],
   "vars": {
     "OPENAI_MODEL_PRIMARY": "gpt-4o-mini",
     "OPENAI_MODEL_REPAIR": "gpt-4o",

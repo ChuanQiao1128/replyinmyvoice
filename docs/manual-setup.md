@@ -128,7 +128,15 @@ Deployment verification on 2026-05-20:
 - `/app` redirected signed-out users to `/sign-in`.
 - `/api/health/db` returned `{"ok":true}`.
 - `/api/rewrite` returned 401 for a signed-out request with the correct Origin header.
-- The existing `www.replyinmyvoice.com` DNS record still points at the Cloudflare Pages project and can remain as a rollback/holding-page path unless the user explicitly wants `www` cut over too.
+
+WWW cutover on 2026-05-20:
+
+- The user explicitly requested `www.replyinmyvoice.com` to serve the same Worker app as the apex domain.
+- The Pages custom domain for `www.replyinmyvoice.com` was removed from project `replyinmyvoice`.
+- The old `www.replyinmyvoice.com -> replyinmyvoice.pages.dev` CNAME was deleted.
+- `wrangler.jsonc` now declares both `replyinmyvoice.com` and `www.replyinmyvoice.com` as Worker custom domains.
+- Worker `replyinmyvoice-app` deployed successfully with version `a9e17a94-1fc0-440a-b7a7-1036f3063e3b`.
+- `www.replyinmyvoice.com` returned 200 for `/`, 307 to `/sign-in` for `/app`, `{"ok":true}` for `/api/health/db`, and 401 for signed-out `/api/rewrite`.
 
 Rollback DNS record captured before cutover:
 
