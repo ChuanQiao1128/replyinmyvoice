@@ -18,6 +18,7 @@ These steps are dashboard-only or final-cutover tasks. They should not block loc
   - `clk._domainkey.replyinmyvoice.com -> dkim1.4rlognk6y6o0.clerk.services`
   - `clk2._domainkey.replyinmyvoice.com -> dkim2.4rlognk6y6o0.clerk.services`
 - These records must stay DNS-only in Cloudflare. If Clerk still shows them as unverified, run verification again in the Clerk dashboard after DNS propagation.
+- Clerk production auth also uses the Next.js frontend API proxy at `https://replyinmyvoice.com/__clerk` as a stability fallback for the Clerk Frontend API. Keep `NEXT_PUBLIC_CLERK_PROXY_URL` set to this URL in GitHub Actions and Cloudflare Worker config, and keep the Clerk domain `proxy_url` aligned to the same value. ClerkJS is loaded from `NEXT_PUBLIC_CLERK_JS_URL` so the login page does not depend on the custom Frontend API domain serving the npm asset path.
 
 ## Stripe
 
