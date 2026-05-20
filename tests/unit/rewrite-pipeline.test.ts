@@ -313,6 +313,55 @@ describe("rewriteWithFactReconstruct", () => {
     expect(mocks.escalateCandidate).toHaveBeenCalledTimes(1);
   });
 
+  it("does not return a Sapling-passing final email that leaks internal fact-reference language", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const billingInput: RewriteRequestInput = {
+      ...input,
+      roughDraftReply: "Hi Priya,\n\nThe May 8 client handover is referenced.",
+    };
+    const billingFacts: ExtractedFacts = {
+      recipient_name: "Priya",
+      sender_name_or_role: "",
+      people_mentioned: ["Priya"],
+      main_purpose: "Mention the May 8 client handover.",
+      key_facts: ["May 8 client handover"],
+      required_actions: [],
+      deadlines: [],
+      dates_times: ["May 8"],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: ["May 8 client handover"],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    mocks.extractFacts.mockResolvedValue(billingFacts);
+    mocks.finalizeCandidate.mockResolvedValue(
+      "Hi Priya,\n\nThe May 8 client handover is referenced.",
+    );
+    mocks.escalateCandidate.mockResolvedValue(
+      "Hi Priya,\n\nThe May 8 client handover may be the next place to check.",
+    );
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 100 })
+      .mockResolvedValueOnce({ aiLikePercent: 18 });
+
+    const result = await rewriteWithFactReconstruct(billingInput);
+
+    expect(result.rewrittenText).not.toContain("is referenced");
+    expect(result.rewrittenText).toContain("May 8 client handover");
+    expect(mocks.escalateCandidate).toHaveBeenCalledTimes(1);
+    expect(
+      result.optimization.candidateSignals.some((signal) =>
+        signal.reason.includes("meta_language:fact_reference"),
+      ),
+    ).toBe(true);
+  });
+
   it("uses the deterministic facts-first fallback only after model escalation misses the gate", async () => {
     const { rewriteWithFactReconstruct } = await import(
       "../../lib/rewrite-pipeline/pipeline"

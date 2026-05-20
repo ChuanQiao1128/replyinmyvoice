@@ -39,6 +39,12 @@ public sealed class QuotaServiceTests
 
         var reservation = await db.UsageReservations.SingleAsync();
         reservation.Status.Should().Be(UsageReservationStatus.Pending);
+
+        var outbox = await db.OutboxMessages.SingleAsync();
+        outbox.Status.Should().Be(OutboxMessageStatus.Pending);
+        outbox.MessageType.Should().Be("RewriteJobCreated");
+        outbox.CorrelationId.Should().Be(attempt.Id.ToString());
+        outbox.PayloadJson.Should().Contain(attempt.Id.ToString());
     }
 
     [Fact]
@@ -57,7 +63,44 @@ public sealed class QuotaServiceTests
         await using var db = fixture.CreateContext();
         (await db.RewriteAttempts.CountAsync()).Should().Be(1);
         (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
         (await db.UsagePeriods.SingleAsync()).ReservedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ReserveAsync_rejects_same_idempotency_key_with_different_request_hash()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(fixture.CreateContext);
+
+        var first = await service.ReserveAsync(
+            user.Id,
+            "idem-conflict",
+            "hash-1",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(10));
+        var second = await service.ReserveAsync(
+            user.Id,
+            "idem-conflict",
+            "hash-2",
+            "{\"roughDraftReply\":\"This is a different request body.\",\"tone\":\"direct\"}",
+            "free:lifetime",
+            3,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(10));
+
+        first.Kind.Should().Be(ReserveRewriteResultKind.Created);
+        second.Kind.Should().Be(ReserveRewriteResultKind.Conflict);
+        second.AttemptId.Should().Be(first.AttemptId);
+
+        await using var db = fixture.CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(1);
+        (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
     }
 
     [Fact]
@@ -117,6 +160,32 @@ public sealed class QuotaServiceTests
         await using var db = fixture.CreateContext();
         (await db.RewriteAttempts.CountAsync()).Should().Be(1);
         (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task MarkProcessingAsync_allows_only_one_pending_claim()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(fixture.CreateContext);
+        var reservation = await service.ReserveAsync(
+            user.Id,
+            "idem-claim",
+            "hash-claim",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(10));
+
+        var first = await service.MarkProcessingAsync(reservation.AttemptId, DateTimeOffset.UtcNow);
+        var second = await service.MarkProcessingAsync(reservation.AttemptId, DateTimeOffset.UtcNow);
+
+        first.Should().BeTrue();
+        second.Should().BeFalse();
+        await using var db = fixture.CreateContext();
+        (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Processing);
     }
 
     [Fact]

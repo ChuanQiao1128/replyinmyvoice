@@ -10,6 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RewriteAttempt> RewriteAttempts => Set<RewriteAttempt>();
     public DbSet<UsageReservation> UsageReservations => Set<UsageReservation>();
     public DbSet<StripeEvent> StripeEvents => Set<StripeEvent>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -82,6 +83,23 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(x => x.EventId);
             entity.Property(x => x.EventId).HasMaxLength(160);
             entity.Property(x => x.Type).HasMaxLength(160);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.LastError).HasMaxLength(1000);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.Status, x.LockedUntil });
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            entity.HasIndex(x => new { x.Status, x.LockedUntil });
+            entity.Property(x => x.MessageType).HasMaxLength(160);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.LockedBy).HasMaxLength(160);
+            entity.Property(x => x.CorrelationId).HasMaxLength(160);
+            entity.Property(x => x.LastError).HasMaxLength(1000);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
         });
     }
 }

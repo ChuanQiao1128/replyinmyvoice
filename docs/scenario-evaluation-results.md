@@ -1492,6 +1492,22 @@ Four teachers said the onboarding copy felt too technical. Two asked if they cou
 I think the first screen should be updated before Wednesday, with one short example added.
 ```
 
+## 2026-05-20 Clean-Final Regression
+
+Focused regression covered the Priya-style internal note leak:
+
+```text
+The May 8 client handover is referenced.
+```
+
+Result:
+
+- deterministic clean-final check rejects `is referenced` meta language
+- low Naturalness Check alone is not enough to pass
+- pipeline repairs/escalates before returning a user-visible rewrite
+- prompt contract forbids internal analysis wording in finalizer, targeted repair, and escalation
+- targeted unit result: 23/23 relevant rewrite-pipeline tests passed
+
 ## work-04-long-launch-readiness
 
 Scenario: Work update

@@ -449,3 +449,22 @@ Latest focused evaluation:
 - 40/40 strict signal pass
 - 0 fact preservation or unsupported-addition failures
 - 37/40 cases used targeted repair
+
+## 2026-05-20 Clean-Final Gate
+
+Problem:
+
+- A rewrite can preserve facts and score well on the Naturalness Check while still leaking internal analysis wording, for example `The May 8 client handover is referenced.`
+- Sapling is not a sendability checker, so this must be caught by deterministic product quality gates.
+
+Promoted strategy:
+
+- Reject final emails that contain internal analysis language such as `is referenced`, `Based on the provided context`, `the source says`, `extracted facts`, or `reviewer notes`.
+- Pass clean-final issues into bounded repair/escalation notes.
+- Do not return a candidate just because the Naturalness Check score is low; it must also be fact-safe and send-ready.
+
+Regression tests:
+
+- `rewrite-pipeline-checks.test.ts` covers deterministic meta-language detection.
+- `rewrite-pipeline.test.ts` verifies a Sapling-passing meta-language final is repaired before return.
+- `rewrite-pipeline-model.test.ts` verifies finalizer, targeted repair, and escalation prompts forbid internal note leakage.

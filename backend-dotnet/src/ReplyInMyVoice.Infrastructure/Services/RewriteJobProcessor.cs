@@ -48,7 +48,11 @@ public sealed class RewriteJobProcessor(
             }
         }
 
-        await quotaService.MarkProcessingAsync(job.AttemptId, now, cancellationToken);
+        var claimed = await quotaService.MarkProcessingAsync(job.AttemptId, now, cancellationToken);
+        if (!claimed)
+        {
+            return;
+        }
 
         var result = await rewriteProvider.RewriteAsync(job.AttemptId, request, cancellationToken);
 

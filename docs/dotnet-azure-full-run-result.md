@@ -132,3 +132,24 @@ Not done in this run:
 The GitHub Actions deployment path is configured but will be fully proven when a workflow runs on `main`.
 
 The current Azure dev backend is suitable for proving the resume backend claims around idempotency, usage reservations, retry safety, webhook replay safety, Service Bus processing, Azure SQL migrations, and App Service deployment.
+
+## 2026-05-20 Reliability Gap Closure
+
+Additional backend reliability work was implemented and deployed to the same Azure dev App Service.
+
+Implemented:
+
+- Added `OutboxMessage` persistence and EF migration `AddOutboxAndStripeEventStatus`.
+- Moved rewrite queue publishing from request-time direct Service Bus publish to a transactional outbox inserted in the same transaction as `RewriteAttempt` and `UsageReservation`.
+- Added `OutboxDispatcherWorker` for due-message dispatch, lock ownership, retry count, and exponential backoff.
+- Added atomic `Pending -> Processing` claim behavior so duplicate Service Bus deliveries do not call the rewrite provider twice.
+- Added idempotency conflict handling when the same idempotency key is reused with a different request hash.
+- Added `ExpiredReservationCleanupWorker` so stale pending reservations are released.
+- Changed Stripe webhook event handling from "mark processed before sync" to `Processing -> Processed/Failed`, allowing failed sync attempts to be retried.
+
+Verification:
+
+- .NET tests: 34 passed.
+- Azure SQL migration applied successfully to `replyinmyvoice-db-dev`.
+- Azure App Service zip deploy completed successfully.
+- Remote health check passed at `https://replyinmyvoice-api-dev.azurewebsites.net/health`.

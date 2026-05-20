@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -8,6 +9,11 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     public async Task<ReserveRewriteResult> ReserveAsync(
         Guid userId,
         string idempotencyKey,
@@ -31,6 +37,11 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         if (existingAttempt is not null)
         {
             await transaction.CommitAsync(cancellationToken);
+            if (!string.Equals(existingAttempt.RequestHash, requestHash, StringComparison.Ordinal))
+            {
+                return ReserveRewriteResult.Conflict(existingAttempt.Id, existingAttempt.Status);
+            }
+
             return new ReserveRewriteResult(
                 ReserveRewriteResultKind.Existing,
                 existingAttempt.Id,
@@ -95,6 +106,17 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         period.RowVersion = Guid.NewGuid();
         db.RewriteAttempts.Add(attempt);
         db.UsageReservations.Add(reservation);
+        db.OutboxMessages.Add(new OutboxMessage
+        {
+            MessageType = "RewriteJobCreated",
+            PayloadJson = JsonSerializer.Serialize(new RewriteJobCreatedPayload(attempt.Id), JsonOptions),
+            Status = OutboxMessageStatus.Pending,
+            CreatedAt = now,
+            NextAttemptAt = now,
+            AttemptCount = 0,
+            MaxAttempts = 10,
+            CorrelationId = attempt.Id.ToString(),
+        });
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -148,22 +170,28 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task MarkProcessingAsync(
+    public async Task<bool> MarkProcessingAsync(
         Guid attemptId,
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
         await using var db = dbContextFactory();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var attempt = await db.RewriteAttempts
             .AsTracking()
             .SingleAsync(x => x.Id == attemptId, cancellationToken);
 
-        if (attempt.Status == RewriteAttemptStatus.Pending)
+        if (attempt.Status is not RewriteAttemptStatus.Pending)
         {
-            attempt.Status = RewriteAttemptStatus.Processing;
-            attempt.RowVersion = Guid.NewGuid();
-            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return false;
         }
+
+        attempt.Status = RewriteAttemptStatus.Processing;
+        attempt.RowVersion = Guid.NewGuid();
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public async Task ReleaseAsync(
@@ -245,4 +273,6 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         await transaction.CommitAsync(cancellationToken);
         return expiredReservations.Count;
     }
+
+    private sealed record RewriteJobCreatedPayload(Guid AttemptId);
 }

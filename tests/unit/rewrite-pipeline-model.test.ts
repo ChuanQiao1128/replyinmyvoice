@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   classifyScenario,
   diagnoseHighRiskSentences,
+  escalateCandidate,
   extractFacts,
+  finalizeCandidate,
   generateCandidates,
   llmFactCheck,
   repairHighRiskSentences,
@@ -643,5 +645,115 @@ describe("fact-reconstruct model parsing", () => {
       ],
       overall_notes: ["Repair only this sentence."],
     });
+  });
+
+  it("forbids internal analysis note leakage in finalizer, targeted repair, and escalation prompts", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                final_email: "Hi Monica,\n\nJordan is missing the reading response.",
+              }),
+            },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const facts: ExtractedFacts = {
+      recipient_name: "Monica",
+      sender_name_or_role: "Ms. Carter",
+      people_mentioned: ["Monica", "Jordan"],
+      main_purpose: "Reply to a parent.",
+      key_facts: ["Jordan is missing the reading response."],
+      required_actions: [],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const scenario: ScenarioClassification = {
+      domain: "education",
+      intent: "general_reply",
+      format: "email",
+      relationship: "teacher_to_parent",
+      risk: "medium",
+      confidence: 0.86,
+      style_card_id: "teacher_parent_email_default",
+      needs_action_steps: true,
+      needs_empathy: true,
+      needs_deadline_preservation: true,
+      notes: [],
+    };
+    const styleCard: StyleCard = {
+      style_card_id: "teacher_parent_email_default",
+      voice: "clear",
+      paragraph_style: "short",
+      sentence_style: "varied",
+      opening_style: "specific",
+      body_style: "facts first",
+      closing_style: "brief",
+      good_phrases: [],
+      phrases_to_avoid_or_limit: [],
+      rules: [],
+    };
+
+    await finalizeCandidate({
+      facts,
+      scenario,
+      styleCard,
+      selectedCandidate: "Hi Monica,\n\nJordan is missing the reading response.",
+      requiredEdits: [],
+      config,
+    });
+    await repairHighRiskSentences({
+      facts,
+      scenario,
+      styleCard,
+      finalEmail: "Hi Monica,\n\nThe reading response is referenced.",
+      diagnostics: {
+        sentence_diagnostics: [
+          {
+            sentence: "The reading response is referenced.",
+            issue_tags: ["meta_language"],
+            repair_instruction: "Write the fact as send-ready email text.",
+          },
+        ],
+        overall_notes: [],
+      },
+      config,
+    });
+    await escalateCandidate({
+      facts,
+      scenario,
+      styleCard,
+      previousFinalEmail: "Hi Monica,\n\nThe reading response is referenced.",
+      reviewNotes: ["meta_language:fact_reference"],
+      config,
+    });
+
+    const fetchCalls = fetchMock.mock.calls as unknown as Array<
+      [unknown, { body?: BodyInit | null }]
+    >;
+    const prompts = fetchCalls
+      .map(([, init]) => JSON.parse(String(init.body)))
+      .map((body) =>
+        body.messages.map((message: { content: string }) => message.content).join("\n"),
+      );
+
+    for (const prompt of prompts) {
+      expect(prompt).toContain("Do not include internal analysis language");
+      expect(prompt).toContain("is referenced");
+      expect(prompt).toContain("Based on the provided context");
+    }
   });
 });

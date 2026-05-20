@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Domain.Contracts;
-using ReplyInMyVoice.Infrastructure.Queueing;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -9,15 +9,13 @@ namespace ReplyInMyVoice.Tests;
 public sealed class RewriteRequestServiceTests
 {
     [Fact]
-    public async Task CreateAttemptAsync_reserves_quota_and_publishes_one_job()
+    public async Task CreateAttemptAsync_reserves_quota_and_creates_outbox_without_direct_queue_publish()
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var publisher = new InMemoryRewriteJobPublisher();
         var service = new RewriteRequestService(
             fixture.CreateContext,
-            new QuotaService(fixture.CreateContext),
-            publisher);
+            new QuotaService(fixture.CreateContext));
 
         var result = await service.CreateAttemptAsync(
             user.Id,
@@ -29,12 +27,15 @@ public sealed class RewriteRequestServiceTests
             CancellationToken.None);
 
         result.Kind.Should().Be(ReserveRewriteResultKind.Created);
-        publisher.PublishedJobs.Should().ContainSingle(x => x.AttemptId == result.AttemptId);
 
         await using var db = fixture.CreateContext();
         var attempt = await db.RewriteAttempts.SingleAsync();
         attempt.RequestJson.Should().Contain("rough draft reply");
         attempt.RequestJson.Should().Contain("warm");
         (await db.UsageReservations.CountAsync()).Should().Be(1);
+        var outbox = await db.OutboxMessages.SingleAsync();
+        outbox.Status.Should().Be(OutboxMessageStatus.Pending);
+        outbox.MessageType.Should().Be("RewriteJobCreated");
+        outbox.PayloadJson.Should().Contain(result.AttemptId.ToString());
     }
 }

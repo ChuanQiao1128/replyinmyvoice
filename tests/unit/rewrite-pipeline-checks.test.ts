@@ -96,6 +96,93 @@ describe("deterministicCheck", () => {
     expect(result.safe).toBe(false);
     expect(result.issues).toContain("malformed:dangling_closing");
   });
+
+  it("rejects fact-reference meta language in final email text", () => {
+    const result = deterministicCheck(
+      input,
+      {
+        recipient_name: "",
+        sender_name_or_role: "",
+        people_mentioned: [],
+        main_purpose: "",
+        key_facts: [],
+        required_actions: [],
+        deadlines: [],
+        dates_times: [],
+        positive_notes: [],
+        concerns: [],
+        policies_or_conditions: [],
+        available_support: [],
+        clarifications: [],
+        facts_that_must_not_change: [],
+        sensitive_points: [],
+        original_tone: "",
+      },
+      "The May 8 client handover is referenced.",
+      styleCard,
+    );
+
+    expect(result.safe).toBe(false);
+    expect(result.issues).toContain("meta_language:fact_reference");
+  });
+
+  it("rejects provided-context meta language in final email text", () => {
+    const result = deterministicCheck(
+      input,
+      {
+        recipient_name: "",
+        sender_name_or_role: "",
+        people_mentioned: [],
+        main_purpose: "",
+        key_facts: [],
+        required_actions: [],
+        deadlines: [],
+        dates_times: [],
+        positive_notes: [],
+        concerns: [],
+        policies_or_conditions: [],
+        available_support: [],
+        clarifications: [],
+        facts_that_must_not_change: [],
+        sensitive_points: [],
+        original_tone: "",
+      },
+      "Based on the provided context, the issue appears to be billing.",
+      styleCard,
+    );
+
+    expect(result.safe).toBe(false);
+    expect(result.issues).toContain("meta_language:provided_context");
+  });
+
+  it("rejects source-reference meta language in final email text", () => {
+    const result = deterministicCheck(
+      input,
+      {
+        recipient_name: "",
+        sender_name_or_role: "",
+        people_mentioned: [],
+        main_purpose: "",
+        key_facts: [],
+        required_actions: [],
+        deadlines: [],
+        dates_times: [],
+        positive_notes: [],
+        concerns: [],
+        policies_or_conditions: [],
+        available_support: [],
+        clarifications: [],
+        facts_that_must_not_change: [],
+        sensitive_points: [],
+        original_tone: "",
+      },
+      "The source says there are 18 active seats.",
+      styleCard,
+    );
+
+    expect(result.safe).toBe(false);
+    expect(result.issues).toContain("meta_language:source_reference");
+  });
 });
 
 describe("llmFactCheckPasses", () => {

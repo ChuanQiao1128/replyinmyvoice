@@ -4,6 +4,8 @@ using ReplyInMyVoice.Worker;
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddApplicationInsightsTelemetryWorkerService();
 builder.Services.AddReplyInMyVoiceInfrastructure(builder.Configuration);
+builder.Services.AddHostedService<OutboxDispatcherWorker>();
+builder.Services.AddHostedService<ExpiredReservationCleanupWorker>();
 builder.Services.AddHostedService<ServiceBusRewriteWorker>();
 
 var host = builder.Build();

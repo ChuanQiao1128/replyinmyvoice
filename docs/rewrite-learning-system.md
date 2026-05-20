@@ -254,3 +254,21 @@ Latest focused result:
 - fact preservation or unsupported-addition failures: 0
 - customer-usable pass count: 40/40
 - strict signal pass count: 40/40
+
+## 2026-05-20 Clean-Final Learning Rule
+
+The production gate now treats internal analysis/meta language as a quality failure even when facts and the Naturalness Check pass.
+
+Examples rejected before return:
+
+- `The May 8 client handover is referenced.`
+- `Based on the provided context, ...`
+- `The source says ...`
+- `extracted facts`
+- `reviewer notes`
+
+Learning implication:
+
+- Real QA failures that expose internal notes should be promoted as deterministic clean-final patterns first.
+- Prompt updates should reinforce the same rule, but prompt wording is not the only control.
+- A low Naturalness Check score is not enough to return a rewrite if the final email is not send-ready.

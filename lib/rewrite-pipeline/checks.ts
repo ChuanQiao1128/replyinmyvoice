@@ -57,6 +57,29 @@ function hasDanglingClosing(text: string) {
   );
 }
 
+function detectMetaLanguage(text: string) {
+  const patterns: Array<[RegExp, string]> = [
+    [
+      /\b(?:is|was|were)\s+(?:referenced|mentioned|provided|included|stated)\b/i,
+      "meta_language:fact_reference",
+    ],
+    [
+      /\bbased on (?:the )?(?:provided )?(?:context|information|details)\b/i,
+      "meta_language:provided_context",
+    ],
+    [
+      /\b(?:the )?(?:source|draft|original|input|facts?|context)\s+(?:says|states|mentions|indicates|notes)\b/i,
+      "meta_language:source_reference",
+    ],
+    [/\bextracted facts?\b/i, "meta_language:extracted_facts"],
+    [/\breviewer notes?\b/i, "meta_language:reviewer_notes"],
+  ];
+
+  return patterns
+    .filter(([pattern]) => pattern.test(text))
+    .map(([, issue]) => issue);
+}
+
 export function deterministicCheck(
   input: RewriteRequestInput,
   facts: ExtractedFacts,
@@ -74,12 +97,14 @@ export function deterministicCheck(
   const malformedIssues = hasDanglingClosing(rewrittenText)
     ? ["malformed:dangling_closing"]
     : [];
+  const metaLanguageIssues = detectMetaLanguage(rewrittenText);
   const issues = [
     ...missingFacts.map((fact) => `missing:${fact}`),
     ...unsupportedFacts.map((fact) => `unsupported:${fact}`),
     ...missingLockedFacts.map((fact) => `missing_locked:${fact}`),
     ...limitedPhrases.map((phrase) => `template_phrase:${phrase}`),
     ...malformedIssues,
+    ...metaLanguageIssues,
   ];
 
   return {

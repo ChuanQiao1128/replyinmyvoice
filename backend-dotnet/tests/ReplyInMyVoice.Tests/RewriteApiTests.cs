@@ -7,6 +7,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ReplyInMyVoice.Domain.Contracts;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Queueing;
 
@@ -87,7 +88,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Rewrite_creates_attempt_and_publishes_job()
+    public async Task Rewrite_creates_attempt_and_outbox_message()
     {
         await using var factory = CreateFactory();
         var client = factory.CreateClient();
@@ -101,8 +102,39 @@ public sealed class RewriteApiTests : IAsyncLifetime
         body.Should().NotBeNull();
         body!.Status.Should().Be("Pending");
 
-        var publisher = factory.Services.GetRequiredService<InMemoryRewriteJobPublisher>();
-        publisher.PublishedJobs.Should().ContainSingle(x => x.AttemptId == body.AttemptId);
+        await using var db = CreateContext();
+        var outbox = await db.OutboxMessages.SingleAsync();
+        outbox.Status.Should().Be(OutboxMessageStatus.Pending);
+        outbox.MessageType.Should().Be("RewriteJobCreated");
+        outbox.PayloadJson.Should().Contain(body.AttemptId.ToString());
+    }
+
+    [Fact]
+    public async Task Rewrite_same_idempotency_key_with_different_body_returns_conflict_without_new_outbox()
+    {
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_conflict");
+        client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-conflict");
+
+        var first = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
+        var second = await client.PostAsJsonAsync(
+            "/api/rewrite",
+            new RewriteRequest(
+                "Can you send an update?",
+                "This request body is different and should not reuse the same idempotency key.",
+                "client",
+                "reply",
+                "The report is still being checked.",
+                "No promised timeline.",
+                "direct"));
+
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(1);
+        (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -20,7 +21,10 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         {
             EventId = eventId,
             Type = type,
+            Status = StripeEventStatus.Processed,
+            AttemptCount = 1,
             CreatedAt = now,
+            LastAttemptAt = now,
             ProcessedAt = now,
         });
 
@@ -42,14 +46,115 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        var processed = await TryMarkProcessedAsync(eventId, type, now, cancellationToken);
-        if (!processed)
+        var acquired = await TryBeginProcessingAsync(eventId, type, now, cancellationToken);
+        if (!acquired)
         {
             return false;
         }
 
-        await SyncEntitlementAsync(type, rawBody, now, cancellationToken);
+        try
+        {
+            await SyncEntitlementAsync(type, rawBody, now, cancellationToken);
+            await MarkProcessedAsync(eventId, now, cancellationToken);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await MarkFailedAsync(eventId, ex.Message, now, cancellationToken);
+            throw;
+        }
+    }
+
+    private async Task<bool> TryBeginProcessingAsync(
+        string eventId,
+        string type,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var db = dbContextFactory();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+
+        var stripeEvent = await db.StripeEvents
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.EventId == eventId, cancellationToken);
+
+        if (stripeEvent is null)
+        {
+            db.StripeEvents.Add(new StripeEvent
+            {
+                EventId = eventId,
+                Type = type,
+                Status = StripeEventStatus.Processing,
+                AttemptCount = 1,
+                CreatedAt = now,
+                LastAttemptAt = now,
+                LockedUntil = now.AddMinutes(2),
+            });
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+
+        if (stripeEvent.Status == StripeEventStatus.Processed)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return false;
+        }
+
+        if (stripeEvent.Status == StripeEventStatus.Processing && stripeEvent.LockedUntil > now)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return false;
+        }
+
+        stripeEvent.Type = type;
+        stripeEvent.Status = StripeEventStatus.Processing;
+        stripeEvent.AttemptCount += 1;
+        stripeEvent.LastAttemptAt = now;
+        stripeEvent.LockedUntil = now.AddMinutes(2);
+        stripeEvent.LastError = null;
+        stripeEvent.RowVersion = Guid.NewGuid();
+
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
+    }
+
+    private async Task MarkProcessedAsync(
+        string eventId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var db = dbContextFactory();
+        var stripeEvent = await db.StripeEvents
+            .AsTracking()
+            .SingleAsync(x => x.EventId == eventId, cancellationToken);
+
+        stripeEvent.Status = StripeEventStatus.Processed;
+        stripeEvent.ProcessedAt = now;
+        stripeEvent.LockedUntil = null;
+        stripeEvent.LastError = null;
+        stripeEvent.RowVersion = Guid.NewGuid();
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task MarkFailedAsync(
+        string eventId,
+        string error,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var db = dbContextFactory();
+        var stripeEvent = await db.StripeEvents
+            .AsTracking()
+            .SingleAsync(x => x.EventId == eventId, cancellationToken);
+
+        stripeEvent.Status = StripeEventStatus.Failed;
+        stripeEvent.LastAttemptAt = now;
+        stripeEvent.LockedUntil = null;
+        stripeEvent.LastError = error.Length > 1000 ? error[..1000] : error;
+        stripeEvent.RowVersion = Guid.NewGuid();
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task SyncEntitlementAsync(

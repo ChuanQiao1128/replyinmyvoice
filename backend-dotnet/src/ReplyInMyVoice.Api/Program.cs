@@ -110,6 +110,14 @@ app.MapPost("/api/rewrite", async (
             statusCode: StatusCodes.Status402PaymentRequired);
     }
 
+    if (result.Kind == ReserveRewriteResultKind.Conflict)
+    {
+        return Results.Problem(
+            title: "Idempotency key conflict",
+            detail: "The same idempotency key was reused with a different rewrite request.",
+            statusCode: StatusCodes.Status409Conflict);
+    }
+
     var response = new RewriteAttemptResponse(
         result.AttemptId,
         result.Status.ToString(),

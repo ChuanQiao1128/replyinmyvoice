@@ -3,14 +3,12 @@ using System.Text;
 using System.Text.Json;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Infrastructure.Data;
-using ReplyInMyVoice.Infrastructure.Queueing;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class RewriteRequestService(
     Func<AppDbContext> dbContextFactory,
-    QuotaService quotaService,
-    IRewriteJobPublisher jobPublisher)
+    QuotaService quotaService)
 {
     public async Task<ReserveRewriteResult> CreateAttemptAsync(
         Guid userId,
@@ -34,11 +32,6 @@ public sealed class RewriteRequestService(
             now,
             TimeSpan.FromMinutes(15),
             cancellationToken);
-
-        if (result.Kind == ReserveRewriteResultKind.Created)
-        {
-            await jobPublisher.PublishAsync(new RewriteJob(result.AttemptId), cancellationToken);
-        }
 
         return result;
     }

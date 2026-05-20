@@ -527,7 +527,12 @@ export async function rewriteWithFactReconstruct(
           ? "pass_below_threshold"
           : "fail_insufficient_reduction",
         rejected: !escalatedPasses,
-        reason: "Strong-model escalation fact and naturalness gate.",
+        reason: [
+          "Strong-model escalation fact and naturalness gate.",
+          ...deterministic.issues,
+          ...factCheck.issues,
+          ...factCheck.required_repairs,
+        ].join(" "),
       });
 
       if (escalatedPasses) {
