@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildEntraAuthorizeUrl,
+  buildEntraTokenRequestBody,
   createSignedCookieValue,
   verifySignedCookieValue,
 } from "../../lib/entra-auth";
@@ -27,6 +28,23 @@ describe("Entra auth helpers", () => {
     expect(url.searchParams.get("domain_hint")).toBe("google");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("code_challenge")).toBeTruthy();
+  });
+
+  it("builds a confidential server-side token exchange body when a client secret is configured", () => {
+    const body = buildEntraTokenRequestBody({
+      clientId: "frontend-client",
+      code: "auth-code",
+      redirectUri: "https://replyinmyvoice.com/auth/callback",
+      codeVerifier: "verifier",
+      clientSecret: "secret-value",
+    });
+
+    expect(body.get("client_id")).toBe("frontend-client");
+    expect(body.get("grant_type")).toBe("authorization_code");
+    expect(body.get("redirect_uri")).toBe("https://replyinmyvoice.com/auth/callback");
+    expect(body.get("code_verifier")).toBe("verifier");
+    expect(body.get("scope")).toBe("openid profile email");
+    expect(body.get("client_secret")).toBe("secret-value");
   });
 
   it("verifies signed cookie payloads and rejects tampering", async () => {

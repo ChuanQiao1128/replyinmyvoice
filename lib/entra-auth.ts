@@ -32,6 +32,14 @@ export type EntraAuthorizeUrlInput = {
   domainHint?: "google";
 };
 
+export type EntraTokenRequestBodyInput = {
+  clientId: string;
+  code: string;
+  redirectUri: string;
+  codeVerifier: string;
+  clientSecret?: string;
+};
+
 function base64UrlEncode(input: Uint8Array | string) {
   const buffer =
     typeof input === "string"
@@ -163,6 +171,23 @@ export async function buildEntraAuthorizeUrl(input: EntraAuthorizeUrlInput) {
   return url;
 }
 
+export function buildEntraTokenRequestBody(input: EntraTokenRequestBodyInput) {
+  const body = new URLSearchParams({
+    client_id: input.clientId,
+    grant_type: "authorization_code",
+    code: input.code,
+    redirect_uri: input.redirectUri,
+    code_verifier: input.codeVerifier,
+    scope: "openid profile email",
+  });
+
+  if (input.clientSecret) {
+    body.set("client_secret", input.clientSecret);
+  }
+
+  return body;
+}
+
 export async function createLoginRedirectUrl(redirectTo = "/app") {
   const state = randomBase64Url(24);
   const nonce = randomBase64Url(24);
@@ -267,13 +292,12 @@ export async function completeEntraCallback(requestUrl: string) {
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: getEntraClientId(),
-        grant_type: "authorization_code",
+      body: buildEntraTokenRequestBody({
+        clientId: getEntraClientId(),
         code,
-        redirect_uri: getEntraRedirectUri(),
-        code_verifier: oauthState.codeVerifier,
-        scope: "openid profile email",
+        redirectUri: getEntraRedirectUri(),
+        codeVerifier: oauthState.codeVerifier,
+        clientSecret: optionalEnv("ENTRA_CLIENT_SECRET") || undefined,
       }),
     },
   );
@@ -281,10 +305,13 @@ export async function completeEntraCallback(requestUrl: string) {
   const payload = (await tokenResponse.json().catch(() => null)) as {
     id_token?: string;
     error?: string;
+    error_description?: string;
   } | null;
 
   if (!tokenResponse.ok || !payload?.id_token) {
-    throw new Error(`Entra token exchange failed: ${payload?.error ?? tokenResponse.status}`);
+    throw new Error(
+      `Entra token exchange failed: ${payload?.error ?? tokenResponse.status} ${payload?.error_description ?? ""}`.trim(),
+    );
   }
 
   const claims = parseJwtPayload(payload.id_token);
