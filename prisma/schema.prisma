@@ -25,6 +25,7 @@ model User {
   usages                 RewriteUsage[]
   learningSamples        RewriteLearningSample[]
   costLogs               RewriteCostLog[]
+  apiKeys                ApiKey[]
 }
 
 model RewriteUsage {
@@ -214,5 +215,45 @@ model RewriteProviderCall {
   @@index([costLogId])
   @@index([provider])
   @@index([role])
+  @@index([createdAt])
+}
+
+
+model ApiKey {
+  id                     String        @id @default(cuid())
+  userId                 String
+  keyHash                String        @unique
+  name                   String
+  planTier               String        @default("free")
+  scope                  String        @default("[]")
+  rateLimitPerMinute     Int           @default(60)
+  monthlyQuota           Int           @default(1000)
+  currentPeriodUsage     Int           @default(0)
+  currentPeriodStartedAt DateTime      @default(now())
+  lastUsedAt             DateTime?
+  expiresAt              DateTime?
+  revokedAt              DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  user                   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKeyUsages           ApiKeyUsage[]
+
+  @@index([userId, createdAt])
+  @@index([planTier])
+}
+
+model ApiKeyUsage {
+  id              String   @id @default(cuid())
+  apiKeyId        String
+  requestId       String
+  endpoint        String
+  statusCode      Int
+  latencyMs       Int?
+  costUsdEstimate Decimal  @default(0)
+  createdAt       DateTime @default(now())
+  apiKey          ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId, createdAt])
+  @@index([endpoint])
   @@index([createdAt])
 }
