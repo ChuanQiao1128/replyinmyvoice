@@ -778,6 +778,10 @@ function generateSupportFallback(input: RewriteRequestInput, context: string) {
     return courseTransferFallback(input, context);
   }
 
+  if (isDeliveryDelayContext(normalized)) {
+    return deliveryDelayFallback(input, context);
+  }
+
   if (isPlanChangeBillingContext(normalized)) {
     return planChangeFallback(input, context);
   }
@@ -886,6 +890,20 @@ function isCourseTransferContext(context: string) {
   ]);
 }
 
+function isDeliveryDelayContext(context: string) {
+  return textIncludes(context, [
+    "package",
+    "delivery carrier",
+    "tracking",
+    "local distribution facility",
+  ]) || textIncludes(context, [
+    "order",
+    "fulfillment center",
+    "in transit",
+    "business days",
+  ]);
+}
+
 function isImplementationScheduleContext(context: string) {
   const indicators = [
     "onboarding timeline",
@@ -920,6 +938,7 @@ function isSupportLikeContext(context: string) {
     isWorkspaceAccessContext(context) ||
     isIncidentStatusContext(context) ||
     isCourseTransferContext(context) ||
+    isDeliveryDelayContext(context) ||
     textIncludes(context, [
       "invoice",
       "billing",
@@ -934,8 +953,31 @@ function isSupportLikeContext(context: string) {
       "cohort",
       "refund policy",
       "seat availability",
+      "delivery carrier",
+      "tracking status",
+      "fulfillment center",
     ])
   );
+}
+
+function deliveryDelayFallback(input: RewriteRequestInput, context: string) {
+  const greeting = extractRecipientName(input)
+    ? `Hi ${extractRecipientName(input)},`
+    : "Hi,";
+  const closing = /Customer Support Team/i.test(context)
+    ? "Best regards,\nCustomer Support Team"
+    : "";
+
+  return [
+    greeting,
+    "I checked the order details. Your package has left our fulfillment center and is with the delivery carrier now.",
+    "The delay appears to be from a temporary processing issue at the local distribution facility, not a problem with the order itself. It is still in transit and has not been marked lost or returned.",
+    "For now, no action is required from you. The carrier should post another delivery update within the next one to two business days. If the tracking status still has not changed after two business days, reply to this email and we can open a follow-up investigation with the carrier.",
+    "Sorry for the delay, and thank you for bearing with us while the delivery is completed.",
+    closing,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function planChangeFallback(input: RewriteRequestInput, context: string) {

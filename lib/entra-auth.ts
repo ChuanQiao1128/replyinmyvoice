@@ -30,6 +30,7 @@ export type EntraAuthorizeUrlInput = {
   nonce: string;
   codeVerifier: string;
   domainHint?: "google";
+  prompt?: "select_account";
 };
 
 export type EntraTokenRequestBodyInput = {
@@ -168,6 +169,10 @@ export async function buildEntraAuthorizeUrl(input: EntraAuthorizeUrlInput) {
     url.searchParams.set("domain_hint", input.domainHint);
   }
 
+  if (input.prompt) {
+    url.searchParams.set("prompt", input.prompt);
+  }
+
   return url;
 }
 
@@ -215,6 +220,7 @@ export async function createLoginRedirectUrl(redirectTo = "/app") {
     nonce,
     codeVerifier,
     domainHint: "google",
+    prompt: "select_account",
   });
 }
 

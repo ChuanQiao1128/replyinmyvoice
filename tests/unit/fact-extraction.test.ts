@@ -84,6 +84,50 @@ describe("extractRequiredFacts", () => {
     expect(personFacts).not.toContain("room");
   });
 
+  it("extracts package-delay facts without treating There or generic support signoffs as hard facts", () => {
+    const facts = extractRequiredFacts(
+      draftOnly(
+        [
+          "Hi Emma,",
+          "Your order has already left our fulfillment center and is currently with the delivery carrier.",
+          "The delay seems to be related to a temporary processing issue at the local distribution facility.",
+          "Your package is still in transit and has not been marked as lost or returned.",
+          "We expect a new delivery update within the next one to two business days.",
+          "There is no action required from you right now.",
+          "If the tracking status does not change within two business days, we can open a follow-up investigation with the carrier.",
+          "Best regards,",
+          "Customer Support Team",
+        ].join("\n\n"),
+      ),
+    );
+    const factText = facts.map((fact) => fact.normalizedText);
+    const personFacts = facts
+      .filter((fact) => fact.category === "person")
+      .map((fact) => fact.normalizedText);
+
+    expect(factText).toContain("emma");
+    expect(factText).toContain("fulfillment center");
+    expect(factText).toContain("delivery carrier");
+    expect(factText).toContain("temporary processing issue");
+    expect(factText).toContain("local distribution facility");
+    expect(factText).toContain("still in transit");
+    expect(factText).toContain("lost or returned");
+    expect(factText).toContain("one to two business days");
+    expect(factText).toContain("no action required");
+    expect(factText).toContain("follow-up investigation with the carrier");
+    expect(personFacts).not.toContain("there");
+    expect(personFacts).not.toContain("sorry");
+    expect(factText).not.toContain("best regards customer support team");
+    expect(
+      missingRequiredFacts(
+        draftOnly(
+          "There is no action required from you right now. Sorry for the delay.",
+        ),
+        "For now, no action is required from you. Sorry for the delay.",
+      ),
+    ).toEqual([]);
+  });
+
   it("extracts draft-only names, assignments, deadlines, policy limits, and signoff", () => {
     const facts = extractRequiredFacts(
       draftOnly(

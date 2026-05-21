@@ -118,6 +118,7 @@ const properNameStopWords = new Set([
   "she",
   "since",
   "sms",
+  "sorry",
   "ssO".toLowerCase(),
   "that",
   "thanks",
@@ -125,6 +126,7 @@ const properNameStopWords = new Set([
   "the",
   "they",
   "then",
+  "there",
   "this",
   "ticket",
   "one",
@@ -281,6 +283,19 @@ const phraseFacts: Array<{
   { category: "constraint", pattern: /\bunderlying campaign data is still safe\b/i, text: "underlying campaign data is still safe" },
   { category: "quoted_phrase", pattern: /\bbilling report folder\b/i, text: "billing report folder" },
   { category: "quoted_phrase", pattern: /\bpause the campaign\b/i, text: "pause the campaign" },
+  { category: "task", pattern: /\bfulfillment center\b/i, text: "fulfillment center" },
+  { category: "task", pattern: /\bdelivery carrier\b/i, text: "delivery carrier" },
+  { category: "constraint", pattern: /\btemporary processing issue\b/i, text: "temporary processing issue" },
+  { category: "constraint", pattern: /\blocal distribution facility\b/i, text: "local distribution facility" },
+  { category: "constraint", pattern: /\bstill in transit\b/i, text: "still in transit" },
+  { category: "constraint", pattern: /\blost or returned\b/i, text: "lost or returned" },
+  { category: "deadline", pattern: /\bone to two business days\b/i, text: "one to two business days" },
+  { category: "constraint", pattern: /\bno action required\b/i, text: "no action required" },
+  {
+    category: "task",
+    pattern: /\bfollow-up investigation with the carrier\b/i,
+    text: "follow-up investigation with the carrier",
+  },
   { category: "quoted_phrase", pattern: /\bRoom 204\b/i, text: "Room 204" },
   { category: "quoted_phrase", pattern: /\balready submitted questions\b/i, text: "already submitted questions" },
   {
@@ -330,6 +345,7 @@ function normalize(value: string) {
     .replace(/\blogo color remains the same\b/g, "logo color has not changed")
     .replace(/\bbase plan remains the same\b/g, "base plan did not change")
     .replace(/\bthe invite was resent twice\b/g, "resent the invite twice")
+    .replace(/\bno action is required\b/g, "no action required")
     .replace(
       /\b(before|by|after)\s+the\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/g,
       "$1 $2",
@@ -398,6 +414,12 @@ function shouldKeepPersonCandidate(value: string) {
   return Boolean(value) && !properNameStopWords.has(firstWord);
 }
 
+function isGenericSupportSignoff(value: string) {
+  return /\b(?:customer support team|support team|customer service team)\b/i.test(
+    value,
+  );
+}
+
 function extractFromText(
   facts: Map<string, RequiredFact>,
   text: string,
@@ -408,7 +430,7 @@ function extractFromText(
   const signoff = normalizedText.match(
     /\b(best regards|regards|sincerely),?\s+((?:Mr|Ms|Mrs|Dr)\.?\s+[A-Z][A-Za-z.'-]+|[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\b/i,
   );
-  if (signoff) {
+  if (signoff && !isGenericSupportSignoff(signoff[2])) {
     addFact(facts, `${signoff[1]} ${signoff[2]}`, "signoff", source);
   }
 

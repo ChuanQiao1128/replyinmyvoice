@@ -553,3 +553,29 @@ Development rule:
 Implementation plan:
 
 - `docs/superpowers/plans/2026-05-20-adaptive-rewrite-agent-orchestrator.md`
+
+## 2026-05-21 Package Delivery Delay Support Regression
+
+Observed failure:
+
+- Manual website QA found a package-delay customer-support draft where Naturalness Check improved strongly, but the final result was rejected as `Facts need another pass`.
+- The selected candidate was not the problem; the fact gate was over-strict.
+
+Root cause:
+
+- The fact extractor treated sentence-openers such as `There` and apology openers such as `Sorry` as possible person names.
+- A generic `Customer Support Team` signoff was treated as a hard signoff fact.
+- `no action required` and `no action is required` were not normalized to the same fact.
+- The deterministic support fallback did not have a delivery-delay branch, so the last fallback could produce a generic quick-update shape.
+
+Promoted strategy:
+
+- Add delivery-delay support facts to the required fact library: fulfillment center, delivery carrier, temporary processing issue, local distribution facility, still in transit, lost/returned status, one-to-two-business-day update window, no-action-required state, and carrier follow-up investigation.
+- Treat generic support-team signoffs as optional brand/footer text rather than hard facts.
+- Normalize equivalent no-action-required phrasing.
+- Route package/order/tracking/carrier/local-distribution-facility drafts to a delivery-delay support fallback instead of generic quick-update fallback.
+
+Required regression:
+
+- Package-delay support drafts must preserve delivery status, delay reason, in-transit/not-lost state, update window, no-action-required state, follow-up-investigation next step, and support-team signoff when present.
+- The fallback must not return `Quick update: Hi ...` or a one-line generic reply for medium customer-support drafts.

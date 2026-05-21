@@ -463,6 +463,47 @@ describe("thread fallback rewrite pass", () => {
     expect(result.rewrittenText).not.toContain("active seats");
   });
 
+  it("uses a package-delay support fallback instead of a generic quick update", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Emma,",
+        "Thank you for contacting us about the delay with your recent order.",
+        "Your order has already left our fulfillment center and is currently with the delivery carrier.",
+        "The delay seems to be related to a temporary processing issue at the local distribution facility, rather than a problem with the order itself.",
+        "Your package is still in transit and has not been marked as lost or returned.",
+        "We expect the delivery carrier to provide a new delivery update within the next one to two business days.",
+        "There is no action required from you right now.",
+        "If the tracking status does not change within two business days, please reply and we can open a follow-up investigation with the carrier.",
+        "Best regards,",
+        "Customer Support Team",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Hi Emma");
+    expect(result.rewrittenText).toContain("fulfillment center");
+    expect(result.rewrittenText).toContain("delivery carrier");
+    expect(result.rewrittenText).toContain("temporary processing issue");
+    expect(result.rewrittenText).toContain("local distribution facility");
+    expect(result.rewrittenText).toContain("still in transit");
+    expect(result.rewrittenText).toContain("lost or returned");
+    expect(result.rewrittenText).toContain("one to two business days");
+    expect(result.rewrittenText).toContain("no action is required");
+    expect(result.rewrittenText).toContain("follow-up investigation with the carrier");
+    expect(result.rewrittenText).toContain("Customer Support Team");
+    expect(result.rewrittenText).not.toContain("Quick update: Hi Emma");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
   it("keeps long billing facts without rejecting plain-English wording as a name", () => {
     const input = {
       scenario: "General reply",

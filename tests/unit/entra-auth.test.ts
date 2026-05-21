@@ -17,6 +17,7 @@ describe("Entra auth helpers", () => {
       nonce: "nonce-test",
       codeVerifier: "verifier-test",
       domainHint: "google",
+      prompt: "select_account",
     });
 
     expect(url.origin).toBe("https://replyinmyvoicecustomers.ciamlogin.com");
@@ -26,6 +27,7 @@ describe("Entra auth helpers", () => {
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("scope")).toBe("openid profile email");
     expect(url.searchParams.get("domain_hint")).toBe("google");
+    expect(url.searchParams.get("prompt")).toBe("select_account");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("code_challenge")).toBeTruthy();
   });
