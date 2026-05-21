@@ -1,5 +1,4 @@
 import { PricingSection } from "../../components/landing/pricing";
-import { SiteFooter } from "../../components/site-footer";
 import { SiteHeader } from "../../components/site-header";
 
 import type { Metadata } from "next";
@@ -23,7 +22,6 @@ export default function PricingPage() {
         </h1>
       </div>
       <PricingSection />
-      <SiteFooter />
     </main>
   );
 }
