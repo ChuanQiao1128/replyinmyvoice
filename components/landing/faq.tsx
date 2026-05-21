@@ -37,7 +37,7 @@ const faqs = [
 
 export function FAQ() {
   return (
-    <section className="mx-auto max-w-4xl px-6 py-16">
+    <section className="mx-auto max-w-3xl px-6 py-16">
       <h2 className="text-3xl font-semibold md:text-4xl">FAQ</h2>
       <div className="mt-8 divide-y divide-line border-y border-line">
         {faqs.map((item, index) => (

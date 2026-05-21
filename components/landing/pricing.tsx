@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Check } from "lucide-react";
 
 import { LinkButton } from "../ui/button";
@@ -59,6 +60,17 @@ export function PricingSection() {
           <LinkButton href="/sign-up" className="mt-6 w-full" variant="clay">
             Start with the NZD $9 plan
           </LinkButton>
+          <p className="mt-4 text-center text-xs text-ink/55">
+            By subscribing you agree to our{" "}
+            <Link href="/terms" className="underline hover:text-ink">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="underline hover:text-ink">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </div>
       </Card>
     </section>
