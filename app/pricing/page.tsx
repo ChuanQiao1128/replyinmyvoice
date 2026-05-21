@@ -2,6 +2,14 @@ import { PricingSection } from "../../components/landing/pricing";
 import { SiteFooter } from "../../components/site-footer";
 import { SiteHeader } from "../../components/site-header";
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Pricing",
+  description: "One clear plan for practical replies — NZ$9/month for unlimited rewrites.",
+};
+
+
 export default function PricingPage() {
   return (
     <main className="min-h-screen bg-paper text-ink">

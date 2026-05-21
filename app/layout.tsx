@@ -17,6 +17,12 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://replyinmyvoice.com",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Reply In My Voice",
+    description:
+      "Rewrite everyday replies so they stay clear, specific, and natural.",
+  },
 };
 
 export default function RootLayout({
