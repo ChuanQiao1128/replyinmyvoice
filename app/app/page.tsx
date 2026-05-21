@@ -19,7 +19,7 @@ export default async function AppPage() {
   const usage = await getUsageStatus(user);
   const paid = isPaidSubscriptionStatus(user.subscriptionStatus);
   const showAdmin = shouldShowAdminEntry({
-    clerkUserId: user.clerkUserId,
+    userId: user.clerkUserId,
     email: user.email,
   });
 

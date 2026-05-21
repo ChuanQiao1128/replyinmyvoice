@@ -7,9 +7,9 @@ describe("admin auth allowlist", () => {
     expect(
       isAdminIdentityAllowed({
         email: "ChuanQiao1128@gmail.com",
-        clerkUserId: "user_other",
+        userId: "user_other",
         adminEmails: "chuanqiao1128@gmail.com",
-        adminClerkUserIds: "",
+        adminUserIds: "",
       }),
     ).toBe(true);
   });
@@ -18,9 +18,9 @@ describe("admin auth allowlist", () => {
     expect(
       isAdminIdentityAllowed({
         email: "other@example.com",
-        clerkUserId: "user_admin",
+        userId: "user_admin",
         adminEmails: "",
-        adminClerkUserIds: "user_admin,user_second",
+        adminUserIds: "user_admin,user_second",
       }),
     ).toBe(true);
   });
@@ -29,9 +29,9 @@ describe("admin auth allowlist", () => {
     expect(
       isAdminIdentityAllowed({
         email: "chuanqiao1128@gmail.com",
-        clerkUserId: "user_admin",
+        userId: "user_admin",
         adminEmails: "",
-        adminClerkUserIds: "",
+        adminUserIds: "",
       }),
     ).toBe(false);
   });
@@ -40,9 +40,9 @@ describe("admin auth allowlist", () => {
     expect(
       isAdminIdentityAllowed({
         email: "customer@example.com",
-        clerkUserId: "user_customer",
+        userId: "user_customer",
         adminEmails: "chuanqiao1128@gmail.com",
-        adminClerkUserIds: "user_admin",
+        adminUserIds: "user_admin",
       }),
     ).toBe(false);
   });

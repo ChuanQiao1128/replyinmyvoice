@@ -11,20 +11,20 @@ function parseList(value: string | undefined) {
 }
 
 export function isAdminIdentityAllowed({
-  adminClerkUserIds,
+  adminUserIds,
   adminEmails,
-  clerkUserId,
+  userId,
   email,
 }: {
-  clerkUserId?: string | null;
+  userId?: string | null;
   email?: string | null;
   adminEmails?: string;
-  adminClerkUserIds?: string;
+  adminUserIds?: string;
 }) {
   const emails = parseList(adminEmails).map((item) => item.toLowerCase());
-  const userIds = parseList(adminClerkUserIds);
+  const userIds = parseList(adminUserIds);
   const normalizedEmail = email?.trim().toLowerCase() ?? "";
-  const normalizedUserId = clerkUserId?.trim() ?? "";
+  const normalizedUserId = userId?.trim() ?? "";
 
   return (
     (normalizedEmail.length > 0 && emails.includes(normalizedEmail)) ||
@@ -39,13 +39,13 @@ export async function getCurrentAdminIdentity() {
   }
 
   const allowed = isAdminIdentityAllowed({
-    clerkUserId: session.sub,
+    userId: session.sub,
     email: session.email,
     adminEmails: optionalEnv("ADMIN_EMAILS", ""),
-    adminClerkUserIds: optionalEnv("ADMIN_CLERK_USER_IDS", ""),
+    adminUserIds: optionalEnv("ADMIN_USER_IDS", ""),
   });
 
-  return allowed ? { clerkUserId: session.sub, email: session.email } : null;
+  return allowed ? { userId: session.sub, email: session.email } : null;
 }
 
 export async function requireAdminUser() {
