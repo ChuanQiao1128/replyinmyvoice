@@ -287,6 +287,19 @@ describe("extractRequiredFacts", () => {
     );
   });
 
+  it("does not treat Let as an unsupported person when a support rewrite starts naturally", () => {
+    const input = draftOnly(
+      "Hi Michael, your subscription is scheduled to renew at the end of the current billing cycle.",
+    );
+
+    const unsupported = detectUnsupportedFacts(
+      input,
+      "Let me check that for you. Your subscription is still scheduled to renew at the end of the current billing cycle.",
+    );
+
+    expect(unsupported.map((fact) => fact.normalizedText)).not.toContain("let");
+  });
+
   it("does not treat ticket labels as unsupported people", () => {
     const input = draftOnly("Hi Claire, ticket #4821 is still open.");
 

@@ -92,6 +92,8 @@ const properNameStopWords = new Set([
   "just",
   "kindly",
   "job",
+  "let",
+  "lets",
   "looking",
   "missing",
   "my",

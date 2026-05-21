@@ -310,6 +310,68 @@ describe("deterministicCheck", () => {
 });
 
 describe("adaptiveGateCheck", () => {
+  it("does not block a good support rewrite only because the greeting recipient is omitted", () => {
+    const renewalInput: RewriteRequestInput = {
+      ...input,
+      roughDraftReply: [
+        "Hi Michael,",
+        "Thank you for reaching out and for providing the details regarding your subscription renewal request.",
+        "Your subscription is currently scheduled to renew at the end of the current billing cycle.",
+        "There does not appear to be any immediate change to your existing plan, feature access, or renewal pricing.",
+        "Please review the renewal summary in your account dashboard before the renewal is processed.",
+        "Best regards,",
+        "Customer Support Team",
+      ].join("\n\n"),
+    };
+    const facts: ExtractedFacts = {
+      recipient_name: "Michael",
+      sender_name_or_role: "Customer Support Team",
+      people_mentioned: ["Michael"],
+      main_purpose: "Confirm subscription renewal details.",
+      key_facts: [
+        "The subscription is scheduled to renew at the end of the current billing cycle.",
+      ],
+      required_actions: [
+        "Review the renewal summary in the account dashboard before renewal is processed.",
+      ],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [
+        "There is no immediate change to the existing plan, feature access, or renewal pricing.",
+      ],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [
+        "Michael is the recipient.",
+        "The subscription is scheduled to renew at the end of the current billing cycle.",
+        "No immediate change to existing plan, feature access, or renewal pricing.",
+        "Customer Support Team",
+      ],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const rewritten = [
+      "Thanks for sending over the renewal details.",
+      "Your subscription is still set to renew at the end of the current billing cycle. From what you shared, there is no immediate change to your current plan, feature access, or renewal pricing.",
+      "It would still be worth checking the renewal summary in your account dashboard before the renewal is processed, just to make sure the billing details look right.",
+      "Best regards,",
+      "Customer Support Team",
+    ].join("\n\n");
+
+    const result = adaptiveGateCheck(renewalInput, facts, rewritten, styleCard);
+
+    expect(result.safe).toBe(true);
+    expect(result.blockingIssues).toEqual([]);
+    expect(result.softIssues).toEqual(
+      expect.arrayContaining([
+        "missing:michael",
+        "missing_locked:Michael is the recipient.",
+      ]),
+    );
+  });
+
   it("passes package-delay support rewrites when soft wording changes preserve critical facts", () => {
     const packageInput: RewriteRequestInput = {
       ...input,

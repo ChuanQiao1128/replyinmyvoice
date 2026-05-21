@@ -49,6 +49,10 @@ function issuePayload(issue: string) {
   return separator === -1 ? issue : issue.slice(separator + 1);
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function isGenericSupportFooter(value: string) {
   const normalizedValue = normalize(value);
   return /\b(?:best regards\s+)?(?:customer support team|support team|customer service team)\b/i.test(
@@ -103,6 +107,79 @@ function containsConcreteName(
   return names.some((name) => normalizedValue === name || normalizedValue.includes(name));
 }
 
+function greetingNames(input: RewriteRequestInput) {
+  return Array.from(
+    [input.messageToReplyTo, input.roughDraftReply]
+      .join("\n")
+      .matchAll(/\b(?:Hi|Hello|Dear)\s+([A-Z][A-Za-z.'-]+)\b/g),
+    (match) => normalize(match[1]),
+  ).filter((name) => name.length > 1);
+}
+
+function isGreetingOnlyName(value: string, input: RewriteRequestInput) {
+  const normalizedName = normalize(value);
+  if (!normalizedName) {
+    return false;
+  }
+
+  const normalizedSource = normalize(
+    [input.messageToReplyTo, input.roughDraftReply].filter(Boolean).join("\n"),
+  );
+  const namePattern = escapeRegExp(normalizedName).replace(/\s+/g, "\\s+");
+  const greetingPattern = new RegExp(
+    `\\b(?:hi|hello|dear)\\s+${namePattern}\\b`,
+    "g",
+  );
+
+  if (!greetingPattern.test(normalizedSource)) {
+    return false;
+  }
+
+  const withoutGreeting = normalizedSource.replace(greetingPattern, " ");
+  return !new RegExp(`\\b${namePattern}\\b`).test(withoutGreeting);
+}
+
+function isGreetingRecipientOnlyPayload(
+  value: string,
+  facts: ExtractedFacts,
+  input: RewriteRequestInput,
+) {
+  if (
+    containsMoney(value) ||
+    containsDateOrDeadline(value) ||
+    containsCount(value) ||
+    containsPolicyOrPromise(value)
+  ) {
+    return false;
+  }
+
+  const normalizedValue = normalize(value);
+  const names = [
+    facts.recipient_name,
+    ...greetingNames(input),
+  ]
+    .map(normalize)
+    .filter((name) => name.length > 1);
+
+  return names.some((name) => {
+    if (!isGreetingOnlyName(name, input)) {
+      return false;
+    }
+
+    if (normalizedValue === name) {
+      return true;
+    }
+
+    const remaining = normalizedValue
+      .replace(new RegExp(`\\b${escapeRegExp(name)}\\b`, "g"), " ")
+      .replace(/\b(?:recipient|name|is|the|to|for|customer|client|user)\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+    return remaining.length === 0;
+  });
+}
+
 function classifyAdaptiveIssue({
   facts,
   input,
@@ -124,6 +201,14 @@ function classifyAdaptiveIssue({
   }
 
   if (issue.startsWith("missing_locked:")) {
+    if (isGreetingRecipientOnlyPayload(payload, facts, input)) {
+      return {
+        issue,
+        severity: "soft",
+        reason: "Greeting-only recipient names are optional formatting, not critical business facts.",
+      };
+    }
+
     if (
       containsMoney(payload) ||
       containsDateOrDeadline(payload) ||
@@ -155,6 +240,14 @@ function classifyAdaptiveIssue({
         issue,
         severity: "soft",
         reason: "Polite phrase is not a critical fact.",
+      };
+    }
+
+    if (isGreetingRecipientOnlyPayload(payload, facts, input)) {
+      return {
+        issue,
+        severity: "soft",
+        reason: "Greeting-only recipient names are optional formatting, not critical business facts.",
       };
     }
 
