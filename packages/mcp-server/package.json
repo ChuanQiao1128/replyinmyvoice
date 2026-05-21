@@ -1,0 +1,17 @@
+{
+  "name": "@replyinmyvoice/mcp-server",
+  "version": "0.0.1",
+  "description": "MCP server for Reply In My Voice rewrite API",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "replyinmyvoice-mcp": "dist/bin.js" },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.0.0" },
+  "devDependencies": { "typescript": "^5.4.0", "@types/node": "^22.0.0" },
+  "engines": { "node": ">=18" }
+}
