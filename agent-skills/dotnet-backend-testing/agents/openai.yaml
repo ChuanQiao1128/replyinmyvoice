@@ -1,0 +1,4 @@
+interface:
+  display_name: ".NET Backend Testing"
+  short_description: "Design and verify C# backend tests."
+  default_prompt: "Use dotnet-backend-testing to choose and implement the right C#/.NET backend tests for this change."

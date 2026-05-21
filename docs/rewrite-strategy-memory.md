@@ -637,3 +637,164 @@ Required regression:
 - Billing/proration drafts must promote money, seat counts, and base-plan constraints into the hard fact ledger.
 - Unsupported hard facts such as `full refund available` or `The package is lost` must be rejected when the source text does not support them.
 - Candidate generation must receive the reviewed facts, not the raw extraction result.
+
+## 2026-05-21 DeepSeek Smoke Test Lessons
+
+Observed failure:
+
+- The first DeepSeek smoke run against the synthetic 100-case corpus timed out on the first case during fact extraction.
+- After increasing model timeout, a later run reached strong escalation but returned an empty content payload.
+- The first full smoke result reported 0/10 customer-usable passes because the eval harness passed only message, draft, and tone into `rewriteRequestSchema`, dropping audience, purpose, what happened, and facts to preserve.
+
+Root cause:
+
+- DeepSeek v4 requests can spend extra time or return non-content reasoning output unless ordinary JSON steps explicitly disable thinking.
+- Strong escalation was being treated as thinking/high-reasoning by default, even though the current production loop can call it before the final hard-repair attempts.
+- The new markdown corpus contains essential context in `what_actually_happened` and `facts_to_preserve`; dropping those fields makes the eval measure an incomplete request, not the intended product workflow.
+
+Promoted strategy:
+
+- For ordinary DeepSeek JSON roles, send `thinking: { type: "disabled" }` and bounded `max_tokens`.
+- Keep `DEEPSEEK_ENABLE_STRONG_THINKING=false` by default. Enable thinking only for a deliberately selected final hard-repair path.
+- The email 100-case eval loader must preserve all request fields: message, rough draft, audience, purpose, what happened, and facts to preserve.
+- Treat 10-case smoke as a provider-readiness and fail-closed behavior check, not as a launch-quality pass gate.
+
+Latest smoke evidence:
+
+- Date: 2026-05-21.
+- Mode: `EVAL_CORPUS=email-100 EVAL_MODE=smoke`.
+- Cases evaluated: 10.
+- Average AI-like signal drop: 60 points.
+- Rewrites below 50% AI-like signal: 10/10.
+- Final selected rewrites worse than draft: 0/10.
+- Customer-usable pass count: 2/10.
+- Strict signal pass count: 2/10.
+- Fact preservation or unsupported-addition failures: 8.
+
+Required regression:
+
+- DeepSeek request-body tests must prove ordinary JSON calls disable thinking and set `max_tokens`.
+- Strong escalation tests must prove thinking is disabled by default and enabled only when `DEEPSEEK_ENABLE_STRONG_THINKING=true`.
+- Eval harness tests must prove markdown cases map all context fields into rewrite request inputs.
+- Future strategy work must target fact reconstruction and gate precision before running focused or full 100-case evals.
+
+## 2026-05-21 DeepSeek Smoke Failure Diagnosis And Next Strategy
+
+Observed failure:
+
+- The corrected 10-case DeepSeek smoke completed with live provider calls, but only 2/10 cases were customer-usable.
+- All 10 measured cases lowered or preserved the Naturalness Check signal, and none selected a rewrite worse than the draft by score.
+- Eight cases ended in fail-closed `fact_check_failed` with no final user-facing rewrite.
+- The two passing cases still exposed structural quality problems: invented or awkward greetings such as department/status nouns, repeated facts, and fact-dump paragraphs.
+
+Root cause:
+
+- Naturalness signal improvement is currently easier than producing a complete send-ready reply. Sapling can be low while the candidate is blank, repetitive, or structurally weak.
+- The eval corpus encodes two different things inside `facts_to_preserve`: facts that must appear and constraints that must remain true by absence, such as refund limits, no early promise, or no implication of blame. Treating all lines as literal required facts creates noisy failures and can send repair attempts in the wrong direction.
+- The rewrite path still over-anchors on the rough draft and generated candidates. For this corpus, `what_actually_happened` and `facts_to_preserve` are often the authoritative source of truth and must dominate the draft when they conflict.
+- The attempt loop has evidence of failures, but it is not yet using a reviewed fact/constraint ledger strongly enough to choose a true facts-first reconstruct strategy before spending repair attempts.
+- Greeting and recipient inference is unsafe. When no real person name is present, the engine can infer labels such as `Finance` or `Reopening` as addressee names.
+- Current customer-usable gates are too permissive for structure. A fact-preserving reply can still be unacceptable if it repeats facts, echoes internal context, or reads like a ledger dump.
+
+Promoted strategy:
+
+- Split the eval and runtime ledger into `must_include_facts`, `must_not_claim`, `policy_constraints`, `allowed_options`, and `forbidden_actions`.
+- Build the candidate from the reviewed ledger, not from failed candidates or from the rough draft alone. `facts_to_preserve` and `what_actually_happened` should override the draft when there is conflict.
+- Add an explicit `no_real_recipient_name` path. When the source does not contain a real addressee name, omit the greeting or use a neutral opener instead of inventing one from audience, department, policy, or status terms.
+- Route policy, billing, deadline, eligibility, refund, cancellation, transfer, access, and customer-support cases to structured options/policy templates before generic naturalness repair.
+- Require candidate JSON metadata that lists included fact IDs, satisfied constraints, forbidden claims absent, and greeting source. Use this metadata for diagnosis, but verify with deterministic checks.
+- Add structural blockers for repeated hard facts, context echo, sentence-per-fact dumps, department/status greetings, detached list markers, broken quote boundaries, and blank final success.
+- Keep the 10-attempt maximum, but do not spend attempts on the same prompt shape after a hard fact miss. Escalation should switch strategy class: full facts-first reconstruct, policy/options rewrite, quote/list-safe rewrite, or quality failure.
+
+Required regression:
+
+- `rimv-email-001`, `rimv-email-002`, `rimv-email-003`, `rimv-email-005`, `rimv-email-006`, `rimv-email-008`, `rimv-email-009`, and `rimv-email-010` must preserve hard facts or fail for a specific hard constraint reason.
+- `rimv-email-004` must not pass if the output repeats the same facts or echoes internal context such as user corrections.
+- `rimv-email-007` must not produce `Hi Reopening` or any greeting inferred from a policy/status noun.
+- Constraint lines such as `Do not offer a refund` and `Do not promise completion before June 1` must be checked as forbidden-claim absence, not as literal sentences that must appear.
+- Do not run focused or full 100-case eval until local ledger/gate regressions pass and smoke reaches a materially better result, with no known weird-greeting or fact-dump pass cases.
+
+## 2026-05-21 DeepSeek Local Repair Pass 1
+
+Observed failure:
+
+- The first corrected DeepSeek smoke exposed a mismatch between provider-level success and product-level success.
+- Local inspection showed the deterministic fallback could preserve facts, but the gates and fallback router were still overfitting to background context, treating constraint instructions as literal facts, and misrouting non-delivery cases into the package-delay support fallback.
+
+Root cause:
+
+- `message_to_reply_to` contains useful context but should not automatically become the hard fact ledger when `facts_to_preserve` is present.
+- Constraint sentences such as `Do not offer a refund`, `Do not promise completion before June 1`, and `Do not imply the parent is wrong or careless` are absence or policy checks, not mandatory output sentences.
+- Delivery-delay routing matched too broadly on generic terms such as `order` or `business days`, causing sales onboarding and damaged-item support cases to use package-delay language.
+- Structural gates did not block department/status greetings, repeated facts, or internal context wording such as `the user`.
+
+Promoted strategy:
+
+- When `facts_to_preserve` is present, use it as the hard deterministic fact source for missing-fact checks. Use broader request context as evidence and unsupported-fact source, not as automatic mandatory output.
+- Filter forbidden-claim instructions out of hard fact extraction and evaluate them separately in the eval harness.
+- Tighten delivery-delay routing so it requires multiple delivery-status signals and does not catch damaged-item replacement or sales onboarding cases.
+- Add deterministic fallback branches for damaged-item replacement, sales pricing/onboarding timing, account verification lockout, and subscription cancellation/downgrade confirmation.
+- Add structural blockers for unsupported greetings such as `Hi Finance` or `Hi Reopening`, repeated fact sentences, and internal user-context echoes.
+
+Verification evidence:
+
+- Added local regressions for the smoke failure modes in fact extraction, structure gates, fallback routing, and email eval expectation parsing.
+- Focused unit run passed: `tests/unit/fact-extraction.test.ts`, `tests/unit/rewrite-pipeline-checks.test.ts`, `tests/unit/openai-output.test.ts`, and `tests/unit/rewrite-email-eval-cases.test.ts`.
+- Full local verification passed: `npm run test` with 32 files and 201 tests, `npm run typecheck`, and `npm run lint`.
+- No live DeepSeek, OpenAI, or Sapling provider call was run in this repair pass.
+
+Next regression:
+
+- Rerun only 10-case smoke before any focused/full eval.
+- Expected improvement: no package-delay fallback on sales onboarding or damaged-item cases, no `Hi Reopening`/`Hi Finance`, no fact-dump pass for `rimv-email-004`, and materially fewer fail-closed fact-check failures.
+
+## 2026-05-21 DeepSeek Smoke After Local Repair Pass 1
+
+Observed result:
+
+- Ran one provider-backed 10-case smoke and stopped.
+- Customer-usable pass improved from 2/10 to 4/10.
+- Strict signal pass improved from 2/10 to 4/10.
+- Fact preservation or unsupported-addition failures dropped from 8 to 6.
+- Average AI-like signal drop stayed strong at 62 points.
+- Rewrites below 50% AI-like signal stayed 10/10.
+- Final selected rewrites worse than draft stayed 0/10.
+
+What improved:
+
+- `rimv-email-001` and `rimv-email-002` now pass with facts preserved and no quality failure.
+- `rimv-email-006` and `rimv-email-007` now pass by the current eval criteria.
+- The damaged-item and sales-onboarding cases no longer show package-delay text in the final result because they fail closed instead of returning the wrong support fallback.
+- `Hi Finance` and `Hi Reopening` did not reappear.
+
+Remaining failures:
+
+- `rimv-email-003`, `rimv-email-004`, `rimv-email-005`, `rimv-email-008`, `rimv-email-009`, and `rimv-email-010` still end as no-charge `fact_check_failed` with blank final output.
+- Live rejected-candidate notes still show `missing_locked:Do not promise completion before June 1`, `missing_locked:Do not offer a refund`, and `missing_locked:Do not cancel or downgrade without confirmation`.
+- This means forbidden-claim constraints were separated in the eval harness, but the runtime reviewed fact ledger can still preserve LLM-extracted `Do not...` instructions as literal locked facts.
+- Passing outputs still expose unsafe recipient inference: `rimv-email-006` produced `Hi Upgrade`, and `rimv-email-007` produced `Hi Original`.
+- These are not department/status greetings caught by the new structure gate, but raw LLM `recipient_name` mistakes restored into deterministic fallback greetings.
+
+Root cause:
+
+- The local repair filtered forbidden-claim instructions from deterministic `extractRequiredFacts`, but did not classify or remove equivalent LLM-extracted `facts_that_must_not_change` values during `reviewExtractedFacts`.
+- The reviewed fact ledger still accepts short capitalized source words such as `Upgrade` and `Original` as `recipient_name` when the word appears in source text, even though it is not a person or valid addressee.
+- The structure gate catches a few hardcoded unsafe greeting labels, but the safer fix is earlier: recipient review must require explicit greeting/name evidence or a real person-like token, not any capitalized word with source evidence.
+- The runtime can still spend repair/escalation attempts before the deterministic fallback has a clean reviewed ledger, so failures are often gate-data failures rather than writer failures.
+
+Promoted next strategy:
+
+- Add constraint classification inside `reviewExtractedFacts`, not only inside eval parsing. LLM-extracted locked facts beginning with `Do not`, `Don't`, `No guarantee`, `Cannot`, or `Do not ... without confirmation` should become policy/forbidden constraints, not required output text.
+- Add a reviewed-ledger field or metadata bucket for forbidden claims and policy constraints if needed; until then, reject them from `facts_that_must_not_change` and rely on `policy-intent-gate`/eval forbidden-claim checks.
+- Harden `recipient_name` review. Reject source-backed but non-person labels such as `Upgrade`, `Original`, `Reopening`, `Finance`, `Billing`, `Cancellation`, `Verification`, `Support`, and similar status/category nouns.
+- Make `withRestoredRecipientGreeting` restore a name only when the reviewed recipient is safe. If unsafe or absent, keep `Hi,` or omit the greeting.
+- Add structure-gate regressions for `Hi Upgrade` and `Hi Original`, but treat them as backup protection rather than the primary fix.
+
+Required regression:
+
+- `rimv-email-003` must not treat `Do not promise completion before June 1` as a `missing_locked` required phrase.
+- `rimv-email-005` must not treat `Do not offer a refund` as a `missing_locked` required phrase.
+- `rimv-email-009` must not treat `Do not cancel or downgrade without confirmation` as a literal required phrase, while still blocking a rewrite that actually cancels or downgrades without confirmation.
+- `rimv-email-006` must not output `Hi Upgrade`.
+- `rimv-email-007` must not output `Hi Original`.
+- Do not run focused/full eval until the next smoke eliminates these locked-constraint and recipient-name failures.

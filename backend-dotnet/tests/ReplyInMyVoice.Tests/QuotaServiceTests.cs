@@ -212,10 +212,70 @@ public sealed class QuotaServiceTests
         var period = await db.UsagePeriods.SingleAsync();
         period.UsedCount.Should().Be(0);
         period.ReservedCount.Should().Be(0);
-        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Released);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
         var attempt = await db.RewriteAttempts.SingleAsync();
         attempt.Status.Should().Be(RewriteAttemptStatus.Expired);
         attempt.ErrorCode.Should().Be("reservation_expired");
+    }
+
+    [Fact]
+    public async Task ReleaseExpiredReservationsAsync_does_not_release_processing_attempts()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-19T00:00:00Z");
+        var reserved = await service.ReserveAsync(
+            user.Id,
+            "idem-processing-expired",
+            "hash-processing-expired",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            1,
+            now,
+            TimeSpan.FromMinutes(1));
+        await service.MarkProcessingAsync(reserved.AttemptId, now.AddSeconds(10));
+
+        var released = await service.ReleaseExpiredReservationsAsync(now.AddMinutes(2));
+
+        released.Should().Be(0);
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(1);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Pending);
+        (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Processing);
+    }
+
+    [Fact]
+    public async Task FinalizeSuccessAsync_does_not_succeed_after_reservation_expired()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-19T00:00:00Z");
+        var reserved = await service.ReserveAsync(
+            user.Id,
+            "idem-finalize-expired",
+            "hash-finalize-expired",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            1,
+            now,
+            TimeSpan.FromMinutes(1));
+        await service.ReleaseExpiredReservationsAsync(now.AddMinutes(2));
+
+        await service.FinalizeSuccessAsync(
+            reserved.AttemptId,
+            "{\"rewrittenText\":\"late success\",\"changeSummary\":[],\"riskNotes\":[]}",
+            now.AddMinutes(3));
+
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(0);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
+        (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Expired);
     }
 }
 

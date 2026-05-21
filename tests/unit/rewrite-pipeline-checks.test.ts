@@ -307,6 +307,44 @@ describe("deterministicCheck", () => {
       "structure:sentence_per_paragraph",
     );
   });
+
+  it("rejects greetings inferred from department or status nouns", () => {
+    expect(
+      detectStructureIssues(
+        {
+          ...input,
+          messageToReplyTo:
+            "Can you send the dashboard update before the exec prep meeting tomorrow? Finance is asking whether the Q2 forecast tab will be ready.",
+        },
+        "Hi Finance,\n\nThe core dashboard is ready.",
+      ),
+    ).toContain("structure:unsupported_greeting");
+
+    expect(
+      detectStructureIssues(
+        {
+          ...input,
+          messageToReplyTo:
+            "I applied for the hardship discount and got a message saying I am not eligible. Can someone review it again?",
+        },
+        "Hi Reopening,\n\nWe can reopen the application once within 30 days.",
+      ),
+    ).toContain("structure:unsupported_greeting");
+  });
+
+  it("rejects repeated fact dumps and internal user-context echoes", () => {
+    const rewritten = [
+      "Hi,",
+      "Core dashboard is ready.",
+      "Q2 forecast tab depends on Finance confirming 7 accounts. Need Finance confirmation by 9:30 AM May 7 to send by 11:00 AM.",
+      "The user corrected 41 duplicates but still needs Finance to confirm 7 accounts. The core dashboard is ready.",
+    ].join("\n\n");
+
+    const issues = detectStructureIssues(input, rewritten);
+
+    expect(issues).toContain("structure:repeated_fact");
+    expect(issues).toContain("meta_language:user_context_reference");
+  });
 });
 
 describe("adaptiveGateCheck", () => {

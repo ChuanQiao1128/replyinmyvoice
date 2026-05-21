@@ -32,7 +32,7 @@ public sealed class ExpiredReservationCleanupServiceTests
         var period = await db.UsagePeriods.SingleAsync();
         period.UsedCount.Should().Be(0);
         period.ReservedCount.Should().Be(0);
-        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Released);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
         (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Expired);
     }
 }

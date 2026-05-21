@@ -7,7 +7,7 @@ const workspaceSource = readFileSync(
 );
 
 describe("workspace V2 surface copy", () => {
-  it("removes quick context and keeps only the broad scenario workflow", () => {
+  it("keeps the reply workflow and confirmed context fields", () => {
     expect(workspaceSource).not.toContain("Quick context");
     expect(workspaceSource).not.toContain("scenarioOptions");
     expect(workspaceSource).not.toContain("Blank / custom");
@@ -15,10 +15,14 @@ describe("workspace V2 surface copy", () => {
     expect(workspaceSource).not.toContain("Customer support");
     expect(workspaceSource).not.toContain("Cover letter");
     expect(workspaceSource).not.toContain("Work update");
-    expect(workspaceSource).not.toContain("Audience");
-    expect(workspaceSource).not.toContain("Purpose");
     expect(workspaceSource).toContain("Context or message");
     expect(workspaceSource).toContain("Draft to rewrite");
+    expect(workspaceSource).toContain("Audience");
+    expect(workspaceSource).toContain("Purpose");
+    expect(workspaceSource).toContain("What actually happened");
+    expect(workspaceSource).toContain("Facts to preserve");
+    expect(workspaceSource).toContain("factsToPreserve: form.factsToPreserve");
+    expect(workspaceSource).toContain("{combinedLength}/{rewriteInputLimits.combined}");
   });
 
   it("renders tone choices from the reduced preset list", () => {

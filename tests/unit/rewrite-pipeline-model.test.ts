@@ -14,6 +14,7 @@ import {
 import type {
   ExtractedFacts,
   FactReconstructConfig,
+  RewriteAttemptLedgerEntry,
   ScenarioClassification,
   StyleCard,
 } from "../../lib/rewrite-pipeline/types";
@@ -47,12 +48,216 @@ const input: RewriteRequestInput = {
   tonePreset: "Warm",
 };
 
+const baseFacts: ExtractedFacts = {
+  recipient_name: "Monica",
+  sender_name_or_role: "Ms. Carter",
+  people_mentioned: ["Monica", "Jordan"],
+  main_purpose: "Update about missing work",
+  key_facts: ["Jordan is missing the reading response."],
+  required_actions: ["Complete the reading response."],
+  deadlines: [],
+  dates_times: [],
+  positive_notes: [],
+  concerns: ["Missing work"],
+  policies_or_conditions: [],
+  available_support: [],
+  clarifications: [],
+  facts_that_must_not_change: ["Jordan", "reading response"],
+  sensitive_points: [],
+  original_tone: "polished",
+};
+
+const baseScenario: ScenarioClassification = {
+  domain: "education",
+  intent: "explain",
+  format: "email",
+  relationship: "teacher to parent",
+  risk: "medium",
+  confidence: 0.9,
+  style_card_id: "teacher_parent_email_default",
+  needs_action_steps: true,
+  needs_empathy: true,
+  needs_deadline_preservation: false,
+  notes: [],
+};
+
+const baseStyleCard: StyleCard = {
+  style_card_id: "teacher_parent_email_default",
+  voice: "warm teacher",
+  paragraph_style: "short paragraphs",
+  sentence_style: "plain",
+  opening_style: "human",
+  body_style: "specific",
+  closing_style: "clear",
+  good_phrases: [],
+  phrases_to_avoid_or_limit: [],
+  rules: [],
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.DEEPSEEK_API_KEY;
+  delete process.env.DEEPSEEK_ENABLE_STRONG_THINKING;
 });
 
 describe("fact-reconstruct model parsing", () => {
+  it("routes OpenAI-compatible requests through DeepSeek base URL and key", async () => {
+    process.env.OPENAI_BASE_URL = "https://api.deepseek.com";
+    process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                recipient_name: "Monica",
+                sender_name_or_role: "",
+                people_mentioned: ["Monica", "Jordan"],
+                main_purpose: "Missing work update",
+                key_facts: ["reading response"],
+                required_actions: ["complete missing work"],
+                deadlines: [],
+                dates_times: [],
+                positive_notes: [],
+                concerns: [],
+                policies_or_conditions: [],
+                available_support: [],
+                clarifications: [],
+                facts_that_must_not_change: [],
+                sensitive_points: [],
+                original_tone: "polished",
+              }),
+            },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await extractFacts(input, config);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.deepseek.com/v1/chat/completions",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-deepseek-key",
+        }),
+      }),
+    );
+    const requestInit = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    const body = JSON.parse(String(requestInit.body)) as {
+      thinking?: { type?: string };
+      max_tokens?: number;
+    };
+
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.max_tokens).toBeGreaterThan(0);
+  });
+
+  it("includes prior failed attempts in escalation prompts", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_BASE_URL = "https://api.deepseek.com";
+    const attemptHistory: RewriteAttemptLedgerEntry[] = [
+      {
+        attemptNo: 1,
+        strategy: "facts_first_reconstruct",
+        modelRole: "mid_writer",
+        modelName: "test-writer-model",
+        thinkingMode: "non_thinking",
+        candidateText: "Failed candidate text.",
+        failureAnalysis: "It used one sentence per paragraph.",
+        failureKinds: ["sentence_per_paragraph"],
+        factGateResult: "pass",
+        structureGateResult: "fail:sentence_per_paragraph",
+        policyIntentGateResult: "pass",
+        saplingResult: "fail:still_high",
+        nextStrategyDecision: "full_structure_rewrite",
+      },
+    ];
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                final_email: "A repaired final email.",
+              }),
+            },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await escalateCandidate({
+      facts: baseFacts,
+      scenario: baseScenario,
+      styleCard: baseStyleCard,
+      previousFinalEmail: "Previous final.",
+      reviewNotes: ["Needs structure repair."],
+      strategy: "full_structure_rewrite",
+      strategyGuidance: ["Regroup related facts."],
+      attemptHistory,
+      config,
+    });
+
+    const requestInit = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    const body = JSON.parse(String(requestInit.body)) as {
+      thinking?: { type?: string };
+      reasoning_effort?: string;
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userPrompt = body.messages.find((message) => message.role === "user")
+      ?.content;
+
+    expect(userPrompt).toContain("Prior failed attempts");
+    expect(userPrompt).toContain("Failed candidate text.");
+    expect(userPrompt).toContain("It used one sentence per paragraph.");
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.reasoning_effort).toBeUndefined();
+  });
+
+  it("can opt into thinking mode for final hard escalation", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_BASE_URL = "https://api.deepseek.com";
+    process.env.DEEPSEEK_ENABLE_STRONG_THINKING = "true";
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                final_email: "A repaired final email.",
+              }),
+            },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await escalateCandidate({
+      facts: baseFacts,
+      scenario: baseScenario,
+      styleCard: baseStyleCard,
+      previousFinalEmail: "Previous final.",
+      reviewNotes: ["Needs hard repair."],
+      strategy: "strong_model_restructure",
+      config,
+    });
+
+    const requestInit = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    const body = JSON.parse(String(requestInit.body)) as {
+      thinking?: { type?: string };
+      reasoning_effort?: string;
+    };
+
+    expect(body.thinking).toEqual({ type: "enabled" });
+    expect(body.reasoning_effort).toBe("high");
+  });
+
   it("normalizes string and object fact fields into string arrays", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     vi.stubGlobal(

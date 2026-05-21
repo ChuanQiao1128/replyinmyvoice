@@ -329,7 +329,7 @@ static async Task<AppUser> GetOrCreateUserAsync(
 static UsagePlan GetUsagePlan(AppUser user)
 {
     return user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing
-        ? new UsagePlan($"paid:{user.StripeSubscriptionId ?? user.Id.ToString()}:{user.CurrentPeriodEnd?.ToString("O") ?? "no-period"}", user.SubscriptionStatus == SubscriptionStatus.Testing ? 10_000 : 100)
+        ? new UsagePlan($"paid:{user.StripeSubscriptionId ?? user.Id.ToString()}:{user.CurrentPeriodEnd?.ToString("O") ?? "no-period"}", user.SubscriptionStatus == SubscriptionStatus.Testing ? 10_000 : 40)
         : new UsagePlan("free:lifetime", 3);
 }
 

@@ -44,6 +44,24 @@ Use `data-module-review` when:
 The task changes or reviews Prisma schema, Entity Framework models, migrations, data access services, usage counters, idempotency tables, transactions, indexes, or persistence invariants.
 ```
 
+Use `dotnet-backend-testing` when:
+
+```text
+The task adds, changes, reviews, or explains C#/.NET backend tests, xUnit tests, ASP.NET Core API integration tests, WebApplicationFactory tests, EF Core transaction tests, provider fakes, webhook tests, queue/worker tests, or CI dotnet test coverage.
+```
+
+Use `ui-browser-testing` when:
+
+```text
+The task adds, changes, reviews, or debugs frontend UI, Playwright tests, browser flows, screenshots, responsive layout, visual regressions, auth redirects, forms, navigation, console/network errors, or local webpage verification.
+```
+
+Use `cloud-architecture-cost-review` when:
+
+```text
+The task chooses, changes, reviews, or deploys cloud architecture, Azure/Cloudflare hosting, databases, queues, workers, CI/CD deployment targets, monthly run-rate cost, scale-to-zero behavior, or any plan that may create paid infrastructure or increase AI/provider costs.
+```
+
 Use `claude-heavy-planning-handoff` when:
 
 ```text
@@ -58,31 +76,46 @@ Use these project-level aliases when discussing the Agent Studio workflow:
 requirements-to-system-plan = system-spec-synthesis
 resilience-test-writer = resilience-test-generation
 state-machine-and-data-model-review = state-machine-modeling + data-module-review
-cloud-readiness-review = deployment readiness checklist until a dedicated skill exists
+dotnet-test-writer = dotnet-backend-testing
+ui-browser-test-review = ui-browser-testing
+cloud-cost-review = cloud-architecture-cost-review
+cloud-readiness-review = deployment readiness checklist until a dedicated deployment readiness skill exists
 ```
 
 For any non-trivial development run, follow this routine:
 
 ```text
-1. Requirements and system planning:
+1. Architecture and cost gate:
+   Use cloud-architecture-cost-review before implementation when the task chooses or changes cloud architecture, hosting model, database, queues, background workers, CI/CD deployment targets, AI/provider usage budget, paid infrastructure, monthly run-rate cost, or scale-to-zero behavior. Prefer the cheapest architecture that satisfies the product and reliability requirements, and challenge fixed-cost always-on services for MVP/demo workloads.
+
+2. Requirements and system planning:
    Use system-spec-synthesis before implementation when the task changes architecture, API contracts, data models, deployment flow, or multi-module behavior.
 
-2. State and data correctness:
+3. State and data correctness:
    Use state-machine-modeling and data-module-review before changing quota, subscription, webhook, usage reservation, rewrite attempt, queue job, EF Core/Prisma schema, migrations, or persistence invariants.
 
-3. Resilience and failure tests:
+4. Resilience and failure tests:
    Use resilience-test-generation before or during implementation whenever the change touches retries, timeouts, provider failures, idempotency, webhook replay, queue redelivery, quota races, concurrent requests, or recovery behavior.
 
-4. Cloud/deployment readiness:
-   Before CI/CD, Azure, Cloudflare, database migration, or production-readiness changes, run a cloud-readiness review using README.md, docs/manual-setup.md, docs/dotnet-azure-blocker-preflight.md, docs/business-qa-and-deploy-result.md, and the relevant skills above. Do not claim a dedicated cloud-readiness-review skill was used unless that skill is created and followed later.
+5. C#/.NET backend tests:
+   Use dotnet-backend-testing before adding, changing, reviewing, or explaining .NET backend tests. Prefer xUnit, FluentAssertions, WebApplicationFactory, EF Core SQLite integration tests, and deterministic provider fakes already proven in this repo. Do not claim Moq, Testcontainers, WireMock.Net, Postman collections, SonarQube, or load-testing tools unless actual repo artifacts and verification exist.
 
-5. Claude Code handoff:
+6. UI/browser testing:
+   Use ui-browser-testing before adding, changing, reviewing, or debugging frontend UI, Playwright tests, browser flows, screenshots, responsive layout, visual regressions, auth redirects, form behavior, navigation, console/network errors, or local webpage verification. Use it with dotnet-backend-testing when a backend/API change also changes browser-visible UI behavior.
+
+7. Cloud/deployment readiness:
+   Before CI/CD, Azure, Cloudflare, database migration, or production-readiness changes, run a cloud-readiness review using README.md, docs/manual-setup.md, docs/dotnet-azure-blocker-preflight.md, docs/business-qa-and-deploy-result.md, and the relevant skills above. If architecture or cost is being chosen or changed, run cloud-architecture-cost-review before this readiness checklist. Do not claim a dedicated cloud-readiness-review skill was used unless that skill is created and followed later.
+
+8. Claude Code handoff:
    Use claude-heavy-planning-handoff only for broad planning or architecture-heavy work that should be routed from Codex to Claude Code. Codex remains responsible for local implementation, tests, commits, CI/CD setup, and deployment unless the user says otherwise.
 
-6. Evidence rule:
+9. Evidence rule:
    In final answers, run docs, resume bullets, and interview notes, only claim a named skill was used if the agent explicitly opened/followed that skill or produced its required output. If the agent only followed the same idea manually, describe it as a checklist or workflow, not as a used skill.
 
-7. Learning rule:
+10. Skill run log rule:
+   Whenever Codex or Claude opens, follows, smoke-tests, or uses one of the project skills named in this policy, append an entry to `docs/skill-run-log.md` before finishing the turn. Record the date, agent, skill name, trigger, action taken, output artifacts, verification evidence, and limitations. Add one entry per skill. Do not log secrets, raw private user content, `.env.local` values, API tokens, private keys, or credentials. If a skill should have applied but was not used, record the miss as a gap entry instead of silently omitting it.
+
+11. Learning rule:
    When a reusable lesson is found during rewrite quality, quota correctness, webhook replay, deployment, or resilience work, update the relevant project docs before finishing, especially docs/rewrite-strategy-memory.md, docs/business-qa-and-deploy-result.md, or the active run target document.
 ```
 
@@ -123,7 +156,7 @@ Only claim Claude Code participated if a Claude CLI call was actually run or a C
 
 ### Skill Smoke Verification
 
-These five skills are expected to be used during real development, but not every small edit needs all five. Full backend, quota, billing, queue, deployment, or resilience runs should normally use the relevant planning, state/data, resilience, and cloud-readiness routines; Claude Code involvement is reserved for broad planning or explicit user requests.
+These eight skills are expected to be used during real development, but not every small edit needs all eight. Full backend, frontend, quota, billing, queue, cloud architecture, deployment, testing, or resilience runs should normally use the relevant architecture/cost, planning, state/data, backend testing, UI/browser testing, resilience, and cloud-readiness routines; Claude Code involvement is reserved for broad planning or explicit user requests.
 
 Latest local smoke result:
 
@@ -144,6 +177,17 @@ data-module-review:
 
 claude-heavy-planning-handoff:
   Passed. scripts/build_handoff_brief.py produced a sanitized handoff brief, and Codex successfully called local Claude Code non-interactively with claude -p.
+
+Date checked: 2026-05-21
+
+dotnet-backend-testing:
+  Passed. skill-creator quick_validate.py confirmed the project skill structure is valid, and AGENTS.md now routes C#/.NET backend testing work to this skill.
+
+ui-browser-testing:
+  Passed. skill-creator quick_validate.py confirmed the project skill structure is valid, and AGENTS.md now routes frontend, Playwright, browser, screenshot, and responsive verification work to this skill.
+
+cloud-architecture-cost-review:
+  Passed. skill-creator quick_validate.py confirmed the project skill structure is valid, and scripts/cost_review_template.py produced the required architecture cost review headings.
 ```
 
 ### Interview Demo Prompts
@@ -151,10 +195,13 @@ claude-heavy-planning-handoff:
 Use these exact prompts to demonstrate the skills without touching production systems:
 
 ```text
+Use cloud-architecture-cost-review to compare Azure App Service, Azure Functions, and Container Apps for the .NET rewrite backend before implementation.
 Use system-spec-synthesis to turn the current Azure backend migration notes into an implementation-ready system spec.
 Use resilience-test-generation to design tests for the rewrite request flow when OpenAI fails after quota reservation.
 Use state-machine-modeling to model subscription status, free quota, paid quota, and rewrite reservation lifecycle.
 Use data-module-review to review the quota, usage reservation, and Stripe event persistence model in this repo.
+Use dotnet-backend-testing to design xUnit and ASP.NET Core integration tests for quota reservation, Stripe webhook replay, and worker job finalization.
+Use ui-browser-testing to verify the /app workspace with Playwright, desktop/mobile screenshots, and console/network review.
 Use claude-heavy-planning-handoff to prepare a Claude Code planning brief for migrating the rewrite backend to Azure App Service, Azure Service Bus, and a .NET worker.
 ```
 
@@ -236,6 +283,20 @@ Current long-run implementation target:
 ```text
 /Users/qc/Desktop/CloudFlare/docs/fact-reconstruct-rewrite-target.md
 ```
+
+Current DeepSeek adaptive rewrite strategy for the next rewrite-quality test window:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/deepseek-adaptive-rewrite-attempt-ledger-strategy.md
+```
+
+Synthetic 100-case email evaluation corpus for the next rewrite-quality test window:
+
+```text
+/Users/qc/Desktop/CloudFlare/docs/rewrite-email-eval-cases-100.md
+```
+
+New rewrite-quality test windows must read the DeepSeek adaptive strategy document first and use it as the current source of truth where it conflicts with older 2026-05-19/2026-05-20 rewrite planning notes. The next test pass should keep all rewrite roles on `deepseek-v4-pro`, route through `OPENAI_BASE_URL=https://api.deepseek.com`, keep ordinary steps in non-thinking mode, reserve thinking/high reasoning for final hard repair or escalation, carry the original input, reviewed fact ledger, all failed candidate texts, and all failure analyses into each retry, stop at a hard maximum of 10 attempts, and return quality-failure/no-charge when gates cannot pass. Do not write provider secrets into docs, prompts, logs, source files, or evaluation artifacts.
 
 ## Previous .NET/Azure Long-Run Target
 
@@ -335,20 +396,21 @@ The user wants a clear character limit for pasted content.
 Confirmed limits:
 
 ```text
-Message to reply to: max 5000 characters
-Rough draft reply: 10 to 5000 characters
+Message to reply to: max 3000 characters
+Rough draft reply: 10 to 3000 characters
 Audience: max 300 characters
 Purpose: max 500 characters
 What actually happened: max 1000 characters
 Facts to preserve: max 1000 characters
-Combined request cap: 10000 characters
+Combined request cap: 5000 characters
 ```
 
 Reasoning:
 
 ```text
-Teachers and sales users may paste a full incoming email.
+Teachers, sales, workplace, and customer-support users may paste a substantial message or draft, but the MVP price point must keep long-text OpenAI and Sapling cost bounded.
 The app should prevent very large email threads from driving up cost and latency.
+For long threads, users should paste only the part they need to answer and the facts that matter.
 The UI should show remaining characters near long textareas.
 ```
 
@@ -696,13 +758,13 @@ Avoid pasting passwords, payment details, or highly sensitive personal informati
 Character limits:
 
 ```text
-Message to reply to: max 5000 characters.
-Rough draft reply: 10 to 5000 characters.
+Message to reply to: max 3000 characters.
+Rough draft reply: 10 to 3000 characters.
 Audience: max 300 characters.
 Purpose: max 500 characters.
 What actually happened: max 1000 characters.
 Facts to preserve: max 1000 characters.
-Combined request cap: 10000 characters.
+Combined request cap: 5000 characters.
 Show remaining characters near long textareas.
 ```
 
@@ -1230,13 +1292,13 @@ type RewriteResponse = {
 Validation:
 
 ```text
-messageToReplyTo optional, max 5000 chars
-roughDraftReply required, 10 to 5000 chars
+messageToReplyTo optional, max 3000 chars
+roughDraftReply required, 10 to 3000 chars
 audience optional, max 300 chars
 purpose optional, max 500 chars
 whatHappened optional, max 1000 chars
 factsToPreserve optional, max 1000 chars
-combined request cap 10000 chars
+combined request cap 5000 chars
 tone must be warm or direct
 401 unauthenticated
 402 no active/trialing subscription and free lifetime quota exhausted

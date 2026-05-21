@@ -4,6 +4,24 @@ import type {
   RewriteBudgetState,
   RewriteStrategyDecision,
 } from "./types";
+import { optionalEnv } from "../env";
+
+function withTestWindowAttemptCap(budget: RewriteBudget): RewriteBudget {
+  const rawValue = optionalEnv("REWRITE_TEST_WINDOW_MAX_ATTEMPTS");
+  if (!rawValue) {
+    return budget;
+  }
+
+  const parsedValue = Math.trunc(Number(rawValue));
+  if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+    return budget;
+  }
+
+  return {
+    ...budget,
+    maxAttempts: Math.max(budget.maxAttempts, Math.min(parsedValue, 10)),
+  };
+}
 
 export function createRewriteBudget(analysis: InputAnalysis): RewriteBudget {
   if (
@@ -11,35 +29,35 @@ export function createRewriteBudget(analysis: InputAnalysis): RewriteBudget {
     analysis.riskLevel === "high" ||
     analysis.wordCount >= 260
   ) {
-    return {
+    return withTestWindowAttemptCap({
       maxAttempts: 5,
       maxCandidatesPerAttempt: 3,
       allowStrongModel: true,
       maxStrongAttempts: 1,
       maxEstimatedUsd: 0.12,
       reason: "High-risk or policy-heavy input gets more bounded attempts.",
-    };
+    });
   }
 
   if (analysis.structureRisk === "medium" || analysis.factualDensity === "medium") {
-    return {
+    return withTestWindowAttemptCap({
       maxAttempts: 3,
       maxCandidatesPerAttempt: 3,
       allowStrongModel: false,
       maxStrongAttempts: 0,
       maxEstimatedUsd: 0.06,
       reason: "Medium-risk input gets normal retry budget.",
-    };
+    });
   }
 
-  return {
+  return withTestWindowAttemptCap({
     maxAttempts: 2,
     maxCandidatesPerAttempt: 2,
     allowStrongModel: false,
     maxStrongAttempts: 0,
     maxEstimatedUsd: 0.03,
     reason: "Low-risk short input gets a small budget.",
-  };
+  });
 }
 
 export function createInitialBudgetState(): RewriteBudgetState {

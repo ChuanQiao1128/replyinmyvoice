@@ -1,0 +1,13 @@
+{
+  "_comment_": "Project-scoped MCP config for Claude Code. Copy this file to your project root as .mcp.json. Claude Code will ask once to trust the server, then `codex` is available as MCP tools.",
+  "mcpServers": {
+    "codex": {
+      "type": "stdio",
+      "command": "codex",
+      "args": ["mcp-server"],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      }
+    }
+  }
+}

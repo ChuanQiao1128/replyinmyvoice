@@ -204,7 +204,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         }
 
         var status = type == "customer.subscription.deleted"
-            ? SubscriptionStatus.Inactive
+            ? SubscriptionStatus.Canceled
             : MapSubscriptionStatus(GetString(stripeObject, "status"));
 
         user.StripeSubscriptionId = GetString(stripeObject, "id") ?? user.StripeSubscriptionId;
@@ -254,6 +254,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         {
             "active" => SubscriptionStatus.Active,
             "trialing" => SubscriptionStatus.Trialing,
+            "canceled" => SubscriptionStatus.Canceled,
             _ => SubscriptionStatus.Inactive,
         };
 

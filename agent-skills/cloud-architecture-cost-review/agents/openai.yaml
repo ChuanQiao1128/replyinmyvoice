@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cloud Architecture Cost Review"
+  short_description: "Review cloud architecture cost risks."
+  default_prompt: "Use $cloud-architecture-cost-review to compare cloud architecture options and cost risks before implementation."

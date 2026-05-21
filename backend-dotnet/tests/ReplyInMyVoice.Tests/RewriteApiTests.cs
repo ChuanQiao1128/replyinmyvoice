@@ -7,6 +7,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ReplyInMyVoice.Domain.Contracts;
+using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Queueing;
@@ -182,6 +183,45 @@ public sealed class RewriteApiTests : IAsyncLifetime
         (await verifyDb.UsageReservations.CountAsync()).Should().Be(1);
     }
 
+    [Fact]
+    public async Task Rewrite_paid_quota_is_forty_requests_per_period()
+    {
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                ExternalAuthUserId = "clerk_paid_quota",
+                Email = "paid@example.com",
+                StripeCustomerId = "cus_paid_quota",
+                StripeSubscriptionId = "sub_paid_quota",
+                SubscriptionStatus = SubscriptionStatus.Active,
+                CurrentPeriodEnd = DateTimeOffset.Parse("2026-06-20T00:00:00Z"),
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_paid_quota");
+
+        for (var index = 0; index < 40; index += 1)
+        {
+            var accepted = await PostRewriteAsync(client, $"api-idem-paid-{index}");
+            accepted.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        }
+
+        var exhausted = await PostRewriteAsync(client, "api-idem-paid-40");
+
+        exhausted.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
+        await using var verifyDb = CreateContext();
+        var period = await verifyDb.UsagePeriods.SingleAsync();
+        period.QuotaLimit.Should().Be(40);
+        period.ReservedCount.Should().Be(40);
+        (await verifyDb.RewriteAttempts.CountAsync()).Should().Be(40);
+    }
+
     private WebApplicationFactory<Program> CreateFactory(string environment = "Testing")
     {
         return new WebApplicationFactory<Program>()
@@ -209,6 +249,16 @@ public sealed class RewriteApiTests : IAsyncLifetime
             .UseSqlite(_connection)
             .Options;
         return new AppDbContext(options);
+    }
+
+    private static Task<HttpResponseMessage> PostRewriteAsync(HttpClient client, string idempotencyKey)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/rewrite")
+        {
+            Content = JsonContent.Create(ValidRequest()),
+        };
+        request.Headers.Add("X-Idempotency-Key", idempotencyKey);
+        return client.SendAsync(request);
     }
 
     private static RewriteRequest ValidRequest() =>

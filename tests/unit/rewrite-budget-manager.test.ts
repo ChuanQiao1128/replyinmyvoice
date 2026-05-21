@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   approveRewriteAttempt,
@@ -48,6 +48,10 @@ const strongDecision: RewriteStrategyDecision = {
 };
 
 describe("rewrite budget manager", () => {
+  afterEach(() => {
+    delete process.env.REWRITE_TEST_WINDOW_MAX_ATTEMPTS;
+  });
+
   it("keeps low-risk drafts on a small bounded budget", () => {
     const budget = createRewriteBudget(lowRiskAnalysis);
 
@@ -78,5 +82,21 @@ describe("rewrite budget manager", () => {
       approved: false,
       reason: "budget_exceeded:strong_model",
     });
+  });
+
+  it("allows the DeepSeek test window to raise the attempt cap to 10", () => {
+    process.env.REWRITE_TEST_WINDOW_MAX_ATTEMPTS = "10";
+
+    const budget = createRewriteBudget(highRiskAnalysis);
+
+    expect(budget.maxAttempts).toBe(10);
+  });
+
+  it("never allows the test-window attempt cap above 10", () => {
+    process.env.REWRITE_TEST_WINDOW_MAX_ATTEMPTS = "25";
+
+    const budget = createRewriteBudget(highRiskAnalysis);
+
+    expect(budget.maxAttempts).toBe(10);
   });
 });

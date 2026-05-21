@@ -1,0 +1,30 @@
+{
+  "_comment_": "Merge this into ~/.claude/settings.json (user-scoped) OR /Users/qc/Desktop/CloudFlare/.claude/settings.json (project-scoped). The deny list prevents Claude Code from using Edit/Write/NotebookEdit directly — it MUST route code changes through the codex MCP server.",
+  "permissions": {
+    "deny": [
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(tee:*)",
+      "Bash(git apply:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ],
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run:*)",
+      "Bash(dotnet test:*)",
+      "mcp__codex"
+    ]
+  }
+}

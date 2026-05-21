@@ -370,11 +370,88 @@ function detectMetaLanguage(text: string) {
     ],
     [/\bextracted facts?\b/i, "meta_language:extracted_facts"],
     [/\breviewer notes?\b/i, "meta_language:reviewer_notes"],
+    [/\bthe user\b/i, "meta_language:user_context_reference"],
   ];
 
   return patterns
     .filter(([pattern]) => pattern.test(text))
     .map(([, issue]) => issue);
+}
+
+const unsafeGreetingLabels = new Set([
+  "account",
+  "admin",
+  "billing",
+  "cancellation",
+  "customer",
+  "eligibility",
+  "finance",
+  "parent",
+  "reopening",
+  "student",
+  "support",
+  "team",
+]);
+
+function firstGreetingName(text: string) {
+  return text.match(/^\s*(?:hi|hello|dear)\s+([^,\n]{2,40}),/i)?.[1]?.trim() ?? "";
+}
+
+function hasUnsupportedGreeting(input: RewriteRequestInput, rewrittenText: string) {
+  const greeting = firstGreetingName(rewrittenText);
+  if (!greeting) {
+    return false;
+  }
+
+  const normalizedGreeting = normalize(greeting).replace(/[^a-z0-9\s'-]+/g, "");
+  const greetingWords = normalizedGreeting.split(/\s+/).filter(Boolean);
+  if (
+    greetingWords.length === 0 ||
+    greetingWords.some((word) => unsafeGreetingLabels.has(word))
+  ) {
+    return true;
+  }
+
+  const normalizedSource = normalize(
+    [
+      input.messageToReplyTo,
+      input.roughDraftReply,
+      input.audience,
+      input.purpose,
+      input.whatHappened,
+      input.factsToPreserve,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+  return !greetingWords.every((word) => normalizedSource.includes(word));
+}
+
+function normalizedSentenceKey(value: string) {
+  return normalize(value)
+    .replace(/^(?:hi|hello|dear)(?:\s+[^,\n]*)?,?\s+/, "")
+    .replace(/^(?:the|a|an)\s+/, "")
+    .replace(/[^a-z0-9:$.'\s-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasRepeatedFactSentence(text: string) {
+  const seen = new Set<string>();
+  const sentences = text
+    .split(/[.!?]+(?:\s+|$)/)
+    .map(normalizedSentenceKey)
+    .filter((sentence) => sentence.split(/\s+/).filter(Boolean).length >= 4);
+
+  for (const sentence of sentences) {
+    if (seen.has(sentence)) {
+      return true;
+    }
+    seen.add(sentence);
+  }
+
+  return false;
 }
 
 export function detectStructureIssues(
@@ -393,6 +470,18 @@ export function detectStructureIssues(
       rewrittenText,
     );
   const detachedBulletItem = /(?:^|\n)\s*[-*]\s*(?:\n|$)/.test(rewrittenText);
+
+  if (hasUnsupportedGreeting(input, rewrittenText)) {
+    issues.push("structure:unsupported_greeting");
+  }
+
+  if (hasRepeatedFactSentence(rewrittenText)) {
+    issues.push("structure:repeated_fact");
+  }
+
+  if (/\bthe user\b/i.test(rewrittenText)) {
+    issues.push("meta_language:user_context_reference");
+  }
 
   if (detachedNumberedItem) {
     issues.push("structure:broken_numbered_list");

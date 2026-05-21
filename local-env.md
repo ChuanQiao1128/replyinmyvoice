@@ -46,7 +46,55 @@ Dashboard setup needed:
 - Confirm redirect URLs:
   - `/sign-in`
   - `/sign-up`
-  - `/app`
+- `/app`
+
+### Microsoft Entra External ID
+
+Purpose: next auth migration target. Clerk is being replaced by Microsoft Entra External ID for customer sign-in/sign-up, with Google social sign-in configured inside Entra.
+
+Current Azure setup created from local Azure CLI login:
+
+```env
+AZURE_EXTERNAL_ID_TENANT_ID=614ea821-6ef3-43e2-8613-d4b13fae115d
+AZURE_EXTERNAL_ID_TENANT_SUBDOMAIN=replyinmyvoicecustomers
+AZURE_EXTERNAL_ID_AUTHORITY=https://replyinmyvoicecustomers.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0
+AZURE_EXTERNAL_ID_FRONTEND_CLIENT_ID=02ffae8e-3d30-42d0-86cd-9b858ab33252
+AZURE_EXTERNAL_ID_API_CLIENT_ID=1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32
+AZURE_EXTERNAL_ID_API_AUDIENCE=api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32
+AZURE_EXTERNAL_ID_API_SCOPE=api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32/access_as_user
+AZURE_EXTERNAL_ID_WELL_KNOWN_URL=https://replyinmyvoicecustomers.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0/.well-known/openid-configuration
+AZURE_EXTERNAL_ID_SIGN_IN_FLOW_NAME=SignUpSignIn
+NEXT_PUBLIC_ENTRA_AUTHORITY=https://replyinmyvoicecustomers.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0
+NEXT_PUBLIC_ENTRA_CLIENT_ID=02ffae8e-3d30-42d0-86cd-9b858ab33252
+NEXT_PUBLIC_ENTRA_API_SCOPE=api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32/access_as_user
+```
+
+Created resources:
+
+- External tenant: `Reply In My Voice Customers`
+- External tenant domain: `replyinmyvoicecustomers.onmicrosoft.com`
+- Frontend app registration: `Reply In My Voice Frontend`
+- API app registration: `Reply In My Voice API`
+- API delegated scope: `access_as_user`
+- Sign-up/sign-in user flow: `SignUpSignIn`
+- Frontend redirect URIs:
+  - `https://replyinmyvoice.com/auth/callback`
+  - `http://localhost:3000/auth/callback`
+
+Google federation still needs the Google OAuth client values:
+
+```env
+GOOGLE_CLIENT_ID_FOR_ENTRA=your_google_oauth_client_id
+GOOGLE_CLIENT_SECRET_FOR_ENTRA=your_google_oauth_client_secret
+```
+
+Use this redirect URI in the Google OAuth web application unless the Entra portal shows a more specific one during provider configuration:
+
+```text
+https://login.microsoftonline.com/te/614ea821-6ef3-43e2-8613-d4b13fae115d/oauth2/authresp
+```
+
+Do not commit the Google client secret. Put it only in `.env.local` and production secret storage.
 
 ### Neon Postgres
 

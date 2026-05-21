@@ -504,6 +504,96 @@ describe("thread fallback rewrite pass", () => {
     expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
   });
 
+  it("uses damaged-item replacement facts instead of the package-delay fallback", () => {
+    const input = {
+      scenario: "Customer support",
+      messageToReplyTo:
+        "My order #R8142 arrived today and two of the six mugs were broken. The box had no padding on one side. I need these for a client event on April 18.",
+      roughDraftReply:
+        "Sorry about that. We can replace the mugs. Please send photos and we will process it.",
+      audience: "Upset retail customer.",
+      purpose: "Acknowledge the issue and offer a replacement path quickly.",
+      whatHappened:
+        "Company policy requires photos of damaged items and packaging before replacement. The team can ship 2 replacement mugs by express service at no extra cost if photos arrive by 2:00 PM on April 12. A refund has not been approved.",
+      factsToPreserve:
+        "Order #R8142. Two of six mugs broken. Need photos of mugs and packaging. Express replacement for 2 mugs can be sent at no extra cost if photos arrive by 2:00 PM April 12. Do not offer a refund.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("R8142");
+    expect(result.rewrittenText).toContain("two of the six mugs");
+    expect(result.rewrittenText).toContain("photos");
+    expect(result.rewrittenText).toContain("packaging");
+    expect(result.rewrittenText).toContain("2 replacement mugs");
+    expect(result.rewrittenText).toContain("2:00 PM");
+    expect(result.rewrittenText).toContain("April 12");
+    expect(result.rewrittenText).not.toContain("fulfillment center");
+    expect(result.rewrittenText).not.toContain("delivery carrier");
+    expect(result.rewrittenText).not.toContain("refund");
+  });
+
+  it("uses sales pricing and onboarding facts instead of delivery-delay support language", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Hi Jonah, thanks for the demo. We are comparing two vendors this week. Can you send the final numbers again and confirm whether onboarding could start before June 1 if we move forward?",
+      roughDraftReply:
+        "Thanks for your time. Our platform is a great fit and we can absolutely get you onboarded before June 1. The pricing is attached again. Let me know if you want to sign today.",
+      audience: "Operations lead at a prospective B2B customer.",
+      purpose:
+        "Follow up with pricing and answer the onboarding timing question without overpromising.",
+      whatHappened:
+        "The current proposal is $1,800 per month for 25 seats, plus a one-time $650 onboarding fee. The earliest onboarding kickoff slot is May 28, and full setup usually takes 5 business days after contract signature and data access.",
+      factsToPreserve:
+        "Price is $1,800 per month for 25 seats plus $650 onboarding. Earliest kickoff is May 28. Full setup usually takes 5 business days after signature and data access. Do not promise completion before June 1.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Hi Jonah");
+    expect(result.rewrittenText).toContain("$1,800");
+    expect(result.rewrittenText).toContain("25 seats");
+    expect(result.rewrittenText).toContain("$650");
+    expect(result.rewrittenText).toContain("May 28");
+    expect(result.rewrittenText).toContain("5 business days");
+    expect(result.rewrittenText).toContain("June 1");
+    expect(result.rewrittenText).not.toContain("fulfillment center");
+    expect(result.rewrittenText).not.toContain("delivery carrier");
+  });
+
+  it("does not infer policy eligibility greetings from status nouns", () => {
+    const input = {
+      scenario: "Customer support",
+      messageToReplyTo:
+        "I applied for the hardship discount and got a message saying I am not eligible. My income changed after I submitted the form. Can someone review it again?",
+      roughDraftReply:
+        "You were marked ineligible based on the original application. You can send more documents and we can review them.",
+      audience: "Customer requesting reconsideration.",
+      purpose: "Invite updated documentation and explain review limits.",
+      whatHappened:
+        "The team can reopen the application once within 30 days if the customer provides a recent payslip or unemployment notice. Reopening does not guarantee approval. The original application was submitted on March 3, so documents must arrive by April 2.",
+      factsToPreserve:
+        "Can reopen once within 30 days. Original application date March 3. Updated documents due by April 2. Acceptable documents are recent payslip or unemployment notice. No guarantee of approval.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).not.toContain("Hi Reopening");
+    expect(result.rewrittenText).toContain("30 days");
+    expect(result.rewrittenText).toContain("March 3");
+    expect(result.rewrittenText).toContain("April 2");
+    expect(result.rewrittenText).toContain("payslip");
+    expect(result.rewrittenText).toContain("unemployment notice");
+    expect(result.rewrittenText).toContain("does not guarantee approval");
+  });
+
   it("keeps long billing facts without rejecting plain-English wording as a name", () => {
     const input = {
       scenario: "General reply",

@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI Browser Testing"
+  short_description: "Verify UI with browser and screenshots."
+  default_prompt: "Use ui-browser-testing to verify this frontend change with Playwright, browser checks, screenshots, and visual review."

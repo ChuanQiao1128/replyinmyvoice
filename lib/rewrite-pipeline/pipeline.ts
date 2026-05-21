@@ -10,6 +10,7 @@ import {
   createRewriteBudget,
   recordRewriteAttempt,
 } from "./budget-manager";
+import { createRewriteAttemptLedgerEntry } from "./attempt-ledger";
 import {
   adaptiveGateCheck,
   llmFactCheckPasses,
@@ -41,6 +42,7 @@ import type {
   LlmFactCheckResult,
   ReviewResult,
   RewriteFailureKind,
+  RewriteAttemptLedgerEntry,
   RewriteStrategy,
   RewriteStrategyDecision,
   ScenarioClassification,
@@ -58,6 +60,7 @@ export class FactReconstructQualityError extends Error {
   rejectedCandidates: number;
   repairCandidatesTried: number;
   candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
+  attemptLedger: RewriteAttemptLedgerEntry[];
   diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"];
   rewritePlanSummary: string;
   reason: FactReconstructQualityFailureReason;
@@ -67,6 +70,7 @@ export class FactReconstructQualityError extends Error {
     rejectedCandidates,
     repairCandidatesTried,
     candidateSignals,
+    attemptLedger,
     diagnosisTags,
     rewritePlanSummary,
     reason,
@@ -75,6 +79,7 @@ export class FactReconstructQualityError extends Error {
     rejectedCandidates: number;
     repairCandidatesTried: number;
     candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
+    attemptLedger?: RewriteAttemptLedgerEntry[];
     diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"];
     rewritePlanSummary: string;
     reason: FactReconstructQualityFailureReason;
@@ -85,6 +90,7 @@ export class FactReconstructQualityError extends Error {
     this.rejectedCandidates = rejectedCandidates;
     this.repairCandidatesTried = repairCandidatesTried;
     this.candidateSignals = candidateSignals;
+    this.attemptLedger = attemptLedger ?? [];
     this.diagnosisTags = diagnosisTags;
     this.rewritePlanSummary = rewritePlanSummary;
     this.reason = reason;
@@ -129,6 +135,7 @@ function naturalnessPasses({
 }
 
 function throwQualityFailure({
+  attemptLedger = [],
   candidateSignals,
   diagnosisTags,
   draftPercent,
@@ -138,6 +145,7 @@ function throwQualityFailure({
   rewritePercent,
   rewritePlanSummary,
 }: {
+  attemptLedger?: RewriteAttemptLedgerEntry[];
   candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
   diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"];
   draftPercent: number | null;
@@ -152,6 +160,7 @@ function throwQualityFailure({
     rejectedCandidates,
     repairCandidatesTried,
     candidateSignals,
+    attemptLedger,
     diagnosisTags,
     rewritePlanSummary,
     reason,
@@ -238,6 +247,22 @@ function failureKindsFromFactCheck(result: LlmFactCheckResult) {
   }
 
   return [...failures];
+}
+
+function recordFailedAttempt(
+  attemptLedger: RewriteAttemptLedgerEntry[],
+  entry: Omit<RewriteAttemptLedgerEntry, "attemptNo">,
+) {
+  attemptLedger.push(
+    createRewriteAttemptLedgerEntry({
+      attemptNo: attemptLedger.length + 1,
+      ...entry,
+    }),
+  );
+}
+
+function saplingSummary(value: number | null, reason: string) {
+  return value === null ? `${reason}:unavailable` : `${reason}:${value}%`;
 }
 
 function decideRepairStrategy({
@@ -339,6 +364,7 @@ function shouldPreferExtractiveFallback(input: RewriteRequestInput) {
 }
 
 function buildPassedResponse({
+  attemptLedger = [],
   candidateSignals,
   changeSummary,
   diagnosisTags,
@@ -351,6 +377,7 @@ function buildPassedResponse({
   rewritePlanSummary,
   riskNotes,
 }: {
+  attemptLedger?: RewriteAttemptLedgerEntry[];
   candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
   changeSummary: string[];
   diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"];
@@ -376,6 +403,7 @@ function buildPassedResponse({
       selectionStatus: "passed",
       diagnosisTags,
       rewritePlanSummary,
+      attemptLedger,
       candidateSignals,
     },
   };
@@ -569,9 +597,11 @@ export async function rewriteWithFactReconstruct(
     telemetry,
   });
   const candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"] = [];
+  const attemptLedger: RewriteAttemptLedgerEntry[] = [];
 
   if (draftSignal.aiLikePercent === null) {
     throwQualityFailure({
+      attemptLedger,
       candidateSignals,
       diagnosisTags: [],
       draftPercent: null,
@@ -619,6 +649,21 @@ export async function rewriteWithFactReconstruct(
   const score = selectedScore(review);
 
   if (!reviewerScorePasses(score)) {
+    recordFailedAttempt(attemptLedger, {
+      strategy: initialDecision.strategy,
+      modelRole: "mid_writer",
+      modelName: config.models.mid_writer,
+      thinkingMode: "non_thinking",
+      candidateText: bestCandidate,
+      failureAnalysis: `Reviewer score below threshold: ${score.issues.join("; ")}`,
+      failureKinds: ["too_generic"],
+      factGateResult: "not_run",
+      structureGateResult: "not_run",
+      policyIntentGateResult: "not_run",
+      saplingResult: "not_measured",
+      nextStrategyDecision: "facts_first_reconstruct",
+    });
+
     const fallbackAttempt = await tryGuaranteedFallback({
       config,
       draftPercent: draftSignal.aiLikePercent,
@@ -640,6 +685,7 @@ export async function rewriteWithFactReconstruct(
 
     if (fallbackAttempt.passes) {
       return buildPassedResponse({
+        attemptLedger,
         rewrittenText: fallbackAttempt.fallback.rewrittenText,
         changeSummary: [
           "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
@@ -660,6 +706,7 @@ export async function rewriteWithFactReconstruct(
     }
 
     throwQualityFailure({
+      attemptLedger,
       candidateSignals,
       diagnosisTags,
       draftPercent: draftSignal.aiLikePercent,
@@ -708,6 +755,29 @@ export async function rewriteWithFactReconstruct(
         failures,
         previousStrategies,
       });
+      recordFailedAttempt(attemptLedger, {
+        strategy: initialDecision.strategy,
+        modelRole: "mid_writer",
+        modelName: config.models.mid_writer,
+        thinkingMode: "non_thinking",
+        candidateText: finalEmail,
+        failureAnalysis: [
+          ...deterministic.blockingIssues,
+          ...policyGate.issues.map((issue) => issue.message),
+          ...factCheck.issues,
+          ...factCheck.required_repairs,
+        ].join(" "),
+        failureKinds: failures,
+        factGateResult: factCheck.safe_to_send ? "pass" : "fail",
+        structureGateResult: deterministic.safe
+          ? "pass"
+          : `fail:${deterministic.blockingIssues.join(";")}`,
+        policyIntentGateResult: policyGate.safe
+          ? "pass"
+          : `fail:${policyGate.issues.map((issue) => issue.kind).join(";")}`,
+        saplingResult: "not_measured",
+        nextStrategyDecision: repairDecision.strategy,
+      });
       const repairApproval = recordApprovedStrategy({
         budget,
         budgetState,
@@ -730,6 +800,7 @@ export async function rewriteWithFactReconstruct(
         ],
         strategy: repairDecision.strategy,
         strategyGuidance: strategyGuidance(repairDecision.strategy),
+        attemptHistory: attemptLedger,
         config,
         telemetry,
       });
@@ -802,10 +873,45 @@ export async function rewriteWithFactReconstruct(
             selectionStatus: "passed",
             diagnosisTags,
             rewritePlanSummary,
+            attemptLedger,
             candidateSignals,
           },
         };
       }
+
+      recordFailedAttempt(attemptLedger, {
+        strategy: repairDecision.strategy,
+        modelRole: "strong_escalation",
+        modelName: config.models.strong_escalation,
+        thinkingMode: "thinking_high",
+        candidateText: escalatedEmail,
+        failureAnalysis: [
+          ...escalatedDeterministic.blockingIssues,
+          ...escalatedPolicyGate.issues.map((issue) => issue.message),
+          ...escalatedFactCheck.issues,
+          ...escalatedFactCheck.required_repairs,
+        ].join(" "),
+        failureKinds: [
+          ...failureKindsFromIssues(escalatedDeterministic.blockingIssues),
+          ...failureKindsFromFactCheck(escalatedFactCheck),
+          ...escalatedPolicyGate.issues.map((issue) => issue.kind),
+          ...(escalatedSignal.aiLikePercent === null
+            ? (["provider_unavailable"] as RewriteFailureKind[])
+            : (["naturalness_not_improved"] as RewriteFailureKind[])),
+        ],
+        factGateResult: escalatedFactSafe ? "pass" : "fail",
+        structureGateResult: escalatedDeterministic.safe
+          ? "pass"
+          : `fail:${escalatedDeterministic.blockingIssues.join(";")}`,
+        policyIntentGateResult: escalatedPolicyGate.safe
+          ? "pass"
+          : `fail:${escalatedPolicyGate.issues.map((issue) => issue.kind).join(";")}`,
+        saplingResult: saplingSummary(
+          escalatedSignal.aiLikePercent,
+          escalatedPasses ? "pass" : "fail",
+        ),
+        nextStrategyDecision: "facts_first_reconstruct",
+      });
 
       const fallbackAttempt = await tryGuaranteedFallback({
         config,
@@ -828,6 +934,7 @@ export async function rewriteWithFactReconstruct(
 
       if (fallbackAttempt.passes) {
         return buildPassedResponse({
+          attemptLedger,
           rewrittenText: fallbackAttempt.fallback.rewrittenText,
           changeSummary: [
             "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
@@ -848,6 +955,7 @@ export async function rewriteWithFactReconstruct(
       }
 
       throwQualityFailure({
+        attemptLedger,
         candidateSignals,
         diagnosisTags,
         draftPercent: draftSignal.aiLikePercent,
@@ -862,6 +970,7 @@ export async function rewriteWithFactReconstruct(
     }
 
     throwQualityFailure({
+      attemptLedger,
       candidateSignals,
       diagnosisTags,
       draftPercent: draftSignal.aiLikePercent,
@@ -907,6 +1016,7 @@ export async function rewriteWithFactReconstruct(
     })
   ) {
     return buildPassedResponse({
+      attemptLedger,
       rewrittenText: finalEmail,
       changeSummary: [
         "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
@@ -925,6 +1035,24 @@ export async function rewriteWithFactReconstruct(
       candidateSignals,
     });
   }
+
+  recordFailedAttempt(attemptLedger, {
+    strategy: initialDecision.strategy,
+    modelRole: "mid_writer",
+    modelName: config.models.mid_writer,
+    thinkingMode: "non_thinking",
+    candidateText: finalEmail,
+    failureAnalysis: "Final candidate missed the Naturalness Check gate.",
+    failureKinds:
+      finalSignal.aiLikePercent === null
+        ? ["provider_unavailable"]
+        : ["naturalness_not_improved"],
+    factGateResult: "pass",
+    structureGateResult: "pass",
+    policyIntentGateResult: "pass",
+    saplingResult: saplingSummary(finalSignal.aiLikePercent, "fail"),
+    nextStrategyDecision: "targeted_sentence_repair",
+  });
 
   const targetedRepairAttempt = await tryTargetedSentenceRepair({
     config,
@@ -953,6 +1081,7 @@ export async function rewriteWithFactReconstruct(
 
     if (targetedRepairAttempt.passes) {
       return buildPassedResponse({
+        attemptLedger,
         rewrittenText: targetedRepairAttempt.repairedEmail,
         changeSummary: [
           "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
@@ -971,6 +1100,28 @@ export async function rewriteWithFactReconstruct(
         candidateSignals,
       });
     }
+
+    recordFailedAttempt(attemptLedger, {
+      strategy: "targeted_sentence_repair",
+      modelRole: "mid_writer",
+      modelName: config.models.mid_writer,
+      thinkingMode: "non_thinking",
+      candidateText: targetedRepairAttempt.repairedEmail,
+      failureAnalysis:
+        "Targeted sentence repair still missed the Naturalness Check gate.",
+      failureKinds:
+        targetedRepairAttempt.signal.aiLikePercent === null
+          ? ["provider_unavailable"]
+          : ["naturalness_not_improved"],
+      factGateResult: targetedRepairAttempt.factSafe ? "pass" : "fail",
+      structureGateResult: "pass",
+      policyIntentGateResult: "pass",
+      saplingResult: saplingSummary(
+        targetedRepairAttempt.signal.aiLikePercent,
+        "fail",
+      ),
+      nextStrategyDecision: "strong_model_restructure",
+    });
   }
 
   if (config.maxEscalations > 0) {
@@ -994,6 +1145,7 @@ export async function rewriteWithFactReconstruct(
       reviewNotes: [...review.required_edits, ...review.risk_notes],
       strategy: naturalnessDecision.strategy,
       strategyGuidance: strategyGuidance(naturalnessDecision.strategy),
+      attemptHistory: attemptLedger,
       config,
       telemetry,
     });
@@ -1039,6 +1191,7 @@ export async function rewriteWithFactReconstruct(
 
     if (escalatedPasses) {
       return buildPassedResponse({
+        attemptLedger,
         rewrittenText: escalatedEmail,
         changeSummary: [
           "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
@@ -1057,6 +1210,38 @@ export async function rewriteWithFactReconstruct(
         candidateSignals,
       });
     }
+
+    recordFailedAttempt(attemptLedger, {
+      strategy: naturalnessDecision.strategy,
+      modelRole: "strong_escalation",
+      modelName: config.models.strong_escalation,
+      thinkingMode: "thinking_high",
+      candidateText: escalatedEmail,
+      failureAnalysis: [
+        "Strong-model escalation missed the final gates.",
+        ...escalatedDeterministic.blockingIssues,
+        ...escalatedPolicyGate.issues.map((issue) => issue.message),
+        ...escalatedFactCheck.issues,
+        ...escalatedFactCheck.required_repairs,
+      ].join(" "),
+      failureKinds: [
+        ...failureKindsFromIssues(escalatedDeterministic.blockingIssues),
+        ...failureKindsFromFactCheck(escalatedFactCheck),
+        ...escalatedPolicyGate.issues.map((issue) => issue.kind),
+        ...(escalatedSignal.aiLikePercent === null
+          ? (["provider_unavailable"] as RewriteFailureKind[])
+          : (["naturalness_not_improved"] as RewriteFailureKind[])),
+      ],
+      factGateResult: escalatedFactCheck.safe_to_send ? "pass" : "fail",
+      structureGateResult: escalatedDeterministic.safe
+        ? "pass"
+        : `fail:${escalatedDeterministic.blockingIssues.join(";")}`,
+      policyIntentGateResult: escalatedPolicyGate.safe
+        ? "pass"
+        : `fail:${escalatedPolicyGate.issues.map((issue) => issue.kind).join(";")}`,
+      saplingResult: saplingSummary(escalatedSignal.aiLikePercent, "fail"),
+      nextStrategyDecision: "facts_first_reconstruct",
+    });
 
     const fallbackAttempt = await tryGuaranteedFallback({
       config,
@@ -1079,6 +1264,7 @@ export async function rewriteWithFactReconstruct(
 
     if (fallbackAttempt.passes) {
       return buildPassedResponse({
+        attemptLedger,
         rewrittenText: fallbackAttempt.fallback.rewrittenText,
         changeSummary: [
           "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
@@ -1099,6 +1285,7 @@ export async function rewriteWithFactReconstruct(
     }
 
     throwQualityFailure({
+      attemptLedger,
       candidateSignals,
       diagnosisTags,
       draftPercent: draftSignal.aiLikePercent,
@@ -1113,6 +1300,7 @@ export async function rewriteWithFactReconstruct(
   }
 
   throwQualityFailure({
+    attemptLedger,
     candidateSignals,
     diagnosisTags,
     draftPercent: draftSignal.aiLikePercent,

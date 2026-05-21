@@ -143,8 +143,15 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
             .AsTracking()
             .SingleAsync(x => x.Id == reservation.UsagePeriodId, cancellationToken);
 
-        if (attempt.Status == RewriteAttemptStatus.Succeeded ||
+        if (attempt.Status == RewriteAttemptStatus.Succeeded &&
             reservation.Status == UsageReservationStatus.Finalized)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        if (reservation.Status != UsageReservationStatus.Pending ||
+            attempt.Status is RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired)
         {
             await transaction.CommitAsync(cancellationToken);
             return;
@@ -223,7 +230,7 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
             reservation.RowVersion = Guid.NewGuid();
         }
 
-        if (attempt.Status is not RewriteAttemptStatus.Succeeded)
+        if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
         {
             attempt.Status = RewriteAttemptStatus.Failed;
             attempt.ErrorCode = errorCode;
@@ -248,12 +255,15 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
             .Include(x => x.UsagePeriod)
             .ToListAsync(cancellationToken);
         var expiredReservations = expiredCandidates
-            .Where(x => x.Status == UsageReservationStatus.Pending && x.ExpiresAt <= now)
+            .Where(x =>
+                x.Status == UsageReservationStatus.Pending &&
+                x.ExpiresAt <= now &&
+                x.RewriteAttempt!.Status == RewriteAttemptStatus.Pending)
             .ToList();
 
         foreach (var reservation in expiredReservations)
         {
-            reservation.Status = UsageReservationStatus.Released;
+            reservation.Status = UsageReservationStatus.Expired;
             reservation.ReleasedAt = now;
             reservation.RowVersion = Guid.NewGuid();
             reservation.UsagePeriod!.ReservedCount = Math.Max(0, reservation.UsagePeriod.ReservedCount - 1);

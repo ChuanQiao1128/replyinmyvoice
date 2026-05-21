@@ -92,6 +92,50 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Stripe_webhook_marks_deleted_subscription_as_canceled()
+    {
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                ExternalAuthUserId = "clerk_deleted_subscription",
+                Email = "deleted@example.com",
+                StripeCustomerId = "cus_deleted_subscription",
+                StripeSubscriptionId = "sub_deleted_subscription",
+                SubscriptionStatus = SubscriptionStatus.Active,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+        var payload = JsonSerializer.Serialize(new
+        {
+            id = "evt_subscription_deleted",
+            type = "customer.subscription.deleted",
+            data = new
+            {
+                @object = new
+                {
+                    id = "sub_deleted_subscription",
+                    customer = "cus_deleted_subscription",
+                    status = "canceled",
+                    current_period_end = 1770000000
+                }
+            }
+        });
+
+        var response = await client.PostAsync("/api/stripe/webhook", JsonContent(payload));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var verifyDb = CreateContext();
+        var user = await verifyDb.AppUsers.SingleAsync();
+        user.SubscriptionStatus.ToString().Should().Be("Canceled");
+    }
+
+    [Fact]
     public async Task Stripe_webhook_rejects_missing_signature_in_production_when_secret_configured()
     {
         await using var factory = CreateFactory("Production");

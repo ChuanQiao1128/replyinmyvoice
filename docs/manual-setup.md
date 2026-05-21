@@ -2,8 +2,101 @@
 
 These steps are dashboard-only or final-cutover tasks. They should not block local development.
 
+## Azure Functions / Azure SQL / Entra External ID Migration
+
+The next backend/auth target is to move production runtime identity and data away from Clerk/Neon and onto:
+
+```text
+Cloudflare frontend
++ Microsoft Entra External ID customer auth
++ Google social sign-in through Entra
++ Azure Functions / .NET API
++ Azure SQL
++ Azure Service Bus
+```
+
+App Service is not required for this target unless Azure Functions proves unsuitable.
+
+Preparation values should go in:
+
+```text
+/Users/qc/Desktop/CloudFlare/.env.local
+```
+
+Use:
+
+```text
+/Users/qc/Desktop/CloudFlare/local-env.md
+```
+
+only for notes and explanations. Do not put secret values in committed docs.
+
+Required values to prepare:
+
+```env
+AZURE_SUBSCRIPTION_ID=
+AZURE_TENANT_ID=
+AZURE_LOCATION=australiaeast
+AZURE_RESOURCE_GROUP=replyinmyvoice-dev-rg
+
+AZURE_FUNCTION_APP_NAME=replyinmyvoice-api-dev
+AZURE_FUNCTION_STORAGE_ACCOUNT_NAME=
+AZURE_APPLICATION_INSIGHTS_NAME=replyinmyvoice-ai-dev
+
+AZURE_SQL_SERVER_NAME=replyinmyvoice-sql-dev
+AZURE_SQL_DATABASE_NAME=replyinmyvoice-db-dev
+AZURE_SQL_ADMIN_USER=
+AZURE_SQL_ADMIN_PASSWORD=
+AZURE_SQL_CONNECTION_STRING=
+
+AZURE_SERVICE_BUS_NAMESPACE=
+AZURE_SERVICE_BUS_QUEUE_NAME=reply-rewrite-jobs
+AZURE_SERVICE_BUS_CONNECTION_STRING=
+
+AZURE_EXTERNAL_ID_TENANT_ID=
+AZURE_EXTERNAL_ID_TENANT_SUBDOMAIN=
+AZURE_EXTERNAL_ID_AUTHORITY=
+AZURE_EXTERNAL_ID_FRONTEND_CLIENT_ID=
+AZURE_EXTERNAL_ID_API_CLIENT_ID=
+AZURE_EXTERNAL_ID_API_AUDIENCE=
+AZURE_EXTERNAL_ID_API_SCOPE=
+AZURE_EXTERNAL_ID_WELL_KNOWN_URL=
+AZURE_EXTERNAL_ID_SIGN_IN_FLOW_NAME=
+
+GOOGLE_CLIENT_ID_FOR_ENTRA=
+GOOGLE_CLIENT_SECRET_FOR_ENTRA=
+
+NEXT_PUBLIC_AZURE_API_BASE_URL=
+NEXT_PUBLIC_ENTRA_AUTHORITY=
+NEXT_PUBLIC_ENTRA_CLIENT_ID=
+NEXT_PUBLIC_ENTRA_API_SCOPE=
+```
+
+Dashboard steps:
+
+1. Create or confirm a Microsoft Entra External ID external tenant.
+2. Create a frontend app registration for `replyinmyvoice.com`.
+3. Create an API app registration for the Azure Functions backend and expose one API scope.
+4. Create a sign-up/sign-in user flow and attach the frontend app.
+5. In Google Cloud Console, create a Google OAuth web app for Entra federation.
+6. Add `replyinmyvoice.com` to Google OAuth consent screen authorized domains if required.
+7. Add the exact redirect URI shown by Entra External ID when configuring Google federation.
+8. Copy the Google client id/secret into `.env.local`.
+9. Add the Google client id/secret to Entra External ID identity providers.
+10. Select Google in the Entra user flow.
+
+Important:
+
+```text
+Do not reuse old Clerk redirect URLs.
+Do not paste secrets into chat.
+Do not block the first migration on Facebook/Apple login.
+Finish Google first, then add additional social providers later.
+```
+
 ## Clerk
 
+- Clerk is deprecated for the next backend/auth migration. Keep this section only for rollback context until Entra External ID is live.
 - Add `https://replyinmyvoice.com` as an allowed production origin.
 - Add the deployed Worker preview URL after deployment if Clerk requires it for testing.
 - Confirm redirect URLs:
@@ -18,7 +111,7 @@ These steps are dashboard-only or final-cutover tasks. They should not block loc
   - `clk._domainkey.replyinmyvoice.com -> dkim1.4rlognk6y6o0.clerk.services`
   - `clk2._domainkey.replyinmyvoice.com -> dkim2.4rlognk6y6o0.clerk.services`
 - These records must stay DNS-only in Cloudflare. If Clerk still shows them as unverified, run verification again in the Clerk dashboard after DNS propagation.
-- Clerk production auth also uses the Next.js frontend API proxy at `https://replyinmyvoice.com/clerk-proxy` as a stability fallback for the Clerk Frontend API. Keep `NEXT_PUBLIC_CLERK_PROXY_URL` set to this URL in GitHub Actions and Cloudflare Worker config, and keep the Clerk domain `proxy_url` aligned to the same value. ClerkJS is loaded from `NEXT_PUBLIC_CLERK_JS_URL`; keep that URL aligned with the installed Clerk SDK major version (`@clerk/nextjs@7` currently loads ClerkJS v6).
+- Clerk production auth also uses the Next.js frontend API proxy at `https://replyinmyvoice.com/clerk-proxy` as a stability fallback for the Clerk Frontend API. Keep `NEXT_PUBLIC_CLERK_PROXY_URL` set to this URL in GitHub Actions and Cloudflare Worker config, and keep the Clerk domain `proxy_url` aligned to the same value. ClerkJS is loaded from `NEXT_PUBLIC_CLERK_JS_URL`; keep that URL aligned with the installed Clerk SDK major version (`@clerk/nextjs@7` currently loads ClerkJS v6). Prefer the same-origin proxy URL so browser privacy settings do not block a third-party CDN script.
 
 ## Stripe
 

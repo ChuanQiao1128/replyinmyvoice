@@ -1,45 +1,54 @@
 # Next Development Brief
 
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
-## Current Priority: Azure Cost Optimization
+## Current Priority: Azure-Native Backend And Auth Migration
 
 The next Azure/.NET backend development run should use this plan as the source of truth:
 
 ```text
-docs/superpowers/plans/2026-05-20-azure-functions-cost-optimization.md
+docs/superpowers/plans/2026-05-21-azure-functions-sql-entra-migration.md
 ```
+
+This supersedes the earlier Clerk/Neon runtime plan and the older Azure App Service/PostgreSQL migration idea.
 
 Immediate decision:
 
 ```text
-Delete the costly Windows B1 App Service resources:
-- replyinmyvoice-api-dev
-- replyinmyvoice-plan-dev
-
-Keep the low-cost reliability resources:
-- Azure SQL Basic database
-- Azure Service Bus Basic namespace/queue
-- Key Vault
-- Application Insights / Log Analytics
+Stop spending engineering time on Clerk production login.
+Do not make Clerk the long-term customer identity system.
+Move customer authentication to Microsoft Entra External ID.
+Move application persistence from Neon/Postgres runtime to Azure SQL.
+Move heavy backend/API work to Azure Functions/.NET.
+Keep Cloudflare as the public frontend edge and DNS layer.
 ```
 
 Target architecture:
 
 ```text
-Azure Functions Consumption/Flex Consumption
-+ Azure SQL Basic
-+ Azure Service Bus Basic
-+ Key Vault/app settings
-+ Application Insights with low log volume
+Cloudflare-hosted frontend
++ Microsoft Entra External ID customer authentication
++ Google social sign-in through Entra External ID
++ Azure Functions / .NET API
++ Azure SQL
++ Azure Service Bus
++ Azure Functions worker or .NET worker for async rewrite jobs
++ Key Vault / Function app settings
++ Application Insights with controlled log volume
 ```
 
-The main production product remains on Cloudflare + Neon + Clerk. Do not migrate the main product auth/database to Azure in this run.
+Architecture boundary:
+
+```text
+Cloudflare serves the web UI.
+Azure owns identity verification, API, persistence, queue, and background processing.
+App Service is not required for this target unless Azure Functions proves unsuitable.
+```
 
 Cost target:
 
 ```text
-Reduce Azure dev run-rate from the Windows App Service B1 risk level to approximately NZD $10-$15/month under low usage.
+Keep the low-usage Azure backend close to the current low monthly Azure spend by avoiding Windows App Service B1 unless a later production load test proves Functions are insufficient.
 ```
 
 ## Current Decision
@@ -640,6 +649,7 @@ These decisions are no longer open:
 - Keep recent history, but collapse or de-emphasize it by default.
 - Homepage sample Naturalness Check values should come from documented selected runs, not repeated live calls.
 - Add a usage/cost estimate section to `docs/sample-cases.md` with sample character counts and Sapling call counts.
+- Reduce production rewrite input limits to keep OpenAI and Sapling cost bounded for the NZD $9 / 40-rewrite MVP plan.
 
 ## Workspace Redesign V2 — Supersedes Earlier Quick Context Plan
 
@@ -1391,6 +1401,99 @@ Development can use additional OpenAI and Sapling calls to find the strategy. Th
 
 If the bounded production loop cannot produce a passing candidate, fail safely and do not charge usage.
 
+## Cost-Controlled Character Limits — Next Fix
+
+This section records the next development requirement from the 2026-05-21 cost discussion. The current live app still allows roughly 10,000 combined characters across the two visible textareas. That is too wide for the current `NZD $9/month` plan with 40 successful rewrites, because long support replies can trigger multiple OpenAI calls, Sapling draft/final/repair checks, and one strong-model escalation.
+
+### Product Decision
+
+Use these production limits for the next implementation run:
+
+```text
+Context or message: max 3000 characters
+Draft to rewrite: 10 to 3000 characters
+Visible combined cap: 5000 characters
+Backend combined cap: 5000 characters
+```
+
+Keep the optional hidden/legacy fields bounded if they still exist in API types:
+
+```text
+Audience: max 300 characters
+Purpose: max 500 characters
+What actually happened: max 1000 characters
+Facts to preserve: max 1000 characters
+```
+
+The server-side combined cap must include every submitted field, not only the two visible textareas.
+
+### Rationale
+
+The current pipeline treats about `260-300 words` as long/high-risk input and may allow more internal attempts. A 5,000-character combined cap still supports substantial everyday emails, customer-support replies, work updates, and cover letters, while reducing the chance that one low-price subscription user can consume excessive OpenAI + Sapling cost by pasting full long email threads.
+
+Product guidance for long threads:
+
+```text
+For long threads, paste only the part you need to answer and the facts that matter.
+```
+
+### Files To Change
+
+Backend validation:
+
+```text
+lib/validation.ts
+```
+
+Frontend workspace:
+
+```text
+components/app/rewrite-workspace.tsx
+```
+
+Tests:
+
+```text
+tests/unit/validation.test.ts
+tests/unit/workspace-copy.test.ts or a new focused UI test if existing tests do not cover length labels
+```
+
+Docs:
+
+```text
+AGENTS.md
+docs/next-development-brief.md
+docs/manual-setup.md if it mentions request limits
+```
+
+### Implementation Requirements
+
+- Replace `messageToReplyTo` max from `5000` to `3000`.
+- Replace `roughDraftReply` max from `5000` to `3000`.
+- Replace combined request cap from `10000` to `5000`.
+- Update the visible combined counter from `/10000` to `/5000`.
+- Make `canSubmit` use the same `5000` combined cap as backend validation.
+- Keep `roughDraftReply` minimum at `10` characters.
+- Add helper copy near the input area or under the combined counter:
+
+```text
+For long threads, paste only the part you need to answer and the facts that matter.
+```
+
+- Do not remove the Naturalness Check, adaptive rewrite loop, or quality-failure no-charge behavior.
+- Do not count rejected validation requests against quota.
+
+### Acceptance Criteria
+
+- Frontend prevents submitting when `messageToReplyTo.length + roughDraftReply.length > 5000`.
+- Backend returns `400` for a combined request over `5000` characters.
+- Backend returns `400` when either visible field exceeds its individual max.
+- A valid draft-only request under `3000` characters still works.
+- A valid request with context plus draft under `5000` combined characters still works.
+- UI shows the new remaining character values and `/5000` combined counter.
+- Tests cover the new max values and combined cap.
+- Build, typecheck, lint, unit tests, and production deployment pass before release.
+
 ## Admin Cost Observability And Internal Operations Dashboard
 
 This section records the next development requirement for cost tracking and an internal admin dashboard. It should be implemented before making final live pricing decisions, because the adaptive rewrite orchestrator can use multiple OpenAI calls, Sapling calls, targeted repairs, and one strong-model escalation.
@@ -1688,61 +1791,136 @@ Current public plan decision: `NZD $9/month` includes 40 successful rewrites per
 
 ---
 
-## Next Required Plan: Azure Auth And Data Migration
+## Next Required Plan: Azure Functions, Azure SQL, And Entra External ID Migration
 
 Source plan:
 
 ```text
-docs/superpowers/plans/2026-05-20-azure-auth-data-migration.md
+docs/superpowers/plans/2026-05-21-azure-functions-sql-entra-migration.md
 ```
 
 Goal:
 
 ```text
-Fully remove Clerk and Neon by moving customer authentication to Microsoft Entra External ID and moving the database to Azure Database for PostgreSQL.
+Fully remove Clerk and Neon from the production runtime by moving customer
+authentication to Microsoft Entra External ID, moving application data to Azure
+SQL, and moving backend API/worker execution to Azure Functions/.NET.
 ```
 
 Recommended architecture:
 
 ```text
-Microsoft Entra External ID for customer auth
-Auth.js as the app-side OIDC session layer
-Azure Database for PostgreSQL Flexible Server
-Azure App Service for the Next.js server runtime
-Cloudflare DNS/proxy can remain after smoke testing
+Cloudflare frontend for public pages and app shell
+Microsoft Entra External ID for customer sign-in/sign-up
+Google social login configured inside Entra External ID
+Azure Functions / .NET API for auth validation, Stripe, quota, rewrite requests, and admin APIs
+Azure SQL for users, auth identities, subscriptions, quota, rewrite attempts, outbox, costs, and learning samples
+Azure Service Bus for asynchronous rewrite jobs
+Azure Functions worker or .NET worker for queue-triggered rewrite processing
+Application Insights for API/worker telemetry
 ```
 
 Important constraint:
 
 ```text
-Do not start new work on Azure AD B2C unless the user explicitly chooses it. Use Microsoft Entra External ID for the customer-facing identity system.
+Do not start new work on Azure AD B2C unless the user explicitly chooses it.
+Use Microsoft Entra External ID for customer-facing identity.
+Do not reintroduce Clerk after this migration starts.
+Do not use App Service unless Azure Functions cannot support the required runtime behavior.
 ```
 
-Current missing inputs:
+Current missing inputs the user should prepare in `.env.local` / local environment notes.
+Do not paste secret values into chat:
 
 ```text
+AZURE_SUBSCRIPTION_ID
+AZURE_TENANT_ID
+AZURE_LOCATION
+AZURE_RESOURCE_GROUP
+
+AZURE_FUNCTION_APP_NAME
+AZURE_FUNCTION_STORAGE_ACCOUNT_NAME
+AZURE_APPLICATION_INSIGHTS_NAME
+
+AZURE_SQL_SERVER_NAME
+AZURE_SQL_DATABASE_NAME
+AZURE_SQL_ADMIN_USER
+AZURE_SQL_ADMIN_PASSWORD
+
+AZURE_SERVICE_BUS_NAMESPACE
+AZURE_SERVICE_BUS_QUEUE_NAME
+AZURE_SERVICE_BUS_CONNECTION_STRING
+
 AZURE_EXTERNAL_ID_TENANT_ID
 AZURE_EXTERNAL_ID_TENANT_SUBDOMAIN
-AZURE_EXTERNAL_ID_CLIENT_ID
-AZURE_EXTERNAL_ID_CLIENT_SECRET
-AZURE_EXTERNAL_ID_WELL_KNOWN
-AUTH_SECRET
-AZURE_POSTGRES_SERVER_NAME
-AZURE_POSTGRES_DATABASE_NAME
-AZURE_POSTGRES_ADMIN_USER
-AZURE_POSTGRES_ADMIN_PASSWORD
+AZURE_EXTERNAL_ID_AUTHORITY
+AZURE_EXTERNAL_ID_FRONTEND_CLIENT_ID
+AZURE_EXTERNAL_ID_API_CLIENT_ID
+AZURE_EXTERNAL_ID_API_AUDIENCE
+AZURE_EXTERNAL_ID_API_SCOPE
+AZURE_EXTERNAL_ID_WELL_KNOWN_URL
+AZURE_EXTERNAL_ID_SIGN_IN_FLOW_NAME
+
 GOOGLE_CLIENT_ID_FOR_ENTRA
 GOOGLE_CLIENT_SECRET_FOR_ENTRA
-FACEBOOK_APP_ID_FOR_ENTRA
-FACEBOOK_APP_SECRET_FOR_ENTRA
-FACEBOOK_DATA_DELETION_URL
+
+NEXT_PUBLIC_AZURE_API_BASE_URL
+NEXT_PUBLIC_ENTRA_AUTHORITY
+NEXT_PUBLIC_ENTRA_CLIENT_ID
+NEXT_PUBLIC_ENTRA_API_SCOPE
 ```
 
 Dashboard-only or permission-sensitive work:
 
 ```text
-Create/configure Microsoft Entra External ID external tenant and user flow.
-Configure Google and Facebook identity providers in Entra.
-Create Google OAuth client and Meta app if not already present.
-Confirm Azure CLI account has permission to create App Service and PostgreSQL resources.
+Create or confirm a Microsoft Entra External ID external tenant.
+Create the frontend app registration for the Cloudflare-hosted SPA/app shell.
+Create the API app registration for the Azure Functions backend and expose an API scope.
+Create a sign-up/sign-in user flow and attach the app.
+Create a Google OAuth client for Entra External ID federation.
+Add the exact Entra-provided Google redirect URI into Google Cloud Console.
+Add Google client id/secret to Entra External ID identity providers.
+Select Google as a sign-in option in the Entra user flow.
+Confirm Azure CLI has permission to create/update Functions, Azure SQL, Service Bus, Key Vault/app settings, and Application Insights resources.
+Create/update Stripe webhook endpoint after the Azure API URL is finalized.
+```
+
+Facebook/Apple/social-login expansion:
+
+```text
+Do not block the first migration on Facebook or Apple.
+Finish Google through Entra External ID first.
+Add Facebook later only after privacy policy and data deletion URL are ready.
+```
+
+User preparation checklist before the next autonomous run:
+
+```text
+1. Azure:
+   - Confirm az login works.
+   - Confirm the correct subscription is selected.
+   - Confirm the resource group name to use.
+   - Decide whether to reuse the existing Azure SQL server/database or let the run create fresh prod/dev names.
+
+2. Entra External ID:
+   - Create an external tenant if it does not exist.
+   - Record tenant id and tenant subdomain.
+   - Create app registrations for frontend and API, or allow the run to create them if Azure CLI permissions allow it.
+   - Create sign-up/sign-in user flow.
+
+3. Google:
+   - Create a Google OAuth web application for Entra federation.
+   - Add replyinmyvoice.com to the OAuth consent screen authorized domains if required by Google.
+   - Add the exact redirect URI shown by Entra External ID when configuring Google federation.
+   - Store Google client id and secret in `.env.local`; do not paste them into chat.
+
+4. Stripe:
+   - Wait until the Azure API route is deployed.
+   - Then create/update the Stripe webhook endpoint to the Azure API webhook URL.
+   - Store the new webhook secret in `.env.local`.
+
+5. Secrets location:
+   - Put local development values in `/Users/qc/Desktop/CloudFlare/.env.local`.
+   - Put explanatory notes only in `/Users/qc/Desktop/CloudFlare/local-env.md`.
+   - Never commit real secret values.
 ```

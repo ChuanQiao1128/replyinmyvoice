@@ -3,6 +3,13 @@ import path from "node:path";
 
 import { detectUnsupportedFacts } from "../lib/fact-extraction";
 import { createRewritePlan } from "../lib/rewrite-diagnosis";
+import {
+  factsToPreserveExpectations,
+  parseRewriteEmailEvalCases,
+  rewriteEmailEvalCaseToRequestInput,
+  selectRewriteEmailEvalCases,
+  type RewriteEmailEvalCase,
+} from "../lib/rewrite-eval-cases";
 import type { RewriteResponsePayload } from "../lib/rewrite-types";
 import { getFactReconstructConfig } from "../lib/rewrite-pipeline/config";
 import {
@@ -19,7 +26,12 @@ type EvalCase = {
   tonePreset: TonePreset;
   messageToReplyTo: string;
   roughDraftReply: string;
+  audience?: string;
+  purpose?: string;
+  whatHappened?: string;
+  factsToPreserve?: string;
   expectedFacts: string[];
+  forbiddenClaims?: string[];
 };
 
 function draftOnlyCase(
@@ -35,6 +47,7 @@ function draftOnlyCase(
     messageToReplyTo: "",
     roughDraftReply,
     expectedFacts,
+    forbiddenClaims: [],
   };
 }
 
@@ -96,6 +109,12 @@ function normalize(value: string) {
     .replace(/\btwo requested\b/g, "two asked")
     .replace(/\blogo color remains the same\b/g, "logo color has not changed")
     .replace(/\bbase plan remains the same\b/g, "base plan did not change")
+    .replace(/\bprice is\b/g, "")
+    .replace(/\brenewal date\b/g, "renews")
+    .replace(/\bcan be sent\b/g, "can send")
+    .replace(/\bwithout confirmation\b/g, "until confirm")
+    .replace(/\bconfirmation\b/g, "confirm")
+    .replace(/\bplease confirm whether\b/g, "ask whether")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -117,6 +136,7 @@ const factTokenStopWords = new Set([
   "has",
   "have",
   "in",
+  "need",
   "is",
   "it",
   "make",
@@ -128,7 +148,9 @@ const factTokenStopWords = new Set([
   "or",
   "people",
   "person",
+  "plus",
   "region",
+  "they",
   "still",
   "the",
   "to",
@@ -136,12 +158,15 @@ const factTokenStopWords = new Set([
   "was",
   "were",
   "with",
+  "options",
+  "date",
 ]);
 
 function factTokens(value: string) {
   return normalize(value)
     .replace(/[^a-z0-9#$:.@'-]+/g, " ")
     .split(/\s+/)
+    .map((token) => token.replace(/^[^a-z0-9#$@]+|[^a-z0-9]+$/g, ""))
     .filter((token) => token.length > 1 && !factTokenStopWords.has(token));
 }
 
@@ -167,6 +192,38 @@ function factCheck(text: string, facts: string[]) {
     passed: missing.length === 0,
     missing,
   };
+}
+
+function forbiddenClaimViolations(text: string, claims: string[]) {
+  const normalizedText = normalize(text);
+
+  return claims.filter((claim) => {
+    const normalizedClaim = normalize(claim);
+
+    if (/\brefund\b/.test(normalizedClaim)) {
+      return /\b(?:can|could|will|we'll|offer|process|approve|approved|available|issue)\b.{0,30}\brefund\b|\brefund\b.{0,30}\b(?:available|approved|processed|issued|offer)\b/.test(
+        normalizedText,
+      ) && !/\brefund\b.{0,24}\bnot approved\b|\brefund has not been approved\b/.test(
+        normalizedText,
+      );
+    }
+
+    if (/\bpromise|guarantee\b/.test(normalizedClaim)) {
+      return /\b(?:promise|guarantee|guaranteed|definitely|absolutely|will)\b.{0,50}\b(?:completion|access|approval|approved|eligible)\b/.test(
+        normalizedText,
+      ) && !/\b(?:cannot|can't|not)\b.{0,20}\b(?:promise|guarantee)\b/.test(
+        normalizedText,
+      );
+    }
+
+    if (/\bwrong|careless|blame\b/.test(normalizedClaim)) {
+      return /\b(?:wrong|careless|should have|failed to|blame)\b/.test(
+        normalizedText,
+      );
+    }
+
+    return false;
+  });
 }
 
 function wordCount(value: string) {
@@ -947,10 +1004,50 @@ function selectEvalCases(samples: EvalCase[], mode: EvalMode) {
   return [...selected.values()].slice(0, targetCount);
 }
 
-const evalMode = parseEvalMode();
-const evalCases = selectEvalCases(allEvalCases, evalMode);
+function emailEvalCaseToEvalCase(sample: RewriteEmailEvalCase): EvalCase {
+  const input = rewriteEmailEvalCaseToRequestInput(sample);
+  const expectations = factsToPreserveExpectations(sample.factsToPreserve);
+
+  return {
+    id: sample.id,
+    scenario: input.scenario,
+    tonePreset: input.tonePreset,
+    messageToReplyTo: input.messageToReplyTo,
+    roughDraftReply: input.roughDraftReply,
+    audience: input.audience,
+    purpose: input.purpose,
+    whatHappened: input.whatHappened,
+    factsToPreserve: input.factsToPreserve,
+    expectedFacts: expectations.expectedFacts,
+    forbiddenClaims: expectations.forbiddenClaims,
+  };
+}
+
+function shouldUseEmailMarkdownCorpus() {
+  return (
+    process.env.EVAL_CORPUS === "email-100" ||
+    Boolean(process.env.EVAL_CASES_PATH)
+  );
+}
+
+async function loadSelectedEvalCases(mode: EvalMode) {
+  if (!shouldUseEmailMarkdownCorpus()) {
+    return selectEvalCases(allEvalCases, mode);
+  }
+
+  const corpusPath =
+    process.env.EVAL_CASES_PATH ??
+    path.join(process.cwd(), "docs", "rewrite-email-eval-cases-100.md");
+  const markdown = await readFile(corpusPath, "utf8");
+  const emailCases = parseRewriteEmailEvalCases(markdown);
+
+  return selectRewriteEmailEvalCases(emailCases, mode).map(emailEvalCaseToEvalCase);
+}
 
 await loadEnvLocal();
+
+const evalMode = parseEvalMode();
+const evalCases = await loadSelectedEvalCases(evalMode);
 
 const rows = [];
 const rewriteConfig = getFactReconstructConfig();
@@ -966,6 +1063,10 @@ for (const [index, sample] of evalCases.entries()) {
     scenario: sample.scenario,
     messageToReplyTo: sample.messageToReplyTo,
     roughDraftReply: sample.roughDraftReply,
+    audience: sample.audience,
+    purpose: sample.purpose,
+    whatHappened: sample.whatHappened,
+    factsToPreserve: sample.factsToPreserve,
     tone: tonePresetToTone(sample.tonePreset),
     tonePreset: sample.tonePreset,
   });
@@ -990,6 +1091,9 @@ for (const [index, sample] of evalCases.entries()) {
   const unsupportedFacts = rewrittenText
     ? detectUnsupportedFacts(input, rewrittenText).map((fact) => fact.text)
     : [];
+  const forbiddenViolations = rewrittenText
+    ? forbiddenClaimViolations(rewrittenText, sample.forbiddenClaims ?? [])
+    : [];
   const naturalness = result?.naturalness ?? qualityFailure?.naturalness;
   const draft = naturalness?.draftAiLikePercent ?? null;
   const rewrite = naturalness?.rewriteAiLikePercent ?? null;
@@ -1012,6 +1116,7 @@ for (const [index, sample] of evalCases.entries()) {
     Boolean(rewrittenText) &&
     facts.passed &&
     unsupportedFacts.length === 0 &&
+    forbiddenViolations.length === 0 &&
     !qualityFailure &&
     signalNotWorse;
 
@@ -1032,6 +1137,7 @@ for (const [index, sample] of evalCases.entries()) {
     factsPreserved: facts.passed,
     missingFacts: facts.missing,
     unsupportedFactsIntroduced: unsupportedFacts,
+    forbiddenClaimViolations: forbiddenViolations,
     qualityFailure: Boolean(qualityFailure),
     qualityFailureReason:
       qualityFailure && "reason" in qualityFailure
@@ -1040,7 +1146,11 @@ for (const [index, sample] of evalCases.entries()) {
           ? "quality_gate_failed"
           : null,
     customerUsablePass,
-    strictSignalPass: facts.passed && unsupportedFacts.length === 0 && signalPassed,
+    strictSignalPass:
+      facts.passed &&
+      unsupportedFacts.length === 0 &&
+      forbiddenViolations.length === 0 &&
+      signalPassed,
   });
 }
 
@@ -1060,7 +1170,10 @@ const draftOnlyCasesEvaluated = rows.filter(
   (row) => row.messageToReplyTo.trim().length === 0,
 ).length;
 const factFailures = rows.filter(
-  (row) => !row.factsPreserved || row.unsupportedFactsIntroduced.length > 0,
+  (row) =>
+    !row.factsPreserved ||
+    row.unsupportedFactsIntroduced.length > 0 ||
+    row.forbiddenClaimViolations.length > 0,
 ).length;
 const longCases = rows.filter((row) => row.wordCount >= 300).length;
 const longSupportCases = rows.filter(
@@ -1125,6 +1238,7 @@ const lines = [
     `Facts preserved: ${row.factsPreserved ? "yes" : "no"}`,
     `Missing facts: ${row.missingFacts.length ? row.missingFacts.join("; ") : "none"}`,
     `Unsupported facts introduced: ${row.unsupportedFactsIntroduced.length ? row.unsupportedFactsIntroduced.join("; ") : "none"}`,
+    `Forbidden-claim violations: ${row.forbiddenClaimViolations.length ? row.forbiddenClaimViolations.join("; ") : "none"}`,
     `Quality failure state: ${row.qualityFailure ? "yes" : "no"}`,
     `Quality failure reason: ${row.qualityFailureReason ?? "none"}`,
     `Customer-usable pass: ${row.customerUsablePass ? "yes" : "no"}`,
@@ -1132,6 +1246,9 @@ const lines = [
     "",
     "Expected facts:",
     row.expectedFacts.map((fact) => `- ${fact}`).join("\n"),
+    row.forbiddenClaims?.length
+      ? ["", "Forbidden claims:", row.forbiddenClaims.map((claim) => `- ${claim}`).join("\n")].join("\n")
+      : "",
     "",
     "Before:",
     "",

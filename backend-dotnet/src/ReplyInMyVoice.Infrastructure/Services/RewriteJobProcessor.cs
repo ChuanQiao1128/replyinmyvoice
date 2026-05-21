@@ -24,7 +24,7 @@ public sealed class RewriteJobProcessor(
                 .SingleOrDefaultAsync(x => x.Id == job.AttemptId, cancellationToken);
 
             if (attempt is null ||
-                attempt.Status is RewriteAttemptStatus.Succeeded or RewriteAttemptStatus.Failed or RewriteAttemptStatus.Released or RewriteAttemptStatus.Expired)
+                attempt.Status is RewriteAttemptStatus.Succeeded or RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired)
             {
                 return;
             }

@@ -189,6 +189,7 @@ export type RewriteBudgetState = {
 export type PolicyIntentGateResult = {
   safe: boolean;
   issues: Array<{
+    ruleId: string;
     kind: RewriteFailureKind;
     message: string;
   }>;
@@ -209,6 +210,22 @@ export type FactReconstructModelRole =
   | "cheap_structured"
   | "mid_writer"
   | "strong_escalation";
+
+export type RewriteAttemptLedgerEntry = {
+  attemptNo: number;
+  strategy: RewriteStrategy;
+  modelRole: FactReconstructModelRole | "deterministic_fallback";
+  modelName: string;
+  thinkingMode: "non_thinking" | "thinking_high";
+  candidateText: string;
+  failureAnalysis: string;
+  failureKinds: RewriteFailureKind[];
+  factGateResult: string;
+  structureGateResult: string;
+  policyIntentGateResult: string;
+  saplingResult: string;
+  nextStrategyDecision: RewriteStrategy;
+};
 
 export type FactReconstructConfig = {
   strategyVersion: "fact_reconstruct" | "adaptive_rewrite_orchestrator";

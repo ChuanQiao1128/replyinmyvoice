@@ -1,0 +1,12 @@
+{
+  "_comment_": "Merge mcpServers.codex into ~/Library/Application Support/Claude/claude_desktop_config.json. IMPORTANT: (1) Use the absolute path to codex from `which codex` — Claude Desktop launches subprocesses with a minimal PATH and will not find npm/Homebrew bins. (2) OPENAI_API_KEY must be a literal string, Desktop does not expand ${VAR}.",
+  "mcpServers": {
+    "codex": {
+      "command": "/REPLACE/WITH/output/of/`which codex`",
+      "args": ["mcp-server"],
+      "env": {
+        "OPENAI_API_KEY": "sk-REPLACE_ME"
+      }
+    }
+  }
+}

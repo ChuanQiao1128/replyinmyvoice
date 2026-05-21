@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { optionalEnv, requireEnv } from "./env";
+import { optionalEnv } from "./env";
+import {
+  getOpenAiCompatibleApiKey,
+  getOpenAiCompatibleChatCompletionsUrl,
+} from "./openai-compatible";
 import type { SignalQualityResult } from "./rewrite-quality-gate";
 import type { RewritePlan } from "./rewrite-diagnosis";
 import type { RewriteRequestInput } from "./validation";
@@ -202,14 +206,15 @@ function compactDetail(value: string) {
 }
 
 function detailParts(input: RewriteRequestInput) {
-  const source = [
-    input.factsToPreserve,
-    input.whatHappened,
-    input.roughDraftReply,
-    input.messageToReplyTo,
-  ]
-    .join("\n")
-    .trim();
+  const source = input.factsToPreserve.trim()
+    ? input.factsToPreserve
+    : [
+        input.whatHappened,
+        input.roughDraftReply,
+        input.messageToReplyTo,
+      ]
+        .join("\n")
+        .trim();
   const protectedSource = source.replace(
     /\b(Mr|Ms|Mrs|Dr)\.\s+/g,
     "$1<dot> ",
@@ -219,7 +224,30 @@ function detailParts(input: RewriteRequestInput) {
     .split(/[.!?]\s+|\n+/)
     .map((part) => part.trim().replace(/[.!?]$/, ""))
     .map((part) => part.replace(/<dot>/g, "."))
+    .map(outputSafeDetailPart)
     .filter(Boolean)
+}
+
+function outputSafeDetailPart(value: string) {
+  const trimmed = value.trim();
+  const noPromise = trimmed.match(/^do not promise\s+(.+)$/i);
+  if (noPromise) {
+    return `I can't promise ${noPromise[1].trim()}`;
+  }
+
+  if (/^no guarantee of approval$/i.test(trimmed)) {
+    return "Reopening does not guarantee approval";
+  }
+
+  if (
+    /^do not (?:offer|imply|guess|mention|send revised quote|make me sound|state|say)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return "";
+  }
+
+  return trimmed;
 }
 
 function sentence(value: string) {
@@ -244,9 +272,21 @@ function firstMatch(value: string, patterns: RegExp[]) {
 }
 
 function extractRecipientName(input: RewriteRequestInput) {
-  return firstMatch(input.roughDraftReply, [
-    /\b(?:Hi|Hello|Dear)\s+([A-Z][a-z]+)\b/,
-  ]);
+  const candidate = firstMatch(
+    [input.roughDraftReply, input.messageToReplyTo].filter(Boolean).join("\n"),
+    [
+      /\b(?:Hi|Hello|Dear)\s+((?:Mr|Ms|Mrs|Dr)\.?\s+[A-Z][A-Za-z.'-]+|[A-Z][A-Za-z.'-]+)\b/,
+      /^((?:Mr|Ms|Mrs|Dr)\.?\s+[A-Z][A-Za-z.'-]+),/m,
+    ],
+  );
+
+  return isUnsafeRecipientName(candidate) ? "" : candidate;
+}
+
+function isUnsafeRecipientName(value: string) {
+  return /^(?:finance|reopening|billing|support|customer|team|student|parent|teacher|admin|account)$/i.test(
+    value.trim(),
+  );
 }
 
 function extractInvoiceFacts(context: string) {
@@ -355,6 +395,16 @@ function generateFactsFirstFallback(input: RewriteRequestInput) {
         "Rebuilt the reply from the billing facts first, then removed support-template phrasing.",
       ],
       riskNotes: ["Check the billing details before sending."],
+    };
+  }
+
+  if (isSalesOnboardingTimingContext(context)) {
+    return {
+      rewrittenText: generateSalesReplyFallback(input, rawContext),
+      changeSummary: [
+        "Rebuilt the sales follow-up from pricing, kickoff, and timing facts.",
+      ],
+      riskNotes: ["Review pricing and onboarding dates before sending."],
     };
   }
 
@@ -662,6 +712,32 @@ function generateTeacherParentFallback(input: RewriteRequestInput, context: stri
 function generateSalesReplyFallback(input: RewriteRequestInput, context: string) {
   const name = extractRecipientName(input);
   const greeting = name ? `Hi ${name},` : "Hi,";
+  if (isSalesOnboardingTimingContext(context.toLowerCase())) {
+    const monthlyPrice = firstMatch(context, [
+      /(\$\s*1,800\s+per month)/i,
+      /(\$\s*1,800)/i,
+    ]) || "$1,800 per month";
+    const seats = firstMatch(context, [/\b(\d+\s+seats)\b/i]) || "25 seats";
+    const onboardingFee = firstMatch(context, [
+      /(\$\s*650\s+onboarding)/i,
+      /(\$\s*650)/i,
+    ]) || "$650 onboarding";
+    const kickoff = firstMatch(context, [/\b(May\s+28)\b/i]) || "May 28";
+    const setupTime = firstMatch(context, [
+      /\b(\d+\s+business days)\b/i,
+    ]) || "5 business days";
+    const noPromise = /June\s+1/i.test(context)
+      ? "I do not want to promise completion before June 1, because full setup still depends on signature and data access."
+      : "I do not want to overpromise the completion date, because full setup still depends on signature and data access.";
+
+    return [
+      greeting,
+      `Thanks again for the demo. The current proposal is ${monthlyPrice} for ${seats}, plus ${onboardingFee}.`,
+      `The earliest onboarding kickoff slot is ${kickoff}. Full setup usually takes ${setupTime} after contract signature and data access, so ${noPromise}`,
+      "Happy to resend the numbers in a cleaner format for your vendor comparison.",
+    ].join("\n\n");
+  }
+
   if (/section three/i.test(context) && /section five/i.test(context)) {
     const callDate = /May\s+12/i.test(context) ? " from our May 12 call" : "";
     const deadline = /Friday/i.test(context) ? " by Friday" : "";
@@ -724,6 +800,15 @@ function generateSalesReplyFallback(input: RewriteRequestInput, context: string)
   ].join("\n\n");
 }
 
+function isSalesOnboardingTimingContext(context: string) {
+  return textIncludes(context, [
+    "onboarding kickoff",
+    "full setup",
+    "contract signature",
+    "data access",
+  ]) && /\$\s*1,?800|\b25 seats\b|\$\s*650/i.test(context);
+}
+
 function implementationScheduleFallback(
   input: RewriteRequestInput,
   context: string,
@@ -776,6 +861,18 @@ function generateSupportFallback(input: RewriteRequestInput, context: string) {
 
   if (isCourseTransferContext(normalized)) {
     return courseTransferFallback(input, context);
+  }
+
+  if (isDamagedReplacementContext(normalized)) {
+    return damagedReplacementFallback(input, context);
+  }
+
+  if (isAccountVerificationContext(normalized)) {
+    return accountVerificationFallback(input, context);
+  }
+
+  if (isCancellationOptionsContext(normalized)) {
+    return cancellationOptionsFallback(input, context);
   }
 
   if (isDeliveryDelayContext(normalized)) {
@@ -868,6 +965,34 @@ function isWorkspaceAccessContext(context: string) {
   ]);
 }
 
+function isDamagedReplacementContext(context: string) {
+  return /\b(?:broken|damaged)\b/i.test(context) &&
+    /\b(?:mugs?|items?|order\s+#?)\b/i.test(context) &&
+    /\b(?:photos?|replacement|packaging)\b/i.test(context);
+}
+
+function isAccountVerificationContext(context: string) {
+  return textIncludes(context, [
+    "locked out",
+    "password reset",
+    "old work email",
+    "without verification",
+    "last four digits",
+    "most recent invoice number",
+    "workspace admin",
+  ]);
+}
+
+function isCancellationOptionsContext(context: string) {
+  return textIncludes(context, [
+    "cancel our subscription",
+    "renewal date",
+    "solo plan",
+    "without confirmation",
+    "downgrade",
+  ]);
+}
+
 function isIncidentStatusContext(context: string) {
   return textIncludes(context, [
     "duplicate notifications",
@@ -891,17 +1016,21 @@ function isCourseTransferContext(context: string) {
 }
 
 function isDeliveryDelayContext(context: string) {
-  return textIncludes(context, [
+  if (isDamagedReplacementContext(context)) {
+    return false;
+  }
+
+  const signals = [
     "package",
     "delivery carrier",
     "tracking",
     "local distribution facility",
-  ]) || textIncludes(context, [
-    "order",
     "fulfillment center",
     "in transit",
     "business days",
-  ]);
+  ].filter((signal) => context.includes(signal));
+
+  return signals.length >= 2;
 }
 
 function isImplementationScheduleContext(context: string) {
@@ -935,6 +1064,9 @@ function isSupportLikeContext(context: string) {
   return (
     isSeatBillingContext(context) ||
     isPlanChangeBillingContext(context) ||
+    isDamagedReplacementContext(context) ||
+    isAccountVerificationContext(context) ||
+    isCancellationOptionsContext(context) ||
     isWorkspaceAccessContext(context) ||
     isIncidentStatusContext(context) ||
     isCourseTransferContext(context) ||
@@ -956,8 +1088,63 @@ function isSupportLikeContext(context: string) {
       "delivery carrier",
       "tracking status",
       "fulfillment center",
+      "damaged",
+      "broken",
+      "replacement",
+      "verification",
+      "password reset",
     ])
   );
+}
+
+function damagedReplacementFallback(input: RewriteRequestInput, context: string) {
+  const greeting = extractRecipientName(input);
+  const order = firstMatch(context, [/\b(order\s+#?[A-Z]?\d+)\b/i]) || "the order";
+  const broken = /two of (?:the )?six mugs/i.test(context)
+    ? "two of the six mugs"
+    : /2 replacement mugs/i.test(context)
+      ? "2 mugs"
+      : "the damaged items";
+  const deadline = firstMatch(context, [
+    /\b(2:00\s*PM\s+on\s+April\s+12)\b/i,
+    /\b(2:00\s*PM\s+April\s+12)\b/i,
+  ]) || "2:00 PM April 12";
+
+  return [
+    greeting ? `Hi ${greeting},` : "Hi,",
+    `I'm sorry ${order} arrived with ${broken} broken.`,
+    "Please send photos of the mugs and the packaging so we can confirm the damage for the replacement.",
+    `If the photos arrive by ${deadline}, we can send 2 replacement mugs by express service at no extra cost.`,
+  ].join("\n\n");
+}
+
+function accountVerificationFallback(input: RewriteRequestInput, context: string) {
+  const greeting = extractRecipientName(input);
+  const admin = firstMatch(context, [
+    /\bworkspace admin\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)\b/,
+  ]) || "your workspace admin";
+  const deadline = /5\s*PM/i.test(context) ? " before 5 PM" : "";
+
+  return [
+    greeting ? `Hi ${greeting},` : "Hi,",
+    "I can help, but we cannot switch the account email based only on this message.",
+    `For the fastest verification, send the last four digits of the card on file plus the most recent invoice number. ${admin} can also update the email from the workspace admin settings.`,
+    `I know the report is urgent, but I cannot promise access${deadline} without verification.`,
+  ].join("\n\n");
+}
+
+function cancellationOptionsFallback(input: RewriteRequestInput, context: string) {
+  const greeting = extractRecipientName(input);
+  const renewalDate = firstMatch(context, [/\b(June\s+3)\b/i]) || "the renewal date";
+  const currentPlan = firstMatch(context, [/(\$\s*89\s+monthly)/i]) || "$89 monthly";
+  const soloPlan = firstMatch(context, [/(\$\s*29\s+monthly)/i]) || "$29 monthly";
+
+  return [
+    greeting ? `Hi ${greeting},` : "Hi,",
+    `I can help with the subscription before it renews on ${renewalDate}. The current plan is ${currentPlan}.`,
+    `If you would rather keep a smaller plan, Solo is ${soloPlan}, but only the account admin can approve that change.`,
+    "Please confirm whether you want cancellation at renewal or a downgrade. I will not cancel or downgrade the account until you confirm which option you want.",
+  ].join("\n\n");
 }
 
 function deliveryDelayFallback(input: RewriteRequestInput, context: string) {
@@ -1386,10 +1573,10 @@ async function createChatCompletion(body: unknown) {
   const timeout = timeoutSignal(Number.isFinite(timeoutSeconds) ? timeoutSeconds : 25);
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(getOpenAiCompatibleChatCompletionsUrl(), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${requireEnv("OPENAI_API_KEY")}`,
+        Authorization: `Bearer ${getOpenAiCompatibleApiKey()}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

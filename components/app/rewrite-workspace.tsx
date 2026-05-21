@@ -18,17 +18,14 @@ import {
   tonePresetToTone,
   type TonePreset,
 } from "../../lib/rewrite-presets";
+import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { SubscriptionStatus } from "./subscription-status";
 
 const HISTORY_KEY = "rimv.rewrite.history.v1";
-
-const limits = {
-  messageToReplyTo: 5000,
-  roughDraftReply: 5000,
-};
 
 type Naturalness = {
   draftAiLikePercent: number | null;
@@ -80,11 +77,21 @@ type HistoryItem = {
 type FormState = {
   messageToReplyTo: string;
   roughDraftReply: string;
+  audience: string;
+  purpose: string;
+  whatHappened: string;
+  factsToPreserve: string;
   tone: "warm" | "direct";
   tonePreset: TonePreset;
 };
 
-type StringFormField = "messageToReplyTo" | "roughDraftReply";
+type StringFormField =
+  | "messageToReplyTo"
+  | "roughDraftReply"
+  | "audience"
+  | "purpose"
+  | "whatHappened"
+  | "factsToPreserve";
 
 type Props = {
   usageLabel: string;
@@ -95,6 +102,10 @@ type Props = {
 const initialForm: FormState = {
   messageToReplyTo: "",
   roughDraftReply: "",
+  audience: "",
+  purpose: "",
+  whatHappened: "",
+  factsToPreserve: "",
   tone: "warm",
   tonePreset: "Warm",
 };
@@ -181,11 +192,26 @@ export function RewriteWorkspace({
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
 
   const combinedLength = useMemo(
-    () => form.messageToReplyTo.length + form.roughDraftReply.length,
-    [form.messageToReplyTo, form.roughDraftReply],
+    () =>
+      form.messageToReplyTo.length +
+      form.roughDraftReply.length +
+      form.audience.length +
+      form.purpose.length +
+      form.whatHappened.length +
+      form.factsToPreserve.length,
+    [
+      form.audience,
+      form.factsToPreserve,
+      form.messageToReplyTo,
+      form.purpose,
+      form.roughDraftReply,
+      form.whatHappened,
+    ],
   );
   const canSubmit =
-    !loading && form.roughDraftReply.trim().length >= 10 && combinedLength <= 10000;
+    !loading &&
+    form.roughDraftReply.trim().length >= 10 &&
+    combinedLength <= rewriteInputLimits.combined;
 
   useEffect(() => {
     try {
@@ -255,6 +281,10 @@ export function RewriteWorkspace({
           scenario: "General reply",
           messageToReplyTo: form.messageToReplyTo,
           roughDraftReply: form.roughDraftReply,
+          audience: form.audience,
+          purpose: form.purpose,
+          whatHappened: form.whatHappened,
+          factsToPreserve: form.factsToPreserve,
           tone: tonePresetToTone(form.tonePreset),
           tonePreset: form.tonePreset,
         }),
@@ -366,20 +396,20 @@ export function RewriteWorkspace({
               </label>
               <div className="flex items-center gap-2">
                 <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
-                  {combinedLength}/10000
+                  {combinedLength}/{rewriteInputLimits.combined}
                 </span>
                 <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
                   Optional
                 </span>
                 <Remaining
-                  max={limits.messageToReplyTo}
+                  max={rewriteInputLimits.messageToReplyTo}
                   value={form.messageToReplyTo}
                 />
               </div>
             </div>
             <Textarea
               id="messageToReplyTo"
-              maxLength={limits.messageToReplyTo}
+              maxLength={rewriteInputLimits.messageToReplyTo}
               onChange={(event) =>
                 updateField("messageToReplyTo", event.target.value)
               }
@@ -394,11 +424,14 @@ export function RewriteWorkspace({
               <label className="text-base font-semibold" htmlFor="roughDraftReply">
                 Draft to rewrite
               </label>
-              <Remaining max={limits.roughDraftReply} value={form.roughDraftReply} />
+              <Remaining
+                max={rewriteInputLimits.roughDraftReply}
+                value={form.roughDraftReply}
+              />
             </div>
             <Textarea
               id="roughDraftReply"
-              maxLength={limits.roughDraftReply}
+              maxLength={rewriteInputLimits.roughDraftReply}
               minLength={10}
               onChange={(event) =>
                 updateField("roughDraftReply", event.target.value)
@@ -408,6 +441,103 @@ export function RewriteWorkspace({
               rows={9}
               value={form.roughDraftReply}
             />
+          </Card>
+
+          <Card className="p-4 md:p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">Reply details</h2>
+              <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
+                Optional
+              </span>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="text-sm font-semibold" htmlFor="audience">
+                    Audience
+                  </label>
+                  <Remaining
+                    max={rewriteInputLimits.audience}
+                    value={form.audience}
+                  />
+                </div>
+                <Input
+                  id="audience"
+                  maxLength={rewriteInputLimits.audience}
+                  onChange={(event) =>
+                    updateField("audience", event.target.value)
+                  }
+                  placeholder="Parent, client, manager, lead"
+                  value={form.audience}
+                />
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="text-sm font-semibold" htmlFor="purpose">
+                    Purpose
+                  </label>
+                  <Remaining
+                    max={rewriteInputLimits.purpose}
+                    value={form.purpose}
+                  />
+                </div>
+                <Input
+                  id="purpose"
+                  maxLength={rewriteInputLimits.purpose}
+                  onChange={(event) =>
+                    updateField("purpose", event.target.value)
+                  }
+                  placeholder="Explain, follow up, decline, confirm"
+                  value={form.purpose}
+                />
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label
+                    className="text-sm font-semibold"
+                    htmlFor="whatHappened"
+                  >
+                    What actually happened
+                  </label>
+                  <Remaining
+                    max={rewriteInputLimits.whatHappened}
+                    value={form.whatHappened}
+                  />
+                </div>
+                <Textarea
+                  id="whatHappened"
+                  maxLength={rewriteInputLimits.whatHappened}
+                  onChange={(event) =>
+                    updateField("whatHappened", event.target.value)
+                  }
+                  rows={4}
+                  value={form.whatHappened}
+                />
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label
+                    className="text-sm font-semibold"
+                    htmlFor="factsToPreserve"
+                  >
+                    Facts to preserve
+                  </label>
+                  <Remaining
+                    max={rewriteInputLimits.factsToPreserve}
+                    value={form.factsToPreserve}
+                  />
+                </div>
+                <Textarea
+                  id="factsToPreserve"
+                  maxLength={rewriteInputLimits.factsToPreserve}
+                  onChange={(event) =>
+                    updateField("factsToPreserve", event.target.value)
+                  }
+                  rows={4}
+                  value={form.factsToPreserve}
+                />
+              </div>
+            </div>
           </Card>
 
           <Card className="p-4 md:p-5">

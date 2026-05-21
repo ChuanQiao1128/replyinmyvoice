@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { optionalEnv, requireEnv } from "../env";
+import { optionalEnv } from "../env";
+import {
+  getOpenAiCompatibleApiKey,
+  getOpenAiCompatibleChatCompletionsUrl,
+  isDeepSeekCompatibleBaseUrl,
+} from "../openai-compatible";
 import type { RewriteTelemetryCollector } from "../observability/rewrite-telemetry";
 import { estimateOpenAiCostUsd } from "../observability/rewrite-cost";
 import type { RewriteRequestInput } from "../validation";
@@ -11,6 +16,7 @@ import type {
   LlmFactCheckResult,
   ReviewResult,
   FactReconstructConfig,
+  RewriteAttemptLedgerEntry,
   SentenceRiskReview,
   ScenarioClassification,
   StyleCard,
@@ -371,6 +377,45 @@ function timeoutSignal(seconds: number) {
   };
 }
 
+function numberEnv(name: string, fallback: number) {
+  const value = Number(optionalEnv(name, String(fallback)));
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+function maxTokensForRole(role: keyof FactReconstructConfig["models"]) {
+  if (role === "cheap_structured") {
+    return numberEnv("OPENAI_MAX_TOKENS_CHEAP_STRUCTURED", 1800);
+  }
+
+  if (role === "strong_escalation") {
+    return numberEnv("OPENAI_MAX_TOKENS_STRONG_ESCALATION", 3200);
+  }
+
+  return numberEnv("OPENAI_MAX_TOKENS_MID_WRITER", 2800);
+}
+
+function deepSeekRequestOptions(role: keyof FactReconstructConfig["models"]) {
+  if (!isDeepSeekCompatibleBaseUrl()) {
+    return {};
+  }
+
+  if (
+    role === "strong_escalation" &&
+    optionalEnv("DEEPSEEK_ENABLE_STRONG_THINKING", "false") === "true"
+  ) {
+    return {
+      thinking: { type: "enabled" },
+      reasoning_effort: optionalEnv("DEEPSEEK_REASONING_EFFORT", "high"),
+      max_tokens: maxTokensForRole(role),
+    };
+  }
+
+  return {
+    thinking: { type: "disabled" },
+    max_tokens: maxTokensForRole(role),
+  };
+}
+
 async function createJsonCompletion<T>({
   config,
   model,
@@ -411,16 +456,17 @@ async function createJsonCompletion<T>({
   }
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(getOpenAiCompatibleChatCompletionsUrl(), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${requireEnv("OPENAI_API_KEY")}`,
+        Authorization: `Bearer ${getOpenAiCompatibleApiKey()}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model,
         temperature,
         response_format: { type: "json_object" },
+        ...deepSeekRequestOptions(role),
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
@@ -493,6 +539,18 @@ function inputText(input: RewriteRequestInput) {
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function formatAttemptHistory(attemptHistory?: RewriteAttemptLedgerEntry[]) {
+  if (!attemptHistory?.length) {
+    return "";
+  }
+
+  return [
+    "Prior failed attempts:",
+    "Use these as negative evidence only. Do not treat failed candidates as a source of facts.",
+    JSON.stringify(attemptHistory, null, 2),
+  ].join("\n");
 }
 
 export async function extractFacts(
@@ -795,6 +853,7 @@ export async function escalateCandidate({
   reviewNotes,
   strategy,
   strategyGuidance,
+  attemptHistory,
   config,
   telemetry,
 }: {
@@ -805,6 +864,7 @@ export async function escalateCandidate({
   reviewNotes: string[];
   strategy?: RewriteStrategy;
   strategyGuidance?: string[];
+  attemptHistory?: RewriteAttemptLedgerEntry[];
   config: FactReconstructConfig;
   telemetry?: RewriteTelemetryCollector;
 }) {
@@ -838,6 +898,7 @@ export async function escalateCandidate({
       `Style card:\n${JSON.stringify(styleCard)}`,
       `Previous final email:\n${previousFinalEmail}`,
       `Reviewer notes:\n${JSON.stringify(reviewNotes)}`,
+      formatAttemptHistory(attemptHistory),
     ].join("\n"),
   });
 

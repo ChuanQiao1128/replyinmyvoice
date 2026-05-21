@@ -22,7 +22,51 @@ function draftOnly(roughDraftReply: string): RewriteRequestInput {
   };
 }
 
+function replyInput(overrides: Partial<RewriteRequestInput>): RewriteRequestInput {
+  return {
+    scenario: "General reply",
+    messageToReplyTo: "",
+    roughDraftReply: "",
+    audience: "",
+    purpose: "",
+    whatHappened: "",
+    factsToPreserve: "",
+    tone: "warm",
+    tonePreset: "Warm",
+    ...overrides,
+  };
+}
+
 describe("extractRequiredFacts", () => {
+  it("uses facts to preserve as the hard fact source when reply context has background dates", () => {
+    const input = replyInput({
+      messageToReplyTo:
+        "Hi Ms Alvarez, I got the reminder that Maya is missing the permission slip for the April 9 science museum trip. I am almost sure I sent it in her blue folder last Thursday.",
+      roughDraftReply:
+        "Hello, I checked and I do not see it. You should send another form and payment so she can attend.",
+      whatHappened:
+        "The teacher checked the classroom folder basket and payment envelope after dismissal on March 28. The office has extra forms. The deadline is April 2.",
+      factsToPreserve:
+        "Maya needs a signed permission slip by April 2. The $12 payment is still missing. Parent can send a new form or ask for one to be sent home. Do not imply the parent is wrong or careless.",
+    });
+
+    const facts = extractRequiredFacts(input).map((fact) => fact.normalizedText);
+    const missing = missingRequiredFacts(
+      input,
+      "Hi Ms Alvarez,\n\nI checked after dismissal, and Maya still needs a signed permission slip by April 2. The $12 payment is also still missing.\n\nYou can send a new form, or I can send another one home if that is easier.",
+    ).map((fact) => fact.normalizedText);
+
+    expect(facts).toEqual(
+      expect.arrayContaining(["maya", "permission slip", "april 2", "$12"]),
+    );
+    expect(facts).not.toEqual(
+      expect.arrayContaining(["april 9", "thursday", "march 28"]),
+    );
+    expect(missing).not.toEqual(
+      expect.arrayContaining(["april 9", "thursday", "wrong", "careless"]),
+    );
+  });
+
   it("extracts implementation schedule facts without treating list labels as people", () => {
     const facts = extractRequiredFacts(
       draftOnly(

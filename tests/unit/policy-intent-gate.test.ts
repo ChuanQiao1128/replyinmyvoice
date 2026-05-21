@@ -31,6 +31,9 @@ describe("runPolicyIntentGate", () => {
     expect(result.issues.map((issue) => issue.kind)).toContain(
       "changed_policy_or_condition",
     );
+    expect(result.issues.map((issue) => issue.ruleId)).toContain(
+      "refund_eligibility_uncertainty",
+    );
   });
 
   it("rejects dropping a no-change-without-confirmation constraint", () => {
@@ -45,6 +48,9 @@ describe("runPolicyIntentGate", () => {
     expect(result.safe).toBe(false);
     expect(result.issues.map((issue) => issue.message)).toContain(
       "Dropped the no-action-without-confirmation constraint.",
+    );
+    expect(result.issues.map((issue) => issue.ruleId)).toContain(
+      "no_action_without_confirmation",
     );
   });
 

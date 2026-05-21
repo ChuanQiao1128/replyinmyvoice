@@ -27,4 +27,70 @@ describe("rewriteRequestSchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("enforces the confirmed per-field rewrite input limits", () => {
+    expect(
+      rewriteRequestSchema.safeParse({
+        messageToReplyTo: "m".repeat(3001),
+        roughDraftReply: "This draft is long enough.",
+        tone: "warm",
+        tonePreset: "Warm",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      rewriteRequestSchema.safeParse({
+        roughDraftReply: "d".repeat(3001),
+        tone: "warm",
+        tonePreset: "Warm",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      rewriteRequestSchema.safeParse({
+        roughDraftReply: "This draft is long enough.",
+        audience: "a".repeat(301),
+        tone: "warm",
+        tonePreset: "Warm",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      rewriteRequestSchema.safeParse({
+        roughDraftReply: "This draft is long enough.",
+        purpose: "p".repeat(501),
+        tone: "warm",
+        tonePreset: "Warm",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      rewriteRequestSchema.safeParse({
+        roughDraftReply: "This draft is long enough.",
+        whatHappened: "w".repeat(1001),
+        tone: "warm",
+        tonePreset: "Warm",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      rewriteRequestSchema.safeParse({
+        roughDraftReply: "This draft is long enough.",
+        factsToPreserve: "f".repeat(1001),
+        tone: "warm",
+        tonePreset: "Warm",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects requests over the confirmed combined cap", () => {
+    const result = rewriteRequestSchema.safeParse({
+      messageToReplyTo: "m".repeat(2500),
+      roughDraftReply: "d".repeat(2501),
+      tone: "direct",
+      tonePreset: "Direct",
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

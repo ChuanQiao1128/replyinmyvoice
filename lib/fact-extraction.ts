@@ -37,6 +37,7 @@ const properNameStopWords = new Set([
   "additional",
   "april",
   "applicant",
+  "ask",
   "australia",
   "at",
   "based",
@@ -77,6 +78,7 @@ const properNameStopWords = new Set([
   "june",
   "last",
   "glad",
+  "happy",
   "long",
   "also",
   "already",
@@ -97,13 +99,17 @@ const properNameStopWords = new Set([
   "looking",
   "missing",
   "my",
+  "need",
   "nzd",
   "opening",
   "our",
   "please",
+  "pm",
   "printed",
   "participants",
+  "parent",
   "preserve",
+  "price",
   "product",
   "prorated",
   "quick",
@@ -122,7 +128,11 @@ const properNameStopWords = new Set([
   "sms",
   "sorry",
   "ssO".toLowerCase(),
+  "student",
+  "students",
   "that",
+  "teacher",
+  "teachers",
   "thanks",
   "thank",
   "the",
@@ -131,6 +141,11 @@ const properNameStopWords = new Set([
   "there",
   "this",
   "ticket",
+  "company",
+  "reopening",
+  "why",
+  "would",
+  "yes",
   "one",
   "two",
   "three",
@@ -362,12 +377,18 @@ function factId(category: RequiredFactCategory, text: string) {
 }
 
 function sourceText(input: RewriteRequestInput) {
+  if (input.factsToPreserve.trim()) {
+    return {
+      message: "",
+      draft: input.factsToPreserve,
+    };
+  }
+
   return {
     message: input.messageToReplyTo ?? "",
     draft: [
       input.roughDraftReply,
       input.whatHappened,
-      input.factsToPreserve,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -422,14 +443,24 @@ function isGenericSupportSignoff(value: string) {
   );
 }
 
+function isForbiddenClaimInstruction(value: string) {
+  return /^\s*(?:do not|don't)\s+(?:offer|promise|imply|guess|mention|send revised quote|make me sound|state|say)\b/i.test(
+    value,
+  );
+}
+
 function extractFromText(
   facts: Map<string, RequiredFact>,
   text: string,
   source: RequiredFact["source"],
 ) {
-  const normalizedText = text.replace(/\s+/g, " ");
+  const extractionText = splitSentences(text)
+    .filter((sentence) => !isForbiddenClaimInstruction(sentence))
+    .join(". ");
+  const rawNormalizedText = text.replace(/\s+/g, " ");
+  const normalizedText = extractionText.replace(/\s+/g, " ");
 
-  const signoff = normalizedText.match(
+  const signoff = rawNormalizedText.match(
     /\b(best regards|regards|sincerely),?\s+((?:Mr|Ms|Mrs|Dr)\.?\s+[A-Z][A-Za-z.'-]+|[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\b/i,
   );
   if (signoff && !isGenericSupportSignoff(signoff[2])) {
@@ -446,16 +477,20 @@ function extractFromText(
   }
 
   for (const phrase of phraseFacts) {
-    if (phrase.pattern.test(text)) {
+    if (phrase.pattern.test(extractionText)) {
       addFact(facts, phrase.text, phrase.category, source);
     }
+  }
+
+  for (const match of normalizedText.matchAll(/\border\s+#?[A-Z]?\d+\b/gi)) {
+    addFact(facts, match[0], "quoted_phrase", source);
   }
 
   for (const match of normalizedText.matchAll(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g)) {
     addFact(facts, match[0], "contact", source);
   }
 
-  for (const match of normalizedText.matchAll(/\b(?:NZD\s*)?\$\s?\d+(?:\.\d{2})?\b/gi)) {
+  for (const match of normalizedText.matchAll(/(?:\bNZD\s*)?\$\s?\d+(?:\.\d{2})?\b/gi)) {
     addFact(facts, match[0], "amount", source);
   }
 
@@ -512,7 +547,7 @@ function extractFromText(
     }
   }
 
-  for (const sentence of splitSentences(text)) {
+  for (const sentence of splitSentences(extractionText)) {
     if (
       /\bfirst\b.*\b(?:then|after that)\b/i.test(sentence) ||
       /^(?:then|after that)\b/i.test(sentence)
@@ -647,6 +682,17 @@ export function detectUnsupportedFacts(
   return extractUnsupportedComparables(rewrittenText)
     .filter((fact) => {
       if (sourceFacts.has(fact.id)) {
+        return false;
+      }
+
+      if (
+        fact.category === "person" &&
+        sourceComparables.some(
+          (sourceFact) =>
+            sourceFact.category === "person" &&
+            sourceFact.normalizedText.endsWith(` ${fact.normalizedText}`),
+        )
+      ) {
         return false;
       }
 

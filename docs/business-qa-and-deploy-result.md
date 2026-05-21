@@ -148,6 +148,26 @@ set -a; source .env.local; set +a; npm run cf:deploy
 
 Use GitHub Actions or pass only Cloudflare auth variables.
 
+## State Lifecycle Follow-up
+
+Date: 2026-05-21
+
+State-machine review found and fixed quota, reservation, and webhook lifecycle gaps in the .NET backend:
+
+- Expired usage reservations now persist as `Expired`, not generic `Released`.
+- Expired cleanup skips rewrite attempts that have already moved to `Processing`, preventing cleanup from releasing quota while a provider call is still in flight.
+- Late provider success can no longer move an expired or released reservation into a successful charged attempt.
+- ASP.NET API paid quota now matches the product rule and Azure Functions path: 40 rewrites per paid billing period.
+- Stripe `customer.subscription.deleted` now maps to `Canceled`, matching the Next/Stripe state semantics instead of collapsing deleted subscriptions into generic `Inactive`.
+- The unused rewrite-attempt `Released` state was removed from the .NET enum; release remains a usage-reservation state, while rewrite attempts terminate as `Succeeded`, `Failed`, or `Expired`.
+
+Verification:
+
+```bash
+dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore
+npm test -- tests/unit/quota.test.ts tests/unit/stripe-webhook-events.test.ts
+```
+
 ## Remaining Risks
 
 - Some blank-note and cover-letter cases still preserve facts but do not reduce the third-party signal enough.
