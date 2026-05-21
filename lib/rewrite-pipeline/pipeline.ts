@@ -11,7 +11,7 @@ import {
   recordRewriteAttempt,
 } from "./budget-manager";
 import {
-  deterministicCheck,
+  adaptiveGateCheck,
   llmFactCheckPasses,
   reviewerScorePasses,
 } from "./checks";
@@ -35,6 +35,7 @@ import { chooseInitialStrategy, chooseNextStrategy } from "./strategy-router";
 import { selectHighRiskSentences } from "./targeted-repair";
 import type {
   CandidateKey,
+  ExtractedFacts,
   FactReconstructConfig,
   LlmFactCheckResult,
   ReviewResult,
@@ -176,34 +177,13 @@ function factCheckSafe({
 
 function deterministicSafeForFallback(
   input: RewriteRequestInput,
-  facts: Parameters<typeof deterministicCheck>[1],
+  facts: ExtractedFacts,
   rewrittenText: string,
-  styleCard: Parameters<typeof deterministicCheck>[3],
+  styleCard: StyleCard,
 ) {
-  const result = deterministicCheck(input, facts, rewrittenText, styleCard);
+  const result = adaptiveGateCheck(input, facts, rewrittenText, styleCard);
 
-  if (result.safe) {
-    return { result, safe: true };
-  }
-
-  const onlyLockedFactIssues = result.issues.every((issue) =>
-    issue.startsWith("missing_locked:"),
-  );
-  if (!onlyLockedFactIssues) {
-    return { result, safe: false };
-  }
-
-  const requestFactsOnly = deterministicCheck(
-    input,
-    { ...facts, facts_that_must_not_change: [] },
-    rewrittenText,
-    styleCard,
-  );
-
-  return {
-    result,
-    safe: requestFactsOnly.safe,
-  };
+  return { result, safe: result.safe };
 }
 
 function failureKindsFromIssues(
@@ -315,7 +295,7 @@ function recordApprovedStrategy({
 
 function withRestoredRecipientGreeting(
   fallback: ReturnType<typeof generateGuaranteedRewriteCandidate>,
-  facts: Parameters<typeof deterministicCheck>[1],
+  facts: ExtractedFacts,
 ) {
   const recipient = facts.recipient_name.trim();
   if (!recipient) {
@@ -410,9 +390,9 @@ async function tryGuaranteedFallback({
 }: {
   config: FactReconstructConfig;
   draftPercent: number;
-  facts: Parameters<typeof deterministicCheck>[1];
+  facts: ExtractedFacts;
   input: RewriteRequestInput;
-  styleCard: Parameters<typeof deterministicCheck>[3];
+  styleCard: StyleCard;
   telemetry?: RewriteTelemetryCollector;
 }) {
   const modelFallback = withRestoredRecipientGreeting(
@@ -484,14 +464,14 @@ async function tryTargetedSentenceRepair({
   facts,
   finalEmail,
   finalSignal,
-      input,
-      scenario,
-      styleCard,
-      telemetry,
+  input,
+  scenario,
+  styleCard,
+  telemetry,
 }: {
   config: FactReconstructConfig;
   draftPercent: number;
-  facts: Parameters<typeof deterministicCheck>[1];
+  facts: ExtractedFacts;
   finalEmail: string;
   finalSignal: Awaited<ReturnType<typeof measureWritingSignal>>;
   input: RewriteRequestInput;
@@ -525,7 +505,12 @@ async function tryTargetedSentenceRepair({
     config,
     telemetry,
   });
-  const deterministic = deterministicCheck(input, facts, repairedEmail, styleCard);
+  const deterministic = adaptiveGateCheck(
+    input,
+    facts,
+    repairedEmail,
+    styleCard,
+  );
   const factCheck = await llmFactCheck({
     facts,
     finalEmail: repairedEmail,
@@ -693,7 +678,7 @@ export async function rewriteWithFactReconstruct(
     config,
     telemetry,
   });
-  const deterministic = deterministicCheck(input, facts, finalEmail, styleCard);
+  const deterministic = adaptiveGateCheck(input, facts, finalEmail, styleCard);
   const policyGate = runPolicyIntentGate(input, finalEmail);
   const factCheck = await llmFactCheck({
     facts,
@@ -710,7 +695,7 @@ export async function rewriteWithFactReconstruct(
   ) {
     if (config.maxEscalations > 0) {
       const failures = [
-        ...failureKindsFromIssues(deterministic.issues),
+        ...failureKindsFromIssues(deterministic.blockingIssues),
         ...failureKindsFromFactCheck(factCheck),
         ...policyGate.issues.map((issue) => issue.kind),
       ];
@@ -734,7 +719,7 @@ export async function rewriteWithFactReconstruct(
         reviewNotes: [
           ...review.required_edits,
           ...review.risk_notes,
-          ...deterministic.issues,
+          ...deterministic.blockingIssues,
           ...policyGate.issues.map((issue) => issue.message),
           ...factCheck.issues,
           ...factCheck.required_repairs,
@@ -744,7 +729,7 @@ export async function rewriteWithFactReconstruct(
         config,
         telemetry,
       });
-      const escalatedDeterministic = deterministicCheck(
+      const escalatedDeterministic = adaptiveGateCheck(
         input,
         facts,
         escalatedEmail,
@@ -784,7 +769,7 @@ export async function rewriteWithFactReconstruct(
         rejected: !escalatedPasses,
         reason: [
           "Strong-model escalation fact and naturalness gate.",
-          ...deterministic.issues,
+          ...deterministic.blockingIssues,
           ...policyGate.issues.map((issue) => issue.message),
           ...factCheck.issues,
           ...factCheck.required_repairs,
@@ -1008,7 +993,7 @@ export async function rewriteWithFactReconstruct(
       config,
       telemetry,
     });
-    const escalatedDeterministic = deterministicCheck(
+    const escalatedDeterministic = adaptiveGateCheck(
       input,
       facts,
       escalatedEmail,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adaptiveGateCheck,
   detectStructureIssues,
   deterministicCheck,
   llmFactCheckPasses,
@@ -304,6 +305,104 @@ describe("deterministicCheck", () => {
 
     expect(detectStructureIssues(input, rewritten)).toContain(
       "structure:sentence_per_paragraph",
+    );
+  });
+});
+
+describe("adaptiveGateCheck", () => {
+  it("passes package-delay support rewrites when soft wording changes preserve critical facts", () => {
+    const packageInput: RewriteRequestInput = {
+      ...input,
+      scenario: "General reply",
+      roughDraftReply: [
+        "Hi Emma,",
+        "Your order has already left our fulfillment center and is currently with the delivery carrier.",
+        "The delay is related to a temporary processing issue at the local distribution facility.",
+        "Your package is still in transit and has not been marked as lost or returned.",
+        "We expect a new delivery update within the next one to two business days.",
+        "There is no action required from you right now.",
+        "If the tracking status does not change within two business days, we can open a follow-up investigation with the carrier.",
+        "Best regards,",
+        "Customer Support Team",
+      ].join("\n\n"),
+    };
+    const facts: ExtractedFacts = {
+      recipient_name: "Emma",
+      sender_name_or_role: "Customer Support Team",
+      people_mentioned: ["Emma"],
+      main_purpose: "Explain a delayed package.",
+      key_facts: [
+        "The order left the fulfillment center.",
+        "The package is with the delivery carrier.",
+        "The package is still in transit.",
+      ],
+      required_actions: ["No action is required from Emma right now."],
+      deadlines: ["one to two business days"],
+      dates_times: [],
+      positive_notes: [],
+      concerns: ["Package delay"],
+      policies_or_conditions: [
+        "The package has not been marked as lost or returned.",
+      ],
+      available_support: ["follow-up investigation with the carrier"],
+      clarifications: [],
+      facts_that_must_not_change: [
+        "Customer Support Team",
+        "no action required",
+        "one to two business days",
+        "not marked as lost or returned",
+      ],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const rewritten = [
+      "Hi Emma,",
+      "I checked the order details. Your package has left our fulfillment center and is with the delivery carrier now.",
+      "The delay appears to be from a temporary processing issue at the local distribution facility. It is still in transit and has not been marked lost or returned.",
+      "For now, no action is required from you. The carrier should post another delivery update within the next one to two business days. If the tracking status still has not changed after two business days, reply and we can open a follow-up investigation with the carrier.",
+      "Sorry for the delay.",
+    ].join("\n\n");
+
+    const result = adaptiveGateCheck(packageInput, facts, rewritten, styleCard);
+
+    expect(result.safe).toBe(true);
+    expect(result.blockingIssues).toEqual([]);
+    expect(result.softIssues).toContain("missing_locked:Customer Support Team");
+  });
+
+  it("blocks missing or changed hard facts even when the wording is natural", () => {
+    const billingInput: RewriteRequestInput = {
+      ...input,
+      roughDraftReply:
+        "Hi Priya, the May invoice preview is NZD $126 higher because three temporary contractor accounts were active. The base plan has not changed.",
+    };
+    const facts: ExtractedFacts = {
+      recipient_name: "Priya",
+      sender_name_or_role: "",
+      people_mentioned: ["Priya"],
+      main_purpose: "Explain invoice preview.",
+      key_facts: ["The invoice preview is NZD $126 higher."],
+      required_actions: [],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: ["The base plan has not changed."],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: ["NZD $126", "base plan has not changed"],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const rewritten =
+      "Hi Priya,\n\nThe higher invoice preview appears to be from temporary contractor accounts. The base plan is still the same, and the extra charge is NZD $200.";
+
+    const result = adaptiveGateCheck(billingInput, facts, rewritten, styleCard);
+
+    expect(result.safe).toBe(false);
+    expect(result.blockingIssues).toContain("missing:nzd $126");
+    expect(result.blockingIssues.some((issue) => issue.includes("$200"))).toBe(
+      true,
     );
   });
 });

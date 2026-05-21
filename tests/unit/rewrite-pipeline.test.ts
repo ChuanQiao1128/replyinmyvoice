@@ -313,6 +313,52 @@ describe("rewriteWithFactReconstruct", () => {
     expect(mocks.escalateCandidate).toHaveBeenCalledTimes(1);
   });
 
+  it("does not escalate when the only deterministic miss is a generic support footer", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+
+    const deliveryInput: RewriteRequestInput = {
+      ...input,
+      roughDraftReply:
+        "Hi Emma, your package is still in transit. The carrier should provide a new update within the next one to two business days. Best regards, Customer Support Team",
+    };
+    const deliveryFacts: ExtractedFacts = {
+      recipient_name: "Emma",
+      sender_name_or_role: "Customer Support Team",
+      people_mentioned: ["Emma"],
+      main_purpose: "Explain package delay.",
+      key_facts: ["The package is still in transit."],
+      required_actions: [],
+      deadlines: ["one to two business days"],
+      dates_times: [],
+      positive_notes: [],
+      concerns: ["Package delay"],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: [
+        "Customer Support Team",
+        "one to two business days",
+      ],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const final =
+      "Hi Emma,\n\nYour package is still in transit. The carrier should post another delivery update within the next one to two business days.\n\nSorry for the delay.";
+    mocks.extractFacts.mockResolvedValue(deliveryFacts);
+    mocks.finalizeCandidate.mockResolvedValue(final);
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 77 })
+      .mockResolvedValueOnce({ aiLikePercent: 5 });
+
+    const result = await rewriteWithFactReconstruct(deliveryInput);
+
+    expect(result.rewrittenText).toBe(final);
+    expect(result.optimization.selectionStatus).toBe("passed");
+    expect(mocks.escalateCandidate).not.toHaveBeenCalled();
+  });
+
   it("does not return a Sapling-passing final email that leaks internal fact-reference language", async () => {
     const { rewriteWithFactReconstruct } = await import(
       "../../lib/rewrite-pipeline/pipeline"

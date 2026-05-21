@@ -579,3 +579,33 @@ Required regression:
 
 - Package-delay support drafts must preserve delivery status, delay reason, in-transit/not-lost state, update window, no-action-required state, follow-up-investigation next step, and support-team signoff when present.
 - The fallback must not return `Quick update: Hi ...` or a one-line generic reply for medium customer-support drafts.
+
+## 2026-05-21 Adaptive Gate Calibration
+
+Observed failure:
+
+- Manual website QA found package-delay and support-policy rewrites where the Naturalness Check improved strongly, but the final result still returned the no-charge quality failure state.
+- The rewritten text preserved the important business facts, but deterministic checks treated optional footer/phrasing differences as hard fact failures.
+
+Root cause:
+
+- The gate was binary: every deterministic issue blocked the result.
+- Generic support footer labels such as `Customer Support Team` were mixed with critical facts such as dates, amounts, counts, refund/transfer policy, and no-change-without-confirmation constraints.
+- Soft wording differences caused the same retry/escalation path as real factual drift.
+
+Promoted strategy:
+
+- Use an Adaptive Gate Calibrator after deterministic checks.
+- Keep hard blocking for money, dates/deadlines, counts, named people, policy constraints, promises, refunds, charges, subscriptions, transfer/availability rules, lost/returned status, and required confirmation conditions.
+- Downgrade generic support-team footers and polite formula phrases to soft issues. Record them for diagnostics, but do not block an otherwise safe rewrite.
+- Route repair/escalation from hard blocking issues only; soft issues should not trigger a no-charge quality failure.
+
+Required regression:
+
+- A package-delay rewrite that omits only a generic `Customer Support Team` footer can pass if the delivery facts are preserved.
+- A billing rewrite that changes `NZD $126` to another amount must still fail the hard fact gate.
+- Pipeline tests must prove that soft footer misses do not trigger escalation, while hard fact losses still do.
+
+Implementation plan:
+
+- `docs/superpowers/plans/2026-05-21-adaptive-gate-calibrator.md`

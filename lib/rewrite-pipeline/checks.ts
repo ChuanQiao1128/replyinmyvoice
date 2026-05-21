@@ -17,6 +17,23 @@ export type DeterministicCheckResult = {
   unsupportedFacts: string[];
 };
 
+export type AdaptiveGateIssue = {
+  issue: string;
+  severity: "hard" | "soft";
+  reason: string;
+};
+
+export type AdaptiveGateResult = {
+  safe: boolean;
+  issues: string[];
+  blockingIssues: string[];
+  softIssues: string[];
+  adjudicatedIssues: AdaptiveGateIssue[];
+  missingFacts: string[];
+  unsupportedFacts: string[];
+  deterministic: DeterministicCheckResult;
+};
+
 function normalize(value: string) {
   return value
     .toLowerCase()
@@ -25,6 +42,154 @@ function normalize(value: string) {
     .replace(/\bresent\b/g, "send them again")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function issuePayload(issue: string) {
+  const separator = issue.indexOf(":");
+  return separator === -1 ? issue : issue.slice(separator + 1);
+}
+
+function isGenericSupportFooter(value: string) {
+  const normalizedValue = normalize(value);
+  return /\b(?:best regards\s+)?(?:customer support team|support team|customer service team)\b/i.test(
+    normalizedValue,
+  );
+}
+
+function containsMoney(value: string) {
+  return /\b(?:nzd|usd|aud)?\s*\$\s*\d|\b\d+(?:\.\d+)?\s*(?:nzd|usd|aud)\b/i.test(
+    value,
+  );
+}
+
+function containsDateOrDeadline(value: string) {
+  return /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|today|tomorrow|yesterday|am|pm|a\.m\.|p\.m\.|\d{1,2}:\d{2}|business days?|days?|weeks?|months?)\b/i.test(
+    value,
+  );
+}
+
+function containsCount(value: string) {
+  return /\b\d+\b/.test(value) ||
+    /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i.test(
+      value,
+    );
+}
+
+function containsPolicyOrPromise(value: string) {
+  return /\b(?:refund|credit|charge|invoice|subscription|plan|seat|cancel|canceled|cancelled|transfer|enrollment|cohort|registration|availability|eligible|policy|partial credit|full credit|deadline|approve|approval|confirm|confirmed|not changed|no change|will not|must|required|lost|returned)\b/i.test(
+    value,
+  );
+}
+
+function containsConcreteName(
+  value: string,
+  facts: ExtractedFacts,
+  input: RewriteRequestInput,
+) {
+  const normalizedValue = normalize(value);
+  const names = [
+    facts.recipient_name,
+    ...facts.people_mentioned,
+    ...Array.from(
+      [input.messageToReplyTo, input.roughDraftReply]
+        .join("\n")
+        .matchAll(/\b(?:Hi|Hello|Dear)\s+([A-Z][A-Za-z.'-]+)\b/g),
+      (match) => match[1],
+    ),
+  ]
+    .map(normalize)
+    .filter((name) => name.length > 1);
+
+  return names.some((name) => normalizedValue === name || normalizedValue.includes(name));
+}
+
+function classifyAdaptiveIssue({
+  facts,
+  input,
+  issue,
+}: {
+  facts: ExtractedFacts;
+  input: RewriteRequestInput;
+  issue: string;
+}): AdaptiveGateIssue {
+  const payload = issuePayload(issue);
+  const normalizedPayload = normalize(payload);
+
+  if (isGenericSupportFooter(payload)) {
+    return {
+      issue,
+      severity: "soft",
+      reason: "Generic support-team footer is optional branding, not a critical fact.",
+    };
+  }
+
+  if (issue.startsWith("missing_locked:")) {
+    if (
+      containsMoney(payload) ||
+      containsDateOrDeadline(payload) ||
+      containsCount(payload) ||
+      containsPolicyOrPromise(payload) ||
+      containsConcreteName(payload, facts, input)
+    ) {
+      return {
+        issue,
+        severity: "hard",
+        reason: "Locked fact contains concrete business data.",
+      };
+    }
+
+    return {
+      issue,
+      severity: "soft",
+      reason: "Locked fact is phrasing or footer-level detail.",
+    };
+  }
+
+  if (issue.startsWith("missing:")) {
+    if (
+      normalizedPayload === "sorry" ||
+      normalizedPayload === "thank you" ||
+      normalizedPayload === "thanks"
+    ) {
+      return {
+        issue,
+        severity: "soft",
+        reason: "Polite phrase is not a critical fact.",
+      };
+    }
+
+    return {
+      issue,
+      severity: "hard",
+      reason: "Required extracted fact is missing.",
+    };
+  }
+
+  if (issue.startsWith("unsupported:")) {
+    if (
+      normalizedPayload === "sorry" ||
+      normalizedPayload === "thank you" ||
+      normalizedPayload === "thanks"
+    ) {
+      return {
+        issue,
+        severity: "soft",
+        reason: "Polite phrase is not an unsupported factual claim.",
+      };
+    }
+
+    return {
+      issue,
+      severity: "hard",
+      reason: "Output contains unsupported concrete information.",
+    };
+  }
+
+  return {
+    issue,
+    severity: "hard",
+    reason: "Structural, template, malformed, or meta-language issue.",
+  };
 }
 
 function paragraphs(value: string) {
@@ -212,6 +377,39 @@ export function deterministicCheck(
     issues,
     missingFacts: [...missingFacts, ...missingLockedFacts],
     unsupportedFacts,
+  };
+}
+
+export function adaptiveGateCheck(
+  input: RewriteRequestInput,
+  facts: ExtractedFacts,
+  rewrittenText: string,
+  styleCard: StyleCard,
+): AdaptiveGateResult {
+  const deterministic = deterministicCheck(input, facts, rewrittenText, styleCard);
+  const adjudicatedIssues = deterministic.issues.map((issue) =>
+    classifyAdaptiveIssue({ facts, input, issue }),
+  );
+  const blockingIssues = adjudicatedIssues
+    .filter((issue) => issue.severity === "hard")
+    .map((issue) => issue.issue);
+  const softIssues = adjudicatedIssues
+    .filter((issue) => issue.severity === "soft")
+    .map((issue) => issue.issue);
+
+  return {
+    safe: blockingIssues.length === 0,
+    issues: [...deterministic.issues],
+    blockingIssues,
+    softIssues,
+    adjudicatedIssues,
+    missingFacts: deterministic.missingFacts.filter((fact) =>
+      blockingIssues.some((issue) => issue.endsWith(fact)),
+    ),
+    unsupportedFacts: deterministic.unsupportedFacts.filter((fact) =>
+      blockingIssues.some((issue) => issue.endsWith(fact)),
+    ),
+    deterministic,
   };
 }
 
