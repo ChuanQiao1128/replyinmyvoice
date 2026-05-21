@@ -18,6 +18,7 @@ Requirements: gh CLI authenticated for ChuanQiao1128/replyinmyvoice.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -35,6 +36,54 @@ MANIFESTS = [
 ]
 BOARD = PLANS / "issue-board.md"
 REPORT = PLANS / "issue-creation-report.md"
+ENV_FILE = ROOT / ".env.local"
+
+
+def load_gh_token_from_env_local() -> None:
+    """
+    Fallback only. If gh keyring auth already works, do nothing — setting
+    GH_TOKEN can BREAK auth for fine-grained PATs because some gh versions
+    send "Authorization: token <X>" instead of "Authorization: Bearer <X>"
+    when reading from env, and fine-grained PATs require Bearer.
+
+    Only load from .env.local if gh CLI is not already authenticated.
+    """
+    # Probe keyring/hosts.yml auth first, with no env override
+    clean_env = {k: v for k, v in os.environ.items()
+                 if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+    probe = subprocess.run(
+        ["gh", "auth", "status"],
+        env=clean_env,
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode == 0:
+        # Keyring auth works — make sure no stale env var sabotages later calls
+        os.environ.pop("GH_TOKEN", None)
+        os.environ.pop("GITHUB_TOKEN", None)
+        print("(gh keyring auth OK, env GH_TOKEN/GITHUB_TOKEN cleared to avoid PAT-header bug)")
+        return
+
+    # Keyring auth failed → fall back to .env.local
+    if not ENV_FILE.exists():
+        return
+    candidates = ("GH_TOKEN", "GITHUB_TOKEN", "GITHUB_PAT")
+    found = None
+    found_name = None
+    for line in ENV_FILE.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        name = name.strip()
+        value = value.strip().strip('"').strip("'")
+        if name in candidates and value:
+            found = value
+            found_name = name
+            break
+    if found:
+        os.environ["GH_TOKEN"] = found
+        print(f"(keyring auth failed, loaded gh token from .env.local var {found_name})")
 
 MILESTONES = [
     ("M0-Stabilize", "Stabilize working tree; clean baseline for the rest of the roadmap"),
@@ -267,6 +316,9 @@ def parse_manifest(text: str) -> list[dict]:
 def main() -> int:
     started_at = datetime.now(timezone.utc)
     print(f"=== Roadmap issue creation @ {started_at.isoformat()} ===\n")
+
+    # 0. Source gh token from .env.local if needed
+    load_gh_token_from_env_local()
 
     # 1. Auth check
     gh_auth_check()
