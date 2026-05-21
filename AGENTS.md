@@ -1,5 +1,13 @@
 # AGENTS.md instructions for /Users/qc/Desktop/CloudFlare
 
+## Recent Decisions (Change Log)
+
+### 2026-05-21
+- Stripe cutover sandbox → live. STRIPE_LIVE_CUTOVER_APPROVED=true set.
+- LAUNCH_CONFIRMED=true set; formal domain cutover authorized.
+- Rewrite orchestra switched to DeepSeek Pro (OPENAI_BASE_URL=api.deepseek.com).
+- See CLAUDE.md "Active Commercialization Sprint" section for sprint posture.
+
 ## Project
 
 Project name: **Reply In My Voice**
@@ -1907,7 +1915,7 @@ Before executing the next phase, read:
 Updated launch authorization:
 
 - `LAUNCH_CONFIRMED=true` means the code agent is authorized to cut over `replyinmyvoice.com` to the verified Worker during the next phase.
-- Keep Stripe in sandbox mode. Do not switch to live Stripe keys or live price IDs.
+- Stripe is in LIVE mode as of 2026-05-21 (STRIPE_LIVE_CUTOVER_APPROVED=true in .env.local). Local dev may use sandbox keys for testing; production runtime uses live keys via Cloudflare Worker secrets. Codex MUST NOT initiate real test charges against live keys.
 - Keep the Worker name `replyinmyvoice-app`.
 - Do not delete the existing Cloudflare Pages project.
 - Preserve rollback instructions.
