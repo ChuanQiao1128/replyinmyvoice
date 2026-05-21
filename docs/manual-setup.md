@@ -96,22 +96,7 @@ Finish Google first, then add additional social providers later.
 
 ## Clerk
 
-- Clerk is deprecated for the next backend/auth migration. Keep this section only for rollback context until Entra External ID is live.
-- Add `https://replyinmyvoice.com` as an allowed production origin.
-- Add the deployed Worker preview URL after deployment if Clerk requires it for testing.
-- Confirm redirect URLs:
-  - `/sign-in`
-  - `/sign-up`
-  - `/app`
-- Launch check on 2026-05-18: Clerk API was reachable, but `replyinmyvoice.com` was not observed in the `/domains` API response. Verify the formal domain/origin in the Clerk dashboard before or during real-account testing.
-- Clerk DNS verification records were added in Cloudflare on 2026-05-21:
-  - `clerk.replyinmyvoice.com -> frontend-api.clerk.services`
-  - `accounts.replyinmyvoice.com -> accounts.clerk.services`
-  - `clkmail.replyinmyvoice.com -> mail.4rlognk6y6o0.clerk.services`
-  - `clk._domainkey.replyinmyvoice.com -> dkim1.4rlognk6y6o0.clerk.services`
-  - `clk2._domainkey.replyinmyvoice.com -> dkim2.4rlognk6y6o0.clerk.services`
-- These records must stay DNS-only in Cloudflare. If Clerk still shows them as unverified, run verification again in the Clerk dashboard after DNS propagation.
-- Clerk production auth also uses the Next.js frontend API proxy at `https://replyinmyvoice.com/clerk-proxy` as a stability fallback for the Clerk Frontend API. Keep `NEXT_PUBLIC_CLERK_PROXY_URL` set to this URL in GitHub Actions and Cloudflare Worker config, and keep the Clerk domain `proxy_url` aligned to the same value. ClerkJS is loaded from `NEXT_PUBLIC_CLERK_JS_URL`; keep that URL aligned with the installed Clerk SDK major version (`@clerk/nextjs@7` currently loads ClerkJS v6). Prefer the same-origin proxy URL so browser privacy settings do not block a third-party CDN script.
+**Clerk auth has been removed.** See plans/clerk-dns-cleanup.md for the post-cutover DNS cleanup steps the user runs manually after 7 days of verified Entra-only operation.
 
 ## Stripe
 
