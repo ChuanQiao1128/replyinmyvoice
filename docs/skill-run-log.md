@@ -521,3 +521,10 @@ claude-heavy-planning-handoff
 - Output artifacts: Current git commit, GitHub push, Cloudflare deployment command, and `docs/skill-run-log.md`.
 - Verification evidence: Pre-deploy checks passed: `npm run test` passed with 201 tests, `npm run typecheck` passed, `npm run lint` passed, `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed with 38 tests, and `npm run cf:build` passed.
 - Limitations: Exact Cloudflare and GitHub Actions billing dashboards were not checked. Final live deployment and remote smoke results are reported in the Codex thread, not duplicated with any secret-bearing environment details.
+
+## 2026-05-22 - Codex - data-module-review
+- Trigger: User requested Prisma schema update and commit/push/PR for ApiKey and ApiKeyUsage migration.
+- Action taken: Opened/followed the data-module-review skill as a fast additive-schema checklist while applying the user-provided schema patch.
+- Output artifacts: prisma/schema.prisma updated with User.apiKeys, ApiKey, and ApiKeyUsage models; existing migration SQL staged.
+- Verification evidence: grep counted ApiKey model declarations before commit.
+- Limitations: No full Prisma validation or test suite run due to explicit fast commit/push/PR request.
