@@ -21,6 +21,9 @@ export async function SiteHeader({ showAdmin = false }: { showAdmin?: boolean })
           <Link href="/pricing" className="hidden px-3 py-2 text-sm font-medium text-ink/70 hover:text-ink sm:inline-flex">
             Pricing
           </Link>
+          <Link href="/developers" className="hidden px-3 py-2 text-sm font-medium text-ink/70 hover:text-ink sm:inline-flex">
+            Developers
+          </Link>
           {!session ? (
             <>
             <Link href="/sign-in" className="hidden px-3 py-2 text-sm font-medium text-ink/70 hover:text-ink sm:inline-flex">
