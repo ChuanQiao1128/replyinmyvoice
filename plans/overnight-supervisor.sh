@@ -120,7 +120,12 @@ fi
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
 banned_terms_grep() {
-  # Returns 0 (success) if NO banned terms found in changed files only
+  # Returns 0 (success) if NO banned terms found in source files
+  # SCOPE FIX 2026-05-22: previously scanned the FULL diff which caused
+  # false positives on plans/blockers-log.md and plans/decisions-log.md
+  # (which themselves contain literal banned-term mentions because they
+  # log past banned-term events). Now scopes strictly to app/components/
+  # public/lib per AGENTS.md.
   local files
   files=$(git diff --cached --name-only 2>/dev/null)
   if [ -z "$files" ]; then
@@ -129,9 +134,14 @@ banned_terms_grep() {
   if [ -z "$files" ]; then
     return 0
   fi
-  # Scope: app components public lib (matches CI guard scope)
+  # Filter to AGENTS.md source paths only — operational logs are out of scope.
+  local src_files
+  src_files=$(echo "$files" | grep -E "^(app|components|public|lib)/" || true)
+  if [ -z "$src_files" ]; then
+    return 0
+  fi
   local match
-  match=$(echo "$files" | xargs -I{} grep -liE "humanizer|bypass|undetect|detector|evade" "{}" 2>/dev/null | head -3)
+  match=$(echo "$src_files" | xargs -I{} grep -liE "humanizer|bypass|undetect|detector|evade" "{}" 2>/dev/null | head -3)
   if [ -n "$match" ]; then
     log "  banned terms found in: $match"
     return 1
@@ -441,12 +451,14 @@ while true; do
   # Run banned-term scan against the diff
   if ! banned_terms_grep; then
     log "  Banned term found — reverting and blocking"
-    git checkout . >>"$LOG" 2>&1
-    git clean -fd >>"$LOG" 2>&1
+    # SAFE REVERT 2026-05-22: previously used `git checkout . && git clean -fd`
+    # which wiped untracked files including plans/STOP-OVERNIGHT.txt.
+    # Now we stash with -u so the work is preserved for forensic review.
+    git stash push -u -m "revert-${ID}-$(date +%s)" >>"$LOG" 2>&1 || true
     git checkout main >>"$LOG" 2>&1
     git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
     update_board_status "$ID" "BLOCKED"
-    append_blocker "$ID" "banned-term-in-diff" "Diff contained one of: humanizer/bypass/undetect/detector/evade"
+    append_blocker "$ID" "banned-term-in-diff" "Diff contained one of: humanizer/bypass/undetect/detector/evade (stashed; run \\`git stash list\\` to inspect)"
     ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
     ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
     sleep "$COOLDOWN_SECONDS"
