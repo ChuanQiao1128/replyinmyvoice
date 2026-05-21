@@ -23,7 +23,8 @@
     "eval:scenarios": "tsx scripts/eval-scenarios.ts",
     "memory:rewrite": "tsx scripts/rewrite-memory-agent.ts",
     "learningops:run": "tsx scripts/learningops-run.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "package:skill": "node scripts/package-skill.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
