@@ -1,0 +1,157 @@
+=== az account show ===
+{
+  "name": "Azure subscription 1",
+  "sub": "685d484b-bddb-4239-a6aa-d7c5e2596c6f"
+}
+
+=== resource group ===
+{
+  "location": "australiaeast",
+  "name": "replyinmyvoice-dev-rg",
+  "state": "Succeeded"
+}
+
+=== all resources in RG ===
+[
+  {
+    "location": "australiaeast",
+    "name": "replyinmyvoice-kv-dev",
+    "type": "Microsoft.KeyVault/vaults"
+  },
+  {
+    "location": "australiaeast",
+    "name": "replyinmyvoice-sql-dev",
+    "type": "Microsoft.Sql/servers"
+  },
+  {
+    "location": "australiaeast",
+    "name": "replyinmyvoice-sql-dev/master",
+    "type": "Microsoft.Sql/servers/databases"
+  },
+  {
+    "location": "australiaeast",
+    "name": "replyinmyvoice-sql-dev/replyinmyvoice-db-dev",
+    "type": "Microsoft.Sql/servers/databases"
+  },
+  {
+    "location": "australiaeast",
+    "name": "replyinmyvoice-sb-dev",
+    "type": "Microsoft.ServiceBus/namespaces"
+  },
+  {
+    "location": "australiaeast",
+    "name": "replyinmyvoice-ai-dev",
+    "type": "Microsoft.Insights/components"
+  },
+  {
+    "location": "global",
+    "name": "Application Insights Smart Detection",
+    "type": "microsoft.insights/actiongroups"
+  },
+  {
+    "location": "australiaeast",
+    "name": "replyinmyvoicefuncdev",
+    "type": "Microsoft.Storage/storageAccounts"
+  },
+  {
+    "location": "australiaeast",
+    "name": "replyinmyvoice-func-dev",
+    "type": "Microsoft.Web/sites"
+  },
+  {
+    "location": "australiaeast",
+    "name": "AustraliaEastLinuxDynamicPlan",
+    "type": "Microsoft.Web/serverFarms"
+  },
+  {
+    "location": "global",
+    "name": "replyinmyvoicecustomers.onmicrosoft.com",
+    "type": "Microsoft.AzureActiveDirectory/ciamDirectories"
+  }
+]
+
+=== sql servers ===
+[
+  {
+    "adminLogin": "rimvadmin",
+    "fqdn": "replyinmyvoice-sql-dev.database.windows.net",
+    "name": "replyinmyvoice-sql-dev",
+    "state": "Ready"
+  }
+]
+
+=== sql databases ===
+[
+  {
+    "name": "replyinmyvoice-db-dev",
+    "sku": "Basic",
+    "status": "Online"
+  },
+  {
+    "name": "master",
+    "sku": "GP_SYSTEM",
+    "status": "Online"
+  }
+]
+
+=== sql firewall rules ===
+[
+  {
+    "end": "0.0.0.0",
+    "name": "AllowAzureServices",
+    "start": "0.0.0.0"
+  },
+  {
+    "end": "122.57.219.111",
+    "name": "AllowLocalDevMachine",
+    "start": "122.57.219.111"
+  }
+]
+
+=== key vault secrets (names only, NEVER values) ===
+[
+  {
+    "created": "2026-05-18T13:03:38+00:00",
+    "enabled": true,
+    "name": "sql-admin-password"
+  },
+  {
+    "created": "2026-05-18T13:03:38+00:00",
+    "enabled": true,
+    "name": "sql-admin-user"
+  }
+]
+
+=== function apps ===
+[
+  {
+    "defaultHostName": "replyinmyvoice-func-dev.azurewebsites.net",
+    "name": "replyinmyvoice-func-dev",
+    "state": "Running"
+  }
+]
+
+=== service bus namespaces ===
+[
+  {
+    "name": "replyinmyvoice-sb-dev",
+    "sku": "Basic",
+    "status": "Active"
+  }
+]
+
+=== storage accounts ===
+[
+  {
+    "kind": "StorageV2",
+    "name": "replyinmyvoicefuncdev",
+    "sku": "Standard_LRS"
+  }
+]
+
+=== app insights ===
+{
+  "kind": "web",
+  "location": "australiaeast",
+  "name": "replyinmyvoice-ai-dev"
+}
