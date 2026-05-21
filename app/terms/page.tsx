@@ -18,8 +18,24 @@ const sections = [
     text: "Naturalness Check percentages are reference signals for comparison. They are not a promise that a message will be judged a certain way by any person or system.",
   },
   {
-    title: "Billing",
-    text: "Paid access is NZD $9/month for 40 successful rewrites per billing month. Subscriptions and payment details are managed through Stripe.",
+    title: "Billing and quota",
+    text: "Paid access is NZD $9 per month for 40 successful rewrites per billing month. Quota resets at the start of each billing period; unused rewrites do not roll over. Subscriptions and payment details are managed through Stripe.",
+  },
+  {
+    title: "Cancellation",
+    text: "You can cancel your subscription at any time from the customer portal. Your paid quota stays active until the end of the current billing period; no partial-month refunds are issued for cancellations.",
+  },
+  {
+    title: "Refunds",
+    text: "If a charge is in error or the service was materially unavailable, contact info@timeawake.co.nz within 14 days and we will work in good faith to resolve it. Nothing in these terms removes rights you may have under the New Zealand Consumer Guarantees Act 1993.",
+  },
+  {
+    title: "Disputes and chargebacks",
+    text: "Please contact us at info@timeawake.co.nz before opening a chargeback so we can investigate. We will respond within 5 business days. If a chargeback is opened, access to paid features may be paused until the matter is resolved.",
+  },
+  {
+    title: "Governing law",
+    text: "These terms are governed by the laws of New Zealand. Any dispute that cannot be resolved by good-faith communication will be handled in the courts of New Zealand. TimeAwake Ltd. is the operator of Reply In My Voice.",
   },
   {
     title: "Content responsibility",
@@ -44,6 +60,7 @@ export default function TermsPage() {
           These MVP terms describe the practical boundaries of using Reply In My
           Voice. They may be refined before a wider public launch.
         </p>
+        <p className="mt-3 text-sm text-ink/55">Effective date: 22 May 2026.</p>
         <div className="mt-10 grid gap-4">
           {sections.map((section) => (
             <article
