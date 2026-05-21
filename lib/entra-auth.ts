@@ -136,7 +136,6 @@ function getSessionSecret(options: { required: false }): string | null;
 function getSessionSecret({ required = true }: { required?: boolean } = {}): string | null {
   const value =
     optionalEnv("AUTH_SESSION_SECRET") ||
-    optionalEnv("CLERK_SECRET_KEY") ||
     optionalEnv("STRIPE_WEBHOOK_SECRET");
 
   if (value) {

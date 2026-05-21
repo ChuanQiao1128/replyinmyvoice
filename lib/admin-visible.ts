@@ -2,16 +2,16 @@ import { optionalEnv } from "./env";
 import { isAdminIdentityAllowed } from "./admin-auth";
 
 export function shouldShowAdminEntry({
-  clerkUserId,
+  userId,
   email,
 }: {
-  clerkUserId?: string | null;
+  userId?: string | null;
   email?: string | null;
 }) {
   return isAdminIdentityAllowed({
-    clerkUserId,
+    userId,
     email,
     adminEmails: optionalEnv("ADMIN_EMAILS", ""),
-    adminClerkUserIds: optionalEnv("ADMIN_CLERK_USER_IDS", ""),
+    adminUserIds: optionalEnv("ADMIN_USER_IDS", ""),
   });
 }

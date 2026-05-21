@@ -291,3 +291,7 @@ verification in headless automation. The backend paid-path verification used
 Stripe sandbox API subscription creation for the same real Clerk user/customer
 so webhook handling, DB subscription state, and paid rewrite behavior were still
 verified end to end.
+
+## Clerk removal — rollback notes (M1-012)
+
+The legacy `CLERK_*` env variables (`ADMIN_CLERK_USER_IDS`, `CLERK_SECRET_KEY` fallback) were removed in M1-012. The User model's `clerkUserId` field is still in the Prisma schema and will be renamed to `entra_user_id` in M1-007. If rollback is needed, restore the legacy env names from commit ba8127a.
