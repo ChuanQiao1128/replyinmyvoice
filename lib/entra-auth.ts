@@ -29,7 +29,6 @@ export type EntraAuthorizeUrlInput = {
   state: string;
   nonce: string;
   codeVerifier: string;
-  domainHint?: "google";
   prompt?: "select_account";
 };
 
@@ -165,10 +164,6 @@ export async function buildEntraAuthorizeUrl(input: EntraAuthorizeUrlInput) {
   url.searchParams.set("code_challenge", codeChallenge);
   url.searchParams.set("code_challenge_method", "S256");
 
-  if (input.domainHint) {
-    url.searchParams.set("domain_hint", input.domainHint);
-  }
-
   if (input.prompt) {
     url.searchParams.set("prompt", input.prompt);
   }
@@ -219,7 +214,6 @@ export async function createLoginRedirectUrl(redirectTo = "/app") {
     state,
     nonce,
     codeVerifier,
-    domainHint: "google",
     prompt: "select_account",
   });
 }

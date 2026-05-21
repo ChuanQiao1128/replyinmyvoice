@@ -8,7 +8,7 @@ import {
 } from "../../lib/entra-auth";
 
 describe("Entra auth helpers", () => {
-  it("builds a Google-directed authorization URL with the production callback", async () => {
+  it("builds an Entra authorization URL without a brittle provider hint", async () => {
     const url = await buildEntraAuthorizeUrl({
       authority: "https://replyinmyvoicecustomers.ciamlogin.com/tenant/v2.0",
       clientId: "frontend-client",
@@ -16,7 +16,6 @@ describe("Entra auth helpers", () => {
       state: "state-test",
       nonce: "nonce-test",
       codeVerifier: "verifier-test",
-      domainHint: "google",
       prompt: "select_account",
     });
 
@@ -26,7 +25,7 @@ describe("Entra auth helpers", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("https://replyinmyvoice.com/auth/callback");
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("scope")).toBe("openid profile email");
-    expect(url.searchParams.get("domain_hint")).toBe("google");
+    expect(url.searchParams.has("domain_hint")).toBe(false);
     expect(url.searchParams.get("prompt")).toBe("select_account");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("code_challenge")).toBeTruthy();
