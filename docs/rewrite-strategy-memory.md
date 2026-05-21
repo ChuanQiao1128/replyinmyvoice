@@ -609,3 +609,31 @@ Required regression:
 Implementation plan:
 
 - `docs/superpowers/plans/2026-05-21-adaptive-gate-calibrator.md`
+
+## 2026-05-21 Reviewed Fact Ledger Before Rewrite
+
+Observed failure:
+
+- Manual website QA repeatedly hit `Facts need another pass` even when Naturalness Check improved.
+- Some failures came from bad or incomplete extracted facts entering the generator and later gates as if they were authoritative.
+
+Root cause:
+
+- The first LLM fact extractor can miss short but critical anchors such as money, seat counts, timelines, delivery states, and policy constraints.
+- It can also over-extract unsupported hard facts such as refund guarantees, lost-package claims, or generic sentence openers treated as people.
+- Downstream rewrite/gate logic was trying to repair candidates after the fact instead of first reviewing the fact ledger itself.
+
+Promoted strategy:
+
+- Add a reviewed fact ledger between `extractFacts` and scenario/candidate generation.
+- Merge deterministic anchors from user-provided text into `facts_that_must_not_change` before any rewrite prompt runs.
+- Reject unsupported hard extracted facts before they can steer generation.
+- Treat generic support-team signoffs and polite formula phrases as soft/footer text rather than locked business facts.
+- Filter generic placeholder people such as `There`, `This`, `We`, and `You` out of `people_mentioned`.
+
+Required regression:
+
+- Package-delay support drafts must add delivery anchors such as fulfillment center, carrier, local distribution facility, still-in-transit state, not-lost/returned status, update window, no-action-required state, and carrier follow-up investigation.
+- Billing/proration drafts must promote money, seat counts, and base-plan constraints into the hard fact ledger.
+- Unsupported hard facts such as `full refund available` or `The package is lost` must be rejected when the source text does not support them.
+- Candidate generation must receive the reviewed facts, not the raw extraction result.

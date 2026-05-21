@@ -16,6 +16,7 @@ import {
   reviewerScorePasses,
 } from "./checks";
 import { getFactReconstructConfig } from "./config";
+import { reviewExtractedFacts } from "./fact-ledger";
 import { analyzeRewriteInput } from "./input-analyzer";
 import {
   classifyScenario,
@@ -583,13 +584,16 @@ export async function rewriteWithFactReconstruct(
     });
   }
 
-  const facts = await extractFacts(input, config, telemetry);
+  const extractedFacts = await extractFacts(input, config, telemetry);
+  const factLedger = reviewExtractedFacts(input, extractedFacts);
+  const facts = factLedger.facts;
   const scenario = await classifyScenario(facts, config, telemetry);
   const styleCard = getStyleCard(scenario);
   const diagnosisTags = diagnosisTagsForScenario(scenario.domain);
   const rewritePlanSummary = [
     `Adaptive rewrite route ${initialDecision.strategy} using ${styleCard.style_card_id}.`,
     `Risk ${analysis.riskLevel}; structure ${analysis.structureRisk}; factual density ${analysis.factualDensity}.`,
+    `Fact ledger added ${factLedger.addedAnchors.length} deterministic anchors and rejected ${factLedger.rejectedFacts.length} unsupported extracted facts.`,
     `Budget ${budget.maxAttempts} attempts; strong model ${budget.allowStrongModel ? "allowed once" : "not allowed"}.`,
   ].join(" ");
 

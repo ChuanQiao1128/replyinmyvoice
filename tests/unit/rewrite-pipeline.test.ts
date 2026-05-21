@@ -227,6 +227,63 @@ describe("rewriteWithFactReconstruct", () => {
     expect(mocks.escalateCandidate).not.toHaveBeenCalled();
   });
 
+  it("reviews extracted facts before scenario routing and candidate generation", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const billingInput: RewriteRequestInput = {
+      ...input,
+      roughDraftReply:
+        "Hi Priya, the dashboard shows 18 active seats instead of 15 regular seats. The extra NZD $126 appears to be prorated, and the base plan has not changed.",
+    };
+    const billingFacts: ExtractedFacts = {
+      ...facts,
+      recipient_name: "Priya",
+      people_mentioned: ["There", "Priya"],
+      key_facts: ["The invoice is higher."],
+      facts_that_must_not_change: [
+        "full refund available",
+        "base plan has not changed",
+      ],
+    };
+    const billingCandidates: CandidateSet = {
+      candidate_a_concise:
+        "Hi Priya,\n\nThe dashboard shows 18 active seats instead of the 15 regular seats. The extra NZD $126 appears to be prorated, and the base plan has not changed.",
+      candidate_b_warm:
+        "Hi Priya,\n\nThe dashboard shows 18 active seats instead of the 15 regular seats. The extra NZD $126 appears to be prorated, and the base plan has not changed.",
+      candidate_c_natural:
+        "Hi Priya,\n\nThe dashboard shows 18 active seats instead of the 15 regular seats. The extra NZD $126 appears to be prorated, and the base plan has not changed.",
+    };
+    const billingReview: ReviewResult = {
+      ...review,
+      best_candidate_key: "candidate_c_natural",
+    };
+    mocks.extractFacts.mockResolvedValue(billingFacts);
+    mocks.generateCandidates.mockResolvedValue(billingCandidates);
+    mocks.reviewCandidates.mockResolvedValue(billingReview);
+    mocks.finalizeCandidate.mockResolvedValue(
+      billingCandidates.candidate_c_natural,
+    );
+    mocks.measureWritingSignal
+      .mockResolvedValueOnce({ aiLikePercent: 89 })
+      .mockResolvedValueOnce({ aiLikePercent: 5 });
+
+    const result = await rewriteWithFactReconstruct(billingInput);
+    const generatedFacts = mocks.generateCandidates.mock.calls[0][0]
+      .facts as ExtractedFacts;
+
+    expect(result.optimization.selectionStatus).toBe("passed");
+    expect(generatedFacts.people_mentioned).toContain("Priya");
+    expect(generatedFacts.people_mentioned).not.toContain("There");
+    expect(generatedFacts.facts_that_must_not_change).toEqual(
+      expect.arrayContaining(["18 active seats", "15 regular seats", "NZD $126"]),
+    );
+    expect(generatedFacts.facts_that_must_not_change).not.toContain(
+      "full refund available",
+    );
+    expect(result.optimization.rewritePlanSummary).toContain("Fact ledger added");
+  });
+
   it("uses strong escalation once when the first final stays above the threshold", async () => {
     const { rewriteWithFactReconstruct } = await import(
       "../../lib/rewrite-pipeline/pipeline"
