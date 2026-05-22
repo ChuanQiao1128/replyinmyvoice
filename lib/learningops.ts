@@ -4,7 +4,7 @@ import { proposeStrategyCandidate } from "./learningops/candidates";
 export type LearningPromotionDecision =
   | "digest_only"
   | "docs_only"
-  | "promoted_candidate"
+  | "promoted"
   | "blocked";
 
 export type LearningPromotionRecommendation =
@@ -290,7 +290,7 @@ export function analyzeLearningSamples(
 
   let promotionDecision: LearningPromotionDecision = "digest_only";
   if (strategyCandidates.length > 0) {
-    promotionDecision = "promoted_candidate";
+    promotionDecision = "promoted";
   } else if (
     findings.some(
       (finding) =>

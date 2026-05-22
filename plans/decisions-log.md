@@ -159,3 +159,7 @@ Each overnight Claude trigger appends here.
 2026-05-22T12:18:09+12:00 | M2.5-004 | started | M2.5-004 Strategy candidate generator: cluster → prompt patch
 2026-05-22T12:27:01+12:00 | M2.5-004 | done | Adds structured LearningOps strategy candidate patches from diagnosis clusters. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/176)
 2026-05-22T12:27:17+12:00 | M2.5-005 | started | M2.5-005 Auto-draft PR from promotable StrategyCandidate
+2026-05-22T12:46:34+12:00 | M2.5-006 | done | Adds a tested PR scenario evaluation regression guard comparing candidate results against latest main. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/178)
+2026-05-22T12:46:50+12:00 | M2.5-007 | started | M2.5-007 Scheduled LearningOps run (Cloudflare Cron Trigger)
+2026-05-22 | M2.5-002-infra | eval-scenarios.ts adds --corpus/--output/--progress/--limit/--resume/--time-budget-ms; soft-limit + hard-time-budget auto-adapts to per-case provider latency; SIGKILL-safe via per-case atomic JSON writes | needed because single end-of-run writeFile produced zero output on 600s timeout while burning DeepSeek budget; auto-throttle removes need for external --limit tuning
+2026-05-22T12:57:09+12:00 | M2.5-008 | started | M2.5-008 Promotion approval UX in /admin/learning

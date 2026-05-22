@@ -1,11 +1,14 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "replyinmyvoice-app",
-  "main": ".open-next/worker.js",
+  "main": "worker.js",
   "compatibility_date": "2026-05-17",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": true,
+  "triggers": {
+    "crons": ["0 13 * * *"]
+  },
   "find_additional_modules": true,
   "rules": [
     {
