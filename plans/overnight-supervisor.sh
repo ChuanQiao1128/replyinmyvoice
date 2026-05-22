@@ -337,7 +337,7 @@ classify_needs_human_status() {
     return
   fi
 
-  if printf "%s" "$summary_lc" | grep -Eq "sandbox|eperm|browser|server startup|non-sandboxed"; then
+  if printf "%s" "$summary_lc" | grep -Eq "sandbox|eperm|browser|server startup|non-sandboxed|socket permission|named-pipe"; then
     echo "BLOCKED-AUTONOMY"
     return
   fi
@@ -416,7 +416,7 @@ worktree_has_changes() {
     [ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]
 }
 
-worktree_has_non_runtime_changes() {
+supervisor_non_runtime_status_paths() {
   python3 - <<'PY'
 from __future__ import annotations
 
@@ -430,6 +430,7 @@ SUPERVISOR_RUNTIME_FILES = {
     "plans/decisions-log.md",
     "plans/issue-board.md",
     "plans/overnight-progress.md",
+    "plans/STOP-OVERNIGHT.txt",
 }
 
 SUPERVISOR_RUNTIME_PREFIXES = (
@@ -450,34 +451,47 @@ def is_supervisor_runtime_file(path: str) -> bool:
     return path in SUPERVISOR_RUNTIME_FILES or path.startswith(SUPERVISOR_RUNTIME_PREFIXES)
 
 
-try:
-    result = subprocess.run(
-        ["git", "status", "--porcelain=v1", "-uall"],
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-    )
-except Exception:
-    raise SystemExit(0)
+result = subprocess.run(
+    ["git", "status", "--porcelain=v1", "-uall"],
+    check=True,
+    text=True,
+    stdout=subprocess.PIPE,
+)
 
 for raw in result.stdout.splitlines():
     if raw and not is_supervisor_runtime_file(status_path(raw)):
-        raise SystemExit(0)
-
-raise SystemExit(1)
+        print(status_path(raw))
 PY
+}
+
+worktree_has_non_runtime_changes() {
+  [ -n "$(supervisor_non_runtime_status_paths)" ]
 }
 
 stash_dirty_worktree() {
   local label=$1
   if worktree_has_changes; then
+    local non_runtime_paths=()
+    local path
+    while IFS= read -r path; do
+      if [ -n "$path" ]; then
+        non_runtime_paths+=("$path")
+      fi
+    done < <(supervisor_non_runtime_status_paths)
+
     if ! worktree_has_non_runtime_changes; then
       log "  Dirty worktree contains only supervisor runtime files; leaving them in place ($label)"
       return 0
     fi
-    log "  Preserving dirty worktree in stash ($label)"
+
+    if [ "${#non_runtime_paths[@]}" -eq 0 ]; then
+      log "  Dirty worktree contains only supervisor runtime files; leaving them in place ($label)"
+      return 0
+    fi
+
+    log "  Preserving non-runtime dirty worktree paths in stash ($label)"
     clear_stale_git_index_lock || return 1
-    git stash push -u -m "overnight-preserve-${label}-$(date +%s)" >>"$LOG" 2>&1
+    git stash push -u -m "overnight-preserve-${label}-$(date +%s)" -- "${non_runtime_paths[@]}" >>"$LOG" 2>&1
   fi
 }
 
@@ -498,6 +512,7 @@ SUPERVISOR_RUNTIME_FILES = {
     "plans/decisions-log.md",
     "plans/issue-board.md",
     "plans/overnight-progress.md",
+    "plans/STOP-OVERNIGHT.txt",
 }
 
 SUPERVISOR_RUNTIME_PREFIXES = (
@@ -794,7 +809,7 @@ process_repair_inbox_once() {
   if [ ! -f plans/task-status.json ]; then
     log "  ERROR: repair codex did not produce task-status.json (exit=$cdx_exit)"
     update_repair_item_status "$header" "not_actionable" "codex-no-status during repair; log plans/codex-exec-${id}.log"
-    git stash push -u -m "repair-no-status-${id}-$(date +%s)" >>"$LOG" 2>&1 || true
+    stash_dirty_worktree "repair-no-status-${id}" >>"$LOG" 2>&1 || true
     git checkout main >>"$LOG" 2>&1
     git branch -D "$branch" >>"$LOG" 2>&1 || true
     REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
@@ -842,7 +857,7 @@ process_repair_inbox_once() {
 
   if ! banned_terms_grep; then
     log "  Banned term found in repair — stashing and blocking"
-    git stash push -u -m "repair-${id}-$(date +%s)" >>"$LOG" 2>&1 || true
+    stash_dirty_worktree "repair-banned-term-${id}" >>"$LOG" 2>&1 || true
     git checkout main >>"$LOG" 2>&1
     git branch -D "$branch" >>"$LOG" 2>&1 || true
     update_repair_item_status "$header" "not_actionable" "banned term found in repair diff; changes stashed"
@@ -1192,7 +1207,7 @@ while true; do
 
   if [ ! -f plans/task-status.json ]; then
     log "  ERROR: codex did not produce task-status.json (exit=$cdx_exit)"
-    git stash push -u -m "no-status-${ID}-$(date +%s)" >>"$LOG" 2>&1 || true
+    stash_dirty_worktree "no-status-${ID}" >>"$LOG" 2>&1 || true
     persist_issue_terminal_state_on_main "$ID" "BLOCKED" "codex-no-status" "codex exec did not write plans/task-status.json. Log: plans/codex-exec-${ID}.log" || true
     append_repair_inbox_item \
       "$ID codex-no-status" \
@@ -1268,8 +1283,9 @@ while true; do
     log "  Banned term found — reverting and blocking"
     # SAFE REVERT 2026-05-22: previously used `git checkout . && git clean -fd`
     # which wiped untracked files including plans/STOP-OVERNIGHT.txt.
-    # Now we stash with -u so the work is preserved for forensic review.
-    git stash push -u -m "revert-${ID}-$(date +%s)" >>"$LOG" 2>&1 || true
+    # Now we stash non-runtime work so source diffs are preserved for forensic
+    # review without hiding board/inbox/STOP ledger state from main.
+    stash_dirty_worktree "revert-${ID}" >>"$LOG" 2>&1 || true
     git checkout main >>"$LOG" 2>&1
     git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
     update_board_status "$ID" "BLOCKED"

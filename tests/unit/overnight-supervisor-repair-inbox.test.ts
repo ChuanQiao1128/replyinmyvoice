@@ -86,10 +86,10 @@ describe("overnight supervisor repair inbox orchestration", () => {
     );
 
     expect(script.slice(repairNoStatus, repairStatusRead)).toContain(
-      'git stash push -u -m "repair-no-status-${id}-$(date +%s)"',
+      'stash_dirty_worktree "repair-no-status-${id}"',
     );
     expect(script.slice(issueNoStatus, issueStatusRead)).toContain(
-      'git stash push -u -m "no-status-${ID}-$(date +%s)"',
+      'stash_dirty_worktree "no-status-${ID}"',
     );
   });
 
@@ -206,6 +206,8 @@ describe("overnight supervisor repair inbox orchestration", () => {
     expect(classifier).toContain("eperm");
     expect(classifier).toContain("browser");
     expect(classifier).toContain("server startup");
+    expect(classifier).toContain("socket permission");
+    expect(classifier).toContain("named-pipe");
     expect(classifier).toContain("BLOCKED-AUTONOMY");
   });
 
@@ -241,13 +243,14 @@ describe("overnight supervisor repair inbox orchestration", () => {
   it("does not stash supervisor-only runtime ledger changes", () => {
     const script = supervisorScript();
 
-    expect(script).toContain("worktree_has_non_runtime_changes()");
+    expect(script).toContain("supervisor_non_runtime_status_paths()");
     expect(script).toContain(
       "Dirty worktree contains only supervisor runtime files; leaving them in place",
     );
     expect(script).toContain('"plans/issue-board.md"');
     expect(script).toContain('"plans/overnight-progress.md"');
     expect(script).toContain('"plans/codex-worker-inbox.md"');
+    expect(script).toContain('"plans/STOP-OVERNIGHT.txt"');
     expect(script).toContain("if ! worktree_has_non_runtime_changes; then");
 
     const runtimeCheck = script.indexOf("if ! worktree_has_non_runtime_changes; then");
@@ -255,6 +258,40 @@ describe("overnight supervisor repair inbox orchestration", () => {
 
     expect(runtimeCheck).toBeGreaterThanOrEqual(0);
     expect(stashPush).toBeGreaterThan(runtimeCheck);
+  });
+
+  it("stashes only non-runtime dirty paths so ledgers remain visible on main", () => {
+    const script = supervisorScript();
+
+    const stashFunction = script.slice(
+      script.indexOf("stash_dirty_worktree()"),
+      script.indexOf("verify_status_declares_all_changes()"),
+    );
+
+    expect(stashFunction).toContain("local non_runtime_paths=()");
+    expect(stashFunction).toContain("while IFS= read -r path; do");
+    expect(stashFunction).toContain('if [ "${#non_runtime_paths[@]}" -eq 0 ]; then');
+    expect(stashFunction).toContain(
+      'git stash push -u -m "overnight-preserve-${label}-$(date +%s)" -- "${non_runtime_paths[@]}"',
+    );
+  });
+
+  it("routes all stash operations through runtime-aware preservation", () => {
+    const script = supervisorScript();
+    const helperStart = script.indexOf("stash_dirty_worktree()");
+    const helperEnd = script.indexOf("verify_status_declares_all_changes()", helperStart);
+
+    expect(helperStart).toBeGreaterThanOrEqual(0);
+    expect(helperEnd).toBeGreaterThan(helperStart);
+
+    const rawStashIndexes = Array.from(script.matchAll(/git stash push/g)).map(
+      (match) => match.index ?? -1,
+    );
+
+    expect(rawStashIndexes.length).toBeGreaterThan(0);
+    expect(
+      rawStashIndexes.every((index) => index >= helperStart && index < helperEnd),
+    ).toBe(true);
   });
 
   it("clears stale git index locks before stash operations", () => {
