@@ -1,15 +1,15 @@
-# Issue M2.5-005
+# Issue M2.5-008
 
-Title: M2.5-005 Auto-draft PR from promotable StrategyCandidate
+Title: M2.5-008 Promotion approval UX in /admin/learning
 Milestone: M2.5-Learning
-GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/90
+GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/96
 
 ## Brief
 
-Scheduled job (M2.5-007) calls a codex MCP session with the StrategyCandidate brief to draft a PR. Codex modifies the relevant prompt/scenario file, adds a regression test, updates `docs/rewrite-strategy-memory.md`. Opens PR, NEVER auto-merges.
+`app/admin/learning/page.tsx`: list of recent `LearningRun` rows with status, finding counts, PR links if any. Per-finding view: cluster details, evidence cases, proposed candidate. Admin can mark candidate as `approved` / `needs_revision` / `rejected`. Updates `StrategyCandidate.status` in DB.
 
 ---
-Detailed brief will be written at `plans/issues/M2.5-005.md` when this milestone starts.
+Detailed brief will be written at `plans/issues/M2.5-008.md` when this milestone starts.
 Source roadmap: `plans/commercialization-roadmap.md`.
 
 ## Repository conventions

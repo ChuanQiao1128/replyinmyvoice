@@ -690,3 +690,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/task-status.json`; `docs/skill-run-log.md`.
 - Verification evidence: `npm run lint`, `npm run typecheck`, `npm run test`, and the scoped banned-term scan over `app components public lib` passed.
 - Limitations: No GitHub, git, Codex MCP, deployment, provider-backed evaluation, or live database run was executed; the implementation intentionally stops at draft promotion-task preparation in this environment.
+
+### 2026-05-22 - state-machine-modeling - M2.5-008 PR link label follow-up
+
+- Agent: Codex
+- Trigger: The task still touched the persisted `StrategyCandidate.status` review lifecycle while tightening the admin candidate review display.
+- Action: Opened and followed the skill; confirmed the state model remains unchanged. States: `proposed`, `approved`, `needs_revision`, `rejected`, plus existing historical display states. Events: admin review submit for `approved`, `needs_revision`, or `rejected`. Allowed transitions: any current candidate display state can be set to one of the three admin review states by an admin server action. Illegal transitions: blank candidate id or unsupported status is rejected before SQL writes. Invariants: only admin identities can mutate review status, the update is scoped to one candidate id, and display-only linked-work labels do not alter lifecycle state.
+- Output artifacts: `lib/admin/learning.ts`; `app/admin/learning/page.tsx`; `tests/unit/admin-learning.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: The focused admin-learning test was red for missing PR label metadata, then passed after implementation. `npm run lint`, `npm run typecheck`, and `npm run test` passed.
+- Limitations: The database column remains free text; no live admin mutation was run.
+
+### 2026-05-22 - data-module-review - M2.5-008 linked work metadata
+
+- Agent: Codex
+- Trigger: The task reads persisted `StrategyCandidate.linkedCommitHash` values into the admin LearningOps review UI.
+- Action: Opened and followed the skill; reviewed `prisma/schema.prisma`, `lib/admin/learning.ts`, and the admin unit tests. Findings: no new migration needed; the change derives a display label from the existing nullable linked-work field and does not widen the mutation query. Open questions: none for this scope. Suggested tests: cover GitHub pull-request URL labeling and keep the existing scoped status-update SQL test.
+- Output artifacts: `lib/admin/learning.ts`; `tests/unit/admin-learning.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed and reported existing broad persistence signals outside this change. Focused and full Vitest suites passed.
+- Limitations: No production database rows were read or updated.
+
+### 2026-05-22 - ui-browser-testing - M2.5-008 admin linked work label
+
+- Agent: Codex
+- Trigger: The task changed visible copy in the `/admin/learning` candidate review panel.
+- Action: Opened and followed the skill; chose a focused unit-level UI data contract test because the admin page is auth-gated and data-backed. Attempted local browser verification by starting `npm run dev -- -H 127.0.0.1 -p 3010`.
+- Output artifacts: `app/admin/learning/page.tsx`; `tests/unit/admin-learning.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: The dev server bind attempt failed with `EPERM` before a browser page could load. `npm run lint`, `npm run typecheck`, and `npm run test` passed.
+- Limitations: No authenticated browser screenshot was captured in this sandbox; the PR-label behavior is covered by `tests/unit/admin-learning.test.ts`.

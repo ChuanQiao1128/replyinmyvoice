@@ -103,6 +103,60 @@ describe("admin learning dashboard data", () => {
     });
   });
 
+  it("labels linked GitHub pull requests for candidate review", async () => {
+    const pullRequestUrl =
+      "https://github.com/ChuanQiao1128/replyinmyvoice/pull/184";
+    const { sql } = createSqlClient([
+      {
+        id: "run_pr",
+        startedAt: "2026-05-22T09:00:00.000Z",
+        finishedAt: null,
+        status: "promoted",
+        sampleCount: 1,
+        measuredCount: 1,
+        findingCount: 1,
+        candidateCount: 1,
+        promotionDecision: "promoted",
+        validationStatus: "passed",
+        digestPath: null,
+        errorMessage: null,
+        findingId: "finding_pr",
+        findingScenario: "customer_support",
+        commonTone: "Warm",
+        primaryDiagnosisTag: "support_template_voice",
+        failureType: "diagnosis_tag_cluster",
+        diagnosisTags: JSON.stringify(["support_template_voice"]),
+        findingEvidenceCount: 2,
+        severity: "medium",
+        recommendation: "Review repeated failed samples.",
+        promotionRecommendation: "code-change",
+        sampleRefs: JSON.stringify(["case_pr"]),
+        findingCreatedAt: "2026-05-22T09:01:00.000Z",
+        candidateId: "cand_pr",
+        title: "Patch support policy structure",
+        candidateScenario: "customer_support",
+        patchTarget: "generation_prompt",
+        patchAction: "add_guardrail",
+        patchText: "Group related facts.",
+        proposedChangeSummary: "Adds support-policy structure guidance.",
+        riskLevel: "medium",
+        candidateStatus: "approved",
+        requiredRegressionTest: "Add a support policy regression case.",
+        requiredEval: "Run focused customer-support eval.",
+        candidateEvidenceCount: 2,
+        linkedCommitHash: pullRequestUrl,
+        candidateCreatedAt: "2026-05-22T09:02:00.000Z",
+      },
+    ]);
+
+    const runs = await getRecentLearningRuns({ sql });
+
+    expect(runs[0]?.findings[0]?.candidates[0]).toMatchObject({
+      linkedWorkHref: pullRequestUrl,
+      linkedWorkLabel: "Pull request",
+    });
+  });
+
   it("only accepts admin review statuses for candidate updates", () => {
     expect(parseStrategyCandidateReviewStatus("approved")).toBe("approved");
     expect(parseStrategyCandidateReviewStatus("needs_revision")).toBe(
