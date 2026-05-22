@@ -4,8 +4,8 @@ export type ScenarioCaseResult = {
 };
 
 export type ParsedScenarioEvaluationResults = {
-  averageSignalReductionPoints: number;
-  below50Percent: number;
+  averageSignalReductionPoints: number | null;
+  below50Percent: number | null;
   cases: Map<string, ScenarioCaseResult>;
 };
 
@@ -50,12 +50,27 @@ export function compareScenarioEvaluationResults({
 }: CompareInput): ScenarioEvaluationComparison {
   const base = parseScenarioEvaluationResults(baseMarkdown);
   const candidate = parseScenarioEvaluationResults(candidateMarkdown);
-  const averageSignalReductionDrop =
-    base.averageSignalReductionPoints - candidate.averageSignalReductionPoints;
-  const below50Drop = base.below50Percent - candidate.below50Percent;
+  const averageSignalReductionDrop = calculateDrop(
+    base.averageSignalReductionPoints,
+    candidate.averageSignalReductionPoints,
+  );
+  const below50Drop = calculateDrop(base.below50Percent, candidate.below50Percent);
   const failures: string[] = [];
 
-  if (averageSignalReductionDrop >= averageDropThresholdPoints - FLOAT_TOLERANCE) {
+  if (
+    base.averageSignalReductionPoints !== null &&
+    candidate.averageSignalReductionPoints === null
+  ) {
+    failures.push(
+      `Average signal reduction metric became unavailable: main ${formatPoints(
+        base.averageSignalReductionPoints,
+      )}, candidate unavailable.`,
+    );
+  } else if (
+    base.averageSignalReductionPoints !== null &&
+    candidate.averageSignalReductionPoints !== null &&
+    averageSignalReductionDrop >= averageDropThresholdPoints - FLOAT_TOLERANCE
+  ) {
     failures.push(
       `Average signal reduction dropped by ${formatPoints(
         averageSignalReductionDrop,
@@ -65,7 +80,17 @@ export function compareScenarioEvaluationResults({
     );
   }
 
-  if (below50Drop >= below50DropThresholdPoints - FLOAT_TOLERANCE) {
+  if (base.below50Percent !== null && candidate.below50Percent === null) {
+    failures.push(
+      `Below-50 metric became unavailable: main ${formatPoints(
+        base.below50Percent,
+      )}%, candidate unavailable.`,
+    );
+  } else if (
+    base.below50Percent !== null &&
+    candidate.below50Percent !== null &&
+    below50Drop >= below50DropThresholdPoints - FLOAT_TOLERANCE
+  ) {
     failures.push(
       `Below-50 rate dropped by ${formatPoints(
         below50Drop,
@@ -104,7 +129,14 @@ export function compareScenarioEvaluationResults({
   };
 }
 
-function parseAverageSignalReduction(markdown: string): number {
+function parseAverageSignalReduction(markdown: string): number | null {
+  const unavailableMatch = markdown.match(
+    /^Average AI-like signal (?:drop|reduction):\s*unavailable\s*$/im,
+  );
+  if (unavailableMatch) {
+    return null;
+  }
+
   const match = markdown.match(
     /^Average AI-like signal (?:drop|reduction):\s*(-?\d+(?:\.\d+)?)\s*(?:pts?|points?)\s*$/im,
   );
@@ -116,7 +148,7 @@ function parseAverageSignalReduction(markdown: string): number {
   return Number(match[1]);
 }
 
-function parseBelow50Percent(markdown: string): number {
+function parseBelow50Percent(markdown: string): number | null {
   const match = markdown.match(
     /^Rewrite(?:s)? below 50% AI-like signal:\s*(\d+)\s*\/\s*(\d+)\s*$/im,
   );
@@ -129,10 +161,21 @@ function parseBelow50Percent(markdown: string): number {
   const measuredCount = Number(match[2]);
 
   if (measuredCount <= 0) {
+    if (below50Count === 0) {
+      return null;
+    }
     throw new Error("Rewrite below-50 AI-like signal metric has zero total cases.");
   }
 
   return (below50Count / measuredCount) * 100;
+}
+
+function calculateDrop(baseValue: number | null, candidateValue: number | null): number {
+  if (baseValue === null || candidateValue === null) {
+    return 0;
+  }
+
+  return baseValue - candidateValue;
 }
 
 function parseCases(markdown: string): Map<string, ScenarioCaseResult> {

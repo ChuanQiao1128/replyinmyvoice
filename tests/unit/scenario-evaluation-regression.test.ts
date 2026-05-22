@@ -106,4 +106,41 @@ describe("scenario evaluation regression guard", () => {
       },
     });
   });
+
+  it("passes when both base and candidate have unavailable signal metrics", () => {
+    const unavailableMarkdown = baseMarkdown
+      .replace("Average AI-like signal drop: 62 pts", "Average AI-like signal drop: unavailable")
+      .replace("Rewrite below 50% AI-like signal: 10/10", "Rewrite below 50% AI-like signal: 0/0");
+
+    const result = compareScenarioEvaluationResults({
+      baseMarkdown: unavailableMarkdown,
+      candidateMarkdown: unavailableMarkdown,
+    });
+
+    expect(result).toEqual({
+      passed: true,
+      failures: [],
+      summary: {
+        averageSignalReductionDrop: 0,
+        below50Drop: 0,
+      },
+    });
+  });
+
+  it("fails when a measured base loses signal metrics in the candidate", () => {
+    const unavailableCandidateMarkdown = baseMarkdown
+      .replace("Average AI-like signal drop: 62 pts", "Average AI-like signal drop: unavailable")
+      .replace("Rewrite below 50% AI-like signal: 10/10", "Rewrite below 50% AI-like signal: 0/0");
+
+    const result = compareScenarioEvaluationResults({
+      baseMarkdown,
+      candidateMarkdown: unavailableCandidateMarkdown,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toEqual([
+      "Average signal reduction metric became unavailable: main 62.00, candidate unavailable.",
+      "Below-50 metric became unavailable: main 100.00%, candidate unavailable.",
+    ]);
+  });
 });
