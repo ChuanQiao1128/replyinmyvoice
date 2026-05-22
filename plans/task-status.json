@@ -1,13 +1,10 @@
 {
-  "issue_id": "M2.5-005",
-  "branch": "chore/M2.5-005",
+  "issue_id": "M2.5-008",
+  "branch": "chore/M2.5-008",
   "files_changed": [
-    "lib/learningops/promotion-brief.ts",
-    "lib/learningops/run.ts",
-    "scripts/learningops-run.ts",
-    "tests/unit/learningops-promotion-brief.test.ts",
-    "tests/unit/learningops-run.test.ts",
-    "docs/rewrite-strategy-memory.md",
+    "app/admin/learning/page.tsx",
+    "lib/admin/learning.ts",
+    "tests/unit/admin-learning.test.ts",
     "docs/skill-run-log.md",
     "plans/task-status.json"
   ],
@@ -16,7 +13,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Added LearningOps promotion handoff that turns promotable StrategyCandidate rows into safe draft-PR Codex tasks.",
-  "title": "feat: add LearningOps promotion handoff",
+  "summary": "Added explicit pull request labels for LearningOps strategy candidate linked work.",
+  "title": "feat: label LearningOps PR links",
   "next_action": "ready_to_commit"
 }

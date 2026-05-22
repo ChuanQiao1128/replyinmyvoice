@@ -166,3 +166,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T13:12:08+12:00 | M2.5-002 | started | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md
 2026-05-22T13:16:54+12:00 | M2.5-009 | started | M2.5-009 Canary deploy for new strategy
 2026-05-22T15:14:40+12:00 | M2.5-005 | started | M2.5-005 Auto-draft PR from promotable StrategyCandidate
+2026-05-22T15:20:12+12:00 | M2.5-005 | done | Added LearningOps promotion handoff that turns promotable StrategyCandidate rows into safe draft-PR Codex tasks. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/184)
+2026-05-22T15:20:27+12:00 | M2.5-008 | started | M2.5-008 Promotion approval UX in /admin/learning

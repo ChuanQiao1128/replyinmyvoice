@@ -183,7 +183,7 @@ function CandidatePanel({ candidate }: { candidate: AdminStrategyCandidate }) {
             rel="noreferrer"
             target="_blank"
           >
-            Linked work
+            {candidate.linkedWorkLabel ?? "Linked work"}
             <ExternalLink aria-hidden="true" className="h-4 w-4" />
           </a>
         ) : (

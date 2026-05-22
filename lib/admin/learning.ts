@@ -22,6 +22,7 @@ export type AdminStrategyCandidate = {
   evidenceCount: number;
   linkedCommitHash: string | null;
   linkedWorkHref: string | null;
+  linkedWorkLabel: string | null;
   createdAt: Date;
 };
 
@@ -108,6 +109,30 @@ function linkedWorkHref(value: string | null) {
 
   if (/^[a-f0-9]{7,40}$/i.test(value)) {
     return `https://github.com/ChuanQiao1128/replyinmyvoice/commit/${value}`;
+  }
+
+  return null;
+}
+
+function linkedWorkLabel(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (/github\.com\/[^/]+\/[^/]+\/pull\/\d+/i.test(value)) {
+    return "Pull request";
+  }
+
+  if (/github\.com\/[^/]+\/[^/]+\/commit\/[a-f0-9]{7,40}/i.test(value)) {
+    return "Commit";
+  }
+
+  if (/^[a-f0-9]{7,40}$/i.test(value)) {
+    return "Commit";
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return "Linked work";
   }
 
   return null;
@@ -254,6 +279,7 @@ export async function getRecentLearningRuns({
       evidenceCount: numberValue(row.candidateEvidenceCount),
       linkedCommitHash: linkValue,
       linkedWorkHref: linkedWorkHref(linkValue),
+      linkedWorkLabel: linkedWorkLabel(linkValue),
       createdAt: dateValue(row.candidateCreatedAt),
     });
   }
