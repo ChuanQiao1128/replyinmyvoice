@@ -1,7 +1,15 @@
 {
-  "issue_id": "REPAIR-20260523045804",
-  "branch": "chore/REPAIR-20260523045804",
+  "issue_id": "REPAIR-20260523050558",
+  "branch": "codex/repair-m6-008-codex-needs-human-blocked-autonomy-REPAIR-20260523050558",
   "files_changed": [
+    "plans/issue-board.md",
+    "plans/codex-worker-inbox.md",
+    "plans/blockers-log.md",
+    "plans/m6-validation-report.md",
+    "tests/unit/overnight-supervisor-status.test.ts",
+    "docs/skill-run-log.md",
+    "plans/current-task.md",
+    "plans/current-repair-meta.json",
     "plans/task-status.json"
   ],
   "lint": "pass",
@@ -9,7 +17,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Recorded status-only repair result; branch reset is owned by the shell supervisor under the no-git protocol.",
-  "title": "Record status-only repair result",
+  "summary": "Reclassified M6-008 as operator-only live Stripe webhook verification and documented the exact DB evidence checklist.",
+  "title": "docs: narrow M6-008 live webhook verification",
   "next_action": "ready_to_commit"
 }

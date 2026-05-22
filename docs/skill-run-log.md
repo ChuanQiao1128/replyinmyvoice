@@ -303,8 +303,8 @@ claude-heavy-planning-handoff
 - Trigger: User asked about DeepSeek provider routing, per-role thinking configuration, Sapling feedback usage, and alternate writing-signal providers.
 - Action: Opened and followed the skill; framed the future implementation around provider timeouts, unavailable writing-signal responses, retry budget limits, no-charge quality failures, and deterministic/local test coverage.
 - Output artifacts: Discussion delivered in the Codex thread; no provider adapter, tests, or eval scripts changed.
-- Verification evidence: Official Sapling docs confirmed sentence/token-level detector outputs and false-positive/false-negative cautions; project docs confirmed Sapling unavailability is a quality-failure/no-charge condition in the fact-reconstruct route.
-- Limitations: No live provider failure test, rate-limit simulation, or alternate detector integration was run.
+- Verification evidence: Official Sapling docs confirmed sentence/token-level signal outputs and false-positive/false-negative cautions; project docs confirmed Sapling unavailability is a quality-failure/no-charge condition in the fact-reconstruct route.
+- Limitations: No live provider failure test, rate-limit simulation, or alternate signal integration was run.
 
 ### 2026-05-21 - cloud-architecture-cost-review - Ten-attempt DeepSeek rewrite budget discussion
 
@@ -830,7 +830,7 @@ claude-heavy-planning-handoff
 
 - Agent: Codex
 - Trigger: The task converted a roadmap stub into a concrete job/data contract for post-promotion strategy rollback.
-- Action: Opened and followed the skill at implementation scope; mapped the source requirement into a 50-rewrite rolling-window detector, persisted rollback override, request-time traffic-off decision, admin email alert, GitHub follow-up issue hook, and verification plan.
+- Action: Opened and followed the skill at implementation scope; mapped the source requirement into a 50-rewrite rolling-window signal monitor, persisted rollback override, request-time traffic-off decision, admin email alert, GitHub follow-up issue hook, and verification plan.
 - Output artifacts: `lib/rewrite-pipeline/canary-rollback.ts`; `lib/rewrite-pipeline/canary.ts`; `lib/learningops/scheduled.ts`; `scripts/learningops-run.ts`; `tests/unit/rewrite-canary-rollback.test.ts`; `tests/unit/rewrite-canary.test.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
 - Verification evidence: The red focused tests first failed for the missing rollback module and missing request-time rollback override. After implementation, focused canary tests, `npx prisma validate`, `npm run lint`, `npm run typecheck`, and full `npm run test` passed.
 - Limitations: The detailed issue brief did not exist yet, so the implementation uses the roadmap requirement and existing canary architecture as the contract.
@@ -841,7 +841,7 @@ claude-heavy-planning-handoff
 - Trigger: The task changed the promoted-strategy canary lifecycle by adding automatic rollback and alert side-effect states.
 - Action: Opened and followed the skill; modeled states as env-enabled `monitoring`, persisted `rollback_open`, side-effect statuses `pending/sent/skipped/failed` and `pending/opened/skipped/failed`, plus future manual `resolved`. Events are 50-write window measured, regression threshold crossed, rollback persisted, alert success/failure/skip, issue success/failure/skip, and future manual resolution.
 - Output artifacts: `lib/rewrite-pipeline/canary-rollback.ts`; `lib/rewrite-pipeline/canary.ts`; `tests/unit/rewrite-canary-rollback.test.ts`; `tests/unit/rewrite-canary.test.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
-- Verification evidence: Unit tests cover the 50-rewrite detector query, rollback persistence before outbound alerts, failed outbound alerts keeping rollback active, and request-time assignment forcing canary traffic to 0 for unresolved rollback rows.
+- Verification evidence: Unit tests cover the 50-rewrite signal query, rollback persistence before outbound alerts, failed outbound alerts keeping rollback active, and request-time assignment forcing canary traffic to 0 for unresolved rollback rows.
 - Limitations: Manual rollback resolution is represented by nullable `resolvedAt` but no admin UI for resolving rows was added in this issue.
 
 ### 2026-05-22 - data-module-review - M2.5-010 RewriteCanaryRollback persistence
@@ -1230,3 +1230,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/m6-validation-report.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `plans/task-status.json`.
 - Verification evidence: `npm run test:e2e` exited before tests because the Playwright web server could not listen on `0.0.0.0:3000` with `EPERM`. The minimal Node HTTP server check also failed to listen on `127.0.0.1` with `EPERM`, matching the Playwright failure before browser route assertions could execute.
 - Limitations: No screenshots, console review, or browser route assertions were possible because the server bind failed before browser execution.
+
+### 2026-05-23 - state-machine-modeling - M6-008 live webhook verification
+
+- Agent: Codex
+- Trigger: The M6-008 repair changes issue-board and repair-inbox lifecycle status for a live Stripe webhook verification task, and the verification itself has webhook delivery, DB event, and subscription-sync states.
+- Action: Opened and followed the skill; used `agent-skills/state-machine-modeling/scripts/state_machine_template.py` and documented the M6-008 states as `pending_operator_event`, `event_delivered`, `event_processed`, `subscription_synced`, and `endpoint_only_verified`.
+- Output artifacts: `plans/issue-board.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `plans/m6-validation-report.md`; `tests/unit/overnight-supervisor-status.test.ts`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: `plans/m6-validation-report.md` now separates endpoint delivery, `StripeEvent` persistence, and `User` subscription sync so synthetic events cannot be overclaimed as entitlement verification. The status taxonomy test was updated after its red run showed M6-008 now belongs with the operator-action blocked issues.
+- Limitations: No live Stripe event was sent and no production DB query was run because those require operator-controlled live Stripe and production data access.
+
+### 2026-05-23 - data-module-review - M6-008 webhook DB evidence
+
+- Agent: Codex
+- Trigger: M6-008 requires production DB evidence for Stripe webhook processing and subscription state update.
+- Action: Opened and followed the skill; reviewed `prisma/schema.prisma`, `app/api/stripe/webhook/route.ts`, `lib/stripe-events.ts`, `lib/stripe.ts`, and `tests/unit/stripe-webhook-events.test.ts`; ran `agent-skills/data-module-review/scripts/scan_data_risks.py --limit 40`.
+- Output artifacts: `plans/m6-validation-report.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: Existing schema has `StripeEvent.id` as the idempotency key with status, mode, attempts, and timestamps; the webhook handler records `processing`, marks `processed` after handler success, marks `failed` on handler error, and updates `User` only when the event maps to an existing user/customer/subscription. The report now requires both `StripeEvent` and `User` evidence for full M6-008 completion.
+- Limitations: This was a read-only review and documentation repair; no migration, webhook handler code, live Stripe call, or production DB query was performed.

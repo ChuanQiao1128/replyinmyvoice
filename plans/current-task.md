@@ -1,20 +1,20 @@
-# Repair REPAIR-20260523045804
+# Repair REPAIR-20260523050558
 
-Title: INV-2: repair branch active while M8-001 in_progress on board
+Title: M6-008 codex-needs-human:BLOCKED-AUTONOMY
 Source: plans/codex-worker-inbox.md
 
 ## Repair item
 
-## 2026-05-22T16:50:26Z — INV-2: repair branch active while M8-001 in_progress on board
+## 2026-05-23T05:05:40+12:00 — M6-008 codex-needs-human:BLOCKED-AUTONOMY
 
 - Status: pending
-- Source: Claude monitor
-- Class: dirty_repo
-- Priority: P2
-- Related issue: M8-001, M6-007
-- Evidence: plans/issue-board.md (M8-001 in_progress), current branch codex/repair-m6-007-codex-needs-human-blocked-autonomy-REPAIR-20260523044817
-- Suggested Codex action: No action needed if the current codex exec completes normally and the loop returns to main before picking up the next pending issue. If the loop stalls on this repair branch, run `git checkout main && git pull` to reset before next task.
-- Done condition: Loop returns to main branch and resumes normal pending-issue selection; M8-001 PR merges or advances.
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M6-008
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M6-008 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 
 ## Repository conventions
