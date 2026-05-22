@@ -1,6 +1,6 @@
 {
-  "id": "REPAIR-20260523051524",
-  "title": "INV-2: repair branch active while M8-001 in_progress on board",
-  "header": "## 2026-05-22T17:08:43Z \u2014 INV-2: repair branch active while M8-001 in_progress on board",
-  "slug": "inv-2-repair-branch-active-while-m8-001-in-progr"
+  "id": "REPAIR-20260523052914",
+  "title": "M7-002 undeclared-files-in-diff",
+  "header": "## 2026-05-23T05:28:55+12:00 \u2014 M7-002 undeclared-files-in-diff",
+  "slug": "m7-002-undeclared-files-in-diff"
 }

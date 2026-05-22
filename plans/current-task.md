@@ -1,20 +1,20 @@
-# Repair REPAIR-20260523051524
+# Repair REPAIR-20260523052914
 
-Title: INV-2: repair branch active while M8-001 in_progress on board
+Title: M7-002 undeclared-files-in-diff
 Source: plans/codex-worker-inbox.md
 
 ## Repair item
 
-## 2026-05-22T17:08:43Z — INV-2: repair branch active while M8-001 in_progress on board
+## 2026-05-23T05:28:55+12:00 — M7-002 undeclared-files-in-diff
 
 - Status: pending
-- Source: Claude monitor
+- Source: shell supervisor
 - Class: dirty_repo
 - Priority: P1
-- Related issue: M8-001, M6-008
-- Evidence: plans/issue-board.md (M8-001 in_progress PR #173), current branch codex/repair-m6-008-codex-needs-human-blocked-autonomy-REPAIR-20260523050558
-- Suggested Codex action: No action needed if the current codex exec completes normally and the loop returns to main before picking up the next pending issue. If the loop stalls on this repair branch, run `git checkout main && git pull` to reset before the next task selection.
-- Done condition: Loop returns to main branch and resumes normal pending-issue selection; M8-001 PR merges or advances.
+- Related issue: M7-002
+- Evidence: plans/task-status.json
+- Suggested Codex action: Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation.
+- Done condition: No PR commits files outside the Codex-declared files_changed list.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 
 ## Repository conventions
