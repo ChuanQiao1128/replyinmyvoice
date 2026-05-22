@@ -198,3 +198,4 @@ Each overnight Claude trigger appends here.
 2026-05-22T18:06:47+12:00 | REPAIR-20260522180011 | repair-done | Retried read-only Wrangler secret listing, recorded current Cloudflare DNS blocker evidence, and reclassified M6-002 as prerequisite-blocked. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/195)
 2026-05-22T18:07:02+12:00 | M6-003 | started | M6-003 Smoke test workers.dev preview
 2026-05-22T21:38:28+12:00 | M4-013 | started | M4-013 Pricing and auth visual alignment
+2026-05-22T22:12:07+12:00 | M4-014 | started | M4-014 App workspace visual polish

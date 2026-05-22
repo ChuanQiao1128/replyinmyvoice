@@ -1,26 +1,26 @@
-# Issue M4-013
+# Issue M4-014
 
-Title: M4-013 Pricing and auth visual alignment
-GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/203
+Title: M4-014 App workspace visual polish
+GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/204
 Milestone: M4-Landing
 
 ## Task
 
 Split from M4-011. Use `/Users/qc/.codex/skills/web-design-engineer/SKILL.md` and `agent-skills/ui-browser-testing/SKILL.md`.
 
-Align `/pricing`, `/sign-in`, and `/sign-up` with the refreshed visual system from M4-012. Keep the work scoped to pricing/auth UI and shared components required by those routes.
+Polish the `/app` workspace shell only: layout density, input panels, quota/paywall/status presentation, and interaction states. The app should feel like a repeated-use writing workspace, not a marketing page.
 
 ## Constraints
 
-- Preserve Clerk/auth and Stripe/billing behavior.
-- Do not change provider secrets, dashboard state, infrastructure, quota logic, rewrite logic, telemetry, or webhook behavior.
-- Reuse M4-012 tokens/layout direction instead of introducing a competing palette.
-- Keep button, input, and auth-card states accessible and stable on mobile.
+- Preserve rewrite, quota, billing, API, telemetry, webhook, and auth behavior.
+- Do not change provider secrets, dashboard state, infrastructure, or pricing.
+- Reuse M4-012 tokens/layout direction.
+- Keep textareas, counters, buttons, paywall/status cards, and output areas stable on mobile.
 
 ## Verification
 
 - `npm run lint`
 - `npm run typecheck`
 - `npm run test`
-- Browser verify `/pricing`, `/sign-in`, and `/sign-up` where available at desktop and mobile sizes.
-- Verify expected signed-out/auth redirects still behave correctly.
+- Browser verify signed-out `/app` redirect and any locally available signed-in preview state.
+- Inspect console/network errors and responsive layout.
