@@ -278,7 +278,7 @@ describe("overnight supervisor repair inbox orchestration", () => {
     );
 
     expect(stashFunction).toContain("local non_runtime_paths=()");
-    expect(stashFunction).toContain("while IFS= read -r path; do");
+    expect(stashFunction).toContain("while IFS= read -r -d '' path; do");
     expect(stashFunction).toContain('if [ "${#non_runtime_paths[@]}" -eq 0 ]; then');
     expect(stashFunction).toContain(
       'git stash push -u -m "overnight-preserve-${label}-$(date +%s)" -- "${non_runtime_paths[@]}"',
@@ -317,5 +317,84 @@ describe("overnight supervisor repair inbox orchestration", () => {
     expect(stashFunction).toBeGreaterThanOrEqual(0);
     expect(lockClear).toBeGreaterThan(stashFunction);
     expect(stashPush).toBeGreaterThan(lockClear);
+  });
+
+  it("parses dirty worktree paths with NUL-delimited git status output", () => {
+    const script = supervisorScript();
+    const statusHelper = script.slice(
+      script.indexOf("supervisor_non_runtime_status_paths()"),
+      script.indexOf("worktree_has_non_runtime_changes()"),
+    );
+    const declareGuard = script.slice(
+      script.indexOf("verify_status_declares_all_changes()"),
+      script.indexOf("stage_declared_changes()"),
+    );
+
+    expect(statusHelper).toContain('"--porcelain=v1", "-z", "-uall"');
+    expect(statusHelper).toContain("iter_status_paths");
+    expect(statusHelper).not.toContain("result.stdout.splitlines()");
+    expect(declareGuard).toContain('"--porcelain=v1", "-z", "-uall"');
+    expect(declareGuard).toContain("iter_status_paths");
+    expect(declareGuard).not.toContain("result.stdout.splitlines()");
+  });
+
+  it("drops partial stash entries and hard-stops after repeated stash failures", () => {
+    const script = supervisorScript();
+    const stashFunction = script.slice(
+      script.indexOf("stash_dirty_worktree()"),
+      script.indexOf("verify_status_declares_all_changes()"),
+    );
+
+    expect(script).toContain("MAX_STASH_FAILURES");
+    expect(script).toContain("record_stash_failure()");
+    expect(stashFunction).toContain("stash_ref_before");
+    expect(stashFunction).toContain("stash_ref_after");
+    expect(stashFunction).toContain("git stash drop --quiet stash@{0}");
+    expect(stashFunction).toContain("record_stash_failure");
+    expect(script).toContain('touch "$STOP_SIGNAL"');
+    expect(script).toContain("FATAL: repeated stash failure");
+  });
+
+  it("does not merge PRs when CI is still pending, unknown, or has no checks", () => {
+    const script = supervisorScript();
+
+    expect(script).toContain("ci_state_is_mergeable()");
+    expect(script).toContain("ci_state_is_failure()");
+    expect(script).toContain("ci_state_is_pending_or_unknown()");
+    expect(script).toContain('if ! ci_state_is_mergeable "$state_summary"; then');
+    expect(script).toContain("repair CI did not reach mergeable state");
+    expect(script).toContain('if ! ci_state_is_mergeable "$STATE_SUMMARY"; then');
+    expect(script).toContain("CI did not reach mergeable state");
+
+    const repairMerge = script.indexOf("gh pr merge repair --squash --delete-branch");
+    const repairGate = script.indexOf('if ! ci_state_is_mergeable "$state_summary"; then');
+    const issueMerge = script.indexOf("gh pr merge --squash --delete-branch");
+    const issueGate = script.indexOf('if ! ci_state_is_mergeable "$STATE_SUMMARY"; then');
+
+    expect(repairGate).toBeGreaterThanOrEqual(0);
+    expect(repairGate).toBeLessThan(repairMerge);
+    expect(issueGate).toBeGreaterThanOrEqual(0);
+    expect(issueGate).toBeLessThan(issueMerge);
+  });
+
+  it("uses a supervisor lock so only one overnight loop can mutate the repo", () => {
+    const script = supervisorScript();
+
+    expect(script).toContain("SUPERVISOR_LOCK=plans/.overnight-supervisor.lock");
+    expect(script).toContain("acquire_supervisor_lock()");
+    expect(script).toContain('mkdir "$SUPERVISOR_LOCK"');
+    expect(script).toContain("release_supervisor_lock()");
+    expect(script).toContain("trap release_supervisor_lock EXIT");
+    expect(script).toContain("another supervisor appears active");
+  });
+
+  it("does not pass GitHub credentials into Codex implementation workers", () => {
+    const script = supervisorScript();
+    const codexRunner = script.slice(
+      script.indexOf("run_codex_implementation()"),
+      script.indexOf("parse_status_field()"),
+    );
+
+    expect(codexRunner).toContain("env -u GH_TOKEN -u GITHUB_TOKEN -u GITHUB_PAT");
   });
 });

@@ -1257,3 +1257,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/m7-003-sentry-prerequisite.md`; `plans/issue-board.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `plans/task-status.json`.
 - Verification evidence: `npm view @sentry/nextjs version --json` failed with `ENOTFOUND registry.npmjs.org`; local `node_modules/@sentry` and npm cache did not contain `@sentry/nextjs`. Full validation is run separately for this repair.
 - Limitations: This repair does not implement Sentry source wiring because committing `package.json` without a generated `package-lock.json` would leave the dependency state inconsistent.
+
+### 2026-05-23 - state-machine-modeling - Overnight supervisor hardening
+
+- Agent: Codex
+- Trigger: The supervisor lifecycle had a livelock where `preserving_worktree` failure looped back into repair processing forever, and CI `waiting` states could reach merge logic after timeout.
+- Action: Opened and followed the skill; modeled the supervisor transitions so repeated stash failures move toward a stop signal, CI pending/unknown states cannot transition to merge, and only one supervisor instance can mutate repo state.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Added static contract tests for NUL status parsing, stash failure stop behavior, CI merge gating, single-instance locking, and token isolation. Focused test initially failed on five missing behaviors, then passed after implementation.
+- Limitations: This does not restart the overnight loop; the STOP signal remains the deliberate guard until the hardened supervisor branch is reviewed/merged.
+
+### 2026-05-23 - resilience-test-generation - Overnight supervisor failure-mode coverage
+
+- Agent: Codex
+- Trigger: The change touches retries, partial stash creation, CI timeout behavior, duplicate supervisor runs, and credential exposure across process boundaries.
+- Action: Opened and followed the skill; built focused local tests for partial success after persistence (`git stash` creates a stash then exits nonzero), repeated failure livelock prevention, CI timeout/no-check handling, concurrent runner prevention, and environment isolation for Codex child workers.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `bash -n plans/overnight-supervisor.sh`, `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts`, full `npm run test`, `npm run lint`, and `npm run typecheck` passed after the fix.
+- Limitations: These are local source-contract and unit checks; no live GitHub CI failure was induced and no autonomous loop was restarted.
+
+### 2026-05-23 - test-driven-development - Overnight supervisor hardening
+
+- Agent: Codex
+- Trigger: Implementing bugfixes for the overnight supervisor after a live stash livelock.
+- Action: Opened and followed the skill; wrote failing regression tests first for the missing hardening behaviors, verified the focused suite failed on the intended five cases, then implemented the minimal script changes.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Red run: `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` failed on five missing hardening checks. Green runs: focused test passed 22/22, full Vitest passed 47 files / 286 tests, lint passed, and typecheck passed.
+- Limitations: The test suite verifies the supervisor contract statically and through local commands; it does not run a live overnight automation cycle.
