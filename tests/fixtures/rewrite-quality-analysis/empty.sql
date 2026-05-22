@@ -1,0 +1,1 @@
+-- Empty telemetry fixture: schema only.

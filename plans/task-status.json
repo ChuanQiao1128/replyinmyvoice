@@ -1,24 +1,18 @@
 {
-  "issue_id": "M5-004",
-  "branch": "chore/M5-004",
+  "issue_id": "M5-005",
+  "branch": "chore/M5-005",
   "files_changed": [
-    "app/api/rewrite/route.ts",
-    "docs/skill-run-log.md",
-    "lib/observability/rewrite-telemetry.ts",
-    "lib/rewrite-failure-reasons.ts",
-    "lib/rewrite-learning.ts",
-    "lib/rewrite-pipeline/pipeline.ts",
-    "plans/task-status.json",
-    "tests/unit/rewrite-learning.test.ts",
-    "tests/unit/rewrite-pipeline.test.ts",
-    "tests/unit/rewrite-telemetry.test.ts"
+    "tests/unit/analyze-rewrite-quality.test.ts",
+    "tests/fixtures/rewrite-quality-analysis/schema.sql",
+    "tests/fixtures/rewrite-quality-analysis/populated.sql",
+    "tests/fixtures/rewrite-quality-analysis/empty.sql"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Normalized rewrite failure reasons for cost logs, learning samples, and analysis-ready tests.",
-  "title": "fix: normalize rewrite failure telemetry reasons",
+  "summary": "Add fixture-backed tests for offline rewrite quality analysis metrics and privacy output guardrails.",
+  "title": "test: add rewrite quality analysis fixtures",
   "next_action": "ready_to_commit"
 }
