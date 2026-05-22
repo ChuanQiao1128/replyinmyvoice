@@ -74,6 +74,8 @@ function candidateRows(candidates: StrategyCandidateDraft[]) {
   return candidates.map((candidate) => [
     candidate.title,
     candidate.scenario ?? "all",
+    candidate.patchTarget,
+    candidate.patchAction,
     candidate.riskLevel,
     String(candidate.evidenceCount),
     candidate.status,
@@ -121,7 +123,7 @@ ${markdownTable([
 ## Strategy Candidates
 
 ${markdownTable([
-  ["Title", "Scenario", "Risk", "Evidence", "Status"],
+  ["Title", "Scenario", "Patch target", "Patch action", "Risk", "Evidence", "Status"],
   ...candidateRows(analysis.strategyCandidates),
 ])}
 
@@ -235,9 +237,13 @@ async function insertFindingsAndCandidates({
         "findingId",
         "title",
         "scenario",
+        "patchTarget",
+        "patchAction",
+        "patchText",
         "proposedChangeSummary",
         "riskLevel",
         "status",
+        "requiredRegressionTest",
         "requiredEval",
         "evidenceCount"
       )
@@ -246,9 +252,13 @@ async function insertFindingsAndCandidates({
         ${findingId},
         ${candidate.title},
         ${candidate.scenario},
+        ${candidate.patchTarget},
+        ${candidate.patchAction},
+        ${candidate.patchText},
         ${candidate.proposedChangeSummary},
         ${candidate.riskLevel},
         ${candidate.status},
+        ${candidate.requiredRegressionTest},
         ${candidate.requiredEval},
         ${candidate.evidenceCount}
       )

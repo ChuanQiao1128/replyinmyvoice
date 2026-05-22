@@ -39,8 +39,8 @@ Pick next `pending` with lowest M-number, lowest id. Update status: pending → 
 | M2-009 | M2-Quality | M2-009 Update Naturalness Check display for repaired candidates | (dup) | BLOCKED-WAITING-USER |
 | M2.5-001 | M2.5-Learning | M2.5-001 Define 100-case baseline corpus across 5 scenarios | https://github.com/ChuanQiao1128/replyinmyvoice/issues/82 | in_progress |
 | M2.5-002 | M2.5-Learning | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md | https://github.com/ChuanQiao1128/replyinmyvoice/issues/84 | BLOCKED-WAITING-ENG |
-| M2.5-003 | M2.5-Learning | M2.5-003 Failure-mode clustering by diagnosis tags | https://github.com/ChuanQiao1128/replyinmyvoice/issues/86 | in_progress |
-| M2.5-004 | M2.5-Learning | M2.5-004 Strategy candidate generator: cluster → prompt patch | https://github.com/ChuanQiao1128/replyinmyvoice/issues/88 | pending |
+| M2.5-003 | M2.5-Learning | M2.5-003 Failure-mode clustering by diagnosis tags | https://github.com/ChuanQiao1128/replyinmyvoice/issues/86 | done |
+| M2.5-004 | M2.5-Learning | M2.5-004 Strategy candidate generator: cluster → prompt patch | https://github.com/ChuanQiao1128/replyinmyvoice/issues/88 | in_progress |
 | M2.5-005 | M2.5-Learning | M2.5-005 Auto-draft PR from promotable StrategyCandidate | https://github.com/ChuanQiao1128/replyinmyvoice/issues/90 | pending |
 | M2.5-006 | M2.5-Learning | M2.5-006 CI gate: scenario-evaluation regression check | https://github.com/ChuanQiao1128/replyinmyvoice/issues/92 | pending |
 | M2.5-007 | M2.5-Learning | M2.5-007 Scheduled LearningOps run (Cloudflare Cron Trigger) | https://github.com/ChuanQiao1128/replyinmyvoice/issues/94 | pending |
