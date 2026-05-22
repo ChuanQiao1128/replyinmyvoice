@@ -165,10 +165,11 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 - Worker evidence: 2026-05-23T05:08:19+12:00 — Reclassified M6-008 from `BLOCKED-AUTONOMY` to `BLOCKED-WAITING-USER` because the remaining evidence requires an operator-run live Stripe webhook event plus production DB checks. Documented the exact verification checklist in `plans/m6-validation-report.md`, including the StripeEvent lifecycle, required event types, and the fact that synthetic sample events may only prove endpoint delivery unless the event maps to an existing production user/customer/subscription. No live Stripe trigger, dashboard action, secret edit, `.env.local` edit, or real-money action was performed.
+- Worker evidence: 2026-05-23T05:15:05+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/219; Reclassified M6-008 as operator-only live Stripe webhook verification and documented the exact DB evidence checklist.
 
 ## 2026-05-22T17:08:43Z — INV-2: repair branch active while M8-001 in_progress on board
 
-- Status: pending
+- Status: in_progress
 - Source: Claude monitor
 - Class: dirty_repo
 - Priority: P1
