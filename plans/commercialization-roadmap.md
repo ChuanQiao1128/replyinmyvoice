@@ -1,7 +1,8 @@
 # Commercialization Roadmap — Reply In My Voice
 
 Date: 2026-05-21
-End state: `replyinmyvoice.com` serves the live app, accepts NZ$9/month subscriptions, quality gate enforced, admin telemetry working.
+End state: `replyinmyvoice.com` serves the live app, accepts NZ$9/month subscriptions, quality gate enforced, admin telemetry working, API keys available, and MCP distribution verified.
+Commercial north star: `docs/commercialization-north-star.md`.
 See `plans/commercialization-recon.md` for current state snapshot.
 
 ## Milestone summary

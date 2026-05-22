@@ -717,3 +717,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/admin/learning/page.tsx`; `tests/unit/admin-learning.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: The dev server bind attempt failed with `EPERM` before a browser page could load. `npm run lint`, `npm run typecheck`, and `npm run test` passed.
 - Limitations: No authenticated browser screenshot was captured in this sandbox; the PR-label behavior is covered by `tests/unit/admin-learning.test.ts`.
+
+### 2026-05-22 - system-spec-synthesis - commercialization north star
+
+- Agent: Codex
+- Trigger: The user asked where to store the final commercial goal and how Claude's scheduled monitor and Codex's execution loop should coordinate without losing context.
+- Action: Opened and followed the skill; converted the loose product and automation requirements into a durable north-star spec with goals, non-goals, current system, operating architecture, contracts, state handling, security rules, rollout, verification, and open questions.
+- Output artifacts: `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/overnight-supervisor.sh`; `plans/codex-implementation-prompt.md`; `plans/overnight-directive.md`; `plans/commercialization-roadmap.md`; `docs/skill-run-log.md`.
+- Verification evidence: Documentation diff was reviewed and `git diff --check` passed.
+- Limitations: This turn did not run product tests because the change is documentation and supervisor guidance only; the active overnight loop was left running in the original worktree.
