@@ -189,3 +189,9 @@ What user needs to do: review the branch chore/M6-001 (if any), the log tail, an
 What was attempted: Blocked Worker secret push because M6-001 missing-secret diff is unavailable and Cloudflare API DNS fails in this sandbox.
 
 What user needs to do: review the branch chore/M6-002 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-22T18:12:46+12:00 — M6-003 — codex-needs-human:BLOCKED-PROVIDER
+
+What was attempted: Documented M6-003 Worker preview smoke attempt blocked by sandbox DNS; rerun curl checks from a networked shell.
+
+What user needs to do: review the branch chore/M6-003 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
