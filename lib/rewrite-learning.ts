@@ -1,5 +1,6 @@
 import { optionalEnv } from "./env";
 import { createId, getSql } from "./db";
+import { normalizeRewriteRequestFailureReason } from "./rewrite-failure-reasons";
 import type { FactReconstructQualityError } from "./rewrite-pipeline/pipeline";
 import type { RewriteResponsePayload } from "./rewrite-types";
 import type { RewriteRequestInput } from "./validation";
@@ -87,7 +88,10 @@ export function buildRewriteLearningSample({
     rejectedCandidates:
       optimization?.rejectedCandidates ?? qualityError?.rejectedCandidates ?? 0,
     status,
-    errorCode: status === "quality_failed" ? "quality_gate_failed" : null,
+    errorCode: normalizeRewriteRequestFailureReason({
+      qualityReason: qualityError?.reason,
+      status,
+    }),
   };
 }
 

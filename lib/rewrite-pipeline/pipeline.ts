@@ -717,9 +717,7 @@ export async function rewriteWithFactReconstruct(
       rejectedCandidates: 4,
       repairCandidatesTried: 1,
       rewritePlanSummary,
-      reason: fallbackAttempt.factSafe
-        ? "naturalness_gate_failed"
-        : "fact_check_failed",
+      reason: "reviewer_threshold_failed",
     });
   }
 

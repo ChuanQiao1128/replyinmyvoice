@@ -490,3 +490,13 @@ Run finished. Done: 0 | Blocked: 1 | Needs human: 0
 - BLOCKED-AUTONOMY: 18 | BLOCKED-PREREQ: 8 | BLOCKED-PROVIDER: 1 | BLOCKED(plain): 1 | pending: 31
 - Anomalies: 0 issues in_progress despite loop being alive; 27 pending issues available to pick up — loop may be idle or between iterations
 - Suggested user action: none — no user-decision blockers; loop will self-select next pending issue
+
+## Monitor at 2026-05-22T05:08:05Z
+- Loop: alive (overnight.log age ~7min)
+- Done since last monitor: +0 (13 done total; last PRs: #186–#190)
+- BLOCKED-WAITING-USER count: 2 — M7-001 (live money test), M9-006 (NPM_TOKEN)
+- BLOCKED-WAITING-ENG count: 0 — IDs: none
+- In-progress: M5-004 (active), M8-001 (PR #173 open, awaiting CI)
+- BLOCKED(plain): 2 — M2.5-007 (Cron Trigger), M5-003 (quality report script)
+- Anomalies: none
+- Suggested user action: none — no user-decision blockers beyond standing M7-001/M9-006

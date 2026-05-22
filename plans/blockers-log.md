@@ -171,3 +171,9 @@ What happens next: retry or route around the provider outage from Codex/engineer
 What was attempted: codex exec did not write plans/task-status.json. Log: plans/codex-exec-M5-002.log
 
 What happens next: Codex rescued the timed-out WIP on branch codex/rewrite-quality-analysis-telemetry, verified the focused telemetry tests, lint, typecheck, and full Vitest suite, and is preparing a normal PR. This is not a user decision blocker.
+
+## 2026-05-22T17:00:22+12:00 — M5-003 — codex-no-status
+
+What was attempted: codex exec did not write plans/task-status.json. Log: plans/codex-exec-M5-003.log
+
+What user needs to do: review the branch chore/M5-003 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.

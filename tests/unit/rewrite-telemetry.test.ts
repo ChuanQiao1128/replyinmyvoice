@@ -6,6 +6,7 @@ import {
   persistRewriteCostLog,
   serializeRewriteCostLog,
 } from "../../lib/observability/rewrite-telemetry";
+import { FactReconstructQualityError } from "../../lib/rewrite-pipeline/pipeline";
 import type { RewriteResponsePayload } from "../../lib/rewrite-types";
 import type { RewriteRequestInput } from "../../lib/validation";
 
@@ -61,6 +62,33 @@ const response: RewriteResponsePayload = {
     ],
   },
 };
+
+function qualityError(
+  reason: ConstructorParameters<typeof FactReconstructQualityError>[0]["reason"],
+) {
+  return new FactReconstructQualityError({
+    naturalness: {
+      draftAiLikePercent: 88,
+      rewriteAiLikePercent: 91,
+      changePoints: 3,
+      label: "still_high",
+    },
+    rejectedCandidates: 2,
+    repairCandidatesTried: 1,
+    candidateSignals: [
+      {
+        stage: "repair",
+        aiLikePercent: 91,
+        status: "fail_worse",
+        rejected: true,
+        reason: "Rejected during internal quality review.",
+      },
+    ],
+    diagnosisTags: ["support_template_voice"],
+    rewritePlanSummary: "Repair support reply structure.",
+    reason,
+  });
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -118,6 +146,73 @@ describe("rewrite telemetry collector", () => {
     expect(serializeRewriteCostLog(log).providerCallsJson).toContain(
       "final_signal",
     );
+  });
+
+  it("stores the specific quality failure reason on request-level telemetry", () => {
+    const collector = createRewriteTelemetryCollector({
+      requestId: "req_quality_reason",
+      startedAt: new Date("2026-05-20T01:00:00.000Z"),
+    });
+
+    const log = collector.finish({
+      input,
+      status: "quality_failed",
+      qualityError: qualityError("fact_check_failed"),
+      strategyVersion: "adaptive_rewrite_orchestrator",
+      finishedAt: new Date("2026-05-20T01:00:02.000Z"),
+    });
+
+    expect(log.status).toBe("quality_failed");
+    expect(log.errorCode).toBe("fact_check_failed");
+  });
+
+  it("keeps provider-unavailable details on provider calls while request reason stays signal_unavailable", () => {
+    const collector = createRewriteTelemetryCollector({
+      requestId: "req_signal_unavailable",
+      startedAt: new Date("2026-05-20T01:00:00.000Z"),
+    });
+    collector.recordProviderCall({
+      provider: "sapling",
+      role: "draft_signal",
+      characters: 1200,
+      estimatedCostUsd: 0.006,
+      success: false,
+      errorCode: "timeout_or_network",
+    });
+
+    const log = collector.finish({
+      input,
+      status: "quality_failed",
+      qualityError: qualityError("signal_unavailable"),
+      strategyVersion: "adaptive_rewrite_orchestrator",
+      finishedAt: new Date("2026-05-20T01:00:02.000Z"),
+    });
+
+    expect(log.errorCode).toBe("signal_unavailable");
+    expect(log.providerCalls[0]).toMatchObject({
+      provider: "sapling",
+      role: "draft_signal",
+      success: false,
+      errorCode: "timeout_or_network",
+    });
+  });
+
+  it("normalizes generic server exception names to server_failed", () => {
+    const collector = createRewriteTelemetryCollector({
+      requestId: "req_server_failed",
+      startedAt: new Date("2026-05-20T01:00:00.000Z"),
+    });
+
+    const log = collector.finish({
+      input,
+      status: "server_failed",
+      errorCode: "TypeError",
+      strategyVersion: "adaptive_rewrite_orchestrator",
+      finishedAt: new Date("2026-05-20T01:00:02.000Z"),
+    });
+
+    expect(log.status).toBe("server_failed");
+    expect(log.errorCode).toBe("server_failed");
   });
 
   it("persists the request log and provider calls in one transaction", async () => {
