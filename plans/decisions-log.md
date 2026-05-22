@@ -199,3 +199,20 @@ Each overnight Claude trigger appends here.
 2026-05-22T18:07:02+12:00 | M6-003 | started | M6-003 Smoke test workers.dev preview
 2026-05-22T21:38:28+12:00 | M4-013 | started | M4-013 Pricing and auth visual alignment
 2026-05-22T22:12:07+12:00 | M4-014 | started | M4-014 App workspace visual polish
+2026-05-23T04:48:17+12:00 | REPAIR-20260523044817 | repair-started | M6-007 codex-needs-human:BLOCKED-AUTONOMY
+2026-05-23T04:57:46+12:00 | REPAIR-20260523044817 | repair-done | Documented M6-007 validation evidence and non-sandboxed Playwright runner prerequisite. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/217)
+2026-05-23T04:58:04+12:00 | REPAIR-20260523045804 | repair-started | INV-2: repair branch active while M8-001 in_progress on board
+2026-05-23T05:02:06+12:00 | REPAIR-20260523045804 | repair-done | Recorded status-only repair result; branch reset is owned by the shell supervisor under the no-git protocol. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/218)
+2026-05-23T05:02:25+12:00 | M6-008 | started | M6-008 Verify Stripe live webhook delivery
+2026-05-23T05:05:58+12:00 | REPAIR-20260523050558 | repair-started | M6-008 codex-needs-human:BLOCKED-AUTONOMY
+2026-05-23T05:15:05+12:00 | REPAIR-20260523050558 | repair-done | Reclassified M6-008 as operator-only live Stripe webhook verification and documented the exact DB evidence checklist. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/219)
+2026-05-23T05:15:24+12:00 | REPAIR-20260523051524 | repair-started | INV-2: repair branch active while M8-001 in_progress on board
+2026-05-23T05:19:51+12:00 | REPAIR-20260523051524 | repair-done | Recorded status-only repair result; branch cleanup remains with the shell supervisor under the no-git protocol. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/220)
+2026-05-23T05:20:10+12:00 | M7-002 | started | M7-002 PostHog analytics minimal events
+2026-05-23T05:29:14+12:00 | REPAIR-20260523052914 | repair-started | M7-002 undeclared-files-in-diff
+2026-05-23T05:35:36+12:00 | REPAIR-20260523052914 | repair-done | Classified Codex task status as supervisor runtime so clean issue diffs are not blocked as undeclared. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/221)
+2026-05-23T05:35:55+12:00 | M7-003 | started | M7-003 Sentry error monitoring
+2026-05-23T05:46:14+12:00 | REPAIR-20260523054614 | repair-started | .claude/ untracked directory not in .gitignore
+2026-05-23T05:51:18+12:00 | REPAIR-20260523054614 | repair-done | Added .claude/ to .gitignore after confirming it only contains local Claude settings. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/222)
+2026-05-23T05:51:37+12:00 | REPAIR-20260523055137 | repair-started | M7-003 codex-needs-human:BLOCKED-AUTONOMY
+2026-05-23T05:55:17+12:00 | REPAIR-20260523055137 | blocker-narrowed | Reclassified M7-003 to BLOCKED-PROVIDER because npm registry DNS fails in the sandbox and @sentry/nextjs is not cached; package-lock generation needs a networked npm runner.

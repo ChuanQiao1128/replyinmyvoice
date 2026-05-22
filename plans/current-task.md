@@ -1,20 +1,20 @@
-# Repair REPAIR-20260523054614
+# Repair REPAIR-20260523055137
 
-Title: .claude/ untracked directory not in .gitignore
+Title: M7-003 codex-needs-human:BLOCKED-AUTONOMY
 Source: plans/codex-worker-inbox.md
 
 ## Repair item
 
-## 2026-05-22T17:39:37Z — .claude/ untracked directory not in .gitignore
+## 2026-05-23T05:45:56+12:00 — M7-003 codex-needs-human:BLOCKED-AUTONOMY
 
 - Status: pending
-- Source: Claude monitor
-- Class: docs
-- Priority: P3
-- Related issue: M7-003 (current active task on branch chore/M7-003)
-- Evidence: `git status --porcelain` shows `?? .claude/` in dirty worktree; no `.claude` entry in `.gitignore`
-- Suggested Codex action: add `.claude/` to `.gitignore` if the directory contains only local tool state (confirm contents first); or commit intentionally if it should be tracked
-- Done condition: `git status --porcelain` no longer shows `.claude/` as untracked, OR `.claude/` appears in `.gitignore`
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M7-003
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M7-003 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 
 ## Repository conventions

@@ -213,3 +213,15 @@ What engineering needs to do: rerun `npm run test:e2e` from a non-sandboxed runn
 What was attempted: Documented M6-008 as needing a human live Stripe webhook rerun with DB verification.
 
 What user needs to do: run the live Stripe webhook verification from an operator-controlled Stripe environment and record the evidence in `plans/m6-validation-report.md`. Required evidence: Stripe delivery attempt id, HTTP 2xx delivery to `https://replyinmyvoice.com/api/stripe/webhook`, a production `StripeEvent` row with `stripeMode='live'` and `status='processed'`, and a production `User` subscription update when the event maps to an existing user/customer/subscription. Do not use Codex for live Stripe trigger execution or secret changes.
+
+## 2026-05-23T05:28:55+12:00 — M7-002 — undeclared-files-in-diff
+
+What was attempted: Codex reported ready_to_commit but the dirty worktree included files not declared in plans/task-status.json files_changed. Changes were stashed for split/review.
+
+What user needs to do: review the branch chore/M7-002 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-23T05:45:56+12:00 — M7-003 — codex-needs-human:BLOCKED-AUTONOMY
+
+What was attempted: Added Sentry client/server/edge wiring and docs; needs package-lock update because npm registry access failed.
+
+What engineering needs to do: rerun M7-003 from a networked npm environment that can resolve `registry.npmjs.org`, install `@sentry/nextjs` with npm so `package.json` and `package-lock.json` update together, then re-apply the Sentry client/server/edge wiring. See `plans/m7-003-sentry-prerequisite.md`. No user-only decision, live money action, dashboard mutation, npm publish, secret change, or `.env.local` edit is required for this blocker.
