@@ -430,6 +430,7 @@ SUPERVISOR_RUNTIME_FILES = {
     "plans/decisions-log.md",
     "plans/issue-board.md",
     "plans/overnight-progress.md",
+    "plans/task-status.json",
     "plans/STOP-OVERNIGHT.txt",
 }
 
@@ -512,6 +513,7 @@ SUPERVISOR_RUNTIME_FILES = {
     "plans/decisions-log.md",
     "plans/issue-board.md",
     "plans/overnight-progress.md",
+    "plans/task-status.json",
     "plans/STOP-OVERNIGHT.txt",
 }
 

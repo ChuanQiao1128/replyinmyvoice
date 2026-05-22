@@ -134,8 +134,17 @@ describe("overnight supervisor repair inbox orchestration", () => {
 
   it("ignores supervisor runtime ledgers when checking declared files", () => {
     const script = supervisorScript();
+    const runtimeFileBlocks = Array.from(
+      script.matchAll(/SUPERVISOR_RUNTIME_FILES = \{([\s\S]*?)\n\}/g),
+    ).map((match) => match[1]);
 
     expect(script).toContain("SUPERVISOR_RUNTIME_FILES");
+    expect(runtimeFileBlocks.length).toBeGreaterThanOrEqual(2);
+    expect(
+      runtimeFileBlocks.every((block) =>
+        block.includes('"plans/task-status.json"'),
+      ),
+    ).toBe(true);
     expect(script).toContain('"plans/current-task.md"');
     expect(script).toContain('"plans/issue-board.md"');
     expect(script).toContain('"plans/overnight-progress.md"');

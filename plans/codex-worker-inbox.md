@@ -169,7 +169,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-22T17:08:43Z — INV-2: repair branch active while M8-001 in_progress on board
 
-- Status: in_progress
+- Status: done
 - Source: Claude monitor
 - Class: dirty_repo
 - Priority: P1
@@ -177,4 +177,17 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Evidence: plans/issue-board.md (M8-001 in_progress PR #173), current branch codex/repair-m6-008-codex-needs-human-blocked-autonomy-REPAIR-20260523050558
 - Suggested Codex action: No action needed if the current codex exec completes normally and the loop returns to main before picking up the next pending issue. If the loop stalls on this repair branch, run `git checkout main && git pull` to reset before the next task selection.
 - Done condition: Loop returns to main branch and resumes normal pending-issue selection; M8-001 PR merges or advances.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T05:19:51+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/220; Recorded status-only repair result; branch cleanup remains with the shell supervisor under the no-git protocol.
+
+## 2026-05-23T05:28:55+12:00 — M7-002 undeclared-files-in-diff
+
+- Status: in_progress
+- Source: shell supervisor
+- Class: dirty_repo
+- Priority: P1
+- Related issue: M7-002
+- Evidence: plans/task-status.json
+- Suggested Codex action: Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation.
+- Done condition: No PR commits files outside the Codex-declared files_changed list.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
