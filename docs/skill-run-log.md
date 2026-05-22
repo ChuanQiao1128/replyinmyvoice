@@ -1203,3 +1203,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/overnight-supervisor.sh`; `docs/skill-run-log.md`.
 - Verification evidence: The supervisor classifier now recognizes `socket permission` and `named-pipe` as `BLOCKED-AUTONOMY`; TypeScript lint, typecheck, and Vitest passed separately.
 - Limitations: No .NET backend test pass is claimed here. The backend suite still needs to be rerun in an environment where MSBuild named-pipe/socket creation is allowed.
+
+### 2026-05-23 - state-machine-modeling - M6-007 repair status narrowing
+
+- Agent: Codex
+- Trigger: The M6-007 repair changes persisted lifecycle/status records for the issue board and repair inbox after a non-user `BLOCKED-AUTONOMY` outcome.
+- Action: Opened and followed the skill; modeled M6-007 as remaining in `BLOCKED-AUTONOMY` with a narrowed engineering prerequisite, while the repair inbox item moves from `in_progress` to `not_actionable` after documenting the prerequisite.
+- Output artifacts: `plans/issue-board.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `plans/m6-validation-report.md`; `plans/task-status.json`.
+- Verification evidence: The issue board now records the loopback-listen Playwright blocker, the inbox item includes worker evidence, and the blockers log no longer frames the item as a user decision. `npm run lint`, `npm run typecheck`, and `npm run test` passed after the ledger edits.
+- Limitations: The issue is not marked done because `npm run test:e2e` still needs a non-sandboxed runner that permits local server binding.
+
+### 2026-05-23 - dotnet-backend-testing - M6-007 validation scope repair
+
+- Agent: Codex
+- Trigger: M6-007 repair referenced a prior `dotnet test` socket failure and required deciding whether .NET backend tests were part of this issue.
+- Action: Opened and followed the skill; reviewed the prior VSTest failure evidence and kept the backend test suite classified separately from the M6-007 Node/Next validation brief.
+- Output artifacts: `plans/m6-validation-report.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `plans/task-status.json`.
+- Verification evidence: Prior M6-007 evidence showed `dotnet test backend-dotnet/ReplyInMyVoice.sln --nologo -m:1 /nr:false` built the test assembly, then VSTest aborted while opening its socket server with sandbox permission denied before tests executed. No backend source was touched in this repair. Current repair validation passed `npm run lint`, `npm run typecheck`, and `npm run test`.
+- Limitations: .NET backend tests were not rerun in this repair because the issue does not touch `backend-dotnet/` and the prior failure is an environment permission blocker.
+
+### 2026-05-23 - ui-browser-testing - M6-007 Playwright validation
+
+- Agent: Codex
+- Trigger: M6-007 includes `npm run test:e2e`, which runs Playwright browser checks.
+- Action: Opened and followed the skill; reviewed the prior Playwright failure and reproduced the underlying loopback bind restriction with a minimal Node HTTP server.
+- Output artifacts: `plans/m6-validation-report.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `plans/task-status.json`.
+- Verification evidence: `npm run test:e2e` exited before tests because the Playwright web server could not listen on `0.0.0.0:3000` with `EPERM`. The minimal Node HTTP server check also failed to listen on `127.0.0.1` with `EPERM`, matching the Playwright failure before browser route assertions could execute.
+- Limitations: No screenshots, console review, or browser route assertions were possible because the server bind failed before browser execution.

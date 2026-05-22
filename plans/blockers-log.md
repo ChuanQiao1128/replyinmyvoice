@@ -201,3 +201,9 @@ What user needs to do: review the branch chore/M6-003 (if any), the log tail, an
 What was attempted: Production smoke blocked by sandbox DNS ENOTFOUND for replyinmyvoice.com; local validations pass.
 
 What engineering needs to do: rerun the documented M6-005 route checklist in docs/preflight-report.md from a networked shell. No user-only decision, live money action, dashboard mutation, npm publish, secret change, or .env.local edit is required.
+
+## 2026-05-23T04:35:30+12:00 — M6-007 — codex-needs-human:BLOCKED-AUTONOMY
+
+What was attempted: npm lint, typecheck, Vitest, Next build, and Cloudflare build pass. Playwright E2E is blocked before tests execute because the sandbox rejects local loopback listen with EPERM. The earlier dotnet socket failure is outside the M6-007 issue scope because this issue does not touch backend-dotnet.
+
+What engineering needs to do: rerun `npm run test:e2e` from a non-sandboxed runner that permits local server binding. No user-only decision, live money action, dashboard mutation, npm publish, secret change, or `.env.local` edit is required.

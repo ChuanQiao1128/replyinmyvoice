@@ -1,19 +1,19 @@
-# Repair REPAIR-20260523040518
+# Repair REPAIR-20260523044817
 
-Title: M6-005 codex-needs-human:BLOCKED-AUTONOMY
+Title: M6-007 codex-needs-human:BLOCKED-AUTONOMY
 Source: plans/codex-worker-inbox.md
 
 ## Repair item
 
-## 2026-05-23T04:04:59+12:00 — M6-005 codex-needs-human:BLOCKED-AUTONOMY
+## 2026-05-23T04:35:30+12:00 — M6-007 codex-needs-human:BLOCKED-AUTONOMY
 
 - Status: pending
 - Source: shell supervisor
 - Class: autonomy
 - Priority: P1
-- Related issue: M6-005
+- Related issue: M6-007
 - Evidence: plans/task-status.json
-- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M6-005 without changing live money, dashboards, npm publish state, or secrets.
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M6-007 without changing live money, dashboards, npm publish state, or secrets.
 - Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 
