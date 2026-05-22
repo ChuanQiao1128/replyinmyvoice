@@ -1,6 +1,6 @@
 {
-  "id": "REPAIR-20260523111837",
-  "title": "INV-1: Finder-duplicate files outside M7-008 task scope",
-  "header": "## 2026-05-22T18:08:57Z \u2014 INV-1: Finder-duplicate files outside M7-008 task scope",
-  "slug": "inv-1-finder-duplicate-files-outside-m7-008-task"
+  "id": "REPAIR-20260523112324",
+  "title": "M7-008 undeclared-files-in-diff",
+  "header": "## 2026-05-23T06:11:49+12:00 \u2014 M7-008 undeclared-files-in-diff",
+  "slug": "m7-008-undeclared-files-in-diff"
 }

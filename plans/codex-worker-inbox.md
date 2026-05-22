@@ -222,7 +222,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-22T18:08:57Z — INV-1: Finder-duplicate files outside M7-008 task scope
 
-- Status: in_progress
+- Status: done
 - Source: Claude monitor
 - Class: dirty_repo
 - Priority: P1
@@ -231,10 +231,11 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Suggested Codex action: Delete the five space-named duplicate files (`git rm --cached` + filesystem delete) and commit the cleanup on chore/M7-008 or a separate chore branch. Confirm contents match their canonical originals before deleting.
 - Done condition: `git status --porcelain` no longer shows the five space-named files as untracked; no data is lost (canonical originals remain).
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T11:23:06+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/224; Confirmed the five Finder duplicate files are absent and canonical files remain.
 
 ## 2026-05-23T06:11:49+12:00 — M7-008 undeclared-files-in-diff
 
-- Status: pending
+- Status: in_progress
 - Source: shell supervisor
 - Class: dirty_repo
 - Priority: P1

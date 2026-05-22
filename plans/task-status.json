@@ -1,6 +1,6 @@
 {
-  "issue_id": "REPAIR-20260523111837",
-  "branch": "chore/REPAIR-20260523111837",
+  "issue_id": "REPAIR-20260523112324",
+  "branch": "chore/REPAIR-20260523112324",
   "files_changed": [
     "plans/task-status.json"
   ],
@@ -9,7 +9,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Confirmed the five Finder duplicate files are absent and canonical files remain.",
-  "title": "Confirm duplicate cleanup is complete",
+  "summary": "Recorded status-only repair: M7-008 mixed diff was caused by already-removed Finder duplicate files; stash review remains owned by the shell supervisor under the no-git protocol.",
+  "title": "Record M7-008 dirty-repo repair status",
   "next_action": "ready_to_commit"
 }
