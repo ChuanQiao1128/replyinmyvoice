@@ -997,6 +997,24 @@ claude-heavy-planning-handoff
 - Verification evidence: `npx --no-install wrangler secret list --name replyinmyvoice-app --format json` failed before returning Worker metadata because the sandbox could not resolve Cloudflare API hostnames. No `wrangler secret put` command was run.
 - Limitations: No production Worker secrets were pushed. A networked, authenticated shell must rerun the M6-001 diff first, then push only names listed under `missing-in-worker` without printing values.
 
+### 2026-05-22 - ui-browser-testing - M4-014 handoff recommendation
+
+- Agent: Codex
+- Trigger: The current active issue is M4-014 app workspace visual polish, which changes browser-visible `/app` UI and requires desktop/mobile verification.
+- Action: Opened the project `ui-browser-testing` skill and used it to shape the recommendation for the next autonomous run: inspect current dirty state first, complete the app workspace polish, then verify with focused UI/browser checks before PR.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: No product verification was run in this turn; this was a handoff/status recommendation only.
+- Limitations: Did not inspect or modify M4-014 implementation files, run Playwright, start the dev server, capture screenshots, or create a PR.
+
+### 2026-05-22 - web-design-engineer - M4-014 handoff recommendation
+
+- Agent: Codex
+- Trigger: The current active issue is M4-014 app workspace visual polish, a browser-visible app UI design task.
+- Action: Opened the `web-design-engineer` skill and used it to shape the recommendation that the next run should continue from existing design tokens and repo patterns, avoid broad redesign scope, and finish with visual/browser evidence.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: No design implementation or critique scoring was performed in this turn; this was a handoff/status recommendation only.
+- Limitations: Did not inspect current UI screenshots, change design code, or run final visual QA.
+
 ### 2026-05-22 - web-design-engineer - Frontend redesign issue scoping
 
 - Agent: Codex
@@ -1077,3 +1095,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Added a focused test requiring `stash_dirty_worktree` to skip stashing supervisor-only runtime files before any `git stash push`.
 - Limitations: This entry covers supervisor lifecycle safety only; it does not change product UI or provider behavior.
+
+### 2026-05-22 - web-design-engineer - M4-014 app workspace visual polish
+
+- Agent: Codex
+- Trigger: M4-014 changes the browser-visible `/app` workspace shell and explicitly requires `web-design-engineer`.
+- Action: Opened and followed the skill; reused the M4-012 ink, paper, clay, sage, mint, sky, `rounded-lg`, and dense tool-surface direction. Changed only the workspace shell, quota/status strip, paywall presentation, input panel density, tone controls, output rail, and local-history presentation.
+- Output artifacts: `components/app/rewrite-workspace.tsx`; `components/app/subscription-status.tsx`; `components/app/paywall-card.tsx`; `tests/unit/workspace-copy.test.ts`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: Added focused visual-system tests first. `npm run test -- tests/unit/workspace-copy.test.ts` failed before implementation on the missing dense workspace shell/status/paywall contracts, then passed after implementation. `npm run lint`, `npm run typecheck`, full `npm run test`, and `npm run build` passed.
+- Limitations: No rewrite, quota, billing, API, telemetry, webhook, provider, infrastructure, pricing, or secret behavior was changed.
+
+### 2026-05-22 - ui-browser-testing - M4-014 app workspace checks
+
+- Agent: Codex
+- Trigger: M4-014 requires signed-out `/app` redirect verification, responsive layout checks, console/network review, and any locally available signed-in preview state.
+- Action: Opened and followed the skill; selected focused auth-gate/browser checks after implementation and attempted local Next startup, Playwright auth-gate execution, and Codex in-app browser setup.
+- Output artifacts: `components/app/rewrite-workspace.tsx`; `components/app/subscription-status.tsx`; `components/app/paywall-card.tsx`; `tests/unit/workspace-copy.test.ts`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: `npm run lint`, `npm run typecheck`, full `npm run test`, and `npm run build` passed. `npx playwright test tests/e2e/auth-gate.spec.ts --project=chromium` could not reach route execution because the configured dev server exited before loading `/app`.
+- Limitations: Desktop/mobile screenshots, console/network inspection, and live signed-out redirect observation were blocked in this sandbox. `npm run dev`, `npx next dev -H 127.0.0.1 -p 3000`, Python `http.server`, and Playwright webServer startup all failed with `listen EPERM` / `Operation not permitted`; the Codex in-app browser also reported `iab` unavailable.

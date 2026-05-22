@@ -5,6 +5,14 @@ const workspaceSource = readFileSync(
   new URL("../../components/app/rewrite-workspace.tsx", import.meta.url),
   "utf8",
 );
+const subscriptionStatusSource = readFileSync(
+  new URL("../../components/app/subscription-status.tsx", import.meta.url),
+  "utf8",
+);
+const paywallSource = readFileSync(
+  new URL("../../components/app/paywall-card.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("workspace V2 surface copy", () => {
   it("keeps the reply workflow and confirmed context fields", () => {
@@ -34,5 +42,27 @@ describe("workspace V2 surface copy", () => {
   it("has a safe failure state when the signal does not improve", () => {
     expect(workspaceSource).toContain("Still high AI-like signal");
     expect(workspaceSource).toContain("We could not produce a better version yet");
+  });
+
+  it("keeps the workspace shell dense and stable for repeated use", () => {
+    expect(workspaceSource).toContain("max-w-6xl");
+    expect(workspaceSource).toContain(
+      "lg:grid-cols-[minmax(0,1.04fr)_minmax(360px,0.96fr)]",
+    );
+    expect(workspaceSource).toContain("lg:sticky lg:top-20");
+    expect(workspaceSource).toContain("min-h-[24rem]");
+    expect(workspaceSource).not.toContain("rounded-xl");
+    expect(workspaceSource).not.toContain("rounded-2xl");
+  });
+
+  it("keeps quota status and paywall surfaces aligned with the app shell", () => {
+    expect(subscriptionStatusSource).toContain("bg-sky");
+    expect(subscriptionStatusSource).toContain(
+      "md:grid-cols-[minmax(0,1fr)_auto]",
+    );
+    expect(paywallSource).toContain("max-w-6xl");
+    expect(paywallSource).toContain("lg:grid-cols-[minmax(0,1fr)_360px]");
+    expect(paywallSource).not.toContain("rounded-xl");
+    expect(paywallSource).not.toContain("rounded-2xl");
   });
 });

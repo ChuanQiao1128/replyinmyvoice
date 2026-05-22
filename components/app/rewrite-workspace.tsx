@@ -366,416 +366,458 @@ export function RewriteWorkspace({
 
   return (
     <main className="min-h-screen bg-paper text-ink">
-      <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-8">
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-semibold">Rewrite workspace</h1>
-            <p className="mt-2 text-sm text-ink/60">
-              Paste the message if you have it, then paste the draft. The rewrite
-              keeps the facts intact.
-            </p>
+      <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-7">
+        <div className="mb-5 rounded-lg border border-line bg-white/80 p-4 shadow-crisp md:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">
+                Workspace
+              </p>
+              <h1 className="mt-2 text-2xl font-semibold md:text-3xl">
+                Rewrite workspace
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-ink/60">
+                Paste the message if you have it, then paste the draft. The
+                rewrite keeps the facts intact.
+              </p>
+            </div>
+            <Button onClick={resetWorkspace} type="button" variant="secondary">
+              <FilePlus2 className="h-4 w-4" aria-hidden="true" />
+              New draft
+            </Button>
           </div>
-          <Button onClick={resetWorkspace} type="button" variant="secondary">
-            <FilePlus2 className="h-4 w-4" aria-hidden="true" />
-            New draft
-          </Button>
         </div>
+
         <SubscriptionStatus
           paid={paid}
           status={subscriptionStatus}
           usageLabel={usageLabel}
         />
-        <form className="mt-5 space-y-5" onSubmit={submit}>
-          <Card className="p-4 md:p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <label
-                className="text-base font-semibold"
-                htmlFor="messageToReplyTo"
-              >
-                Context or message
-              </label>
-              <div className="flex items-center gap-2">
-                <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
-                  {combinedLength}/{rewriteInputLimits.combined}
-                </span>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.04fr)_minmax(360px,0.96fr)] lg:items-start">
+          <form className="space-y-5" onSubmit={submit}>
+            <Card className="p-4 md:p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <label
+                  className="text-base font-semibold"
+                  htmlFor="messageToReplyTo"
+                >
+                  Context or message
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
+                    {combinedLength}/{rewriteInputLimits.combined}
+                  </span>
+                  <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
+                    Optional
+                  </span>
+                  <Remaining
+                    max={rewriteInputLimits.messageToReplyTo}
+                    value={form.messageToReplyTo}
+                  />
+                </div>
+              </div>
+              <Textarea
+                className="min-h-36"
+                id="messageToReplyTo"
+                maxLength={rewriteInputLimits.messageToReplyTo}
+                onChange={(event) =>
+                  updateField("messageToReplyTo", event.target.value)
+                }
+                placeholder="Optional. Paste the email, note, job post, or situation you are responding to."
+                rows={5}
+                value={form.messageToReplyTo}
+              />
+            </Card>
+
+            <Card className="p-4 md:p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <label
+                  className="text-base font-semibold"
+                  htmlFor="roughDraftReply"
+                >
+                  Draft to rewrite
+                </label>
+                <Remaining
+                  max={rewriteInputLimits.roughDraftReply}
+                  value={form.roughDraftReply}
+                />
+              </div>
+              <Textarea
+                className="min-h-[14rem]"
+                id="roughDraftReply"
+                maxLength={rewriteInputLimits.roughDraftReply}
+                minLength={10}
+                onChange={(event) =>
+                  updateField("roughDraftReply", event.target.value)
+                }
+                placeholder="Required. Paste the draft that sounds too stiff, generic, or over-polished."
+                required
+                rows={9}
+                value={form.roughDraftReply}
+              />
+            </Card>
+
+            <Card className="p-4 md:p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-base font-semibold">Reply details</h2>
                 <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
                   Optional
                 </span>
-                <Remaining
-                  max={rewriteInputLimits.messageToReplyTo}
-                  value={form.messageToReplyTo}
-                />
               </div>
-            </div>
-            <Textarea
-              id="messageToReplyTo"
-              maxLength={rewriteInputLimits.messageToReplyTo}
-              onChange={(event) =>
-                updateField("messageToReplyTo", event.target.value)
-              }
-              placeholder="Optional. Paste the email, note, job post, or situation you are responding to."
-              rows={6}
-              value={form.messageToReplyTo}
-            />
-          </Card>
-
-          <Card className="p-4 md:p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <label className="text-base font-semibold" htmlFor="roughDraftReply">
-                Draft to rewrite
-              </label>
-              <Remaining
-                max={rewriteInputLimits.roughDraftReply}
-                value={form.roughDraftReply}
-              />
-            </div>
-            <Textarea
-              id="roughDraftReply"
-              maxLength={rewriteInputLimits.roughDraftReply}
-              minLength={10}
-              onChange={(event) =>
-                updateField("roughDraftReply", event.target.value)
-              }
-              placeholder="Required. Paste the draft that sounds too stiff, generic, or over-polished."
-              required
-              rows={9}
-              value={form.roughDraftReply}
-            />
-          </Card>
-
-          <Card className="p-4 md:p-5">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-base font-semibold">Reply details</h2>
-              <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
-                Optional
-              </span>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label className="text-sm font-semibold" htmlFor="audience">
-                    Audience
-                  </label>
-                  <Remaining
-                    max={rewriteInputLimits.audience}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="text-sm font-semibold" htmlFor="audience">
+                      Audience
+                    </label>
+                    <Remaining
+                      max={rewriteInputLimits.audience}
+                      value={form.audience}
+                    />
+                  </div>
+                  <Input
+                    id="audience"
+                    maxLength={rewriteInputLimits.audience}
+                    onChange={(event) =>
+                      updateField("audience", event.target.value)
+                    }
+                    placeholder="Parent, client, manager, lead"
                     value={form.audience}
                   />
                 </div>
-                <Input
-                  id="audience"
-                  maxLength={rewriteInputLimits.audience}
-                  onChange={(event) =>
-                    updateField("audience", event.target.value)
-                  }
-                  placeholder="Parent, client, manager, lead"
-                  value={form.audience}
-                />
-              </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label className="text-sm font-semibold" htmlFor="purpose">
-                    Purpose
-                  </label>
-                  <Remaining
-                    max={rewriteInputLimits.purpose}
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="text-sm font-semibold" htmlFor="purpose">
+                      Purpose
+                    </label>
+                    <Remaining
+                      max={rewriteInputLimits.purpose}
+                      value={form.purpose}
+                    />
+                  </div>
+                  <Input
+                    id="purpose"
+                    maxLength={rewriteInputLimits.purpose}
+                    onChange={(event) =>
+                      updateField("purpose", event.target.value)
+                    }
+                    placeholder="Explain, follow up, decline, confirm"
                     value={form.purpose}
                   />
                 </div>
-                <Input
-                  id="purpose"
-                  maxLength={rewriteInputLimits.purpose}
-                  onChange={(event) =>
-                    updateField("purpose", event.target.value)
-                  }
-                  placeholder="Explain, follow up, decline, confirm"
-                  value={form.purpose}
-                />
-              </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label
-                    className="text-sm font-semibold"
-                    htmlFor="whatHappened"
-                  >
-                    What actually happened
-                  </label>
-                  <Remaining
-                    max={rewriteInputLimits.whatHappened}
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label
+                      className="text-sm font-semibold"
+                      htmlFor="whatHappened"
+                    >
+                      What actually happened
+                    </label>
+                    <Remaining
+                      max={rewriteInputLimits.whatHappened}
+                      value={form.whatHappened}
+                    />
+                  </div>
+                  <Textarea
+                    className="min-h-28"
+                    id="whatHappened"
+                    maxLength={rewriteInputLimits.whatHappened}
+                    onChange={(event) =>
+                      updateField("whatHappened", event.target.value)
+                    }
+                    rows={4}
                     value={form.whatHappened}
                   />
                 </div>
-                <Textarea
-                  id="whatHappened"
-                  maxLength={rewriteInputLimits.whatHappened}
-                  onChange={(event) =>
-                    updateField("whatHappened", event.target.value)
-                  }
-                  rows={4}
-                  value={form.whatHappened}
-                />
-              </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label
-                    className="text-sm font-semibold"
-                    htmlFor="factsToPreserve"
-                  >
-                    Facts to preserve
-                  </label>
-                  <Remaining
-                    max={rewriteInputLimits.factsToPreserve}
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label
+                      className="text-sm font-semibold"
+                      htmlFor="factsToPreserve"
+                    >
+                      Facts to preserve
+                    </label>
+                    <Remaining
+                      max={rewriteInputLimits.factsToPreserve}
+                      value={form.factsToPreserve}
+                    />
+                  </div>
+                  <Textarea
+                    className="min-h-28"
+                    id="factsToPreserve"
+                    maxLength={rewriteInputLimits.factsToPreserve}
+                    onChange={(event) =>
+                      updateField("factsToPreserve", event.target.value)
+                    }
+                    rows={4}
                     value={form.factsToPreserve}
                   />
                 </div>
-                <Textarea
-                  id="factsToPreserve"
-                  maxLength={rewriteInputLimits.factsToPreserve}
-                  onChange={(event) =>
-                    updateField("factsToPreserve", event.target.value)
-                  }
-                  rows={4}
-                  value={form.factsToPreserve}
-                />
               </div>
-            </div>
-          </Card>
+            </Card>
 
-          <Card className="p-4 md:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold">Tone</h2>
-                <p className="mt-1 text-sm text-ink/55">
-                  Warm adds a little relationship tone. Direct removes padding
-                  without removing facts.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {tonePresetOptions.map((tonePreset) => (
-                  <button
-                    className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
-                      form.tonePreset === tonePreset
-                        ? "border-ink bg-ink text-paper"
-                        : "border-line bg-white text-ink/65 hover:text-ink"
-                    }`}
-                    key={tonePreset}
-                    onClick={() => updateTonePreset(tonePreset)}
-                    type="button"
-                  >
-                    {tonePreset}
-                  </button>
-                ))}
-              </div>
-              <Button disabled={!canSubmit} type="submit">
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Send className="h-4 w-4" aria-hidden="true" />
-                )}
-                Begin rewrite
-              </Button>
-            </div>
-            {loading ? (
-              <div
-                aria-live="polite"
-                className="mt-4 rounded-lg border border-line bg-white px-3 py-3"
-              >
-                <div className="grid gap-2 md:grid-cols-3">
-                  {progressSteps.map((step, index) => (
-                    <div
-                      className={`flex items-center gap-2 text-xs font-semibold ${
-                        index === loadingStepIndex ? "text-ink" : "text-ink/40"
+            <Card className="p-4 md:p-5">
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <div>
+                  <h2 className="text-base font-semibold">Tone</h2>
+                  <p className="mt-1 text-sm leading-6 text-ink/55">
+                    Warm adds a little relationship tone. Direct removes padding
+                    without removing facts.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {tonePresetOptions.map((tonePreset) => (
+                    <button
+                      aria-pressed={form.tonePreset === tonePreset}
+                      className={`min-h-10 rounded-md border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
+                        form.tonePreset === tonePreset
+                          ? "border-ink bg-ink text-paper"
+                          : "border-line bg-white text-ink/65 hover:bg-paper hover:text-ink"
                       }`}
-                      key={step}
+                      key={tonePreset}
+                      onClick={() => updateTonePreset(tonePreset)}
+                      type="button"
                     >
-                      {index < loadingStepIndex ? (
-                        <CheckCircle2
-                          className="h-4 w-4 text-sage"
-                          aria-hidden="true"
-                        />
-                      ) : index === loadingStepIndex ? (
-                        <Loader2
-                          className="h-4 w-4 animate-spin text-clay"
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <span className="h-4 w-4 rounded-full border border-line" />
-                      )}
-                      {step}
-                    </div>
+                      {tonePreset}
+                    </button>
                   ))}
                 </div>
               </div>
-            ) : null}
-          </Card>
-
-          {error ? (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </p>
-          ) : null}
-        </form>
-
-        <section className="mt-5 space-y-5">
-          <Card className="p-4 md:p-5">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold">Rewritten text</h2>
-              <div className="flex gap-2">
-                <Button
-                  disabled={!result?.rewrittenText}
-                  onClick={() => void copyReply()}
-                  type="button"
-                  variant="secondary"
-                >
-                  {copied ? (
-                    <CopyCheck className="h-4 w-4" aria-hidden="true" />
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+                <p className="text-xs text-ink/45">
+                  Successful rewrites count after quality checks pass.
+                </p>
+                <Button disabled={!canSubmit} type="submit">
+                  {loading ? (
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Clipboard className="h-4 w-4" aria-hidden="true" />
+                    <Send className="h-4 w-4" aria-hidden="true" />
                   )}
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-                <Button
-                  disabled={!canSubmit}
-                  onClick={() => void submit()}
-                  type="button"
-                  variant="secondary"
-                >
-                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                  Retry
+                  Begin rewrite
                 </Button>
               </div>
-            </div>
-            <div className="min-h-60 whitespace-pre-wrap rounded-lg border border-line bg-white p-4 text-sm leading-7 text-ink md:text-base md:leading-8">
               {loading ? (
-                <div className="flex h-48 flex-col items-center justify-center text-center text-ink/55">
-                  <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
-                  <p className="font-semibold text-ink">
-                    {progressSteps[loadingStepIndex]}
-                  </p>
-                  <p className="mt-1 text-xs">
-                    The rewrite is preserving your facts and checking quality.
-                  </p>
+                <div
+                  aria-live="polite"
+                  className="mt-4 rounded-lg border border-line bg-mint/65 px-3 py-3"
+                >
+                  <div className="grid gap-2 md:grid-cols-3">
+                    {progressSteps.map((step, index) => (
+                      <div
+                        className={`flex items-center gap-2 text-xs font-semibold ${
+                          index === loadingStepIndex ? "text-ink" : "text-ink/40"
+                        }`}
+                        key={step}
+                      >
+                        {index < loadingStepIndex ? (
+                          <CheckCircle2
+                            className="h-4 w-4 text-sage"
+                            aria-hidden="true"
+                          />
+                        ) : index === loadingStepIndex ? (
+                          <Loader2
+                            className="h-4 w-4 animate-spin text-clay"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <span className="h-4 w-4 rounded-full border border-line bg-white/70" />
+                        )}
+                        {step}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                result?.rewrittenText ??
-                (qualityFailure ? (
-                  <div className="flex h-48 flex-col items-center justify-center text-center text-ink/55">
-                    <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
+              ) : null}
+            </Card>
+
+            {error ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </p>
+            ) : null}
+          </form>
+
+          <section className="space-y-5 lg:sticky lg:top-20">
+            <Card className="p-4 md:p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sage">
+                    Output
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold">Rewritten text</h2>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    disabled={!result?.rewrittenText}
+                    onClick={() => void copyReply()}
+                    type="button"
+                    variant="secondary"
+                  >
+                    {copied ? (
+                      <CopyCheck className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Clipboard className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    {copied ? "Copied" : "Copy"}
+                  </Button>
+                  <Button
+                    disabled={!canSubmit}
+                    onClick={() => void submit()}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                    Retry
+                  </Button>
+                </div>
+              </div>
+              <div className="min-h-[24rem] whitespace-pre-wrap rounded-lg border border-line bg-white p-4 text-sm leading-7 text-ink md:text-base md:leading-8">
+                {loading ? (
+                  <div className="flex min-h-[21rem] flex-col items-center justify-center text-center text-ink/55">
+                    <Sparkles
+                      className="mb-3 h-5 w-5 text-clay"
+                      aria-hidden="true"
+                    />
                     <p className="font-semibold text-ink">
-                      {titleForQualityFailure(qualityFailure.reason)}
+                      {progressSteps[loadingStepIndex]}
                     </p>
-                    <p className="mt-1 max-w-md text-xs">
-                      {qualityFailure.error}
+                    <p className="mt-1 text-xs">
+                      The rewrite is preserving your facts and checking quality.
                     </p>
                   </div>
-                ) : null) ??
-                "Your rewritten text will appear here after you run the workspace."
-              )}
-            </div>
-          </Card>
-
-          <Card className="p-4 md:p-5">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-xl font-semibold">Naturalness Check</h2>
-              <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-sage">
-                {labelForNaturalness(visibleNaturalness)}
-              </span>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <SignalBar
-                label="Draft AI-like signal"
-                value={visibleNaturalness?.draftAiLikePercent ?? null}
-              />
-              <SignalBar
-                label="Rewrite AI-like signal"
-                value={visibleNaturalness?.rewriteAiLikePercent ?? null}
-                variant="sage"
-              />
-            </div>
-            <p className="mt-4 text-sm text-ink/60">
-              Change:{" "}
-              {visibleNaturalness?.changePoints === null ||
-              visibleNaturalness?.changePoints === undefined
-                ? "Unavailable"
-                : `${visibleNaturalness.changePoints} pts`}
-            </p>
-            <p className="mt-2 text-xs leading-5 text-ink/50">
-              A third-party reference signal that helps compare how natural the
-              draft and rewrite feel. It is not a guarantee; review before sending.
-            </p>
-          </Card>
-
-          <div className="grid gap-5 md:grid-cols-2">
-            <Card className="p-4 md:p-5">
-              <h2 className="font-semibold">Change summary</h2>
-              <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                {(result?.changeSummary ?? ["No rewrite yet."]).map((item) => (
-                  <li key={item}>- {item}</li>
-                ))}
-              </ul>
-            </Card>
-            <Card className="p-4 md:p-5">
-              <h2 className="font-semibold">Risk notes</h2>
-              <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                {(result?.riskNotes ?? ["Review facts before sending."]).map(
-                  (item) => (
-                    <li key={item}>- {item}</li>
-                  ),
+                ) : (
+                  result?.rewrittenText ??
+                  (qualityFailure ? (
+                    <div className="flex min-h-[21rem] flex-col items-center justify-center text-center text-ink/55">
+                      <Sparkles
+                        className="mb-3 h-5 w-5 text-clay"
+                        aria-hidden="true"
+                      />
+                      <p className="font-semibold text-ink">
+                        {titleForQualityFailure(qualityFailure.reason)}
+                      </p>
+                      <p className="mt-1 max-w-md text-xs">
+                        {qualityFailure.error}
+                      </p>
+                    </div>
+                  ) : null) ??
+                  "Your rewritten text will appear here after you run the workspace."
                 )}
-              </ul>
+              </div>
             </Card>
-          </div>
 
-          <details className="rounded-lg border border-line bg-white/70 p-4 shadow-soft">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">
-              <span>Recent rewrites</span>
-              <span className="text-xs font-medium text-ink/45">
-                {history.length ? `${history.length} saved locally` : "Empty"}
-              </span>
-            </summary>
-            <div className="mt-4 flex justify-end">
-              <Button onClick={clearHistory} type="button" variant="ghost">
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-                Clear
-              </Button>
+            <Card className="p-4 md:p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">Naturalness Check</h2>
+                <span className="rounded-md bg-mint px-3 py-1 text-xs font-semibold text-sage">
+                  {labelForNaturalness(visibleNaturalness)}
+                </span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <SignalBar
+                  label="Draft AI-like signal"
+                  value={visibleNaturalness?.draftAiLikePercent ?? null}
+                />
+                <SignalBar
+                  label="Rewrite AI-like signal"
+                  value={visibleNaturalness?.rewriteAiLikePercent ?? null}
+                  variant="sage"
+                />
+              </div>
+              <p className="mt-4 text-sm text-ink/60">
+                Change:{" "}
+                {visibleNaturalness?.changePoints === null ||
+                visibleNaturalness?.changePoints === undefined
+                  ? "Unavailable"
+                  : `${visibleNaturalness.changePoints} pts`}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-ink/50">
+                A third-party reference signal that helps compare how natural
+                the draft and rewrite feel. It is not a guarantee; review before
+                sending.
+              </p>
+            </Card>
+
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <Card className="p-4 md:p-5">
+                <h2 className="font-semibold">Change summary</h2>
+                <ul className="mt-3 space-y-2 text-sm text-ink/65">
+                  {(result?.changeSummary ?? ["No rewrite yet."]).map((item) => (
+                    <li key={item}>- {item}</li>
+                  ))}
+                </ul>
+              </Card>
+              <Card className="p-4 md:p-5">
+                <h2 className="font-semibold">Risk notes</h2>
+                <ul className="mt-3 space-y-2 text-sm text-ink/65">
+                  {(result?.riskNotes ?? ["Review facts before sending."]).map(
+                    (item) => (
+                      <li key={item}>- {item}</li>
+                    ),
+                  )}
+                </ul>
+              </Card>
             </div>
-            <div className="mt-3 space-y-3">
-              {history.length ? (
-                history.map((item) => (
-                  <button
-                    className="w-full rounded-lg border border-line bg-white p-3 text-left text-sm hover:bg-paper"
-                    key={item.createdAt}
-                    onClick={() =>
-                      setResult({
-                        rewrittenText: item.rewrittenText,
-                        changeSummary: item.changeSummary,
-                        riskNotes: item.riskNotes,
-                        naturalness: item.naturalness,
-                        optimization: {
-                          internalStrategiesTried: 1,
-                          userUsageCharged: 1,
-                          selectionStatus: "passed",
-                        },
-                      })
-                    }
-                    type="button"
-                  >
-                    <p className="font-medium">
-                      {item.mode} - {item.tonePreset}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-ink/60">
-                      {item.rewrittenText}
-                    </p>
-                  </button>
-                ))
-              ) : (
-                <p className="text-sm text-ink/55">
-                  Rewrites stay in this browser only and are not saved to the
-                  database.
-                </p>
-              )}
-            </div>
-          </details>
-        </section>
+
+            <details className="rounded-lg border border-line bg-white/70 p-4 shadow-soft">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">
+                <span>Recent rewrites</span>
+                <span className="text-xs font-medium text-ink/45">
+                  {history.length ? `${history.length} saved locally` : "Empty"}
+                </span>
+              </summary>
+              <div className="mt-4 flex justify-end">
+                <Button
+                  onClick={clearHistory}
+                  type="button"
+                  variant="ghost"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  Clear
+                </Button>
+              </div>
+              <div className="mt-3 space-y-3">
+                {history.length ? (
+                  history.map((item) => (
+                    <button
+                      className="w-full rounded-lg border border-line bg-white p-3 text-left text-sm transition hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35"
+                      key={item.createdAt}
+                      onClick={() =>
+                        setResult({
+                          rewrittenText: item.rewrittenText,
+                          changeSummary: item.changeSummary,
+                          riskNotes: item.riskNotes,
+                          naturalness: item.naturalness,
+                          optimization: {
+                            internalStrategiesTried: 1,
+                            userUsageCharged: 1,
+                            selectionStatus: "passed",
+                          },
+                        })
+                      }
+                      type="button"
+                    >
+                      <p className="font-medium">
+                        {item.mode} - {item.tonePreset}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-ink/60">
+                        {item.rewrittenText}
+                      </p>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-sm text-ink/55">
+                    Rewrites stay in this browser only and are not saved to the
+                    database.
+                  </p>
+                )}
+              </div>
+            </details>
+          </section>
+        </div>
       </div>
     </main>
   );
