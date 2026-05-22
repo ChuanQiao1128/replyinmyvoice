@@ -31,6 +31,7 @@ describe("overnight supervisor status taxonomy", () => {
     );
 
     expect(userBlocked.map((row) => row.id).sort()).toEqual([
+      "M6-008",
       "M7-001",
       "M9-006",
     ]);

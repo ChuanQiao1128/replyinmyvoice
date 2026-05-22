@@ -142,12 +142,38 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-22T16:50:26Z — INV-2: repair branch active while M8-001 in_progress on board
 
-- Status: in_progress
+- Status: done
 - Source: Claude monitor
 - Class: dirty_repo
 - Priority: P2
 - Related issue: M8-001, M6-007
 - Evidence: plans/issue-board.md (M8-001 in_progress), current branch codex/repair-m6-007-codex-needs-human-blocked-autonomy-REPAIR-20260523044817
 - Suggested Codex action: No action needed if the current codex exec completes normally and the loop returns to main before picking up the next pending issue. If the loop stalls on this repair branch, run `git checkout main && git pull` to reset before next task.
+- Done condition: Loop returns to main branch and resumes normal pending-issue selection; M8-001 PR merges or advances.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T05:02:06+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/218; Recorded status-only repair result; branch reset is owned by the shell supervisor under the no-git protocol.
+
+## 2026-05-23T05:05:40+12:00 — M6-008 codex-needs-human:BLOCKED-AUTONOMY
+
+- Status: done
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M6-008
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M6-008 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T05:08:19+12:00 — Reclassified M6-008 from `BLOCKED-AUTONOMY` to `BLOCKED-WAITING-USER` because the remaining evidence requires an operator-run live Stripe webhook event plus production DB checks. Documented the exact verification checklist in `plans/m6-validation-report.md`, including the StripeEvent lifecycle, required event types, and the fact that synthetic sample events may only prove endpoint delivery unless the event maps to an existing production user/customer/subscription. No live Stripe trigger, dashboard action, secret edit, `.env.local` edit, or real-money action was performed.
+
+## 2026-05-22T17:08:43Z — INV-2: repair branch active while M8-001 in_progress on board
+
+- Status: pending
+- Source: Claude monitor
+- Class: dirty_repo
+- Priority: P1
+- Related issue: M8-001, M6-008
+- Evidence: plans/issue-board.md (M8-001 in_progress PR #173), current branch codex/repair-m6-008-codex-needs-human-blocked-autonomy-REPAIR-20260523050558
+- Suggested Codex action: No action needed if the current codex exec completes normally and the loop returns to main before picking up the next pending issue. If the loop stalls on this repair branch, run `git checkout main && git pull` to reset before the next task selection.
 - Done condition: Loop returns to main branch and resumes normal pending-issue selection; M8-001 PR merges or advances.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes

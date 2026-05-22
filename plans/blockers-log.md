@@ -207,3 +207,9 @@ What engineering needs to do: rerun the documented M6-005 route checklist in doc
 What was attempted: npm lint, typecheck, Vitest, Next build, and Cloudflare build pass. Playwright E2E is blocked before tests execute because the sandbox rejects local loopback listen with EPERM. The earlier dotnet socket failure is outside the M6-007 issue scope because this issue does not touch backend-dotnet.
 
 What engineering needs to do: rerun `npm run test:e2e` from a non-sandboxed runner that permits local server binding. No user-only decision, live money action, dashboard mutation, npm publish, secret change, or `.env.local` edit is required.
+
+## 2026-05-23T05:05:40+12:00 — M6-008 — codex-needs-human:BLOCKED-AUTONOMY
+
+What was attempted: Documented M6-008 as needing a human live Stripe webhook rerun with DB verification.
+
+What user needs to do: run the live Stripe webhook verification from an operator-controlled Stripe environment and record the evidence in `plans/m6-validation-report.md`. Required evidence: Stripe delivery attempt id, HTTP 2xx delivery to `https://replyinmyvoice.com/api/stripe/webhook`, a production `StripeEvent` row with `stripeMode='live'` and `status='processed'`, and a production `User` subscription update when the event maps to an existing user/customer/subscription. Do not use Codex for live Stripe trigger execution or secret changes.
