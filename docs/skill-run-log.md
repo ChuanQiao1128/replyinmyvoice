@@ -1302,3 +1302,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/superpowers/specs/2026-05-23-model-aware-dispatcher-design.md`; `docs/skill-run-log.md`.
 - Verification evidence: The spec now forbids `ci_waiting -> merged` without terminal success, forbids worker direct merge, requires one active assignment group per issue, and requires non-overlapping worker-owned paths for parallel groups.
 - Limitations: These are design constraints and planned tests, not an implemented state transition helper yet.
+
+### 2026-05-22 - state-machine-modeling - Agent permission and work allocation policy
+
+- Agent: Codex
+- Trigger: The owner clarified that unattended execution must consider permissions first and should not split coherent work across agents when a strong model can handle the whole task with less token overhead.
+- Action: Opened and followed the skill; modeled the assignment lifecycle as permission gate -> work-allocation gate -> single-owner coherent task or independent parallel split -> execution/monitoring.
+- Output artifacts: `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/codex-implementation-prompt.md`; `docs/skill-run-log.md`.
+- Verification evidence: Documentation now defines autonomous, provider/sandbox, user-only, paid-resource/secret/dashboard, and workspace-race categories; it also defines single-owner default, parallelization criteria, and token-discipline rules including prompt/context-cache efficiency.
+- Limitations: This is an operating-contract update only. It does not change the currently running shell loop process until the docs are merged and the loop next reads them.

@@ -114,6 +114,9 @@ Claude monitor contract:
 
 Codex executor contract:
 
+- Run a permission gate before assigning or executing work. Classify the task as autonomous, provider/user-permission, paid-resource, secret/dashboard, or workspace-race sensitive. User-only actions stay with the owner; provider or sandbox failures become documented blockers or repair items; source-code and docs defects can proceed autonomously.
+- Run a work-allocation gate before splitting work. A strong model with enough context should receive one coherent end-to-end task when the task shares product intent, data contracts, UI behavior, or deployment state. Do not split a coherent task merely to create parallel agents; the repeated context transfer costs tokens, loses prompt/context-cache efficiency, and increases integration risk.
+- Split or parallelize only when tasks are truly independent, have separate files or worktrees, have clear interfaces, and can be merged without one agent needing another agent's private reasoning. Good split examples are isolated frontend polish and backend telemetry work with no shared files. Bad split examples are one feature's API, schema, UI, and tests when the acceptance criteria need one consistent design.
 - Before selecting a new issue-board item, check `plans/codex-worker-inbox.md` and process one pending non-user repair item if present.
 - Read `plans/current-task.md` for the scoped issue.
 - Keep the current issue scope unless a safety or correctness dependency is required.

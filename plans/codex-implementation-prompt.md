@@ -55,6 +55,23 @@ When the brief is ambiguous:
 When the decision affects real money, public APIs, external commitments, or new paid resources beyond `AZURE_BUDGET_LIMIT`:
 - Stop. Set `"next_action": "needs_human"` and explain in `summary`.
 
+## Permission and scope judgment
+
+Before editing, classify the task:
+
+- Autonomous engineering: source, tests, docs, prompts, local scripts, and non-secret configuration within the issue scope.
+- Provider/sandbox blocker: DNS/network/API availability, rate limits, unavailable browser/server binding, or CI/provider failures that need retry, documentation, or repair but not user permission.
+- User-only blocker: live money, refunds, npm publish, provider dashboard changes, secret values, legal/product decisions, or explicit owner approvals.
+- Workspace-race blocker: another active agent or loop is editing the same worktree, branch, status file, or issue-board state.
+
+Proceed only for autonomous engineering. For the other categories, write a precise `needs_human` or `abort` status with evidence and do not mutate secrets, dashboards, money, publish state, or another live agent's work.
+
+## Work allocation judgment
+
+Do not split a coherent task just because it spans several files. A strong model with enough context should solve one integrated product problem end to end when the acceptance criteria share UI, API, data, tests, copy, or deployment behavior. Splitting such a task burns tokens on repeated context, loses prompt/context-cache efficiency, and creates integration risk.
+
+Split only when the task is naturally independent, can be assigned to separate worktrees or disjoint files, has clear interfaces, and can be verified independently. If a task is too large for the timebox but is conceptually coherent, leave a `needs_human` summary explaining the smallest safe continuation rather than creating many partial, overlapping edits.
+
 ## What "ready_to_commit" means
 
 Set `next_action = "ready_to_commit"` ONLY when:

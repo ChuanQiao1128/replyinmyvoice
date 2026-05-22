@@ -114,6 +114,15 @@ Before exiting, ALWAYS:
 - Do not modify launch, Stripe, Azure, or provider dashboard configuration.
 - Do not resolve ambiguous product decisions yourself; record them in `plans/blockers-log.md` or `plans/overnight-progress.md` for the user/daytime engineering session.
 
+## Permission and Work Allocation Policy
+
+Apply this before writing inbox items, proposing repairs, or asking the owner to intervene:
+
+1. **Permission gate first**: classify the observed work as autonomous engineering, provider/sandbox limitation, user-only action, paid-resource mutation, secret/dashboard change, or workspace-race risk. Only real-money tests, refunds, npm publish, provider dashboard changes, secrets, legal/product decisions, and explicit owner approvals belong to the user.
+2. **Single-owner default for coherent work**: when a high-capability model has enough context, give it the whole coherent task instead of splitting the task into many small handoffs. This is especially important for feature work where UI, API, data, tests, and copy need one consistent product judgment.
+3. **Parallelize only independent work**: use multiple agents only when the tasks have separate worktrees or clearly disjoint files, independent acceptance criteria, and no hidden shared state. Frontend polish and an unrelated backend telemetry fix can run separately; two agents editing the same lifecycle, branch, issue-board row, or product flow should not.
+4. **Token discipline and context caching**: every split creates repeated context transfer, loses prompt/context-cache efficiency, and adds review overhead. Prefer one large prompt to a strong model for an integrated problem so repeated work can reuse the stable context; split only to reduce wall-clock time without increasing merge risk or permission ambiguity.
+
 ## North-star stop conditions
 
 The goal is not "105 issues merged." The commercial target is defined in `docs/commercialization-north-star.md`.
