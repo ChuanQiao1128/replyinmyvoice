@@ -189,3 +189,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T17:00:37+12:00 | M5-004 | started | M5-004 Normalize rewrite failure reasons for analysis
 2026-05-22T17:11:33+12:00 | M5-004 | done | Normalized rewrite failure reasons for cost logs, learning samples, and analysis-ready tests. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/191)
 2026-05-22T17:11:48+12:00 | M5-005 | started | M5-005 Fixture-backed Rewrite Quality Analysis tests
+2026-05-22T17:18:51+12:00 | M5-005 | done | Add fixture-backed tests for offline rewrite quality analysis metrics and privacy output guardrails. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/192)
+2026-05-22T17:19:06+12:00 | M5-006 | started | M5-006 Owner runbook for rewrite-quality reports

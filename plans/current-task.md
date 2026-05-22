@@ -1,6 +1,6 @@
-# Issue M5-005
+# Issue M5-006
 
-Title: M5-005 Fixture-backed Rewrite Quality Analysis tests
+Title: M5-006 Owner runbook for rewrite-quality reports
 Milestone: M5-Telemetry
 GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/(dup)
 

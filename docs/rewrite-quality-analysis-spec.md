@@ -15,6 +15,7 @@ The first version should be an offline report, not an admin UI. The report is ea
 - Show failure reasons: `signal_unavailable`, `naturalness_gate_failed`, `fact_check_failed`, `reviewer_threshold_failed`, `server_failed`, and provider-specific error codes.
 - Show cost and efficiency: average cost per successful rewrite, total estimated provider cost, LLM token cost, Sapling call count and cost, duration p50/p95, escalation rate, and average internal strategies tried.
 - Show strategy performance: success rate, signal drop, cost per success, quality-failure rate, and escalation rate grouped by `strategyVersion`.
+- Give the owner an operating runbook for generation, interpretation, privacy review, and rollout decisions in `docs/rewrite-quality-analysis-runbook.md`.
 - Produce owner-readable artifacts:
   - `docs/rewrite-quality-analysis-report.md`
   - `exports/rewrite-quality-summary.csv`
