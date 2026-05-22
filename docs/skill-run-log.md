@@ -1068,3 +1068,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/pricing/page.tsx`; `components/auth/google-oauth-card.tsx`; `tests/unit/pricing-auth-visual-system.test.ts`; `docs/skill-run-log.md`; `plans/task-status.json`.
 - Verification evidence: `npm run lint`, `npm run typecheck`, full `npm run test`, and `npm run build` passed. Signed-out redirect behavior remains covered by `tests/unit/middleware.test.ts`; focused Playwright execution could not start because the local server bind failed before route loading.
 - Limitations: Desktop/mobile screenshots were not captured in this sandbox. `npm run dev -- -H 127.0.0.1 -p 3000`, `npm run dev -- -H 0.0.0.0 -p 3001`, and `npx playwright test tests/e2e/auth-gate.spec.ts --project=chromium` all failed at server startup with `EPERM`; the Codex in-app browser was also unavailable for `iab`.
+
+### 2026-05-22 - state-machine-modeling - Supervisor runtime-only stash guard
+
+- Agent: Codex
+- Trigger: After M4-013 merged, the supervisor locally marked it done, then the next iteration stashed supervisor-only runtime ledgers and reverted the local board to `in_progress`.
+- Action: Opened and followed the skill; modeled runtime ledger changes as control-plane state that must remain in the worktree across issue starts unless mixed with non-runtime implementation changes.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Added a focused test requiring `stash_dirty_worktree` to skip stashing supervisor-only runtime files before any `git stash push`.
+- Limitations: This entry covers supervisor lifecycle safety only; it does not change product UI or provider behavior.

@@ -393,9 +393,65 @@ worktree_has_changes() {
     [ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]
 }
 
+worktree_has_non_runtime_changes() {
+  python3 - <<'PY'
+from __future__ import annotations
+
+import subprocess
+
+SUPERVISOR_RUNTIME_FILES = {
+    "plans/blockers-log.md",
+    "plans/codex-worker-inbox.md",
+    "plans/current-repair-meta.json",
+    "plans/current-task.md",
+    "plans/decisions-log.md",
+    "plans/issue-board.md",
+    "plans/overnight-progress.md",
+}
+
+SUPERVISOR_RUNTIME_PREFIXES = (
+    ".claude/",
+    ".codex/",
+    "plans/codex-exec-",
+)
+
+
+def status_path(raw: str) -> str:
+    path = raw[3:]
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
+    return path
+
+
+def is_supervisor_runtime_file(path: str) -> bool:
+    return path in SUPERVISOR_RUNTIME_FILES or path.startswith(SUPERVISOR_RUNTIME_PREFIXES)
+
+
+try:
+    result = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-uall"],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+except Exception:
+    raise SystemExit(0)
+
+for raw in result.stdout.splitlines():
+    if raw and not is_supervisor_runtime_file(status_path(raw)):
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
 stash_dirty_worktree() {
   local label=$1
   if worktree_has_changes; then
+    if ! worktree_has_non_runtime_changes; then
+      log "  Dirty worktree contains only supervisor runtime files; leaving them in place ($label)"
+      return 0
+    fi
     log "  Preserving dirty worktree in stash ($label)"
     clear_stale_git_index_lock || return 1
     git stash push -u -m "overnight-preserve-${label}-$(date +%s)" >>"$LOG" 2>&1

@@ -169,6 +169,25 @@ describe("overnight supervisor repair inbox orchestration", () => {
     expect(script).toContain('stash_dirty_worktree "repair-abort-${id}"');
   });
 
+  it("does not stash supervisor-only runtime ledger changes", () => {
+    const script = supervisorScript();
+
+    expect(script).toContain("worktree_has_non_runtime_changes()");
+    expect(script).toContain(
+      "Dirty worktree contains only supervisor runtime files; leaving them in place",
+    );
+    expect(script).toContain('"plans/issue-board.md"');
+    expect(script).toContain('"plans/overnight-progress.md"');
+    expect(script).toContain('"plans/codex-worker-inbox.md"');
+    expect(script).toContain("if ! worktree_has_non_runtime_changes; then");
+
+    const runtimeCheck = script.indexOf("if ! worktree_has_non_runtime_changes; then");
+    const stashPush = script.indexOf("git stash push", runtimeCheck);
+
+    expect(runtimeCheck).toBeGreaterThanOrEqual(0);
+    expect(stashPush).toBeGreaterThan(runtimeCheck);
+  });
+
   it("clears stale git index locks before stash operations", () => {
     const script = supervisorScript();
 
