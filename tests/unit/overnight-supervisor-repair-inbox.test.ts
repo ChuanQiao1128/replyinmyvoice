@@ -120,16 +120,44 @@ describe("overnight supervisor repair inbox orchestration", () => {
     const repairGuard = script.indexOf(
       "repair changed files outside plans/task-status.json files_changed",
     );
-    const repairAdd = script.indexOf("git add . && commit repair");
+    const repairAdd = script.indexOf("stage declared files && commit repair");
     const issueGuard = script.indexOf(
       "changed files outside plans/task-status.json files_changed",
     );
-    const issueAdd = script.indexOf("git add . && commit");
+    const issueAdd = script.indexOf("stage declared files && commit");
 
     expect(repairGuard).toBeGreaterThanOrEqual(0);
     expect(repairGuard).toBeLessThan(repairAdd);
     expect(issueGuard).toBeGreaterThanOrEqual(0);
     expect(issueGuard).toBeLessThan(issueAdd);
+  });
+
+  it("ignores supervisor runtime ledgers when checking declared files", () => {
+    const script = supervisorScript();
+
+    expect(script).toContain("SUPERVISOR_RUNTIME_FILES");
+    expect(script).toContain('"plans/current-task.md"');
+    expect(script).toContain('"plans/issue-board.md"');
+    expect(script).toContain('"plans/overnight-progress.md"');
+    expect(script).toContain('"plans/codex-worker-inbox.md"');
+    expect(script).toContain("is_supervisor_runtime_file(path)");
+  });
+
+  it("stages only files declared by task-status before committing", () => {
+    const script = supervisorScript();
+
+    expect(script).toContain("stage_declared_changes()");
+    expect(script).toContain("paths = list(dict.fromkeys([*declared, *sys.argv[1:]]))");
+    expect(script).toContain('subprocess.run(["git", "add", "--", path], check=True)');
+    expect(script).toContain(
+      "stage_declared_changes plans/codex-worker-inbox.md plans/current-task.md plans/current-repair-meta.json",
+    );
+    expect(script).toContain(
+      "stage_declared_changes plans/current-task.md plans/decisions-log.md plans/issue-board.md",
+    );
+    expect(script).toContain("stage declared files && commit repair");
+    expect(script).toContain("stage declared files && commit");
+    expect(script).not.toContain("git add -A");
   });
 
   it("stashes needs_human and abort diffs before returning to main", () => {

@@ -1041,3 +1041,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/frontend-redesign-followups.md`; `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: The follow-up document includes state list, event list, transition table, invariants, illegal transitions, persistence implications, and test checklist. Focused Vitest covers M4-011 blocking before task handoff and no-status edit preservation before returning to main.
 - Limitations: The state model covers the supervisor retry contract only; it does not alter product UI state or application runtime behavior.
+
+### 2026-05-22 - state-machine-modeling - Supervisor runtime-ledger guard
+
+- Agent: Codex
+- Trigger: The M4-013 loop repeatedly stashed ready work because supervisor-maintained ledger files were dirty but not listed in `plans/task-status.json` `files_changed`.
+- Action: Opened and followed the skill; modeled the relevant lifecycle as issue branch running -> `ready_to_commit` with declared product files -> runtime ledger dirty -> stage declared files only -> commit/push, with runtime ledgers allowed to remain local supervisor state.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `bash -n plans/overnight-supervisor.sh` and `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` passed. Focused tests cover ignoring supervisor runtime ledgers during `files_changed` validation and staging only declared task files before commit.
+- Limitations: This repair covers the supervisor commit boundary; it does not complete or visually verify the preserved M4-013 pricing/auth UI changes.
