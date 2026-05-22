@@ -681,3 +681,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `prisma/schema.prisma`; `prisma/migrations/20260522132500_add_rewrite_cost_log_strategy_version_index/migration.sql`; `lib/rewrite-pipeline/canary.ts`; `docs/skill-run-log.md`.
 - Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed with existing broad quota/idempotency findings outside this change. `npx prisma validate` passed with dummy local database URLs, and full lint, typecheck, and Vitest validation passed.
 - Limitations: The migration was not applied to a live database in this turn, and no production telemetry query was run.
+
+### 2026-05-22 - system-spec-synthesis - M2.5-005 status verification
+
+- Agent: Codex
+- Trigger: The task required converting the sparse M2.5-005 roadmap stub into a concrete implementation decision under the no-git/no-gh Codex protocol.
+- Action: Opened and followed the skill at verification scope; checked the existing LearningOps promotion handoff contract, task builder, run pipeline integration, regression tests, and rewrite strategy memory note against `plans/current-task.md`.
+- Output artifacts: `plans/task-status.json`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run lint`, `npm run typecheck`, `npm run test`, and the scoped banned-term scan over `app components public lib` passed.
+- Limitations: No GitHub, git, Codex MCP, deployment, provider-backed evaluation, or live database run was executed; the implementation intentionally stops at draft promotion-task preparation in this environment.

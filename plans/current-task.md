@@ -1,15 +1,15 @@
-# Issue M2.5-009
+# Issue M2.5-005
 
-Title: M2.5-009 Canary deploy for new strategy
+Title: M2.5-005 Auto-draft PR from promotable StrategyCandidate
 Milestone: M2.5-Learning
-GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/98
+GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/90
 
 ## Brief
 
-When a StrategyCandidate is promoted to production via merge, use a feature flag (env or KV) to route N% (default 10%) of rewrite traffic to the new strategy. After 24h or 200 rewrites, compare signal-change distributions: if new strategy is worse, auto-disable flag; if better, gradually ramp.
+Scheduled job (M2.5-007) calls a codex MCP session with the StrategyCandidate brief to draft a PR. Codex modifies the relevant prompt/scenario file, adds a regression test, updates `docs/rewrite-strategy-memory.md`. Opens PR, NEVER auto-merges.
 
 ---
-Detailed brief will be written at `plans/issues/M2.5-009.md` when this milestone starts.
+Detailed brief will be written at `plans/issues/M2.5-005.md` when this milestone starts.
 Source roadmap: `plans/commercialization-roadmap.md`.
 
 ## Repository conventions
