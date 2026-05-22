@@ -1,3 +1,5 @@
+import { clusterFailedCasesByDiagnosisTag } from "./learningops/cluster";
+
 export type LearningPromotionDecision =
   | "digest_only"
   | "docs_only"
@@ -14,7 +16,8 @@ export type LearningFailureType =
   | "worse_than_draft"
   | "high_final_signal"
   | "quality_gate_failure"
-  | "repair_success";
+  | "repair_success"
+  | "diagnosis_tag_cluster";
 
 export type LearningSeverity = "low" | "medium" | "high";
 
@@ -34,6 +37,8 @@ export type LearningSampleRow = {
 
 export type LearningFindingDraft = {
   scenario: string | null;
+  commonTone?: string | null;
+  primaryDiagnosisTag?: string | null;
   failureType: LearningFailureType;
   diagnosisTags: string[];
   evidenceCount: number;
@@ -310,6 +315,8 @@ export function analyzeLearningSamples(
       );
     }
   }
+
+  findings.push(...clusterFailedCasesByDiagnosisTag(samples));
 
   const strategyCandidates = findings
     .map((finding, index) => createStrategyCandidate(finding, index))

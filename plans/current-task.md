@@ -1,15 +1,15 @@
-# Issue M2.5-001
+# Issue M2.5-003
 
-Title: M2.5-001 Define 100-case baseline corpus across 5 scenarios
+Title: M2.5-003 Failure-mode clustering by diagnosis tags
 Milestone: M2.5-Learning
-GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/82
+GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/86
 
 ## Brief
 
-Build `docs/learning-baseline-corpus.md`: 100 representative drafts, 20 per scenario (Blank/Email/Customer support/Cover letter/Work update). Each case has: draft text, scenario, tone, expected facts to preserve, expected draft AI-like signal range. Source: 50% from `RewriteLearningSample` real failures + 50% hand-crafted edge cases. NO real user PII in committed text — fictional or stripped.
+New `lib/learningops/cluster.ts`: group failed cases by primary diagnosis tag (`stock_opening`, `corporate_polish`, `uniform_rhythm`, etc per the AI-like cause taxonomy). For each cluster: count, exemplar case ids, common scenario, common tone. Output: `LearningFinding` table rows (new Prisma migration).
 
 ---
-Detailed brief will be written at `plans/issues/M2.5-001.md` when this milestone starts.
+Detailed brief will be written at `plans/issues/M2.5-003.md` when this milestone starts.
 Source roadmap: `plans/commercialization-roadmap.md`.
 
 ## Repository conventions

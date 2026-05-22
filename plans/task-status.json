@@ -1,16 +1,23 @@
 {
-  "issue_id": "M2.5-001",
-  "branch": "chore/M2.5-001",
+  "issue_id": "M2.5-003",
+  "branch": "chore/M2.5-003",
   "files_changed": [
-    "docs/learning-baseline-corpus.md",
-    "plans/task-status.json"
+    "docs/skill-run-log.md",
+    "lib/learningops.ts",
+    "lib/learningops/cluster.ts",
+    "plans/task-status.json",
+    "prisma/migrations/20260522123000_add_learning_finding_cluster_fields/migration.sql",
+    "prisma/schema.prisma",
+    "scripts/learningops-run.ts",
+    "tests/unit/learningops-cluster.test.ts",
+    "tests/unit/learningops.test.ts"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Adds a PII-free 100-case baseline corpus split evenly across five scenarios and source types.",
-  "title": "docs: add 100-case learning baseline corpus",
+  "summary": "Added diagnosis-tag clustering for failed LearningOps samples and persisted cluster metadata.",
+  "title": "feat: add LearningOps diagnosis clustering",
   "next_action": "ready_to_commit"
 }

@@ -154,3 +154,4 @@ Each overnight Claude trigger appends here.
 2026-05-22T10:42:47+12:00 | M2-008 | blocked | quality gate needs eval data
 2026-05-22T10:43:02+12:00 | M2-009 | blocked | quality gate needs eval data
 2026-05-22T10:43:18+12:00 | M2.5-001 | started | M2.5-001 Define 100-case baseline corpus across 5 scenarios
+2026-05-22T12:08:24+12:00 | M2.5-003 | started | M2.5-003 Failure-mode clustering by diagnosis tags
