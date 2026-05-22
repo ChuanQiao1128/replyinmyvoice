@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 
 
 export default function SignInPage() {
-  return <GoogleOAuthCard />;
+  return <GoogleOAuthCard mode="sign-in" />;
 }
