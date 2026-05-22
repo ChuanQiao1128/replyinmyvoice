@@ -1113,3 +1113,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/app/rewrite-workspace.tsx`; `components/app/subscription-status.tsx`; `components/app/paywall-card.tsx`; `tests/unit/workspace-copy.test.ts`; `docs/skill-run-log.md`; `plans/task-status.json`.
 - Verification evidence: `npm run lint`, `npm run typecheck`, full `npm run test`, and `npm run build` passed. `npx playwright test tests/e2e/auth-gate.spec.ts --project=chromium` could not reach route execution because the configured dev server exited before loading `/app`.
 - Limitations: Desktop/mobile screenshots, console/network inspection, and live signed-out redirect observation were blocked in this sandbox. `npm run dev`, `npx next dev -H 127.0.0.1 -p 3000`, Python `http.server`, and Playwright webServer startup all failed with `listen EPERM` / `Operation not permitted`; the Codex in-app browser also reported `iab` unavailable.
+
+### 2026-05-22 - system-spec-synthesis - Supervisor auto-repair enhancement plan
+
+- Agent: Codex
+- Trigger: The owner asked how to enhance automatic repair so Cloud/Claude monitor findings do not need to be manually pasted back into Codex.
+- Action: Opened and followed the skill; inspected the supervisor script, repair inbox flow, active M4-015 loop behavior, and automation configuration to convert the loose requirement into an implementation-ready supervisor repair architecture.
+- Output artifacts: `plans/STOP-OVERNIGHT.txt`; `docs/skill-run-log.md`.
+- Verification evidence: Confirmed from `plans/overnight.log` that M4-015 repeatedly returned `needs_human` for sandbox-blocked browser screenshots, then the supervisor stashed branch-local board updates and selected M4-015 again from main. Added a stop signal so the loop exited cleanly before more retries.
+- Limitations: This turn produced the repair design and paused the loop; it did not patch `plans/overnight-supervisor.sh` yet.
+
+### 2026-05-22 - state-machine-modeling - Supervisor terminal-state persistence
+
+- Agent: Codex
+- Trigger: The supervisor lifecycle is repeatedly selecting a task after terminal `needs_human` outcomes because the blocked board state is not persisted on main.
+- Action: Opened and followed the skill; modeled the required lifecycle fix as persisting terminal issue states (`done`, `BLOCKED-*`, `needs_human`, CI/merge failure) to main-side ledger files before returning to selection.
+- Output artifacts: `plans/STOP-OVERNIGHT.txt`; `docs/skill-run-log.md`.
+- Verification evidence: `plans/overnight.log` shows M4-015 was run four times after `needs_human` outcomes caused by browser/server sandbox limits; `plans/issue-board.md` on main still showed M4-015 as `pending`.
+- Limitations: The state-machine fix is identified but not implemented in the supervisor script in this turn.
+
+### 2026-05-23 - state-machine-modeling - Supervisor terminal-state persistence implementation
+
+- Agent: Codex
+- Trigger: The owner approved implementing the supervisor auto-repair enhancement after M4-015 repeatedly reselected due to branch-local terminal state.
+- Action: Opened and followed the skill; implemented `persist_issue_terminal_state_on_main` and routed no-status, `needs_human`, abort, and remote-merged-after-local-merge-failure outcomes through main-side ledger persistence.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/issue-board.md`; `plans/codex-worker-inbox.md`; `docs/skill-run-log.md`.
+- Verification evidence: Added regression tests for terminal-state persistence, sandbox browser/server blocker classification, and remote merge success after local merge-command failure. `bash -n plans/overnight-supervisor.sh`, focused supervisor Vitest, and full `npm run test` passed.
+- Limitations: Did not restart the overnight loop; `plans/STOP-OVERNIGHT.txt` remains a local ignored stop signal until restart is desired.
+
+### 2026-05-23 - resilience-test-generation - Supervisor recovery regression tests
+
+- Agent: Codex
+- Trigger: The fix changes supervisor recovery behavior for repeated `needs_human`, no-status, sandbox browser/server failures, and merge-command partial success.
+- Action: Opened and followed the skill; added deterministic local regression tests instead of invoking live GitHub or browser infrastructure.
+- Output artifacts: `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/overnight-supervisor.sh`; `docs/skill-run-log.md`.
+- Verification evidence: The first focused test run failed on the missing terminal-state helper and sandbox classifier; the second red test failed on missing remote-merge recovery. After implementation, `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` and full `npm run test` passed.
+- Limitations: Tests inspect the supervisor shell contract statically; they do not execute a live GitHub merge or browser server startup.
+
+### 2026-05-23 - test-driven-development - Supervisor auto-repair fix
+
+- Agent: Codex
+- Trigger: Implementing a bugfix to prevent repeated supervisor retries and false merge-failure repair items.
+- Action: Opened and followed the skill; wrote failing tests before changing `plans/overnight-supervisor.sh`, then implemented the minimal shell changes to pass.
+- Output artifacts: `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/overnight-supervisor.sh`; `docs/skill-run-log.md`.
+- Verification evidence: Red run failed with missing `persist_issue_terminal_state_on_main` and sandbox classifier; second red run failed with missing `gh pr view "$PR_URL" --json state,mergedAt` recovery. Green runs passed focused supervisor tests and the full Vitest suite.
+- Limitations: No live loop restart or live PR merge simulation was run in this turn.
