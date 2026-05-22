@@ -218,3 +218,64 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 - Worker evidence: 2026-05-23T05:55:17+12:00 — Reclassified M7-003 from `BLOCKED-AUTONOMY` to `BLOCKED-PROVIDER` after reproducing the npm registry blocker: `npm view @sentry/nextjs version --json` failed with `ENOTFOUND registry.npmjs.org`, and no local `@sentry/nextjs` cache was present. The exact rerun prerequisite and state model are documented in `plans/m7-003-sentry-prerequisite.md`. No source implementation, live money, npm publish, dashboard, secret, `.env.local`, or `.dev.vars` change was made.
+- Worker evidence: 2026-05-23T06:01:30+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/223; Reclassified M7-003 as npm registry provider-blocked and documented the networked lockfile prerequisite.
+
+## 2026-05-22T18:08:57Z — INV-1: Finder-duplicate files outside M7-008 task scope
+
+- Status: in_progress
+- Source: Claude monitor
+- Class: dirty_repo
+- Priority: P1
+- Related issue: M7-008
+- Evidence: `git status --porcelain` on branch chore/M7-008 shows five untracked files with macOS space-numbered names — `plans/task-status 2.json`, `plans/task-status 3.json`, `plans/task-status 4.json`, `plans/m6-validation-report 2.md`, `plans/m6-validation-report 3.md` — none of which are in M7-008 scope (KPI report script). task-status.json is also deleted (D) in the worktree.
+- Suggested Codex action: Delete the five space-named duplicate files (`git rm --cached` + filesystem delete) and commit the cleanup on chore/M7-008 or a separate chore branch. Confirm contents match their canonical originals before deleting.
+- Done condition: `git status --porcelain` no longer shows the five space-named files as untracked; no data is lost (canonical originals remain).
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+
+## 2026-05-23T06:11:49+12:00 — M7-008 undeclared-files-in-diff
+
+- Status: pending
+- Source: shell supervisor
+- Class: dirty_repo
+- Priority: P1
+- Related issue: M7-008
+- Evidence: plans/task-status.json
+- Suggested Codex action: Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation.
+- Done condition: No PR commits files outside the Codex-declared files_changed list.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+
+## 2026-05-22T18:38:00Z — stash-before-repair fails on filenames with spaces (loop hard-stalled)
+
+- Status: pending
+- Source: Claude monitor
+- Class: dirty_repo
+- Priority: P0
+- Related issue: M7-008 (Finder-duplicate files in worktree)
+- Evidence: plans/overnight.log — repeated `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"' did not match any files` every 15 s since 06:34 NZ (18:34 UTC); plans/blockers-log.md tail confirms ~50+ `dirty-worktree-stash-failed` entries in a row
+- Suggested Codex action: Fix `plans/overnight-supervisor.sh` stash-before-repair-inbox path-quoting so that filenames with spaces (untracked files) are handled correctly — use `git stash -u` or `git ls-files --others --exclude-standard -z | xargs -0 git stash -u` approach rather than per-file pathspec. Also delete the Finder-duplicate files (`plans/m6-validation-report 2.md`, `plans/m6-validation-report 3.md`, `plans/task-status 2.json`, `plans/task-status 3.json`, `plans/task-status 4.json`) before the stash so they stop triggering the bug.
+- Done condition: `plans/overnight.log` shows no more `dirty-worktree-stash-failed` entries; loop processes a repair item successfully and moves on to normal issue work
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+
+## 2026-05-22T18:38:00Z — INV-4: task-status.json stale (M7-008 BLOCKED on board, file says ready_to_commit)
+
+- Status: pending
+- Source: Claude monitor
+- Class: docs
+- Priority: P2
+- Related issue: M7-008
+- Evidence: plans/task-status.json `issue_id: M7-008, next_action: ready_to_commit`; plans/issue-board.md shows M7-008 as BLOCKED; M8-001 is listed as in_progress on board
+- Suggested Codex action: Either commit or discard the M7-008 work in the worktree (scripts/launch-kpi-report.ts, tests/unit/launch-kpi-report.test.ts, docs/launch-day-report.md), then reset task-status.json to reflect the active in_progress task M8-001 (or blank if none is currently active)
+- Done condition: task-status.json `issue_id` matches a board in_progress entry (or is reset blank); worktree is clean of M7-008 artefacts
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+
+## 2026-05-22T19:40:25Z — stash-accumulation-livelock
+
+- Status: pending
+- Source: Claude monitor
+- Class: dirty_repo
+- Priority: P1
+- Related issue: M7-008 (cascades from space-file stash failure)
+- Evidence: `git stash list | wc -l` → 387 stashes on main, all named `overnight-preserve-pre-repair-inbox-<epoch>`; loop creating ~1 new stash every 15 s since at least 06:34 NZ today. Prerequisite P0 item (space-named files) already exists but is itself unconsumed due to same livelock.
+- Suggested Codex action: After space-named files are removed (see P0 item), run `git stash clear` to drop all 387+ accumulated stashes, then confirm `git stash list` is empty.
+- Done condition: `git stash list` returns empty; no new overnight-preserve stashes accumulate in next loop cycle.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
