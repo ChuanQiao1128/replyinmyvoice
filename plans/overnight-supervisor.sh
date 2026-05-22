@@ -577,6 +577,7 @@ process_repair_inbox_once() {
   if [ ! -f plans/task-status.json ]; then
     log "  ERROR: repair codex did not produce task-status.json (exit=$cdx_exit)"
     update_repair_item_status "$header" "not_actionable" "codex-no-status during repair; log plans/codex-exec-${id}.log"
+    git stash push -u -m "repair-no-status-${id}-$(date +%s)" >>"$LOG" 2>&1 || true
     git checkout main >>"$LOG" 2>&1
     git branch -D "$branch" >>"$LOG" 2>&1 || true
     REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
@@ -805,6 +806,15 @@ while true; do
       sleep "$COOLDOWN_SECONDS"
       continue
       ;;
+    M4-011)
+      log "  Skipping $ID (frontend redesign spans multiple surfaces and exceeded the Codex timebox)"
+      update_board_status "$ID" "BLOCKED-AUTONOMY"
+      append_decision "$ID | blocked-autonomy | full frontend redesign exceeded the 600s Codex timebox; split via plans/frontend-redesign-followups.md before retry"
+      ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+      ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+      sleep "$COOLDOWN_SECONDS"
+      continue
+      ;;
     M8-002|M8-003|M8-004|M8-005|M8-006|M8-007|M8-008|M8-009|M8-010|M8-011|M8-012|M8-013|M8-014|M8-015|M8-016)
       log "  Skipping $ID (B2B API chain — depends on M8-001 + Azure SQL routing)"
       update_board_status "$ID" "BLOCKED-PREREQ"
@@ -917,6 +927,7 @@ while true; do
       "plans/codex-exec-${ID}.log" \
       "Investigate why Codex did not write plans/task-status.json for $ID; fix the loop prompt/task contract or requeue the issue with evidence." \
       "The supervisor can run the issue again and receive a valid plans/task-status.json, or the issue is reclassified with a concrete non-user blocker."
+    git stash push -u -m "no-status-${ID}-$(date +%s)" >>"$LOG" 2>&1 || true
     git checkout main >>"$LOG" 2>&1
     git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
     ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))

@@ -25,12 +25,12 @@ const items = [
 
 export function TrustPanel() {
   return (
-    <section className="border-y border-line bg-white/50">
-      <div className="mx-auto max-w-6xl px-6 py-14">
+    <section className="border-b border-line bg-paper">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
         <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr] lg:items-start">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
-              Commercial ready
+            <p className="text-sm font-semibold text-brick">
+              Practical communication
             </p>
             <h2 className="mt-3 text-3xl font-semibold md:text-4xl">
               Built for real communication workflows.
@@ -44,10 +44,10 @@ export function TrustPanel() {
           <div className="grid gap-3 sm:grid-cols-2">
             {items.map((item) => (
               <div
-                className="rounded-lg border border-line bg-paper p-5"
+                className="rounded-lg border border-line bg-cream p-5 transition hover:border-evergreen/35 hover:shadow-soft"
                 key={item.title}
               >
-                <item.icon className="h-5 w-5 text-sage" aria-hidden="true" />
+                <item.icon className="h-5 w-5 text-evergreen" aria-hidden="true" />
                 <h3 className="mt-4 font-semibold">{item.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-ink/65">{item.text}</p>
               </div>

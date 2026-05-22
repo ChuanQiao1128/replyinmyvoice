@@ -4,12 +4,12 @@ const steps = [
     text: "Paste the message you are answering and the rough reply you already have.",
   },
   {
-    title: "Pick quick context",
+    title: "Add the details that matter",
     text: "Choose audience, purpose, and anything that must stay unchanged. Most fields are optional.",
   },
   {
-    title: "Choose a tone preset",
-    text: "Pick a warmer, clearer, firmer, or more professional style from a short list.",
+    title: "Choose Warm or Direct",
+    text: "Pick a concise tone that fits the relationship without changing the facts.",
   },
   {
     title: "Review the signal",
@@ -19,13 +19,13 @@ const steps = [
 
 export function HowItWorks() {
   return (
-    <section className="border-y border-line bg-paper-deep/50">
-      <div className="mx-auto max-w-6xl px-6 py-16">
+    <section className="border-y border-line bg-mist/45">
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
         <h2 className="text-3xl font-semibold md:text-4xl">How it works</h2>
         <div className="mt-8 grid gap-4 md:grid-cols-4">
           {steps.map((step, index) => (
-            <div key={step.title} className="rounded-lg border border-line bg-paper p-5">
-              <span className="text-sm font-semibold text-clay">0{index + 1}</span>
+            <div key={step.title} className="rounded-lg border border-line bg-cream p-5">
+              <span className="text-sm font-semibold text-brick">0{index + 1}</span>
               <p className="mt-3 text-lg font-semibold">{step.title}</p>
               <p className="mt-2 text-sm leading-6 text-ink/62">{step.text}</p>
             </div>

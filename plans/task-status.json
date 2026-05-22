@@ -1,8 +1,9 @@
 {
-  "issue_id": "M6-003",
-  "branch": "chore/M6-003",
+  "issue_id": "REPAIR-20260522184544",
+  "branch": "chore/REPAIR-20260522184544",
   "files_changed": [
-    "docs/preflight-report.md",
+    "plans/codex-worker-inbox.md",
+    "plans/custom-domain-attach.md",
     "docs/skill-run-log.md",
     "plans/task-status.json"
   ],
@@ -11,7 +12,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Documented M6-003 Worker preview smoke attempt blocked by sandbox DNS; rerun curl checks from a networked shell.",
-  "title": "docs: record blocked workers.dev smoke attempt",
-  "next_action": "needs_human"
+  "summary": "Marked the M6-004 provider blocker not autonomously actionable after reproducing sandbox DNS failure and preserving the networked verification prerequisite.",
+  "title": "docs: close M6-004 provider repair",
+  "next_action": "ready_to_commit"
 }

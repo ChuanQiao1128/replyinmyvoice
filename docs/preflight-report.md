@@ -360,3 +360,19 @@ curl -sS -X POST -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1
 curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/api/stripe/webhook
 curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/api/health/db
 ```
+
+## M6-004 Formal Domain Custom-Domain Check Attempt
+
+Date: 2026-05-22
+
+- Target Worker: `replyinmyvoice-app`
+- Target domain: `replyinmyvoice.com`
+- Required check from `plans/issue-manifest.md`: confirm the Cloudflare Workers custom domains API shows `replyinmyvoice.com` attached to `replyinmyvoice-app`; if attached, smoke test the formal domain.
+- Local configuration evidence:
+  - `wrangler.jsonc` declares `replyinmyvoice.com` and `www.replyinmyvoice.com` as Worker custom domains.
+  - `docs/manual-setup.md` records the apex attach on 2026-05-18 and the `www` cutover on 2026-05-20.
+- Current API attempt: blocked by this sandbox before reaching Cloudflare. `curl` to `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains` returned `Could not resolve host: api.cloudflare.com`.
+- Current formal-domain smoke attempt: blocked by this sandbox before reaching the site. Shell `curl` returned `Could not resolve host: replyinmyvoice.com` for `/`, `/pricing`, `/sign-in`, `/app`, `/api/health/db`, and `/api/stripe/webhook`.
+- Route statuses observed from this environment: none.
+- No deployment, Worker secret, DNS, Stripe, or `.env.local` changes were made.
+- Follow-up artifact: `plans/custom-domain-attach.md` contains the exact networked API check, dashboard attach path, API attach path, and smoke commands.

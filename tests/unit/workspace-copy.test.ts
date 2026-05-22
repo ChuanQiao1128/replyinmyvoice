@@ -15,8 +15,8 @@ describe("workspace V2 surface copy", () => {
     expect(workspaceSource).not.toContain("Customer support");
     expect(workspaceSource).not.toContain("Cover letter");
     expect(workspaceSource).not.toContain("Work update");
-    expect(workspaceSource).toContain("Context or message");
-    expect(workspaceSource).toContain("Draft to rewrite");
+    expect(workspaceSource).toContain("Message to reply to");
+    expect(workspaceSource).toContain("Rough draft reply");
     expect(workspaceSource).toContain("Audience");
     expect(workspaceSource).toContain("Purpose");
     expect(workspaceSource).toContain("What actually happened");

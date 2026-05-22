@@ -195,3 +195,15 @@ What user needs to do: review the branch chore/M6-002 (if any), the log tail, an
 What was attempted: Documented M6-003 Worker preview smoke attempt blocked by sandbox DNS; rerun curl checks from a networked shell.
 
 What user needs to do: review the branch chore/M6-003 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-22T18:29:32+12:00 — M4-011 — codex-no-status
+
+What was attempted: codex exec did not write plans/task-status.json. Log: plans/codex-exec-M4-011.log
+
+What user needs to do: review the branch chore/M4-011 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-22T18:45:26+12:00 — M6-004 — codex-needs-human:BLOCKED-PROVIDER
+
+What was attempted: Documented networked Cloudflare domain verification rerun because sandbox DNS blocked the live API and formal-domain smoke.
+
+What user needs to do: review the branch chore/M6-004 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.

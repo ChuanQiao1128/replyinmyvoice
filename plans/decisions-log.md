@@ -197,3 +197,7 @@ Each overnight Claude trigger appends here.
 2026-05-22T18:00:11+12:00 | REPAIR-20260522180011 | repair-started | M6-001 Cloudflare secret-name diff retry
 2026-05-22T18:06:47+12:00 | REPAIR-20260522180011 | repair-done | Retried read-only Wrangler secret listing, recorded current Cloudflare DNS blocker evidence, and reclassified M6-002 as prerequisite-blocked. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/195)
 2026-05-22T18:07:02+12:00 | M6-003 | started | M6-003 Smoke test workers.dev preview
+2026-05-22T18:19:29+12:00 | M4-011 | started | M4-011 Use web-design-engineer to redesign frontend visual system
+2026-05-22T18:29:50+12:00 | REPAIR-20260522182950 | repair-started | M4-011 codex-no-status
+2026-05-22T18:40:06+12:00 | M6-004 | started | M6-004 Confirm replyinmyvoice.com → Worker custom domain attach
+2026-05-22T18:45:45+12:00 | REPAIR-20260522184544 | repair-started | M6-004 codex-needs-human:BLOCKED-PROVIDER

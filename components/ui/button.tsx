@@ -2,10 +2,11 @@ import Link from "next/link";
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
 
 const variants = {
-  primary: "bg-ink text-paper hover:bg-ink/90",
-  secondary: "border border-line bg-paper text-ink hover:bg-paper-deep",
-  ghost: "text-ink hover:bg-paper-deep",
-  clay: "bg-clay text-white hover:bg-clay/90",
+  primary: "bg-evergreen text-cream shadow-sm hover:bg-evergreen/90",
+  secondary:
+    "border border-line bg-cream text-ink hover:border-evergreen/35 hover:bg-mist/45",
+  ghost: "text-ink hover:bg-mist/45",
+  clay: "bg-brick text-white shadow-sm hover:bg-brick/90",
 };
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -19,7 +20,7 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-evergreen disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
       {...props}
     />
   );
@@ -39,7 +40,7 @@ export function LinkButton({
 }: LinkButtonProps) {
   return (
     <Link
-      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition ${variants[variant]} ${className}`}
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-evergreen ${variants[variant]} ${className}`}
       href={href}
       {...props}
     />

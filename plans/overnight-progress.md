@@ -522,3 +522,19 @@ Run finished. Done: 3 | Blocked: 1 | Needs human: 2
 
 ## Trigger at 2026-05-22T18:13:01+12:00
 Run finished. Done: 0 | Blocked: 0 | Needs human: 1 | Repairs done: 1 | Repairs blocked: 0
+
+## Monitor at 2026-05-22T06:24:59Z
+- Loop: alive (restarted 18:19 local / 06:19Z; overnight.log age ~5 min; running M4-011 codex exec, 600s timeout)
+- Board: 52 done / 28 pending / 3 in_progress / 3 user-blocked / 4 provider-blocked / 10 prereq-blocked / 19 autonomy-blocked / 2 uncategorized-blocked
+- Recent main: 49511c5 docs: record M6-003 dns blocker (#198) | ca08b74 docs: queue frontend redesign issue (#197)
+- Blockers: M6-001/002/003 all BLOCKED-PROVIDER (Cloudflare api.cloudflare.com DNS unreachable from sandbox); already documented in inbox (done/not_actionable); no new engineering blockers
+- Repair inbox: none (existing M6-001 item done; M6-003 item not_actionable)
+- Next commercial gate: billing (M6 Verify requires networked shell for Wrangler; M7 Stripe live checkout awaits user-initiated live money test)
+
+## Monitor at 2026-05-22T06:38:01Z
+- Loop: alive (log age 8 min; codex exec in flight for M4-011 repair REPAIR-20260522182950, 600s timeout — normal silence)
+- Board: ~52 done / ~28 pending / 1 in_progress / 3 user-blocked / 4 provider-blocked / 10 prereq-blocked / 20 autonomy-blocked / 2 uncategorized-blocked
+- Recent main: no new commits since 06:24Z monitor (49511c5 M6-003 dns blocker still latest)
+- Blockers: no new blockers; M6-001/002/003 still BLOCKED-PROVIDER (sandbox DNS); all already captured in inbox
+- Repair inbox: M4-011 item already in_progress — no new items queued
+- Next commercial gate: billing (M6 Wrangler ops require networked shell; M7 live Stripe checkout is user-initiated)

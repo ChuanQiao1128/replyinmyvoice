@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 
-import { Card } from "../ui/card";
 import { homepageSampleCases } from "./sample-cases";
 
 function SignalBar({
@@ -39,15 +38,18 @@ export function InteractiveDemo() {
   const change = useMemo(() => scenario.after - scenario.before, [scenario]);
 
   return (
-    <Card id="examples" className="p-4 md:p-5">
-      <div className="flex flex-wrap gap-2">
+    <div
+      id="examples"
+      className="rounded-lg border border-line bg-paper p-4 shadow-panel md:p-5"
+    >
+      <div className="flex flex-wrap gap-2 border-b border-line pb-4">
         {homepageSampleCases.map((item, itemIndex) => (
           <button
             key={item.label}
             className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${
               itemIndex === index
-                ? "border-ink bg-ink text-paper"
-                : "border-line bg-white text-ink/70 hover:text-ink"
+                ? "border-evergreen bg-evergreen text-cream"
+                : "border-line bg-cream text-ink/70 hover:border-evergreen/35 hover:text-ink"
             }`}
             onClick={() => setIndex(itemIndex)}
             type="button"
@@ -56,31 +58,31 @@ export function InteractiveDemo() {
           </button>
         ))}
       </div>
-      <div className="mt-5 rounded-lg border border-line bg-paper-deep/65 px-4 py-3 text-sm leading-6 text-ink/68">
+      <div className="mt-5 rounded-md bg-mist/70 px-4 py-3 text-sm leading-6 text-ink/68">
         {scenario.context}
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
-        <div className="rounded-lg border border-line bg-paper p-4 md:min-h-72">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink/45">
+        <div className="rounded-md bg-cream p-4 ring-1 ring-line md:min-h-72">
+          <p className="text-xs font-semibold uppercase text-ink/45">
             Rough draft
           </p>
           <p className="mt-3 text-sm leading-6 text-ink/75">{scenario.draft}</p>
         </div>
-        <div className="hidden items-center text-clay md:flex">
+        <div className="hidden items-center text-brick md:flex">
           <ArrowRight className="h-5 w-5" aria-hidden="true" />
         </div>
-        <div className="rounded-lg border border-line bg-white p-4 md:min-h-72">
-          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-sage">
+        <div className="rounded-md bg-white p-4 ring-1 ring-evergreen/20 md:min-h-72">
+          <p className="flex items-center gap-2 text-xs font-semibold uppercase text-evergreen">
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             In your voice
           </p>
           <p className="mt-3 text-sm leading-6 text-ink">{scenario.rewrite}</p>
         </div>
       </div>
-      <div className="mt-5 rounded-lg border border-line bg-white p-4">
+      <div className="mt-5 rounded-md bg-cream p-4 ring-1 ring-line">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="font-semibold">Naturalness Check</p>
-          <p className="text-sm font-medium text-sage">{change} pts</p>
+          <p className="text-sm font-medium text-evergreen">{change} pts</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <SignalBar label="Draft AI-like signal" value={scenario.before} />
@@ -95,6 +97,6 @@ export function InteractiveDemo() {
           and rewrite feel. It is not a guarantee; review the reply before sending.
         </p>
       </div>
-    </Card>
+    </div>
   );
 }
