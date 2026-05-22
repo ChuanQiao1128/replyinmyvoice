@@ -564,3 +564,84 @@ claude-heavy-planning-handoff
 - Output artifacts: `lib/learningops/promotion-brief.ts`; `scripts/learningops-run.ts`; `tests/unit/learningops-promotion-brief.test.ts`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
 - Verification evidence: The red focused test first failed on the missing promotion-brief module. After implementation, focused LearningOps tests passed, then `npm run lint`, `npm run typecheck`, and `npm run test` passed.
 - Limitations: No GitHub, git, Codex MCP, deployment, provider-backed evaluation, or live database run was executed in this turn.
+
+### 2026-05-22 - resilience-test-generation - M2.5-002 incremental eval
+
+- Agent: Codex
+- Trigger: The task changed timeout recovery, provider-failure handling, resumable checkpoints, and per-case persistence for the provider-backed eval script.
+- Action: Opened and followed the skill; kept provider calls out of unit tests, added parser-only Vitest coverage first, and implemented per-case append plus atomic progress writes so completed work survives later interruption.
+- Output artifacts: `scripts/eval-scenarios.ts`; `tests/unit/eval-scenarios-corpus.test.ts`; `tests/fixtures/learning-corpus-mini.md`; `plans/issues/M2.5-002.md`; `plans/codex-implementation-prompt.md`; `plans/decisions-log.md`.
+- Verification evidence: Focused parser test failed before implementation because the parser export was missing and importing the script ran legacy side effects; after refactor, `npm run test -- --run tests/unit/eval-scenarios-corpus.test.ts` passed.
+- Limitations: No real 100-case provider evaluation, deployment, or production data access was run.
+
+### 2026-05-22 - cloud-architecture-cost-review - M2.5-007 Cloudflare Cron LearningOps
+
+- Agent: Codex
+- Trigger: The task added a scheduled Cloudflare Worker execution path for daily LearningOps.
+- Action: Opened and followed the skill; reviewed `docs/manual-setup.md`, `docs/next-development-brief.md`, existing Cloudflare/OpenNext config, and the LearningOps runbook. Selected the existing Worker Cron Trigger instead of a new Worker, Azure timer, queue, or always-on service.
+- Output artifacts: `worker.js`; `wrangler.jsonc`; `lib/learningops/scheduled.ts`; `docs/learningops-runbook.md`; `docs/skill-run-log.md`.
+- Verification evidence: `npx wrangler deploy --dry-run --outdir /private/tmp/learningops-worker-dry-run` completed with exit 0 and did not deploy. Required validation also passed with `npm run lint`, `npm run typecheck`, and `npm run test`.
+- Limitations: Exact Cloudflare billing dashboards were not checked. The dry run emitted a nonfatal local Wrangler log-file permission warning and no production deployment was run.
+
+### 2026-05-22 - system-spec-synthesis - M2.5-007 scheduled LearningOps contract
+
+- Agent: Codex
+- Trigger: The task converted the M2.5-007 roadmap stub into an implementation-ready scheduled job contract.
+- Action: Opened and followed the skill at implementation scope; mapped source facts from `plans/current-task.md`, the M2.5 roadmap, `docs/next-development-brief.md`, existing LearningOps analyzer/candidate modules, and the promotion handoff into a shared pipeline.
+- Output artifacts: `lib/learningops/run.ts`; `lib/learningops/scheduled.ts`; `scripts/learningops-run.ts`; `worker.js`; `tests/unit/learningops-run.test.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: The red focused test first failed on the missing `lib/learningops/run` module. After implementation, focused LearningOps tests passed, then `npm run lint`, `npm run typecheck`, and `npm run test` passed.
+- Limitations: No live production database run, GitHub operation, Codex MCP PR drafting session, or deployment was executed.
+
+### 2026-05-22 - state-machine-modeling - M2.5-007 LearningRun statuses
+
+- Agent: Codex
+- Trigger: The task changed the `LearningRun` lifecycle by requiring terminal statuses `digest_only`, `docs_only`, `promoted`, and `blocked`.
+- Action: Opened and followed the skill; modeled the scheduled run as start-blocked-for-safety, analyze recent samples, persist findings/candidates, then transition to the analysis outcome or back to `blocked` on failure.
+- Output artifacts: `lib/learningops.ts`; `lib/learningops/run.ts`; `tests/unit/learningops.test.ts`; `tests/unit/learningops-run.test.ts`; `docs/learningops-runbook.md`; `docs/skill-run-log.md`.
+- Verification evidence: Unit tests cover `digest_only`, `docs_only`, `promoted`, and failure-to-`blocked`; focused and full Vitest suites passed.
+- Limitations: There is no database enum or check constraint for statuses yet; this remains a typed application invariant over the existing text column.
+
+### 2026-05-22 - data-module-review - M2.5-007 LearningOps persistence
+
+- Agent: Codex
+- Trigger: The task changed database writes for `LearningRun`, `LearningFinding`, and `StrategyCandidate` from a CLI-only insert path to a shared scheduled pipeline.
+- Action: Opened and followed the skill; reviewed `prisma/schema.prisma`, existing LearningOps migrations, and mutating code, then kept the change schema-compatible by reusing existing columns and indexes.
+- Output artifacts: `lib/learningops/run.ts`; `scripts/learningops-run.ts`; `tests/unit/learningops-run.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed; focused LearningOps tests and full `npm run test` passed.
+- Limitations: The scanner reported many existing quota/idempotency signals outside this change. No live migration or production database write was run.
+
+### 2026-05-22 - resilience-test-generation - M2.5-007 scheduled LearningOps failure handling
+
+- Agent: Codex
+- Trigger: The task introduced scheduled background execution and needed deterministic behavior when sample reads or persistence fail.
+- Action: Opened and followed the skill; added a local fake SQL test that forces sample-read failure after the run row is created and asserts the run is marked `blocked`.
+- Output artifacts: `lib/learningops/run.ts`; `tests/unit/learningops-run.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: The red focused test failed before the runner existed; after implementation, `tests/unit/learningops-run.test.ts` passed and the full Vitest suite passed.
+- Limitations: No live Cloudflare scheduled invocation, production database outage simulation, or external provider failure was run.
+
+### 2026-05-22 - state-machine-modeling - M2.5-008 StrategyCandidate review statuses
+
+- Agent: Codex
+- Trigger: The task added admin approval decisions for the persisted `StrategyCandidate.status` lifecycle.
+- Action: Opened and followed the skill; modeled admin review as `proposed` to one of `approved`, `needs_revision`, or `rejected`, with later admin correction allowed between review states and invalid statuses rejected before DB writes.
+- Output artifacts: `lib/admin/learning.ts`; `app/admin/learning/page.tsx`; `tests/unit/admin-learning.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: The red focused test first failed on the missing admin learning module; after implementation, `tests/unit/admin-learning.test.ts`, `npm run typecheck`, `npm run lint`, and the full `npm run test` suite passed.
+- Limitations: The database column remains free text; allowed review states are enforced in the admin mutation helper rather than a DB enum or check constraint.
+
+### 2026-05-22 - data-module-review - M2.5-008 StrategyCandidate admin mutation
+
+- Agent: Codex
+- Trigger: The task added an admin UI action that updates `StrategyCandidate.status` in the database.
+- Action: Opened and followed the skill; reviewed the LearningOps tables, existing raw SQL patterns, and the new mutation path. Kept the change schema-compatible, scoped the update by candidate id, and added a focused fake-SQL unit test for the update statement.
+- Output artifacts: `lib/admin/learning.ts`; `app/admin/learning/page.tsx`; `tests/unit/admin-learning.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed and reported existing broad quota/idempotency signals outside this change. Focused and full Vitest suites passed.
+- Limitations: No live production database write was run.
+
+### 2026-05-22 - ui-browser-testing - M2.5-008 admin learning page
+
+- Agent: Codex
+- Trigger: The task added a frontend admin page and form controls under `/admin/learning`.
+- Action: Opened and followed the skill; identified the admin review flow and implemented a dynamic page with recent runs, finding clusters, evidence refs, candidate details, linked work, and approval controls.
+- Output artifacts: `app/admin/learning/page.tsx`; `components/admin/admin-shell.tsx`; `tests/unit/admin-learning.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run typecheck`, `npm run lint`, and full `npm run test` passed. Local browser verification was attempted with `npm run dev -- -p 3010` and `npm run dev -- -H 127.0.0.1 -p 3010`, but the sandbox rejected both bind attempts with `EPERM`.
+- Limitations: No authenticated browser screenshot was captured because the local dev server could not bind in this sandbox, and no production admin session or live database was used.

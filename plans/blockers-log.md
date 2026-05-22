@@ -147,3 +147,9 @@ Cleanup hint: the 11 duplicate `M1-002 — git-checkout-main-failed` entries abo
 Sentinels at monitor exit: `plans/MONEY-MADE.txt` absent, `plans/STOP-OVERNIGHT.txt` PRESENT (touched by monitor at 22:33Z to halt the thrash). Banned-term scan: clean across app/components/public/lib.
 
 ---
+
+## 2026-05-22T12:56:53+12:00 — M2.5-007 — codex-no-status
+
+What was attempted: codex exec did not write plans/task-status.json. Log: plans/codex-exec-M2.5-007.log
+
+What user needs to do: review the branch chore/M2.5-007 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.

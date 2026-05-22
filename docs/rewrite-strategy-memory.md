@@ -91,8 +91,10 @@ Implemented LearningOps promotion handoff:
 
 - `lib/learningops/promotion-brief.ts` turns a promotable `StrategyCandidate` into a safe Codex task brief.
 - `npm run learningops:run` writes `plans/learningops-promotion-task.md` after each run.
+- `worker.js` adds a Cloudflare scheduled handler that runs LearningOps every 24 hours through the shared DB pipeline.
+- Scheduled runs read only the last 7 days of `RewriteLearningSample` rows and record `LearningRun.status` as `digest_only`, `docs_only`, `promoted`, or `blocked`.
 - When a candidate exists, the task brief includes the patch target, suggested files, required regression coverage, required docs update, validation commands, and safety constraints.
-- The handoff is PR-drafting only. It must open a draft pull request for review and must not merge automatically.
+- The handoff is PR-drafting only. It must open a draft pull request for review and must not merge or deploy automatically.
 - The brief must not contain raw learning sample content or secrets. It promotes pattern-level changes into code and tests only.
 
 ## Privacy Rule For Learning

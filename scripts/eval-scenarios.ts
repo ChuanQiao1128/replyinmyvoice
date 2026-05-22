@@ -1,5 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { detectUnsupportedFacts } from "../lib/fact-extraction";
 import { createRewritePlan } from "../lib/rewrite-diagnosis";
@@ -32,6 +33,31 @@ type EvalCase = {
   factsToPreserve?: string;
   expectedFacts: string[];
   forbiddenClaims?: string[];
+};
+
+type EvalResultRow = EvalCase & {
+  diagnosisTags: string[];
+  rewritePlan: string;
+  rewrittenText: string;
+  wordCount: number;
+  charCount: number;
+  draft: number | null;
+  firstCandidate: number | null;
+  repairCandidate: number | null;
+  rewrite: number | null;
+  change: number | null;
+  candidateSignals: NonNullable<
+    RewriteResponsePayload["optimization"]["candidateSignals"]
+  >;
+  rejectedReasons: string[];
+  factsPreserved: boolean;
+  missingFacts: string[];
+  unsupportedFactsIntroduced: string[];
+  forbiddenClaimViolations: string[];
+  qualityFailure: boolean;
+  qualityFailureReason: string | null;
+  customerUsablePass: boolean;
+  strictSignalPass: boolean;
 };
 
 function draftOnlyCase(
@@ -914,10 +940,64 @@ const allEvalCases = cases.map((sample) => {
 
 type EvalMode = "smoke" | "focused" | "full";
 
-function parseEvalMode(): EvalMode {
+type EvalCliOptions = {
+  mode: EvalMode;
+  corpusPath: string | null;
+  outputPath: string;
+  progressPath: string;
+  limit: number;
+  resume: boolean;
+  timeBudgetMs: number;
+};
+
+type CompletedCorpusCase = {
+  id: string;
+  scenario: ScenarioOption;
+  tonePreset: TonePreset;
+  draftAiLikePercent: number | null;
+  rewriteAiLikePercent: number | null;
+  changePoints: number | null;
+  factsPreserved: boolean;
+  unsupportedFactsCount: number;
+  forbiddenViolationsCount: number;
+  qualityFailure: boolean;
+  customerUsablePass: boolean;
+  strictSignalPass: boolean;
+  completedAt: string;
+};
+
+type CorpusProgress = {
+  corpusPath: string;
+  outputPath: string;
+  startedAt: string;
+  lastUpdatedAt: string;
+  strategyVersion: string;
+  naturalnessThreshold: number;
+  completedCases: CompletedCorpusCase[];
+};
+
+function cliValue(args: string[], name: string) {
+  return args
+    .find((arg) => arg.startsWith(`--${name}=`))
+    ?.slice(name.length + 3);
+}
+
+function parseNonNegativeInteger(value: string, flagName: string) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`--${flagName} must be a non-negative integer`);
+  }
+
+  return parsed;
+}
+
+function parseEvalMode(
+  args: string[] = process.argv.slice(2),
+  env: NodeJS.ProcessEnv = process.env,
+): EvalMode {
   const modeArg =
-    process.argv.find((arg) => arg.startsWith("--mode="))?.split("=")[1] ??
-    process.env.EVAL_MODE ??
+    cliValue(args, "mode") ??
+    env.EVAL_MODE ??
     "focused";
 
   if (modeArg === "smoke" || modeArg === "focused" || modeArg === "full") {
@@ -925,6 +1005,107 @@ function parseEvalMode(): EvalMode {
   }
 
   return "focused";
+}
+
+function parseEvalCliOptions(
+  args: string[] = process.argv.slice(2),
+  env: NodeJS.ProcessEnv = process.env,
+): EvalCliOptions {
+  const limitArg = cliValue(args, "limit");
+  const timeBudgetArg = cliValue(args, "time-budget-ms");
+
+  return {
+    mode: parseEvalMode(args, env),
+    corpusPath: cliValue(args, "corpus") ?? null,
+    outputPath:
+      cliValue(args, "output") ??
+      path.join("docs", "scenario-evaluation-results.md"),
+    progressPath:
+      cliValue(args, "progress") ??
+      path.join("plans", "learning-baseline-progress.json"),
+    limit:
+      limitArg === undefined
+        ? Number.POSITIVE_INFINITY
+        : parseNonNegativeInteger(limitArg, "limit"),
+    resume: args.includes("--resume"),
+    timeBudgetMs:
+      timeBudgetArg === undefined
+        ? 540000
+        : parseNonNegativeInteger(timeBudgetArg, "time-budget-ms"),
+  };
+}
+
+const learningBaselineScenarioMap = new Map<string, ScenarioOption>([
+  ["Blank", "Blank / custom"],
+  ["Blank / custom", "Blank / custom"],
+  ["Email", "Email or message reply"],
+  ["Email or message reply", "Email or message reply"],
+  ["Customer support", "Customer support"],
+  ["Cover letter", "Cover letter"],
+  ["Work update", "Work update"],
+]);
+
+function parseMarkdownTableRow(line: string) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) {
+    return null;
+  }
+
+  return trimmed
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function isMarkdownSeparatorRow(cells: string[]) {
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+export function parseLearningBaselineCorpus(markdown: string): EvalCase[] {
+  const cases: EvalCase[] = [];
+
+  for (const line of markdown.split(/\r?\n/)) {
+    const cells = parseMarkdownTableRow(line);
+    if (!cells || cells[0] === "ID" || isMarkdownSeparatorRow(cells)) {
+      continue;
+    }
+
+    const rowId = cells[0] || "unknown row";
+    if (cells.length !== 7) {
+      throw new Error(
+        `Learning baseline corpus row ${rowId} must have 7 columns; found ${cells.length}`,
+      );
+    }
+
+    const [, , scenarioText, toneText, draftText, factsText] = cells;
+    const scenario = learningBaselineScenarioMap.get(scenarioText);
+    if (!scenario) {
+      throw new Error(
+        `Learning baseline corpus row ${rowId} has unknown scenario: ${scenarioText}`,
+      );
+    }
+
+    if (toneText !== "Warm" && toneText !== "Direct") {
+      throw new Error(
+        `Learning baseline corpus row ${rowId} has unknown tone: ${toneText}`,
+      );
+    }
+
+    cases.push({
+      id: rowId,
+      scenario,
+      tonePreset: toneText,
+      messageToReplyTo: "",
+      roughDraftReply: draftText,
+      expectedFacts: factsText
+        .split(";")
+        .map((fact) => fact.trim())
+        .filter(Boolean),
+      forbiddenClaims: [],
+    });
+  }
+
+  return cases;
 }
 
 function selectEvalCases(samples: EvalCase[], mode: EvalMode) {
@@ -1044,21 +1225,10 @@ async function loadSelectedEvalCases(mode: EvalMode) {
   return selectRewriteEmailEvalCases(emailCases, mode).map(emailEvalCaseToEvalCase);
 }
 
-await loadEnvLocal();
-
-const evalMode = parseEvalMode();
-const evalCases = await loadSelectedEvalCases(evalMode);
-
-const rows = [];
-const rewriteConfig = getFactReconstructConfig();
-
-console.log(
-  `[eval] mode=${evalMode} strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold} cases=${evalCases.length}`,
-);
-
-for (const [index, sample] of evalCases.entries()) {
-  console.log(`[eval] ${index + 1}/${evalCases.length} ${sample.id}`);
-
+async function evaluateSample(
+  sample: EvalCase,
+  rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
+): Promise<EvalResultRow> {
   const input = rewriteRequestSchema.parse({
     scenario: sample.scenario,
     messageToReplyTo: sample.messageToReplyTo,
@@ -1120,7 +1290,7 @@ for (const [index, sample] of evalCases.entries()) {
     !qualityFailure &&
     signalNotWorse;
 
-  rows.push({
+  return {
     ...sample,
     diagnosisTags: plan.tags,
     rewritePlan: plan.summary,
@@ -1151,76 +1321,90 @@ for (const [index, sample] of evalCases.entries()) {
       unsupportedFacts.length === 0 &&
       forbiddenViolations.length === 0 &&
       signalPassed,
-  });
+  };
 }
 
-const measured = rows.filter(
-  (row) => row.draft !== null && row.rewrite !== null && row.change !== null,
-);
-const averageDrop = measured.length
-  ? Math.round(
-      measured.reduce((total, row) => total + Math.abs(row.change ?? 0), 0) /
-        measured.length,
-    )
-  : null;
-const belowFifty = measured.filter((row) => (row.rewrite ?? 100) < 50).length;
-const customerUsablePassed = rows.filter((row) => row.customerUsablePass).length;
-const strictSignalPassed = rows.filter((row) => row.strictSignalPass).length;
-const draftOnlyCasesEvaluated = rows.filter(
-  (row) => row.messageToReplyTo.trim().length === 0,
-).length;
-const factFailures = rows.filter(
-  (row) =>
-    !row.factsPreserved ||
-    row.unsupportedFactsIntroduced.length > 0 ||
-    row.forbiddenClaimViolations.length > 0,
-).length;
-const longCases = rows.filter((row) => row.wordCount >= 300).length;
-const longSupportCases = rows.filter(
-  (row) => row.scenario === "Customer support" && row.wordCount >= 300,
-).length;
-const worseSelected = measured.filter(
-  (row) =>
-    !row.qualityFailure &&
-    row.rewrite !== null &&
-    row.draft !== null &&
-    row.rewrite > row.draft,
-).length;
-const repairUsed = rows.filter((row) =>
-  row.candidateSignals.some((item) => item.stage === "repair"),
-).length;
-const rejectedCount = rows.reduce(
-  (total, row) => total + row.candidateSignals.filter((item) => item.rejected).length,
-  0,
-);
+function summarizeRows(rows: EvalResultRow[]) {
+  const measured = rows.filter(
+    (row) => row.draft !== null && row.rewrite !== null && row.change !== null,
+  );
 
-const lines = [
-  "# Scenario Evaluation Results",
-  "",
-  `Date: ${new Date().toISOString()}`,
-  `Eval mode: ${evalMode}`,
-  `Strategy: ${rewriteConfig.strategyVersion}`,
-  `Naturalness threshold: ${rewriteConfig.naturalnessThreshold}%`,
-  `Cases evaluated: ${rows.length}`,
-  `Draft-only cases: ${draftOnlyCasesEvaluated}`,
-  `Measured cases: ${measured.length}`,
-  `Long cases (300+ words): ${longCases}`,
-  `Long customer-support cases (300+ words): ${longSupportCases}`,
-  `Average AI-like signal drop: ${
-    averageDrop === null ? "unavailable" : `${averageDrop} pts`
-  }`,
-  `Rewrite below 50% AI-like signal: ${belowFifty}/${measured.length}`,
-  `Final selected rewrites worse than draft: ${worseSelected}/${measured.length}`,
-  `Cases using targeted repair: ${repairUsed}/${rows.length}`,
-  `Rejected candidate events: ${rejectedCount}`,
-  `Fact preservation or unsupported-addition failures: ${factFailures}`,
-  `Customer-usable pass count: ${customerUsablePassed}/${rows.length}`,
-  `Strict signal pass count: ${strictSignalPassed}/${rows.length}`,
-  "",
-  "Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure is raised, and the selected rewrite is not worse than the draft when scores are available.",
-  `Strict signal pass additionally requires scores available and: if the draft is above ${rewriteConfig.naturalnessThreshold}%, the final rewrite is at or below ${rewriteConfig.naturalnessThreshold}%; if the draft is already at or below ${rewriteConfig.naturalnessThreshold}%, the final rewrite does not raise the signal.`,
-  "",
-  ...rows.flatMap((row) => [
+  return {
+    measured,
+    averageDrop: measured.length
+      ? Math.round(
+          measured.reduce((total, row) => total + Math.abs(row.change ?? 0), 0) /
+            measured.length,
+        )
+      : null,
+    belowFifty: measured.filter((row) => (row.rewrite ?? 100) < 50).length,
+    customerUsablePassed: rows.filter((row) => row.customerUsablePass).length,
+    strictSignalPassed: rows.filter((row) => row.strictSignalPass).length,
+    draftOnlyCasesEvaluated: rows.filter(
+      (row) => row.messageToReplyTo.trim().length === 0,
+    ).length,
+    factFailures: rows.filter(
+      (row) =>
+        !row.factsPreserved ||
+        row.unsupportedFactsIntroduced.length > 0 ||
+        row.forbiddenClaimViolations.length > 0,
+    ).length,
+    longCases: rows.filter((row) => row.wordCount >= 300).length,
+    longSupportCases: rows.filter(
+      (row) => row.scenario === "Customer support" && row.wordCount >= 300,
+    ).length,
+    worseSelected: measured.filter(
+      (row) =>
+        !row.qualityFailure &&
+        row.rewrite !== null &&
+        row.draft !== null &&
+        row.rewrite > row.draft,
+    ).length,
+    repairUsed: rows.filter((row) =>
+      row.candidateSignals.some((item) => item.stage === "repair"),
+    ).length,
+    rejectedCount: rows.reduce(
+      (total, row) =>
+        total + row.candidateSignals.filter((item) => item.rejected).length,
+      0,
+    ),
+  };
+}
+
+function formatSummaryHeader(
+  rows: EvalResultRow[],
+  evalMode: string,
+  rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
+) {
+  const summary = summarizeRows(rows);
+
+  return [
+    "# Scenario Evaluation Results",
+    "",
+    `Date: ${new Date().toISOString()}`,
+    `Eval mode: ${evalMode}`,
+    `Strategy: ${rewriteConfig.strategyVersion}`,
+    `Naturalness threshold: ${rewriteConfig.naturalnessThreshold}%`,
+    `Cases evaluated: ${rows.length}`,
+    `Draft-only cases: ${summary.draftOnlyCasesEvaluated}`,
+    `Measured cases: ${summary.measured.length}`,
+    `Long cases (300+ words): ${summary.longCases}`,
+    `Long customer-support cases (300+ words): ${summary.longSupportCases}`,
+    `Average AI-like signal drop: ${
+      summary.averageDrop === null ? "unavailable" : `${summary.averageDrop} pts`
+    }`,
+    `Rewrite below 50% AI-like signal: ${summary.belowFifty}/${summary.measured.length}`,
+    `Final selected rewrites worse than draft: ${summary.worseSelected}/${summary.measured.length}`,
+    `Cases using targeted repair: ${summary.repairUsed}/${rows.length}`,
+    `Rejected candidate events: ${summary.rejectedCount}`,
+    `Fact preservation or unsupported-addition failures: ${summary.factFailures}`,
+    `Customer-usable pass count: ${summary.customerUsablePassed}/${rows.length}`,
+    `Strict signal pass count: ${summary.strictSignalPassed}/${rows.length}`,
+  ];
+}
+
+function formatCaseBlock(row: EvalResultRow) {
+  return [
     `## ${row.id}`,
     "",
     `Scenario: ${row.scenario}`,
@@ -1247,7 +1431,11 @@ const lines = [
     "Expected facts:",
     row.expectedFacts.map((fact) => `- ${fact}`).join("\n"),
     row.forbiddenClaims?.length
-      ? ["", "Forbidden claims:", row.forbiddenClaims.map((claim) => `- ${claim}`).join("\n")].join("\n")
+      ? [
+          "",
+          "Forbidden claims:",
+          row.forbiddenClaims.map((claim) => `- ${claim}`).join("\n"),
+        ].join("\n")
       : "",
     "",
     "Before:",
@@ -1262,9 +1450,360 @@ const lines = [
     row.rewrittenText,
     "```",
     "",
-  ]),
-];
+  ].join("\n");
+}
 
-const outputPath = path.join(process.cwd(), "docs", "scenario-evaluation-results.md");
-await writeFile(outputPath, lines.join("\n"));
-console.log(`Wrote ${outputPath}`);
+function formatLegacyOutput(
+  rows: EvalResultRow[],
+  evalMode: EvalMode,
+  rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
+) {
+  return [
+    ...formatSummaryHeader(rows, evalMode, rewriteConfig),
+    "",
+    "Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure is raised, and the selected rewrite is not worse than the draft when scores are available.",
+    `Strict signal pass additionally requires scores available and: if the draft is above ${rewriteConfig.naturalnessThreshold}%, the final rewrite is at or below ${rewriteConfig.naturalnessThreshold}%; if the draft is already at or below ${rewriteConfig.naturalnessThreshold}%, the final rewrite does not raise the signal.`,
+    "",
+    ...rows.map(formatCaseBlock),
+  ].join("\n");
+}
+
+function resolveFromCwd(filePath: string) {
+  return path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+}
+
+async function writeFileEnsuringDirectory(filePath: string, content: string) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, content);
+}
+
+async function runLegacyEval(
+  options: EvalCliOptions,
+  rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
+) {
+  const evalCases = await loadSelectedEvalCases(options.mode);
+  const rows: EvalResultRow[] = [];
+
+  console.log(
+    `[eval] mode=${options.mode} strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold} cases=${evalCases.length}`,
+  );
+
+  for (const [index, sample] of evalCases.entries()) {
+    console.log(`[eval] ${index + 1}/${evalCases.length} ${sample.id}`);
+    rows.push(await evaluateSample(sample, rewriteConfig));
+  }
+
+  const outputPath = resolveFromCwd(options.outputPath);
+  await writeFileEnsuringDirectory(
+    outputPath,
+    formatLegacyOutput(rows, options.mode, rewriteConfig),
+  );
+  console.log(`Wrote ${outputPath}`);
+}
+
+async function loadLearningBaselineCorpus(corpusPath: string) {
+  const markdown = await readFile(resolveFromCwd(corpusPath), "utf8");
+
+  return parseLearningBaselineCorpus(markdown);
+}
+
+async function loadCorpusProgress(
+  options: EvalCliOptions & { corpusPath: string },
+  rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
+): Promise<CorpusProgress> {
+  const now = new Date().toISOString();
+
+  if (options.resume) {
+    try {
+      const existing = JSON.parse(
+        await readFile(resolveFromCwd(options.progressPath), "utf8"),
+      ) as CorpusProgress;
+
+      return {
+        ...existing,
+        corpusPath: options.corpusPath,
+        outputPath: options.outputPath,
+        strategyVersion: rewriteConfig.strategyVersion,
+        naturalnessThreshold: rewriteConfig.naturalnessThreshold,
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  return {
+    corpusPath: options.corpusPath,
+    outputPath: options.outputPath,
+    startedAt: now,
+    lastUpdatedAt: now,
+    strategyVersion: rewriteConfig.strategyVersion,
+    naturalnessThreshold: rewriteConfig.naturalnessThreshold,
+    completedCases: [],
+  };
+}
+
+async function writeCorpusProgress(progressPath: string, progress: CorpusProgress) {
+  const outputPath = resolveFromCwd(progressPath);
+  const tmpPath = `${outputPath}.${process.pid}.${Date.now()}.tmp`;
+
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(tmpPath, `${JSON.stringify(progress, null, 2)}\n`);
+  await rename(tmpPath, outputPath);
+}
+
+function corpusProgressFromRow(
+  row: EvalResultRow,
+  completedAt: string,
+): CompletedCorpusCase {
+  return {
+    id: row.id,
+    scenario: row.scenario,
+    tonePreset: row.tonePreset,
+    draftAiLikePercent: row.draft,
+    rewriteAiLikePercent: row.rewrite,
+    changePoints: row.change,
+    factsPreserved: row.factsPreserved,
+    unsupportedFactsCount: row.unsupportedFactsIntroduced.length,
+    forbiddenViolationsCount: row.forbiddenClaimViolations.length,
+    qualityFailure: row.qualityFailure,
+    customerUsablePass: row.customerUsablePass,
+    strictSignalPass: row.strictSignalPass,
+    completedAt,
+  };
+}
+
+function scriptErrorProgress(
+  sample: EvalCase,
+  completedAt: string,
+): CompletedCorpusCase {
+  return {
+    id: sample.id,
+    scenario: sample.scenario,
+    tonePreset: sample.tonePreset,
+    draftAiLikePercent: null,
+    rewriteAiLikePercent: null,
+    changePoints: null,
+    factsPreserved: false,
+    unsupportedFactsCount: 0,
+    forbiddenViolationsCount: 0,
+    qualityFailure: true,
+    customerUsablePass: false,
+    strictSignalPass: false,
+    completedAt,
+  };
+}
+
+function firstErrorLine(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return message.split(/\r?\n/)[0] || "unknown error";
+}
+
+function formatScriptErrorBlock(sample: EvalCase, reason: string) {
+  return [
+    `## ${sample.id}`,
+    "",
+    `Scenario: ${sample.scenario}`,
+    `Tone: ${sample.tonePreset}`,
+    "Quality failure state: yes",
+    `Quality failure reason: ${reason}`,
+    "",
+    "Expected facts:",
+    sample.expectedFacts.map((fact) => `- ${fact}`).join("\n"),
+    "",
+    "Before:",
+    "",
+    "```text",
+    sample.roughDraftReply,
+    "```",
+    "",
+  ].join("\n");
+}
+
+function formatCorpusHeader(progress: CorpusProgress, corpusLength: number) {
+  return [
+    "# Learning Baseline Evaluation Results",
+    "",
+    `Date: ${progress.startedAt}`,
+    `Corpus: ${progress.corpusPath}`,
+    `Strategy: ${progress.strategyVersion}`,
+    `Naturalness threshold: ${progress.naturalnessThreshold}%`,
+    `Cases in corpus: ${corpusLength}`,
+    "",
+  ].join("\n");
+}
+
+function formatProgressSummaryBlock(progress: CorpusProgress, corpusLength: number) {
+  const measured = progress.completedCases.filter(
+    (item) =>
+      item.draftAiLikePercent !== null &&
+      item.rewriteAiLikePercent !== null &&
+      item.changePoints !== null,
+  );
+  const averageDrop = measured.length
+    ? Math.round(
+        measured.reduce(
+          (total, item) => total + Math.abs(item.changePoints ?? 0),
+          0,
+        ) / measured.length,
+      )
+    : null;
+  const belowThreshold = measured.filter(
+    (item) => (item.rewriteAiLikePercent ?? 100) <= progress.naturalnessThreshold,
+  ).length;
+  const factFailures = progress.completedCases.filter(
+    (item) =>
+      !item.factsPreserved ||
+      item.unsupportedFactsCount > 0 ||
+      item.forbiddenViolationsCount > 0,
+  ).length;
+  const qualityFailures = progress.completedCases.filter(
+    (item) => item.qualityFailure,
+  ).length;
+  const customerUsablePassed = progress.completedCases.filter(
+    (item) => item.customerUsablePass,
+  ).length;
+  const strictSignalPassed = progress.completedCases.filter(
+    (item) => item.strictSignalPass,
+  ).length;
+
+  return [
+    "<!-- summary -->",
+    `Cases completed: ${progress.completedCases.length}/${corpusLength}`,
+    `Measured cases: ${measured.length}`,
+    `Average AI-like signal drop: ${
+      averageDrop === null ? "unavailable" : `${averageDrop} pts`
+    }`,
+    `Rewrite at or below naturalness threshold: ${belowThreshold}/${measured.length}`,
+    `Fact preservation or unsupported-addition failures: ${factFailures}`,
+    `Quality failures: ${qualityFailures}`,
+    `Customer-usable pass count: ${customerUsablePassed}/${progress.completedCases.length}`,
+    `Strict signal pass count: ${strictSignalPassed}/${progress.completedCases.length}`,
+    `Last updated: ${progress.lastUpdatedAt}`,
+    "<!-- /summary -->",
+  ].join("\n");
+}
+
+async function rewriteOutputSummary(
+  outputPath: string,
+  progress: CorpusProgress,
+  corpusLength: number,
+) {
+  const resolvedPath = resolveFromCwd(outputPath);
+  const content = await readFile(resolvedPath, "utf8");
+  const summaryBlock = formatProgressSummaryBlock(progress, corpusLength);
+  const summaryPattern = /<!-- summary -->[\s\S]*?<!-- \/summary -->/;
+  const nextContent = summaryPattern.test(content)
+    ? content.replace(summaryPattern, summaryBlock)
+    : `${content.trimEnd()}\n\n${summaryBlock}\n`;
+
+  await writeFileEnsuringDirectory(resolvedPath, nextContent);
+}
+
+async function appendCaseBlock(outputPath: string, block: string) {
+  const resolvedPath = resolveFromCwd(outputPath);
+  await mkdir(path.dirname(resolvedPath), { recursive: true });
+  await appendFile(resolvedPath, `\n${block}\n`);
+}
+
+function hasCompletedAllCorpusCases(
+  progress: CorpusProgress,
+  corpus: EvalCase[],
+) {
+  const completedIds = new Set(progress.completedCases.map((item) => item.id));
+
+  return corpus.every((sample) => completedIds.has(sample.id));
+}
+
+async function runCorpusEval(
+  options: EvalCliOptions & { corpusPath: string },
+  rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
+) {
+  const startTime = Date.now();
+  const corpus = await loadLearningBaselineCorpus(options.corpusPath);
+  const progress = await loadCorpusProgress(options, rewriteConfig);
+  const completedIds = new Set(progress.completedCases.map((item) => item.id));
+  let processedThisRun = 0;
+
+  if (progress.completedCases.length === 0) {
+    await writeFileEnsuringDirectory(
+      resolveFromCwd(options.outputPath),
+      formatCorpusHeader(progress, corpus.length),
+    );
+  }
+
+  console.log(
+    `[eval] corpus=${options.corpusPath} strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold} completed=${progress.completedCases.length}/${corpus.length}`,
+  );
+
+  for (const sample of corpus) {
+    if (completedIds.has(sample.id)) {
+      continue;
+    }
+
+    if (processedThisRun >= options.limit) {
+      console.log(
+        `[eval] --limit=${options.limit} reached; ${processedThisRun} cases this run; exiting cleanly`,
+      );
+      break;
+    }
+    if (Date.now() - startTime > options.timeBudgetMs) {
+      console.log(
+        `[eval] time-budget ${options.timeBudgetMs}ms exhausted after ${processedThisRun} cases — exiting cleanly. ` +
+          `Total completed: ${progress.completedCases.length}/${corpus.length}. ` +
+          "Next --resume run will continue.",
+      );
+      break;
+    }
+
+    console.log(
+      `[eval] ${progress.completedCases.length + 1}/${corpus.length} ${sample.id}`,
+    );
+
+    try {
+      const row = await evaluateSample(sample, rewriteConfig);
+      const completedAt = new Date().toISOString();
+      await appendCaseBlock(options.outputPath, formatCaseBlock(row));
+      progress.completedCases.push(corpusProgressFromRow(row, completedAt));
+      progress.lastUpdatedAt = completedAt;
+    } catch (error) {
+      const completedAt = new Date().toISOString();
+      const reason = `script_error: ${firstErrorLine(error)}`;
+      await appendCaseBlock(options.outputPath, formatScriptErrorBlock(sample, reason));
+      progress.completedCases.push(scriptErrorProgress(sample, completedAt));
+      progress.lastUpdatedAt = completedAt;
+    }
+
+    await writeCorpusProgress(options.progressPath, progress);
+    completedIds.add(sample.id);
+    processedThisRun += 1;
+  }
+
+  if (hasCompletedAllCorpusCases(progress, corpus)) {
+    await rewriteOutputSummary(options.outputPath, progress, corpus.length);
+    console.log(
+      `[eval] corpus complete; summary populated in ${resolveFromCwd(options.outputPath)}`,
+    );
+  }
+}
+
+async function main() {
+  await loadEnvLocal();
+
+  const options = parseEvalCliOptions();
+  const rewriteConfig = getFactReconstructConfig();
+
+  if (options.corpusPath) {
+    await runCorpusEval({ ...options, corpusPath: options.corpusPath }, rewriteConfig);
+    return;
+  }
+
+  await runLegacyEval(options, rewriteConfig);
+}
+
+const entryPoint = process.argv[1];
+if (entryPoint && import.meta.url === pathToFileURL(entryPoint).href) {
+  await main();
+}

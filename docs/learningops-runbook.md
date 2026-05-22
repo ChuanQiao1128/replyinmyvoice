@@ -34,9 +34,27 @@ docs/rewrite-memory-digest.md
 
 ```text
 Run every 24 hours automatically.
-Push/deploy automatically only when a qualified strategy promotion passes all gates.
-Never deploy just because the scheduled job ran.
+Open draft pull requests only when a qualified strategy promotion passes all gates.
+Never deploy from the scheduled LearningOps run.
 ```
+
+## Cloudflare Scheduled Trigger
+
+The production Worker has a Cloudflare Cron Trigger configured in `wrangler.jsonc`:
+
+```text
+0 13 * * *
+```
+
+The trigger runs once every 24 hours through `worker.js`, which wraps the OpenNext worker and calls the LearningOps pipeline from the scheduled handler.
+
+The scheduled runtime:
+
+1. reads `RewriteLearningSample` rows from the last 7 days,
+2. writes one `LearningRun` row,
+3. writes related `LearningFinding` and `StrategyCandidate` rows,
+4. records a terminal run status: `digest_only`, `docs_only`, `promoted`, or `blocked`,
+5. never deploys production code.
 
 ## Current Command
 
@@ -47,7 +65,7 @@ npm run learningops:run
 The command:
 
 1. loads local environment values without printing them,
-2. reads recent `RewriteLearningSample` rows,
+2. reads `RewriteLearningSample` rows from the last 7 days,
 3. analyzes repeated failures and repair successes,
 4. writes one `LearningRun`,
 5. writes `LearningFinding` rows,
@@ -75,16 +93,16 @@ Action:
 - update strategy memory docs if useful
 - do not deploy production strategy changes
 
-### `promoted_candidate`
+### `promoted`
 
 There is a strong repeated pattern or severe reproducible regression.
 
 Action:
 
-- add or update an eval/regression case,
-- update rewrite/repair code or prompt guardrails,
-- run validation,
-- push and deploy only if all gates pass.
+- create a `StrategyCandidate`,
+- prepare draft PR work through the M2.5-005 promotion handoff,
+- require eval/regression coverage before production code changes are merged,
+- do not deploy from the scheduled run.
 
 ### `blocked`
 
@@ -108,6 +126,8 @@ npm run cf:build
 ```
 
 For rewrite-quality changes, also run the relevant scenario evaluation command.
+
+Deployment is a separate post-review action. The scheduled run itself stops at draft PR preparation.
 
 ## Safety Rules
 

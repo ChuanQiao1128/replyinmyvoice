@@ -43,7 +43,7 @@ describe("analyzeLearningSamples", () => {
       }),
     ]);
 
-    expect(result.promotionDecision).toBe("promoted_candidate");
+    expect(result.promotionDecision).toBe("promoted");
     expect(result.findings[0]).toMatchObject({
       failureType: "worse_than_draft",
       severity: "high",
@@ -69,7 +69,7 @@ describe("analyzeLearningSamples", () => {
 
     const result = analyzeLearningSamples(rows);
 
-    expect(result.promotionDecision).toBe("promoted_candidate");
+    expect(result.promotionDecision).toBe("promoted");
     expect(result.findings.some((finding) => finding.failureType === "high_final_signal")).toBe(
       true,
     );
@@ -138,7 +138,7 @@ describe("analyzeLearningSamples", () => {
 
     const result = analyzeLearningSamples(rows);
 
-    expect(result.promotionDecision).toBe("promoted_candidate");
+    expect(result.promotionDecision).toBe("promoted");
     expect(result.strategyCandidates[0]).toMatchObject({
       scenario: "customer_support",
       patchTarget: "repair_prompt",

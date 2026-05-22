@@ -1,11 +1,12 @@
 {
-  "issue_id": "M2.5-006",
-  "branch": "chore/M2.5-006",
+  "issue_id": "M2.5-008",
+  "branch": "chore/M2.5-008",
   "files_changed": [
-    ".github/workflows/cloudflare-worker.yml",
-    "lib/scenario-evaluation-regression.ts",
-    "scripts/check-scenario-evaluation-regression.ts",
-    "tests/unit/scenario-evaluation-regression.test.ts",
+    "app/admin/learning/page.tsx",
+    "components/admin/admin-shell.tsx",
+    "lib/admin/learning.ts",
+    "tests/unit/admin-learning.test.ts",
+    "docs/skill-run-log.md",
     "plans/task-status.json"
   ],
   "lint": "pass",
@@ -13,7 +14,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Adds a tested PR scenario evaluation regression guard comparing candidate results against latest main.",
-  "title": "feat: add scenario evaluation regression CI gate",
+  "summary": "Adds the /admin/learning review UI, candidate status mutation, and focused tests; local browser check was blocked by sandbox bind EPERM.",
+  "title": "feat: add LearningOps approval UI",
   "next_action": "ready_to_commit"
 }

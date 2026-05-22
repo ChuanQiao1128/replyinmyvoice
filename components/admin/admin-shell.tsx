@@ -31,6 +31,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
             >
               Rewrites
             </Link>
+            <Link
+              className="rounded-md border border-line bg-white px-3 py-2 text-ink/70 hover:text-ink"
+              href="/admin/learning"
+            >
+              Learning
+            </Link>
           </nav>
         </div>
         {children}

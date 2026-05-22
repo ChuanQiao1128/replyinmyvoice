@@ -68,3 +68,27 @@ If anything fails, set `next_action = "abort"` (revert your changes first) or `"
 ## Time budget per invocation
 
 Aim for ≤10 min of work per issue. If the issue is bigger, do what you can, then set `"next_action": "needs_human"` with a note about the remaining scope.
+
+## M2.5-002 incremental eval special case
+
+When `plans/current-task.md` has `ID == "M2.5-002"` or is copied from
+`plans/issues/M2.5-002.md`, this is a data-collection issue rather than
+a source-change issue. Do not implement source changes for that invocation.
+
+Run this command instead:
+
+```bash
+npm run -s eval:scenarios -- \
+  --corpus=docs/learning-baseline-corpus.md \
+  --output=docs/learning-baseline.md \
+  --progress=plans/learning-baseline-progress.json \
+  --resume --limit=20
+```
+
+The script writes per-case output and progress after each completed case.
+If the command exits 0 with fewer than 100 completed cases, write
+`plans/task-status.json` with `next_action: "needs_human"` and summarize
+that the next supervisor iteration should run the same command again. Set
+`next_action: "ready_to_commit"` only after the progress JSON has 100
+completed cases, the learning baseline document has a populated summary
+block, validations pass, and the scoped banned-term scan is clean.
