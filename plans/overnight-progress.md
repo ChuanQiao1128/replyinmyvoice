@@ -453,3 +453,10 @@ Run finished. Done: 0 | Blocked: 11 | Needs human: 0
 - BLOCKED (plain): M2.5-007 (Scheduled LearningOps Cron Trigger — codex-no-status)
 - Anomalies: none — strong progress this cycle, 35 issues completed since 01:19Z
 - Suggested user action: none — loop alive and making good progress
+
+## Operator correction at 2026-05-22T15:13:24+12:00
+- Loop: stopped with STOP-OVERNIGHT.txt after PR #182 exposed a CI gate failure and then hit dirty-checkout blockers.
+- Root cause: `cloudflare-worker/build-test` rejected `docs/scenario-evaluation-results.md` when both base and candidate had unavailable signal metrics and 0/0 measured below-50 counts.
+- Fix: PR #183 merged to main (`fix: allow unavailable scenario regression metrics`), with local unit, regression-command, and typecheck verification.
+- Cleanup: PR #182 closed as invalid; it only changed `plans/*`, while issue #82 was already closed and `docs/learning-baseline-corpus.md` already existed from PR #174.
+- Board correction: M2.5-001 marked done; false loop follow-on blockers for M2.5-005 and M2.5-008 were not carried forward on main.
