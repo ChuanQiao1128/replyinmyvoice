@@ -470,3 +470,11 @@ Run finished. Done: 0 | Blocked: 11 | Needs human: 0
 - BLOCKED (plain): 1 — M2.5-007 (Scheduled LearningOps Cron Trigger, codex-no-status)
 - Anomalies: done count dropped from 43→11 due to board restructure after operator correction at 15:13 NZST; 27 BLOCKED-WAITING-USER issues still need human decisions (M1-M3 milestone gates)
 - Suggested user action: 27 BLOCKED-WAITING-USER issues require your decisions to unblock M1-M3 milestones; loop is healthy and continuing on available M4+ work
+
+## Trigger at 2026-05-22T16:12:08+12:00
+Run finished. Done: 1 | Blocked: 8 | Needs human: 1
+
+## Codex intervention at 2026-05-22T16:15:40+12:00
+- Paused loop after PR #188 merged so the blocker taxonomy could be fixed without racing the supervisor.
+- Reclassified board blockers: 2 user-blocked / 1 provider-blocked / 8 prereq-blocked / 18 autonomy-blocked / 1 uncategorized blocked.
+- Added a regression test so M1/M2/M3 automation work cannot be reported as BLOCKED-WAITING-USER again.
