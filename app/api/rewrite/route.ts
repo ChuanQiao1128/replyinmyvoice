@@ -13,6 +13,11 @@ import {
   rewriteWithFactReconstruct,
 } from "../../../lib/rewrite-pipeline/pipeline";
 import { getFactReconstructConfig } from "../../../lib/rewrite-pipeline/config";
+import {
+  getRewriteCanaryConfig,
+  getRewriteCanaryDecision,
+  selectRewriteCanaryAssignment,
+} from "../../../lib/rewrite-pipeline/canary";
 import { tryLogRewriteLearningSample } from "../../../lib/rewrite-learning";
 import {
   createRewriteTelemetryCollector,
@@ -68,14 +73,32 @@ export async function POST(request: Request) {
 
   const skipQuotaForLocalDev = allowDevQuotaOverride();
   const telemetry: RewriteTelemetryCollector = createRewriteTelemetryCollector();
-  const strategyVersion = getFactReconstructConfig().strategyVersion;
+  const baseRewriteConfig = getFactReconstructConfig();
+  const canaryConfig = getRewriteCanaryConfig(process.env, {
+    controlStrategyVersion: baseRewriteConfig.strategyVersion,
+  });
+  const canaryDecision = await getRewriteCanaryDecision({
+    config: canaryConfig,
+  });
+  const canaryAssignment = selectRewriteCanaryAssignment({
+    config: canaryConfig,
+    decision: canaryDecision,
+    stickinessKey: user.id || telemetry.requestId,
+  });
+  const rewriteConfig = getFactReconstructConfig({
+    strategyVersion: canaryAssignment.strategyVersion,
+  });
+  const strategyVersion = rewriteConfig.strategyVersion;
 
   try {
     if (!skipQuotaForLocalDev) {
       await ensureQuotaAvailable(user);
     }
 
-    const rewrite = await rewriteWithFactReconstruct(input, { telemetry });
+    const rewrite = await rewriteWithFactReconstruct(input, {
+      config: rewriteConfig,
+      telemetry,
+    });
 
     if (!skipQuotaForLocalDev) {
       await chargeSuccessfulRewrite(user);
