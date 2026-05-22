@@ -169,6 +169,75 @@ describe("overnight supervisor repair inbox orchestration", () => {
     expect(script).toContain('stash_dirty_worktree "repair-abort-${id}"');
   });
 
+  it("persists terminal issue states on main after preserving branch work", () => {
+    const script = supervisorScript();
+
+    expect(script).toContain("persist_issue_terminal_state_on_main()");
+    expect(script).toContain('git checkout main >>"$LOG" 2>&1');
+    expect(script).toContain('update_board_status "$id" "$status"');
+    expect(script).toContain('append_blocker "$id" "$blocker_key" "$detail"');
+
+    const issueNeedsHuman = script.indexOf(
+      'stash_dirty_worktree "needs-human-${ID}"',
+    );
+    const issueNeedsHumanPersist = script.indexOf(
+      'persist_issue_terminal_state_on_main "$ID" "$BLOCK_STATUS" "codex-needs-human:${BLOCK_STATUS}" "$SUMMARY"',
+    );
+    const issueAbort = script.indexOf('stash_dirty_worktree "abort-${ID}"');
+    const issueAbortPersist = script.indexOf(
+      'persist_issue_terminal_state_on_main "$ID" "BLOCKED" "codex-aborted" "$SUMMARY"',
+    );
+
+    expect(issueNeedsHuman).toBeGreaterThanOrEqual(0);
+    expect(issueNeedsHumanPersist).toBeGreaterThan(issueNeedsHuman);
+    expect(issueAbort).toBeGreaterThanOrEqual(0);
+    expect(issueAbortPersist).toBeGreaterThan(issueAbort);
+  });
+
+  it("classifies sandbox browser/server limits as autonomous blockers", () => {
+    const script = supervisorScript();
+
+    const classifier = script.slice(
+      script.indexOf("classify_needs_human_status()"),
+      script.indexOf("write_status_template_for_codex()"),
+    );
+
+    expect(classifier).toContain("sandbox");
+    expect(classifier).toContain("eperm");
+    expect(classifier).toContain("browser");
+    expect(classifier).toContain("server startup");
+    expect(classifier).toContain("BLOCKED-AUTONOMY");
+  });
+
+  it("treats merge-command failures as done when the PR already merged remotely", () => {
+    const script = supervisorScript();
+
+    const mergeFailure = script.indexOf("ERROR: gh pr merge failed");
+    const branchCleanup = script.indexOf("git checkout main >>\"$LOG\" 2>&1", mergeFailure);
+
+    expect(mergeFailure).toBeGreaterThanOrEqual(0);
+    expect(script.slice(mergeFailure, branchCleanup)).toContain(
+      'gh pr view "$PR_URL" --json state,mergedAt',
+    );
+    expect(script.slice(mergeFailure, branchCleanup)).toContain(
+      'remote PR is merged despite local merge command failure',
+    );
+    expect(script.slice(mergeFailure, branchCleanup)).toContain(
+      'persist_issue_terminal_state_on_main "$ID" "done"',
+    );
+
+    const remoteMerged = script.indexOf(
+      'remote PR is merged despite local merge command failure',
+      mergeFailure,
+    );
+    const fallbackRepair = script.indexOf("append_repair_inbox_item \\", remoteMerged);
+    expect(remoteMerged).toBeGreaterThanOrEqual(0);
+    expect(fallbackRepair).toBeGreaterThan(remoteMerged);
+    expect(script.slice(remoteMerged, fallbackRepair)).not.toContain(
+      'append_repair_inbox_item \\',
+    );
+  });
+
   it("does not stash supervisor-only runtime ledger changes", () => {
     const script = supervisorScript();
 

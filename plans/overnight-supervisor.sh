@@ -310,12 +310,35 @@ update_board_status() {
   rm -f "${BOARD}.bak"
 }
 
+persist_issue_terminal_state_on_main() {
+  local id=$1
+  local status=$2
+  local blocker_key=$3
+  local detail=$4
+
+  log "  Persisting terminal issue state on main: $id -> $status ($blocker_key)"
+  if ! git checkout main >>"$LOG" 2>&1; then
+    log "  ERROR: could not checkout main to persist terminal issue state for $id"
+    return 1
+  fi
+
+  update_board_status "$id" "$status"
+  if [ -n "$blocker_key" ]; then
+    append_blocker "$id" "$blocker_key" "$detail"
+  fi
+}
+
 classify_needs_human_status() {
   local summary_lc
   summary_lc=$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')
 
   if printf "%s" "$summary_lc" | grep -Eq "timeout_or_network|timeout|rate[- ]?limit|429|502|503|provider|sapling|openai|deepseek|network"; then
     echo "BLOCKED-PROVIDER"
+    return
+  fi
+
+  if printf "%s" "$summary_lc" | grep -Eq "sandbox|eperm|browser|server startup|non-sandboxed"; then
+    echo "BLOCKED-AUTONOMY"
     return
   fi
 
@@ -1169,8 +1192,8 @@ while true; do
 
   if [ ! -f plans/task-status.json ]; then
     log "  ERROR: codex did not produce task-status.json (exit=$cdx_exit)"
-    update_board_status "$ID" "BLOCKED"
-    append_blocker "$ID" "codex-no-status" "codex exec did not write plans/task-status.json. Log: plans/codex-exec-${ID}.log"
+    git stash push -u -m "no-status-${ID}-$(date +%s)" >>"$LOG" 2>&1 || true
+    persist_issue_terminal_state_on_main "$ID" "BLOCKED" "codex-no-status" "codex exec did not write plans/task-status.json. Log: plans/codex-exec-${ID}.log" || true
     append_repair_inbox_item \
       "$ID codex-no-status" \
       "autonomy" \
@@ -1179,8 +1202,6 @@ while true; do
       "plans/codex-exec-${ID}.log" \
       "Investigate why Codex did not write plans/task-status.json for $ID; fix the loop prompt/task contract or requeue the issue with evidence." \
       "The supervisor can run the issue again and receive a valid plans/task-status.json, or the issue is reclassified with a concrete non-user blocker."
-    git stash push -u -m "no-status-${ID}-$(date +%s)" >>"$LOG" 2>&1 || true
-    git checkout main >>"$LOG" 2>&1
     git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
     ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
     ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
@@ -1203,8 +1224,8 @@ while true; do
     needs_human)
       log "  Codex flagged needs_human: $SUMMARY"
       BLOCK_STATUS=$(classify_needs_human_status "$SUMMARY")
-      update_board_status "$ID" "$BLOCK_STATUS"
-      append_blocker "$ID" "codex-needs-human:${BLOCK_STATUS}" "$SUMMARY"
+      stash_dirty_worktree "needs-human-${ID}" >>"$LOG" 2>&1 || true
+      persist_issue_terminal_state_on_main "$ID" "$BLOCK_STATUS" "codex-needs-human:${BLOCK_STATUS}" "$SUMMARY" || true
       if [ "$BLOCK_STATUS" != "BLOCKED-WAITING-USER" ]; then
         append_repair_inbox_item \
           "$ID codex-needs-human:${BLOCK_STATUS}" \
@@ -1215,8 +1236,6 @@ while true; do
           "Resolve or narrow the non-user blocker Codex reported for $ID without changing live money, dashboards, npm publish state, or secrets." \
           "The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite."
       fi
-      stash_dirty_worktree "needs-human-${ID}" >>"$LOG" 2>&1 || true
-      git checkout main >>"$LOG" 2>&1
       # Keep branch for human review
       ISSUES_NEEDS_HUMAN=$((ISSUES_NEEDS_HUMAN + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
@@ -1225,8 +1244,8 @@ while true; do
       ;;
     abort|*)
       log "  Codex aborted or unknown next_action: $NEXT_ACTION ($SUMMARY)"
-      update_board_status "$ID" "BLOCKED"
-      append_blocker "$ID" "codex-aborted" "$SUMMARY"
+      stash_dirty_worktree "abort-${ID}" >>"$LOG" 2>&1 || true
+      persist_issue_terminal_state_on_main "$ID" "BLOCKED" "codex-aborted" "$SUMMARY" || true
       append_repair_inbox_item \
         "$ID codex-aborted" \
         "autonomy" \
@@ -1235,8 +1254,6 @@ while true; do
         "plans/codex-exec-${ID}.log" \
         "Diagnose the Codex abort for $ID and either fix the task contract or split/reclassify the issue so the loop can continue." \
         "The supervisor can retry the issue with a clear task status, or the inbox item records why it is not actionable."
-      stash_dirty_worktree "abort-${ID}" >>"$LOG" 2>&1 || true
-      git checkout main >>"$LOG" 2>&1
       git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
       ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
@@ -1449,17 +1466,25 @@ Closes #${GH_NUM}"
     ISSUES_DONE=$((ISSUES_DONE + 1))
   else
     log "  ERROR: gh pr merge failed"
-    update_board_status "$ID" "BLOCKED"
-    append_blocker "$ID" "gh-pr-merge-failed" "PR $PR_URL exists but merge failed (branch protection? unresolved conversations?)"
-    append_repair_inbox_item \
-      "$ID gh-pr-merge-failed" \
-      "ci" \
-      "P1" \
-      "$ID" \
-      "$PR_URL" \
-      "Inspect why the green PR could not merge and resolve branch/update/CI state if it is not a user-only review decision." \
-      "The PR is merged, updated, or clearly classified as waiting on a real user review/approval."
-    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    PR_MERGE_STATE=$(gh pr view "$PR_URL" --json state,mergedAt --jq '.state + ":" + (.mergedAt // "")' 2>/dev/null || echo "UNKNOWN:")
+    if printf "%s" "$PR_MERGE_STATE" | grep -q "^MERGED:"; then
+      log "  remote PR is merged despite local merge command failure"
+      persist_issue_terminal_state_on_main "$ID" "done" "" "remote PR is merged despite local merge command failure: $PR_URL" || true
+      gh issue close "$GH_NUM" --comment "Implemented in $PR_URL" >>"$LOG" 2>&1 || log "  WARN: gh issue close failed (probably already closed by PR)"
+      append_decision "$ID | done | $SUMMARY (PR $PR_URL; local merge command reported failure after remote merge)"
+      ISSUES_DONE=$((ISSUES_DONE + 1))
+    else
+      persist_issue_terminal_state_on_main "$ID" "BLOCKED" "gh-pr-merge-failed" "PR $PR_URL exists but merge failed (branch protection? unresolved conversations?)" || true
+      append_repair_inbox_item \
+        "$ID gh-pr-merge-failed" \
+        "ci" \
+        "P1" \
+        "$ID" \
+        "$PR_URL" \
+        "Inspect why the green PR could not merge and resolve branch/update/CI state if it is not a user-only review decision." \
+        "The PR is merged, updated, or clearly classified as waiting on a real user review/approval."
+      ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    fi
   fi
 
   git checkout main >>"$LOG" 2>&1
