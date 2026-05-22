@@ -1158,3 +1158,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/overnight-supervisor.sh`; `docs/skill-run-log.md`.
 - Verification evidence: Red run failed with missing `persist_issue_terminal_state_on_main` and sandbox classifier; second red run failed with missing `gh pr view "$PR_URL" --json state,mergedAt` recovery. Green runs passed focused supervisor tests and the full Vitest suite.
 - Limitations: No live loop restart or live PR merge simulation was run in this turn.
+
+### 2026-05-23 - ui-browser-testing - M6-005 production smoke repair
+
+- Agent: Codex
+- Trigger: M6-005 requires formal-domain route smoke verification for `replyinmyvoice.com`, including public pages, signed-out `/app` redirect behavior, and browser-visible route health.
+- Action: Opened and followed the skill; identified the expected route/status checklist, reproduced the sandbox DNS blocker with secret-free DNS and curl checks, and documented the network-capable rerun prerequisite instead of claiming a smoke pass.
+- Output artifacts: `docs/preflight-report.md`; `plans/issue-board.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: Node DNS lookup returned `ENOTFOUND` for `replyinmyvoice.com` and `example.com`; curl returned `Could not resolve host` for both hosts before any HTTP status evidence. Required local validations are run separately for this repair.
+- Limitations: No desktop/mobile screenshots, console review, or live route status checks were possible from this sandbox because public DNS resolution failed before reaching the site.

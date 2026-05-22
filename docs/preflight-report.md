@@ -360,3 +360,38 @@ curl -sS -X POST -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1
 curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/api/stripe/webhook
 curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/api/health/db
 ```
+
+## M6-005 Formal Domain Smoke Prerequisite
+
+Date: 2026-05-23
+
+- Target: `https://replyinmyvoice.com`
+- Scope from `plans/issue-manifest.md`:
+  - `GET /`: expected 200
+  - `GET /pricing`: expected 200
+  - `GET /sign-in`: expected 200
+  - `GET /privacy`: expected 200
+  - `GET /terms`: expected 200
+  - `GET /robots.txt`: expected 200
+  - `GET /sitemap.xml`: expected 200
+  - `GET /app`: expected 307 signed-out redirect
+  - `POST /api/rewrite`: expected 401 when signed out, inherited from M6-003
+  - `GET /api/stripe/webhook`: expected 200, inherited from M6-003
+  - `GET /api/health/db`: expected 200, inherited from M6-003
+- Result from this Codex sandbox: not verified. `node` DNS lookup returned `ENOTFOUND` for `replyinmyvoice.com` and `example.com`; `curl` returned `Could not resolve host` for both hosts before any HTTP response.
+- Classification: this is a network-capable runner prerequisite, not a product code change or user-only decision. No deployment, Worker secret, DNS, Stripe, npm, dashboard, or `.env.local` changes are required for the repair.
+- Required rerun in a shell that can resolve public DNS:
+
+```bash
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice.com/
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice.com/pricing
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice.com/sign-in
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice.com/privacy
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice.com/terms
+curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice.com/robots.txt
+curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice.com/sitemap.xml
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice.com/app
+curl -sS -X POST -o /dev/null -w "%{http_code}\n" https://replyinmyvoice.com/api/rewrite
+curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice.com/api/stripe/webhook
+curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice.com/api/health/db
+```
