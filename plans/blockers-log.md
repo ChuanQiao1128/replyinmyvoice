@@ -195,3 +195,9 @@ What user needs to do: review the branch chore/M6-002 (if any), the log tail, an
 What was attempted: Documented M6-003 Worker preview smoke attempt blocked by sandbox DNS; rerun curl checks from a networked shell.
 
 What user needs to do: review the branch chore/M6-003 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-23T04:04:59+12:00 — M6-005 — codex-needs-human:BLOCKED-AUTONOMY
+
+What was attempted: Production smoke blocked by sandbox DNS ENOTFOUND for replyinmyvoice.com; local validations pass.
+
+What engineering needs to do: rerun the documented M6-005 route checklist in docs/preflight-report.md from a networked shell. No user-only decision, live money action, dashboard mutation, npm publish, secret change, or .env.local edit is required.

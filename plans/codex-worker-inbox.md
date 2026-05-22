@@ -112,3 +112,16 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Done condition: plans/STOP-OVERNIGHT.txt is absent; a test run of M4-015 selection results in the correct BLOCKED-AUTONOMY or BLOCKED-WAITING-USER status persisted on main without infinite reselection.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes, force-reset migrations
 - Worker evidence: 2026-05-23T03:41:00+12:00 — Patched `plans/overnight-supervisor.sh` to persist terminal issue states on main after preserving branch work, classify sandbox browser/server startup failures as `BLOCKED-AUTONOMY`, and treat remotely merged PRs as done when the local merge command fails after the remote merge. Verification: `bash -n plans/overnight-supervisor.sh`, `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts`, and full `npm run test` passed. `plans/STOP-OVERNIGHT.txt` remains a local ignored stop signal until the owner chooses to resume the loop.
+
+## 2026-05-23T04:04:59+12:00 — M6-005 codex-needs-human:BLOCKED-AUTONOMY
+
+- Status: not_actionable
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M6-005
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M6-005 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T04:08:07+12:00 — Reproduced the sandbox DNS blocker with secret-free checks: Node DNS lookup returned `ENOTFOUND` for `replyinmyvoice.com` and `example.com`, and curl returned `Could not resolve host` before HTTP status evidence. The exact network-capable M6-005 route checklist and expected statuses are recorded in `docs/preflight-report.md`; the issue board is narrowed to `BLOCKED-PROVIDER`. No live money, npm publish, dashboard, DNS, secret, or `.env.local` change was made.
