@@ -125,3 +125,28 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 - Worker evidence: 2026-05-23T04:08:07+12:00 — Reproduced the sandbox DNS blocker with secret-free checks: Node DNS lookup returned `ENOTFOUND` for `replyinmyvoice.com` and `example.com`, and curl returned `Could not resolve host` before HTTP status evidence. The exact network-capable M6-005 route checklist and expected statuses are recorded in `docs/preflight-report.md`; the issue board is narrowed to `BLOCKED-PROVIDER`. No live money, npm publish, dashboard, DNS, secret, or `.env.local` change was made.
+
+## 2026-05-23T04:35:30+12:00 — M6-007 codex-needs-human:BLOCKED-AUTONOMY
+
+- Status: not_actionable
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M6-007
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M6-007 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T04:53:03+12:00 — Narrowed M6-007 to the exact remaining runner prerequisite in `plans/m6-validation-report.md`. `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and `npm run cf:build` passed. `npm run test:e2e` is blocked before browser tests execute because this sandbox rejects loopback listen with `EPERM`; a minimal Node HTTP server confirmed the same restriction on `127.0.0.1`. The prior dotnet socket failure is out of scope for M6-007 because this issue does not touch `backend-dotnet/`. No live money, npm publish, dashboard, secret, or `.env.local` change was made.
+
+## 2026-05-22T16:50:26Z — INV-2: repair branch active while M8-001 in_progress on board
+
+- Status: pending
+- Source: Claude monitor
+- Class: dirty_repo
+- Priority: P2
+- Related issue: M8-001, M6-007
+- Evidence: plans/issue-board.md (M8-001 in_progress), current branch codex/repair-m6-007-codex-needs-human-blocked-autonomy-REPAIR-20260523044817
+- Suggested Codex action: No action needed if the current codex exec completes normally and the loop returns to main before picking up the next pending issue. If the loop stalls on this repair branch, run `git checkout main && git pull` to reset before next task.
+- Done condition: Loop returns to main branch and resumes normal pending-issue selection; M8-001 PR merges or advances.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes

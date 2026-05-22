@@ -1,11 +1,11 @@
 {
-  "issue_id": "REPAIR-20260523040518",
-  "branch": "chore/REPAIR-20260523040518",
+  "issue_id": "REPAIR-20260523044817",
+  "branch": "chore/REPAIR-20260523044817",
   "files_changed": [
-    "docs/preflight-report.md",
     "plans/issue-board.md",
-    "plans/codex-worker-inbox.md",
     "plans/blockers-log.md",
+    "plans/codex-worker-inbox.md",
+    "plans/m6-validation-report.md",
     "docs/skill-run-log.md",
     "plans/task-status.json"
   ],
@@ -14,7 +14,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Documented the networked rerun prerequisite for M6-005 and reclassified the sandbox DNS blocker as provider-limited.",
-  "title": "docs: narrow M6-005 smoke blocker",
+  "summary": "Documented M6-007 validation evidence and non-sandboxed Playwright runner prerequisite.",
+  "title": "docs: narrow M6-007 validation blocker",
   "next_action": "ready_to_commit"
 }
