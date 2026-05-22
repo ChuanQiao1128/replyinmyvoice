@@ -1284,3 +1284,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Red run: `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` failed on five missing hardening checks. Green runs: focused test passed 22/22, full Vitest passed 47 files / 286 tests, lint passed, and typecheck passed.
 - Limitations: The test suite verifies the supervisor contract statically and through local commands; it does not run a live overnight automation cycle.
+
+### 2026-05-23 - system-spec-synthesis - Model-aware dispatcher design
+
+- Agent: Codex
+- Trigger: The user asked whether Claude can assign whole coherent tasks to a strong model while using parallel Codex workers only for independent frontend/backend/docs/test work.
+- Action: Opened and followed the skill; synthesized the dispatcher requirements into an implementation-ready specification with context, goals, non-goals, architecture, data model, job contracts, security, rollout, verification, and open questions.
+- Output artifacts: `docs/superpowers/specs/2026-05-23-model-aware-dispatcher-design.md`; `docs/skill-run-log.md`.
+- Verification evidence: The spec separates strong-model single-owner, domain-parallel, mechanical-parallel, and blocked/manual assignment modes, and includes concrete dispatcher/coordinator/worker contracts.
+- Limitations: This turn produced a design/spec only. No dispatcher script, worker execution, PR merge automation, or loop restart was implemented.
+
+### 2026-05-23 - state-machine-modeling - Model-aware dispatcher lifecycle
+
+- Agent: Codex
+- Trigger: The dispatcher design introduces lifecycle states for issue assignment, worker execution, PR/CI handling, and coordinator merge decisions.
+- Action: Opened and followed the skill; modeled assignment states from `queued` through `merged`, including blocked/stopped states, events, transition table, invariants, illegal transitions, and test checklist.
+- Output artifacts: `docs/superpowers/specs/2026-05-23-model-aware-dispatcher-design.md`; `docs/skill-run-log.md`.
+- Verification evidence: The spec now forbids `ci_waiting -> merged` without terminal success, forbids worker direct merge, requires one active assignment group per issue, and requires non-overlapping worker-owned paths for parallel groups.
+- Limitations: These are design constraints and planned tests, not an implemented state transition helper yet.
