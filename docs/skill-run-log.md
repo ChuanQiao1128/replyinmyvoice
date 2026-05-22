@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-22 - web-design-engineer - M4-012 landing/header/footer refresh
+
+- Agent: Codex
+- Trigger: M4-012 is a browser-visible landing, header, and footer visual refresh.
+- Action: Opened and followed the skill; reviewed the aborted implementation, preserved the practical workflow-led direction, fixed mobile overflow, and recorded design decisions plus five-dimension self-critique.
+- Output artifacts: `plans/frontend-redesign-design-brief.md`; landing components; `components/site-header.tsx`; `components/site-footer.tsx`; `tailwind.config.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Final self-critique average is 7.8/10 for this scoped landing pass; desktop and mobile Playwright checks loaded `/` successfully with no console errors, failed requests, or horizontal overflow.
+- Limitations: M4-012 is one scoped pass. M4-013 through M4-015 remain responsible for pricing/auth, `/app`, and final average score >= 8.0 across the full frontend.
+
 ### 2026-05-22 - state-machine-modeling - stale git index lock repair lifecycle
 
 - Agent: Codex
@@ -53,6 +62,15 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `scripts/analyze_rewrite_quality.py`; `docs/skill-run-log.md`.
 - Verification evidence: `bash -n plans/overnight-supervisor.sh`, `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts tests/unit/analyze-rewrite-quality.test.ts`, `npm run typecheck`, `npm run lint`, and full `npm run test` passed.
 - Limitations: This repair covers local supervisor/git recovery and local Python compatibility only; it does not change provider dashboard, live money, npm publish, or deployment state.
+
+### 2026-05-22 - ui-browser-testing - M4-012 landing visual refresh
+
+- Agent: Codex
+- Trigger: M4-012 changes the landing page, shared header, shared footer, responsive layout, browser-visible navigation, and visual polish.
+- Action: Opened and followed the skill; selected desktop and mobile browser verification for `/`, with console/network and layout checks after implementation.
+- Output artifacts: `plans/frontend-redesign-design-brief.md`; `components/site-header.tsx`; `components/site-footer.tsx`; `components/landing/hero.tsx`; `components/landing/interactive-demo.tsx`; `components/landing/trust-panel.tsx`; `components/landing/use-cases.tsx`; `components/landing/how-it-works.tsx`; `components/landing/pricing.tsx`; `components/landing/faq.tsx`; `components/landing/closing-cta.tsx`; `tailwind.config.ts`; `plans/task-status.json`.
+- Verification evidence: `npm run lint`, `npm run typecheck`, and full `npm run test` passed. Playwright loaded `/` at desktop 1440x1100 and mobile 390x1000 with HTTP 200, no console errors, no failed requests, and no horizontal overflow after fixing the mobile hero/workflow grid.
+- Limitations: No auth-gated `/app` workflow, payment flow, live provider call, deployment, or production-domain smoke test is in scope for this landing/header/footer issue.
 
 ### 2026-05-22 - state-machine-modeling - supervisor dirty-worktree lifecycle
 

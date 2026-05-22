@@ -3,8 +3,8 @@ import Link from "next/link";
 
 export function ClosingCta() {
   return (
-    <section className="mx-auto max-w-6xl px-6 py-6">
-      <div className="rounded-lg bg-ink p-6 text-paper md:p-8">
+    <section className="bg-paper px-6 py-8">
+      <div className="mx-auto max-w-6xl rounded-lg bg-ink p-6 text-paper shadow-soft md:p-8">
         <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
           <div>
             <p className="flex items-center gap-2 text-sm font-semibold text-paper/65">

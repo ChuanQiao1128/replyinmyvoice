@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 
-import { Card } from "../ui/card";
 import { homepageSampleCases } from "./sample-cases";
 
 function SignalBar({
@@ -39,7 +38,21 @@ export function InteractiveDemo() {
   const change = useMemo(() => scenario.after - scenario.before, [scenario]);
 
   return (
-    <Card id="examples" className="p-4 md:p-5">
+    <div
+      id="examples"
+      className="min-w-0 rounded-lg border border-line bg-white/85 p-4 shadow-soft md:p-5"
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">
+            Workflow preview
+          </p>
+          <p className="mt-1 text-sm text-ink/62">Draft plus context to send-ready reply</p>
+        </div>
+        <div className="rounded-md bg-mint px-3 py-1 text-xs font-semibold text-sage">
+          Fact-aware
+        </div>
+      </div>
       <div className="flex flex-wrap gap-2">
         {homepageSampleCases.map((item, itemIndex) => (
           <button
@@ -56,7 +69,7 @@ export function InteractiveDemo() {
           </button>
         ))}
       </div>
-      <div className="mt-5 rounded-lg border border-line bg-paper-deep/65 px-4 py-3 text-sm leading-6 text-ink/68">
+      <div className="mt-5 rounded-lg border border-line bg-sky px-4 py-3 text-sm leading-6 text-ink/68">
         {scenario.context}
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
@@ -95,6 +108,6 @@ export function InteractiveDemo() {
           and rewrite feel. It is not a guarantee; review the reply before sending.
         </p>
       </div>
-    </Card>
+    </div>
   );
 }

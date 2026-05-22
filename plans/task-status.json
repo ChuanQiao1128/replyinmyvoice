@@ -1,17 +1,29 @@
 {
-  "issue_id": "M6-003",
-  "branch": "chore/M6-003",
+  "issue_id": "M4-012",
+  "branch": "chore/M4-012",
   "files_changed": [
-    "docs/preflight-report.md",
+    "components/landing/closing-cta.tsx",
+    "components/landing/faq.tsx",
+    "components/landing/hero.tsx",
+    "components/landing/how-it-works.tsx",
+    "components/landing/interactive-demo.tsx",
+    "components/landing/pricing.tsx",
+    "components/landing/trust-panel.tsx",
+    "components/landing/use-cases.tsx",
+    "components/site-footer.tsx",
+    "components/site-header.tsx",
     "docs/skill-run-log.md",
-    "plans/task-status.json"
+    "plans/frontend-redesign-design-brief.md",
+    "plans/issue-board.md",
+    "plans/task-status.json",
+    "tailwind.config.ts"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Documented M6-003 Worker preview smoke attempt blocked by sandbox DNS; rerun curl checks from a networked shell.",
-  "title": "docs: record blocked workers.dev smoke attempt",
-  "next_action": "needs_human"
+  "summary": "Refreshed the landing page, shared header, and footer visual system for M4-012 while preserving auth, billing, rewrite, quota, API, telemetry, webhook, provider, secret, and infrastructure behavior.",
+  "title": "M4-012: refresh landing header and footer",
+  "next_action": "ready_to_commit"
 }
