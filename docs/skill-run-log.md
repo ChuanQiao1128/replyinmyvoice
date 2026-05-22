@@ -870,3 +870,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/codex-worker-prompt.md`; `docs/skill-run-log.md`.
 - Verification evidence: The updated docs define the separate progress/inbox channels, allowed restart behavior, owner-only blockers, and worker non-racing rules.
 - Limitations: No automated transition test was added because this change is an operational-doc and automation-prompt contract, not application runtime code.
+
+### 2026-05-22 - system-spec-synthesis - Main-loop repair inbox orchestration
+
+- Agent: Codex
+- Trigger: The owner identified that a 30-minute Claude monitor plus a separate hourly Codex worker was logically mismatched and asked to implement the better design.
+- Action: Opened and followed the skill; converted the workflow into a single-executor contract where the shell loop consumes `plans/codex-worker-inbox.md` before issue-board work, while the scheduled Codex automation becomes a dead-man watchdog only.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/codex-worker-inbox.md`; `plans/codex-worker-prompt.md`; `docs/skill-run-log.md`; Codex scheduled automation `replyinmyvoice-codex-worker`; Claude scheduled task `replyinmyvoice-loop-monitor` updated through its local hardlink.
+- Verification evidence: Added a focused Vitest regression for repair-inbox ordering and non-user failure queueing; `bash -n plans/overnight-supervisor.sh`, focused Vitest, `npm run lint`, `npm run typecheck`, and `git diff --check` passed in the isolated branch.
+- Limitations: The change updates the local supervisor and automation contract. It does not change Claude's schedule cadence because Claude already writes progress and repair queue items; the Claude scheduled task text was only aligned to say the shell loop consumes the queue.
+
+### 2026-05-22 - state-machine-modeling - Main-loop repair lifecycle
+
+- Agent: Codex
+- Trigger: The orchestration change moved repair handling from a separate hourly worker into the primary shell loop, changing queue ownership and transition timing.
+- Action: Opened and followed the skill; modeled repair states as `pending -> in_progress -> done | not_actionable | waiting_user`, with the invariant that owner-only blockers never enter autonomous repair and a healthy shell loop is the only normal repair executor.
+- Output artifacts: `plans/overnight-supervisor.sh`; `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/codex-worker-inbox.md`; `plans/codex-worker-prompt.md`; `docs/skill-run-log.md`.
+- Verification evidence: The supervisor now checks the repair inbox before `find_next_pending_issue`, queues non-user Codex/GitHub/CI failures into the inbox, and the focused test covers the ordering and queueing contract.
+- Limitations: The test validates script structure rather than executing real GitHub PR/CI repair flow, to avoid live PR churn during the orchestration edit.

@@ -4,10 +4,11 @@ Date: 2026-05-22
 
 ## Context
 
-Reply In My Voice is being pushed through an autonomous commercialization run. The current system has two cooperating agent roles:
+Reply In My Voice is being pushed through an autonomous commercialization run. The current system has three cooperating execution roles:
 
-- Codex and the shell overnight loop implement issues, run validation, open PRs, wait for CI, and merge green work.
+- The shell overnight loop is the primary executor. It processes repair inbox items first, then product issues; it runs Codex for scoped edits, validation, PRs, CI polling, and merges.
 - Claude's scheduled task `replyinmyvoice-loop-monitor` monitors the loop, records checkpoints, and alerts on blockers.
+- Codex's scheduled automation is a dead-man watchdog only. It should restart a dead or stale loop when safe, not consume normal repair work while the shell loop is healthy.
 
 This document is the durable source of truth for the commercial goal. It exists so a fresh Codex, Claude, or human session can recover the same target without relying on chat history.
 
@@ -38,7 +39,7 @@ The commercial north star is not "all issues closed." The product is ready when 
 
 Primary execution files:
 
-- `plans/overnight-supervisor.sh` runs the shell-driven loop.
+- `plans/overnight-supervisor.sh` runs the shell-driven loop and consumes `plans/codex-worker-inbox.md` before selecting new issue-board work.
 - `plans/codex-implementation-prompt.md` tells Codex what it may do inside each issue branch.
 - `plans/issue-board.md` tracks issue state.
 - `plans/supervisor-handoff.md` tells Claude how to monitor without racing Codex.
@@ -66,15 +67,13 @@ Use a three-layer operating model.
 
 3. Executor layer
 
-   Codex runs through the shell loop and issue board. Codex implements scoped issues, validates locally, writes `plans/task-status.json`, and leaves git/GitHub operations to the shell supervisor.
+   Codex runs through the shell loop. The shell supervisor first consumes one pending item from `plans/codex-worker-inbox.md`; if no repair is pending, it selects the next pending issue from `plans/issue-board.md`. Codex implements the scoped task, validates locally, writes `plans/task-status.json`, and leaves git/GitHub operations to the shell supervisor.
 
-4. Repair handoff layer
+   Claude should not spend monitor budget fixing issues or asking the owner to copy/paste logs into Codex. When it sees a non-user engineering blocker, it writes a sanitized item to `plans/codex-worker-inbox.md`. The running shell loop consumes that inbox directly, so repair latency is the next loop iteration rather than a separate hourly worker cycle.
 
-   Claude should not spend monitor budget fixing issues or asking the owner to copy/paste logs into Codex. When it sees a non-user engineering blocker, it writes a sanitized item to `plans/codex-worker-inbox.md`. A dedicated Codex worker consumes that inbox from an isolated worktree and either fixes the issue, converts it into a scoped board row, or marks it not actionable.
+   `plans/overnight-progress.md` is the human-readable report. `plans/codex-worker-inbox.md` is the machine-readable repair queue. No agent should use ordinary progress prose as its normal repair trigger.
 
-   `plans/overnight-progress.md` is the human-readable report. `plans/codex-worker-inbox.md` is the machine-readable repair queue. The Codex worker must not use ordinary progress prose as its normal work source.
-
-Claude is the watchtower. Codex is the construction worker. The repo documents are the shared contract.
+Claude is the monitor. The shell loop is the dispatcher. Codex is the scoped implementation worker. The repo documents are the shared contract.
 
 ## Data Model
 
@@ -83,13 +82,13 @@ No new database table is introduced by this document. The durable operational st
 | File | Owner | Purpose |
 | --- | --- | --- |
 | `docs/commercialization-north-star.md` | Human/Codex | Top-level commercial target and readiness gates |
-| `plans/issue-board.md` | Shell loop/Codex | Executable issue queue and status board |
+| `plans/issue-board.md` | Shell loop/Codex | Executable product issue queue and status board |
 | `plans/current-task.md` | Shell loop | Current issue handoff to Codex |
 | `plans/task-status.json` | Codex | Machine-readable result for the current issue |
 | `plans/overnight-progress.md` | Shell loop/Claude | Checkpoint history |
 | `plans/decisions-log.md` | Shell loop/Codex/Claude | Durable decisions |
 | `plans/blockers-log.md` | Shell loop/Claude | User or engineering blockers |
-| `plans/codex-worker-inbox.md` | Claude/Codex | Sanitized monitor-to-Codex repair queue for non-user blockers |
+| `plans/codex-worker-inbox.md` | Claude/shell loop/Codex | Sanitized repair queue for non-user blockers, consumed by the shell loop before product issues |
 | `plans/sleep-run-budget.md` | Shell loop/Codex | DeepSeek/Sapling run budget notes |
 | `plans/STOP-OVERNIGHT.txt` | User/Claude in emergency | Stop unattended execution |
 | `plans/MONEY-MADE.txt` | User | Signal that real revenue was confirmed and the current unattended loop should stop for review |
@@ -115,26 +114,34 @@ Claude monitor contract:
 
 Codex executor contract:
 
+- Before selecting a new issue-board item, check `plans/codex-worker-inbox.md` and process one pending non-user repair item if present.
 - Read `plans/current-task.md` for the scoped issue.
 - Keep the current issue scope unless a safety or correctness dependency is required.
 - Use this document to avoid optimizing for closed issues while missing commercial readiness.
 - Do not use git or `gh` inside the Codex implementation step; the shell loop owns git/GitHub.
 - Write `plans/task-status.json` with the agreed schema.
 
-Codex worker inbox contract:
+Repair inbox contract:
 
-- Read `plans/codex-worker-inbox.md` before asking the user to forward monitor output.
-- Process one pending item at a time.
+- Claude and the shell supervisor append structured non-user blockers to `plans/codex-worker-inbox.md`.
+- The shell supervisor processes one pending item at a time before product issue work.
 - Do not infer normal repair tasks from `plans/overnight-progress.md`; that file is for people.
 - Use `plans/issue-board.md`, `plans/blockers-log.md`, and `plans/overnight.log` only as evidence for a queued item, except for the special case of restarting a dead loop when no stop signal exists and pending work remains.
-- Use a separate worktree when the overnight shell loop is active or the main worktree is dirty.
 - Fix only non-user blockers: provider retry/routing, prerequisite cleanup, CI failures, dirty-repo loop bugs, documentation gaps, or scoped engineering defects.
 - Do not process real-money tests, npm publication, provider dashboard changes, missing secrets, legal decisions, or product decisions as autonomous fixes.
 - Record the PR, commit, verification, or not-actionable reason back in the inbox item.
 
+Codex scheduled watchdog contract:
+
+- Do not process ordinary repair inbox items while the shell loop is alive and `plans/overnight.log` is fresh.
+- If the loop is dead or stale, no stop signal exists, and pending issue-board or inbox work remains, restart it with the documented `screen` command and record the restart.
+- If repeated restart attempts fail because the loop itself is broken, open a scoped repair PR from a clean worktree or mark the inbox item waiting on a true user action. Do not race a live shell loop.
+
 Shell supervisor contract:
 
 - Own branch creation, git status checks, commit, push, PR creation, CI polling, merge, issue close, and board updates.
+- Check `plans/codex-worker-inbox.md` before `plans/issue-board.md`.
+- Append repair inbox items for non-user failures such as missing `plans/task-status.json`, Codex aborts, no-change results, Git/dirty-repo failures, PR creation/merge failures, and CI failures.
 - Use `GH_TOKEN` or `GITHUB_TOKEN` safely without sourcing arbitrary env files.
 - Stop on `plans/STOP-OVERNIGHT.txt`, `plans/MONEY-MADE.txt`, or no pending work.
 
@@ -144,8 +151,8 @@ The run states are:
 
 - `running`: shell loop is active and `overnight.log` is updating.
 - `stalled`: no log update for more than 20 minutes or no supervisor process is present.
-- `repair_queued`: Claude has written a pending non-user blocker to `plans/codex-worker-inbox.md`.
-- `repairing`: Codex worker is handling exactly one inbox item in an isolated worktree or scoped branch.
+- `repair_queued`: Claude or the shell supervisor has written a pending non-user blocker to `plans/codex-worker-inbox.md`.
+- `repairing`: the shell supervisor is handling exactly one inbox item through the normal Codex implementation protocol.
 - `blocked`: issue board or blockers log contains a user-only or engineering blocker.
 - `needs_user`: live payment, npm token, provider dashboard action, or secret update is required.
 - `money_made`: `plans/MONEY-MADE.txt` exists; stop unattended work and alert the user.
