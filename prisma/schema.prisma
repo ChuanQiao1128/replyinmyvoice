@@ -12,20 +12,20 @@ datasource db {
 }
 
 model User {
-  id                     String         @id @default(cuid())
-  clerkUserId            String         @unique
-  email                  String?
-  stripeCustomerId       String?        @unique
-  stripeSubscriptionId   String?
-  stripePriceId          String?
-  subscriptionStatus     String         @default("inactive")
-  currentPeriodEnd       DateTime?
-  createdAt              DateTime       @default(now())
-  updatedAt              DateTime       @updatedAt
-  usages                 RewriteUsage[]
-  learningSamples        RewriteLearningSample[]
-  costLogs               RewriteCostLog[]
-  apiKeys                ApiKey[]
+  id                   String                  @id @default(cuid())
+  clerkUserId          String                  @unique
+  email                String?
+  stripeCustomerId     String?                 @unique
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  subscriptionStatus   String                  @default("inactive")
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  usages               RewriteUsage[]
+  learningSamples      RewriteLearningSample[]
+  costLogs             RewriteCostLog[]
+  apiKeys              ApiKey[]
 }
 
 model RewriteUsage {
@@ -60,19 +60,19 @@ model StripeEvent {
 }
 
 model LearningRun {
-  id                 String              @id @default(cuid())
-  startedAt          DateTime            @default(now())
-  finishedAt         DateTime?
-  status             String
-  sampleCount        Int                 @default(0)
-  measuredCount      Int                 @default(0)
-  findingCount       Int                 @default(0)
-  candidateCount     Int                 @default(0)
-  promotionDecision  String
-  validationStatus   String?
-  digestPath         String?
-  errorMessage       String?
-  findings           LearningFinding[]
+  id                String            @id @default(cuid())
+  startedAt         DateTime          @default(now())
+  finishedAt        DateTime?
+  status            String
+  sampleCount       Int               @default(0)
+  measuredCount     Int               @default(0)
+  findingCount      Int               @default(0)
+  candidateCount    Int               @default(0)
+  promotionDecision String
+  validationStatus  String?
+  digestPath        String?
+  errorMessage      String?
+  findings          LearningFinding[]
 
   @@index([startedAt])
   @@index([status])
@@ -107,48 +107,53 @@ model LearningFinding {
 }
 
 model StrategyCandidate {
-  id                    String          @id @default(cuid())
-  findingId             String
-  title                 String
-  scenario              String?
-  proposedChangeSummary String
-  riskLevel             String
-  status                String
-  requiredEval          String
-  evidenceCount         Int             @default(0)
-  linkedCommitHash      String?
-  createdAt             DateTime        @default(now())
-  finding               LearningFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  id                     String          @id @default(cuid())
+  findingId              String
+  title                  String
+  scenario               String?
+  patchTarget            String?
+  patchAction            String?
+  patchText              String?
+  proposedChangeSummary  String
+  riskLevel              String
+  status                 String
+  requiredRegressionTest String?
+  requiredEval           String
+  evidenceCount          Int             @default(0)
+  linkedCommitHash       String?
+  createdAt              DateTime        @default(now())
+  finding                LearningFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
   @@index([scenario])
+  @@index([patchTarget])
   @@index([riskLevel])
   @@index([status])
   @@index([findingId])
 }
 
 model RewriteLearningSample {
-  id                    String   @id @default(cuid())
-  userId                String?
-  scenario              String
-  tonePreset            String
-  messageToReplyTo      String?
-  roughDraftReply       String
-  rewrittenText         String?
-  draftAiLikePercent    Int?
-  rewriteAiLikePercent  Int?
-  changePoints          Int?
-  label                 String?
-  diagnosisTags         String
-  rewritePlanSummary    String?
-  candidateSignals      String
-  internalStrategies    Int      @default(0)
-  repairCandidates      Int      @default(0)
-  rejectedCandidates    Int      @default(0)
-  status                String
-  errorCode             String?
-  createdAt             DateTime @default(now())
-  user                  User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id                   String   @id @default(cuid())
+  userId               String?
+  scenario             String
+  tonePreset           String
+  messageToReplyTo     String?
+  roughDraftReply      String
+  rewrittenText        String?
+  draftAiLikePercent   Int?
+  rewriteAiLikePercent Int?
+  changePoints         Int?
+  label                String?
+  diagnosisTags        String
+  rewritePlanSummary   String?
+  candidateSignals     String
+  internalStrategies   Int      @default(0)
+  repairCandidates     Int      @default(0)
+  rejectedCandidates   Int      @default(0)
+  status               String
+  errorCode            String?
+  createdAt            DateTime @default(now())
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([scenario])
@@ -221,7 +226,6 @@ model RewriteProviderCall {
   @@index([role])
   @@index([createdAt])
 }
-
 
 model ApiKey {
   id                     String        @id @default(cuid())

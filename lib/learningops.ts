@@ -1,4 +1,5 @@
 import { clusterFailedCasesByDiagnosisTag } from "./learningops/cluster";
+import { proposeStrategyCandidate } from "./learningops/candidates";
 
 export type LearningPromotionDecision =
   | "digest_only"
@@ -52,9 +53,17 @@ export type StrategyCandidateDraft = {
   findingIndex: number;
   title: string;
   scenario: string | null;
+  patchTarget:
+    | "generation_prompt"
+    | "repair_prompt"
+    | "strategy_router"
+    | "quality_gate";
+  patchAction: "add_guardrail" | "tighten" | "route";
+  patchText: string;
   proposedChangeSummary: string;
   riskLevel: LearningSeverity;
   status: "proposed";
+  requiredRegressionTest: string;
   requiredEval: string;
   evidenceCount: number;
 };
@@ -167,49 +176,6 @@ function createFinding({
   };
 }
 
-function createStrategyCandidate(
-  finding: LearningFindingDraft,
-  findingIndex: number,
-): StrategyCandidateDraft | null {
-  if (finding.promotionRecommendation !== "code-change") {
-    return null;
-  }
-
-  const scenarioText = finding.scenario ?? "all scenarios";
-
-  if (finding.failureType === "worse_than_draft") {
-    return {
-      findingIndex,
-      title: `Prevent worse-than-draft rewrite selection for ${scenarioText}`,
-      scenario: finding.scenario,
-      proposedChangeSummary:
-        "Tighten candidate selection and targeted repair so measured rewrites that are worse than the draft cannot be returned as successful results.",
-      riskLevel: finding.severity,
-      status: "proposed",
-      requiredEval:
-        "Add a regression case using the failing sample pattern, assert final selected rewrite is not worse than the draft, and verify facts/next steps are preserved.",
-      evidenceCount: finding.evidenceCount,
-    };
-  }
-
-  if (finding.failureType === "high_final_signal") {
-    return {
-      findingIndex,
-      title: `Reduce repeated high final AI-like signal for ${scenarioText}`,
-      scenario: finding.scenario,
-      proposedChangeSummary:
-        "Add scenario-specific repair guidance for repeated high final AI-like signal while preserving required facts and useful detail.",
-      riskLevel: finding.severity,
-      status: "proposed",
-      requiredEval:
-        "Add or update scenario evaluation cases for this pattern and require at least 30 points of reduction or below-50 final signal.",
-      evidenceCount: finding.evidenceCount,
-    };
-  }
-
-  return null;
-}
-
 export function analyzeLearningSamples(
   samples: LearningSampleRow[],
 ): LearningAnalysisResult {
@@ -319,7 +285,7 @@ export function analyzeLearningSamples(
   findings.push(...clusterFailedCasesByDiagnosisTag(samples));
 
   const strategyCandidates = findings
-    .map((finding, index) => createStrategyCandidate(finding, index))
+    .map((finding, index) => proposeStrategyCandidate(finding, index))
     .filter((candidate): candidate is StrategyCandidateDraft => candidate !== null);
 
   let promotionDecision: LearningPromotionDecision = "digest_only";

@@ -123,4 +123,30 @@ describe("analyzeLearningSamples", () => {
     });
     expect(result.strategyCandidates).toEqual([]);
   });
+
+  it("promotes repeated diagnosis clusters into structured strategy candidates", () => {
+    const rows = ["cluster_1", "cluster_2"].map((id) =>
+      sample({
+        id,
+        status: "quality_failed",
+        diagnosisTags: JSON.stringify([
+          "support_template_voice",
+          "uniform_rhythm",
+        ]),
+      }),
+    );
+
+    const result = analyzeLearningSamples(rows);
+
+    expect(result.promotionDecision).toBe("promoted_candidate");
+    expect(result.strategyCandidates[0]).toMatchObject({
+      scenario: "customer_support",
+      patchTarget: "repair_prompt",
+      patchAction: "add_guardrail",
+      requiredRegressionTest: expect.stringContaining(
+        "support_template_voice",
+      ),
+      evidenceCount: 2,
+    });
+  });
 });

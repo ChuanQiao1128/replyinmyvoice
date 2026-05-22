@@ -1,23 +1,22 @@
 {
-  "issue_id": "M2.5-003",
-  "branch": "chore/M2.5-003",
+  "issue_id": "M2.5-004",
+  "branch": "chore/M2.5-004",
   "files_changed": [
-    "docs/skill-run-log.md",
+    "lib/learningops/candidates.ts",
     "lib/learningops.ts",
-    "lib/learningops/cluster.ts",
-    "plans/task-status.json",
-    "prisma/migrations/20260522123000_add_learning_finding_cluster_fields/migration.sql",
-    "prisma/schema.prisma",
     "scripts/learningops-run.ts",
-    "tests/unit/learningops-cluster.test.ts",
-    "tests/unit/learningops.test.ts"
+    "prisma/schema.prisma",
+    "prisma/migrations/20260522124500_add_strategy_candidate_structured_patch_fields/migration.sql",
+    "tests/unit/learningops-candidates.test.ts",
+    "tests/unit/learningops.test.ts",
+    "docs/skill-run-log.md"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Added diagnosis-tag clustering for failed LearningOps samples and persisted cluster metadata.",
-  "title": "feat: add LearningOps diagnosis clustering",
+  "summary": "Adds structured LearningOps strategy candidate patches from diagnosis clusters.",
+  "title": "feat: add structured strategy candidates",
   "next_action": "ready_to_commit"
 }

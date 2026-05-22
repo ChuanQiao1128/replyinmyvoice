@@ -1,15 +1,15 @@
-# Issue M2.5-003
+# Issue M2.5-004
 
-Title: M2.5-003 Failure-mode clustering by diagnosis tags
+Title: M2.5-004 Strategy candidate generator: cluster → prompt patch
 Milestone: M2.5-Learning
-GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/86
+GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/88
 
 ## Brief
 
-New `lib/learningops/cluster.ts`: group failed cases by primary diagnosis tag (`stock_opening`, `corporate_polish`, `uniform_rhythm`, etc per the AI-like cause taxonomy). For each cluster: count, exemplar case ids, common scenario, common tone. Output: `LearningFinding` table rows (new Prisma migration).
+`lib/learningops/candidates.ts`: takes a `LearningFinding` and proposes a targeted prompt/strategy patch. Patches are STRUCTURED (e.g. "add to repair prompt for customer_support scenario: 'avoid balanced 4-paragraph structure'"). Each candidate has risk level, required regression test, evidence count. New `StrategyCandidate` table.
 
 ---
-Detailed brief will be written at `plans/issues/M2.5-003.md` when this milestone starts.
+Detailed brief will be written at `plans/issues/M2.5-004.md` when this milestone starts.
 Source roadmap: `plans/commercialization-roadmap.md`.
 
 ## Repository conventions
