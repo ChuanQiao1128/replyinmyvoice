@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-22 - state-machine-modeling - stale git index lock repair lifecycle
+
+- Agent: Codex
+- Trigger: The overnight supervisor entered a repair-inbox crash loop because `stash_dirty_worktree` could not write the git index while a stale `.git/index.lock` existed.
+- Action: Opened and followed the skill; modeled the supervisor dirty-worktree lifecycle with an additional recovery transition that clears stale index locks before stash operations instead of repeatedly failing the same repair item.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `scripts/analyze_rewrite_quality.py`; `docs/skill-run-log.md`.
+- Verification evidence: `bash -n plans/overnight-supervisor.sh`, `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts tests/unit/analyze-rewrite-quality.test.ts`, `npm run typecheck`, `npm run lint`, and full `npm run test` passed.
+- Limitations: This repair covers local supervisor/git recovery and local Python compatibility only; it does not change provider dashboard, live money, npm publish, or deployment state.
+
 ### 2026-05-22 - state-machine-modeling - supervisor dirty-worktree lifecycle
 
 - Agent: Codex
