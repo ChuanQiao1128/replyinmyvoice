@@ -798,3 +798,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `README.md`; `docs/business-qa-and-deploy-result.md`; `docs/skill-run-log.md`.
 - Verification evidence: The dry-run deploy proved the existing Worker architecture can package under the limit after scoped config changes; no separate architecture handoff was required.
 - Limitations: This was a scope check, not a standalone system specification document.
+
+### 2026-05-22 - ui-browser-testing - M4-002 landing demo samples
+
+- Agent: Codex
+- Trigger: The task changes the public landing-page interactive demo samples and Naturalness Check values.
+- Action: Opened and followed the skill; identified the `/` landing demo flow, added a focused unit regression for documented sample fixtures and salutation-name consistency, and attempted a focused Playwright browser check.
+- Output artifacts: `components/landing/interactive-demo.tsx`; `components/landing/sample-cases.ts`; `tests/unit/landing-demo-samples.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused landing demo unit test passed after a red failure for the missing fixture module. `npm run lint`, `npm run typecheck`, and `npm run test` passed.
+- Limitations: Playwright browser verification could not start in this sandbox because Next.js could not bind either `0.0.0.0:3000` or `127.0.0.1:3000` and returned `EPERM`.
