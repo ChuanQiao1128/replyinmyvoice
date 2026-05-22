@@ -165,3 +165,4 @@ Each overnight Claude trigger appends here.
 2026-05-22T12:57:09+12:00 | M2.5-008 | started | M2.5-008 Promotion approval UX in /admin/learning
 2026-05-22T13:12:08+12:00 | M2.5-002 | started | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md
 2026-05-22T13:16:54+12:00 | M2.5-009 | started | M2.5-009 Canary deploy for new strategy
+2026-05-22T15:14:40+12:00 | M2.5-005 | started | M2.5-005 Auto-draft PR from promotable StrategyCandidate
