@@ -163,3 +163,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T12:46:50+12:00 | M2.5-007 | started | M2.5-007 Scheduled LearningOps run (Cloudflare Cron Trigger)
 2026-05-22 | M2.5-002-infra | eval-scenarios.ts adds --corpus/--output/--progress/--limit/--resume/--time-budget-ms; soft-limit + hard-time-budget auto-adapts to per-case provider latency; SIGKILL-safe via per-case atomic JSON writes | needed because single end-of-run writeFile produced zero output on 600s timeout while burning DeepSeek budget; auto-throttle removes need for external --limit tuning
 2026-05-22T12:57:09+12:00 | M2.5-008 | started | M2.5-008 Promotion approval UX in /admin/learning
+2026-05-22T13:12:08+12:00 | M2.5-002 | started | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md
+2026-05-22T13:16:54+12:00 | M2.5-009 | started | M2.5-009 Canary deploy for new strategy

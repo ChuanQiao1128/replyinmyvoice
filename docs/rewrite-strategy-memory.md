@@ -408,6 +408,19 @@ Promotion path:
 6. update `docs/scenario-evaluation-results.md`
 7. update `docs/optimization-notes.md`
 
+Canary rollout for promoted strategies:
+
+- A promoted strategy must ship with `REWRITE_STRATEGY_CANARY_ENABLED=true`
+  and a distinct `REWRITE_STRATEGY_CANARY_VERSION`.
+- The default rollout is 10% of rewrite traffic, assigned deterministically by
+  user/request key so one user sees a stable route during the window.
+- The canary compares existing `RewriteCostLog` signal-change distributions for
+  the control and canary strategy versions.
+- After 24 hours or 200 measured rewrites, lower average signal drop pauses
+  canary traffic; higher average signal drop ramps through 25%, 50%, then 100%.
+- The rollout uses existing database telemetry and does not require a new
+  Cloudflare KV namespace or another paid runtime resource.
+
 ## Anti-Patterns
 
 Do not promote strategies that:

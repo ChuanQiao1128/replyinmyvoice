@@ -6,7 +6,14 @@ function numberEnv(name: string, fallback: number) {
   return Number.isFinite(rawValue) ? rawValue : fallback;
 }
 
-export function getFactReconstructConfig(): FactReconstructConfig {
+export function getFactReconstructConfig({
+  strategyVersion = optionalEnv(
+    "REWRITE_STRATEGY_VERSION",
+    "adaptive_rewrite_orchestrator",
+  ),
+}: {
+  strategyVersion?: string;
+} = {}): FactReconstructConfig {
   const legacyModel = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");
   const cheapStructured = optionalEnv(
     "OPENAI_MODEL_CHEAP_STRUCTURED",
@@ -22,7 +29,7 @@ export function getFactReconstructConfig(): FactReconstructConfig {
   );
 
   return {
-    strategyVersion: "adaptive_rewrite_orchestrator",
+    strategyVersion,
     naturalnessThreshold: numberEnv("NATURALNESS_THRESHOLD", 40),
     maxEscalations: Math.max(0, numberEnv("MAX_ESCALATIONS", 1)),
     models: {

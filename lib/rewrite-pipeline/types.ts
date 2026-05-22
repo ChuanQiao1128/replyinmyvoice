@@ -228,7 +228,7 @@ export type RewriteAttemptLedgerEntry = {
 };
 
 export type FactReconstructConfig = {
-  strategyVersion: "fact_reconstruct" | "adaptive_rewrite_orchestrator";
+  strategyVersion: string;
   naturalnessThreshold: number;
   maxEscalations: number;
   models: Record<FactReconstructModelRole, string>;

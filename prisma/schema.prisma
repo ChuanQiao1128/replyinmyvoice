@@ -202,6 +202,7 @@ model RewriteCostLog {
   @@index([userId])
   @@index([status])
   @@index([scenario])
+  @@index([strategyVersion, createdAt])
   @@index([totalEstimatedCostUsd])
 }
 
