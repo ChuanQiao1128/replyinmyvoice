@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   evaluateRewriteCanary,
+  getRewriteCanaryDecision,
   getRewriteCanaryConfig,
   selectRewriteCanaryAssignment,
+  type RewriteCanarySqlClient,
   type RewriteCanarySignalSummary,
 } from "../../lib/rewrite-pipeline/canary";
 
@@ -125,5 +127,46 @@ describe("rewrite strategy canary", () => {
 
     expect(decision.state).toBe("ramping");
     expect(decision.effectivePercent).toBe(25);
+  });
+
+  it("turns canary traffic off when an unresolved rollback exists", async () => {
+    const config = getRewriteCanaryConfig({
+      REWRITE_STRATEGY_CANARY_ENABLED: "true",
+      REWRITE_STRATEGY_CANARY_VERSION: "support-policy-v2",
+    });
+    const statements: string[] = [];
+    const sql = (async (strings: TemplateStringsArray) => {
+      const text = strings.join("?");
+      statements.push(text);
+
+      if (text.includes('FROM "RewriteCanaryRollback"')) {
+        return [
+          {
+            id: "rollback_1",
+            canaryStrategyVersion: "support-policy-v2",
+            scenario: "customer_support",
+            regressionPoints: 3.4,
+            rollingAverageSignalDrop: 28.1,
+            baselineAverageSignalDrop: 31.5,
+            windowRewrites: 50,
+            createdAt: new Date("2026-05-22T11:30:00.000Z"),
+          },
+        ];
+      }
+
+      return [];
+    }) as unknown as RewriteCanarySqlClient;
+
+    const decision = await getRewriteCanaryDecision({ config, sql, now });
+
+    expect(decision.state).toBe("off");
+    expect(decision.effectivePercent).toBe(0);
+    expect(decision.reason).toContain("customer_support");
+    expect(decision.rollback?.id).toBe("rollback_1");
+    expect(
+      statements.some((statement) =>
+        statement.includes('FROM "RewriteCanaryRollback"'),
+      ),
+    ).toBe(true);
   });
 });

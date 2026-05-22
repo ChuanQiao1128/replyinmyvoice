@@ -418,6 +418,16 @@ Canary rollout for promoted strategies:
   the control and canary strategy versions.
 - After 24 hours or 200 measured rewrites, lower average signal drop pauses
   canary traffic; higher average signal drop ramps through 25%, 50%, then 100%.
+- Post-promotion rollback is stricter and scenario-specific: the scheduled
+  LearningOps job checks the active canary strategy's latest 50 successful
+  measured rewrites per scenario. If that rolling scenario average trails the
+  matching control scenario by 3 signal-drop points or more, it writes an open
+  `RewriteCanaryRollback` row, sends an admin email when alert email is
+  configured, and opens a GitHub follow-up issue when the issue token is
+  configured.
+- Request-time assignment must honor unresolved rollback rows before normal
+  ramping logic. An unresolved rollback forces effective canary traffic to 0
+  until the row is manually resolved after a corrected strategy is ready.
 - The rollout uses existing database telemetry and does not require a new
   Cloudflare KV namespace or another paid runtime resource.
 

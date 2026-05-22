@@ -148,6 +148,32 @@ versions over the recent window. After 24 hours or 200 measured rewrites, the
 runtime pauses canary traffic when the canary average signal drop is lower, or
 ramps to 25%, 50%, then 100% when the canary average signal drop is higher.
 
+Rollback guard:
+
+- The scheduled LearningOps job also checks each canary scenario's latest
+  50 successful measured rewrites.
+- If the canary scenario average signal drop trails the matching control
+  scenario average by 3 points or more, it writes an open
+  `RewriteCanaryRollback` row.
+- Request-time canary evaluation reads unresolved rollback rows before assigning
+  traffic. Any unresolved rollback for the active canary strategy forces
+  effective canary traffic to 0 even when the environment flag still says true.
+- The rollback row records admin email and GitHub issue side-effect status. Alert
+  failures do not reopen traffic; a persisted rollback remains active until the
+  row is manually resolved after a fixed strategy is ready.
+
+Optional alert configuration:
+
+```text
+REWRITE_STRATEGY_CANARY_ROLLBACK_WINDOW=50
+REWRITE_STRATEGY_CANARY_ROLLBACK_THRESHOLD_POINTS=3
+LEARNINGOPS_ALERT_EMAIL_FROM=<verified sender>
+LEARNINGOPS_ALERT_EMAIL_TO=<admin email, defaults to first ADMIN_EMAILS entry>
+LEARNINGOPS_GITHUB_REPO=ChuanQiao1128/replyinmyvoice
+LEARNINGOPS_GITHUB_TOKEN=<repo-scoped issue token>
+RESEND_API_KEY=<email provider token>
+```
+
 This uses existing database telemetry. Do not create a Cloudflare KV namespace
 for this rollout unless a future release needs cross-service state that the
 database cannot provide.
