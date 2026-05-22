@@ -1248,3 +1248,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/m6-validation-report.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
 - Verification evidence: Existing schema has `StripeEvent.id` as the idempotency key with status, mode, attempts, and timestamps; the webhook handler records `processing`, marks `processed` after handler success, marks `failed` on handler error, and updates `User` only when the event maps to an existing user/customer/subscription. The report now requires both `StripeEvent` and `User` evidence for full M6-008 completion.
 - Limitations: This was a read-only review and documentation repair; no migration, webhook handler code, live Stripe call, or production DB query was performed.
+
+### 2026-05-23 - state-machine-modeling - M7-003 Sentry dependency blocker
+
+- Agent: Codex
+- Trigger: The M7-003 repair changes persisted lifecycle/status records for an implementation issue after a non-user `BLOCKED-AUTONOMY` outcome.
+- Action: Opened and followed the skill; modeled M7-003 as moving from `BLOCKED-AUTONOMY` to `BLOCKED-PROVIDER` when npm registry DNS is unavailable, with a return to `in_progress` only after a networked npm runner can generate the `@sentry/nextjs` lockfile.
+- Output artifacts: `plans/m7-003-sentry-prerequisite.md`; `plans/issue-board.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `plans/task-status.json`.
+- Verification evidence: `npm view @sentry/nextjs version --json` failed with `ENOTFOUND registry.npmjs.org`; local `node_modules/@sentry` and npm cache did not contain `@sentry/nextjs`. Full validation is run separately for this repair.
+- Limitations: This repair does not implement Sentry source wiring because committing `package.json` without a generated `package-lock.json` would leave the dependency state inconsistent.

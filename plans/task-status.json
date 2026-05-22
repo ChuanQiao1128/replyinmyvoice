@@ -1,8 +1,13 @@
 {
-  "issue_id": "REPAIR-20260523054614",
-  "branch": "codex/repair-claude-untracked-directory-not-in-gitignore-REPAIR-20260523054614",
+  "issue_id": "REPAIR-20260523055137",
+  "branch": "codex/repair-m7-003-codex-needs-human-blocked-autonomy-REPAIR-20260523055137",
   "files_changed": [
-    ".gitignore",
+    "docs/skill-run-log.md",
+    "plans/blockers-log.md",
+    "plans/codex-worker-inbox.md",
+    "plans/decisions-log.md",
+    "plans/issue-board.md",
+    "plans/m7-003-sentry-prerequisite.md",
     "plans/task-status.json"
   ],
   "lint": "pass",
@@ -10,7 +15,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Added .claude/ to .gitignore after confirming it only contains local Claude settings.",
-  "title": "chore: ignore local Claude settings",
+  "summary": "Reclassified M7-003 as npm registry provider-blocked and documented the networked lockfile prerequisite.",
+  "title": "chore: document M7-003 Sentry package blocker",
   "next_action": "ready_to_commit"
 }

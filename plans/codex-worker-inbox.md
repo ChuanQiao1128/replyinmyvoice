@@ -195,7 +195,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-22T17:39:37Z — .claude/ untracked directory not in .gitignore
 
-- Status: in_progress
+- Status: done
 - Source: Claude monitor
 - Class: docs
 - Priority: P3
@@ -204,10 +204,11 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Suggested Codex action: add `.claude/` to `.gitignore` if the directory contains only local tool state (confirm contents first); or commit intentionally if it should be tracked
 - Done condition: `git status --porcelain` no longer shows `.claude/` as untracked, OR `.claude/` appears in `.gitignore`
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T05:51:18+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/222; Added .claude/ to .gitignore after confirming it only contains local Claude settings.
 
 ## 2026-05-23T05:45:56+12:00 — M7-003 codex-needs-human:BLOCKED-AUTONOMY
 
-- Status: pending
+- Status: done
 - Source: shell supervisor
 - Class: autonomy
 - Priority: P1
@@ -216,3 +217,4 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M7-003 without changing live money, dashboards, npm publish state, or secrets.
 - Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T05:55:17+12:00 — Reclassified M7-003 from `BLOCKED-AUTONOMY` to `BLOCKED-PROVIDER` after reproducing the npm registry blocker: `npm view @sentry/nextjs version --json` failed with `ENOTFOUND registry.npmjs.org`, and no local `@sentry/nextjs` cache was present. The exact rerun prerequisite and state model are documented in `plans/m7-003-sentry-prerequisite.md`. No source implementation, live money, npm publish, dashboard, secret, `.env.local`, or `.dev.vars` change was made.
