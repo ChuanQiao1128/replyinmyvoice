@@ -1,20 +1,20 @@
-# Repair REPAIR-20260523055137
+# Repair REPAIR-20260523111837
 
-Title: M7-003 codex-needs-human:BLOCKED-AUTONOMY
+Title: INV-1: Finder-duplicate files outside M7-008 task scope
 Source: plans/codex-worker-inbox.md
 
 ## Repair item
 
-## 2026-05-23T05:45:56+12:00 — M7-003 codex-needs-human:BLOCKED-AUTONOMY
+## 2026-05-22T18:08:57Z — INV-1: Finder-duplicate files outside M7-008 task scope
 
 - Status: pending
-- Source: shell supervisor
-- Class: autonomy
+- Source: Claude monitor
+- Class: dirty_repo
 - Priority: P1
-- Related issue: M7-003
-- Evidence: plans/task-status.json
-- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M7-003 without changing live money, dashboards, npm publish state, or secrets.
-- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
+- Related issue: M7-008
+- Evidence: `git status --porcelain` on branch chore/M7-008 shows five untracked files with macOS space-numbered names — `plans/task-status 2.json`, `plans/task-status 3.json`, `plans/task-status 4.json`, `plans/m6-validation-report 2.md`, `plans/m6-validation-report 3.md` — none of which are in M7-008 scope (KPI report script). task-status.json is also deleted (D) in the worktree.
+- Suggested Codex action: Delete the five space-named duplicate files (`git rm --cached` + filesystem delete) and commit the cleanup on chore/M7-008 or a separate chore branch. Confirm contents match their canonical originals before deleting.
+- Done condition: `git status --porcelain` no longer shows the five space-named files as untracked; no data is lost (canonical originals remain).
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 
 ## Repository conventions
