@@ -1167,3 +1167,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/preflight-report.md`; `plans/issue-board.md`; `plans/codex-worker-inbox.md`; `plans/blockers-log.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
 - Verification evidence: Node DNS lookup returned `ENOTFOUND` for `replyinmyvoice.com` and `example.com`; curl returned `Could not resolve host` for both hosts before any HTTP status evidence. Required local validations are run separately for this repair.
 - Limitations: No desktop/mobile screenshots, console review, or live route status checks were possible from this sandbox because public DNS resolution failed before reaching the site.
+
+### 2026-05-23 - state-machine-modeling - Supervisor runtime ledger preservation
+
+- Agent: Codex
+- Trigger: The supervisor could persist a terminal state on a branch, then hide the board/inbox/STOP ledger with a full-worktree stash and reselect the same issue from main.
+- Action: Opened and followed the skill; modeled supervisor runtime files as state that must remain visible across no-status, needs-human, abort, and banned-term transitions while implementation diffs are preserved separately.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Added regression coverage for runtime-aware stashing, STOP file preservation, and no-status paths using `stash_dirty_worktree`; `bash -n plans/overnight-supervisor.sh` and focused supervisor tests passed.
+- Limitations: The live overnight loop was not restarted in this turn; `plans/STOP-OVERNIGHT.txt` remains the local stop signal until restart is intentional.
+
+### 2026-05-23 - resilience-test-generation - Supervisor stash recovery regressions
+
+- Agent: Codex
+- Trigger: The fix changes recovery behavior after Codex no-status, banned-term, dirty-worktree, and sandbox/socket-permission blocker outcomes.
+- Action: Opened and followed the skill; wrote deterministic source-contract tests before implementation so runtime ledgers are not stashed away when non-runtime work must be preserved.
+- Output artifacts: `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/overnight-supervisor.sh`; `docs/skill-run-log.md`.
+- Verification evidence: The first focused run failed on five missing behaviors, then passed after implementation. Full `npm run test`, `npm run lint`, and `npm run typecheck` passed.
+- Limitations: These are local static contract tests for the shell supervisor; no live GitHub merge or Cloudflare deployment was invoked.
+
+### 2026-05-23 - test-driven-development - Supervisor runtime stash fix
+
+- Agent: Codex
+- Trigger: Implementing a bugfix to prevent autonomous supervisor reselection caused by stashing terminal ledger state.
+- Action: Opened and followed the skill; wrote failing tests first, verified the failures, then implemented the minimal supervisor changes to make them pass.
+- Output artifacts: `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/overnight-supervisor.sh`; `docs/skill-run-log.md`.
+- Verification evidence: Red run failed in `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` on no-status stash routing, socket-permission classification, STOP preservation, path-scoped stash, and raw stash usage. Green runs passed focused tests, `bash -n`, full Vitest, lint, and typecheck.
+- Limitations: Did not run the overnight supervisor itself after patching because the local STOP signal is intentionally present.
+
+### 2026-05-23 - dotnet-backend-testing - M6-007 backend suite blocker classification
+
+- Agent: Codex
+- Trigger: M6-007 validation status included .NET backend test coverage and needed classification without claiming tests passed when the sandbox blocks test discovery.
+- Action: Opened and followed the skill; treated `dotnet test backend-dotnet/ReplyInMyVoice.sln` as the required backend command and classified the observed MSBuild socket/named-pipe permission issue as an autonomous sandbox blocker.
+- Output artifacts: `plans/overnight-supervisor.sh`; `docs/skill-run-log.md`.
+- Verification evidence: The supervisor classifier now recognizes `socket permission` and `named-pipe` as `BLOCKED-AUTONOMY`; TypeScript lint, typecheck, and Vitest passed separately.
+- Limitations: No .NET backend test pass is claimed here. The backend suite still needs to be rerun in an environment where MSBuild named-pipe/socket creation is allowed.
