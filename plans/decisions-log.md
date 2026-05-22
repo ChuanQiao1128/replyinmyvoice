@@ -182,3 +182,6 @@ Each overnight Claude trigger appends here.
 2026-05-22T16:03:01+12:00 | M4-002 | started | M4-002 Replace interactive-demo samples with measured ones
 2026-05-22T16:11:53+12:00 | M4-002 | done | Extracted documented homepage demo samples into a fixture and added consistency coverage against docs/sample-cases.md. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/188)
 2026-05-22T16:15:40+12:00 | supervisor-taxonomy | fixed | Reclassified non-user blockers into BLOCKED-AUTONOMY, BLOCKED-PREREQ, and BLOCKED-PROVIDER; BLOCKED-WAITING-USER is now reserved for external user actions only.
+2026-05-22T16:34:05+12:00 | M5-replan | decided | First owner-facing Rewrite Quality Analysis will be an offline Python/Pandas report from RewriteCostLog/RewriteProviderCall, not an admin UI; Claude monitor should write non-user blockers to plans/codex-worker-inbox.md for Codex worker follow-up.
+2026-05-22T16:20:00+12:00 | M5-002 | started | M5-002 Capture telemetry across pipeline (OpenAI tokens + Sapling chars + estimator + persist)
+2026-05-22T16:37:10+12:00 | M5-002 | done | Rescued timed-out telemetry WIP, verified provider-call token/cost/latency persistence and Sapling call metadata, and paired it with the Rewrite Quality Analysis target docs.

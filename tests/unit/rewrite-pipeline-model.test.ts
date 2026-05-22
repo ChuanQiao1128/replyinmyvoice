@@ -11,6 +11,7 @@ import {
   repairHighRiskSentences,
   reviewCandidates,
 } from "../../lib/rewrite-pipeline/model";
+import { createRewriteTelemetryCollector } from "../../lib/observability/rewrite-telemetry";
 import type {
   ExtractedFacts,
   FactReconstructConfig,
@@ -256,6 +257,50 @@ describe("fact-reconstruct model parsing", () => {
 
     expect(body.thinking).toEqual({ type: "enabled" });
     expect(body.reasoning_effort).toBe("high");
+  });
+
+  it("records malformed OpenAI-compatible output as one failed charged provider call", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const telemetry = createRewriteTelemetryCollector({
+      requestId: "req_bad_json",
+      startedAt: new Date("2026-05-22T01:00:00.000Z"),
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          choices: [{ message: { content: "{not json" } }],
+          usage: {
+            prompt_tokens: 1000,
+            completion_tokens: 250,
+          },
+        }),
+      ),
+    );
+
+    await expect(extractFacts(input, config, telemetry)).rejects.toThrow();
+
+    const log = telemetry.finish({
+      input,
+      status: "server_failed",
+      errorCode: "bad_json",
+      strategyVersion: config.strategyVersion,
+      finishedAt: new Date("2026-05-22T01:00:01.000Z"),
+    });
+
+    expect(log.providerCalls).toHaveLength(1);
+    expect(log.providerCalls[0]).toMatchObject({
+      provider: "openai",
+      role: "cheap_structured",
+      model: "test-structured-model",
+      inputTokens: 1000,
+      outputTokens: 250,
+      success: false,
+      errorCode: "bad_json",
+    });
+    expect(log.openAiInputTokens).toBe(1000);
+    expect(log.openAiOutputTokens).toBe(250);
+    expect(log.openAiCostUsd).toBeCloseTo(0.0005125, 8);
   });
 
   it("normalizes string and object fact fields into string arrays", async () => {

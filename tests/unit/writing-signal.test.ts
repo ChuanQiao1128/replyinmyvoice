@@ -82,6 +82,30 @@ describe("measureWritingSignal", () => {
     ]);
   });
 
+  it("returns Sapling call telemetry metadata with the measured signal", async () => {
+    process.env.WRITING_SIGNAL_PROVIDER = "sapling";
+    process.env.SAPLING_API_KEY = "test-sapling-key";
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          score: 0.28,
+          sentence_scores: [{ sentence: "Plain reply.", score: 0.2 }],
+        }),
+      ),
+    );
+
+    const result = await measureWritingSignal("Plain reply.", {
+      role: "final_signal",
+    });
+
+    expect(result.aiLikePercent).toBe(28);
+    expect(result.chars).toBe("Plain reply.".length);
+    expect(result.callCount).toBe(1);
+    expect(result.latencyMs).toEqual(expect.any(Number));
+  });
+
   it("can calibrate high overall scores when all sentence scores are low", async () => {
     process.env.WRITING_SIGNAL_PROVIDER = "sapling";
     process.env.SAPLING_API_KEY = "test-sapling-key";

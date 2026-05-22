@@ -443,16 +443,48 @@ async function createJsonCompletion<T>({
     return Math.max(0, Date.now() - startedAt);
   }
 
-  function recordFailedCall(errorCode: string) {
+  function estimateCost({
+    inputTokens,
+    outputTokens,
+  }: {
+    inputTokens: number;
+    outputTokens: number;
+  }) {
+    const pricing = config.pricing[role];
+    return estimateOpenAiCostUsd({
+      inputTokens,
+      outputTokens,
+      inputPer1M: pricing.inputPer1M,
+      outputPer1M: pricing.outputPer1M,
+    });
+  }
+
+  function recordCall({
+    errorCode,
+    inputTokens = 0,
+    outputTokens = 0,
+    success,
+  }: {
+    errorCode?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    success: boolean;
+  }) {
     telemetry?.recordProviderCall({
       provider: "openai",
       role,
       model,
-      estimatedCostUsd: 0,
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd: estimateCost({ inputTokens, outputTokens }),
       latencyMs: latencyMs(),
-      success: false,
+      success,
       errorCode,
     });
+  }
+
+  function recordFailedCall(errorCode: string) {
+    recordCall({ success: false, errorCode });
   }
 
   try {
@@ -493,33 +525,38 @@ async function createJsonCompletion<T>({
     };
     const inputTokens = payload.usage?.prompt_tokens ?? 0;
     const outputTokens = payload.usage?.completion_tokens ?? 0;
-    const pricing = config.pricing[role];
-    telemetry?.recordProviderCall({
-      provider: "openai",
-      role,
-      model,
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd: estimateOpenAiCostUsd({
-        inputTokens,
-        outputTokens,
-        inputPer1M: pricing.inputPer1M,
-        outputPer1M: pricing.outputPer1M,
-      }),
-      latencyMs: latencyMs(),
-      success: true,
-    });
-
     const rawContent = payload.choices?.at(0)?.message?.content;
     if (!rawContent) {
+      recordCall({
+        inputTokens,
+        outputTokens,
+        success: false,
+        errorCode: "no_content",
+      });
       throw new Error("OpenAI returned no content.");
     }
 
-    return schema.parse(JSON.parse(rawContent));
+    try {
+      const parsed = schema.parse(JSON.parse(rawContent));
+      recordCall({
+        inputTokens,
+        outputTokens,
+        success: true,
+      });
+      return parsed;
+    } catch (error) {
+      if (error instanceof SyntaxError || error instanceof z.ZodError) {
+        recordCall({
+          inputTokens,
+          outputTokens,
+          success: false,
+          errorCode: "bad_json",
+        });
+      }
+      throw error;
+    }
   } catch (error) {
-    if (error instanceof SyntaxError || error instanceof z.ZodError) {
-      recordFailedCall("bad_json");
-    } else if (error instanceof DOMException && error.name === "AbortError") {
+    if (error instanceof DOMException && error.name === "AbortError") {
       recordFailedCall("timeout");
     }
     throw error;

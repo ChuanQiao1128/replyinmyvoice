@@ -165,3 +165,9 @@ What happens next: Codex/engineering should fix the corpus parser or reroute thi
 What was attempted: Recorded the four-case M4-001 refresh attempt; Sapling returned timeout_or_network before measured signals could be produced.
 
 What happens next: retry or route around the provider outage from Codex/engineering. This is not a user decision blocker.
+
+## 2026-05-22T16:30:03+12:00 — M5-002 — codex-no-status
+
+What was attempted: codex exec did not write plans/task-status.json. Log: plans/codex-exec-M5-002.log
+
+What happens next: Codex rescued the timed-out WIP on branch codex/rewrite-quality-analysis-telemetry, verified the focused telemetry tests, lint, typecheck, and full Vitest suite, and is preparing a normal PR. This is not a user decision blocker.
