@@ -8,8 +8,10 @@
 #
 # Usage:
 #   cd /Users/qc/Desktop/CloudFlare
-#   nohup bash plans/overnight-supervisor.sh > /dev/null 2>&1 &
-#   disown
+#   screen -dmS rimv-overnight bash -lc 'cd /Users/qc/Desktop/CloudFlare && bash plans/overnight-supervisor.sh'
+#
+# In the Codex desktop environment, prefer screen. nohup/disown launches have
+# been observed to die after the launching command exits.
 #
 # Emergency stop:
 #   touch /Users/qc/Desktop/CloudFlare/plans/STOP-OVERNIGHT.txt
@@ -122,6 +124,7 @@ PY
 log "=== Overnight Supervisor v2 starting ==="
 log "Repo: $REPO_DIR"
 log "Limits: $MAX_ISSUES issues, $MAX_HOURS hours, $CODEX_TIMEOUT_SECONDS s per codex call  (real stop: STOP-OVERNIGHT.txt | MONEY-MADE.txt | no-more-pending)"
+log "North star: docs/commercialization-north-star.md"
 
 if [ ! -f "$BOARD" ]; then
   log "ERROR: issue board missing at $BOARD"

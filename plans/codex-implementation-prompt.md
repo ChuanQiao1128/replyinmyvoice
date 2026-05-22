@@ -3,20 +3,22 @@
 When the shell supervisor invokes you (`codex exec`), follow this protocol:
 
 ## Inputs (placed by shell before invoking you)
+- `docs/commercialization-north-star.md` — durable commercial target. READ THIS to understand the overall goal, then keep your edits scoped to the current issue.
 - `plans/current-task.md` — single file describing the issue you must implement (copied from `plans/issues/<id>.md` or manifest entry). READ THIS FIRST.
 - Current branch: shell has already created `chore/<issue-id>` from main. You're on it. DO NOT switch.
 
 ## Your job
 1. Read `plans/current-task.md` carefully — title, files to touch, acceptance criteria.
-2. Make the required file changes per the brief.
-3. Run validations:
+2. Check `docs/commercialization-north-star.md` only for goal alignment. Do not expand the issue scope just because the north-star doc contains broader gates.
+3. Make the required file changes per the brief.
+4. Run validations:
    ```
    npm run lint
    npm run typecheck
    npm run test
    ```
    If the issue touches `backend-dotnet/`, also: `dotnet test backend-dotnet/ReplyInMyVoice.sln --nologo`
-4. Write `plans/task-status.json` with the exact schema:
+5. Write `plans/task-status.json` with the exact schema:
    ```json
    {
      "issue_id": "<id from current-task.md>",
@@ -32,7 +34,7 @@ When the shell supervisor invokes you (`codex exec`), follow this protocol:
      "next_action": "ready_to_commit" | "needs_human" | "abort"
    }
    ```
-5. Print the path of `plans/task-status.json` to stdout. Exit.
+6. Print the path of `plans/task-status.json` to stdout. Exit.
 
 ## Hard rules
 

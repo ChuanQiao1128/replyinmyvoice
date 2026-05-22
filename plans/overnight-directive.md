@@ -6,6 +6,7 @@ You are codex, working autonomously on the Reply In My Voice commercialization r
 `/Users/qc/Desktop/CloudFlare` (already cwd)
 
 ## Sources of truth (read these first)
+- `docs/commercialization-north-star.md` — durable commercial target and Claude/Codex division of labor
 - `CLAUDE.md` — "Active Commercialization Sprint" section is the authoritative posture
 - `AGENTS.md` — project rules
 - `plans/commercialization-roadmap.md` — milestone plan
