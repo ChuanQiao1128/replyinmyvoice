@@ -34,11 +34,14 @@ INBOX=plans/codex-worker-inbox.md
 STOP_SIGNAL=plans/STOP-OVERNIGHT.txt
 MONEY_SIGNAL=plans/MONEY-MADE.txt
 ENV_FILE=.env.local
+SUPERVISOR_LOCK=plans/.overnight-supervisor.lock
 
 MAX_ISSUES=${MAX_ISSUES:-10000}
 MAX_HOURS=${MAX_HOURS:-720}
 COOLDOWN_SECONDS=${COOLDOWN_SECONDS:-15}
 CODEX_TIMEOUT_SECONDS=${CODEX_TIMEOUT_SECONDS:-600}  # 10 min per codex invocation
+SUPERVISOR_LOCK_STALE_SECONDS=${SUPERVISOR_LOCK_STALE_SECONDS:-600}
+MAX_STASH_FAILURES=${MAX_STASH_FAILURES:-3}
 
 START_TS=$(date +%s)
 DEADLINE=$((START_TS + MAX_HOURS * 3600))
@@ -48,6 +51,8 @@ ISSUES_BLOCKED=0
 ISSUES_NEEDS_HUMAN=0
 REPAIRS_DONE=0
 REPAIRS_BLOCKED=0
+LAST_STASH_FAILURE_SIGNATURE=""
+STASH_FAILURE_COUNT=0
 
 # ─── Logging helpers ──────────────────────────────────────────────────────
 
@@ -55,6 +60,46 @@ log() {
   local ts
   ts=$(date -Iseconds)
   echo "[$ts] $*" | tee -a "$LOG"
+}
+
+release_supervisor_lock() {
+  if [ -f "$SUPERVISOR_LOCK/pid" ] && [ "$(cat "$SUPERVISOR_LOCK/pid" 2>/dev/null)" = "$$" ]; then
+    rm -rf "$SUPERVISOR_LOCK"
+  fi
+}
+
+acquire_supervisor_lock() {
+  if mkdir "$SUPERVISOR_LOCK" 2>/dev/null; then
+    printf "%s\n" "$$" > "$SUPERVISOR_LOCK/pid"
+    date -Iseconds > "$SUPERVISOR_LOCK/started_at"
+    trap release_supervisor_lock EXIT
+    return 0
+  fi
+
+  local existing_pid lock_age
+  existing_pid=$(cat "$SUPERVISOR_LOCK/pid" 2>/dev/null || true)
+  if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+    log "ERROR: another supervisor appears active (pid $existing_pid; lock $SUPERVISOR_LOCK)"
+    return 1
+  fi
+
+  lock_age=$(($(date +%s) - $(stat -f %m "$SUPERVISOR_LOCK" 2>/dev/null || echo 0)))
+  if [ "$lock_age" -le "$SUPERVISOR_LOCK_STALE_SECONDS" ]; then
+    log "ERROR: supervisor lock exists without a live pid but is too new to remove (${lock_age}s; lock $SUPERVISOR_LOCK)"
+    return 1
+  fi
+
+  log "Pre-flight: removing stale supervisor lock $SUPERVISOR_LOCK (age ${lock_age}s)"
+  rm -rf "$SUPERVISOR_LOCK"
+  if mkdir "$SUPERVISOR_LOCK" 2>/dev/null; then
+    printf "%s\n" "$$" > "$SUPERVISOR_LOCK/pid"
+    date -Iseconds > "$SUPERVISOR_LOCK/started_at"
+    trap release_supervisor_lock EXIT
+    return 0
+  fi
+
+  log "ERROR: could not acquire supervisor lock after stale cleanup"
+  return 1
 }
 
 append_progress() {
@@ -218,6 +263,8 @@ log "Repo: $REPO_DIR"
 log "Limits: $MAX_ISSUES issues, $MAX_HOURS hours, $CODEX_TIMEOUT_SECONDS s per codex call  (real stop: STOP-OVERNIGHT.txt | MONEY-MADE.txt | no-more-pending)"
 log "North star: docs/commercialization-north-star.md"
 
+acquire_supervisor_lock || exit 1
+
 if [ ! -f "$BOARD" ]; then
   log "ERROR: issue board missing at $BOARD"
   exit 1
@@ -278,6 +325,28 @@ banned_terms_grep() {
     return 1
   fi
   return 0
+}
+
+ci_state_is_failure() {
+  printf "%s" "$1" | grep -qE "FAILURE|ERROR|CANCELLED"
+}
+
+ci_state_is_pending_or_unknown() {
+  local state_summary=$1
+  [ -z "$state_summary" ] || \
+    [ "$state_summary" = "no-checks" ] || \
+    printf "%s" "$state_summary" | grep -qE "PENDING|IN_PROGRESS|QUEUED"
+}
+
+ci_state_is_mergeable() {
+  local state_summary=$1
+  if ci_state_is_failure "$state_summary"; then
+    return 1
+  fi
+  if ci_state_is_pending_or_unknown "$state_summary"; then
+    return 1
+  fi
+  printf "%s" "$state_summary" | grep -q "SUCCESS"
 }
 
 find_next_pending_issue() {
@@ -381,13 +450,15 @@ run_codex_implementation() {
 
   if [ -n "$TIMEOUT_BIN" ]; then
     echo "$CODEX_PROMPT" | "$TIMEOUT_BIN" "$CODEX_TIMEOUT_SECONDS" \
-      codex exec \
+      env -u GH_TOKEN -u GITHUB_TOKEN -u GITHUB_PAT \
+        codex exec \
         -c 'approval_policy="never"' \
         -c 'sandbox_mode="workspace-write"' \
         -c 'shell_environment_policy.inherit="all"' \
         > "$cdx_log" 2>&1
   else
-    echo "$CODEX_PROMPT" | codex exec \
+    echo "$CODEX_PROMPT" | env -u GH_TOKEN -u GITHUB_TOKEN -u GITHUB_PAT \
+      codex exec \
       -c 'approval_policy="never"' \
       -c 'sandbox_mode="workspace-write"' \
       -c 'shell_environment_policy.inherit="all"' \
@@ -421,6 +492,7 @@ supervisor_non_runtime_status_paths() {
 from __future__ import annotations
 
 import subprocess
+import sys
 
 SUPERVISOR_RUNTIME_FILES = {
     "plans/blockers-log.md",
@@ -441,32 +513,65 @@ SUPERVISOR_RUNTIME_PREFIXES = (
 )
 
 
-def status_path(raw: str) -> str:
-    path = raw[3:]
-    if " -> " in path:
-        path = path.split(" -> ", 1)[1]
-    return path
+def iter_status_paths() -> list[str]:
+    result = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z", "-uall"],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    entries = result.stdout.split(b"\0")
+    index = 0
+    while index < len(entries):
+        raw = entries[index]
+        index += 1
+        if not raw:
+            continue
+        status = raw[:2].decode("ascii", "replace")
+        path = raw[3:].decode("utf-8", "surrogateescape")
+        if "R" in status or "C" in status:
+            index += 1
+        yield path
 
 
 def is_supervisor_runtime_file(path: str) -> bool:
     return path in SUPERVISOR_RUNTIME_FILES or path.startswith(SUPERVISOR_RUNTIME_PREFIXES)
 
 
-result = subprocess.run(
-    ["git", "status", "--porcelain=v1", "-uall"],
-    check=True,
-    text=True,
-    stdout=subprocess.PIPE,
-)
-
-for raw in result.stdout.splitlines():
-    if raw and not is_supervisor_runtime_file(status_path(raw)):
-        print(status_path(raw))
+for path in iter_status_paths():
+    if not is_supervisor_runtime_file(path):
+        sys.stdout.buffer.write(path.encode("utf-8", "surrogateescape") + b"\0")
 PY
 }
 
 worktree_has_non_runtime_changes() {
-  [ -n "$(supervisor_non_runtime_status_paths)" ]
+  local path
+  while IFS= read -r -d '' path; do
+    [ -n "$path" ] && return 0
+  done < <(supervisor_non_runtime_status_paths)
+  return 1
+}
+
+record_stash_failure() {
+  local label=$1
+  local output=$2
+  local signature
+  signature=$(printf "%s" "$output" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-240)
+  if [ -z "$signature" ]; then
+    signature="stash-failed-without-output"
+  fi
+
+  if [ "$signature" = "$LAST_STASH_FAILURE_SIGNATURE" ]; then
+    STASH_FAILURE_COUNT=$((STASH_FAILURE_COUNT + 1))
+  else
+    LAST_STASH_FAILURE_SIGNATURE=$signature
+    STASH_FAILURE_COUNT=1
+  fi
+
+  log "  Stash failure signature count: ${STASH_FAILURE_COUNT}/${MAX_STASH_FAILURES} ($label): $signature"
+  if [ "$STASH_FAILURE_COUNT" -ge "$MAX_STASH_FAILURES" ]; then
+    log "  FATAL: repeated stash failure reached ${MAX_STASH_FAILURES}; writing $STOP_SIGNAL to prevent livelock"
+    touch "$STOP_SIGNAL"
+  fi
 }
 
 stash_dirty_worktree() {
@@ -474,7 +579,7 @@ stash_dirty_worktree() {
   if worktree_has_changes; then
     local non_runtime_paths=()
     local path
-    while IFS= read -r path; do
+    while IFS= read -r -d '' path; do
       if [ -n "$path" ]; then
         non_runtime_paths+=("$path")
       fi
@@ -492,7 +597,24 @@ stash_dirty_worktree() {
 
     log "  Preserving non-runtime dirty worktree paths in stash ($label)"
     clear_stale_git_index_lock || return 1
-    git stash push -u -m "overnight-preserve-${label}-$(date +%s)" -- "${non_runtime_paths[@]}" >>"$LOG" 2>&1
+    local stash_ref_before stash_ref_after stash_output stash_exit
+    stash_ref_before=$(git rev-parse --verify -q refs/stash 2>/dev/null || true)
+    stash_output=$(git stash push -u -m "overnight-preserve-${label}-$(date +%s)" -- "${non_runtime_paths[@]}" 2>&1)
+    stash_exit=$?
+    if [ -n "$stash_output" ]; then
+      printf "%s\n" "$stash_output" >>"$LOG"
+    fi
+    stash_ref_after=$(git rev-parse --verify -q refs/stash 2>/dev/null || true)
+    if [ "$stash_exit" -ne 0 ]; then
+      if [ -n "$stash_ref_after" ] && [ "$stash_ref_after" != "$stash_ref_before" ]; then
+        log "  Dropping partial stash created by failed preservation attempt"
+        git stash drop --quiet stash@{0} >>"$LOG" 2>&1 || true
+      fi
+      record_stash_failure "$label" "$stash_output"
+      return 1
+    fi
+    LAST_STASH_FAILURE_SIGNATURE=""
+    STASH_FAILURE_COUNT=0
   fi
 }
 
@@ -528,6 +650,26 @@ def is_supervisor_runtime_file(path: str) -> bool:
     return path in SUPERVISOR_RUNTIME_FILES or path.startswith(SUPERVISOR_RUNTIME_PREFIXES)
 
 
+def iter_status_paths() -> list[str]:
+    result = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z", "-uall"],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    entries = result.stdout.split(b"\0")
+    index = 0
+    while index < len(entries):
+        raw = entries[index]
+        index += 1
+        if not raw:
+            continue
+        status = raw[:2].decode("ascii", "replace")
+        path = raw[3:].decode("utf-8", "surrogateescape")
+        if "R" in status or "C" in status:
+            index += 1
+        yield path
+
+
 status_path = Path("plans/task-status.json")
 try:
     declared = set(json.loads(status_path.read_text()).get("files_changed", []))
@@ -539,20 +681,8 @@ if not declared:
     print("plans/task-status.json files_changed is empty")
     raise SystemExit(1)
 
-result = subprocess.run(
-    ["git", "status", "--porcelain=v1", "-uall"],
-    check=True,
-    text=True,
-    stdout=subprocess.PIPE,
-)
-
 actual: set[str] = set()
-for raw in result.stdout.splitlines():
-    if not raw:
-        continue
-    path = raw[3:]
-    if " -> " in path:
-        path = path.split(" -> ", 1)[1]
+for path in iter_status_paths():
     actual.add(path)
 
 extra = sorted(path for path in actual - declared if not is_supervisor_runtime_file(path))
@@ -943,17 +1073,26 @@ ${summary}" >>"$LOG" 2>&1; then
     checks=$(gh pr checks "$pr_url" --json state,name 2>/dev/null || echo "[]")
     state_summary=$(echo "$checks" | python3 -c "import json,sys; d=json.load(sys.stdin); states=[c['state'] for c in d]; print(','.join(set(states)) or 'no-checks')" 2>/dev/null)
     log "  Repair CI status (${i}/18): $state_summary"
-    if echo "$state_summary" | grep -q "FAILURE\|ERROR\|CANCELLED"; then
+    if ci_state_is_failure "$state_summary"; then
       break
     fi
-    if echo "$state_summary" | grep -qv "PENDING\|IN_PROGRESS\|QUEUED" && [ -n "$state_summary" ] && [ "$state_summary" != "no-checks" ]; then
+    if ci_state_is_mergeable "$state_summary"; then
       break
     fi
   done
 
-  if echo "$state_summary" | grep -qE "FAILURE|ERROR|CANCELLED"; then
+  if ci_state_is_failure "$state_summary"; then
     log "  Repair CI failed — leaving PR open"
     update_repair_item_status "$header" "not_actionable" "repair PR $pr_url CI failed"
+    git checkout main >>"$LOG" 2>&1
+    REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    return 0
+  fi
+
+  if ! ci_state_is_mergeable "$state_summary"; then
+    log "  Repair CI did not reach mergeable state — leaving PR open"
+    update_repair_item_status "$header" "not_actionable" "repair CI did not reach mergeable state for $pr_url: $state_summary"
     git checkout main >>"$LOG" 2>&1
     REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
     ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
@@ -1446,16 +1585,16 @@ Closes #${GH_NUM}"
     CHECKS=$(gh pr checks "$PR_URL" --json state,name 2>/dev/null || echo "[]")
     STATE_SUMMARY=$(echo "$CHECKS" | python3 -c "import json,sys; d=json.load(sys.stdin); states=[c['state'] for c in d]; print(','.join(set(states)) or 'no-checks')" 2>/dev/null)
     log "  CI status (${i}/18): $STATE_SUMMARY"
-    if echo "$STATE_SUMMARY" | grep -q "FAILURE\|ERROR\|CANCELLED"; then
+    if ci_state_is_failure "$STATE_SUMMARY"; then
       break
     fi
-    if echo "$STATE_SUMMARY" | grep -qv "PENDING\|IN_PROGRESS\|QUEUED" && [ -n "$STATE_SUMMARY" ] && [ "$STATE_SUMMARY" != "no-checks" ]; then
+    if ci_state_is_mergeable "$STATE_SUMMARY"; then
       # No pending/in_progress remaining; all done
       break
     fi
   done
 
-  if echo "$STATE_SUMMARY" | grep -qE "FAILURE|ERROR|CANCELLED"; then
+  if ci_state_is_failure "$STATE_SUMMARY"; then
     log "  CI failed — leaving PR open for review"
     update_board_status "$ID" "BLOCKED"
     append_blocker "$ID" "ci-failed" "PR $PR_URL CI failed. Check gh pr checks $PR_URL"
@@ -1467,6 +1606,25 @@ Closes #${GH_NUM}"
       "$PR_URL" \
       "Read the PR checks, identify the CI failure, and submit a scoped repair PR or update the original PR if safe." \
       "CI is green or the failure is reclassified with concrete evidence and no user-only action hidden inside it."
+    git checkout main >>"$LOG" 2>&1
+    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    sleep "$COOLDOWN_SECONDS"
+    continue
+  fi
+
+  if ! ci_state_is_mergeable "$STATE_SUMMARY"; then
+    log "  CI did not reach mergeable state — leaving PR open for review"
+    update_board_status "$ID" "BLOCKED"
+    append_blocker "$ID" "ci-timeout-or-no-checks" "PR $PR_URL CI did not reach mergeable state: $STATE_SUMMARY"
+    append_repair_inbox_item \
+      "$ID ci-timeout-or-no-checks" \
+      "ci" \
+      "P1" \
+      "$ID" \
+      "$PR_URL" \
+      "Inspect the PR checks; do not merge until CI reaches a terminal successful state." \
+      "CI reaches a mergeable successful state, or the blocker records why checks are unavailable."
     git checkout main >>"$LOG" 2>&1
     ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
     ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
