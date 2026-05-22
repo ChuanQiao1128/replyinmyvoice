@@ -15,7 +15,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
 
 
 STATUS_ORDER = ["success", "quality_failed", "server_failed"]
@@ -172,7 +172,7 @@ class Database:
             if isinstance(row, sqlite3.Row):
                 result.append(dict(row))
             else:
-                result.append(dict(zip(columns, row, strict=False)))
+                result.append(dict(zip(columns, row)))
         return result
 
 
@@ -580,7 +580,7 @@ def write_report(path: Path, analysis: Analysis, charts_dir: Path) -> None:
     lines = [
         "# Rewrite Quality Analysis Report",
         "",
-        f"Generated: {dt.datetime.now(dt.UTC).isoformat(timespec='seconds')}",
+        f"Generated: {dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')}",
         f"Period: {analysis.period}",
         "",
         "This internal report uses aggregated `RewriteCostLog` and `RewriteProviderCall` telemetry only. Raw message text, emails, user identifiers, and database URLs are not included.",
@@ -745,7 +745,7 @@ def write_summary_csv(path: Path, analysis: Analysis) -> None:
             writer.writerow([metric, segment, csv_value(value), analysis.period])
 
 
-Color = tuple[int, int, int]
+Color = Tuple[int, int, int]
 
 
 class Canvas:
@@ -867,7 +867,7 @@ def write_line_chart(path: Path, values: list[float]) -> None:
         x = left if len(values) == 1 else left + round((right - left) * index / (len(values) - 1))
         y = bottom - round((bottom - top) * (value / max_value))
         points.append((x, y))
-    for start, end in zip(points, points[1:], strict=False):
+    for start, end in zip(points, points[1:]):
         canvas.line(start[0], start[1], end[0], end[1], (37, 99, 235))
     for x, y in points:
         canvas.circle(x, y, 5, (37, 99, 235))

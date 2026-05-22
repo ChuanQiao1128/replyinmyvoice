@@ -140,4 +140,20 @@ describe("overnight supervisor repair inbox orchestration", () => {
     expect(script).toContain('stash_dirty_worktree "repair-needs-human-${id}"');
     expect(script).toContain('stash_dirty_worktree "repair-abort-${id}"');
   });
+
+  it("clears stale git index locks before stash operations", () => {
+    const script = supervisorScript();
+
+    expect(script).toContain("clear_stale_git_index_lock()");
+    expect(script).toContain("rm -f .git/index.lock");
+    expect(script).toContain("Git index: removing stale .git/index.lock");
+
+    const stashFunction = script.indexOf("stash_dirty_worktree()");
+    const stashPush = script.indexOf("git stash push", stashFunction);
+    const lockClear = script.indexOf("clear_stale_git_index_lock || return 1", stashFunction);
+
+    expect(stashFunction).toBeGreaterThanOrEqual(0);
+    expect(lockClear).toBeGreaterThan(stashFunction);
+    expect(stashPush).toBeGreaterThan(lockClear);
+  });
 });

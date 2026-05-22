@@ -191,6 +191,26 @@ PY
   fi
 }
 
+clear_stale_git_index_lock() {
+  # A crashed git command can leave .git/index.lock behind. If that happens
+  # after startup, every later stash/checkout path can loop forever unless the
+  # supervisor clears the stale lock at the operation boundary too.
+  if [ ! -f .git/index.lock ]; then
+    return 0
+  fi
+
+  local lock_age
+  lock_age=$(($(date +%s) - $(stat -f %m .git/index.lock 2>/dev/null || echo 0)))
+  if [ "$lock_age" -gt 60 ]; then
+    log "Git index: removing stale .git/index.lock (age ${lock_age}s)"
+    rm -f .git/index.lock
+    return 0
+  fi
+
+  log "Git index: .git/index.lock exists (${lock_age}s) — another git may be running, not removing"
+  return 1
+}
+
 # ─── Pre-flight ───────────────────────────────────────────────────────────
 
 log "=== Overnight Supervisor v2 starting ==="
@@ -225,16 +245,8 @@ log "Pre-flight: GitHub API auth OK as $GH_LOGIN"
 log "Pre-flight OK"
 
 # Pre-flight: clear stale git index.lock (a crashed git process can leave one,
-# which then breaks every subsequent checkout in the loop)
-if [ -f .git/index.lock ]; then
-  lock_age=$(($(date +%s) - $(stat -f %m .git/index.lock 2>/dev/null || echo 0)))
-  if [ "$lock_age" -gt 60 ]; then
-    log "Pre-flight: removing stale .git/index.lock (age ${lock_age}s)"
-    rm -f .git/index.lock
-  else
-    log "Pre-flight: .git/index.lock exists (${lock_age}s) — another git may be running, not removing"
-  fi
-fi
+# which then breaks every subsequent checkout in the loop).
+clear_stale_git_index_lock || true
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -385,6 +397,7 @@ stash_dirty_worktree() {
   local label=$1
   if worktree_has_changes; then
     log "  Preserving dirty worktree in stash ($label)"
+    clear_stale_git_index_lock || return 1
     git stash push -u -m "overnight-preserve-${label}-$(date +%s)" >>"$LOG" 2>&1
   fi
 }
