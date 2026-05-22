@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 
 
 export default function SignUpPage() {
-  return <GoogleOAuthCard />;
+  return <GoogleOAuthCard mode="sign-up" />;
 }

@@ -1050,3 +1050,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: `bash -n plans/overnight-supervisor.sh` and `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` passed. Focused tests cover ignoring supervisor runtime ledgers during `files_changed` validation and staging only declared task files before commit.
 - Limitations: This repair covers the supervisor commit boundary; it does not complete or visually verify the preserved M4-013 pricing/auth UI changes.
+
+### 2026-05-22 - web-design-engineer - M4-013 pricing and auth visual alignment
+
+- Agent: Codex
+- Trigger: M4-013 changes browser-visible `/pricing`, `/sign-in`, and `/sign-up` UI and explicitly requires `web-design-engineer`.
+- Action: Opened and followed the skill; reused the M4-012 ink, paper, clay, sage, mint, sky, `rounded-lg`, and section-band direction; kept auth and billing links unchanged; added focused visual-system regression coverage before implementing.
+- Output artifacts: `app/pricing/page.tsx`; `app/sign-in/[[...sign-in]]/page.tsx`; `app/sign-up/[[...sign-up]]/page.tsx`; `components/auth/google-oauth-card.tsx`; `components/ui/button.tsx`; `tests/unit/pricing-auth-visual-system.test.ts`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: `npm test -- tests/unit/pricing-auth-visual-system.test.ts` first failed on the missing M4-012 route/auth/button contracts, then passed after implementation. `npm run lint`, `npm run typecheck`, full `npm run test`, and `npm run build` passed.
+- Limitations: No Stripe, quota, rewrite, provider, telemetry, webhook, infrastructure, or secret behavior was changed.
+
+### 2026-05-22 - ui-browser-testing - M4-013 pricing and auth route checks
+
+- Agent: Codex
+- Trigger: M4-013 requires desktop/mobile browser verification for `/pricing`, `/sign-in`, and `/sign-up`, plus signed-out auth redirect behavior.
+- Action: Opened and followed the skill; selected route-level browser checks and focused auth redirect verification after the UI implementation; attempted both local Next dev server startup and focused Playwright auth-gate execution.
+- Output artifacts: `app/pricing/page.tsx`; `components/auth/google-oauth-card.tsx`; `tests/unit/pricing-auth-visual-system.test.ts`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: `npm run lint`, `npm run typecheck`, full `npm run test`, and `npm run build` passed. Signed-out redirect behavior remains covered by `tests/unit/middleware.test.ts`; focused Playwright execution could not start because the local server bind failed before route loading.
+- Limitations: Desktop/mobile screenshots were not captured in this sandbox. `npm run dev -- -H 127.0.0.1 -p 3000`, `npm run dev -- -H 0.0.0.0 -p 3001`, and `npx playwright test tests/e2e/auth-gate.spec.ts --project=chromium` all failed at server startup with `EPERM`; the Codex in-app browser was also unavailable for `iab`.
