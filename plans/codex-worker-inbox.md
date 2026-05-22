@@ -34,4 +34,15 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## Pending Items
 
-No queued repair items yet.
+## 2026-05-22T17:59:41+12:00 — M6-001 Cloudflare secret-name diff retry
+
+- Status: done
+- Source: shell supervisor
+- Class: provider
+- Priority: P2
+- Related issue: M6-001
+- Evidence: plans/worker-secret-diff.md
+- Suggested Codex action: Retry or narrow the read-only Worker secret-name diff path without printing secret values, pushing secrets, deploying, or changing provider dashboards.
+- Done condition: `plans/worker-secret-diff.md` contains a completed name-only diff, or the inbox item records a provider/DNS failure with current evidence and no user-only action hidden inside it.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes, deploys, printing `.env.local` values
+- Result: Retried the read-only `wrangler secret list --name replyinmyvoice-app --format json` path with Wrangler logs redirected to writable temp storage. Wrangler still failed before returning Worker metadata because `api.cloudflare.com` / `dash.cloudflare.com` DNS resolution is unavailable from this shell. Direct DNS lookup returned `ENOTFOUND` for both hosts. No secret values were printed or written, no secrets were pushed, no deploy ran, no dashboard state changed, and `.env.local` was not modified. Current evidence is recorded in `plans/worker-secret-diff.md`.

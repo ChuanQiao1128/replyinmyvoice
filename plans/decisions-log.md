@@ -191,3 +191,7 @@ Each overnight Claude trigger appends here.
 2026-05-22T17:11:48+12:00 | M5-005 | started | M5-005 Fixture-backed Rewrite Quality Analysis tests
 2026-05-22T17:18:51+12:00 | M5-005 | done | Add fixture-backed tests for offline rewrite quality analysis metrics and privacy output guardrails. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/192)
 2026-05-22T17:19:06+12:00 | M5-006 | started | M5-006 Owner runbook for rewrite-quality reports
+2026-05-22T17:25:56+12:00 | M5-006 | done | Added the owner runbook for generating, interpreting, and safely storing rewrite-quality analysis reports. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/194)
+2026-05-22T17:26:12+12:00 | M6-001 | started | M6-001 Diff Cloudflare Worker prod secrets vs .env.local live
+2026-05-22T17:31:01+12:00 | M6-002 | started | M6-002 Push missing live secrets to Worker
+2026-05-22T18:00:11+12:00 | REPAIR-20260522180011 | repair-started | M6-001 Cloudflare secret-name diff retry

@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-22 - cloud-architecture-cost-review - M6-001 secret diff retry
+
+- Agent: Codex
+- Trigger: Repair item `REPAIR-20260522180011` reviews Cloudflare Worker production secret-name configuration for `replyinmyvoice-app`.
+- Action: Opened and followed the skill as a read-only cloud/deployment cost gate. Selected the read-only `wrangler secret list` retry path; rejected secret pushes, deploys, dashboard mutation, and paid-resource changes for this repair.
+- Output artifacts: `plans/worker-secret-diff.md`; `plans/codex-worker-inbox.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: `XDG_CONFIG_HOME=/private/tmp/replyinmyvoice-wrangler-config npx --no-install wrangler secret list --name replyinmyvoice-app --format json` failed before returning Worker metadata because Cloudflare API DNS resolution is unavailable. A direct DNS lookup returned `ENOTFOUND` for `api.cloudflare.com` and `dash.cloudflare.com`.
+- Limitations: The live Worker secret-name list remains unavailable, so `present-in-both`, `missing-in-worker`, and `missing-in-local` are still not authoritative. No secret values were printed or written, no secrets were pushed, no deploy ran, and no provider dashboard state changed.
+
 ### 2026-05-19 - system-spec-synthesis - Skill smoke verification
 
 - Agent: Codex
@@ -888,3 +897,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/overnight-supervisor.sh`; `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/codex-worker-inbox.md`; `plans/codex-worker-prompt.md`; `docs/skill-run-log.md`.
 - Verification evidence: The supervisor now checks the repair inbox before `find_next_pending_issue`, queues non-user Codex/GitHub/CI failures into the inbox, and the focused test covers the ordering and queueing contract.
 - Limitations: The test validates script structure rather than executing real GitHub PR/CI repair flow, to avoid live PR churn during the orchestration edit.
+
+### 2026-05-22 - cloud-architecture-cost-review - M6-001 Worker secret-name diff
+
+- Agent: Codex
+- Trigger: M6-001 reviews Cloudflare Worker production secret configuration for `replyinmyvoice-app`.
+- Action: Opened and followed the skill as a read-only cloud/deployment cost gate. Selected a read-only `wrangler secret list` name comparison; rejected secret pushes, deploys, dashboard mutation, and paid-resource changes for this issue.
+- Output artifacts: `plans/worker-secret-diff.md`; `docs/skill-run-log.md`.
+- Verification evidence: `npx wrangler secret list --name replyinmyvoice-app --format json` was attempted and failed before returning names because the sandbox could not resolve Cloudflare API hostnames. `.env.local` was parsed for names only and was not modified.
+- Limitations: The live Worker secret list was unavailable, so `present-in-both`, `missing-in-worker`, and `missing-in-local` remain uncomputed until a networked authenticated shell reruns the command.
+
+### 2026-05-22 - cloud-architecture-cost-review - M6-002 Worker secret push
+
+- Agent: Codex
+- Trigger: M6-002 would mutate Cloudflare Worker production secrets for `replyinmyvoice-app`.
+- Action: Opened and followed the skill as a cloud/deployment cost and approval gate; compared the requested `wrangler secret put` path with the prerequisite M6-001 diff, read-only Wrangler verification, and dashboard/deploy alternatives. Selected no mutation because the missing-secret list is unavailable and Cloudflare API DNS resolution fails in this sandbox.
+- Output artifacts: `plans/worker-secret-diff.md`; `plans/issue-board.md`; `plans/task-status.json`; `docs/skill-run-log.md`.
+- Verification evidence: `npx --no-install wrangler secret list --name replyinmyvoice-app --format json` failed before returning Worker metadata because the sandbox could not resolve Cloudflare API hostnames. No `wrangler secret put` command was run.
+- Limitations: No production Worker secrets were pushed. A networked, authenticated shell must rerun the M6-001 diff first, then push only names listed under `missing-in-worker` without printing values.
