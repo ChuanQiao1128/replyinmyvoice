@@ -65,7 +65,7 @@ Pick next `pending` with lowest M-number, lowest id. Update status: `pending` �
 | M4-008 | M4-Landing | M4-008 Terms page for live NZ$9 charges | https://github.com/ChuanQiao1128/replyinmyvoice/pull/172 | done (squash-merged 54dd119) |
 | M4-009 | M4-Landing | M4-009 Add OG image + per-route metadata | https://github.com/ChuanQiao1128/replyinmyvoice/pull/157 | done (squash-merged 4031b84) |
 | M4-010 | M4-Landing | M4-010 Add sitemap.ts and robots.ts | https://github.com/ChuanQiao1128/replyinmyvoice/pull/156 | done (squash-merged 4f7b435) |
-| M4-011 | M4-Landing | M4-011 Use web-design-engineer to redesign frontend visual system | https://github.com/ChuanQiao1128/replyinmyvoice/issues/196 | pending |
+| M4-011 | M4-Landing | M4-011 Use web-design-engineer to redesign frontend visual system | https://github.com/ChuanQiao1128/replyinmyvoice/issues/196 | BLOCKED-AUTONOMY (oversized for 600s; see plans/frontend-redesign-followups.md) |
 | M5-001 | M5-Telemetry | M5-001 Cost telemetry DB schema (RewriteCostLog + RewriteProviderCall) | (dup) | done (already complies — both models in schema.prisma + migration 20260520221000 creates tables with required fields + indexes) |
 | M5-002 | M5-Telemetry | M5-002 Capture telemetry across pipeline (OpenAI tokens + Sapling chars + estimator + persist) | (dup) | done |
 | M5-003 | M5-Telemetry | M5-003 Offline Rewrite Quality Analysis report script | (dup) | BLOCKED |
@@ -75,7 +75,7 @@ Pick next `pending` with lowest M-number, lowest id. Update status: `pending` �
 | M6-001 | M6-Verify | M6-001 Diff Cloudflare Worker prod secrets vs .env.local live | (dup) | BLOCKED-PROVIDER (Cloudflare API DNS unavailable in sandbox) |
 | M6-002 | M6-Verify | M6-002 Push missing live secrets to Worker | (dup) | BLOCKED-PREREQ (awaiting M6-001 name-only diff; Cloudflare API DNS unavailable in sandbox) |
 | M6-003 | M6-Verify | M6-003 Smoke test workers.dev preview | (dup) | BLOCKED-PROVIDER |
-| M6-004 | M6-Verify | M6-004 Confirm replyinmyvoice.com → Worker custom domain attach | (dup) | pending |
+| M6-004 | M6-Verify | M6-004 Confirm replyinmyvoice.com → Worker custom domain attach | (dup) | BLOCKED-PROVIDER |
 | M6-005 | M6-Verify | M6-005 Smoke test replyinmyvoice.com | (dup) | pending |
 | M6-006 | M6-Verify | M6-006 Banned-term scan clean on main | (dup) | done (verified 2026-05-21T21:36Z — grep -RniE 'humanizer\|bypass\|undetect\|detector\|evade' app components public lib returned empty on main HEAD 54dd119) |
 | M6-007 | M6-Verify | M6-007 Full validation suite green | (dup) | pending |

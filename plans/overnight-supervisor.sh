@@ -375,6 +375,63 @@ parse_status_field() {
   python3 -c "import json,sys; print(json.load(open('plans/task-status.json')).get('$field',''))" 2>/dev/null
 }
 
+worktree_has_changes() {
+  ! git diff --quiet 2>/dev/null || \
+    ! git diff --cached --quiet 2>/dev/null || \
+    [ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]
+}
+
+stash_dirty_worktree() {
+  local label=$1
+  if worktree_has_changes; then
+    log "  Preserving dirty worktree in stash ($label)"
+    git stash push -u -m "overnight-preserve-${label}-$(date +%s)" >>"$LOG" 2>&1
+  fi
+}
+
+verify_status_declares_all_changes() {
+  python3 - <<'PY'
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+status_path = Path("plans/task-status.json")
+try:
+    declared = set(json.loads(status_path.read_text()).get("files_changed", []))
+except Exception as exc:
+    print(f"could not read files_changed from {status_path}: {exc}")
+    raise SystemExit(1)
+
+if not declared:
+    print("plans/task-status.json files_changed is empty")
+    raise SystemExit(1)
+
+result = subprocess.run(
+    ["git", "status", "--porcelain=v1", "-uall"],
+    check=True,
+    text=True,
+    stdout=subprocess.PIPE,
+)
+
+actual: set[str] = set()
+for raw in result.stdout.splitlines():
+    if not raw:
+        continue
+    path = raw[3:]
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
+    actual.add(path)
+
+extra = sorted(actual - declared)
+if extra:
+    print("\n".join(extra))
+    raise SystemExit(1)
+PY
+}
+
 repair_meta_field() {
   local field=$1
   python3 -c "import json; print(json.load(open('plans/current-repair-meta.json')).get('$field',''))" 2>/dev/null
@@ -532,6 +589,14 @@ process_repair_inbox_once() {
   log ""
   log "─── Repair queue item detected"
 
+  stash_dirty_worktree "pre-repair-inbox" || {
+    log "  ERROR: could not preserve dirty worktree before repair"
+    append_blocker "repair-inbox" "dirty-worktree-stash-failed" "A pending repair item exists but the supervisor could not stash pre-existing work before claiming it."
+    REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    return 0
+  }
+
   log "  git checkout main && git pull"
   if ! git checkout main >>"$LOG" 2>&1; then
     log "  ERROR: could not checkout main for repair"
@@ -541,6 +606,13 @@ process_repair_inbox_once() {
     return 0
   fi
   git pull --ff-only >>"$LOG" 2>&1 || log "  WARN: git pull failed before repair"
+  stash_dirty_worktree "post-repair-main-checkout" || {
+    log "  ERROR: could not preserve dirty worktree after checkout main for repair"
+    append_blocker "repair-inbox" "dirty-worktree-stash-failed" "The supervisor reached main for a repair item but found dirty files and could not preserve them."
+    REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    return 0
+  }
 
   if ! prepare_next_pending_repair_task; then
     log "  WARN: repair item disappeared before task preparation"
@@ -577,6 +649,7 @@ process_repair_inbox_once() {
   if [ ! -f plans/task-status.json ]; then
     log "  ERROR: repair codex did not produce task-status.json (exit=$cdx_exit)"
     update_repair_item_status "$header" "not_actionable" "codex-no-status during repair; log plans/codex-exec-${id}.log"
+    git stash push -u -m "repair-no-status-${id}-$(date +%s)" >>"$LOG" 2>&1 || true
     git checkout main >>"$LOG" 2>&1
     git branch -D "$branch" >>"$LOG" 2>&1 || true
     REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
@@ -604,6 +677,7 @@ process_repair_inbox_once() {
       else
         update_repair_item_status "$header" "not_actionable" "$summary"
       fi
+      stash_dirty_worktree "repair-needs-human-${id}" >>"$LOG" 2>&1 || true
       git checkout main >>"$LOG" 2>&1
       REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
@@ -612,6 +686,7 @@ process_repair_inbox_once() {
     abort|*)
       log "  Repair aborted or unknown next_action: $next_action ($summary)"
       update_repair_item_status "$header" "not_actionable" "$summary"
+      stash_dirty_worktree "repair-abort-${id}" >>"$LOG" 2>&1 || true
       git checkout main >>"$LOG" 2>&1
       git branch -D "$branch" >>"$LOG" 2>&1 || true
       REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
@@ -626,6 +701,17 @@ process_repair_inbox_once() {
     git checkout main >>"$LOG" 2>&1
     git branch -D "$branch" >>"$LOG" 2>&1 || true
     update_repair_item_status "$header" "not_actionable" "banned term found in repair diff; changes stashed"
+    REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    return 0
+  fi
+
+  if ! verify_status_declares_all_changes >>"$LOG" 2>&1; then
+    log "  ERROR: repair changed files outside plans/task-status.json files_changed; preserving work and blocking"
+    update_repair_item_status "$header" "not_actionable" "repair changed files outside declared files_changed list; changes stashed for split/review"
+    stash_dirty_worktree "repair-undeclared-files-${id}" >>"$LOG" 2>&1 || true
+    git checkout main >>"$LOG" 2>&1
+    git branch -D "$branch" >>"$LOG" 2>&1 || true
     REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
     ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
     return 0
@@ -805,6 +891,15 @@ while true; do
       sleep "$COOLDOWN_SECONDS"
       continue
       ;;
+    M4-011)
+      log "  Skipping $ID (frontend redesign spans multiple surfaces and exceeded the Codex timebox)"
+      update_board_status "$ID" "BLOCKED-AUTONOMY"
+      append_decision "$ID | blocked-autonomy | full frontend redesign exceeded the 600s Codex timebox; split via plans/frontend-redesign-followups.md before retry"
+      ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+      ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+      sleep "$COOLDOWN_SECONDS"
+      continue
+      ;;
     M8-002|M8-003|M8-004|M8-005|M8-006|M8-007|M8-008|M8-009|M8-010|M8-011|M8-012|M8-013|M8-014|M8-015|M8-016)
       log "  Skipping $ID (B2B API chain — depends on M8-001 + Azure SQL routing)"
       update_board_status "$ID" "BLOCKED-PREREQ"
@@ -816,7 +911,88 @@ while true; do
       ;;
   esac
 
-  # Build current-task.md from manifest or detailed brief
+  # ─── Git: branch from main ────────────────────────────────────────────
+  stash_dirty_worktree "pre-issue-${ID}" || {
+    log "  ERROR: could not preserve dirty worktree before issue start"
+    update_board_status "$ID" "BLOCKED"
+    append_blocker "$ID" "dirty-worktree-stash-failed" "Could not stash pre-existing work before starting $ID."
+    append_repair_inbox_item \
+      "$ID dirty-worktree-stash-failed" \
+      "dirty_repo" \
+      "P1" \
+      "$ID" \
+      "$LOG" \
+      "Preserve or classify the dirty worktree state so the supervisor can start issues from a clean tree." \
+      "The worktree is clean on main or all pre-existing work is safely preserved."
+    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    sleep "$COOLDOWN_SECONDS"
+    continue
+  }
+
+  log "  git checkout main && git pull"
+  if ! git checkout main >>"$LOG" 2>&1; then
+    log "  ERROR: could not checkout main"
+    update_board_status "$ID" "BLOCKED"
+    append_blocker "$ID" "git-checkout-main-failed" "checkout to main failed"
+    append_repair_inbox_item \
+      "$ID git-checkout-main-failed" \
+      "dirty_repo" \
+      "P1" \
+      "$ID" \
+      "$LOG" \
+      "Diagnose the dirty repo, stale lock, or branch state that prevented checkout to main; preserve work and restore the loop to a clean executable state." \
+      "The supervisor can checkout main and continue without losing user or loop work."
+    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    sleep "$COOLDOWN_SECONDS"
+    continue
+  fi
+  git pull --ff-only >>"$LOG" 2>&1 || log "  WARN: git pull failed (probably no network or remote ahead)"
+  stash_dirty_worktree "post-main-checkout-${ID}" || {
+    log "  ERROR: could not preserve dirty worktree after checkout main"
+    update_board_status "$ID" "BLOCKED"
+    append_blocker "$ID" "dirty-worktree-stash-failed" "The supervisor reached main for $ID but found dirty files and could not preserve them."
+    append_repair_inbox_item \
+      "$ID dirty-worktree-stash-failed" \
+      "dirty_repo" \
+      "P1" \
+      "$ID" \
+      "$LOG" \
+      "Preserve or classify dirty files left after checkout main before launching Codex." \
+      "The supervisor launches Codex only from a clean issue branch."
+    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    sleep "$COOLDOWN_SECONDS"
+    continue
+  }
+
+  BRANCH="chore/${ID}"
+  # If branch already exists, delete it (clean slate)
+  if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+    log "  branch $BRANCH exists locally — deleting for fresh start"
+    git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
+  fi
+  log "  git checkout -b $BRANCH"
+  if ! git checkout -b "$BRANCH" >>"$LOG" 2>&1; then
+    log "  ERROR: could not create branch $BRANCH"
+    update_board_status "$ID" "BLOCKED"
+    append_blocker "$ID" "git-branch-failed" "creating branch $BRANCH failed"
+    append_repair_inbox_item \
+      "$ID git-branch-failed" \
+      "dirty_repo" \
+      "P1" \
+      "$ID" \
+      "$LOG" \
+      "Diagnose why the supervisor could not create $BRANCH and restore branch creation for the loop." \
+      "The supervisor can create a fresh issue branch from main or the issue is reclassified with concrete evidence."
+    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    sleep "$COOLDOWN_SECONDS"
+    continue
+  fi
+
+  # Build current-task.md from manifest or detailed brief on the issue branch.
   CURRENT_TASK=""
   if [ -f "plans/issues/${ID}.md" ]; then
     CURRENT_TASK="plans/issues/${ID}.md"
@@ -850,55 +1026,10 @@ while true; do
     cp "$CURRENT_TASK" plans/current-task.md
   fi
 
-  # Mark in_progress
+  # Mark in_progress after branch creation so board/current-task edits cannot
+  # leak across issue branches.
   update_board_status "$ID" "in_progress"
   append_decision "$ID | started | $TITLE"
-
-  # ─── Git: branch from main ────────────────────────────────────────────
-  log "  git checkout main && git pull"
-  if ! git checkout main >>"$LOG" 2>&1; then
-    log "  ERROR: could not checkout main"
-    update_board_status "$ID" "BLOCKED"
-    append_blocker "$ID" "git-checkout-main-failed" "checkout to main failed"
-    append_repair_inbox_item \
-      "$ID git-checkout-main-failed" \
-      "dirty_repo" \
-      "P1" \
-      "$ID" \
-      "$LOG" \
-      "Diagnose the dirty repo, stale lock, or branch state that prevented checkout to main; preserve work and restore the loop to a clean executable state." \
-      "The supervisor can checkout main and continue without losing user or loop work."
-    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
-    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
-    sleep "$COOLDOWN_SECONDS"
-    continue
-  fi
-  git pull --ff-only >>"$LOG" 2>&1 || log "  WARN: git pull failed (probably no network or remote ahead)"
-
-  BRANCH="chore/${ID}"
-  # If branch already exists, delete it (clean slate)
-  if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
-    log "  branch $BRANCH exists locally — deleting for fresh start"
-    git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
-  fi
-  log "  git checkout -b $BRANCH"
-  if ! git checkout -b "$BRANCH" >>"$LOG" 2>&1; then
-    log "  ERROR: could not create branch $BRANCH"
-    update_board_status "$ID" "BLOCKED"
-    append_blocker "$ID" "git-branch-failed" "creating branch $BRANCH failed"
-    append_repair_inbox_item \
-      "$ID git-branch-failed" \
-      "dirty_repo" \
-      "P1" \
-      "$ID" \
-      "$LOG" \
-      "Diagnose why the supervisor could not create $BRANCH and restore branch creation for the loop." \
-      "The supervisor can create a fresh issue branch from main or the issue is reclassified with concrete evidence."
-    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
-    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
-    sleep "$COOLDOWN_SECONDS"
-    continue
-  fi
 
   # ─── Codex: file edits + tests ────────────────────────────────────────
   rm -f plans/task-status.json
@@ -917,6 +1048,7 @@ while true; do
       "plans/codex-exec-${ID}.log" \
       "Investigate why Codex did not write plans/task-status.json for $ID; fix the loop prompt/task contract or requeue the issue with evidence." \
       "The supervisor can run the issue again and receive a valid plans/task-status.json, or the issue is reclassified with a concrete non-user blocker."
+    git stash push -u -m "no-status-${ID}-$(date +%s)" >>"$LOG" 2>&1 || true
     git checkout main >>"$LOG" 2>&1
     git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
     ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
@@ -952,6 +1084,7 @@ while true; do
           "Resolve or narrow the non-user blocker Codex reported for $ID without changing live money, dashboards, npm publish state, or secrets." \
           "The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite."
       fi
+      stash_dirty_worktree "needs-human-${ID}" >>"$LOG" 2>&1 || true
       git checkout main >>"$LOG" 2>&1
       # Keep branch for human review
       ISSUES_NEEDS_HUMAN=$((ISSUES_NEEDS_HUMAN + 1))
@@ -971,6 +1104,7 @@ while true; do
         "plans/codex-exec-${ID}.log" \
         "Diagnose the Codex abort for $ID and either fix the task contract or split/reclassify the issue so the loop can continue." \
         "The supervisor can retry the issue with a clear task status, or the inbox item records why it is not actionable."
+      stash_dirty_worktree "abort-${ID}" >>"$LOG" 2>&1 || true
       git checkout main >>"$LOG" 2>&1
       git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
       ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
@@ -1000,6 +1134,27 @@ while true; do
       "$LOG" \
       "Inspect the stashed diff and replace banned positioning with approved product language without changing user-only settings." \
       "The issue can be retried with no banned terms in scoped source paths."
+    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    sleep "$COOLDOWN_SECONDS"
+    continue
+  fi
+
+  if ! verify_status_declares_all_changes >>"$LOG" 2>&1; then
+    log "  ERROR: changed files outside plans/task-status.json files_changed; preserving work and blocking"
+    update_board_status "$ID" "BLOCKED"
+    append_blocker "$ID" "undeclared-files-in-diff" "Codex reported ready_to_commit but the dirty worktree included files not declared in plans/task-status.json files_changed. Changes were stashed for split/review."
+    append_repair_inbox_item \
+      "$ID undeclared-files-in-diff" \
+      "dirty_repo" \
+      "P1" \
+      "$ID" \
+      "plans/task-status.json" \
+      "Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation." \
+      "No PR commits files outside the Codex-declared files_changed list."
+    stash_dirty_worktree "undeclared-files-${ID}" >>"$LOG" 2>&1 || true
+    git checkout main >>"$LOG" 2>&1
+    git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
     ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
     ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
     sleep "$COOLDOWN_SECONDS"

@@ -60,3 +60,29 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 - Worker evidence: 2026-05-22T18:14:30+12:00 — M6-003 already recorded the sandbox DNS blocker in docs/preflight-report.md and plans/issue-board.md. No autonomous code repair can make this local shell resolve the Worker host; rerun the documented curl checks from a networked shell.
+
+## 2026-05-22T18:29:32+12:00 — M4-011 codex-no-status
+
+- Status: not_actionable
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M4-011
+- Evidence: plans/codex-exec-M4-011.log
+- Suggested Codex action: Investigate why Codex did not write plans/task-status.json for M4-011; fix the loop prompt/task contract or requeue the issue with evidence.
+- Done condition: The supervisor can run the issue again and receive a valid plans/task-status.json, or the issue is reclassified with a concrete non-user blocker.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-22T18:39:51+12:00 — codex-no-status during repair; log plans/codex-exec-REPAIR-20260522182950.log
+
+## 2026-05-22T18:45:27+12:00 — M6-004 codex-needs-human:BLOCKED-PROVIDER
+
+- Status: not_actionable
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M6-004
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M6-004 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-22T18:48:06+12:00 — Reran secret-free DNS/HTTP checks. Node DNS lookup returned `ENOTFOUND` for `api.cloudflare.com`, `replyinmyvoice.com`, and `example.com`; curl to the Cloudflare API and formal domain also returned `Could not resolve host`. The exact networked prerequisite and commands are already documented in `plans/custom-domain-attach.md`. No autonomous code repair can make this sandbox resolve external DNS, and no live money, npm publish, dashboard, secret, or `.env.local` change was made.

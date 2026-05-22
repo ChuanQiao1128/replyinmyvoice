@@ -45,6 +45,60 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-22 - state-machine-modeling - supervisor dirty-worktree lifecycle
+
+- Agent: Codex
+- Trigger: The overnight supervisor allowed a `needs_human`/repair flow to carry dirty M4-011 files into a later M6-004 repair branch and commit them together.
+- Action: Opened and followed the skill; modeled the relevant lifecycle as clean main -> issue branch -> Codex status -> commit/stash/block, with illegal transitions for returning to main or committing when dirty files are undeclared.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `bash -n plans/overnight-supervisor.sh`, `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts`, `npm run typecheck`, and `npm run lint` passed. Focused supervisor tests cover branch-before-task writes, no-status preservation, `needs_human`/abort stashing, and the `files_changed` guard that blocks mixed commits.
+- Limitations: This covers the shell supervisor lifecycle only; it does not validate GitHub Actions, Cloudflare DNS reachability, or frontend visual quality.
+
+### 2026-05-22 - system-spec-synthesis - supervisor rescue split
+
+- Agent: Codex
+- Trigger: The mixed PR #199 needed to be split into implementation-ready scopes without losing M4-011 partial work or M6-004 provider evidence.
+- Action: Opened for routing and applied the spec workflow to separate source facts, non-goals, state handling, rollout, and verification in the existing frontend follow-up and custom-domain documents.
+- Output artifacts: `plans/frontend-redesign-followups.md`; `plans/custom-domain-attach.md`; `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: The rescue split keeps UI source changes out of the supervisor/provider repair branch and records follow-up scopes for the redesign instead of retrying one oversized unattended issue.
+- Limitations: The partial UI implementation from the aborted run is preserved separately and is not claimed as complete in this process repair.
+
+### 2026-05-22 - cloud-architecture-cost-review - M6-004 provider-blocker repair
+
+- Agent: Codex
+- Trigger: The M6-004 repair item reviews Cloudflare custom-domain verification for `replyinmyvoice.com` after a provider/DNS blocker.
+- Action: Opened and followed the skill as a read-only cloud/deployment cost gate. Kept the selected path to read-only Workers domains API verification plus formal-domain smoke from a networked shell, and rejected deploys, DNS changes, dashboard mutation, secret changes, npm publish, and live-money actions.
+- Output artifacts: `plans/codex-worker-inbox.md`; `plans/custom-domain-attach.md`; `plans/task-status.json`; `docs/skill-run-log.md`.
+- Verification evidence: Secret-free DNS and curl checks still fail before reaching Cloudflare: `api.cloudflare.com`, `replyinmyvoice.com`, and `example.com` resolve as `ENOTFOUND` from this sandbox.
+- Limitations: Current live custom-domain attach state remains unverified until a networked shell runs the documented Cloudflare API and formal-domain smoke checks. No exact pricing lookup was needed because no paid resource or provider-spend action was selected.
+
+### 2026-05-22 - state-machine-modeling - M6-004 repair lifecycle
+
+- Agent: Codex
+- Trigger: The repair changes a persisted inbox item lifecycle status for a Cloudflare verification blocker.
+- Action: Opened and followed the skill; modeled the repair item transition as `in_progress -> not_actionable` on confirmed sandbox DNS failure, with the allowed next external event being a networked rerun of the documented verification commands.
+- Output artifacts: `plans/codex-worker-inbox.md`; `plans/custom-domain-attach.md`; `plans/task-status.json`; `docs/skill-run-log.md`.
+- Verification evidence: The inbox item now records the terminal not-actionable reason, and `plans/custom-domain-attach.md` records states, events, a transition table, invariants, illegal transitions, persistence implications, a test checklist, and exact networked commands.
+- Limitations: This lifecycle note covers the repair queue only; it does not verify live Cloudflare state.
+
+### 2026-05-22 - resilience-test-generation - M6-004 provider-blocker routing
+
+- Agent: Codex
+- Trigger: The repair item mentions a provider blocker, so the resilience skill was opened to check whether provider-failure testing guidance applied.
+- Action: Opened for routing; final scope stayed on read-only Cloudflare DNS/API verification and repair queue classification, without changing retries, timeouts, quota, idempotency, webhook replay, queue redelivery, or recovery behavior.
+- Output artifacts: `plans/codex-worker-inbox.md`; `plans/custom-domain-attach.md`; `plans/task-status.json`; `docs/skill-run-log.md`.
+- Verification evidence: Secret-free DNS and curl checks reproduced sandbox reachability failure before any Cloudflare response was returned.
+- Limitations: No provider timeout fake, rate-limit test, live Cloudflare API response, or retry behavior test was added because no application resilience behavior changed.
+
+### 2026-05-22 - cloud-architecture-cost-review - M6-004 custom domain check
+
+- Agent: Codex
+- Trigger: M6-004 reviews Cloudflare Worker custom-domain attach state for `replyinmyvoice.com` and `replyinmyvoice-app`.
+- Action: Opened and followed the skill as a read-only cloud/deployment cost gate. Selected read-only Workers domains API verification and formal-domain smoke checks; rejected deploys, DNS changes, secret changes, and paid-resource creation for this issue.
+- Output artifacts: `plans/custom-domain-attach.md`; `docs/preflight-report.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: `curl` to the Workers domains API failed before returning Cloudflare metadata because `api.cloudflare.com` could not be resolved from this shell. Formal-domain `curl` checks also failed before reaching the site because `replyinmyvoice.com` could not be resolved.
+- Limitations: Current live attach state remains unverified in this sandbox. No secret values were printed or written, no deploy ran, no DNS state changed, and `.env.local` was not modified.
+
 ### 2026-05-22 - cloud-architecture-cost-review - M6-001 secret diff retry
 
 - Agent: Codex
@@ -942,3 +996,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/preflight-report.md`; `plans/task-status.json`; `docs/skill-run-log.md`.
 - Verification evidence: Local code review confirmed `/app` and `/api/rewrite` are protected by middleware, `GET /api/stripe/webhook` returns a health JSON response, and `GET /api/health/db` performs the DB smoke check. Remote HTTP execution was blocked by DNS failure in this sandbox.
 - Limitations: No desktop/mobile screenshot or live browser rendering was captured because the task is a route-status smoke and remote DNS was unavailable.
+
+### 2026-05-22 - system-spec-synthesis - M4-011 no-status repair
+
+- Agent: Codex
+- Trigger: The repair inbox item for M4-011 reported that Codex did not write `plans/task-status.json` during a broad frontend redesign run.
+- Action: Opened and followed the skill; converted the log evidence and supervisor contract into a scoped repair specification that keeps M4-011 as an umbrella item, splits runnable frontend work into smaller follow-ups, and preserves no-status partial work before cleanup.
+- Output artifacts: `plans/frontend-redesign-followups.md`; `plans/codex-implementation-prompt.md`; `plans/overnight-supervisor.sh`; `plans/issues/M4-011.md`; `plans/issue-board.md`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Added focused Vitest coverage for M4-011 timebox blocking, early status preflight, and no-status work preservation. The current rescue branch also adds dirty-worktree and declared-file guards before restart.
+- Limitations: This repair does not implement the frontend redesign. It records the scoped follow-ups needed before that work can safely run unattended again.
+
+### 2026-05-22 - state-machine-modeling - M4-011 supervisor retry lifecycle
+
+- Agent: Codex
+- Trigger: The repair changes issue and supervisor lifecycle behavior after a Codex timeout with no status file.
+- Action: Opened and followed the skill; modeled the relevant states as `pending`, `in_progress`, `BLOCKED-AUTONOMY`, `ready_to_commit`, and `needs_human`, with events for timeout, reclassification, and scoped follow-up creation.
+- Output artifacts: `plans/frontend-redesign-followups.md`; `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: The follow-up document includes state list, event list, transition table, invariants, illegal transitions, persistence implications, and test checklist. Focused Vitest covers M4-011 blocking before task handoff and no-status edit preservation before returning to main.
+- Limitations: The state model covers the supervisor retry contract only; it does not alter product UI state or application runtime behavior.
