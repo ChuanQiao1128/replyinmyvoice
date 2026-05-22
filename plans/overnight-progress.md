@@ -443,3 +443,13 @@ Run finished. Done: 0 | Blocked: 11 | Needs human: 0
 - BLOCKED-WAITING-ENG count: 0
 - Anomalies: Board restructured — prior monitor reported 33 done, current board shows 8. In-progress items: M2.5-001, M2.5-005, M2.5-008, M2.5-009, M8-001 (5 rows). Last blockers-log entries: M2.5-007 (codex-no-status) and M2.5-002 (npm tsx IPC failure / corpus parse). Recent commits: LearningOps approval UI PR #179/#180 merged, M2.5-002 unblock commit, CI gate #178.
 - Suggested user action: none — loop alive and making progress on M2.5 milestone; M2.5-002 remains a known blocker needing human review
+
+## Monitor at 2026-05-22T02:41:22Z
+- Loop: alive (overnight.log mtime 40s ago)
+- Done since last monitor: +35 (board: 8→43; recent PRs: #179 #180 LearningOps UI, #181 canary rollout)
+- BLOCKED-WAITING-USER count: 20
+- BLOCKED-WAITING-ENG count: 0
+- In-progress: M8-001 (PR #173 open, awaiting CI); 1 other row counted by board
+- BLOCKED (plain): M2.5-007 (Scheduled LearningOps Cron Trigger — codex-no-status)
+- Anomalies: none — strong progress this cycle, 35 issues completed since 01:19Z
+- Suggested user action: none — loop alive and making good progress

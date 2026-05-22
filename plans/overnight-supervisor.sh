@@ -30,6 +30,7 @@ BUDGET=plans/sleep-run-budget.md
 BOARD=plans/issue-board.md
 STOP_SIGNAL=plans/STOP-OVERNIGHT.txt
 MONEY_SIGNAL=plans/MONEY-MADE.txt
+ENV_FILE=.env.local
 
 MAX_ISSUES=${MAX_ISSUES:-10000}
 MAX_HOURS=${MAX_HOURS:-720}
@@ -77,6 +78,45 @@ What user needs to do: review the branch chore/$id (if any), the log tail, and d
 EOF
 }
 
+load_gh_token_from_env_local() {
+  # Do not source .env.local; parse only GitHub token keys so arbitrary shell
+  # from the env file is never executed.
+  if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+    return 0
+  fi
+
+  if [ ! -f "$ENV_FILE" ]; then
+    return 0
+  fi
+
+  local token_line token_name token_value
+  token_line=$(python3 - <<'PY'
+from pathlib import Path
+
+env_file = Path(".env.local")
+for raw in env_file.read_text().splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    name, _, value = line.partition("=")
+    name = name.strip()
+    if name.startswith("export "):
+        name = name[len("export "):].strip()
+    value = value.strip().strip('"').strip("'")
+    if name in {"GH_TOKEN", "GITHUB_TOKEN", "GITHUB_PAT"} and value:
+        print(f"{name}={value}")
+        break
+PY
+)
+
+  if [ -n "$token_line" ]; then
+    token_name=${token_line%%=*}
+    token_value=${token_line#*=}
+    export GH_TOKEN="$token_value"
+    log "Pre-flight: loaded GitHub token from $ENV_FILE ($token_name)"
+  fi
+}
+
 # ─── Pre-flight ───────────────────────────────────────────────────────────
 
 log "=== Overnight Supervisor v2 starting ==="
@@ -98,10 +138,14 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! gh auth status >/dev/null 2>&1; then
-  log "ERROR: gh CLI not authenticated"
+load_gh_token_from_env_local
+
+if ! GH_LOGIN=$(gh api user --jq .login 2>/dev/null); then
+  log "ERROR: GitHub API authentication failed. Export GH_TOKEN/GITHUB_TOKEN or run gh auth login -h github.com."
   exit 1
 fi
+
+log "Pre-flight: GitHub API auth OK as $GH_LOGIN"
 
 log "Pre-flight OK"
 
