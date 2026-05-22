@@ -71,6 +71,14 @@ If anything fails, set `next_action = "abort"` (revert your changes first) or `"
 
 Aim for ≤10 min of work per issue. If the issue is bigger, do what you can, then set `"next_action": "needs_human"` with a note about the remaining scope.
 
+## Timebox preflight
+
+This preflight happens before editing files. Decide whether the current task can realistically finish inside the supervisor timebox, including required skill use, implementation, validation, banned-term scanning, and writing `plans/task-status.json`.
+
+If the task spans many independent surfaces, requires broad browser screenshots across several routes, changes more than three major modules, or is otherwise unlikely to finish inside the timebox, do not start source edits. Write `plans/task-status.json` immediately with `"next_action": "needs_human"`, mark validations as `"skipped"`, and explain the smallest safe split in `summary`.
+
+For broad frontend redesign work like M4-011, create or update `plans/frontend-redesign-followups.md` with scoped follow-up tasks before writing the status file. This prevents the supervisor from killing a long-running edit before status is written.
+
 ## M2.5-002 incremental eval special case
 
 When `plans/current-task.md` has `ID == "M2.5-002"` or is copied from
