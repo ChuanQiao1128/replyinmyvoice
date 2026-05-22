@@ -106,10 +106,10 @@ This repair does not read or write `.env.local`, `.dev.vars`, provider credentia
 
 ## Scoped Follow-up Issues
 
-1. `M4-011a`: Landing page, shared header, and footer visual refresh only. Produce/update `plans/frontend-redesign-design-brief.md`, keep product copy accurate, and verify `/` desktop/mobile.
-2. `M4-011b`: Pricing and auth page visual alignment only. Reuse tokens from `M4-011a`, preserve auth and billing behavior, and verify `/pricing`, `/sign-in`, and `/sign-up` if visible.
-3. `M4-011c`: `/app` workspace shell polish only. Preserve rewrite, quota, billing, API, telemetry, and webhook behavior. Verify signed-out behavior plus any local preview path available.
-4. `M4-011d`: Final critique and responsive browser pass. Record five-dimension scores, fix highest-impact layout defects, and document any blocked browser checks.
+1. `M4-012` ([issue #202](https://github.com/ChuanQiao1128/replyinmyvoice/issues/202)): Landing page, shared header, and footer visual refresh only. Produce/update `plans/frontend-redesign-design-brief.md`, keep product copy accurate, and verify `/` desktop/mobile.
+2. `M4-013` ([issue #203](https://github.com/ChuanQiao1128/replyinmyvoice/issues/203)): Pricing and auth page visual alignment only. Reuse tokens from `M4-012`, preserve auth and billing behavior, and verify `/pricing`, `/sign-in`, and `/sign-up` if visible.
+3. `M4-014` ([issue #204](https://github.com/ChuanQiao1128/replyinmyvoice/issues/204)): `/app` workspace shell polish only. Preserve rewrite, quota, billing, API, telemetry, and webhook behavior. Verify signed-out behavior plus any local preview path available.
+4. `M4-015` ([issue #205](https://github.com/ChuanQiao1128/replyinmyvoice/issues/205)): Final critique and responsive browser pass. Record five-dimension scores, fix highest-impact layout defects, and document any blocked browser checks.
 
 ## Verification Plan
 
