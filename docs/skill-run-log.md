@@ -528,3 +528,21 @@ claude-heavy-planning-handoff
 - Output artifacts: prisma/schema.prisma updated with User.apiKeys, ApiKey, and ApiKeyUsage models; existing migration SQL staged.
 - Verification evidence: grep counted ApiKey model declarations before commit.
 - Limitations: No full Prisma validation or test suite run due to explicit fast commit/push/PR request.
+
+### 2026-05-22 - system-spec-synthesis - M2.5-003 diagnosis clustering
+
+- Agent: Codex
+- Trigger: The task converted a loose milestone brief into an implementation-ready learning-analysis and persistence change.
+- Action: Opened and followed the skill at implementation scope; identified source inputs, mapped the clustering contract to `LearningFinding` rows, and kept the change additive.
+- Output artifacts: `lib/learningops/cluster.ts`; `lib/learningops.ts`; `scripts/learningops-run.ts`; `tests/unit/learningops-cluster.test.ts`; `tests/unit/learningops.test.ts`; Prisma schema and migration updates.
+- Verification evidence: Red test observed first for the missing cluster module, then focused tests passed; final `npm run lint`, `npm run typecheck`, `npm run test`, and Prisma schema validation with dummy local URLs passed.
+- Limitations: No provider-backed evaluation, production database migration apply, deployment, or GitHub operation was run.
+
+### 2026-05-22 - data-module-review - M2.5-003 LearningFinding cluster fields
+
+- Agent: Codex
+- Trigger: The task changed Prisma schema, migration SQL, and the LearningOps insert path for persisted findings.
+- Action: Opened and followed the skill; ran the data-risk scanner, reviewed owned tables and the mutating script, and used nullable additive columns plus indexes for migration safety.
+- Output artifacts: `prisma/schema.prisma`; `prisma/migrations/20260522123000_add_learning_finding_cluster_fields/migration.sql`; `scripts/learningops-run.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed; Prisma schema validation with dummy local URLs passed; lint, typecheck, and unit tests passed.
+- Limitations: The migration was not applied to a live database in this turn, and no raw learning sample text was inspected or logged.

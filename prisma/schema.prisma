@@ -83,6 +83,8 @@ model LearningFinding {
   id                      String              @id @default(cuid())
   runId                   String
   scenario                String?
+  commonTone              String?
+  primaryDiagnosisTag     String?
   failureType             String
   diagnosisTags           String
   evidenceCount           Int                 @default(0)
@@ -96,6 +98,8 @@ model LearningFinding {
 
   @@index([createdAt])
   @@index([scenario])
+  @@index([commonTone])
+  @@index([primaryDiagnosisTag])
   @@index([failureType])
   @@index([severity])
   @@index([promotionRecommendation])

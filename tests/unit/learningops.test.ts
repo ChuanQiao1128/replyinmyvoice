@@ -103,7 +103,7 @@ describe("analyzeLearningSamples", () => {
     expect(result.strategyCandidates).toEqual([]);
   });
 
-  it("does not promote a single weak high-signal sample", () => {
+  it("does not promote a single weak high-signal cluster", () => {
     const result = analyzeLearningSamples([
       sample({
         id: "weak_1",
@@ -114,7 +114,13 @@ describe("analyzeLearningSamples", () => {
     ]);
 
     expect(result.promotionDecision).toBe("digest_only");
-    expect(result.findings).toEqual([]);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toMatchObject({
+      failureType: "diagnosis_tag_cluster",
+      primaryDiagnosisTag: "support_template_voice",
+      evidenceCount: 1,
+      promotionRecommendation: "no-op",
+    });
     expect(result.strategyCandidates).toEqual([]);
   });
 });
