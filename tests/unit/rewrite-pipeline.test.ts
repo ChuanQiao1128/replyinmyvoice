@@ -648,6 +648,43 @@ describe("rewriteWithFactReconstruct", () => {
     expect(mocks.finalizeCandidate).not.toHaveBeenCalled();
   });
 
+  it("reports reviewer_threshold_failed when rejected model candidates cannot be rescued", async () => {
+    const { FactReconstructQualityError, rewriteWithFactReconstruct } =
+      await import("../../lib/rewrite-pipeline/pipeline");
+
+    mocks.reviewCandidates.mockResolvedValue({
+      ...review,
+      scores: {
+        candidate_a_concise: {
+          ...review.scores.candidate_a_concise,
+          factual_accuracy: 8,
+        },
+        candidate_b_warm: {
+          ...review.scores.candidate_b_warm,
+          low_template_feel: 7,
+        },
+        candidate_c_natural: {
+          ...review.scores.candidate_c_natural,
+          tone_appropriateness: 7,
+        },
+      },
+    });
+    mocks.measureWritingSignal
+      .mockResolvedValue({ aiLikePercent: 91 })
+      .mockResolvedValueOnce({ aiLikePercent: 89 });
+
+    try {
+      await rewriteWithFactReconstruct(input);
+      throw new Error("expected rewrite to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(FactReconstructQualityError);
+      expect(error).toMatchObject({
+        name: "FactReconstructQualityError",
+        reason: "reviewer_threshold_failed",
+      });
+    }
+  });
+
   it("does not reject a fallback only because an LLM locked fact uses noisy labels", async () => {
     const { rewriteWithFactReconstruct } = await import(
       "../../lib/rewrite-pipeline/pipeline"

@@ -1,6 +1,6 @@
-# Issue M5-002
+# Issue M5-004
 
-Title: M5-002 Capture telemetry across pipeline (OpenAI tokens + Sapling chars + estimator + persist)
+Title: M5-004 Normalize rewrite failure reasons for analysis
 Milestone: M5-Telemetry
 GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/(dup)
 

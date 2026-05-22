@@ -834,3 +834,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `tests/unit/openai-output.test.ts`; `tests/unit/rewrite-pipeline-model.test.ts`; `tests/unit/rewrite-telemetry.test.ts`; `tests/unit/writing-signal.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: `resilience_matrix.py "rewrite provider telemetry and cost logging"` produced timeout, transient 5xx, permanent 4xx, duplicate, partial-success, concurrent, and malformed-payload rows. Focused provider telemetry tests passed with 52/52 tests; full Vitest passed with 253/253 tests.
 - Limitations: Tests use local fakes and do not hit live OpenAI/DeepSeek, Sapling, Neon, Stripe, or Cloudflare.
+
+### 2026-05-22 - state-machine-modeling - M5-004 rewrite failure reason telemetry
+
+- Agent: Codex
+- Trigger: The task changed request-level rewrite failure lifecycle labels persisted for analysis.
+- Action: Opened and followed the skill; modeled `RewriteCostLog.status` states as `success`, `quality_failed`, and `server_failed`, with terminal request-level `errorCode` reasons of `signal_unavailable`, `naturalness_gate_failed`, `fact_check_failed`, `reviewer_threshold_failed`, `server_failed`, or provider-specific codes. Events are successful rewrite, quality gate rejection, provider signal unavailability, reviewer rejection not rescued by fallback, and unexpected server exception.
+- Output artifacts: `lib/rewrite-failure-reasons.ts`; `lib/observability/rewrite-telemetry.ts`; `lib/rewrite-learning.ts`; `lib/rewrite-pipeline/pipeline.ts`; `app/api/rewrite/route.ts`; `tests/unit/rewrite-telemetry.test.ts`; `tests/unit/rewrite-learning.test.ts`; `tests/unit/rewrite-pipeline.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Red tests first failed for coarse `quality_gate_failed`, hidden `signal_unavailable`, generic `TypeError`, and unreachable `reviewer_threshold_failed`. After implementation, `npm run lint`, `npm run typecheck`, and `npm run test` passed.
+- Limitations: No database migration or live telemetry replay was run; existing rows with older coarse labels are not backfilled by this issue.
+
+### 2026-05-22 - data-module-review - M5-004 failure reason persistence
+
+- Agent: Codex
+- Trigger: The task changed persisted `errorCode` values in `RewriteCostLog` and `RewriteLearningSample`.
+- Action: Opened and followed the skill; reviewed the write paths for request cost logs and learning samples, then added a shared normalizer so quality failures store specific machine-readable reasons, provider-specific call details stay on `RewriteProviderCall.errorCode`, and generic server exceptions persist as `server_failed`.
+- Output artifacts: `lib/rewrite-failure-reasons.ts`; `lib/observability/rewrite-telemetry.ts`; `lib/rewrite-learning.ts`; `app/api/rewrite/route.ts`; `tests/unit/rewrite-telemetry.test.ts`; `tests/unit/rewrite-learning.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `scan_data_risks.py --limit 80` completed and reported existing broad quota/idempotency/wall-clock signals outside this scoped change. Focused red/green tests, `npm run lint`, `npm run typecheck`, `npm run test`, and the scoped banned-term scan passed.
+- Limitations: No schema or migration change was required, and no production database rows were inspected or updated.

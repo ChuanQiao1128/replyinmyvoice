@@ -1,5 +1,6 @@
 import { optionalEnv } from "../env";
 import { createId, getSql } from "../db";
+import { normalizeRewriteRequestFailureReason } from "../rewrite-failure-reasons";
 import type { FactReconstructQualityError } from "../rewrite-pipeline/pipeline";
 import type { RewriteResponsePayload } from "../rewrite-types";
 import type { RewriteRequestInput } from "../validation";
@@ -114,9 +115,11 @@ export function createRewriteTelemetryCollector({
         scenario: args.input.scenario,
         tonePreset: args.input.tonePreset,
         status: args.status,
-        errorCode: args.errorCode ?? (
-          args.status === "quality_failed" ? "quality_gate_failed" : null
-        ),
+        errorCode: normalizeRewriteRequestFailureReason({
+          errorCode: args.errorCode,
+          qualityReason: args.qualityError?.reason,
+          status: args.status,
+        }),
         startedAt,
         finishedAt,
         durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),

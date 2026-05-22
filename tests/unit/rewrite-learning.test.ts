@@ -114,6 +114,6 @@ describe("rewrite learning samples", () => {
     expect(sample.repairCandidates).toBe(2);
     expect(sample.rejectedCandidates).toBe(3);
     expect(sample.status).toBe("quality_failed");
-    expect(sample.errorCode).toBe("quality_gate_failed");
+    expect(sample.errorCode).toBe("naturalness_gate_failed");
   });
 });

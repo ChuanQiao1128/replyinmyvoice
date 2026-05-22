@@ -176,7 +176,7 @@ export async function POST(request: Request) {
         userId: user.id,
         input,
         status: "server_failed",
-        errorCode: error instanceof Error ? error.name : "UnknownError",
+        errorCode: "server_failed",
         strategyVersion,
       }),
     );

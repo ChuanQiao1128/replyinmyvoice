@@ -185,3 +185,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T16:34:05+12:00 | M5-replan | decided | First owner-facing Rewrite Quality Analysis will be an offline Python/Pandas report from RewriteCostLog/RewriteProviderCall, not an admin UI; Claude monitor should write non-user blockers to plans/codex-worker-inbox.md for Codex worker follow-up.
 2026-05-22T16:20:00+12:00 | M5-002 | started | M5-002 Capture telemetry across pipeline (OpenAI tokens + Sapling chars + estimator + persist)
 2026-05-22T16:37:10+12:00 | M5-002 | done | Rescued timed-out telemetry WIP, verified provider-call token/cost/latency persistence and Sapling call metadata, and paired it with the Rewrite Quality Analysis target docs.
+2026-05-22T16:50:19+12:00 | M5-003 | started | M5-003 Offline Rewrite Quality Analysis report script
+2026-05-22T17:00:37+12:00 | M5-004 | started | M5-004 Normalize rewrite failure reasons for analysis
