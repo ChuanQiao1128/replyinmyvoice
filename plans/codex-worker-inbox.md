@@ -182,7 +182,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-23T05:28:55+12:00 — M7-002 undeclared-files-in-diff
 
-- Status: in_progress
+- Status: done
 - Source: shell supervisor
 - Class: dirty_repo
 - Priority: P1
@@ -190,4 +190,29 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Evidence: plans/task-status.json
 - Suggested Codex action: Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation.
 - Done condition: No PR commits files outside the Codex-declared files_changed list.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T05:35:36+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/221; Classified Codex task status as supervisor runtime so clean issue diffs are not blocked as undeclared.
+
+## 2026-05-22T17:39:37Z — .claude/ untracked directory not in .gitignore
+
+- Status: in_progress
+- Source: Claude monitor
+- Class: docs
+- Priority: P3
+- Related issue: M7-003 (current active task on branch chore/M7-003)
+- Evidence: `git status --porcelain` shows `?? .claude/` in dirty worktree; no `.claude` entry in `.gitignore`
+- Suggested Codex action: add `.claude/` to `.gitignore` if the directory contains only local tool state (confirm contents first); or commit intentionally if it should be tracked
+- Done condition: `git status --porcelain` no longer shows `.claude/` as untracked, OR `.claude/` appears in `.gitignore`
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+
+## 2026-05-23T05:45:56+12:00 — M7-003 codex-needs-human:BLOCKED-AUTONOMY
+
+- Status: pending
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M7-003
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M7-003 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes

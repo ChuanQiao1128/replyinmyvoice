@@ -1,20 +1,20 @@
-# Repair REPAIR-20260523052914
+# Repair REPAIR-20260523054614
 
-Title: M7-002 undeclared-files-in-diff
+Title: .claude/ untracked directory not in .gitignore
 Source: plans/codex-worker-inbox.md
 
 ## Repair item
 
-## 2026-05-23T05:28:55+12:00 — M7-002 undeclared-files-in-diff
+## 2026-05-22T17:39:37Z — .claude/ untracked directory not in .gitignore
 
 - Status: pending
-- Source: shell supervisor
-- Class: dirty_repo
-- Priority: P1
-- Related issue: M7-002
-- Evidence: plans/task-status.json
-- Suggested Codex action: Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation.
-- Done condition: No PR commits files outside the Codex-declared files_changed list.
+- Source: Claude monitor
+- Class: docs
+- Priority: P3
+- Related issue: M7-003 (current active task on branch chore/M7-003)
+- Evidence: `git status --porcelain` shows `?? .claude/` in dirty worktree; no `.claude` entry in `.gitignore`
+- Suggested Codex action: add `.claude/` to `.gitignore` if the directory contains only local tool state (confirm contents first); or commit intentionally if it should be tracked
+- Done condition: `git status --porcelain` no longer shows `.claude/` as untracked, OR `.claude/` appears in `.gitignore`
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 
 ## Repository conventions
