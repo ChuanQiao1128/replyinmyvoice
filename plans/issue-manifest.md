@@ -226,6 +226,11 @@ title: M4-010 Add sitemap.ts and robots.ts
 body:
 > `app/sitemap.ts` lists landing / pricing / sign-in / sign-up / privacy / terms. `app/robots.ts` allows all + sitemap reference. `/admin*` MUST be disallowed. Test that build emits both routes correctly.
 
+### M4-011
+title: M4-011 Use web-design-engineer to redesign frontend visual system
+body:
+> Use `/Users/qc/.codex/skills/web-design-engineer/SKILL.md` to critique and redesign the high-impact customer-visible frontend: `/`, `/pricing`, sign-in/sign-up pages if visible, shared header/footer, and the `/app` rewrite workspace visual shell. First record a current-state critique and design declaration in `plans/frontend-redesign-design-brief.md`. Then implement a polished responsive redesign without changing auth, billing, rewrite, quota, API, telemetry, or webhook behavior. Final critique target: average >= 8.0 across the five web-design-engineer dimensions and no dimension below 7.0. Verify with lint, typecheck, focused tests, and desktop/mobile browser checks where possible.
+
 ---
 
 ## Milestone: M5-Telemetry
