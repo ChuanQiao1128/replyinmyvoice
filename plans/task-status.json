@@ -1,22 +1,20 @@
 {
-  "issue_id": "M2.5-004",
-  "branch": "chore/M2.5-004",
+  "issue_id": "M2.5-005",
+  "branch": "chore/M2.5-005",
   "files_changed": [
-    "lib/learningops/candidates.ts",
-    "lib/learningops.ts",
+    "lib/learningops/promotion-brief.ts",
     "scripts/learningops-run.ts",
-    "prisma/schema.prisma",
-    "prisma/migrations/20260522124500_add_strategy_candidate_structured_patch_fields/migration.sql",
-    "tests/unit/learningops-candidates.test.ts",
-    "tests/unit/learningops.test.ts",
-    "docs/skill-run-log.md"
+    "tests/unit/learningops-promotion-brief.test.ts",
+    "docs/rewrite-strategy-memory.md",
+    "docs/skill-run-log.md",
+    "plans/task-status.json"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Adds structured LearningOps strategy candidate patches from diagnosis clusters.",
-  "title": "feat: add structured strategy candidates",
+  "summary": "Adds a tested LearningOps handoff that turns promotable StrategyCandidate rows into safe Codex draft-PR tasks.",
+  "title": "feat: add learningops promotion handoff",
   "next_action": "ready_to_commit"
 }

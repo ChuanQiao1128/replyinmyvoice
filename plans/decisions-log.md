@@ -157,3 +157,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T12:08:24+12:00 | M2.5-003 | started | M2.5-003 Failure-mode clustering by diagnosis tags
 2026-05-22T12:17:53+12:00 | M2.5-003 | done | Added diagnosis-tag clustering for failed LearningOps samples and persisted cluster metadata. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/175)
 2026-05-22T12:18:09+12:00 | M2.5-004 | started | M2.5-004 Strategy candidate generator: cluster → prompt patch
+2026-05-22T12:27:01+12:00 | M2.5-004 | done | Adds structured LearningOps strategy candidate patches from diagnosis clusters. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/176)
+2026-05-22T12:27:17+12:00 | M2.5-005 | started | M2.5-005 Auto-draft PR from promotable StrategyCandidate

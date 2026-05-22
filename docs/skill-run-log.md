@@ -555,3 +555,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `lib/learningops/candidates.ts`; `lib/learningops.ts`; `scripts/learningops-run.ts`; `prisma/schema.prisma`; `prisma/migrations/20260522124500_add_strategy_candidate_structured_patch_fields/migration.sql`; `tests/unit/learningops-candidates.test.ts`; `tests/unit/learningops.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Red focused tests failed for the missing candidate module and missing promotion; after implementation, focused tests passed. Final `npm run lint`, `npm run typecheck`, `npm run test`, banned-term scan, and Prisma schema validation with dummy local URLs passed.
 - Limitations: The migration was not applied to a live database. No provider-backed rewrite evaluation, deployment, or GitHub operation was run.
+
+### 2026-05-22 - system-spec-synthesis - M2.5-005 promotion handoff
+
+- Agent: Codex
+- Trigger: The task converted a roadmap stub for auto-drafting PRs from promotable `StrategyCandidate` rows into an implementation-ready LearningOps handoff contract.
+- Action: Opened and followed the skill at implementation scope; mapped source facts from `plans/current-task.md`, the M2.5 roadmap, existing LearningOps modules, and the runbook into a pure promotion-brief builder and daily-run handoff file.
+- Output artifacts: `lib/learningops/promotion-brief.ts`; `scripts/learningops-run.ts`; `tests/unit/learningops-promotion-brief.test.ts`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: The red focused test first failed on the missing promotion-brief module. After implementation, focused LearningOps tests passed, then `npm run lint`, `npm run typecheck`, and `npm run test` passed.
+- Limitations: No GitHub, git, Codex MCP, deployment, provider-backed evaluation, or live database run was executed in this turn.

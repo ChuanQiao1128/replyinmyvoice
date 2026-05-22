@@ -1,15 +1,15 @@
-# Issue M2.5-004
+# Issue M2.5-005
 
-Title: M2.5-004 Strategy candidate generator: cluster → prompt patch
+Title: M2.5-005 Auto-draft PR from promotable StrategyCandidate
 Milestone: M2.5-Learning
-GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/88
+GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/90
 
 ## Brief
 
-`lib/learningops/candidates.ts`: takes a `LearningFinding` and proposes a targeted prompt/strategy patch. Patches are STRUCTURED (e.g. "add to repair prompt for customer_support scenario: 'avoid balanced 4-paragraph structure'"). Each candidate has risk level, required regression test, evidence count. New `StrategyCandidate` table.
+Scheduled job (M2.5-007) calls a codex MCP session with the StrategyCandidate brief to draft a PR. Codex modifies the relevant prompt/scenario file, adds a regression test, updates `docs/rewrite-strategy-memory.md`. Opens PR, NEVER auto-merges.
 
 ---
-Detailed brief will be written at `plans/issues/M2.5-004.md` when this milestone starts.
+Detailed brief will be written at `plans/issues/M2.5-005.md` when this milestone starts.
 Source roadmap: `plans/commercialization-roadmap.md`.
 
 ## Repository conventions

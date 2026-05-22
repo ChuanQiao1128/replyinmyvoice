@@ -10,8 +10,12 @@ import {
   type LearningSampleRow,
   type StrategyCandidateDraft,
 } from "../lib/learningops";
+import { buildStrategyCandidatePromotionTask } from "../lib/learningops/promotion-brief";
 
 type SqlClient = NeonQueryFunction<false, false>;
+
+const PROMOTION_TASK_PATH = "plans/learningops-promotion-task.md";
+const PROMOTION_ISSUE_ID = "M2.5-005";
 
 function loadLocalEnv() {
   const envPath = path.join(process.cwd(), ".env.local");
@@ -136,6 +140,67 @@ ${markdownTable([
 `;
 }
 
+type InsertedStrategyCandidateRef = {
+  candidate: StrategyCandidateDraft;
+  candidateId: string;
+  findingId: string;
+};
+
+function buildNoPromotionTask(analysis: LearningAnalysisResult, runId: string) {
+  return [
+    "# LearningOps Strategy Promotion Task",
+    "",
+    `Learning run: ${runId}`,
+    "",
+    "No promotable StrategyCandidate was generated for this run.",
+    "",
+    "## Summary",
+    "",
+    `- Samples scanned: ${analysis.summary.sampleCount}`,
+    `- Findings: ${analysis.findings.length}`,
+    `- Strategy candidates: ${analysis.strategyCandidates.length}`,
+    `- Promotion decision: ${analysis.promotionDecision}`,
+    "",
+    "No Codex MCP promotion session should be started for this run.",
+    "",
+  ].join("\n");
+}
+
+function buildPromotionTask({
+  analysis,
+  candidates,
+  runId,
+}: {
+  analysis: LearningAnalysisResult;
+  candidates: InsertedStrategyCandidateRef[];
+  runId: string;
+}) {
+  const selected = candidates[0];
+  if (!selected) {
+    return buildNoPromotionTask(analysis, runId);
+  }
+
+  return buildStrategyCandidatePromotionTask(selected.candidate, {
+    candidateId: selected.candidateId,
+    findingId: selected.findingId,
+    issueId: PROMOTION_ISSUE_ID,
+    runId,
+  });
+}
+
+function writePromotionTask({
+  analysis,
+  candidates,
+  runId,
+}: {
+  analysis: LearningAnalysisResult;
+  candidates: InsertedStrategyCandidateRef[];
+  runId: string;
+}) {
+  const content = buildPromotionTask({ analysis, candidates, runId });
+  fs.writeFileSync(path.join(process.cwd(), PROMOTION_TASK_PATH), content);
+}
+
 async function insertLearningRun({
   sql,
   runId,
@@ -187,8 +252,9 @@ async function insertFindingsAndCandidates({
   runId: string;
   findings: LearningFindingDraft[];
   candidates: StrategyCandidateDraft[];
-}) {
+}): Promise<InsertedStrategyCandidateRef[]> {
   const findingIds: string[] = [];
+  const insertedCandidates: InsertedStrategyCandidateRef[] = [];
 
   for (const finding of findings) {
     const findingId = crypto.randomUUID();
@@ -230,6 +296,7 @@ async function insertFindingsAndCandidates({
     if (!findingId) {
       continue;
     }
+    const candidateId = crypto.randomUUID();
 
     await sql`
       INSERT INTO "StrategyCandidate" (
@@ -248,7 +315,7 @@ async function insertFindingsAndCandidates({
         "evidenceCount"
       )
       VALUES (
-        ${crypto.randomUUID()},
+        ${candidateId},
         ${findingId},
         ${candidate.title},
         ${candidate.scenario},
@@ -263,7 +330,10 @@ async function insertFindingsAndCandidates({
         ${candidate.evidenceCount}
       )
     `;
+    insertedCandidates.push({ candidate, candidateId, findingId });
   }
+
+  return insertedCandidates;
 }
 
 async function main() {
@@ -304,12 +374,13 @@ async function main() {
   fs.writeFileSync(path.join(process.cwd(), digestPath), digest);
 
   await insertLearningRun({ sql, runId, analysis, digestPath });
-  await insertFindingsAndCandidates({
+  const insertedCandidates = await insertFindingsAndCandidates({
     sql,
     runId,
     findings: analysis.findings,
     candidates: analysis.strategyCandidates,
   });
+  writePromotionTask({ analysis, candidates: insertedCandidates, runId });
 
   console.log(
     [
@@ -318,6 +389,7 @@ async function main() {
       `findings=${analysis.findings.length}`,
       `candidates=${analysis.strategyCandidates.length}`,
       `decision=${analysis.promotionDecision}`,
+      `promotion_task=${PROMOTION_TASK_PATH}`,
     ].join(" "),
   );
 }
