@@ -411,6 +411,27 @@ import subprocess
 import sys
 from pathlib import Path
 
+SUPERVISOR_RUNTIME_FILES = {
+    "plans/blockers-log.md",
+    "plans/codex-worker-inbox.md",
+    "plans/current-repair-meta.json",
+    "plans/current-task.md",
+    "plans/decisions-log.md",
+    "plans/issue-board.md",
+    "plans/overnight-progress.md",
+}
+
+SUPERVISOR_RUNTIME_PREFIXES = (
+    ".claude/",
+    ".codex/",
+    "plans/codex-exec-",
+)
+
+
+def is_supervisor_runtime_file(path: str) -> bool:
+    return path in SUPERVISOR_RUNTIME_FILES or path.startswith(SUPERVISOR_RUNTIME_PREFIXES)
+
+
 status_path = Path("plans/task-status.json")
 try:
     declared = set(json.loads(status_path.read_text()).get("files_changed", []))
@@ -438,10 +459,42 @@ for raw in result.stdout.splitlines():
         path = path.split(" -> ", 1)[1]
     actual.add(path)
 
-extra = sorted(actual - declared)
+extra = sorted(path for path in actual - declared if not is_supervisor_runtime_file(path))
 if extra:
     print("\n".join(extra))
     raise SystemExit(1)
+PY
+}
+
+stage_declared_changes() {
+  python3 - "$@" <<'PY'
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+status_path = Path("plans/task-status.json")
+declared = json.loads(status_path.read_text()).get("files_changed", [])
+if not isinstance(declared, list) or not declared:
+    print("plans/task-status.json files_changed is empty")
+    raise SystemExit(1)
+
+paths = list(dict.fromkeys([*declared, *sys.argv[1:]]))
+
+for path in paths:
+    if not isinstance(path, str) or not path:
+        print(f"invalid files_changed entry: {path!r}")
+        raise SystemExit(1)
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+    if not Path(path).exists() and not tracked:
+        continue
+    subprocess.run(["git", "add", "--", path], check=True)
 PY
 }
 
@@ -730,8 +783,17 @@ process_repair_inbox_once() {
     return 0
   fi
 
-  log "  git add . && commit repair"
-  git add -A
+  log "  stage declared files && commit repair"
+  if ! stage_declared_changes plans/codex-worker-inbox.md plans/current-task.md plans/current-repair-meta.json >>"$LOG" 2>&1; then
+    log "  ERROR: could not stage declared repair files"
+    update_repair_item_status "$header" "not_actionable" "could not stage files declared in plans/task-status.json"
+    stash_dirty_worktree "repair-stage-declared-failed-${id}" >>"$LOG" 2>&1 || true
+    git checkout main >>"$LOG" 2>&1
+    git branch -D "$branch" >>"$LOG" 2>&1 || true
+    REPAIRS_BLOCKED=$((REPAIRS_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    return 0
+  fi
   if git diff --cached --quiet; then
     log "  WARN: repair produced no staged changes"
     update_repair_item_status "$header" "not_actionable" "Codex reported ready_to_commit but produced no changes"
@@ -1174,8 +1236,27 @@ while true; do
     continue
   fi
 
-  log "  git add . && commit"
-  git add -A
+  log "  stage declared files && commit"
+  if ! stage_declared_changes plans/current-task.md plans/decisions-log.md plans/issue-board.md >>"$LOG" 2>&1; then
+    log "  ERROR: could not stage declared files"
+    update_board_status "$ID" "BLOCKED"
+    append_blocker "$ID" "stage-declared-files-failed" "Could not stage files declared in plans/task-status.json; changes were stashed for split/review."
+    append_repair_inbox_item \
+      "$ID stage-declared-files-failed" \
+      "dirty_repo" \
+      "P1" \
+      "$ID" \
+      "plans/task-status.json" \
+      "Inspect why a declared file in plans/task-status.json could not be staged, preserve the implementation diff, and restore commit-ready branch state." \
+      "The declared implementation files can be staged and committed, or the task status is corrected with evidence."
+    stash_dirty_worktree "stage-declared-files-failed-${ID}" >>"$LOG" 2>&1 || true
+    git checkout main >>"$LOG" 2>&1
+    git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
+    ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
+    ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
+    sleep "$COOLDOWN_SECONDS"
+    continue
+  fi
   if git diff --cached --quiet; then
     log "  WARN: no staged changes — codex did not modify any files"
     update_board_status "$ID" "BLOCKED"
