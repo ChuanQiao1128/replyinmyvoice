@@ -64,11 +64,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout main scenario baseline
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .scenario-main
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - name: Check scenario evaluation regression
+        if: github.event_name == 'pull_request'
+        run: node --import tsx scripts/check-scenario-evaluation-regression.ts --base .scenario-main/docs/scenario-evaluation-results.md --candidate docs/scenario-evaluation-results.md
+      - name: Remove scenario baseline checkout
+        if: github.event_name == 'pull_request'
+        run: rm -rf .scenario-main
       - run: npm run prisma:generate
       - run: npm run typecheck
       - run: npm run test
