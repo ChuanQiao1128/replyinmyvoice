@@ -1,9 +1,8 @@
 {
-  "issue_id": "REPAIR-20260523052914",
-  "branch": "codex/repair-m7-002-undeclared-files-in-diff-REPAIR-20260523052914",
+  "issue_id": "REPAIR-20260523054614",
+  "branch": "codex/repair-claude-untracked-directory-not-in-gitignore-REPAIR-20260523054614",
   "files_changed": [
-    "plans/overnight-supervisor.sh",
-    "tests/unit/overnight-supervisor-repair-inbox.test.ts",
+    ".gitignore",
     "plans/task-status.json"
   ],
   "lint": "pass",
@@ -11,7 +10,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Classified Codex task status as supervisor runtime so clean issue diffs are not blocked as undeclared.",
-  "title": "fix: ignore task status in supervisor diff checks",
+  "summary": "Added .claude/ to .gitignore after confirming it only contains local Claude settings.",
+  "title": "chore: ignore local Claude settings",
   "next_action": "ready_to_commit"
 }
