@@ -453,3 +453,12 @@ Run finished. Done: 0 | Blocked: 11 | Needs human: 0
 - BLOCKED (plain): M2.5-007 (Scheduled LearningOps Cron Trigger — codex-no-status)
 - Anomalies: none — strong progress this cycle, 35 issues completed since 01:19Z
 - Suggested user action: none — loop alive and making good progress
+
+## Monitor at 2026-05-22T03:01:38Z
+- Loop: alive (overnight.log mtime ~2 min ago)
+- Done since last monitor: 0 — board still shows 8 done (⚠️ anomaly: 02:41Z checkpoint claimed "+35 done, 8→43" but board now shows 8; either board was restructured again or previous checkpoint misread counts)
+- BLOCKED-WAITING-USER count: 18
+- BLOCKED-WAITING-ENG count: 0
+- In-progress: M2.5-001 (1 row); BLOCKED: M2.5-007 (Scheduled LearningOps Cron Trigger)
+- Anomalies: Done count anomaly — previous checkpoint (02:41Z) reported 43 done, current board shows 8. No new commits since last checkpoint (#181 canary rollout still latest). BLOCKED-WAITING-USER decreased from 20→18 (2 issues resolved or reclassified). No STOP file, no MONEY-MADE.txt.
+- Suggested user action: Review done-count anomaly (board may have been restructured or 02:41Z checkpoint overcounted). Loop is alive and running.

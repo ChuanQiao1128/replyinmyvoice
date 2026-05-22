@@ -1,26 +1,16 @@
 {
-  "issue_id": "M2.5-009",
-  "branch": "chore/M2.5-009",
+  "issue_id": "M2.5-001",
+  "branch": "chore/M2.5-001",
   "files_changed": [
-    "app/api/rewrite/route.ts",
-    "docs/learningops-runbook.md",
-    "docs/rewrite-strategy-memory.md",
-    "docs/skill-run-log.md",
-    "lib/rewrite-pipeline/canary.ts",
-    "lib/rewrite-pipeline/config.ts",
-    "lib/rewrite-pipeline/pipeline.ts",
-    "lib/rewrite-pipeline/types.ts",
-    "plans/task-status.json",
-    "prisma/migrations/20260522132500_add_rewrite_cost_log_strategy_version_index/migration.sql",
-    "prisma/schema.prisma",
-    "tests/unit/rewrite-canary.test.ts"
+    "docs/learning-baseline-corpus.md",
+    "plans/task-status.json"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Implemented env-gated rewrite strategy canary routing with DB-backed signal comparison, ramp/pause decisions, telemetry labels, and a supporting RewriteCostLog index.",
-  "title": "feat: add rewrite strategy canary rollout",
+  "summary": "Validated the 100-case learning baseline corpus with 20 cases per scenario and 50/50 source coverage.",
+  "title": "docs: define learning baseline corpus",
   "next_action": "ready_to_commit"
 }

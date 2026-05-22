@@ -37,7 +37,7 @@ Pick next `pending` with lowest M-number, lowest id. Update status: pending → 
 | M2-007 | M2-Quality | M2-007 Document signal calibration in docs/optimization-notes.md | (dup) | done (already complies — file exists on main from commit fbc42f1 with iteration log + diagnosis tags + strategy memory link) |
 | M2-008 | M2-Quality | M2-008 Add quality-gate UI for safe-failure state | (dup) | BLOCKED-WAITING-USER |
 | M2-009 | M2-Quality | M2-009 Update Naturalness Check display for repaired candidates | (dup) | BLOCKED-WAITING-USER |
-| M2.5-001 | M2.5-Learning | M2.5-001 Define 100-case baseline corpus across 5 scenarios | https://github.com/ChuanQiao1128/replyinmyvoice/issues/82 | pending |
+| M2.5-001 | M2.5-Learning | M2.5-001 Define 100-case baseline corpus across 5 scenarios | https://github.com/ChuanQiao1128/replyinmyvoice/issues/82 | in_progress |
 | M2.5-002 | M2.5-Learning | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md | https://github.com/ChuanQiao1128/replyinmyvoice/issues/84 | BLOCKED-WAITING-USER |
 | M2.5-003 | M2.5-Learning | M2.5-003 Failure-mode clustering by diagnosis tags | https://github.com/ChuanQiao1128/replyinmyvoice/issues/86 | done |
 | M2.5-004 | M2.5-Learning | M2.5-004 Strategy candidate generator: cluster → prompt patch | https://github.com/ChuanQiao1128/replyinmyvoice/issues/88 | done |
