@@ -7,6 +7,7 @@ import {
   runLearningOpsPipeline,
   type LearningOpsSqlClient,
 } from "../lib/learningops/run";
+import { runRewriteCanaryRollbackMonitor } from "../lib/rewrite-pipeline/canary-rollback";
 
 function loadLocalEnv() {
   const envPath = path.join(process.cwd(), ".env.local");
@@ -53,6 +54,10 @@ async function main() {
       fs.writeFileSync(path.join(process.cwd(), taskPath), content);
     },
   });
+  const rollback = await runRewriteCanaryRollbackMonitor({
+    sql,
+    env: process.env,
+  });
 
   console.log(
     [
@@ -61,6 +66,7 @@ async function main() {
       `findings=${result.analysis.findings.length}`,
       `candidates=${result.analysis.strategyCandidates.length}`,
       `status=${result.status}`,
+      `canary_rollback=${rollback.triggered ? "triggered" : "none"}`,
       "promotion_task=plans/learningops-promotion-task.md",
     ].join(" "),
   );

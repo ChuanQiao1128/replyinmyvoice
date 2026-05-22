@@ -206,6 +206,34 @@ model RewriteCostLog {
   @@index([totalEstimatedCostUsd])
 }
 
+model RewriteCanaryRollback {
+  id                       String    @id @default(cuid())
+  canaryStrategyVersion    String
+  controlStrategyVersion   String
+  scenario                 String
+  state                    String    @default("open")
+  windowRewrites           Int
+  rollingAverageSignalDrop Float
+  baselineAverageSignalDrop Float
+  regressionPoints         Float
+  windowStartedAt          DateTime?
+  windowEndedAt            DateTime?
+  adminEmailStatus         String    @default("pending")
+  adminEmailSentAt         DateTime?
+  githubIssueStatus        String    @default("pending")
+  githubIssueUrl           String?
+  githubIssueOpenedAt      DateTime?
+  lastError                String?
+  lastCheckedAt            DateTime  @default(now())
+  createdAt                DateTime  @default(now())
+  resolvedAt               DateTime?
+
+  @@index([canaryStrategyVersion, createdAt])
+  @@index([scenario])
+  @@index([state])
+  @@index([resolvedAt])
+}
+
 model RewriteProviderCall {
   id               String         @id @default(cuid())
   costLogId        String

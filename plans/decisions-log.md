@@ -168,3 +168,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T15:14:40+12:00 | M2.5-005 | started | M2.5-005 Auto-draft PR from promotable StrategyCandidate
 2026-05-22T15:20:12+12:00 | M2.5-005 | done | Added LearningOps promotion handoff that turns promotable StrategyCandidate rows into safe draft-PR Codex tasks. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/184)
 2026-05-22T15:20:27+12:00 | M2.5-008 | started | M2.5-008 Promotion approval UX in /admin/learning
+2026-05-22T15:28:16+12:00 | M2.5-008 | done | Added explicit pull request labels for LearningOps strategy candidate linked work. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/185)
+2026-05-22T15:44:30+12:00 | M2.5-010 | done | Rescued the timed-out canary rollback implementation, verified it locally, and prepared it as a normal PR.

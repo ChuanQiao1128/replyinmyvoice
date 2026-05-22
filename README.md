@@ -97,6 +97,12 @@ Do not `source .env.local` before running `npm run cf:deploy`; exporting
 `NODE_ENV` from `.env.local` can break OpenNext's production build. Pass only
 the Cloudflare auth variables to the deploy process, or use GitHub Actions.
 
+The Worker entry point is the root `worker.js` wrapper so the Cloudflare cron
+handler can run scheduled LearningOps. Keep Wrangler minification enabled, and
+do not enable broad `find_additional_modules` or root-level WASM rules; those
+make Wrangler attach unrelated repo files and Prisma/Next WASM artifacts,
+causing the Worker package to exceed Cloudflare size limits.
+
 ## CI/CD
 
 GitHub Actions workflows:

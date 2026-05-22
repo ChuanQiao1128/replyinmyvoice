@@ -726,3 +726,75 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/overnight-supervisor.sh`; `plans/codex-implementation-prompt.md`; `plans/overnight-directive.md`; `plans/commercialization-roadmap.md`; `docs/skill-run-log.md`.
 - Verification evidence: Documentation diff was reviewed and `git diff --check` passed.
 - Limitations: This turn did not run product tests because the change is documentation and supervisor guidance only; the active overnight loop was left running in the original worktree.
+
+### 2026-05-22 - cloud-architecture-cost-review - M2.5-010 canary rollback
+
+- Agent: Codex
+- Trigger: The task changed a Cloudflare scheduled LearningOps job and could have introduced a new paid alerting or runtime-state service.
+- Action: Opened and followed the skill; kept the rollout on the existing Cloudflare scheduled handler and Neon database, added no KV namespace, queue, always-on worker, or new deployed service, and made Resend/GitHub outbound calls optional via environment configuration.
+- Output artifacts: `lib/rewrite-pipeline/canary-rollback.ts`; `lib/learningops/scheduled.ts`; `scripts/learningops-run.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: `npx prisma validate`, `npm run lint`, `npm run typecheck`, and `npm run test` passed.
+- Limitations: No exact provider pricing lookup was needed because no new paid infrastructure was selected and no live alert or GitHub API call was made.
+
+### 2026-05-22 - system-spec-synthesis - M2.5-010 rollback contract
+
+- Agent: Codex
+- Trigger: The task converted a roadmap stub into a concrete job/data contract for post-promotion strategy rollback.
+- Action: Opened and followed the skill at implementation scope; mapped the source requirement into a 50-rewrite rolling-window detector, persisted rollback override, request-time traffic-off decision, admin email alert, GitHub follow-up issue hook, and verification plan.
+- Output artifacts: `lib/rewrite-pipeline/canary-rollback.ts`; `lib/rewrite-pipeline/canary.ts`; `lib/learningops/scheduled.ts`; `scripts/learningops-run.ts`; `tests/unit/rewrite-canary-rollback.test.ts`; `tests/unit/rewrite-canary.test.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: The red focused tests first failed for the missing rollback module and missing request-time rollback override. After implementation, focused canary tests, `npx prisma validate`, `npm run lint`, `npm run typecheck`, and full `npm run test` passed.
+- Limitations: The detailed issue brief did not exist yet, so the implementation uses the roadmap requirement and existing canary architecture as the contract.
+
+### 2026-05-22 - state-machine-modeling - M2.5-010 rollback lifecycle
+
+- Agent: Codex
+- Trigger: The task changed the promoted-strategy canary lifecycle by adding automatic rollback and alert side-effect states.
+- Action: Opened and followed the skill; modeled states as env-enabled `monitoring`, persisted `rollback_open`, side-effect statuses `pending/sent/skipped/failed` and `pending/opened/skipped/failed`, plus future manual `resolved`. Events are 50-write window measured, regression threshold crossed, rollback persisted, alert success/failure/skip, issue success/failure/skip, and future manual resolution.
+- Output artifacts: `lib/rewrite-pipeline/canary-rollback.ts`; `lib/rewrite-pipeline/canary.ts`; `tests/unit/rewrite-canary-rollback.test.ts`; `tests/unit/rewrite-canary.test.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Unit tests cover the 50-rewrite detector query, rollback persistence before outbound alerts, failed outbound alerts keeping rollback active, and request-time assignment forcing canary traffic to 0 for unresolved rollback rows.
+- Limitations: Manual rollback resolution is represented by nullable `resolvedAt` but no admin UI for resolving rows was added in this issue.
+
+### 2026-05-22 - data-module-review - M2.5-010 RewriteCanaryRollback persistence
+
+- Agent: Codex
+- Trigger: The task added persistent rollback state and raw SQL mutations for canary rollback.
+- Action: Opened and followed the skill; reviewed `RewriteCostLog`, LearningOps scheduled SQL patterns, and migration safety. Added an additive `RewriteCanaryRollback` table with indexes and a partial unique index enforcing one unresolved rollback per canary strategy and scenario.
+- Output artifacts: `prisma/schema.prisma`; `prisma/migrations/20260522143000_add_rewrite_canary_rollback/migration.sql`; `lib/rewrite-pipeline/canary-rollback.ts`; `tests/unit/rewrite-canary-rollback.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed and reported existing broad quota/idempotency signals outside this change. `npx prisma validate`, focused canary tests, and full Vitest passed.
+- Limitations: The migration was not applied to a live database, and no production rollback rows were inserted.
+
+### 2026-05-22 - resilience-test-generation - M2.5-010 rollback alerts
+
+- Agent: Codex
+- Trigger: The task added outbound admin email and GitHub issue side effects after rollback persistence.
+- Action: Opened and followed the skill; generated a failure matrix for the canary rollback monitor, chose deterministic unit fakes, and tested the partial-success invariant that a persisted rollback remains active even if email or issue creation fails.
+- Output artifacts: `lib/rewrite-pipeline/canary-rollback.ts`; `tests/unit/rewrite-canary-rollback.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/resilience-test-generation/scripts/resilience_matrix.py "canary rollback monitor"` produced the timeout, 5xx, 4xx, duplicate, partial-success, concurrency, and malformed-payload rows. Focused canary rollback tests and full Vitest passed.
+- Limitations: No live email provider, GitHub API, production database outage, or concurrent scheduled run was executed.
+
+### 2026-05-22 - cloud-architecture-cost-review - Cloudflare Worker size limit
+
+- Agent: Codex
+- Trigger: Cloudflare/OpenNext deploy failed validation because the Worker package exceeded the free-plan size limit and Wrangler reported Prisma WASM artifacts in the package.
+- Action: Opened and followed the skill as a deployment/cost gate; compared keeping the existing Cloudflare Worker with corrected packaging, upgrading to a paid Worker size limit, and moving runtime architecture. Selected the existing Worker path with scoped bundling and minification because it avoids new paid infrastructure and preserves the scheduled LearningOps wrapper.
+- Output artifacts: `wrangler.jsonc`; `package.json`; `scripts/copy-prisma-wasm.mjs` removed; `README.md`; `docs/business-qa-and-deploy-result.md`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run cf:build` completed successfully. `npx opennextjs-cloudflare deploy -- --dry-run --keep-vars --metafile .open-next/wrangler-bundle-meta-fixed-final.json` completed without uploading, without the previous "Attaching additional modules" table, and reported `Total Upload: 3788.79 KiB / gzip: 1061.84 KiB`.
+- Limitations: No exact Cloudflare pricing lookup was needed because the selected fix does not upgrade plans or create paid resources. No production deploy was run in this turn.
+
+### 2026-05-22 - data-module-review - Prisma WASM deploy packaging check
+
+- Agent: Codex
+- Trigger: The deploy failure named Prisma WASM artifacts and the repo uses Prisma schema/migrations with direct Neon SQL at Worker runtime.
+- Action: Opened the skill and reviewed the Prisma/runtime boundary. Confirmed `prisma/schema.prisma`, `docs/manual-setup.md`, `docs/preflight-report.md`, and `lib/db.ts` document and implement Prisma as schema/migration source of truth while Worker runtime DB access uses Neon directly. Removed the stale Prisma WASM copy step from the Cloudflare build path without changing schema, migrations, data access services, counters, indexes, transactions, or persistence invariants.
+- Output artifacts: `package.json`; `scripts/copy-prisma-wasm.mjs` removed; `docs/business-qa-and-deploy-result.md`; `docs/skill-run-log.md`.
+- Verification evidence: `rg` found no remaining build-script references to `copy-prisma-wasm` after the script removal, and the Cloudflare build/dry-run passed with no Prisma WASM duplicate-module warnings.
+- Limitations: No live database migration or production database query was run because this was a packaging-only change.
+
+### 2026-05-22 - system-spec-synthesis - Cloudflare deploy-scope check
+
+- Agent: Codex
+- Trigger: The initial symptom could have required an architecture or deployment-flow spec if fixing the Worker size limit required moving runtime services.
+- Action: Opened the skill and checked the scope against project instructions and deployment docs. No full implementation spec was produced because the selected fix stayed within existing Cloudflare/OpenNext deployment configuration and did not change APIs, jobs, data model, state lifecycle, or multi-module runtime behavior.
+- Output artifacts: `README.md`; `docs/business-qa-and-deploy-result.md`; `docs/skill-run-log.md`.
+- Verification evidence: The dry-run deploy proved the existing Worker architecture can package under the limit after scoped config changes; no separate architecture handoff was required.
+- Limitations: This was a scope check, not a standalone system specification document.

@@ -148,6 +148,19 @@ set -a; source .env.local; set +a; npm run cf:deploy
 
 Use GitHub Actions or pass only Cloudflare auth variables.
 
+2026-05-22 deploy-size follow-up:
+
+- `worker.js` remains the Worker entry point because it wraps OpenNext and adds
+  the scheduled LearningOps handler.
+- `wrangler.jsonc` must keep `"minify": true`.
+- Do not re-enable root-wide `find_additional_modules` or broad `**/*.wasm`
+  rules. A dry run with those settings attached unrelated repo files, root
+  `node_modules`, generated Prisma WASM, and Prisma CLI WASM artifacts, causing
+  the Worker package to exceed the Cloudflare size limit.
+- Prisma remains schema/migration-only for this Worker runtime; do not copy
+  Prisma WASM into `.open-next` unless runtime database access is intentionally
+  moved back to a verified Prisma Worker path.
+
 ## State Lifecycle Follow-up
 
 Date: 2026-05-21

@@ -1,4 +1,8 @@
 import { getSql } from "../db";
+import {
+  getActiveRewriteCanaryRollback,
+  type RewriteCanaryRollbackSummary,
+} from "./canary-rollback";
 
 export type RewriteCanaryState =
   | "off"
@@ -41,6 +45,7 @@ export type RewriteCanaryDecision = {
   reason: string;
   control: RewriteCanarySignalSummary | null;
   canary: RewriteCanarySignalSummary | null;
+  rollback?: RewriteCanaryRollbackSummary | null;
 };
 
 export type RewriteCanaryAssignment = {
@@ -247,6 +252,7 @@ export function evaluateRewriteCanary({
       reason: "Canary flag is off or no canary strategy version is configured.",
       control,
       canary,
+      rollback: null,
     };
   }
 
@@ -259,6 +265,7 @@ export function evaluateRewriteCanary({
       reason: "Collecting first canary signal-change samples.",
       control,
       canary,
+      rollback: null,
     };
   }
 
@@ -274,6 +281,7 @@ export function evaluateRewriteCanary({
       reason: `Waiting for ${config.minWindowHours}h or ${config.minMeasuredRewrites} measured canary rewrites.`,
       control,
       canary,
+      rollback: null,
     };
   }
 
@@ -291,6 +299,7 @@ export function evaluateRewriteCanary({
       reason: "Waiting for comparable control signal-change samples.",
       control,
       canary,
+      rollback: null,
     };
   }
 
@@ -304,6 +313,7 @@ export function evaluateRewriteCanary({
       reason: `Canary has lower average signal drop by ${Math.abs(delta).toFixed(1)} points.`,
       control,
       canary,
+      rollback: null,
     };
   }
 
@@ -317,6 +327,7 @@ export function evaluateRewriteCanary({
       reason: `Canary average signal drop is higher by ${delta.toFixed(1)} points.`,
       control,
       canary,
+      rollback: null,
     };
   }
 
@@ -328,6 +339,7 @@ export function evaluateRewriteCanary({
     reason: "Canary and control signal-change averages are tied within the configured margin.",
     control,
     canary,
+    rollback: null,
   };
 }
 
@@ -394,6 +406,23 @@ export async function getRewriteCanaryDecision({
     now.getTime() - config.lookbackHours * 3_600_000,
   );
   const sqlClient = sql ?? getSql();
+  const rollback = await getActiveRewriteCanaryRollback({
+    canaryStrategyVersion: config.canaryStrategyVersion,
+    sql: sqlClient,
+  });
+
+  if (rollback) {
+    return {
+      state: "off",
+      effectivePercent: 0,
+      controlStrategyVersion: config.controlStrategyVersion,
+      canaryStrategyVersion: config.canaryStrategyVersion,
+      reason: `Canary rollback is active for ${rollback.scenario}; regression ${rollback.regressionPoints.toFixed(1)} points over ${rollback.windowRewrites} rewrites.`,
+      control: null,
+      canary: null,
+      rollback,
+    };
+  }
 
   try {
     const rows = (await sqlClient`
