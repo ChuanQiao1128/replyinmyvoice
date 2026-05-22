@@ -1,20 +1,20 @@
-# Repair REPAIR-20260523111837
+# Repair REPAIR-20260523112324
 
-Title: INV-1: Finder-duplicate files outside M7-008 task scope
+Title: M7-008 undeclared-files-in-diff
 Source: plans/codex-worker-inbox.md
 
 ## Repair item
 
-## 2026-05-22T18:08:57Z — INV-1: Finder-duplicate files outside M7-008 task scope
+## 2026-05-23T06:11:49+12:00 — M7-008 undeclared-files-in-diff
 
 - Status: pending
-- Source: Claude monitor
+- Source: shell supervisor
 - Class: dirty_repo
 - Priority: P1
 - Related issue: M7-008
-- Evidence: `git status --porcelain` on branch chore/M7-008 shows five untracked files with macOS space-numbered names — `plans/task-status 2.json`, `plans/task-status 3.json`, `plans/task-status 4.json`, `plans/m6-validation-report 2.md`, `plans/m6-validation-report 3.md` — none of which are in M7-008 scope (KPI report script). task-status.json is also deleted (D) in the worktree.
-- Suggested Codex action: Delete the five space-named duplicate files (`git rm --cached` + filesystem delete) and commit the cleanup on chore/M7-008 or a separate chore branch. Confirm contents match their canonical originals before deleting.
-- Done condition: `git status --porcelain` no longer shows the five space-named files as untracked; no data is lost (canonical originals remain).
+- Evidence: plans/task-status.json
+- Suggested Codex action: Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation.
+- Done condition: No PR commits files outside the Codex-declared files_changed list.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 
 ## Repository conventions
