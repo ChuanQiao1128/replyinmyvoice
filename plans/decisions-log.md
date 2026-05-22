@@ -170,3 +170,13 @@ Each overnight Claude trigger appends here.
 2026-05-22T15:20:27+12:00 | M2.5-008 | started | M2.5-008 Promotion approval UX in /admin/learning
 2026-05-22T15:28:16+12:00 | M2.5-008 | done | Added explicit pull request labels for LearningOps strategy candidate linked work. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/185)
 2026-05-22T15:44:30+12:00 | M2.5-010 | done | Rescued the timed-out canary rollback implementation, verified it locally, and prepared it as a normal PR.
+2026-05-22T15:53:23+12:00 | M3-001 | blocked | V2 cascade needs daytime coordination
+2026-05-22T15:53:38+12:00 | M3-002 | blocked | V2 cascade needs daytime coordination
+2026-05-22T15:53:53+12:00 | M3-003 | blocked | V2 cascade needs daytime coordination
+2026-05-22T15:54:08+12:00 | M3-004 | blocked | V2 cascade needs daytime coordination
+2026-05-22T15:54:23+12:00 | M3-005 | blocked | V2 cascade needs daytime coordination
+2026-05-22T15:54:38+12:00 | M3-006 | blocked | V2 cascade needs daytime coordination
+2026-05-22T15:54:53+12:00 | M3-007 | blocked | V2 cascade needs daytime coordination
+2026-05-22T15:55:08+12:00 | M3-008 | blocked | V2 cascade needs daytime coordination
+2026-05-22T15:55:23+12:00 | M4-001 | started | M4-001 Run rewrite engine against 4 documented sample cases
+2026-05-22T16:03:01+12:00 | M4-002 | started | M4-002 Replace interactive-demo samples with measured ones

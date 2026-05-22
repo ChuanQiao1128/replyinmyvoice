@@ -460,3 +460,13 @@ Run finished. Done: 0 | Blocked: 11 | Needs human: 0
 - Fix: PR #183 merged to main (`fix: allow unavailable scenario regression metrics`), with local unit, regression-command, and typecheck verification.
 - Cleanup: PR #182 closed as invalid; it only changed `plans/*`, while issue #82 was already closed and `docs/learning-baseline-corpus.md` already existed from PR #174.
 - Board correction: M2.5-001 marked done; false loop follow-on blockers for M2.5-005 and M2.5-008 were not carried forward on main.
+
+## Monitor at 2026-05-22T04:08:03Z
+- Loop: alive (overnight.log mtime 4min ago, active on M4-002)
+- Done since last monitor: +0 board count (11 done total — board was restructured after operator correction; 4 new PRs merged: #184 LearningOps handoff, #185 PR links, #186 north star doc, #187 canary rollback guard)
+- BLOCKED-WAITING-USER count: 27
+- BLOCKED-WAITING-ENG count: 0
+- In-progress: M4-002 (Replace interactive-demo samples with measured ones — codex running)
+- BLOCKED (plain): 1 — M2.5-007 (Scheduled LearningOps Cron Trigger, codex-no-status)
+- Anomalies: done count dropped from 43→11 due to board restructure after operator correction at 15:13 NZST; 27 BLOCKED-WAITING-USER issues still need human decisions (M1-M3 milestone gates)
+- Suggested user action: 27 BLOCKED-WAITING-USER issues require your decisions to unblock M1-M3 milestones; loop is healthy and continuing on available M4+ work
