@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 
 import { LinkButton } from "../ui/button";
-import { Card } from "../ui/card";
 
 const features = [
   "40 rewrites per billing month",
@@ -14,8 +13,8 @@ const features = [
 
 export function PricingSection() {
   return (
-    <section className="mx-auto max-w-6xl px-6 py-16">
-      <Card className="grid gap-8 p-6 md:grid-cols-[1fr_0.8fr] md:p-8">
+    <section className="border-b border-line bg-white">
+      <div className="mx-auto grid max-w-6xl gap-8 px-6 py-16 md:grid-cols-[1fr_0.74fr] md:items-start">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
             Simple pricing
@@ -29,21 +28,21 @@ export function PricingSection() {
             through Stripe.
           </p>
           <div className="mt-6 grid gap-3 text-sm text-ink/62 sm:grid-cols-3">
-            <div className="rounded-lg border border-line bg-white/70 p-3">
+            <div className="rounded-lg border border-line bg-paper p-3">
               <p className="font-semibold text-ink">Free start</p>
               <p className="mt-1">3 successful rewrites</p>
             </div>
-            <div className="rounded-lg border border-line bg-white/70 p-3">
+            <div className="rounded-lg border border-line bg-mint p-3">
               <p className="font-semibold text-ink">Paid plan</p>
               <p className="mt-1">40 per billing month</p>
             </div>
-            <div className="rounded-lg border border-line bg-white/70 p-3">
+            <div className="rounded-lg border border-line bg-sky p-3">
               <p className="font-semibold text-ink">Company</p>
               <p className="mt-1">TimeAwake Ltd.</p>
             </div>
           </div>
         </div>
-        <div className="rounded-lg border border-line bg-white p-5">
+        <div className="rounded-lg border border-line bg-paper p-5 shadow-soft">
           <p className="text-sm font-medium text-ink/60">Reply In My Voice</p>
           <div className="mt-3 flex items-end gap-2">
             <span className="text-4xl font-semibold">NZD $9</span>
@@ -72,7 +71,7 @@ export function PricingSection() {
             .
           </p>
         </div>
-      </Card>
+      </div>
     </section>
   );
 }
