@@ -435,3 +435,11 @@ Run finished. Done: 0 | Blocked: 11 | Needs human: 0
   - `overnight-supervisor.sh` issue-board sed errors on BSD sed: `RE error: empty (sub)expression` every iteration (non-fatal but means issue-board does not auto-update)
 - Drift: failure thrash polluted blockers-log.md with 9 duplicate entries in under 2 minutes before STOP took effect. Banned-term scan clean. No bad commits — loop never reached commit stage.
 - Suggested user action: **USER ATTENTION** — see plans/STOP-OVERNIGHT.txt for the resume procedure. Also reconsider whether to keep the shell-loop or revert to the proven MCP-driven supervisor pattern (5 PRs merged in last active trigger).
+
+## Monitor at 2026-05-22T01:19:42Z
+- Loop: alive — overnight.log mtime 2 min ago
+- Done since last monitor: 1 confirmed (M2.5-006 CI gate — PR #178 merged); M2.5-003, M2.5-004 also done (may predate last checkpoint). Board total done: 8 (board was restructured vs prior "33 done" count — M0-001..005 now marked dup)
+- BLOCKED-WAITING-USER count: 20
+- BLOCKED-WAITING-ENG count: 0
+- Anomalies: Board restructured — prior monitor reported 33 done, current board shows 8. In-progress items: M2.5-001, M2.5-005, M2.5-008, M2.5-009, M8-001 (5 rows). Last blockers-log entries: M2.5-007 (codex-no-status) and M2.5-002 (npm tsx IPC failure / corpus parse). Recent commits: LearningOps approval UI PR #179/#180 merged, M2.5-002 unblock commit, CI gate #178.
+- Suggested user action: none — loop alive and making progress on M2.5 milestone; M2.5-002 remains a known blocker needing human review

@@ -1,15 +1,15 @@
-# Issue M2.5-008
+# Issue M2.5-009
 
-Title: M2.5-008 Promotion approval UX in /admin/learning
+Title: M2.5-009 Canary deploy for new strategy
 Milestone: M2.5-Learning
-GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/96
+GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/98
 
 ## Brief
 
-`app/admin/learning/page.tsx`: list of recent `LearningRun` rows with status, finding counts, PR links if any. Per-finding view: cluster details, evidence cases, proposed candidate. Admin can mark candidate as `approved` / `needs_revision` / `rejected`. Updates `StrategyCandidate.status` in DB.
+When a StrategyCandidate is promoted to production via merge, use a feature flag (env or KV) to route N% (default 10%) of rewrite traffic to the new strategy. After 24h or 200 rewrites, compare signal-change distributions: if new strategy is worse, auto-disable flag; if better, gradually ramp.
 
 ---
-Detailed brief will be written at `plans/issues/M2.5-008.md` when this milestone starts.
+Detailed brief will be written at `plans/issues/M2.5-009.md` when this milestone starts.
 Source roadmap: `plans/commercialization-roadmap.md`.
 
 ## Repository conventions

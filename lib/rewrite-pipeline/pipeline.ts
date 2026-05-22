@@ -576,9 +576,12 @@ async function tryTargetedSentenceRepair({
 
 export async function rewriteWithFactReconstruct(
   input: RewriteRequestInput,
-  options: { telemetry?: RewriteTelemetryCollector } = {},
+  options: {
+    config?: FactReconstructConfig;
+    telemetry?: RewriteTelemetryCollector;
+  } = {},
 ): Promise<RewriteResponsePayload> {
-  const config = getFactReconstructConfig();
+  const config = options.config ?? getFactReconstructConfig();
   const telemetry = options.telemetry;
   const analysis = analyzeRewriteInput(input);
   const budget = createRewriteBudget(analysis);

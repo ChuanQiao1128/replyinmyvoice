@@ -645,3 +645,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/admin/learning/page.tsx`; `components/admin/admin-shell.tsx`; `tests/unit/admin-learning.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: `npm run typecheck`, `npm run lint`, and full `npm run test` passed. Local browser verification was attempted with `npm run dev -- -p 3010` and `npm run dev -- -H 127.0.0.1 -p 3010`, but the sandbox rejected both bind attempts with `EPERM`.
 - Limitations: No authenticated browser screenshot was captured because the local dev server could not bind in this sandbox, and no production admin session or live database was used.
+
+### 2026-05-22 - cloud-architecture-cost-review - M2.5-009 canary rollout
+
+- Agent: Codex
+- Trigger: The task chose a runtime feature-flag shape for production rewrite strategy canaries and could have introduced Cloudflare KV or another paid runtime dependency.
+- Action: Opened and followed the skill; selected environment-gated routing plus existing `RewriteCostLog` telemetry over a new KV namespace or service. The runtime pauses or ramps canary traffic from database metrics without creating paid infrastructure.
+- Output artifacts: `lib/rewrite-pipeline/canary.ts`; `app/api/rewrite/route.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused canary tests passed, then `npm run lint`, `npm run typecheck`, and `npm run test` passed.
+- Limitations: No exact Cloudflare pricing lookup was needed because no new paid resource was selected, and no production flag was enabled.
+
+### 2026-05-22 - system-spec-synthesis - M2.5-009 canary contract
+
+- Agent: Codex
+- Trigger: The task converted a roadmap stub into an implementation-ready rollout contract for promoted rewrite strategies.
+- Action: Opened and followed the skill at implementation scope; mapped the source facts into a control/canary strategy-version contract, deterministic assignment, signal-distribution comparison, rollout states, and validation plan.
+- Output artifacts: `lib/rewrite-pipeline/canary.ts`; `lib/rewrite-pipeline/config.ts`; `lib/rewrite-pipeline/types.ts`; `app/api/rewrite/route.ts`; `tests/unit/rewrite-canary.test.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: The red focused test failed first because `lib/rewrite-pipeline/canary.ts` did not exist. After implementation, focused tests, Prisma schema validation, `npm run lint`, `npm run typecheck`, and full `npm run test` passed.
+- Limitations: The specific future promoted strategy behavior still has to be implemented in code and labeled with `REWRITE_STRATEGY_CANARY_VERSION` during that release.
+
+### 2026-05-22 - state-machine-modeling - M2.5-009 canary lifecycle
+
+- Agent: Codex
+- Trigger: The task introduced a multi-step deployment lifecycle for rewrite strategy canaries.
+- Action: Opened and followed the skill; modeled canary state as `off`, `monitoring`, `paused`, `ramping`, and `complete`, with transitions driven by feature flag state, sample maturity, average signal-drop comparison, and ramp thresholds.
+- Output artifacts: `lib/rewrite-pipeline/canary.ts`; `tests/unit/rewrite-canary.test.ts`; `docs/learningops-runbook.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Unit tests cover default 10% routing, stable assignment, worse-result pause, and better-result ramp. Full lint, typecheck, and Vitest validation passed.
+- Limitations: The lifecycle is enforced in typed application code rather than a persisted enum because no new state table was added.
+
+### 2026-05-22 - data-module-review - M2.5-009 canary telemetry query
+
+- Agent: Codex
+- Trigger: The task reads production `RewriteCostLog` signal telemetry on the rewrite request path and adds a supporting index.
+- Action: Opened and followed the skill; reviewed `RewriteCostLog` schema and raw SQL patterns, kept the rollout on existing telemetry rows, and added an additive `strategyVersion, createdAt` index for the canary comparison query.
+- Output artifacts: `prisma/schema.prisma`; `prisma/migrations/20260522132500_add_rewrite_cost_log_strategy_version_index/migration.sql`; `lib/rewrite-pipeline/canary.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed with existing broad quota/idempotency findings outside this change. `npx prisma validate` passed with dummy local database URLs, and full lint, typecheck, and Vitest validation passed.
+- Limitations: The migration was not applied to a live database in this turn, and no production telemetry query was run.

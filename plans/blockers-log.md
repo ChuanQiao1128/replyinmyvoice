@@ -153,3 +153,9 @@ Sentinels at monitor exit: `plans/MONEY-MADE.txt` absent, `plans/STOP-OVERNIGHT.
 What was attempted: codex exec did not write plans/task-status.json. Log: plans/codex-exec-M2.5-007.log
 
 What user needs to do: review the branch chore/M2.5-007 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-22T13:16:38+12:00 — M2.5-002 — codex-needs-human
+
+What was attempted: M2.5 baseline could not run: npm tsx IPC failed in sandbox; loader reached corpus parser but the coverage summary table causes a 7-column parse failure.
+
+What user needs to do: review the branch chore/M2.5-002 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.

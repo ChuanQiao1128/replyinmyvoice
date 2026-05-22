@@ -38,14 +38,14 @@ Pick next `pending` with lowest M-number, lowest id. Update status: pending → 
 | M2-008 | M2-Quality | M2-008 Add quality-gate UI for safe-failure state | (dup) | BLOCKED-WAITING-USER |
 | M2-009 | M2-Quality | M2-009 Update Naturalness Check display for repaired candidates | (dup) | BLOCKED-WAITING-USER |
 | M2.5-001 | M2.5-Learning | M2.5-001 Define 100-case baseline corpus across 5 scenarios | https://github.com/ChuanQiao1128/replyinmyvoice/issues/82 | in_progress |
-| M2.5-002 | M2.5-Learning | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md | https://github.com/ChuanQiao1128/replyinmyvoice/issues/84 | pending |
+| M2.5-002 | M2.5-Learning | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md | https://github.com/ChuanQiao1128/replyinmyvoice/issues/84 | BLOCKED-WAITING-USER |
 | M2.5-003 | M2.5-Learning | M2.5-003 Failure-mode clustering by diagnosis tags | https://github.com/ChuanQiao1128/replyinmyvoice/issues/86 | done |
 | M2.5-004 | M2.5-Learning | M2.5-004 Strategy candidate generator: cluster → prompt patch | https://github.com/ChuanQiao1128/replyinmyvoice/issues/88 | done |
 | M2.5-005 | M2.5-Learning | M2.5-005 Auto-draft PR from promotable StrategyCandidate | https://github.com/ChuanQiao1128/replyinmyvoice/issues/90 | in_progress |
 | M2.5-006 | M2.5-Learning | M2.5-006 CI gate: scenario-evaluation regression check | https://github.com/ChuanQiao1128/replyinmyvoice/issues/92 | done |
 | M2.5-007 | M2.5-Learning | M2.5-007 Scheduled LearningOps run (Cloudflare Cron Trigger) | https://github.com/ChuanQiao1128/replyinmyvoice/issues/94 | BLOCKED |
 | M2.5-008 | M2.5-Learning | M2.5-008 Promotion approval UX in /admin/learning | https://github.com/ChuanQiao1128/replyinmyvoice/issues/96 | in_progress |
-| M2.5-009 | M2.5-Learning | M2.5-009 Canary deploy for new strategy | https://github.com/ChuanQiao1128/replyinmyvoice/issues/98 | pending |
+| M2.5-009 | M2.5-Learning | M2.5-009 Canary deploy for new strategy | https://github.com/ChuanQiao1128/replyinmyvoice/issues/98 | in_progress |
 | M2.5-010 | M2.5-Learning | M2.5-010 Strategy rollback on regression | https://github.com/ChuanQiao1128/replyinmyvoice/issues/100 | pending |
 | M3-001 | M3-V2 | M3-001 Add 5 scenarios to lib/rewrite-presets.ts | (dup) | pending |
 | M3-002 | M3-V2 | M3-002 Reduce visible tone presets to 4 | (dup) | pending |
