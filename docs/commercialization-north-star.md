@@ -62,7 +62,7 @@ Use a three-layer operating model.
 
 2. Monitor layer
 
-   Claude's `replyinmyvoice-loop-monitor` scheduled task reads this document and `plans/supervisor-handoff.md`, then performs only health checks, progress summaries, blocker detection, and stop-signal alerts.
+   Claude's `replyinmyvoice-loop-monitor` scheduled task reads this document and `plans/supervisor-handoff.md`, then performs health checks, safe loop restarts, progress summaries, blocker detection, and stop-signal alerts. It does not implement product work and does not call Codex.
 
 3. Executor layer
 
@@ -70,7 +70,9 @@ Use a three-layer operating model.
 
 4. Repair handoff layer
 
-   Claude should not spend monitor budget fixing issues or asking the owner to copy/paste logs into Codex. When it sees a non-user engineering blocker, it writes a sanitized item to `plans/codex-worker-inbox.md`. A dedicated Codex worker or the next supervised Codex session consumes that inbox from an isolated worktree and either fixes the issue, converts it into a scoped board row, or marks it not actionable.
+   Claude should not spend monitor budget fixing issues or asking the owner to copy/paste logs into Codex. When it sees a non-user engineering blocker, it writes a sanitized item to `plans/codex-worker-inbox.md`. A dedicated Codex worker consumes that inbox from an isolated worktree and either fixes the issue, converts it into a scoped board row, or marks it not actionable.
+
+   `plans/overnight-progress.md` is the human-readable report. `plans/codex-worker-inbox.md` is the machine-readable repair queue. The Codex worker must not use ordinary progress prose as its normal work source.
 
 Claude is the watchtower. Codex is the construction worker. The repo documents are the shared contract.
 
@@ -107,6 +109,8 @@ Claude monitor contract:
 - Read recent `origin/main` commits.
 - Check for `plans/MONEY-MADE.txt` and `plans/STOP-OVERNIGHT.txt`.
 - Append a concise checkpoint to `plans/overnight-progress.md`.
+- Append a structured pending item to `plans/codex-worker-inbox.md` for each new actionable non-user blocker, after checking for duplicates.
+- Restart the shell loop only when it is dead or stale, no stop signal exists, and pending work remains.
 - Exit within 3 to 5 minutes.
 
 Codex executor contract:
@@ -121,6 +125,8 @@ Codex worker inbox contract:
 
 - Read `plans/codex-worker-inbox.md` before asking the user to forward monitor output.
 - Process one pending item at a time.
+- Do not infer normal repair tasks from `plans/overnight-progress.md`; that file is for people.
+- Use `plans/issue-board.md`, `plans/blockers-log.md`, and `plans/overnight.log` only as evidence for a queued item, except for the special case of restarting a dead loop when no stop signal exists and pending work remains.
 - Use a separate worktree when the overnight shell loop is active or the main worktree is dirty.
 - Fix only non-user blockers: provider retry/routing, prerequisite cleanup, CI failures, dirty-repo loop bugs, documentation gaps, or scoped engineering defects.
 - Do not process real-money tests, npm publication, provider dashboard changes, missing secrets, legal decisions, or product decisions as autonomous fixes.
@@ -138,6 +144,8 @@ The run states are:
 
 - `running`: shell loop is active and `overnight.log` is updating.
 - `stalled`: no log update for more than 20 minutes or no supervisor process is present.
+- `repair_queued`: Claude has written a pending non-user blocker to `plans/codex-worker-inbox.md`.
+- `repairing`: Codex worker is handling exactly one inbox item in an isolated worktree or scoped branch.
 - `blocked`: issue board or blockers log contains a user-only or engineering blocker.
 - `needs_user`: live payment, npm token, provider dashboard action, or secret update is required.
 - `money_made`: `plans/MONEY-MADE.txt` exists; stop unattended work and alert the user.

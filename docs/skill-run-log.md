@@ -852,3 +852,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `lib/rewrite-failure-reasons.ts`; `lib/observability/rewrite-telemetry.ts`; `lib/rewrite-learning.ts`; `app/api/rewrite/route.ts`; `tests/unit/rewrite-telemetry.test.ts`; `tests/unit/rewrite-learning.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: `scan_data_risks.py --limit 80` completed and reported existing broad quota/idempotency/wall-clock signals outside this scoped change. Focused red/green tests, `npm run lint`, `npm run typecheck`, `npm run test`, and the scoped banned-term scan passed.
 - Limitations: No schema or migration change was required, and no production database rows were inspected or updated.
+
+### 2026-05-22 - system-spec-synthesis - Agent monitor and repair queue contract
+
+- Agent: Codex
+- Trigger: The owner identified a design flaw where Claude monitor progress output and Codex repair work were not cleanly separated.
+- Action: Opened and followed the skill; converted the loose automation workflow into a concrete contract that separates human progress checkpoints from machine repair queue items, assigns ownership across Claude monitor, shell loop, Codex worker, and human owner, and updates the repo source-of-truth docs.
+- Output artifacts: `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/codex-worker-inbox.md`; `plans/codex-worker-prompt.md`; `docs/skill-run-log.md`; Claude scheduled task `replyinmyvoice-loop-monitor` updated through its local hardlink.
+- Verification evidence: Local checks confirmed the Claude scheduled task file and accessible hardlink share the updated size, link count, and mtime; `rg` checks in the isolated clone confirmed the new contract keeps `overnight-progress.md` as human reporting and `codex-worker-inbox.md` as the machine repair queue.
+- Limitations: The repo docs were updated in an isolated clone/branch to avoid racing the active overnight loop. The live Claude task file path under `Documents/Claude/Scheduled` remains unreadable through shell because of macOS permissions, but its same-inode accessible hardlink was updated and stat confirmed the scheduled path changed.
+
+### 2026-05-22 - state-machine-modeling - Agent handoff lifecycle
+
+- Agent: Codex
+- Trigger: The task changed a multi-step automation lifecycle: monitor observation, safe restart, blocker classification, queueing, repair, and owner-only escalation.
+- Action: Opened and followed the skill; modeled the lifecycle as `running`, `stalled`, `repair_queued`, `repairing`, `needs_user`, `money_made`, and `stopped`, with explicit invariants that progress reports are not task queues and Codex worker consumes at most one pending inbox item per run.
+- Output artifacts: `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/codex-worker-prompt.md`; `docs/skill-run-log.md`.
+- Verification evidence: The updated docs define the separate progress/inbox channels, allowed restart behavior, owner-only blockers, and worker non-racing rules.
+- Limitations: No automated transition test was added because this change is an operational-doc and automation-prompt contract, not application runtime code.
