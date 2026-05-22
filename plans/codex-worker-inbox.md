@@ -128,7 +128,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-23T04:35:30+12:00 — M6-007 codex-needs-human:BLOCKED-AUTONOMY
 
-- Status: not_actionable
+- Status: done
 - Source: shell supervisor
 - Class: autonomy
 - Priority: P1
@@ -138,10 +138,11 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 - Worker evidence: 2026-05-23T04:53:03+12:00 — Narrowed M6-007 to the exact remaining runner prerequisite in `plans/m6-validation-report.md`. `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and `npm run cf:build` passed. `npm run test:e2e` is blocked before browser tests execute because this sandbox rejects loopback listen with `EPERM`; a minimal Node HTTP server confirmed the same restriction on `127.0.0.1`. The prior dotnet socket failure is out of scope for M6-007 because this issue does not touch `backend-dotnet/`. No live money, npm publish, dashboard, secret, or `.env.local` change was made.
+- Worker evidence: 2026-05-23T04:57:46+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/217; Documented M6-007 validation evidence and non-sandboxed Playwright runner prerequisite.
 
 ## 2026-05-22T16:50:26Z — INV-2: repair branch active while M8-001 in_progress on board
 
-- Status: pending
+- Status: in_progress
 - Source: Claude monitor
 - Class: dirty_repo
 - Priority: P2
