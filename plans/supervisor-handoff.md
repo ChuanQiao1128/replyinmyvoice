@@ -6,7 +6,7 @@
 
 ## ⚠ ARCHITECTURE CHANGE 2026-05-22 — Monitor-only mode
 
-As of 2026-05-22 the heavy lifting moved to a continuous shell-driven loop: `plans/overnight-supervisor.sh` is started **once** by the user and runs until one of the stop sentinels fires (see "North-star stop conditions" below). That shell loop is the real worker: it pulls the next `pending` issue from `plans/issue-board.md`, branches, calls `codex exec` for the file edits, runs lint/typecheck/test/banned-term scan, commits, pushes, opens the PR, polls CI, and merges.
+As of 2026-05-22 the heavy lifting moved to a continuous shell-driven loop: `plans/overnight-supervisor.sh` is started **once** by the user and runs until one of the stop sentinels fires (see "North-star stop conditions" below). That shell loop is the real worker: it consumes one pending repair item from `plans/codex-worker-inbox.md` first, otherwise pulls the next `pending` issue from `plans/issue-board.md`, branches, calls `codex exec` for the file edits, runs lint/typecheck/test/banned-term scan, commits, pushes, opens the PR, polls CI, and merges.
 
 The durable commercial target is:
 
@@ -25,7 +25,16 @@ cd /Users/qc/Desktop/CloudFlare
 screen -dmS rimv-overnight bash -lc 'cd /Users/qc/Desktop/CloudFlare && bash plans/overnight-supervisor.sh'
 ```
 
-**Your job (the scheduled Claude trigger) is now PURE MONITORING.** Do NOT pick issues or call `mcp__codex__codex` for new implementation work — that would race with the shell loop. Specifically:
+**Your job (the scheduled Claude trigger) is now PURE MONITORING.** Do NOT pick issues or call `mcp__codex__codex` for new implementation work. That would race with the shell loop.
+
+Your outputs have two separate audiences:
+
+- `plans/overnight-progress.md` is the human progress report.
+- `plans/codex-worker-inbox.md` is the structured machine repair queue consumed by the shell loop before normal issue work.
+
+Do not ask the owner to copy progress output into Codex. If a non-user blocker needs engineering repair, write a sanitized pending inbox item.
+
+Specifically:
 
 1. **Liveness check**: confirm `screen -ls` shows `rimv-overnight` or `ps -ef | grep -v grep | grep overnight-supervisor.sh` shows a process. Also check `plans/overnight.log` modification time. If the log has not updated in more than 20 minutes and no stop signal exists, report the stall.
 2. **Restart only when safe**: if the loop is dead, no `plans/STOP-OVERNIGHT.txt` exists, and no `plans/MONEY-MADE.txt` exists, restart it with the `screen` command above. Log the restart in `plans/overnight-progress.md`.
@@ -39,11 +48,11 @@ screen -dmS rimv-overnight bash -lc 'cd /Users/qc/Desktop/CloudFlare && bash pla
 5. **BLOCKED scan**: scan `plans/blockers-log.md` and `plans/issue-board.md` for new blockers since the prior trigger.
 6. **Recent main commits**: read `git log origin/main -5 --oneline`.
 7. **North-star signal**: if `plans/MONEY-MADE.txt` exists, immediately tell the user that real revenue was confirmed and the unattended loop should remain stopped for human review.
-8. **Codex worker handoff**: if the new blocker is not a true user blocker, append a sanitized pending item to `plans/codex-worker-inbox.md` using that file's template. Do this instead of asking the user to copy/paste the monitor summary into Codex. The dedicated Codex worker contract lives in `plans/codex-worker-prompt.md`. Never include secrets or raw user rewrite content.
-9. **Checkpoint write**: append a 4-6 line summary to `plans/overnight-progress.md` with trigger time, loop alive yes/no, issue counts, recent merge summary, new blockers, any Codex-worker inbox item created, and the next commercial gate from `docs/commercialization-north-star.md`.
+8. **Repair queue handoff**: if the new blocker is not a true user blocker, append a sanitized pending item to `plans/codex-worker-inbox.md` using that file's template. Check existing pending or in-progress items first and avoid duplicates. The shell loop will consume the item before normal issue work; the scheduled Codex automation is only a watchdog. Never include secrets or raw user rewrite content.
+9. **Checkpoint write**: append a 4-6 line summary to `plans/overnight-progress.md` with trigger time, loop alive yes/no, issue counts, recent merge summary, new blockers, any repair inbox item created, and the next commercial gate from `docs/commercialization-north-star.md`. Do not put machine-only repair instructions only in the progress report.
 10. **Exit fast**: 3-5 minutes max. You are not doing implementation work in this trigger anymore.
 
-Only override monitor-only mode if the shell loop is wedged in a way that needs structural intervention (e.g. all codex calls have failed for >60 min). In that case, write to blockers-log with the diagnosis and STOP the shell loop (`touch plans/STOP-OVERNIGHT.txt`) rather than competing with it.
+Only override monitor-only mode if the shell loop is wedged in a way that needs structural intervention (e.g. all codex calls have failed for >60 min). In that case, write to blockers-log and `plans/codex-worker-inbox.md` with the diagnosis. Stop the shell loop only when continuing would destroy work, repeat unsafe actions, or race a repair; otherwise let the shell loop consume the repair item itself.
 
 **Time budget per monitor trigger**: 3-5 minutes. Cron still fires every 25-30 min.
 
@@ -59,7 +68,7 @@ Read these files in this order to know what's going on:
 4. `plans/decisions-log.md` — what previous trigger Claudes / codex decided (create if missing)
 5. `plans/blockers-log.md` — known user, provider, and engineering blockers (create if missing)
 6. `plans/overnight-progress.md` — running tally of overnight progress (create if missing)
-7. `plans/codex-worker-inbox.md` — monitor-to-Codex handoff queue for non-user blockers (create if missing)
+7. `plans/codex-worker-inbox.md` — monitor/supervisor repair queue for non-user blockers (create if missing)
 8. `git log origin/main -5 --oneline` — what's recently been merged
 
 If `plans/issue-board.md` is missing, abort and write to `plans/blockers-log.md`: "trigger at <time>: issue board missing, cannot proceed".
@@ -86,10 +95,11 @@ Before exiting, ALWAYS:
    - Board: <done> done / <pending> pending / <in_progress> in_progress / <user_blocked> user-blocked / <provider_blocked> provider-blocked / <prereq_blocked> prereq-blocked / <autonomy_blocked> autonomy-blocked / <plain_blocked> uncategorized-blocked
    - Recent main: <latest merged commit or PR>
    - Blockers: <new blockers or none>
+   - Repair inbox: <new item title or none>
    - Next commercial gate: <auth | rewrite eval | billing | API | MCP | monitoring>
    ```
 2. Append to `plans/blockers-log.md` only if a new user action, provider outage, or engineering action is required. Do not describe `BLOCKED-PREREQ`, `BLOCKED-PROVIDER`, or `BLOCKED-AUTONOMY` as "the user needs to decide" unless the blocker specifically requires an external user action.
-3. Append to `plans/codex-worker-inbox.md` for actionable non-user blockers so a Codex worker can fix them without manual copy/paste from the owner.
+3. Append to `plans/codex-worker-inbox.md` for actionable non-user blockers so the shell loop can fix them without manual copy/paste from the owner.
 4. Remove `plans/supervisor-lock.txt` if this monitor created it.
 5. Exit. Do not start an issue, edit source files, commit, push, merge, or call Codex for implementation.
 
@@ -97,6 +107,7 @@ Before exiting, ALWAYS:
 
 - Do not implement product issues.
 - Do not call Codex MCP for new work.
+- Do not use `plans/overnight-progress.md` as a machine repair queue.
 - Do not run real Stripe charges or refunds.
 - Do not run `npm publish`.
 - Do not print `.env.local`, `.dev.vars`, tokens, API keys, private keys, or provider secrets.
@@ -130,6 +141,6 @@ Just exit. The next scheduled fire is in 25 min.
 # Appendix: division of labor
 
 - Claude scheduled task: monitor, summarize, alert, restart only when safe.
-- Shell supervisor: git, GitHub, CI polling, merge, board status.
+- Shell supervisor: repair inbox consumption, git, GitHub, CI polling, merge, board status.
 - Codex implementation step: scoped file edits and validations only.
 - Human owner: live money actions, production dashboard decisions, npm token/publish approval, final launch calls.
