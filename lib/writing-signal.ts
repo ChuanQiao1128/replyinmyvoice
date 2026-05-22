@@ -8,6 +8,9 @@ export type WritingSignalResult = {
   aiLikePercent: number | null;
   rawAiLikePercent?: number;
   unavailableReason?: string;
+  chars?: number;
+  callCount?: number;
+  latencyMs?: number;
   sentenceScores?: Array<{
     sentence: string;
     aiLikePercent: number;
@@ -88,9 +91,22 @@ export async function measureWritingSignal(
   const apiKey = optionalEnv("SAPLING_API_KEY");
 
   if (provider !== "sapling" || !apiKey) {
-    return { aiLikePercent: null, unavailableReason: "not_configured" };
+    return {
+      aiLikePercent: null,
+      unavailableReason: "not_configured",
+      chars: 0,
+      callCount: 0,
+      latencyMs: 0,
+    };
   }
 
+  const measurementStartedAt = Date.now();
+  let callCount = 0;
+  const measurementMeta = () => ({
+    chars: text.length,
+    callCount,
+    latencyMs: Math.max(0, Date.now() - measurementStartedAt),
+  });
   const timeoutSeconds = Number(optionalEnv("WRITING_SIGNAL_TIMEOUT_SEC", "10"));
 
   const retryCount = Math.max(
@@ -114,6 +130,7 @@ export async function measureWritingSignal(
     );
     const startedAt = Date.now();
     const latencyMs = () => Math.max(0, Date.now() - startedAt);
+    callCount += 1;
 
     try {
       const response = await fetch("https://api.sapling.ai/api/v1/aidetect", {
@@ -150,7 +167,11 @@ export async function measureWritingSignal(
           continue;
         }
 
-        return { aiLikePercent: null, unavailableReason: "provider_error" };
+        return {
+          aiLikePercent: null,
+          unavailableReason: "provider_error",
+          ...measurementMeta(),
+        };
       }
 
       const payload = (await response.json()) as {
@@ -169,7 +190,11 @@ export async function measureWritingSignal(
           success: false,
           errorCode: "schema_changed",
         });
-        return { aiLikePercent: null, unavailableReason: "schema_changed" };
+        return {
+          aiLikePercent: null,
+          unavailableReason: "schema_changed",
+          ...measurementMeta(),
+        };
       }
 
       const sentenceScores = Array.isArray(payload.sentence_scores)
@@ -219,6 +244,7 @@ export async function measureWritingSignal(
 
       return {
         aiLikePercent: calibratedAiLikePercent,
+        ...measurementMeta(),
         ...(calibratedAiLikePercent !== rawAiLikePercent
           ? { rawAiLikePercent }
           : {}),
@@ -242,13 +268,21 @@ export async function measureWritingSignal(
         continue;
       }
 
-      return { aiLikePercent: null, unavailableReason: "timeout_or_network" };
+      return {
+        aiLikePercent: null,
+        unavailableReason: "timeout_or_network",
+        ...measurementMeta(),
+      };
     } finally {
       timeout.clear();
     }
   }
 
-  return { aiLikePercent: null, unavailableReason: "provider_error" };
+  return {
+    aiLikePercent: null,
+    unavailableReason: "provider_error",
+    ...measurementMeta(),
+  };
 }
 
 function calibrateWithSentenceScores({

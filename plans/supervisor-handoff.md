@@ -39,8 +39,9 @@ screen -dmS rimv-overnight bash -lc 'cd /Users/qc/Desktop/CloudFlare && bash pla
 5. **BLOCKED scan**: scan `plans/blockers-log.md` and `plans/issue-board.md` for new blockers since the prior trigger.
 6. **Recent main commits**: read `git log origin/main -5 --oneline`.
 7. **North-star signal**: if `plans/MONEY-MADE.txt` exists, immediately tell the user that real revenue was confirmed and the unattended loop should remain stopped for human review.
-8. **Checkpoint write**: append a 4-6 line summary to `plans/overnight-progress.md` with trigger time, loop alive yes/no, issue counts, recent merge summary, new blockers, and the next commercial gate from `docs/commercialization-north-star.md`.
-9. **Exit fast**: 3-5 minutes max. You are not doing implementation work in this trigger anymore.
+8. **Codex worker handoff**: if the new blocker is not a true user blocker, append a sanitized pending item to `plans/codex-worker-inbox.md` using that file's template. Do this instead of asking the user to copy/paste the monitor summary into Codex. The dedicated Codex worker contract lives in `plans/codex-worker-prompt.md`. Never include secrets or raw user rewrite content.
+9. **Checkpoint write**: append a 4-6 line summary to `plans/overnight-progress.md` with trigger time, loop alive yes/no, issue counts, recent merge summary, new blockers, any Codex-worker inbox item created, and the next commercial gate from `docs/commercialization-north-star.md`.
+10. **Exit fast**: 3-5 minutes max. You are not doing implementation work in this trigger anymore.
 
 Only override monitor-only mode if the shell loop is wedged in a way that needs structural intervention (e.g. all codex calls have failed for >60 min). In that case, write to blockers-log with the diagnosis and STOP the shell loop (`touch plans/STOP-OVERNIGHT.txt`) rather than competing with it.
 
@@ -58,7 +59,8 @@ Read these files in this order to know what's going on:
 4. `plans/decisions-log.md` — what previous trigger Claudes / codex decided (create if missing)
 5. `plans/blockers-log.md` — known user, provider, and engineering blockers (create if missing)
 6. `plans/overnight-progress.md` — running tally of overnight progress (create if missing)
-7. `git log origin/main -5 --oneline` — what's recently been merged
+7. `plans/codex-worker-inbox.md` — monitor-to-Codex handoff queue for non-user blockers (create if missing)
+8. `git log origin/main -5 --oneline` — what's recently been merged
 
 If `plans/issue-board.md` is missing, abort and write to `plans/blockers-log.md`: "trigger at <time>: issue board missing, cannot proceed".
 
@@ -87,8 +89,9 @@ Before exiting, ALWAYS:
    - Next commercial gate: <auth | rewrite eval | billing | API | MCP | monitoring>
    ```
 2. Append to `plans/blockers-log.md` only if a new user action, provider outage, or engineering action is required. Do not describe `BLOCKED-PREREQ`, `BLOCKED-PROVIDER`, or `BLOCKED-AUTONOMY` as "the user needs to decide" unless the blocker specifically requires an external user action.
-3. Remove `plans/supervisor-lock.txt` if this monitor created it.
-4. Exit. Do not start an issue, edit source files, commit, push, merge, or call Codex for implementation.
+3. Append to `plans/codex-worker-inbox.md` for actionable non-user blockers so a Codex worker can fix them without manual copy/paste from the owner.
+4. Remove `plans/supervisor-lock.txt` if this monitor created it.
+5. Exit. Do not start an issue, edit source files, commit, push, merge, or call Codex for implementation.
 
 ## Monitor hard limits
 

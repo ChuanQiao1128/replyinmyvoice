@@ -1,11 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { getSql } from "../../lib/db";
 import {
   createRewriteTelemetryCollector,
+  persistRewriteCostLog,
   serializeRewriteCostLog,
 } from "../../lib/observability/rewrite-telemetry";
 import type { RewriteResponsePayload } from "../../lib/rewrite-types";
 import type { RewriteRequestInput } from "../../lib/validation";
+
+vi.mock("../../lib/db", async () => {
+  const actual = await vi.importActual<typeof import("../../lib/db")>(
+    "../../lib/db",
+  );
+
+  return {
+    ...actual,
+    getSql: vi.fn(),
+  };
+});
 
 const input: RewriteRequestInput = {
   scenario: "Customer support",
@@ -48,6 +61,10 @@ const response: RewriteResponsePayload = {
     ],
   },
 };
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("rewrite telemetry collector", () => {
   it("builds a request-level cost log from provider calls and rewrite result", () => {
@@ -101,5 +118,66 @@ describe("rewrite telemetry collector", () => {
     expect(serializeRewriteCostLog(log).providerCallsJson).toContain(
       "final_signal",
     );
+  });
+
+  it("persists the request log and provider calls in one transaction", async () => {
+    const collector = createRewriteTelemetryCollector({
+      requestId: "req_transaction",
+      startedAt: new Date("2026-05-20T01:00:00.000Z"),
+    });
+    collector.recordProviderCall({
+      provider: "openai",
+      role: "mid_writer",
+      model: "gpt-5.4-mini",
+      inputTokens: 800,
+      outputTokens: 200,
+      estimatedCostUsd: 0.0015,
+      success: true,
+    });
+    collector.recordProviderCall({
+      provider: "sapling",
+      role: "final_signal",
+      characters: 1200,
+      estimatedCostUsd: 0.006,
+      success: true,
+    });
+    const log = collector.finish({
+      input,
+      status: "success",
+      response,
+      strategyVersion: "adaptive_rewrite_orchestrator",
+    });
+    const statements: string[] = [];
+    const directSql = Object.assign(
+      vi.fn(() => {
+        throw new Error("cost log persistence must use a transaction");
+      }),
+      {
+        transaction: vi.fn((callback: (txn: typeof directSql) => unknown[]) => {
+          const tx = vi.fn((strings: TemplateStringsArray) => {
+            statements.push(strings.join("?"));
+            return Promise.resolve([]);
+          });
+          return Promise.all(callback(tx as typeof directSql));
+        }),
+      },
+    );
+    vi.mocked(getSql).mockReturnValue(
+      directSql as unknown as ReturnType<typeof getSql>,
+    );
+
+    await persistRewriteCostLog(log);
+
+    expect(directSql.transaction).toHaveBeenCalledTimes(1);
+    expect(statements.some((sql) => sql.includes('INSERT INTO "RewriteCostLog"')))
+      .toBe(true);
+    expect(
+      statements.some((sql) => sql.includes('"id" = EXCLUDED."id"')),
+    ).toBe(true);
+    expect(statements.some((sql) => sql.includes('DELETE FROM "RewriteProviderCall"')))
+      .toBe(true);
+    expect(
+      statements.filter((sql) => sql.includes('INSERT INTO "RewriteProviderCall"')),
+    ).toHaveLength(2);
   });
 });

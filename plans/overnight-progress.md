@@ -478,3 +478,15 @@ Run finished. Done: 1 | Blocked: 8 | Needs human: 1
 - Paused loop after PR #188 merged so the blocker taxonomy could be fixed without racing the supervisor.
 - Reclassified board blockers: 2 user-blocked / 1 provider-blocked / 8 prereq-blocked / 18 autonomy-blocked / 1 uncategorized blocked.
 - Added a regression test so M1/M2/M3 automation work cannot be reported as BLOCKED-WAITING-USER again.
+
+## Trigger at 2026-05-22T16:30:18+12:00
+Run finished. Done: 0 | Blocked: 1 | Needs human: 0
+
+## Monitor at 2026-05-22T05:37:39Z
+- Loop: alive (overnight.log mtime 7min ago, no in_progress issues on board)
+- Done since last monitor: +0 (13 done total; last PRs: #185–#189)
+- BLOCKED-WAITING-USER count: 0
+- BLOCKED-WAITING-ENG count: 0 — IDs: none
+- BLOCKED-AUTONOMY: 18 | BLOCKED-PREREQ: 8 | BLOCKED-PROVIDER: 1 | BLOCKED(plain): 1 | pending: 31
+- Anomalies: 0 issues in_progress despite loop being alive; 27 pending issues available to pick up — loop may be idle or between iterations
+- Suggested user action: none — no user-decision blockers; loop will self-select next pending issue

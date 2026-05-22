@@ -807,3 +807,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/landing/interactive-demo.tsx`; `components/landing/sample-cases.ts`; `tests/unit/landing-demo-samples.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused landing demo unit test passed after a red failure for the missing fixture module. `npm run lint`, `npm run typecheck`, and `npm run test` passed.
 - Limitations: Playwright browser verification could not start in this sandbox because Next.js could not bind either `0.0.0.0:3000` or `127.0.0.1:3000` and returned `EPERM`.
+
+### 2026-05-22 - system-spec-synthesis - Rewrite Quality Analysis and Codex worker handoff
+
+- Agent: Codex
+- Trigger: User asked to convert owner-facing rewrite-quality analysis requirements and Claude-to-Codex automation notes into durable project goals and implementation-ready docs.
+- Action: Opened and followed the skill; used `spec_outline.py` to confirm the required spec headings; mapped the requirement into a first-version offline report, existing `RewriteCostLog`/`RewriteProviderCall` data sources, safety/privacy rules, report artifacts, verification checks, and a sanitized monitor-to-Codex worker queue.
+- Output artifacts: `docs/rewrite-quality-analysis-spec.md`; `docs/commercialization-north-star.md`; `plans/commercialization-roadmap.md`; `plans/issue-board.md`; `plans/issue-manifest.md`; `plans/supervisor-handoff.md`; `plans/codex-worker-inbox.md`; `plans/codex-worker-prompt.md`; `docs/skill-run-log.md`.
+- Verification evidence: Documentation and queue contracts reference existing Prisma telemetry fields and keep the first version offline rather than adding new infrastructure or an admin UI.
+- Limitations: This turn added the implementation target and handoff contract. The Python/Pandas report script and real production report artifacts are still assigned to M5 follow-up issues.
+
+### 2026-05-22 - data-module-review - M5 telemetry persistence rescue
+
+- Agent: Codex
+- Trigger: Rescuing M5-002 changed `RewriteCostLog`/`RewriteProviderCall` persistence and introduced transaction-based provider-call replacement.
+- Action: Opened and followed the skill; ran `scan_data_risks.py --limit 80`; reviewed `RewriteCostLog.requestId` uniqueness, `RewriteProviderCall.costLogId` foreign key behavior, transaction order, and retry/idempotency behavior.
+- Output artifacts: `lib/observability/rewrite-telemetry.ts`; `tests/unit/rewrite-telemetry.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: The review caught a retry edge case where an upserted request log could keep the old primary key while replacement provider calls used the new log id. The fix updates the cost-log id on request-id conflict before deleting and reinserting provider calls; `RewriteProviderCall_costLogId_fkey` uses `ON UPDATE CASCADE`. Focused telemetry tests, full Vitest, lint, typecheck, and `npm run cf:build` passed.
+- Limitations: The transaction was verified with deterministic unit mocks and schema inspection, not against a live production database.
+
+### 2026-05-22 - resilience-test-generation - Provider telemetry failure coverage
+
+- Agent: Codex
+- Trigger: M5-002 records AI provider and writing-signal provider success/failure telemetry, including malformed output, timeouts, and unavailable signals.
+- Action: Opened and followed the skill; generated a failure matrix for rewrite provider telemetry and cost logging; checked deterministic tests for malformed model output, provider-call success/failure recording, Sapling metadata, and transactional persistence.
+- Output artifacts: `tests/unit/openai-output.test.ts`; `tests/unit/rewrite-pipeline-model.test.ts`; `tests/unit/rewrite-telemetry.test.ts`; `tests/unit/writing-signal.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `resilience_matrix.py "rewrite provider telemetry and cost logging"` produced timeout, transient 5xx, permanent 4xx, duplicate, partial-success, concurrent, and malformed-payload rows. Focused provider telemetry tests passed with 52/52 tests; full Vitest passed with 253/253 tests.
+- Limitations: Tests use local fakes and do not hit live OpenAI/DeepSeek, Sapling, Neon, Stripe, or Cloudflare.

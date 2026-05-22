@@ -22,6 +22,7 @@ The commercial north star is not "all issues closed." The product is ready when 
 - Paid users can complete Stripe checkout, receive the paid quota, manage billing, and keep using the product.
 - Operators can verify failures, costs, quality, support contact paths, deployment status, and rollback readiness.
 - The rewrite system has a clean measured evaluation result before advertising quality claims.
+- The owner can generate an internal Rewrite Quality Analysis report that proves rewrite quality, failure reasons, cost, latency, and strategy-version performance from production telemetry.
 - Developers can create API keys, call a documented rewrite API, and see quota or billing behavior.
 - MCP users can install and run the Reply In My Voice MCP server from Codex, Claude Code, Cursor, or similar clients.
 
@@ -49,6 +50,7 @@ Current product target areas:
 - API key and B2B platform: M8 in `plans/issue-board.md`.
 - MCP and skill distribution: M9 in `plans/issue-board.md`.
 - Rewrite quality and learning loop: M2 and M2.5, backed by `docs/fact-reconstruct-rewrite-target.md`, `docs/deepseek-adaptive-rewrite-attempt-ledger-strategy.md`, and `docs/rewrite-email-eval-cases-100.md`.
+- Rewrite quality and cost analysis: M5, backed by `docs/rewrite-quality-analysis-spec.md`, `RewriteCostLog`, and `RewriteProviderCall`.
 
 ## Proposed Architecture
 
@@ -66,6 +68,10 @@ Use a three-layer operating model.
 
    Codex runs through the shell loop and issue board. Codex implements scoped issues, validates locally, writes `plans/task-status.json`, and leaves git/GitHub operations to the shell supervisor.
 
+4. Repair handoff layer
+
+   Claude should not spend monitor budget fixing issues or asking the owner to copy/paste logs into Codex. When it sees a non-user engineering blocker, it writes a sanitized item to `plans/codex-worker-inbox.md`. A dedicated Codex worker or the next supervised Codex session consumes that inbox from an isolated worktree and either fixes the issue, converts it into a scoped board row, or marks it not actionable.
+
 Claude is the watchtower. Codex is the construction worker. The repo documents are the shared contract.
 
 ## Data Model
@@ -81,6 +87,7 @@ No new database table is introduced by this document. The durable operational st
 | `plans/overnight-progress.md` | Shell loop/Claude | Checkpoint history |
 | `plans/decisions-log.md` | Shell loop/Codex/Claude | Durable decisions |
 | `plans/blockers-log.md` | Shell loop/Claude | User or engineering blockers |
+| `plans/codex-worker-inbox.md` | Claude/Codex | Sanitized monitor-to-Codex repair queue for non-user blockers |
 | `plans/sleep-run-budget.md` | Shell loop/Codex | DeepSeek/Sapling run budget notes |
 | `plans/STOP-OVERNIGHT.txt` | User/Claude in emergency | Stop unattended execution |
 | `plans/MONEY-MADE.txt` | User | Signal that real revenue was confirmed and the current unattended loop should stop for review |
@@ -109,6 +116,15 @@ Codex executor contract:
 - Use this document to avoid optimizing for closed issues while missing commercial readiness.
 - Do not use git or `gh` inside the Codex implementation step; the shell loop owns git/GitHub.
 - Write `plans/task-status.json` with the agreed schema.
+
+Codex worker inbox contract:
+
+- Read `plans/codex-worker-inbox.md` before asking the user to forward monitor output.
+- Process one pending item at a time.
+- Use a separate worktree when the overnight shell loop is active or the main worktree is dirty.
+- Fix only non-user blockers: provider retry/routing, prerequisite cleanup, CI failures, dirty-repo loop bugs, documentation gaps, or scoped engineering defects.
+- Do not process real-money tests, npm publication, provider dashboard changes, missing secrets, legal decisions, or product decisions as autonomous fixes.
+- Record the PR, commit, verification, or not-actionable reason back in the inbox item.
 
 Shell supervisor contract:
 
@@ -167,9 +183,11 @@ Minimum consumer launch checks:
 Minimum rewrite-quality checks:
 
 - A current measured eval report exists.
+- A current internal Rewrite Quality Analysis report exists, generated from `RewriteCostLog` / `RewriteProviderCall` or a documented fixture if production data is not available.
 - Average signal drop and below-threshold counts are based on measured cases, not unavailable scores.
 - Known sample failures are either fixed or explicitly marked as non-launch blockers with rationale.
 - Facts, money, dates, names, deadlines, and no-change-without-confirmation constraints are preserved.
+- Cost per successful rewrite, quality-failure rate, provider failure rate, duration p50/p95, escalation rate, and strategy-version comparison are visible in the owner report.
 
 Minimum developer/API/MCP checks:
 

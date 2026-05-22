@@ -5,6 +5,8 @@ import {
   getOpenAiCompatibleApiKey,
   getOpenAiCompatibleChatCompletionsUrl,
 } from "./openai-compatible";
+import { estimateOpenAiCostUsd } from "./observability/rewrite-cost";
+import type { RewriteTelemetryCollector } from "./observability/rewrite-telemetry";
 import type { SignalQualityResult } from "./rewrite-quality-gate";
 import type { RewritePlan } from "./rewrite-diagnosis";
 import type { RewriteRequestInput } from "./validation";
@@ -1531,6 +1533,16 @@ export type OpenAiModelStage =
   | "escalation"
   | "final_strong";
 
+type OpenAiCompletionOptions = {
+  telemetry?: RewriteTelemetryCollector;
+  stage: OpenAiModelStage;
+  model: string;
+};
+
+export type GenerateRewriteCandidateOptions = {
+  telemetry?: RewriteTelemetryCollector;
+};
+
 export function getOpenAiModelForStage(stage: OpenAiModelStage) {
   const legacyModel = optionalEnv("OPENAI_MODEL", "gpt-4o-mini");
   const primary = optionalEnv("OPENAI_MODEL_PRIMARY", legacyModel);
@@ -1553,24 +1565,104 @@ export function getOpenAiModelForStage(stage: OpenAiModelStage) {
   return primary;
 }
 
-function getRepairModel(attempt = 1) {
+function numberEnv(name: string, fallback: number) {
+  const rawValue = Number(optionalEnv(name, String(fallback)));
+  return Number.isFinite(rawValue) ? rawValue : fallback;
+}
+
+function openAiTelemetryRole(stage: OpenAiModelStage) {
+  if (stage === "primary") {
+    return "mid_writer";
+  }
+
+  if (stage === "repair") {
+    return "cheap_structured";
+  }
+
+  return "strong_escalation";
+}
+
+function openAiPricingForStage(stage: OpenAiModelStage) {
+  if (stage === "repair") {
+    return {
+      inputPer1M: numberEnv("OPENAI_PRICE_CHEAP_INPUT_PER_1M", 0.2),
+      outputPer1M: numberEnv("OPENAI_PRICE_CHEAP_OUTPUT_PER_1M", 1.25),
+    };
+  }
+
+  if (stage === "primary") {
+    return {
+      inputPer1M: numberEnv("OPENAI_PRICE_MID_INPUT_PER_1M", 0.75),
+      outputPer1M: numberEnv("OPENAI_PRICE_MID_OUTPUT_PER_1M", 4.5),
+    };
+  }
+
+  return {
+    inputPer1M: numberEnv("OPENAI_PRICE_STRONG_INPUT_PER_1M", 2.5),
+    outputPer1M: numberEnv("OPENAI_PRICE_STRONG_OUTPUT_PER_1M", 15),
+  };
+}
+
+function getRepairStage(attempt = 1): OpenAiModelStage {
   if (
     attempt >= 3 &&
     optionalEnv("OPENAI_ENABLE_FINAL_STRONG_MODEL", "false") === "true"
   ) {
-    return getOpenAiModelForStage("final_strong");
+    return "final_strong";
   }
 
   if (attempt >= 2) {
-    return getOpenAiModelForStage("escalation");
+    return "escalation";
   }
 
-  return getOpenAiModelForStage("repair");
+  return "repair";
 }
 
-async function createChatCompletion(body: unknown) {
+async function createChatCompletion(
+  body: unknown,
+  options?: OpenAiCompletionOptions,
+) {
   const timeoutSeconds = Number(optionalEnv("OPENAI_TIMEOUT_SEC", "25"));
   const timeout = timeoutSignal(Number.isFinite(timeoutSeconds) ? timeoutSeconds : 25);
+  const startedAt = Date.now();
+
+  function latencyMs() {
+    return Math.max(0, Date.now() - startedAt);
+  }
+
+  function recordProviderCall({
+    errorCode,
+    inputTokens = 0,
+    outputTokens = 0,
+    success,
+  }: {
+    errorCode?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    success: boolean;
+  }) {
+    if (!options?.telemetry) {
+      return;
+    }
+
+    const pricing = openAiPricingForStage(options.stage);
+    options.telemetry.recordProviderCall({
+      provider: "openai",
+      role: openAiTelemetryRole(options.stage),
+      model: options.model,
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd: estimateOpenAiCostUsd({
+        inputTokens,
+        outputTokens,
+        inputPer1M: pricing.inputPer1M,
+        outputPer1M: pricing.outputPer1M,
+      }),
+      latencyMs: latencyMs(),
+      success,
+      errorCode,
+    });
+  }
 
   try {
     const response = await fetch(getOpenAiCompatibleChatCompletionsUrl(), {
@@ -1588,12 +1680,29 @@ async function createChatCompletion(body: unknown) {
         | { error?: { type?: string; code?: string; message?: string } }
         | null;
       const errorType = payload?.error?.type ?? payload?.error?.code ?? response.status;
+      recordProviderCall({ success: false, errorCode: String(errorType) });
       throw new Error(`OpenAI request failed: ${errorType}`);
     }
 
-    return (await response.json()) as {
+    const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string | null } }>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+      };
     };
+    recordProviderCall({
+      inputTokens: payload.usage?.prompt_tokens ?? 0,
+      outputTokens: payload.usage?.completion_tokens ?? 0,
+      success: true,
+    });
+
+    return payload;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      recordProviderCall({ success: false, errorCode: "timeout" });
+    }
+    throw error;
   } finally {
     timeout.clear();
   }
@@ -1603,6 +1712,7 @@ export async function generateRewriteCandidate(
   input: RewriteRequestInput,
   strategy: Strategy,
   plan?: RewritePlan,
+  options: GenerateRewriteCandidateOptions = {},
 ): Promise<RewriteCandidate> {
   if (strategy.id === "thread_reply") {
     return generateThreadFallback(input);
@@ -1614,53 +1724,56 @@ export async function generateRewriteCandidate(
 
   const model = getOpenAiModelForStage("primary");
 
-  const completion = await createChatCompletion({
-    model,
-    temperature: strategy.temperature,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are ReplyInMyVoice, a writing assistant for everyday replies.\n" +
-          "Your job is to rewrite the user's draft so it sounds natural, personal, and context-aware while preserving the user's facts.\n\n" +
-          "Rules:\n" +
-          "- Do not invent facts, promises, timelines, apologies, policies, discounts, meetings, names, or outcomes.\n" +
-          "- Use only information from the draft and context fields.\n" +
-          "- Keep the user's intent.\n" +
-          "- Preserve concrete facts and constraints.\n" +
-          "- Preserve named amounts, seat counts, dates, user counts, plan status, and requested next steps exactly when provided.\n" +
-          "- If the draft includes a forwardable summary, keep that summary or a close equivalent.\n" +
-          "- If the draft asks the recipient to send names, email addresses, files, or other details, keep that ask unless the context says not to.\n" +
-          "- For long customer support replies, prefer several short paragraphs over one dense paragraph.\n" +
-          "- Do not make the reply so short that it stops answering the customer's specific questions.\n" +
-          "- If important context is missing, keep the reply neutral rather than adding details.\n" +
-          "- Avoid sounding overly polished, generic, corporate, or robotic.\n" +
-          "- Keep the reply compact, practical, and send-ready.\n" +
-          "- Do not add a sign-off, team name, or closing sentence unless the draft already has one.\n" +
-          "- Use the provided scenario guardrails and rewrite plan as internal instructions.\n" +
-          "- If diagnosis tags are present, directly repair those causes instead of doing a general polish pass.\n" +
-          "- Before returning, check that names, numbers, dates, amounts, role details, and requested next steps still match the input.\n" +
-          "- Prefer a short email-thread shape over a formal paragraph; line breaks are allowed inside rewrittenText.\n" +
-          "- A good reply may be two brief paragraphs, each with one sentence.\n" +
-          "- When the topic is a parent, student, customer, or teammate reply, a brief human thread phrase is usually better than a formal explanation.\n" +
-          "- Do not smooth every sentence into the same polished rhythm; vary sentence length naturally.\n" +
-          "- Avoid stock phrases like 'Thank you for reaching out', 'I understand your concern', and 'at your earliest convenience' unless the user's draft clearly needs them.\n" +
-          "- Do not discuss hiddenness, evasion, or whether the reply will pass automated reviews.\n" +
-          "- Return strict JSON only with keys: rewrittenText, changeSummary, riskNotes.\n\n" +
-          "Tone guidance:\n" +
-          "- warm: friendly, clear, kind, natural, concise.\n" +
-          "- direct: concise, professional, clear, low-fluff.\n" +
-          "- Tone preset is the user's visible style choice. Follow it unless it would add facts or make the reply unsafe.\n" +
-          "- Warm: adds a little relationship tone without adding facts.\n" +
-          "- Direct: removes padding and keeps the reply plain without removing facts.",
-      },
-      {
-        role: "user",
-        content: buildUserPrompt(input, strategy, plan),
-      },
-    ],
-  });
+  const completion = await createChatCompletion(
+    {
+      model,
+      temperature: strategy.temperature,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are ReplyInMyVoice, a writing assistant for everyday replies.\n" +
+            "Your job is to rewrite the user's draft so it sounds natural, personal, and context-aware while preserving the user's facts.\n\n" +
+            "Rules:\n" +
+            "- Do not invent facts, promises, timelines, apologies, policies, discounts, meetings, names, or outcomes.\n" +
+            "- Use only information from the draft and context fields.\n" +
+            "- Keep the user's intent.\n" +
+            "- Preserve concrete facts and constraints.\n" +
+            "- Preserve named amounts, seat counts, dates, user counts, plan status, and requested next steps exactly when provided.\n" +
+            "- If the draft includes a forwardable summary, keep that summary or a close equivalent.\n" +
+            "- If the draft asks the recipient to send names, email addresses, files, or other details, keep that ask unless the context says not to.\n" +
+            "- For long customer support replies, prefer several short paragraphs over one dense paragraph.\n" +
+            "- Do not make the reply so short that it stops answering the customer's specific questions.\n" +
+            "- If important context is missing, keep the reply neutral rather than adding details.\n" +
+            "- Avoid sounding overly polished, generic, corporate, or robotic.\n" +
+            "- Keep the reply compact, practical, and send-ready.\n" +
+            "- Do not add a sign-off, team name, or closing sentence unless the draft already has one.\n" +
+            "- Use the provided scenario guardrails and rewrite plan as internal instructions.\n" +
+            "- If diagnosis tags are present, directly repair those causes instead of doing a general polish pass.\n" +
+            "- Before returning, check that names, numbers, dates, amounts, role details, and requested next steps still match the input.\n" +
+            "- Prefer a short email-thread shape over a formal paragraph; line breaks are allowed inside rewrittenText.\n" +
+            "- A good reply may be two brief paragraphs, each with one sentence.\n" +
+            "- When the topic is a parent, student, customer, or teammate reply, a brief human thread phrase is usually better than a formal explanation.\n" +
+            "- Do not smooth every sentence into the same polished rhythm; vary sentence length naturally.\n" +
+            "- Avoid stock phrases like 'Thank you for reaching out', 'I understand your concern', and 'at your earliest convenience' unless the user's draft clearly needs them.\n" +
+            "- Do not discuss hiddenness, evasion, or whether the reply will pass automated reviews.\n" +
+            "- Return strict JSON only with keys: rewrittenText, changeSummary, riskNotes.\n\n" +
+            "Tone guidance:\n" +
+            "- warm: friendly, clear, kind, natural, concise.\n" +
+            "- direct: concise, professional, clear, low-fluff.\n" +
+            "- Tone preset is the user's visible style choice. Follow it unless it would add facts or make the reply unsafe.\n" +
+            "- Warm: adds a little relationship tone without adding facts.\n" +
+            "- Direct: removes padding and keeps the reply plain without removing facts.",
+        },
+        {
+          role: "user",
+          content: buildUserPrompt(input, strategy, plan),
+        },
+      ],
+    },
+    { telemetry: options.telemetry, stage: "primary", model },
+  );
 
   const rawContent = completion.choices?.at(0)?.message?.content;
   if (!rawContent) {
@@ -1679,30 +1792,35 @@ export async function generateRewriteCandidate(
 
 export async function generateRepairCandidate(
   repairInput: RepairPromptInput,
+  options: GenerateRewriteCandidateOptions = {},
 ): Promise<RewriteCandidate> {
-  const model = getRepairModel(repairInput.attempt);
+  const stage = getRepairStage(repairInput.attempt);
+  const model = getOpenAiModelForStage(stage);
 
-  const completion = await createChatCompletion({
-    model,
-    temperature: 0.62,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are ReplyInMyVoice repairing a rejected rewrite.\n" +
-          "Return a better send-ready rewrite that preserves facts and avoids polished template wording.\n" +
-          "Do not invent details, names, promises, account actions, refunds, or timelines.\n" +
-          "Do not add a sign-off unless the original draft had one.\n" +
-          "Use natural, practical wording and varied sentence length.\n" +
-          "Return strict JSON only with keys: rewrittenText, changeSummary, riskNotes.",
-      },
-      {
-        role: "user",
-        content: buildRepairUserPrompt(repairInput),
-      },
-    ],
-  });
+  const completion = await createChatCompletion(
+    {
+      model,
+      temperature: 0.62,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are ReplyInMyVoice repairing a rejected rewrite.\n" +
+            "Return a better send-ready rewrite that preserves facts and avoids polished template wording.\n" +
+            "Do not invent details, names, promises, account actions, refunds, or timelines.\n" +
+            "Do not add a sign-off unless the original draft had one.\n" +
+            "Use natural, practical wording and varied sentence length.\n" +
+            "Return strict JSON only with keys: rewrittenText, changeSummary, riskNotes.",
+        },
+        {
+          role: "user",
+          content: buildRepairUserPrompt(repairInput),
+        },
+      ],
+    },
+    { telemetry: options.telemetry, stage, model },
+  );
 
   const rawContent = completion.choices?.at(0)?.message?.content;
   if (!rawContent) {

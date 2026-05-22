@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   generateGuaranteedRewriteCandidate,
@@ -7,6 +7,7 @@ import {
   getRewriteStrategies,
   normalizeRewriteOutput,
 } from "../../lib/openai";
+import { createRewriteTelemetryCollector } from "../../lib/observability/rewrite-telemetry";
 import { isCandidateCompleteEnough } from "../../lib/rewrite-completeness";
 
 describe("normalizeRewriteOutput", () => {
@@ -70,6 +71,107 @@ describe("OpenAI model configuration", () => {
       expect(getOpenAiModelForStage("final_strong")).toBe("strong-model");
     } finally {
       for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+});
+
+describe("OpenAI rewrite telemetry", () => {
+  it("records token and cost telemetry for model-backed rewrite calls", async () => {
+    const originalEnv = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_MODEL_PRIMARY: process.env.OPENAI_MODEL_PRIMARY,
+      OPENAI_PRICE_MID_INPUT_PER_1M: process.env.OPENAI_PRICE_MID_INPUT_PER_1M,
+      OPENAI_PRICE_MID_OUTPUT_PER_1M: process.env.OPENAI_PRICE_MID_OUTPUT_PER_1M,
+    };
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL_PRIMARY = "test-primary-model";
+    process.env.OPENAI_PRICE_MID_INPUT_PER_1M = "1";
+    process.env.OPENAI_PRICE_MID_OUTPUT_PER_1M = "2";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  rewrittenText: "Hi Monica, Jordan can finish this by Friday.",
+                  changeSummary: ["Made the reply clearer."],
+                  riskNotes: ["Review before sending."],
+                }),
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+          },
+        }),
+      ),
+    );
+
+    try {
+      const strategy = getRewriteStrategies().find(
+        (candidate) => candidate.id === "plain_note",
+      );
+      const telemetry = createRewriteTelemetryCollector({
+        requestId: "req_openai_legacy",
+        startedAt: new Date("2026-05-22T01:00:00.000Z"),
+      });
+
+      await generateRewriteCandidate(
+        {
+          scenario: "General reply",
+          messageToReplyTo: "",
+          roughDraftReply: "Hi Monica, Jordan can finish this by Friday.",
+          audience: "",
+          purpose: "",
+          whatHappened: "",
+          factsToPreserve: "",
+          tone: "warm",
+          tonePreset: "Warm",
+        },
+        strategy!,
+        undefined,
+        { telemetry },
+      );
+
+      const log = telemetry.finish({
+        input: {
+          scenario: "General reply",
+          messageToReplyTo: "",
+          roughDraftReply: "Hi Monica, Jordan can finish this by Friday.",
+          audience: "",
+          purpose: "",
+          whatHappened: "",
+          factsToPreserve: "",
+          tone: "warm",
+          tonePreset: "Warm",
+        },
+        status: "server_failed",
+        errorCode: "test_only",
+        strategyVersion: "legacy_test",
+      });
+
+      expect(log.providerCalls).toHaveLength(1);
+      expect(log.providerCalls[0]).toMatchObject({
+        provider: "openai",
+        role: "mid_writer",
+        model: "test-primary-model",
+        inputTokens: 1000,
+        outputTokens: 500,
+        success: true,
+      });
+      expect(log.openAiCostUsd).toBeCloseTo(0.002, 8);
+    } finally {
+      vi.unstubAllGlobals();
+      for (const [key, value] of Object.entries(originalEnv)) {
         if (value === undefined) {
           delete process.env[key];
         } else {

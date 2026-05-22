@@ -1,7 +1,7 @@
-# Issue M4-002
+# Issue M5-002
 
-Title: M4-002 Replace interactive-demo samples with measured ones
-Milestone: M4-Landing
+Title: M5-002 Capture telemetry across pipeline (OpenAI tokens + Sapling chars + estimator + persist)
+Milestone: M5-Telemetry
 GitHub: https://github.com/ChuanQiao1128/replyinmyvoice/issues/(dup)
 
 ## Brief

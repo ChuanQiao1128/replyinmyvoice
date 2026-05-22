@@ -1,7 +1,7 @@
 # Commercialization Roadmap — Reply In My Voice
 
 Date: 2026-05-21
-End state: `replyinmyvoice.com` serves the live app, accepts NZ$9/month subscriptions, quality gate enforced, admin telemetry working, API keys available, and MCP distribution verified.
+End state: `replyinmyvoice.com` serves the live app, accepts NZ$9/month subscriptions, quality gate enforced, owner rewrite-quality analysis working, API keys available, and MCP distribution verified.
 Commercial north star: `docs/commercialization-north-star.md`.
 See `plans/commercialization-recon.md` for current state snapshot.
 
@@ -17,7 +17,7 @@ Updated 2026-05-21 after expansion to Version B (Consumer + API + MCP simultaneo
 | **M2.5** | **Learning loop** | **Self-improving quality via LearningOps V1** | **10** |
 | M3 | Workspace V2 + char limits | Ship the simplified UX | 8 |
 | M4 | Landing & legal polish | Production-grade marketing site | 10 |
-| M5 | Cost telemetry + admin | Operator visibility (consolidated) | 6 |
+| M5 | Cost telemetry + rewrite analysis | Owner visibility into quality, failures, cost, and strategy versions | 6 |
 | M6 | Production verification | Confirm everything live | 8 |
 | M7 | Launch day & growth | Smoke, analytics, support | 8 |
 | **M8** | **B2B API + Keys** | **Developer API with tiered subscriptions** | **16** |
@@ -127,25 +127,21 @@ Each issue ≤30 min of codex work, single PR-sized scope. Codex briefs follow t
 
 ---
 
-## M5 — Cost telemetry + admin dashboard
+## M5 — Cost telemetry + Rewrite Quality Analysis
 
-**Why**: Without per-request cost data you can't validate the NZ$9/40-rewrite plan won't lose money on heavy users.
+**Why**: Without per-request quality and cost analysis, the owner cannot tell whether the rewrite system is actually improving, whether quality gates are protecting users, which failure modes matter, or whether the NZ$9/40-rewrite plan can run profitably.
+
+First version: offline report, not admin UI. Source of truth: `docs/rewrite-quality-analysis-spec.md`.
 
 ### Issues
 - `M5-001` Prisma migration: `RewriteCostLog` table per `docs/next-development-brief.md` schema
-- `M5-002` Prisma migration: `RewriteProviderCall` table
-- `M5-003` Capture OpenAI `usage.prompt_tokens` / `completion_tokens` per call in `lib/openai.ts`
-- `M5-004` Capture Sapling char counts in `lib/writing-signal.ts`
-- `M5-005` Cost estimator in `lib/observability/`: maps tokens × model price → USD
-- `M5-006` Persist `RewriteCostLog` + `RewriteProviderCall` at end of pipeline
-- `M5-007` `/admin` overview: today/7d/30d cards (requests, success rate, avg signal drop, avg cost, P95 cost, escalation rate, top expensive scenarios)
-- `M5-008` `/admin/rewrites` table with pagination
-- `M5-009` `/admin/rewrites/[id]` detail with provider-call breakdown
-- `M5-010` Admin auth gate: `ADMIN_EMAILS` allowlist, server-side 404 for non-admins, never on landing nav
-- `M5-011` Tests: `tests/unit/admin-auth.test.ts`, `tests/unit/rewrite-cost.test.ts`
-- `M5-012` `ADMIN_ALLOW_RAW_REWRITE_TEXT=false` default; gated raw text display
+- `M5-002` Capture telemetry across pipeline: LLM tokens, Sapling calls/chars, estimator, `RewriteCostLog`, and `RewriteProviderCall`
+- `M5-003` `scripts/analyze_rewrite_quality.py`: read-only SQL → Pandas aggregation → Markdown + CSV + PNG charts
+- `M5-004` Failure reason normalization: ensure `RewriteCostLog.errorCode` carries primary quality/provider/server reason
+- `M5-005` Fixture-backed report tests: success, quality failure, server failure, unavailable signal, worse-than-draft, escalation, and multiple strategies
+- `M5-006` Owner runbook: how to generate, read, and avoid publishing sensitive report artifacts
 
-**Exit criteria**: Every rewrite logs cost; admin sees real numbers; non-admin gets 404 on `/admin`.
+**Exit criteria**: Every rewrite logs cost and signal metrics; the owner can generate `docs/rewrite-quality-analysis-report.md`, `exports/rewrite-quality-summary.csv`, and six charts without raw user text; report shows success rate, quality failures, failure reasons, average signal drop, no-regression rate, cost per success, p50/p95 duration, escalation rate, and strategy-version comparison.
 
 ---
 

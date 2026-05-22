@@ -241,24 +241,24 @@ body:
 > Three coupled changes in one issue (small enough to ship together): (a) `lib/openai.ts` returns `{ tokens: { prompt, completion }, model, role }` per call; (b) `lib/writing-signal.ts` returns `{ chars, callCount, latencyMs }` per Sapling call; (c) new `lib/observability/cost-estimator.ts` maps to USD using env-configured pricing; (d) `lib/rewrite-pipeline/pipeline.ts` writes `RewriteCostLog` + N×`RewriteProviderCall` in a transaction at end of every request (success, quality_failed, provider_failed). Failure to log MUST NOT fail the request. Tests: `tests/unit/rewrite-cost.test.ts`.
 
 ### M5-003
-title: M5-003 /admin overview page with cost cards
+title: M5-003 Offline Rewrite Quality Analysis report script
 body:
-> `app/admin/page.tsx`: cards for today / 7d / 30d windows showing requests, success rate, avg signal drop, %below 50% final, avg cost per successful rewrite, P95 cost, escalation rate, top 5 expensive scenarios. Server-rendered from `RewriteCostLog`.
+> Implement `scripts/analyze_rewrite_quality.py` per `docs/rewrite-quality-analysis-spec.md`. It reads `RewriteCostLog` and `RewriteProviderCall` through a read-only SQL connection, aggregates request volume, success/failure breakdown, signal drop, no-regression rate, cost per successful rewrite, p50/p95 duration, escalation rate, and strategy-version comparisons, then writes `docs/rewrite-quality-analysis-report.md`, `exports/rewrite-quality-summary.csv`, and six PNG charts under `exports/charts/`. Do not output raw user text, emails, user ids, database URLs, or secrets.
 
 ### M5-004
-title: M5-004 /admin/rewrites table + detail page
+title: M5-004 Normalize rewrite failure reasons for analysis
 body:
-> Two pages, one issue. `app/admin/rewrites/page.tsx`: paginated table (date, user email, scenario, tone, status, draft/rewrite signal, change, strategies/repairs/rejected counts, escalation, cost, duration). Filters: date range, status, scenario. `app/admin/rewrites/[id]/page.tsx`: request metadata + per-`RewriteProviderCall` cost breakdown + diagnosis tags + rewrite plan + learning sample link. Raw text only if `ADMIN_ALLOW_RAW_REWRITE_TEXT=true`.
+> Ensure `RewriteCostLog.errorCode` records the primary machine-readable reason for failed or partial requests: `signal_unavailable`, `naturalness_gate_failed`, `fact_check_failed`, `reviewer_threshold_failed`, `server_failed`, or a provider-specific code. Provider-specific details stay on `RewriteProviderCall.errorCode`. Add tests so quality failures, provider unavailable results, and server failures map to useful analysis labels.
 
 ### M5-005
-title: M5-005 Admin auth + nav gating + pricing decision panel
+title: M5-005 Fixture-backed Rewrite Quality Analysis tests
 body:
-> Three coupled small changes: (a) `lib/admin-auth.ts` checks signed-in user against `ADMIN_EMAILS` and `ADMIN_ENTRA_USER_IDS`; non-admin gets 404; (b) Admin entry icon in `/app` header renders only for admins, never on public pages; (c) `/admin/costs` panel: plan price / quota / Stripe fee est / avg variable cost / cost at 40/50/100 rewrites / gross margin estimate. Tests: `tests/unit/admin-auth.test.ts`.
+> Add deterministic tests for the offline analysis script using a small fixture dataset. Cover success, quality failure, server failure, unavailable signal, rewrite-worse-than-draft, escalation, two strategy versions, empty dataset, and privacy guardrails that prevent raw text, user ids, emails, or database URLs from appearing in the generated report.
 
 ### M5-006
-title: M5-006 End-to-end test: rewrite → cost log + admin display
+title: M5-006 Owner runbook for rewrite-quality reports
 body:
-> E2E test that does one rewrite as a test user, then signs in as admin (`ADMIN_EMAILS` test value) and verifies the new cost log row appears in `/admin/rewrites` and detail page renders with provider-call breakdown. Catches regression at the integration seam between pipeline → DB → admin UI.
+> Document how the owner runs the report, what each metric means, which artifacts are safe to commit, how to interpret top risks, and what decisions the report should drive: prompt/strategy repair, fact-gate hardening, provider retry/fallback, budget tuning, or canary rollout/rollback. Link from `docs/rewrite-quality-analysis-spec.md`.
 
 ---
 
