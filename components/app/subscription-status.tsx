@@ -32,14 +32,14 @@ async function openCheckout() {
 
 export function SubscriptionStatus({ status, usageLabel, paid }: Props) {
   return (
-    <div className="rounded-lg border border-line bg-white/75 p-4">
+    <div className="rounded-lg border border-line bg-white/82 p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold">Account</p>
           <p className="mt-1 text-sm text-ink/60">
             {paid ? `Subscription: ${status}` : "Free workspace"}
           </p>
-          <p className="mt-1 text-sm font-medium text-sage">{usageLabel}</p>
+          <p className="mt-1 text-sm font-medium text-evergreen">{usageLabel}</p>
           <p className="mt-1 flex items-center gap-1.5 text-xs text-ink/45">
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
             Operated by TimeAwake Ltd. Billing is handled by Stripe.

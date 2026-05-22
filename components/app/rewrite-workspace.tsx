@@ -366,36 +366,46 @@ export function RewriteWorkspace({
 
   return (
     <main className="min-h-screen bg-paper text-ink">
-      <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-8">
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-semibold">Rewrite workspace</h1>
-            <p className="mt-2 text-sm text-ink/60">
-              Paste the message if you have it, then paste the draft. The rewrite
-              keeps the facts intact.
-            </p>
+      <section className="border-b border-line bg-cream">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="text-sm font-semibold text-brick">Workspace</p>
+              <h1 className="mt-2 text-3xl font-semibold md:text-4xl">
+                Rewrite a reply without losing the facts.
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-ink/62">
+                Paste the message you are answering, add the draft you already
+                have, then choose the tone that fits the relationship.
+              </p>
+            </div>
+            <Button onClick={resetWorkspace} type="button" variant="secondary">
+              <FilePlus2 className="h-4 w-4" aria-hidden="true" />
+              New draft
+            </Button>
           </div>
-          <Button onClick={resetWorkspace} type="button" variant="secondary">
-            <FilePlus2 className="h-4 w-4" aria-hidden="true" />
-            New draft
-          </Button>
+          <div className="mt-5">
+            <SubscriptionStatus
+              paid={paid}
+              status={subscriptionStatus}
+              usageLabel={usageLabel}
+            />
+          </div>
         </div>
-        <SubscriptionStatus
-          paid={paid}
-          status={subscriptionStatus}
-          usageLabel={usageLabel}
-        />
-        <form className="mt-5 space-y-5" onSubmit={submit}>
+      </section>
+
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)] lg:items-start">
+        <form className="space-y-5" onSubmit={submit}>
           <Card className="p-4 md:p-5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <label
                 className="text-base font-semibold"
                 htmlFor="messageToReplyTo"
               >
-                Context or message
+                Message to reply to
               </label>
-              <div className="flex items-center gap-2">
-                <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span className="rounded-md bg-mist px-3 py-1 text-xs font-semibold text-ink/55">
                   {combinedLength}/{rewriteInputLimits.combined}
                 </span>
                 <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
@@ -413,16 +423,16 @@ export function RewriteWorkspace({
               onChange={(event) =>
                 updateField("messageToReplyTo", event.target.value)
               }
-              placeholder="Optional. Paste the email, note, job post, or situation you are responding to."
+              placeholder="Optional. Paste the email, note, or situation you are responding to."
               rows={6}
               value={form.messageToReplyTo}
             />
           </Card>
 
           <Card className="p-4 md:p-5">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <label className="text-base font-semibold" htmlFor="roughDraftReply">
-                Draft to rewrite
+                Rough draft reply
               </label>
               <Remaining
                 max={rewriteInputLimits.roughDraftReply}
@@ -436,7 +446,7 @@ export function RewriteWorkspace({
               onChange={(event) =>
                 updateField("roughDraftReply", event.target.value)
               }
-              placeholder="Required. Paste the draft that sounds too stiff, generic, or over-polished."
+              placeholder="Required. Paste the draft that sounds stiff, generic, or unlike you."
               required
               rows={9}
               value={form.roughDraftReply}
@@ -541,7 +551,7 @@ export function RewriteWorkspace({
           </Card>
 
           <Card className="p-4 md:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold">Tone</h2>
                 <p className="mt-1 text-sm text-ink/55">
@@ -554,8 +564,8 @@ export function RewriteWorkspace({
                   <button
                     className={`rounded-md border px-4 py-2 text-sm font-semibold transition ${
                       form.tonePreset === tonePreset
-                        ? "border-ink bg-ink text-paper"
-                        : "border-line bg-white text-ink/65 hover:text-ink"
+                        ? "border-evergreen bg-evergreen text-cream"
+                        : "border-line bg-cream text-ink/65 hover:border-evergreen/35 hover:text-ink"
                     }`}
                     key={tonePreset}
                     onClick={() => updateTonePreset(tonePreset)}
@@ -577,7 +587,7 @@ export function RewriteWorkspace({
             {loading ? (
               <div
                 aria-live="polite"
-                className="mt-4 rounded-lg border border-line bg-white px-3 py-3"
+                className="mt-4 rounded-md border border-line bg-white px-3 py-3"
               >
                 <div className="grid gap-2 md:grid-cols-3">
                   {progressSteps.map((step, index) => (
@@ -594,7 +604,7 @@ export function RewriteWorkspace({
                         />
                       ) : index === loadingStepIndex ? (
                         <Loader2
-                          className="h-4 w-4 animate-spin text-clay"
+                          className="h-4 w-4 animate-spin text-brick"
                           aria-hidden="true"
                         />
                       ) : (
@@ -615,7 +625,7 @@ export function RewriteWorkspace({
           ) : null}
         </form>
 
-        <section className="mt-5 space-y-5">
+        <section className="space-y-5 lg:sticky lg:top-24">
           <Card className="p-4 md:p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">Rewritten text</h2>
@@ -644,10 +654,10 @@ export function RewriteWorkspace({
                 </Button>
               </div>
             </div>
-            <div className="min-h-60 whitespace-pre-wrap rounded-lg border border-line bg-white p-4 text-sm leading-7 text-ink md:text-base md:leading-8">
+            <div className="min-h-72 whitespace-pre-wrap rounded-md border border-line bg-white p-4 text-sm leading-7 text-ink md:text-base md:leading-8">
               {loading ? (
                 <div className="flex h-48 flex-col items-center justify-center text-center text-ink/55">
-                  <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
+                  <Sparkles className="mb-3 h-5 w-5 text-brick" aria-hidden="true" />
                   <p className="font-semibold text-ink">
                     {progressSteps[loadingStepIndex]}
                   </p>
@@ -659,7 +669,7 @@ export function RewriteWorkspace({
                 result?.rewrittenText ??
                 (qualityFailure ? (
                   <div className="flex h-48 flex-col items-center justify-center text-center text-ink/55">
-                    <Sparkles className="mb-3 h-5 w-5 text-clay" aria-hidden="true" />
+                    <Sparkles className="mb-3 h-5 w-5 text-brick" aria-hidden="true" />
                     <p className="font-semibold text-ink">
                       {titleForQualityFailure(qualityFailure.reason)}
                     </p>
@@ -676,7 +686,7 @@ export function RewriteWorkspace({
           <Card className="p-4 md:p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-semibold">Naturalness Check</h2>
-              <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-sage">
+              <span className="rounded-md bg-mist px-3 py-1 text-xs font-semibold text-evergreen">
                 {labelForNaturalness(visibleNaturalness)}
               </span>
             </div>
@@ -707,25 +717,25 @@ export function RewriteWorkspace({
           <div className="grid gap-5 md:grid-cols-2">
             <Card className="p-4 md:p-5">
               <h2 className="font-semibold">Change summary</h2>
-              <ul className="mt-3 space-y-2 text-sm text-ink/65">
+              <ul className="mt-3 list-disc space-y-2 pl-4 text-sm text-ink/65">
                 {(result?.changeSummary ?? ["No rewrite yet."]).map((item) => (
-                  <li key={item}>- {item}</li>
+                  <li key={item}>{item}</li>
                 ))}
               </ul>
             </Card>
             <Card className="p-4 md:p-5">
               <h2 className="font-semibold">Risk notes</h2>
-              <ul className="mt-3 space-y-2 text-sm text-ink/65">
+              <ul className="mt-3 list-disc space-y-2 pl-4 text-sm text-ink/65">
                 {(result?.riskNotes ?? ["Review facts before sending."]).map(
                   (item) => (
-                    <li key={item}>- {item}</li>
+                    <li key={item}>{item}</li>
                   ),
                 )}
               </ul>
             </Card>
           </div>
 
-          <details className="rounded-lg border border-line bg-white/70 p-4 shadow-soft">
+          <details className="rounded-lg border border-line bg-cream/78 p-4 shadow-soft">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">
               <span>Recent rewrites</span>
               <span className="text-xs font-medium text-ink/45">
@@ -742,7 +752,7 @@ export function RewriteWorkspace({
               {history.length ? (
                 history.map((item) => (
                   <button
-                    className="w-full rounded-lg border border-line bg-white p-3 text-left text-sm hover:bg-paper"
+                    className="w-full rounded-md border border-line bg-white p-3 text-left text-sm transition hover:border-evergreen/35 hover:bg-mist/35"
                     key={item.createdAt}
                     onClick={() =>
                       setResult({

@@ -45,6 +45,24 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-22 - web-design-engineer - M4-011 partial frontend rescue
+
+- Agent: Codex
+- Trigger: Preserving browser-visible frontend redesign work from the aborted M4-011 run.
+- Action: Opened the skill and used it to classify the rescued work as a partial design candidate, not a completed redesign. Kept the branch scoped to UI files, design brief, and frontend copy tests.
+- Output artifacts: `plans/frontend-redesign-design-brief.md`; `tests/unit/frontend-redesign-copy.test.ts`; landing, pricing, auth, shared UI, and `/app` component files.
+- Verification evidence: `npm run test -- tests/unit/frontend-redesign-copy.test.ts`, `npm run typecheck`, and `npm run lint` passed on this branch; browser screenshots are still required before this can be treated as complete M4-011 work.
+- Limitations: This rescue branch does not claim final five-dimension score, desktop/mobile screenshot review, or production-ready visual QA.
+
+### 2026-05-22 - ui-browser-testing - M4-011 partial frontend rescue
+
+- Agent: Codex
+- Trigger: The rescued M4-011 files change landing pages, pricing, auth UI, shared navigation/footer, `/app` workspace shell, and a Playwright commercial-site assertion.
+- Action: Opened the skill and classified verification requirements for the partial branch. Kept browser verification as a blocking follow-up because this branch is only preserving aborted work.
+- Output artifacts: `tests/e2e/commercial-site.spec.ts`; `tests/unit/frontend-redesign-copy.test.ts`; `plans/frontend-redesign-design-brief.md`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run test -- tests/unit/frontend-redesign-copy.test.ts` passed for refreshed copy and visual-token contracts. Full browser verification must still capture desktop and mobile views before merge.
+- Limitations: No browser screenshots or console/network review are claimed for this partial rescue branch.
+
 ### 2026-05-22 - cloud-architecture-cost-review - M6-001 secret diff retry
 
 - Agent: Codex

@@ -25,9 +25,9 @@ const useCases = [
 
 export function UseCases() {
   return (
-    <section className="mx-auto max-w-6xl px-6 py-16">
+    <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
       <div className="max-w-2xl">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
+        <p className="text-sm font-semibold text-brick">
           Built for real replies
         </p>
         <h2 className="mt-3 text-3xl font-semibold md:text-4xl">
@@ -36,8 +36,11 @@ export function UseCases() {
       </div>
       <div className="mt-8 grid gap-4 md:grid-cols-4">
         {useCases.map((item) => (
-          <div key={item.title} className="rounded-lg border border-line bg-white/65 p-5">
-            <item.icon className="h-5 w-5 text-clay" aria-hidden="true" />
+          <div
+            key={item.title}
+            className="rounded-lg border border-line bg-cream p-5 transition hover:-translate-y-0.5 hover:border-evergreen/35 hover:shadow-soft"
+          >
+            <item.icon className="h-5 w-5 text-brick" aria-hidden="true" />
             <h3 className="mt-4 font-semibold">{item.title}</h3>
             <p className="mt-2 text-sm leading-6 text-ink/65">{item.text}</p>
           </div>

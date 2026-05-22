@@ -5,7 +5,8 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "One clear plan for practical replies — NZ$9/month for unlimited rewrites.",
+  description:
+    "One clear plan for practical replies: NZD $9/month for 40 rewrites per billing month.",
 };
 
 
@@ -13,8 +14,8 @@ export default function PricingPage() {
   return (
     <main className="min-h-screen bg-paper text-ink">
       <SiteHeader />
-      <div className="mx-auto max-w-6xl px-6 pt-14">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
+      <div className="mx-auto max-w-7xl px-4 pt-14 sm:px-6">
+        <p className="text-sm font-semibold text-brick">
           Pricing
         </p>
         <h1 className="mt-3 text-4xl font-semibold md:text-5xl">

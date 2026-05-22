@@ -37,14 +37,14 @@ const faqs = [
 
 export function FAQ() {
   return (
-    <section className="mx-auto max-w-3xl px-6 py-16">
+    <section className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
       <h2 className="text-3xl font-semibold md:text-4xl">FAQ</h2>
       <div className="mt-8 divide-y divide-line border-y border-line">
         {faqs.map((item, index) => (
           <details className="group py-5" key={item.question} open={index === 0}>
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
               <span className="font-semibold">{item.question}</span>
-              <span className="rounded-full border border-line px-2 py-0.5 text-sm text-ink/55 transition group-open:rotate-45">
+              <span className="rounded-md border border-line px-2 py-0.5 text-sm text-ink/55 transition group-open:rotate-45">
                 +
               </span>
             </summary>

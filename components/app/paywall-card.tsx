@@ -49,13 +49,13 @@ export function PaywallCard({
   }
 
   return (
-    <main className="min-h-screen bg-paper px-6 py-12 text-ink">
+    <main className="min-h-screen bg-paper px-4 py-12 text-ink sm:px-6">
       <section className="mx-auto max-w-2xl">
         <Card className="p-6 md:p-8">
-          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-md bg-paper-deep text-clay">
+          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-md bg-mist text-evergreen">
             <CreditCard className="h-5 w-5" aria-hidden="true" />
           </div>
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
+          <p className="text-sm font-semibold text-brick">
             {status}
           </p>
           <h1 className="mt-3 text-3xl font-semibold">{title}</h1>
