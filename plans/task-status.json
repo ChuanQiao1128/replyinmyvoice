@@ -1,18 +1,16 @@
 {
-  "issue_id": "M5-005",
-  "branch": "chore/M5-005",
+  "issue_id": "M5-006",
+  "branch": "chore/M5-006",
   "files_changed": [
-    "tests/unit/analyze-rewrite-quality.test.ts",
-    "tests/fixtures/rewrite-quality-analysis/schema.sql",
-    "tests/fixtures/rewrite-quality-analysis/populated.sql",
-    "tests/fixtures/rewrite-quality-analysis/empty.sql"
+    "docs/rewrite-quality-analysis-runbook.md",
+    "docs/rewrite-quality-analysis-spec.md"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Add fixture-backed tests for offline rewrite quality analysis metrics and privacy output guardrails.",
-  "title": "test: add rewrite quality analysis fixtures",
+  "summary": "Added the owner runbook for generating, interpreting, and safely storing rewrite-quality analysis reports.",
+  "title": "docs: add rewrite quality report owner runbook",
   "next_action": "ready_to_commit"
 }
