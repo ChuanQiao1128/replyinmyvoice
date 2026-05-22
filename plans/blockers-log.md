@@ -177,3 +177,15 @@ What happens next: Codex rescued the timed-out WIP on branch codex/rewrite-quali
 What was attempted: codex exec did not write plans/task-status.json. Log: plans/codex-exec-M5-003.log
 
 What user needs to do: review the branch chore/M5-003 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-22T17:30:46+12:00 — M6-001 — codex-needs-human:BLOCKED-WAITING-USER
+
+What was attempted: Documented blocked Cloudflare Worker secret-name diff; Wrangler could not resolve Cloudflare API in this sandbox.
+
+What user needs to do: review the branch chore/M6-001 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-22T17:35:29+12:00 — M6-002 — codex-needs-human:BLOCKED-WAITING-USER
+
+What was attempted: Blocked Worker secret push because M6-001 missing-secret diff is unavailable and Cloudflare API DNS fails in this sandbox.
+
+What user needs to do: review the branch chore/M6-002 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.

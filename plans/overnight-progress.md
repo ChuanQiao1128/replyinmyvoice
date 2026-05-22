@@ -500,3 +500,14 @@ Run finished. Done: 0 | Blocked: 1 | Needs human: 0
 - BLOCKED(plain): 2 — M2.5-007 (Cron Trigger), M5-003 (quality report script)
 - Anomalies: none
 - Suggested user action: none — no user-decision blockers beyond standing M7-001/M9-006
+
+## Trigger at 2026-05-22T17:35:44+12:00
+Run finished. Done: 3 | Blocked: 1 | Needs human: 2
+
+## Monitor at 2026-05-22T05:37:54Z
+- Loop: stopped (STOP-OVERNIGHT.txt present — reason: agent-flow-orchestrator-upgrade, set 2026-05-22T17:35:35+12:00)
+- Board: 0 done / 25 pending / 0 in_progress / 16 user-blocked / 4 provider-blocked / 3 prereq-blocked / 9 autonomy-blocked / 9 uncategorized-blocked
+- Recent main: 51b0e55 docs: add rewrite quality report owner runbook (#194)
+- Blockers: loop intentionally stopped; no new engineering blockers to surface
+- Codex inbox: none (loop stopped; monitor exits after checkpoint)
+- Next commercial gate: auth → rewrite eval → billing → API → MCP → monitoring

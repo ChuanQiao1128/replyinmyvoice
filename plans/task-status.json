@@ -1,16 +1,19 @@
 {
-  "issue_id": "M5-006",
-  "branch": "chore/M5-006",
+  "issue_id": "REPAIR-20260522180011",
+  "branch": "chore/REPAIR-20260522180011",
   "files_changed": [
-    "docs/rewrite-quality-analysis-runbook.md",
-    "docs/rewrite-quality-analysis-spec.md"
+    "plans/worker-secret-diff.md",
+    "plans/codex-worker-inbox.md",
+    "plans/issue-board.md",
+    "docs/skill-run-log.md",
+    "plans/task-status.json"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Added the owner runbook for generating, interpreting, and safely storing rewrite-quality analysis reports.",
-  "title": "docs: add rewrite quality report owner runbook",
+  "summary": "Retried read-only Wrangler secret listing, recorded current Cloudflare DNS blocker evidence, and reclassified M6-002 as prerequisite-blocked.",
+  "title": "Record Cloudflare DNS blocker for secret diff retry",
   "next_action": "ready_to_commit"
 }
