@@ -187,3 +187,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T16:37:10+12:00 | M5-002 | done | Rescued timed-out telemetry WIP, verified provider-call token/cost/latency persistence and Sapling call metadata, and paired it with the Rewrite Quality Analysis target docs.
 2026-05-22T16:50:19+12:00 | M5-003 | started | M5-003 Offline Rewrite Quality Analysis report script
 2026-05-22T17:00:37+12:00 | M5-004 | started | M5-004 Normalize rewrite failure reasons for analysis
+2026-05-22T17:11:33+12:00 | M5-004 | done | Normalized rewrite failure reasons for cost logs, learning samples, and analysis-ready tests. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/191)
+2026-05-22T17:11:48+12:00 | M5-005 | started | M5-005 Fixture-backed Rewrite Quality Analysis tests
