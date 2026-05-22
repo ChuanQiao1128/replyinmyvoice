@@ -4,7 +4,7 @@ Last updated: 2026-05-21T23:48Z (supervisor unwedge — banned-term scope fixed 
 Created this run: 45 | Skipped (dup): 60 | Errored: 0
 
 ## Supervisor loop
-Pick next `pending` with lowest M-number, lowest id. Update status: pending → in_progress → review → done | blocked.
+Pick next `pending` with lowest M-number, lowest id. Update status: `pending` → `in_progress` → `review` → `done` or a blocked category. Use `BLOCKED-WAITING-USER` only for real external user actions such as live-money tests, publish tokens, provider dashboard changes, missing secrets, or explicit product/legal decisions. Use `BLOCKED-PROVIDER`, `BLOCKED-PREREQ`, or `BLOCKED-AUTONOMY` for retryable provider failures, missing automation prerequisites, or broad coupled work that Codex/engineering should handle.
 
 | ID | Milestone | Title | GitHub | Status |
 |---|---|---|---|---|
@@ -15,30 +15,30 @@ Pick next `pending` with lowest M-number, lowest id. Update status: pending → 
 | M0-005 | M0-Stabilize | M0-005: Verify GitHub Actions CI is green on main | (dup) | done |
 | M0-006 | M0-Stabilize | M0-006: Update AGENTS.md to reflect Stripe live state | https://github.com/ChuanQiao1128/replyinmyvoice/pull/151 | done (squash-merged 75c773d) |
 | M1-001 | M1-Entra | M1-001 Inventory all Clerk usage in repo | https://github.com/ChuanQiao1128/replyinmyvoice/pull/152 | done (squash-merged 5d77f4a) |
-| M1-002 | M1-Entra | M1-002 Replace clerkMiddleware in middleware.ts with Entra session check | (dup) | BLOCKED-WAITING-USER |
-| M1-003 | M1-Entra | M1-003 Migrate API route auth from Clerk to Entra | (dup) | BLOCKED-WAITING-USER |
-| M1-004 | M1-Entra | M1-004 Replace sign-in page with Entra MSAL redirect flow | (dup) | BLOCKED-WAITING-USER |
-| M1-005 | M1-Entra | M1-005 Replace sign-up page with Entra flow | (dup) | BLOCKED-WAITING-USER |
-| M1-006 | M1-Entra | M1-006 Implement /auth/callback for Entra code exchange | (dup) | BLOCKED-WAITING-USER |
-| M1-007 | M1-Entra | M1-007 Add entra_user_id to User Prisma model + migration | (dup) | BLOCKED-WAITING-USER |
-| M1-008 | M1-Entra | M1-008 Update Stripe webhook handler to use entra user lookup | (dup) | BLOCKED-WAITING-USER |
-| M1-009 | M1-Entra | M1-009 Add Entra token validation tests | (dup) | BLOCKED-WAITING-USER |
-| M1-010 | M1-Entra | M1-010 Add Playwright e2e for Entra sign-in → /app → rewrite → sign-out | (dup) | BLOCKED-WAITING-USER |
+| M1-002 | M1-Entra | M1-002 Replace clerkMiddleware in middleware.ts with Entra session check | (dup) | BLOCKED-AUTONOMY |
+| M1-003 | M1-Entra | M1-003 Migrate API route auth from Clerk to Entra | (dup) | BLOCKED-AUTONOMY |
+| M1-004 | M1-Entra | M1-004 Replace sign-in page with Entra MSAL redirect flow | (dup) | BLOCKED-AUTONOMY |
+| M1-005 | M1-Entra | M1-005 Replace sign-up page with Entra flow | (dup) | BLOCKED-AUTONOMY |
+| M1-006 | M1-Entra | M1-006 Implement /auth/callback for Entra code exchange | (dup) | BLOCKED-AUTONOMY |
+| M1-007 | M1-Entra | M1-007 Add entra_user_id to User Prisma model + migration | (dup) | BLOCKED-AUTONOMY |
+| M1-008 | M1-Entra | M1-008 Update Stripe webhook handler to use entra user lookup | (dup) | BLOCKED-AUTONOMY |
+| M1-009 | M1-Entra | M1-009 Add Entra token validation tests | (dup) | BLOCKED-AUTONOMY |
+| M1-010 | M1-Entra | M1-010 Add Playwright e2e for Entra sign-in → /app → rewrite → sign-out | (dup) | BLOCKED-AUTONOMY |
 | M1-011 | M1-Entra | M1-011 Remove @clerk/nextjs and related deps from package.json | https://github.com/ChuanQiao1128/replyinmyvoice/pull/154 | done (squash-merged 25beac8) |
 | M1-012 | M1-Entra | M1-012 Strip CLERK_* env references from code + .env.example + lib/env.ts | https://github.com/ChuanQiao1128/replyinmyvoice/pull/155 | done (squash-merged b0b6c99) |
 | M1-013 | M1-Entra | M1-013 Document Clerk Cloudflare DNS record removal | https://github.com/ChuanQiao1128/replyinmyvoice/pull/153 | done (squash-merged ba8127a) |
 | M1-014 | M1-Entra | M1-014 Update docs/manual-setup.md to Entra-only flow | https://github.com/ChuanQiao1128/replyinmyvoice/pull/153 | done (squash-merged ba8127a) |
-| M2-001 | M2-Quality | M2-001 Implement hard quality gate rules in rewrite pipeline | (dup) | BLOCKED-WAITING-USER |
-| M2-002 | M2-Quality | M2-002 Safe-failure response when all candidates rejected | (dup) | BLOCKED-WAITING-USER |
-| M2-003 | M2-Quality | M2-003 Targeted repair pipeline receives diagnosis tags + facts | (dup) | BLOCKED-WAITING-USER |
-| M2-004 | M2-Quality | M2-004 Add Priya billing/proration regression case | (dup) | BLOCKED-WAITING-USER |
-| M2-005 | M2-Quality | M2-005 Build 25-case evaluation harness | (dup) | BLOCKED-WAITING-USER |
-| M2-006 | M2-Quality | M2-006 Run evaluation; gate deploy | (dup) | BLOCKED-WAITING-USER |
+| M2-001 | M2-Quality | M2-001 Implement hard quality gate rules in rewrite pipeline | (dup) | BLOCKED-PREREQ |
+| M2-002 | M2-Quality | M2-002 Safe-failure response when all candidates rejected | (dup) | BLOCKED-PREREQ |
+| M2-003 | M2-Quality | M2-003 Targeted repair pipeline receives diagnosis tags + facts | (dup) | BLOCKED-PREREQ |
+| M2-004 | M2-Quality | M2-004 Add Priya billing/proration regression case | (dup) | BLOCKED-PREREQ |
+| M2-005 | M2-Quality | M2-005 Build 25-case evaluation harness | (dup) | BLOCKED-PREREQ |
+| M2-006 | M2-Quality | M2-006 Run evaluation; gate deploy | (dup) | BLOCKED-PREREQ |
 | M2-007 | M2-Quality | M2-007 Document signal calibration in docs/optimization-notes.md | (dup) | done (already complies — file exists on main from commit fbc42f1 with iteration log + diagnosis tags + strategy memory link) |
-| M2-008 | M2-Quality | M2-008 Add quality-gate UI for safe-failure state | (dup) | BLOCKED-WAITING-USER |
-| M2-009 | M2-Quality | M2-009 Update Naturalness Check display for repaired candidates | (dup) | BLOCKED-WAITING-USER |
+| M2-008 | M2-Quality | M2-008 Add quality-gate UI for safe-failure state | (dup) | BLOCKED-PREREQ |
+| M2-009 | M2-Quality | M2-009 Update Naturalness Check display for repaired candidates | (dup) | BLOCKED-PREREQ |
 | M2.5-001 | M2.5-Learning | M2.5-001 Define 100-case baseline corpus across 5 scenarios | https://github.com/ChuanQiao1128/replyinmyvoice/issues/82 | done (already closed #82; corpus exists on main from PR #174) |
-| M2.5-002 | M2.5-Learning | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md | https://github.com/ChuanQiao1128/replyinmyvoice/issues/84 | BLOCKED-WAITING-USER |
+| M2.5-002 | M2.5-Learning | M2.5-002 Run 100-case baseline; record results to docs/learning-baseline.md | https://github.com/ChuanQiao1128/replyinmyvoice/issues/84 | BLOCKED-AUTONOMY |
 | M2.5-003 | M2.5-Learning | M2.5-003 Failure-mode clustering by diagnosis tags | https://github.com/ChuanQiao1128/replyinmyvoice/issues/86 | done |
 | M2.5-004 | M2.5-Learning | M2.5-004 Strategy candidate generator: cluster → prompt patch | https://github.com/ChuanQiao1128/replyinmyvoice/issues/88 | done |
 | M2.5-005 | M2.5-Learning | M2.5-005 Auto-draft PR from promotable StrategyCandidate | https://github.com/ChuanQiao1128/replyinmyvoice/issues/90 | done |
@@ -47,16 +47,16 @@ Pick next `pending` with lowest M-number, lowest id. Update status: pending → 
 | M2.5-008 | M2.5-Learning | M2.5-008 Promotion approval UX in /admin/learning | https://github.com/ChuanQiao1128/replyinmyvoice/issues/96 | done |
 | M2.5-009 | M2.5-Learning | M2.5-009 Canary deploy for new strategy | https://github.com/ChuanQiao1128/replyinmyvoice/issues/98 | done (squash-merged #181 52b0eee) |
 | M2.5-010 | M2.5-Learning | M2.5-010 Strategy rollback on regression | https://github.com/ChuanQiao1128/replyinmyvoice/issues/100 | done |
-| M3-001 | M3-V2 | M3-001 Add 5 scenarios to lib/rewrite-presets.ts | (dup) | BLOCKED-WAITING-USER |
-| M3-002 | M3-V2 | M3-002 Reduce visible tone presets to 4 | (dup) | BLOCKED-WAITING-USER |
-| M3-003 | M3-V2 | M3-003 Add scenario-specific prompt guardrails | (dup) | BLOCKED-WAITING-USER |
-| M3-004 | M3-V2 | M3-004 Rewrite components/app/rewrite-workspace.tsx (V2 layout) | (dup) | BLOCKED-WAITING-USER |
-| M3-005 | M3-V2 | M3-005 Enforce 5000-char combined cap in lib/validation.ts | (dup) | BLOCKED-WAITING-USER |
-| M3-006 | M3-V2 | M3-006 Add character helper copy + counter | (dup) | BLOCKED-WAITING-USER |
-| M3-007 | M3-V2 | M3-007 Add scenario to API request schema | (dup) | BLOCKED-WAITING-USER |
-| M3-008 | M3-V2 | M3-008 Remove or hide legacy Quick context UI | (dup) | BLOCKED-WAITING-USER |
-| M4-001 | M4-Landing | M4-001 Run rewrite engine against 4 documented sample cases | (dup) | BLOCKED-WAITING-USER |
-| M4-002 | M4-Landing | M4-002 Replace interactive-demo samples with measured ones | (dup) | in_progress |
+| M3-001 | M3-V2 | M3-001 Add 5 scenarios to lib/rewrite-presets.ts | (dup) | BLOCKED-AUTONOMY |
+| M3-002 | M3-V2 | M3-002 Reduce visible tone presets to 4 | (dup) | BLOCKED-AUTONOMY |
+| M3-003 | M3-V2 | M3-003 Add scenario-specific prompt guardrails | (dup) | BLOCKED-AUTONOMY |
+| M3-004 | M3-V2 | M3-004 Rewrite components/app/rewrite-workspace.tsx (V2 layout) | (dup) | BLOCKED-AUTONOMY |
+| M3-005 | M3-V2 | M3-005 Enforce 5000-char combined cap in lib/validation.ts | (dup) | BLOCKED-AUTONOMY |
+| M3-006 | M3-V2 | M3-006 Add character helper copy + counter | (dup) | BLOCKED-AUTONOMY |
+| M3-007 | M3-V2 | M3-007 Add scenario to API request schema | (dup) | BLOCKED-AUTONOMY |
+| M3-008 | M3-V2 | M3-008 Remove or hide legacy Quick context UI | (dup) | BLOCKED-AUTONOMY |
+| M4-001 | M4-Landing | M4-001 Run rewrite engine against 4 documented sample cases | (dup) | BLOCKED-PROVIDER |
+| M4-002 | M4-Landing | M4-002 Replace interactive-demo samples with measured ones | (dup) | done |
 | M4-003 | M4-Landing | M4-003 Rewrite how-it-works.tsx with simpler 4 steps | (dup) | done (already complies — no PR needed) |
 | M4-004 | M4-Landing | M4-004 Convert FAQ to single-column accordion | https://github.com/ChuanQiao1128/replyinmyvoice/pull/158 | done (squash-merged e25fb12) |
 | M4-005 | M4-Landing | M4-005 Pricing page polish | https://github.com/ChuanQiao1128/replyinmyvoice/pull/158 | done (squash-merged e25fb12) |

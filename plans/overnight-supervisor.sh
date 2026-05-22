@@ -222,8 +222,25 @@ update_board_status() {
   local new_status=$2
   # Replace status in the row matching id
   # macOS sed: -i ''
-  sed -i.bak -E "s~^(\| ${id} \|[^|]*\|[^|]*\|[^|]*\| )(pending|in_progress)( \|)~\1${new_status}\3~" "$BOARD"
+  sed -i.bak -E "s~^(\| ${id} \|[^|]*\|[^|]*\|[^|]*\| )([^|]*)( \|)~\1${new_status}\3~" "$BOARD"
   rm -f "${BOARD}.bak"
+}
+
+classify_needs_human_status() {
+  local summary_lc
+  summary_lc=$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')
+
+  if printf "%s" "$summary_lc" | grep -Eq "timeout_or_network|timeout|rate[- ]?limit|429|502|503|provider|sapling|openai|deepseek|network"; then
+    echo "BLOCKED-PROVIDER"
+    return
+  fi
+
+  if printf "%s" "$summary_lc" | grep -Eq "gh cli not authenticated|github cli|npm_token|token|secret|credential|real money|refund|stripe live|dashboard|manual login|user approval|user decision|missing .*key|api key"; then
+    echo "BLOCKED-WAITING-USER"
+    return
+  fi
+
+  echo "BLOCKED-AUTONOMY"
 }
 
 write_status_template_for_codex() {
@@ -337,8 +354,8 @@ while true; do
       ;;
     M1-002|M1-003|M1-004|M1-005|M1-006|M1-007|M1-008|M1-009|M1-010)
       log "  Skipping $ID (Entra auth migration cluster — daytime only)"
-      update_board_status "$ID" "BLOCKED-WAITING-USER"
-      append_decision "$ID | blocked | Entra cluster, daytime supervised work"
+      update_board_status "$ID" "BLOCKED-AUTONOMY"
+      append_decision "$ID | blocked-autonomy | Entra cluster deferred to supervised implementation, not a user blocker"
       ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
       sleep "$COOLDOWN_SECONDS"
@@ -346,8 +363,8 @@ while true; do
       ;;
     M2-001|M2-002|M2-003|M2-004|M2-005|M2-006|M2-008|M2-009)
       log "  Skipping $ID (quality gate cluster — needs eval baseline)"
-      update_board_status "$ID" "BLOCKED-WAITING-USER"
-      append_decision "$ID | blocked | quality gate needs eval data"
+      update_board_status "$ID" "BLOCKED-PREREQ"
+      append_decision "$ID | blocked-prereq | quality gate cluster needs baseline/eval prerequisite, not a user blocker"
       ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
       sleep "$COOLDOWN_SECONDS"
@@ -355,8 +372,8 @@ while true; do
       ;;
     M3-001|M3-002|M3-003|M3-004|M3-005|M3-006|M3-007|M3-008)
       log "  Skipping $ID (V2 layout cascade — typed refactor across lib)"
-      update_board_status "$ID" "BLOCKED-WAITING-USER"
-      append_decision "$ID | blocked | V2 cascade needs daytime coordination"
+      update_board_status "$ID" "BLOCKED-AUTONOMY"
+      append_decision "$ID | blocked-autonomy | V2 cascade deferred to supervised implementation, not a user blocker"
       ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
       sleep "$COOLDOWN_SECONDS"
@@ -364,8 +381,8 @@ while true; do
       ;;
     M8-002|M8-003|M8-004|M8-005|M8-006|M8-007|M8-008|M8-009|M8-010|M8-011|M8-012|M8-013|M8-014|M8-015|M8-016)
       log "  Skipping $ID (B2B API chain — depends on M8-001 + Azure SQL routing)"
-      update_board_status "$ID" "BLOCKED-WAITING-USER"
-      append_decision "$ID | blocked | M8 chain needs M8-001 merged"
+      update_board_status "$ID" "BLOCKED-PREREQ"
+      append_decision "$ID | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker"
       ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
       sleep "$COOLDOWN_SECONDS"
@@ -472,8 +489,9 @@ while true; do
       ;;
     needs_human)
       log "  Codex flagged needs_human: $SUMMARY"
-      update_board_status "$ID" "BLOCKED-WAITING-USER"
-      append_blocker "$ID" "codex-needs-human" "$SUMMARY"
+      BLOCK_STATUS=$(classify_needs_human_status "$SUMMARY")
+      update_board_status "$ID" "$BLOCK_STATUS"
+      append_blocker "$ID" "codex-needs-human:${BLOCK_STATUS}" "$SUMMARY"
       git checkout main >>"$LOG" 2>&1
       # Keep branch for human review
       ISSUES_NEEDS_HUMAN=$((ISSUES_NEEDS_HUMAN + 1))

@@ -180,3 +180,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T15:55:08+12:00 | M3-008 | blocked | V2 cascade needs daytime coordination
 2026-05-22T15:55:23+12:00 | M4-001 | started | M4-001 Run rewrite engine against 4 documented sample cases
 2026-05-22T16:03:01+12:00 | M4-002 | started | M4-002 Replace interactive-demo samples with measured ones
+2026-05-22T16:11:53+12:00 | M4-002 | done | Extracted documented homepage demo samples into a fixture and added consistency coverage against docs/sample-cases.md. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/188)
+2026-05-22T16:15:40+12:00 | supervisor-taxonomy | fixed | Reclassified non-user blockers into BLOCKED-AUTONOMY, BLOCKED-PREREQ, and BLOCKED-PROVIDER; BLOCKED-WAITING-USER is now reserved for external user actions only.

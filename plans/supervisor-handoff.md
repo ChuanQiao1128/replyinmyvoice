@@ -30,7 +30,12 @@ screen -dmS rimv-overnight bash -lc 'cd /Users/qc/Desktop/CloudFlare && bash pla
 1. **Liveness check**: confirm `screen -ls` shows `rimv-overnight` or `ps -ef | grep -v grep | grep overnight-supervisor.sh` shows a process. Also check `plans/overnight.log` modification time. If the log has not updated in more than 20 minutes and no stop signal exists, report the stall.
 2. **Restart only when safe**: if the loop is dead, no `plans/STOP-OVERNIGHT.txt` exists, and no `plans/MONEY-MADE.txt` exists, restart it with the `screen` command above. Log the restart in `plans/overnight-progress.md`.
 3. **Tail the log**: `tail -200 plans/overnight.log`. Surface repeated codex timeouts with no file progress, checkout failures, dirty-repo failures, ssh/push failures, CI failures, gh auth failures, banned-term hits, eval signal unavailable runs, or provider budget failures to `plans/blockers-log.md`.
-4. **Issue progress**: count `pending`, `done`, `in_progress`, `BLOCKED`, and `BLOCKED-WAITING-USER` rows from `plans/issue-board.md`.
+4. **Issue progress**: count `pending`, `done`, `in_progress`, and blocked rows from `plans/issue-board.md`. Report blocked rows by category:
+   - `BLOCKED-WAITING-USER`: only external user actions such as real-money tests, npm publishing credentials, provider dashboard changes, missing secrets, or explicit product/legal decisions.
+   - `BLOCKED-PROVIDER`: upstream API/provider timeout, rate limit, or unavailable signal; should be retried or routed by Codex, not framed as a user decision.
+   - `BLOCKED-PREREQ`: an automation prerequisite is missing, such as a prior PR, baseline, or migration.
+   - `BLOCKED-AUTONOMY`: intentionally deferred because the issue is too broad, coupled, or needs supervised implementation by Codex/engineering.
+   - plain `BLOCKED`: uncategorized engineering blocker that should be inspected and reclassified.
 5. **BLOCKED scan**: scan `plans/blockers-log.md` and `plans/issue-board.md` for new blockers since the prior trigger.
 6. **Recent main commits**: read `git log origin/main -5 --oneline`.
 7. **North-star signal**: if `plans/MONEY-MADE.txt` exists, immediately tell the user that real revenue was confirmed and the unattended loop should remain stopped for human review.
@@ -51,7 +56,7 @@ Read these files in this order to know what's going on:
 2. `CLAUDE.md` — particularly the "Active Commercialization Sprint" section at the bottom (sprint posture + hard limits)
 3. `plans/issue-board.md` — issue list with status (pending / in_progress / done / BLOCKED)
 4. `plans/decisions-log.md` — what previous trigger Claudes / codex decided (create if missing)
-5. `plans/blockers-log.md` — known blockers requiring user input (create if missing)
+5. `plans/blockers-log.md` — known user, provider, and engineering blockers (create if missing)
 6. `plans/overnight-progress.md` — running tally of overnight progress (create if missing)
 7. `git log origin/main -5 --oneline` — what's recently been merged
 
@@ -76,12 +81,12 @@ Before exiting, ALWAYS:
    ```
    ## Trigger at <ISO>
    - Loop: alive | stalled | stopped
-   - Board: <done> done / <pending> pending / <blocked> blocked / <in_progress> in_progress
+   - Board: <done> done / <pending> pending / <in_progress> in_progress / <user_blocked> user-blocked / <provider_blocked> provider-blocked / <prereq_blocked> prereq-blocked / <autonomy_blocked> autonomy-blocked / <plain_blocked> uncategorized-blocked
    - Recent main: <latest merged commit or PR>
    - Blockers: <new blockers or none>
    - Next commercial gate: <auth | rewrite eval | billing | API | MCP | monitoring>
    ```
-2. Append to `plans/blockers-log.md` only if a new user or engineering action is required.
+2. Append to `plans/blockers-log.md` only if a new user action, provider outage, or engineering action is required. Do not describe `BLOCKED-PREREQ`, `BLOCKED-PROVIDER`, or `BLOCKED-AUTONOMY` as "the user needs to decide" unless the blocker specifically requires an external user action.
 3. Remove `plans/supervisor-lock.txt` if this monitor created it.
 4. Exit. Do not start an issue, edit source files, commit, push, merge, or call Codex for implementation.
 

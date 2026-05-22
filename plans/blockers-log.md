@@ -154,14 +154,14 @@ What was attempted: codex exec did not write plans/task-status.json. Log: plans/
 
 What user needs to do: review the branch chore/M2.5-007 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
 
-## 2026-05-22T13:16:38+12:00 — M2.5-002 — codex-needs-human
+## 2026-05-22T13:16:38+12:00 — M2.5-002 — codex-needs-human:BLOCKED-AUTONOMY
 
 What was attempted: M2.5 baseline could not run: npm tsx IPC failed in sandbox; loader reached corpus parser but the coverage summary table causes a 7-column parse failure.
 
-What user needs to do: review the branch chore/M2.5-002 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+What happens next: Codex/engineering should fix the corpus parser or reroute this baseline run. This is not a user decision blocker.
 
-## 2026-05-22T16:02:46+12:00 — M4-001 — codex-needs-human
+## 2026-05-22T16:02:46+12:00 — M4-001 — codex-needs-human:BLOCKED-PROVIDER
 
 What was attempted: Recorded the four-case M4-001 refresh attempt; Sapling returned timeout_or_network before measured signals could be produced.
 
-What user needs to do: review the branch chore/M4-001 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+What happens next: retry or route around the provider outage from Codex/engineering. This is not a user decision blocker.
