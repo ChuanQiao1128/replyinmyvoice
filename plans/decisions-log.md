@@ -195,3 +195,5 @@ Each overnight Claude trigger appends here.
 2026-05-22T17:26:12+12:00 | M6-001 | started | M6-001 Diff Cloudflare Worker prod secrets vs .env.local live
 2026-05-22T17:31:01+12:00 | M6-002 | started | M6-002 Push missing live secrets to Worker
 2026-05-22T18:00:11+12:00 | REPAIR-20260522180011 | repair-started | M6-001 Cloudflare secret-name diff retry
+2026-05-22T18:06:47+12:00 | REPAIR-20260522180011 | repair-done | Retried read-only Wrangler secret listing, recorded current Cloudflare DNS blocker evidence, and reclassified M6-002 as prerequisite-blocked. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/195)
+2026-05-22T18:07:02+12:00 | M6-003 | started | M6-003 Smoke test workers.dev preview

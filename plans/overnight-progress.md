@@ -511,3 +511,14 @@ Run finished. Done: 3 | Blocked: 1 | Needs human: 2
 - Blockers: loop intentionally stopped; no new engineering blockers to surface
 - Codex inbox: none (loop stopped; monitor exits after checkpoint)
 - Next commercial gate: auth → rewrite eval → billing → API → MCP → monitoring
+
+## Monitor at 2026-05-22T06:07:41Z
+- Loop: stopped (STOP-OVERNIGHT.txt present — reason: queue-web-design-redesign-issue, set 2026-05-22T18:08:00+12:00)
+- Board: 46 done / 25 pending / 2 in_progress / 2 user-blocked / 2 provider-blocked / 9 prereq-blocked / 18 autonomy-blocked / 2 uncategorized-blocked
+- Recent main: 4a14cf1 Record Cloudflare DNS blocker for secret diff retry (#195) | a708ae7 docs: separate monitor progress from repair queue (#193) | 51b0e55 docs: add rewrite quality report owner runbook (#194)
+- Blockers: loop intentionally stopped; no new blockers assessed
+- Repair inbox: none (stop signal active — not processing)
+- Next commercial gate: auth (M1 Entra migration — 8 issues BLOCKED-AUTONOMY)
+
+## Trigger at 2026-05-22T18:13:01+12:00
+Run finished. Done: 0 | Blocked: 0 | Needs human: 1 | Repairs done: 1 | Repairs blocked: 0

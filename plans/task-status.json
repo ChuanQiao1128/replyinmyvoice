@@ -1,10 +1,8 @@
 {
-  "issue_id": "REPAIR-20260522180011",
-  "branch": "chore/REPAIR-20260522180011",
+  "issue_id": "M6-003",
+  "branch": "chore/M6-003",
   "files_changed": [
-    "plans/worker-secret-diff.md",
-    "plans/codex-worker-inbox.md",
-    "plans/issue-board.md",
+    "docs/preflight-report.md",
     "docs/skill-run-log.md",
     "plans/task-status.json"
   ],
@@ -13,7 +11,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Retried read-only Wrangler secret listing, recorded current Cloudflare DNS blocker evidence, and reclassified M6-002 as prerequisite-blocked.",
-  "title": "Record Cloudflare DNS blocker for secret diff retry",
-  "next_action": "ready_to_commit"
+  "summary": "Documented M6-003 Worker preview smoke attempt blocked by sandbox DNS; rerun curl checks from a networked shell.",
+  "title": "docs: record blocked workers.dev smoke attempt",
+  "next_action": "needs_human"
 }

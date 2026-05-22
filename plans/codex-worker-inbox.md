@@ -46,3 +46,17 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Done condition: `plans/worker-secret-diff.md` contains a completed name-only diff, or the inbox item records a provider/DNS failure with current evidence and no user-only action hidden inside it.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes, deploys, printing `.env.local` values
 - Result: Retried the read-only `wrangler secret list --name replyinmyvoice-app --format json` path with Wrangler logs redirected to writable temp storage. Wrangler still failed before returning Worker metadata because `api.cloudflare.com` / `dash.cloudflare.com` DNS resolution is unavailable from this shell. Direct DNS lookup returned `ENOTFOUND` for both hosts. No secret values were printed or written, no secrets were pushed, no deploy ran, no dashboard state changed, and `.env.local` was not modified. Current evidence is recorded in `plans/worker-secret-diff.md`.
+- Worker evidence: 2026-05-22T18:06:47+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/195; Retried read-only Wrangler secret listing, recorded current Cloudflare DNS blocker evidence, and reclassified M6-002 as prerequisite-blocked.
+
+## 2026-05-22T18:12:46+12:00 — M6-003 codex-needs-human:BLOCKED-PROVIDER
+
+- Status: not_actionable
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M6-003
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M6-003 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-22T18:14:30+12:00 — M6-003 already recorded the sandbox DNS blocker in docs/preflight-report.md and plans/issue-board.md. No autonomous code repair can make this local shell resolve the Worker host; rerun the documented curl checks from a networked shell.

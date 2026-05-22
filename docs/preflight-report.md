@@ -332,3 +332,31 @@ Date: 2026-05-18
   - `/api/stripe/webhook`: 200
   - `/api/health/db`: 200
   - same-origin unauthenticated `/api/rewrite`: 401
+
+## M6-003 Worker Preview Smoke Attempt
+
+Date: 2026-05-22
+
+- Target: `https://replyinmyvoice-app.qc1128qc.workers.dev`
+- Scope from `plans/issue-manifest.md` and `docs/launch-cutover-plan.md`:
+  - `GET /`: expected 200
+  - `GET /pricing`: expected 200
+  - `GET /sign-in`: expected 200
+  - `GET /app`: expected 307 signed-out redirect
+  - `POST /api/rewrite`: expected 401 when signed out
+  - `GET /api/stripe/webhook`: expected 200
+  - `GET /api/health/db`: expected 200
+- Result: blocked by this sandbox before reaching Cloudflare. Shell `curl` returned `Could not resolve host` for the Worker host, `cloudflare.com`, and `example.com`. Node `fetch` from both the shell and Node REPL returned `fetch failed` for the Worker routes.
+- Route statuses observed from this environment: none.
+- No deployment, Worker secret, DNS, Stripe, or `.env.local` changes were made.
+- Required rerun in a networked shell:
+
+```bash
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/pricing
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/sign-in
+curl -sS -o /dev/null -w "%{http_code} %{redirect_url}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/app
+curl -sS -X POST -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/api/rewrite
+curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/api/stripe/webhook
+curl -sS -o /dev/null -w "%{http_code}\n" https://replyinmyvoice-app.qc1128qc.workers.dev/api/health/db
+```

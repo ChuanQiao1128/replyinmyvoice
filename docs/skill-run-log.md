@@ -924,3 +924,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/issues/M4-011.md`; `plans/issue-board.md`; `plans/issue-manifest.md`; GitHub issue `https://github.com/ChuanQiao1128/replyinmyvoice/issues/196`; `docs/skill-run-log.md`.
 - Verification evidence: The issue explicitly requires `/Users/qc/.codex/skills/web-design-engineer/SKILL.md`, `ui-browser-testing` routing where applicable, final average design score >= 8.0 with no dimension below 7.0, and desktop/mobile browser checks.
 - Limitations: This turn added the queued design work; it did not implement the frontend redesign itself.
+
+### 2026-05-22 - cloud-architecture-cost-review - M6-003 Worker preview smoke
+
+- Agent: Codex
+- Trigger: M6-003 reviews the Cloudflare Workers `workers.dev` deployment for launch verification.
+- Action: Opened and followed the skill as a read-only cloud/deployment check. Selected a direct route smoke against the existing `replyinmyvoice-app` Worker URL; rejected deploys, DNS changes, secret changes, and paid-resource creation for this issue.
+- Output artifacts: `docs/preflight-report.md`; `plans/task-status.json`; `docs/skill-run-log.md`.
+- Verification evidence: `curl` and Node `fetch` smoke attempts were blocked before reaching Cloudflare because this sandbox could not resolve DNS for the Worker host, `cloudflare.com`, or `example.com`.
+- Limitations: No remote route status was observed. A networked shell must rerun the documented M6-003 `curl` checks.
+
+### 2026-05-22 - ui-browser-testing - M6-003 route smoke workflow
+
+- Agent: Codex
+- Trigger: M6-003 is a browser-visible and API route smoke test for `/`, `/pricing`, `/sign-in`, `/app`, `/api/rewrite`, `/api/stripe/webhook`, and `/api/health/db`.
+- Action: Opened and followed the skill to identify the user-visible flow and expected route outcomes. Used focused HTTP route checks rather than screenshots because the issue acceptance criteria are status-code based.
+- Output artifacts: `docs/preflight-report.md`; `plans/task-status.json`; `docs/skill-run-log.md`.
+- Verification evidence: Local code review confirmed `/app` and `/api/rewrite` are protected by middleware, `GET /api/stripe/webhook` returns a health JSON response, and `GET /api/health/db` performs the DB smoke check. Remote HTTP execution was blocked by DNS failure in this sandbox.
+- Limitations: No desktop/mobile screenshot or live browser rendering was captured because the task is a route-status smoke and remote DNS was unavailable.
