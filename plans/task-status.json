@@ -1,12 +1,7 @@
 {
-  "issue_id": "REPAIR-20260523044817",
-  "branch": "chore/REPAIR-20260523044817",
+  "issue_id": "REPAIR-20260523045804",
+  "branch": "chore/REPAIR-20260523045804",
   "files_changed": [
-    "plans/issue-board.md",
-    "plans/blockers-log.md",
-    "plans/codex-worker-inbox.md",
-    "plans/m6-validation-report.md",
-    "docs/skill-run-log.md",
     "plans/task-status.json"
   ],
   "lint": "pass",
@@ -14,7 +9,7 @@
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Documented M6-007 validation evidence and non-sandboxed Playwright runner prerequisite.",
-  "title": "docs: narrow M6-007 validation blocker",
+  "summary": "Recorded status-only repair result; branch reset is owned by the shell supervisor under the no-git protocol.",
+  "title": "Record status-only repair result",
   "next_action": "ready_to_commit"
 }
