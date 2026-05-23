@@ -17,19 +17,28 @@ const paywallSource = readFileSync(
 describe("workspace V2 surface copy", () => {
   it("keeps the reply workflow and confirmed context fields", () => {
     expect(workspaceSource).not.toContain("Quick context");
-    expect(workspaceSource).not.toContain("scenarioOptions");
     expect(workspaceSource).not.toContain("Blank / custom");
     expect(workspaceSource).not.toContain("Email or message reply");
     expect(workspaceSource).not.toContain("Customer support");
     expect(workspaceSource).not.toContain("Cover letter");
     expect(workspaceSource).not.toContain("Work update");
-    expect(workspaceSource).toContain("Context or message");
-    expect(workspaceSource).toContain("Draft to rewrite");
-    expect(workspaceSource).toContain("Audience");
-    expect(workspaceSource).toContain("Purpose");
-    expect(workspaceSource).toContain("What actually happened");
-    expect(workspaceSource).toContain("Facts to preserve");
+    expect(workspaceSource).toContain(
+      "Pick a real message you need to send. We'll help you make it clearer while keeping your facts unchanged.",
+    );
+    expect(workspaceSource).toContain("workspaceScenarioOptions");
+    expect(workspaceSource).toContain("Extension request");
+    expect(workspaceSource).toContain("Lecturer email");
+    expect(workspaceSource).toContain("Internship follow-up");
+    expect(workspaceSource).toContain("Group project");
+    expect(workspaceSource).toContain("Client delay");
+    expect(workspaceSource).toContain("Make this less rude");
+    expect(workspaceSource).toContain("Something else");
+    expect(workspaceSource).toContain("What message are you replying to?");
+    expect(workspaceSource).toContain("What do you want to say?");
+    expect(workspaceSource).toContain("Add facts that must stay true");
     expect(workspaceSource).toContain("factsToPreserve: form.factsToPreserve");
+    expect(workspaceSource).toContain("messageToReplyTo: form.messageToReplyTo");
+    expect(workspaceSource).toContain("roughDraftReply: form.roughDraftReply");
     expect(workspaceSource).toContain("{combinedLength}/{rewriteInputLimits.combined}");
   });
 
@@ -42,6 +51,22 @@ describe("workspace V2 surface copy", () => {
   it("has a safe failure state when the signal does not improve", () => {
     expect(workspaceSource).toContain("Writing signal still high");
     expect(workspaceSource).toContain("We could not produce a better version yet");
+  });
+
+  it("structures output as a compact reply-decision layer", () => {
+    expect(workspaceSource).toContain("Ready to send");
+    expect(workspaceSource).toContain("Facts preserved");
+    expect(workspaceSource).toContain("Facts you asked us to keep");
+    expect(workspaceSource).toContain("splitFactsToPreserve");
+    expect(workspaceSource).toContain("Why this works");
+    expect(workspaceSource).toContain("Before you send");
+    expect(workspaceSource).toContain("check the deadline/date is correct");
+    expect(workspaceSource).toContain("make sure the reason is true");
+    expect(workspaceSource).toContain("edit anything that feels too formal");
+    expect(workspaceSource).toContain("Tone check");
+    expect(workspaceSource).toContain("reference signal");
+    expect(workspaceSource).not.toContain("Change summary");
+    expect(workspaceSource).not.toContain("Risk notes");
   });
 
   it("keeps the workspace shell dense and stable for repeated use", () => {
@@ -73,7 +98,7 @@ describe("workspace V2 surface copy", () => {
     expect(paywallSource).not.toContain("40 rewrites");
   });
 
-  it("shows the free-tier upgrade nudge only after successful unpaid rewrites", () => {
+  it("shows source-level quota and a situational upgrade nudge after copy", () => {
     const appPageSource = readFileSync(
       new URL("../../app/app/page.tsx", import.meta.url),
       "utf8",
@@ -81,13 +106,43 @@ describe("workspace V2 surface copy", () => {
 
     expect(appPageSource).toContain("remaining={usage.remaining}");
     expect(appPageSource).toContain("quota={usage.quota}");
+    expect(appPageSource).toContain("planRemaining={usage.planRemaining}");
+    expect(appPageSource).toContain("quotaSources={usage.creditBreakdown}");
     expect(workspaceSource).toContain("remaining: number");
     expect(workspaceSource).toContain("quota: number");
+    expect(workspaceSource).toContain("QuotaMeter");
+    expect(workspaceSource).toContain("quotaSources");
+    expect(workspaceSource).toContain("planRemaining");
+    expect(workspaceSource).toContain("Monthly plan:");
+    expect(workspaceSource).toContain("Exam Pass");
+    expect(workspaceSource).toContain("Top-up");
+    expect(workspaceSource).toContain(
+      "3 free rewrites — best used on real messages you actually need to send.",
+    );
     expect(workspaceSource).toContain("freeRewritesRemaining");
-    expect(workspaceSource).toContain("You have");
-    expect(workspaceSource).toContain("free rewrite(s) left");
-    expect(workspaceSource).toContain("That was your last free rewrite");
+    expect(workspaceSource).toContain("showPostCopyNudge");
+    expect(workspaceSource).toContain(
+      "Starter gives you 55/month for lecturer emails, extension requests, and internship follow-ups.",
+    );
+    expect(workspaceSource).toContain(
+      "handle client, manager, and colleague messages without overthinking every reply.",
+    );
+    expect(workspaceSource).toContain(
+      "Need this inside your workflow? Pro includes API access and shared web/API quota.",
+    );
+    expect(workspaceSource).toContain("Dismiss");
     expect(workspaceSource).toContain('href="/pricing"');
     expect(workspaceSource).toContain("!paid");
+
+    const submitBody = workspaceSource.slice(
+      workspaceSource.indexOf("async function submit"),
+      workspaceSource.indexOf("function updateField"),
+    );
+    const copyBody = workspaceSource.slice(
+      workspaceSource.indexOf("async function copyReply"),
+      workspaceSource.indexOf("function clearHistory"),
+    );
+    expect(submitBody).not.toContain("setShowPostCopyNudge(true)");
+    expect(copyBody).toContain("setShowPostCopyNudge(true)");
   });
 });

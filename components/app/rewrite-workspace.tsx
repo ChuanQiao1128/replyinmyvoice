@@ -10,19 +10,22 @@ import {
   Send,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { QuotaCreditSource } from "../../lib/quota";
 
 import {
+  scenarioOptions,
   tonePresetOptions,
   tonePresetToTone,
+  type ScenarioOption,
   type TonePreset,
 } from "../../lib/rewrite-presets";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { SubscriptionStatus } from "./subscription-status";
 
@@ -64,7 +67,7 @@ type QualityFailure = {
 };
 
 type HistoryItem = {
-  mode: "General reply";
+  mode: ScenarioOption;
   roughDraftReply: string;
   rewrittenText: string;
   tone: "warm" | "direct";
@@ -100,6 +103,8 @@ type Props = {
   paid: boolean;
   remaining: number;
   quota: number;
+  planRemaining: number;
+  quotaSources?: QuotaCreditSource[];
 };
 
 const initialForm: FormState = {
@@ -118,6 +123,76 @@ const progressSteps = [
   "Building candidate replies",
   "Reviewing quality gates",
 ];
+
+type WorkspaceScenario = {
+  id: string;
+  label: string;
+  description: string;
+  rewriteScenario: ScenarioOption;
+  audience: string;
+  purpose: string;
+};
+
+const workspaceScenarioOptions = [
+  {
+    id: "extension-request",
+    label: "Extension request",
+    description: "Ask for more time without overexplaining.",
+    rewriteScenario: scenarioOptions[1],
+    audience: "Lecturer, tutor, manager, or reviewer",
+    purpose: "Ask for more time while keeping the request specific and respectful.",
+  },
+  {
+    id: "lecturer-email",
+    label: "Lecturer email",
+    description: "Write a clear academic message you still own.",
+    rewriteScenario: scenarioOptions[1],
+    audience: "Lecturer, tutor, advisor, or course coordinator",
+    purpose: "Send a clear academic reply while preserving the exact facts.",
+  },
+  {
+    id: "internship-follow-up",
+    label: "Internship follow-up",
+    description: "Follow up after an application, interview, or intro.",
+    rewriteScenario: scenarioOptions[1],
+    audience: "Recruiter, hiring manager, or professional contact",
+    purpose: "Follow up politely without sounding stiff or pushy.",
+  },
+  {
+    id: "group-project",
+    label: "Group project",
+    description: "Align teammates on work, deadlines, or blockers.",
+    rewriteScenario: scenarioOptions[5],
+    audience: "Classmate, teammate, or project group",
+    purpose: "Clarify the project update, next step, or blocker.",
+  },
+  {
+    id: "client-delay",
+    label: "Client delay",
+    description: "Explain a delay and protect trust.",
+    rewriteScenario: scenarioOptions[2],
+    audience: "Client, customer, or account contact",
+    purpose: "Explain a delay clearly while keeping commitments accurate.",
+  },
+  {
+    id: "less-rude",
+    label: "Make this less rude",
+    description: "Keep the point, reduce the friction.",
+    rewriteScenario: scenarioOptions[0],
+    audience: "Person receiving this reply",
+    purpose: "Make the reply clearer and calmer without changing the ask.",
+  },
+  {
+    id: "something-else",
+    label: "Something else",
+    description: "Use the same workspace for another real reply.",
+    rewriteScenario: scenarioOptions[0],
+    audience: "",
+    purpose: "",
+  },
+] satisfies WorkspaceScenario[];
+
+type WorkspaceScenarioId = (typeof workspaceScenarioOptions)[number]["id"];
 
 function Remaining({ value, max }: { value: string; max: number }) {
   return (
@@ -178,13 +253,150 @@ function titleForQualityFailure(reason?: string) {
   return "Quality bar not met";
 }
 
+function splitFactsToPreserve(value: string) {
+  return value
+    .split(/\n|;|•|·/)
+    .map((item) => item.trim().replace(/^[-*]\s*/, ""))
+    .filter(Boolean);
+}
+
+function fallbackWhyThisWorks(scenario: WorkspaceScenario | null) {
+  if (scenario?.id === "extension-request") {
+    return [
+      "Keeps the request specific without overexplaining.",
+      "Leaves room for your lecturer or reviewer to respond.",
+    ];
+  }
+
+  if (scenario?.id === "client-delay") {
+    return [
+      "Keeps the delay explanation clear without adding new commitments.",
+      "Makes the next step easier for the other person to see.",
+    ];
+  }
+
+  if (scenario?.id === "less-rude") {
+    return [
+      "Keeps your main point visible.",
+      "Reduces friction without changing the ask.",
+    ];
+  }
+
+  if (scenario?.id === "internship-follow-up") {
+    return [
+      "Keeps the follow-up polite and specific.",
+      "Avoids making the message sound more certain than your facts allow.",
+    ];
+  }
+
+  return [
+    "Keeps the rewrite grounded in the message and draft you supplied.",
+    "Uses the selected tone without adding new promises.",
+  ];
+}
+
+function displayQuotaSourceLabel(source: QuotaCreditSource) {
+  if (source.source === "exam_pass") {
+    return "Exam Pass";
+  }
+  if (source.source === "top_up") {
+    return "Top-up";
+  }
+
+  return source.label;
+}
+
+function expiryText(source: QuotaCreditSource) {
+  if (!source.expiresInDays) {
+    return "";
+  }
+
+  return ` (expires in ${source.expiresInDays}d)`;
+}
+
+function QuotaMeter({
+  paid,
+  totalRemaining,
+  planRemaining,
+  quotaSources = [],
+}: {
+  paid: boolean;
+  totalRemaining: number;
+  planRemaining: number;
+  quotaSources?: QuotaCreditSource[];
+}) {
+  const visibleSources = quotaSources.filter((source) => source.remaining > 0);
+
+  return (
+    <details className="mt-3 rounded-lg border border-line bg-white/80 px-4 py-3 shadow-soft">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+        <span className="text-sm font-semibold">
+          {totalRemaining} rewrites left
+        </span>
+        <span className="text-xs font-semibold text-ink/45">Details</span>
+      </summary>
+      <div className="mt-3 space-y-2 border-t border-line pt-3 text-sm leading-6 text-ink/65">
+        <div className="font-semibold text-ink">
+          {paid ? "Monthly plan:" : "Free plan:"} {planRemaining} left
+        </div>
+        {!paid ? (
+          <p className="rounded-md bg-mint px-3 py-2 text-xs font-medium text-sage">
+            {
+              "3 free rewrites — best used on real messages you actually need to send."
+            }
+          </p>
+        ) : null}
+        {visibleSources.map((source) => (
+          <div
+            className="font-medium text-ink/70"
+            key={`${source.source}:${source.expiresAt ?? "none"}`}
+          >
+            {displayQuotaSourceLabel(source)}: {source.remaining} left
+            {expiryText(source)}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function postCopyUpgradeNudge(scenario: WorkspaceScenario | null) {
+  if (
+    scenario?.id === "extension-request" ||
+    scenario?.id === "lecturer-email" ||
+    scenario?.id === "internship-follow-up" ||
+    scenario?.id === "group-project"
+  ) {
+    return {
+      title: "Keep the next message calm.",
+      body: "Starter gives you 55/month for lecturer emails, extension requests, and internship follow-ups.",
+    };
+  }
+
+  if (scenario?.id === "client-delay" || scenario?.id === "less-rude") {
+    return {
+      title: "Less time second-guessing replies.",
+      body: "Starter helps you handle client, manager, and colleague messages without overthinking every reply.",
+    };
+  }
+
+  return {
+    title: "Use the same voice in your workflow.",
+    body: "Need this inside your workflow? Pro includes API access and shared web/API quota.",
+  };
+}
+
 export function RewriteWorkspace({
   usageLabel,
   subscriptionStatus,
   paid,
   remaining,
   quota,
+  planRemaining,
+  quotaSources,
 }: Props) {
+  const visiblePlanRemaining = Math.max(Math.min(planRemaining, quota), 0);
+  const visibleTotalRemaining = Math.max(remaining, 0);
   const [form, setForm] = useState(initialForm);
   const [result, setResult] = useState<RewriteResponse | null>(null);
   const [qualityFailure, setQualityFailure] = useState<QualityFailure | null>(
@@ -195,10 +407,13 @@ export function RewriteWorkspace({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [selectedScenarioId, setSelectedScenarioId] =
+    useState<WorkspaceScenarioId | null>(null);
+  const [factsExpanded, setFactsExpanded] = useState(false);
   const [freeRewritesRemaining, setFreeRewritesRemaining] = useState(() =>
-    Math.max(Math.min(remaining, quota), 0),
+    visiblePlanRemaining,
   );
-  const [showFreeRewriteNudge, setShowFreeRewriteNudge] = useState(false);
+  const [showPostCopyNudge, setShowPostCopyNudge] = useState(false);
 
   const combinedLength = useMemo(
     () =>
@@ -217,8 +432,16 @@ export function RewriteWorkspace({
       form.whatHappened,
     ],
   );
+  const selectedScenario = useMemo(
+    () =>
+      workspaceScenarioOptions.find(
+        (option) => option.id === selectedScenarioId,
+      ) ?? null,
+    [selectedScenarioId],
+  );
   const canSubmit =
     !loading &&
+    Boolean(selectedScenario) &&
     form.roughDraftReply.trim().length >= 10 &&
     combinedLength <= rewriteInputLimits.combined;
 
@@ -232,8 +455,8 @@ export function RewriteWorkspace({
   }, []);
 
   useEffect(() => {
-    setFreeRewritesRemaining(Math.max(Math.min(remaining, quota), 0));
-  }, [quota, remaining]);
+    setFreeRewritesRemaining(visiblePlanRemaining);
+  }, [visiblePlanRemaining]);
 
   useEffect(() => {
     if (!loading) {
@@ -259,7 +482,7 @@ export function RewriteWorkspace({
 
   function saveHistory(response: RewriteResponse) {
     const nextItem: HistoryItem = {
-      mode: "General reply",
+      mode: selectedScenario?.rewriteScenario ?? scenarioOptions[0],
       roughDraftReply: form.roughDraftReply,
       rewrittenText: response.rewrittenText,
       tone: form.tone,
@@ -283,6 +506,7 @@ export function RewriteWorkspace({
     setLoading(true);
     setError("");
     setQualityFailure(null);
+    setShowPostCopyNudge(false);
 
     try {
       const response = await fetch("/api/rewrite", {
@@ -291,7 +515,7 @@ export function RewriteWorkspace({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          scenario: "General reply",
+          scenario: selectedScenario?.rewriteScenario ?? scenarioOptions[0],
           messageToReplyTo: form.messageToReplyTo,
           roughDraftReply: form.roughDraftReply,
           audience: form.audience,
@@ -331,7 +555,6 @@ export function RewriteWorkspace({
       setResult(payload);
       if (!paid) {
         setFreeRewritesRemaining((current) => Math.max(current - 1, 0));
-        setShowFreeRewriteNudge(true);
       }
       saveHistory(payload);
     } catch (submitError) {
@@ -357,6 +580,18 @@ export function RewriteWorkspace({
     }));
   }
 
+  function selectScenario(option: WorkspaceScenario) {
+    setSelectedScenarioId(option.id as WorkspaceScenarioId);
+    setFactsExpanded(false);
+    setError("");
+    setForm((current) => ({
+      ...current,
+      audience: option.audience,
+      purpose: option.purpose,
+      whatHappened: "",
+    }));
+  }
+
   async function copyReply() {
     if (!result?.rewrittenText) {
       return;
@@ -364,6 +599,9 @@ export function RewriteWorkspace({
 
     await navigator.clipboard.writeText(result.rewrittenText);
     setCopied(true);
+    if (!paid) {
+      setShowPostCopyNudge(true);
+    }
   }
 
   function clearHistory() {
@@ -373,15 +611,28 @@ export function RewriteWorkspace({
 
   function resetWorkspace() {
     setForm(initialForm);
+    setSelectedScenarioId(null);
+    setFactsExpanded(false);
     setResult(null);
     setQualityFailure(null);
     setError("");
     setCopied(false);
-    setShowFreeRewriteNudge(false);
+    setShowPostCopyNudge(false);
   }
 
   const visibleNaturalness = result?.naturalness ?? qualityFailure?.naturalness;
-  const showFreeNudge = !paid && showFreeRewriteNudge && result !== null;
+  const showCopyNudge = !paid && showPostCopyNudge && result !== null;
+  const copyNudge = postCopyUpgradeNudge(selectedScenario);
+  const suppliedFacts = splitFactsToPreserve(form.factsToPreserve);
+  const whyThisWorks = result?.changeSummary.length
+    ? result.changeSummary.slice(0, 4)
+    : fallbackWhyThisWorks(selectedScenario);
+  const beforeSendChecks = [
+    "check the deadline/date is correct",
+    "make sure the reason is true",
+    "edit anything that feels too formal",
+    ...(result?.riskNotes ?? []),
+  ];
 
   return (
     <main className="min-h-screen bg-paper text-ink">
@@ -412,245 +663,258 @@ export function RewriteWorkspace({
           status={subscriptionStatus}
           usageLabel={usageLabel}
         />
+        <QuotaMeter
+          paid={paid}
+          planRemaining={visiblePlanRemaining}
+          quotaSources={quotaSources}
+          totalRemaining={visibleTotalRemaining}
+        />
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.04fr)_minmax(360px,0.96fr)] lg:items-start">
           <form className="space-y-5" onSubmit={submit}>
             <Card className="p-4 md:p-5">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <label
-                  className="text-base font-semibold"
-                  htmlFor="messageToReplyTo"
-                >
-                  Context or message
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
-                    {combinedLength}/{rewriteInputLimits.combined}
-                  </span>
-                  <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
-                    Optional
-                  </span>
-                  <Remaining
-                    max={rewriteInputLimits.messageToReplyTo}
-                    value={form.messageToReplyTo}
-                  />
-                </div>
-              </div>
-              <Textarea
-                className="min-h-36"
-                id="messageToReplyTo"
-                maxLength={rewriteInputLimits.messageToReplyTo}
-                onChange={(event) =>
-                  updateField("messageToReplyTo", event.target.value)
-                }
-                placeholder="Optional. Paste the email, note, job post, or situation you are responding to."
-                rows={5}
-                value={form.messageToReplyTo}
-              />
-            </Card>
-
-            <Card className="p-4 md:p-5">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <label
-                  className="text-base font-semibold"
-                  htmlFor="roughDraftReply"
-                >
-                  Draft to rewrite
-                </label>
-                <Remaining
-                  max={rewriteInputLimits.roughDraftReply}
-                  value={form.roughDraftReply}
-                />
-              </div>
-              <Textarea
-                className="min-h-[14rem]"
-                id="roughDraftReply"
-                maxLength={rewriteInputLimits.roughDraftReply}
-                minLength={10}
-                onChange={(event) =>
-                  updateField("roughDraftReply", event.target.value)
-                }
-                placeholder="Required. Paste the draft that sounds too stiff, generic, or over-polished."
-                required
-                rows={9}
-                value={form.roughDraftReply}
-              />
-            </Card>
-
-            <Card className="p-4 md:p-5">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">Reply details</h2>
-                <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
-                  Optional
-                </span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label className="text-sm font-semibold" htmlFor="audience">
-                      Audience
-                    </label>
-                    <Remaining
-                      max={rewriteInputLimits.audience}
-                      value={form.audience}
-                    />
-                  </div>
-                  <Input
-                    id="audience"
-                    maxLength={rewriteInputLimits.audience}
-                    onChange={(event) =>
-                      updateField("audience", event.target.value)
-                    }
-                    placeholder="Parent, client, manager, lead"
-                    value={form.audience}
-                  />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label className="text-sm font-semibold" htmlFor="purpose">
-                      Purpose
-                    </label>
-                    <Remaining
-                      max={rewriteInputLimits.purpose}
-                      value={form.purpose}
-                    />
-                  </div>
-                  <Input
-                    id="purpose"
-                    maxLength={rewriteInputLimits.purpose}
-                    onChange={(event) =>
-                      updateField("purpose", event.target.value)
-                    }
-                    placeholder="Explain, follow up, decline, confirm"
-                    value={form.purpose}
-                  />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label
-                      className="text-sm font-semibold"
-                      htmlFor="whatHappened"
-                    >
-                      What actually happened
-                    </label>
-                    <Remaining
-                      max={rewriteInputLimits.whatHappened}
-                      value={form.whatHappened}
-                    />
-                  </div>
-                  <Textarea
-                    className="min-h-28"
-                    id="whatHappened"
-                    maxLength={rewriteInputLimits.whatHappened}
-                    onChange={(event) =>
-                      updateField("whatHappened", event.target.value)
-                    }
-                    rows={4}
-                    value={form.whatHappened}
-                  />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label
-                      className="text-sm font-semibold"
-                      htmlFor="factsToPreserve"
-                    >
-                      Facts to preserve
-                    </label>
-                    <Remaining
-                      max={rewriteInputLimits.factsToPreserve}
-                      value={form.factsToPreserve}
-                    />
-                  </div>
-                  <Textarea
-                    className="min-h-28"
-                    id="factsToPreserve"
-                    maxLength={rewriteInputLimits.factsToPreserve}
-                    onChange={(event) =>
-                      updateField("factsToPreserve", event.target.value)
-                    }
-                    rows={4}
-                    value={form.factsToPreserve}
-                  />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-4 md:p-5">
-              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-                <div>
-                  <h2 className="text-base font-semibold">Tone</h2>
-                  <p className="mt-1 text-sm leading-6 text-ink/55">
-                    Warm adds a little relationship tone. Direct removes padding
-                    without removing facts.
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-clay">
+                  Step 1
+                </p>
+                <h2 className="mt-1 text-base font-semibold">
+                  Pick your reply situation
+                </h2>
+                {selectedScenario ? (
+                  <p className="mt-2 text-sm leading-6 text-ink/60">
+                    {selectedScenario.description}
                   </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {tonePresetOptions.map((tonePreset) => (
+                ) : (
+                  <p className="mt-2 text-sm leading-6 text-ink/60">
+                    {
+                      "Pick a real message you need to send. We'll help you make it clearer while keeping your facts unchanged."
+                    }
+                  </p>
+                )}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {workspaceScenarioOptions.map((option) => {
+                  const active = selectedScenarioId === option.id;
+                  return (
                     <button
-                      aria-pressed={form.tonePreset === tonePreset}
-                      className={`min-h-10 rounded-md border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
-                        form.tonePreset === tonePreset
+                      aria-pressed={active}
+                      className={`min-h-[5.25rem] rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
+                        active
                           ? "border-ink bg-ink text-paper"
-                          : "border-line bg-white text-ink/65 hover:bg-paper hover:text-ink"
+                          : "border-line bg-white text-ink hover:bg-paper"
                       }`}
-                      key={tonePreset}
-                      onClick={() => updateTonePreset(tonePreset)}
+                      key={option.id}
+                      onClick={() => selectScenario(option)}
                       type="button"
                     >
-                      {tonePreset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-                <p className="text-xs text-ink/45">
-                  Successful rewrites count after quality checks pass.
-                </p>
-                <Button disabled={!canSubmit} type="submit">
-                  {loading ? (
-                    <Loader2
-                      className="h-4 w-4 animate-spin"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <Send className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  Begin rewrite
-                </Button>
-              </div>
-              {loading ? (
-                <div
-                  aria-live="polite"
-                  className="mt-4 rounded-lg border border-line bg-mint/65 px-3 py-3"
-                >
-                  <div className="grid gap-2 md:grid-cols-3">
-                    {progressSteps.map((step, index) => (
-                      <div
-                        className={`flex items-center gap-2 text-xs font-semibold ${
-                          index === loadingStepIndex ? "text-ink" : "text-ink/40"
+                      <span className="block text-sm font-semibold">
+                        {option.label}
+                      </span>
+                      <span
+                        className={`mt-1 block text-xs leading-5 ${
+                          active ? "text-paper/70" : "text-ink/55"
                         }`}
-                        key={step}
                       >
-                        {index < loadingStepIndex ? (
-                          <CheckCircle2
-                            className="h-4 w-4 text-sage"
-                            aria-hidden="true"
-                          />
-                        ) : index === loadingStepIndex ? (
-                          <Loader2
-                            className="h-4 w-4 animate-spin text-clay"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <span className="h-4 w-4 rounded-full border border-line bg-white/70" />
-                        )}
-                        {step}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+                        {option.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </Card>
+
+            {selectedScenario ? (
+              <>
+                <Card className="p-4 md:p-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sage">
+                        Step 2
+                      </p>
+                      <label
+                        className="mt-1 block text-base font-semibold"
+                        htmlFor="messageToReplyTo"
+                      >
+                        What message are you replying to?
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
+                        {combinedLength}/{rewriteInputLimits.combined}
+                      </span>
+                      <Remaining
+                        max={rewriteInputLimits.messageToReplyTo}
+                        value={form.messageToReplyTo}
+                      />
+                    </div>
+                  </div>
+                  <Textarea
+                    className="min-h-36"
+                    id="messageToReplyTo"
+                    maxLength={rewriteInputLimits.messageToReplyTo}
+                    onChange={(event) =>
+                      updateField("messageToReplyTo", event.target.value)
+                    }
+                    placeholder="Paste the email, note, message, or situation you need to answer."
+                    rows={5}
+                    value={form.messageToReplyTo}
+                  />
+                </Card>
+
+                <Card className="p-4 md:p-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <label
+                      className="text-base font-semibold"
+                      htmlFor="roughDraftReply"
+                    >
+                      What do you want to say?
+                    </label>
+                    <Remaining
+                      max={rewriteInputLimits.roughDraftReply}
+                      value={form.roughDraftReply}
+                    />
+                  </div>
+                  <Textarea
+                    className="min-h-[14rem]"
+                    id="roughDraftReply"
+                    maxLength={rewriteInputLimits.roughDraftReply}
+                    minLength={10}
+                    onChange={(event) =>
+                      updateField("roughDraftReply", event.target.value)
+                    }
+                    placeholder="Write or paste the rough reply. Short notes are fine as long as the facts are real."
+                    required
+                    rows={9}
+                    value={form.roughDraftReply}
+                  />
+                </Card>
+
+                <Card className="p-4 md:p-5">
+                  <button
+                    aria-controls="factsToPreservePanel"
+                    aria-expanded={factsExpanded}
+                    className="flex w-full items-center justify-between gap-3 text-left font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                    onClick={() => setFactsExpanded((current) => !current)}
+                    type="button"
+                  >
+                    <span>Add facts that must stay true</span>
+                    <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
+                      {factsExpanded ? "Hide" : "Optional"}
+                    </span>
+                  </button>
+                  {factsExpanded ? (
+                    <div className="mt-4" id="factsToPreservePanel">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                        <label
+                          className="text-sm font-semibold"
+                          htmlFor="factsToPreserve"
+                        >
+                          Facts that must stay true
+                        </label>
+                        <Remaining
+                          max={rewriteInputLimits.factsToPreserve}
+                          value={form.factsToPreserve}
+                        />
+                      </div>
+                      <Textarea
+                        className="min-h-28"
+                        id="factsToPreserve"
+                        maxLength={rewriteInputLimits.factsToPreserve}
+                        onChange={(event) =>
+                          updateField("factsToPreserve", event.target.value)
+                        }
+                        placeholder="Optional: dates, names, deadlines, promises the AI must not change."
+                        rows={4}
+                        value={form.factsToPreserve}
+                      />
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm leading-6 text-ink/55">
+                      Optional: dates, names, deadlines, or promises that must
+                      not change.
+                    </p>
+                  )}
+                </Card>
+
+                <Card className="p-4 md:p-5">
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                    <div>
+                      <h2 className="text-base font-semibold">Tone</h2>
+                      <p className="mt-1 text-sm leading-6 text-ink/55">
+                        Warm adds a little relationship tone. Direct removes
+                        padding without removing facts.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {tonePresetOptions.map((tonePreset) => (
+                        <button
+                          aria-pressed={form.tonePreset === tonePreset}
+                          className={`min-h-10 rounded-md border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
+                            form.tonePreset === tonePreset
+                              ? "border-ink bg-ink text-paper"
+                              : "border-line bg-white text-ink/65 hover:bg-paper hover:text-ink"
+                          }`}
+                          key={tonePreset}
+                          onClick={() => updateTonePreset(tonePreset)}
+                          type="button"
+                        >
+                          {tonePreset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+                    <p className="text-xs text-ink/45">
+                      Successful rewrites count after quality checks pass.
+                    </p>
+                    <Button disabled={!canSubmit} type="submit">
+                      {loading ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Send className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      Begin rewrite
+                    </Button>
+                  </div>
+                  {loading ? (
+                    <div
+                      aria-live="polite"
+                      className="mt-4 rounded-lg border border-line bg-mint/65 px-3 py-3"
+                    >
+                      <div className="grid gap-2 md:grid-cols-3">
+                        {progressSteps.map((step, index) => (
+                          <div
+                            className={`flex items-center gap-2 text-xs font-semibold ${
+                              index === loadingStepIndex
+                                ? "text-ink"
+                                : "text-ink/40"
+                            }`}
+                            key={step}
+                          >
+                            {index < loadingStepIndex ? (
+                              <CheckCircle2
+                                className="h-4 w-4 text-sage"
+                                aria-hidden="true"
+                              />
+                            ) : index === loadingStepIndex ? (
+                              <Loader2
+                                className="h-4 w-4 animate-spin text-clay"
+                                aria-hidden="true"
+                              />
+                            ) : (
+                              <span className="h-4 w-4 rounded-full border border-line bg-white/70" />
+                            )}
+                            {step}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </Card>
+              </>
+            ) : null}
 
             {error ? (
               <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -666,14 +930,13 @@ export function RewriteWorkspace({
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sage">
                     Output
                   </p>
-                  <h2 className="mt-1 text-lg font-semibold">Rewritten text</h2>
+                  <h2 className="mt-1 text-lg font-semibold">Ready to send</h2>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     disabled={!result?.rewrittenText}
                     onClick={() => void copyReply()}
                     type="button"
-                    variant="secondary"
                   >
                     {copied ? (
                       <CopyCheck className="h-4 w-4" aria-hidden="true" />
@@ -726,15 +989,31 @@ export function RewriteWorkspace({
                   "Your rewritten text will appear here after you run the workspace."
                 )}
               </div>
-              {showFreeNudge ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink/55">
-                  <span>
-                    {freeRewritesRemaining > 0
-                      ? `You have ${freeRewritesRemaining} free rewrite(s) left`
-                      : "That was your last free rewrite — see plans to keep going"}
-                  </span>
+              {showCopyNudge ? (
+                <div className="mt-3 rounded-lg border border-line bg-mint px-3 py-3 text-sm text-ink/65">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-ink">
+                        {copyNudge.title}
+                      </p>
+                      <p className="mt-1 leading-6">{copyNudge.body}</p>
+                      <p className="mt-1 text-xs text-ink/45">
+                        {freeRewritesRemaining > 0
+                          ? `${freeRewritesRemaining} free rewrite${freeRewritesRemaining === 1 ? "" : "s"} left after this copy.`
+                          : "That was your last free rewrite."}
+                      </p>
+                    </div>
+                    <button
+                      aria-label="Dismiss"
+                      className="rounded-md p-1 text-ink/45 transition hover:bg-white hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35"
+                      onClick={() => setShowPostCopyNudge(false)}
+                      type="button"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
                   <Link
-                    className="font-semibold text-sage underline-offset-4 hover:underline"
+                    className="mt-3 inline-flex font-semibold text-sage underline-offset-4 hover:underline"
                     href="/pricing"
                   >
                     See plans
@@ -744,56 +1023,115 @@ export function RewriteWorkspace({
             </Card>
 
             <Card className="p-4 md:p-5">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Tone check</h2>
-                <span className="rounded-md bg-mint px-3 py-1 text-xs font-semibold text-sage">
-                  {labelForNaturalness(visibleNaturalness)}
-                </span>
+              <div className="mb-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sage">
+                  Primary check
+                </p>
+                <h2 className="mt-1 text-lg font-semibold">Facts preserved</h2>
               </div>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                <SignalBar
-                  label="Draft writing signal"
-                  value={visibleNaturalness?.draftAiLikePercent ?? null}
-                />
-                <SignalBar
-                  label="Rewrite writing signal"
-                  value={visibleNaturalness?.rewriteAiLikePercent ?? null}
-                  variant="sage"
-                />
-              </div>
-              <p className="mt-4 text-sm text-ink/60">
-                Change:{" "}
-                {visibleNaturalness?.changePoints === null ||
-                visibleNaturalness?.changePoints === undefined
-                  ? "Unavailable"
-                  : `${visibleNaturalness.changePoints} pts`}
+              <p className="text-sm leading-6 text-ink/60">
+                Facts you asked us to keep:
               </p>
-              <p className="mt-2 text-xs leading-5 text-ink/50">
-                A third-party reference signal that helps compare how natural
-                the draft and rewrite feel. It is not a guarantee; review before
-                sending.
+              {suppliedFacts.length ? (
+                <div className="mt-3 space-y-2">
+                  {suppliedFacts.map((fact) => (
+                    <label
+                      className="flex items-start gap-3 rounded-lg border border-line bg-white px-3 py-2 text-sm leading-6 text-ink/70"
+                      key={fact}
+                    >
+                      <input
+                        className="mt-1 h-4 w-4 accent-sage"
+                        defaultChecked
+                        type="checkbox"
+                      />
+                      <span>{fact}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 rounded-lg border border-line bg-white px-3 py-2 text-sm leading-6 text-ink/55">
+                  No facts added yet. Add dates, names, deadlines, or promises
+                  before rewriting when they must stay exact.
+                </p>
+              )}
+              <p className="mt-3 text-xs leading-5 text-ink/45">
+                This checklist reflects the facts you supplied. Review the final
+                reply before sending.
               </p>
             </Card>
 
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              <Card className="p-4 md:p-5">
-                <h2 className="font-semibold">Change summary</h2>
-                <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                  {(result?.changeSummary ?? ["No rewrite yet."]).map((item) => (
-                    <li key={item}>- {item}</li>
+            <div className="space-y-3">
+              <details className="rounded-lg border border-line bg-white/70 p-4 shadow-soft">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">
+                  <span>Why this works</span>
+                  <span className="text-xs font-medium text-ink/45">
+                    {result ? "From this rewrite" : "Before rewrite"}
+                  </span>
+                </summary>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-ink/65">
+                  {whyThisWorks.map((item) => (
+                    <li className="flex gap-2" key={item}>
+                      <CheckCircle2
+                        className="mt-0.5 h-4 w-4 flex-none text-sage"
+                        aria-hidden="true"
+                      />
+                      <span>{item}</span>
+                    </li>
                   ))}
                 </ul>
-              </Card>
-              <Card className="p-4 md:p-5">
-                <h2 className="font-semibold">Risk notes</h2>
-                <ul className="mt-3 space-y-2 text-sm text-ink/65">
-                  {(result?.riskNotes ?? ["Review facts before sending."]).map(
-                    (item) => (
-                      <li key={item}>- {item}</li>
-                    ),
-                  )}
+              </details>
+
+              <details className="rounded-lg border border-line bg-white/70 p-4 shadow-soft">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">
+                  <span>Tone check</span>
+                  <span className="rounded-md bg-mint px-3 py-1 text-xs font-semibold text-sage">
+                    {labelForNaturalness(visibleNaturalness)}
+                  </span>
+                </summary>
+                <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <SignalBar
+                    label="Draft writing signal"
+                    value={visibleNaturalness?.draftAiLikePercent ?? null}
+                  />
+                  <SignalBar
+                    label="Rewrite writing signal"
+                    value={visibleNaturalness?.rewriteAiLikePercent ?? null}
+                    variant="sage"
+                  />
+                </div>
+                <p className="mt-4 text-sm text-ink/60">
+                  Change:{" "}
+                  {visibleNaturalness?.changePoints === null ||
+                  visibleNaturalness?.changePoints === undefined
+                    ? "Unavailable"
+                    : `${visibleNaturalness.changePoints} pts`}
+                </p>
+                <p className="mt-2 text-xs leading-5 text-ink/50">
+                  A third-party reference signal that helps compare how natural
+                  the draft and rewrite feel. It is not a guarantee; review
+                  before sending.
+                </p>
+              </details>
+
+              <details className="rounded-lg border border-line bg-white/70 p-4 shadow-soft">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">
+                  <span>Before you send</span>
+                  <span className="text-xs font-medium text-ink/45">
+                    Quick checklist
+                  </span>
+                </summary>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-ink/65">
+                  {beforeSendChecks.map((item) => (
+                    <li className="flex gap-2" key={item}>
+                      <CheckCircle2
+                        className="mt-0.5 h-4 w-4 flex-none text-clay"
+                        aria-hidden="true"
+                      />
+                      <span>{item}</span>
+                    </li>
+                  ))}
                 </ul>
-              </Card>
+              </details>
             </div>
 
             <details className="rounded-lg border border-line bg-white/70 p-4 shadow-soft">

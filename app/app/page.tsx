@@ -59,7 +59,9 @@ export default async function AppPage() {
       <SiteHeader showAdmin={showAdmin} />
       <RewriteWorkspace
         paid={paid}
+        planRemaining={usage.planRemaining}
         quota={usage.quota}
+        quotaSources={usage.creditBreakdown}
         remaining={usage.remaining}
         subscriptionStatus={user.subscriptionStatus}
         usageLabel={usageLabel}
