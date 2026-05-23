@@ -1356,3 +1356,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/issue-board.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
 - Verification evidence: Focused supervisor test passed after the board repair, then `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build --prefix packages/mcp-server` passed.
 - Limitations: No git, GitHub, live money, provider dashboard, npm publish, secret, `.env.local`, or `.dev.vars` action was performed.
+
+### 2026-05-23 - state-machine-modeling - Phase 1 lane dispatcher selector
+
+- Agent: Codex
+- Trigger: The Phase 1 dispatcher task adds read-only lane selection over registry items with workflow statuses and lane priority.
+- Action: Opened and followed the skill; modeled the selector as an observation-only workflow with no registry state transitions, no dispatch side effects, and lane priority `epic > evidence > repair > direct`.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/supervisor/test-lane-dispatch.sh`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: `bash -n plans/overnight-supervisor.sh`, `bash tests/supervisor/test-lane-dispatch.sh`, `LANE_DISPATCH=1 plans/overnight-supervisor.sh --selector-dry-run`, and focused supervisor Vitest passed; `npm run lint` and `npm run typecheck` passed.
+- Limitations: Phase 1 is selector-only and does not enable lane-routed dispatch by default; no secret, dashboard, deploy, live-money, `.env.local`, or `.dev.vars` action was performed.
+
+### 2026-05-23 - state-machine-modeling - Phase 1 supervisor status-contract relaxation
+
+- Agent: Codex
+- Trigger: Publishing the Phase 1 lane selector also required resolving the supervisor unit test contract for scoped M1/M3 rows that may be either individually pending or deferred under epic planner ownership.
+- Action: Opened and followed the skill; modeled those issue-board rows as eligible in either `pending` or `BLOCKED-AUTONOMY` while Phase 1 remains observation-only and Phase 5 planner ownership has not shipped, then relaxed the focused unit-test regex accordingly.
+- Output artifacts: `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` passed after the status-contract relaxation.
+- Limitations: This changes test acceptance only. It does not change issue-board rows, dispatch behavior, live loop state, provider settings, or deployment.

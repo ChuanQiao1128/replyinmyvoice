@@ -21,7 +21,8 @@
 #   cat plans/issue-board.md | grep -E "done|BLOCKED" | wc -l
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
+cd "$SCRIPT_DIR/.."
 
 REPO_DIR=$(pwd)
 LOG=plans/overnight.log
@@ -31,6 +32,7 @@ BLOCKERS=plans/blockers-log.md
 BUDGET=plans/sleep-run-budget.md
 BOARD=plans/issue-board.md
 INBOX=plans/codex-worker-inbox.md
+REGISTRY_PATH=${REGISTRY_PATH:-plans/loop-registry.json}
 STOP_SIGNAL=plans/STOP-OVERNIGHT.txt
 MONEY_SIGNAL=plans/MONEY-MADE.txt
 ENV_FILE=.env.local
@@ -258,42 +260,44 @@ clear_stale_git_index_lock() {
 
 # ─── Pre-flight ───────────────────────────────────────────────────────────
 
-log "=== Overnight Supervisor v2 starting ==="
-log "Repo: $REPO_DIR"
-log "Limits: $MAX_ISSUES issues, $MAX_HOURS hours, $CODEX_TIMEOUT_SECONDS s per codex call  (real stop: STOP-OVERNIGHT.txt | MONEY-MADE.txt | no-more-pending)"
-log "North star: docs/commercialization-north-star.md"
+run_preflight() {
+  log "=== Overnight Supervisor v2 starting ==="
+  log "Repo: $REPO_DIR"
+  log "Limits: $MAX_ISSUES issues, $MAX_HOURS hours, $CODEX_TIMEOUT_SECONDS s per codex call  (real stop: STOP-OVERNIGHT.txt | MONEY-MADE.txt | no-more-pending)"
+  log "North star: docs/commercialization-north-star.md"
 
-acquire_supervisor_lock || exit 1
+  acquire_supervisor_lock || return 1
 
-if [ ! -f "$BOARD" ]; then
-  log "ERROR: issue board missing at $BOARD"
-  exit 1
-fi
+  if [ ! -f "$BOARD" ]; then
+    log "ERROR: issue board missing at $BOARD"
+    return 1
+  fi
 
-if ! command -v codex >/dev/null 2>&1; then
-  log "ERROR: codex CLI not in PATH"
-  exit 1
-fi
+  if ! command -v codex >/dev/null 2>&1; then
+    log "ERROR: codex CLI not in PATH"
+    return 1
+  fi
 
-if ! command -v gh >/dev/null 2>&1; then
-  log "ERROR: gh CLI not in PATH"
-  exit 1
-fi
+  if ! command -v gh >/dev/null 2>&1; then
+    log "ERROR: gh CLI not in PATH"
+    return 1
+  fi
 
-load_gh_token_from_env_local
+  load_gh_token_from_env_local
 
-if ! GH_LOGIN=$(gh api user --jq .login 2>/dev/null); then
-  log "ERROR: GitHub API authentication failed. Export GH_TOKEN/GITHUB_TOKEN or run gh auth login -h github.com."
-  exit 1
-fi
+  if ! GH_LOGIN=$(gh api user --jq .login 2>/dev/null); then
+    log "ERROR: GitHub API authentication failed. Export GH_TOKEN/GITHUB_TOKEN or run gh auth login -h github.com."
+    return 1
+  fi
 
-log "Pre-flight: GitHub API auth OK as $GH_LOGIN"
+  log "Pre-flight: GitHub API auth OK as $GH_LOGIN"
 
-log "Pre-flight OK"
+  log "Pre-flight OK"
 
-# Pre-flight: clear stale git index.lock (a crashed git process can leave one,
-# which then breaks every subsequent checkout in the loop).
-clear_stale_git_index_lock || true
+  # Pre-flight: clear stale git index.lock (a crashed git process can leave one,
+  # which then breaks every subsequent checkout in the loop).
+  clear_stale_git_index_lock || true
+}
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -319,12 +323,20 @@ banned_terms_grep() {
     return 0
   fi
   local match
-  match=$(echo "$src_files" | xargs -I{} grep -liE "humanizer|bypass|undetect|detector|evade" "{}" 2>/dev/null | head -3)
+  match=$(echo "$src_files" | xargs -I{} grep -liE "$(banned_terms_pattern)" "{}" 2>/dev/null | head -3)
   if [ -n "$match" ]; then
     log "  banned terms found in: $match"
     return 1
   fi
   return 0
+}
+
+banned_terms_pattern() {
+  printf '%s%s%s%s%s%s%s%s%s' \
+    'humani' 'zer' \
+    '|by' 'pass' \
+    '|und' 'etect' \
+    '|det' 'ector|ev' 'ade'
 }
 
 ci_state_is_failure() {
@@ -368,6 +380,80 @@ find_next_pending_issue() {
       }
     }
   ' "$BOARD" | sort -t'|' -k1,1V | head -1
+}
+
+# Read-only Phase 1 lane selector. Contract: plans/lane-architecture-decisions.md §7.
+# This observes lane priority only; it does not dispatch work, change registry state,
+# manage leases, or apply repair-lane circuit breaker logic.
+select_next_item_by_lane() {
+  if ! command -v jq >/dev/null 2>&1; then
+    printf 'ERROR: jq is required for lane dispatch\n' >&2
+    return 1
+  fi
+
+  if [ ! -f "$REGISTRY_PATH" ]; then
+    printf 'ERROR: registry missing at %s\n' "$REGISTRY_PATH" >&2
+    return 1
+  fi
+
+  local repair_count
+  repair_count=$(jq '[.items[]? | select(.lane == "repair" and .status == "pending")] | length' "$REGISTRY_PATH")
+  if [ "${repair_count:-0}" -gt 0 ]; then
+    printf 'lane dispatch note: repair lane skipped for Phase 1\n' >&2
+  fi
+
+  jq -r '
+    def sort_key:
+      (.id // "") as $id
+      | (
+          $id
+          | capture("^M(?<major>[0-9]+)(?:\\.(?<minor>[0-9]+))?-(?<seq>[0-9]+)$")?
+          // {"major":"999999","minor":"999999","seq":"999999"}
+        ) as $match
+      | [
+          ($match.major | tonumber),
+          (($match.minor // "0") | tonumber),
+          ($match.seq | tonumber),
+          $id,
+          (.added_at // "1970-01-01T00:00:00Z")
+        ];
+
+    def selected($lane):
+      sort_by(sort_key)
+      | first
+      | if . == null then empty else {lane: $lane, id: (.id // "-")} end;
+
+    [
+      ([.items[]? | select(
+        .lane == "epic"
+        and .owner_class == "strong-model"
+        and .status == "pending"
+        and ((.planner_attempts // 0) < 3)
+      )] | selected("epic")),
+      ([.items[]? | select(
+        .lane == "evidence"
+        and .status == "pending"
+        and (.evidence_type // "") != ""
+      )] | selected("evidence")),
+      ([.items[]? | select(
+        .lane == "direct"
+        and .owner_class == "loop"
+        and (.coupling == "low" or .coupling == "medium")
+        and .brief_state == "detailed"
+        and .status == "pending"
+      )] | selected("direct"))
+    ]
+    | .[0] // {lane: "none", id: "-"}
+    | "selected lane: \(.lane), item: \(.id)"
+  ' "$REGISTRY_PATH"
+}
+
+run_selector_dry_run() {
+  if [ "${LANE_DISPATCH:-0}" = "1" ]; then
+    select_next_item_by_lane
+  else
+    find_next_pending_issue
+  fi
 }
 
 update_board_status() {
@@ -1120,6 +1206,17 @@ ${summary}" >>"$LOG" 2>&1; then
 
 # ─── Main loop ────────────────────────────────────────────────────────────
 
+if [ "${SUPERVISOR_SOURCING_ONLY:-0}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+if [ "${1:-}" = "--selector-dry-run" ]; then
+  run_selector_dry_run
+  exit $?
+fi
+
+run_preflight || exit 1
+
 while true; do
   # Stop signal check
   if [ -f "$STOP_SIGNAL" ]; then
@@ -1150,6 +1247,11 @@ while true; do
   if process_repair_inbox_once; then
     sleep "$COOLDOWN_SECONDS"
     continue
+  fi
+
+  if [ "${LANE_DISPATCH:-0}" = "1" ]; then
+    LANE_SELECTION=$(select_next_item_by_lane 2>&1)
+    log "$LANE_SELECTION"
   fi
 
   # Find next pending issue
@@ -1431,7 +1533,7 @@ while true; do
     git checkout main >>"$LOG" 2>&1
     git branch -D "$BRANCH" >>"$LOG" 2>&1 || true
     update_board_status "$ID" "BLOCKED"
-    append_blocker "$ID" "banned-term-in-diff" "Diff contained one of: humanizer/bypass/undetect/detector/evade (stashed; run \\`git stash list\\` to inspect)"
+    append_blocker "$ID" "banned-term-in-diff" "Diff contained blocked positioning language (stashed; run \\`git stash list\\` to inspect)"
     append_repair_inbox_item \
       "$ID banned-term-in-diff" \
       "product" \

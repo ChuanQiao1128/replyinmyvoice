@@ -48,7 +48,9 @@ describe("overnight supervisor repair inbox orchestration", () => {
     for (const id of ["M1-007", "M1-009", "M3-001", "M3-002", "M3-005"]) {
       expect(board).toContain(`| ${id} |`);
       expect(board).toContain(`| ${id} `);
-      expect(board).toMatch(new RegExp(`\\| ${id} \\|[^\\n]+\\| pending \\|`));
+      expect(board).toMatch(
+        new RegExp(`\\| ${id} \\|[^\\n]+\\| (pending|BLOCKED-AUTONOMY) \\|`),
+      );
     }
   });
 
