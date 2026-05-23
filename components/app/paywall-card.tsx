@@ -66,9 +66,16 @@ export function PaywallCard({
         </Card>
         <aside className="rounded-lg border border-line bg-white/80 p-5 shadow-crisp lg:sticky lg:top-20">
           <p className="text-sm font-medium text-ink/60">Reply In My Voice</p>
-          <p className="mt-2 text-3xl font-semibold">NZD $9/month</p>
+          <p className="mt-2 text-3xl font-semibold">Starter</p>
+          <p className="mt-1 text-xl font-semibold">NZ$9.90/month</p>
           <p className="mt-2 text-sm text-ink/60">
-            40 rewrites per billing month. Cancel anytime.
+            55 rewrites per month. Cancel anytime.
+          </p>
+          <p className="mt-2 text-sm text-ink/60">
+            Pro/API includes 110 rewrites per month and API access.
+          </p>
+          <p className="mt-2 text-sm text-ink/60">
+            Exam Week Pass covers 25 rewrites for 7 days. Top-ups appear when quota runs low.
           </p>
           <p className="mt-2 text-xs leading-5 text-ink/45">
             Operated by TimeAwake Ltd. Payments are managed by Stripe.

@@ -19,7 +19,7 @@ const sections = [
   },
   {
     title: "Billing and quota",
-    text: "Paid access is NZD $9 per month for 40 successful rewrites per billing month. Quota resets at the start of each billing period; unused rewrites do not roll over. Subscriptions and payment details are managed through Stripe.",
+    text: "Free access includes 3 successful lifetime rewrites. Starter is NZ$9.90 per month for 55 successful rewrites per billing month, and Pro/API is NZ$19.90 per month for 110 successful rewrites per billing month plus API access. Monthly quota resets at the start of each billing period; unused monthly rewrites do not roll over. Exam Week Pass one-time credits expire after 7 days. Top-up credits add the stated rewrite amount and do not create surprise metered billing. Subscriptions and payment details are managed through Stripe.",
   },
   {
     title: "Cancellation",

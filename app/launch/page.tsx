@@ -45,8 +45,9 @@ export default function LaunchPage() {
               <h2 style={{ fontSize: 20 }}>For people who write email</h2>
               <p>
                 Rewrites that stay in your voice, preserve every fact, and refuse
-                to ship a bad result. NZD $9/month with 3 free rewrites — no card
-                up front.
+                to ship a bad result. Start with 3 free rewrites, then choose
+                Starter at NZ$9.90/month, Exam Week Pass, or Pro/API when your
+                workflow grows.
               </p>
               <div style={{ marginTop: 16 }}>
                 <Link href="/" className="btn btn-primary">

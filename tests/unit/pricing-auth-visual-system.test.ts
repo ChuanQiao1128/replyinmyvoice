@@ -16,9 +16,26 @@ describe("pricing and auth visual system", () => {
     expect(pricingPage).toContain('<main className="rimv">');
     expect(pricingPage).toContain('className="page"');
     expect(pricingPage).toContain('className="pricing-wrap"');
-    expect(pricingPage).toContain("plan plan-paid");
-    expect(pricingPage).toContain("40 rewrites");
+    expect(pricingPage).toContain("Start free. Upgrade when replies become part of your routine.");
+    expect(pricingPage).toContain("Monthly plans");
+    expect(pricingPage).toContain("One-time options");
+    expect(pricingPage).toContain("Starter");
+    expect(pricingPage).toContain("NZ$9.90/mo");
+    expect(pricingPage).toContain("55 rewrites/mo");
+    expect(pricingPage).toContain("Pro/API");
+    expect(pricingPage).toContain("NZ$19.90/mo");
+    expect(pricingPage).toContain("110 rewrites/mo");
+    expect(pricingPage).toContain("Exam Week Pass");
+    expect(pricingPage).toContain("NZ$4.90");
+    expect(pricingPage).toContain("25 rewrites");
+    expect(pricingPage).toContain("Top-up");
+    expect(pricingPage).toContain("NZ$2.50");
+    expect(pricingPage).toContain("+10 rewrites");
+    expect(pricingPage).toContain("Available soon");
+    expect(pricingPage).toContain("isPriceConfigured");
     expect(pricingPage).not.toContain("unlimited rewrites");
+    expect(pricingPage).not.toContain("NZD $9");
+    expect(pricingPage).not.toContain("40 rewrites");
   });
 
   it("keeps auth cards within the refreshed shape and keyboard-focus system", () => {

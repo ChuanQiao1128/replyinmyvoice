@@ -62,8 +62,15 @@ describe("workspace V2 surface copy", () => {
     );
     expect(paywallSource).toContain("max-w-6xl");
     expect(paywallSource).toContain("lg:grid-cols-[minmax(0,1fr)_360px]");
+    expect(paywallSource).toContain("Starter");
+    expect(paywallSource).toContain("NZ$9.90/month");
+    expect(paywallSource).toContain("55 rewrites per month");
+    expect(paywallSource).toContain("Exam Week Pass");
+    expect(paywallSource).toContain("Top-ups appear when quota runs low");
     expect(paywallSource).not.toContain("rounded-xl");
     expect(paywallSource).not.toContain("rounded-2xl");
+    expect(paywallSource).not.toContain("NZD $9/month");
+    expect(paywallSource).not.toContain("40 rewrites");
   });
 
   it("shows the free-tier upgrade nudge only after successful unpaid rewrites", () => {

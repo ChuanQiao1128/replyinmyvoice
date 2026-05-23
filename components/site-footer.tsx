@@ -68,7 +68,7 @@ export function SiteFooter() {
         </div>
         <div className="footer-bottom">
           <span>© 2026 TimeAwake Ltd. All rights reserved.</span>
-          <span>Stripe-managed billing · NZD $9/mo</span>
+          <span>3 free rewrites · Starter NZ$9.90/mo · Pro/API NZ$19.90/mo</span>
         </div>
       </div>
     </footer>

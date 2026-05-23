@@ -16,7 +16,7 @@ const authCopy = {
   "sign-up": {
     eyebrow: "Create your account",
     heading: "Start with three free reply rewrites.",
-    body: "Create an account with an email verification code or Google, then try the workspace before choosing the paid monthly plan.",
+    body: "Create an account with an email verification code or Google, then try the workspace before choosing Starter, Pro/API, or a one-time option.",
     cardTitle: "Create your account",
     cardBody: "Email code sign-in verifies your address before sending you back to the workspace.",
     alternateText: "Already signed up?",
@@ -40,7 +40,7 @@ const authCopy = {
 const highlights = [
   "Facts stay in the reply",
   "Warm or Direct tone",
-  "40 rewrites on the paid plan",
+  "Starter gives 55 rewrites/mo",
 ];
 
 export function GoogleOAuthCard({ mode = "sign-in" }: { mode?: AuthMode }) {

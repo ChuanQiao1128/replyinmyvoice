@@ -21,6 +21,7 @@ describe("students v2 landing page", () => {
     expect(page).toContain("Try 3 free rewrites — no card");
     expect(page).toContain('href="/sign-up"');
     expect(page).not.toContain("NZD $9");
+    expect(page).not.toContain("40 rewrites");
   });
 
   it("keeps the supplied student examples and non-cheating positioning", () => {

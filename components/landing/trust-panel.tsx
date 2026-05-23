@@ -17,7 +17,7 @@ const trustItems = [
   {
     k: "Billing",
     h: "Managed by Stripe",
-    p: "Subscriptions are NZD $9/month through Stripe, operated by TimeAwake Ltd. Cancel from your account anytime.",
+    p: "Starter is NZ$9.90/month, Pro/API is NZ$19.90/month, and one-time options are available for short bursts. Payments are managed by Stripe.",
   },
 ];
 
