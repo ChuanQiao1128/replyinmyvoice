@@ -22,6 +22,8 @@ dist/
 build/
 coverage/
 test-results/
+.vitest/
+.vite-cache/
 tsconfig.tsbuildinfo
 **/bin/
 **/obj/

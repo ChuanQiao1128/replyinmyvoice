@@ -11,6 +11,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
@@ -97,6 +98,8 @@ type Props = {
   usageLabel: string;
   subscriptionStatus: string;
   paid: boolean;
+  remaining: number;
+  quota: number;
 };
 
 const initialForm: FormState = {
@@ -179,6 +182,8 @@ export function RewriteWorkspace({
   usageLabel,
   subscriptionStatus,
   paid,
+  remaining,
+  quota,
 }: Props) {
   const [form, setForm] = useState(initialForm);
   const [result, setResult] = useState<RewriteResponse | null>(null);
@@ -190,6 +195,10 @@ export function RewriteWorkspace({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [freeRewritesRemaining, setFreeRewritesRemaining] = useState(() =>
+    Math.max(Math.min(remaining, quota), 0),
+  );
+  const [showFreeRewriteNudge, setShowFreeRewriteNudge] = useState(false);
 
   const combinedLength = useMemo(
     () =>
@@ -221,6 +230,10 @@ export function RewriteWorkspace({
       setHistory([]);
     }
   }, []);
+
+  useEffect(() => {
+    setFreeRewritesRemaining(Math.max(Math.min(remaining, quota), 0));
+  }, [quota, remaining]);
 
   useEffect(() => {
     if (!loading) {
@@ -316,6 +329,10 @@ export function RewriteWorkspace({
 
       setQualityFailure(null);
       setResult(payload);
+      if (!paid) {
+        setFreeRewritesRemaining((current) => Math.max(current - 1, 0));
+        setShowFreeRewriteNudge(true);
+      }
       saveHistory(payload);
     } catch (submitError) {
       setError(
@@ -360,9 +377,11 @@ export function RewriteWorkspace({
     setQualityFailure(null);
     setError("");
     setCopied(false);
+    setShowFreeRewriteNudge(false);
   }
 
   const visibleNaturalness = result?.naturalness ?? qualityFailure?.naturalness;
+  const showFreeNudge = !paid && showFreeRewriteNudge && result !== null;
 
   return (
     <main className="min-h-screen bg-paper text-ink">
@@ -707,6 +726,21 @@ export function RewriteWorkspace({
                   "Your rewritten text will appear here after you run the workspace."
                 )}
               </div>
+              {showFreeNudge ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink/55">
+                  <span>
+                    {freeRewritesRemaining > 0
+                      ? `You have ${freeRewritesRemaining} free rewrite(s) left`
+                      : "That was your last free rewrite — see plans to keep going"}
+                  </span>
+                  <Link
+                    className="font-semibold text-sage underline-offset-4 hover:underline"
+                    href="/pricing"
+                  >
+                    See plans
+                  </Link>
+                </div>
+              ) : null}
             </Card>
 
             <Card className="p-4 md:p-5">

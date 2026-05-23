@@ -65,4 +65,22 @@ describe("workspace V2 surface copy", () => {
     expect(paywallSource).not.toContain("rounded-xl");
     expect(paywallSource).not.toContain("rounded-2xl");
   });
+
+  it("shows the free-tier upgrade nudge only after successful unpaid rewrites", () => {
+    const appPageSource = readFileSync(
+      new URL("../../app/app/page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(appPageSource).toContain("remaining={usage.remaining}");
+    expect(appPageSource).toContain("quota={usage.quota}");
+    expect(workspaceSource).toContain("remaining: number");
+    expect(workspaceSource).toContain("quota: number");
+    expect(workspaceSource).toContain("freeRewritesRemaining");
+    expect(workspaceSource).toContain("You have");
+    expect(workspaceSource).toContain("free rewrite(s) left");
+    expect(workspaceSource).toContain("That was your last free rewrite");
+    expect(workspaceSource).toContain('href="/pricing"');
+    expect(workspaceSource).toContain("!paid");
+  });
 });
