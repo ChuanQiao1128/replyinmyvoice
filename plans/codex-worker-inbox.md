@@ -300,7 +300,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-23T13:42:00+12:00 — supervisor-skip-relax: release 5 scoped rows + remove daytime-only rationale
 
-- Status: in_progress
+- Status: done
 - Source: Cowork supervisor (Claude)
 - Class: autonomy
 - Priority: P1
@@ -314,10 +314,11 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
   (5) `plans/decisions-log.md` — append one line: `<ISO date> | supervisor-skip-relax | Released M1-007, M1-009, M3-001, M3-002, M3-005 to pending; removed daytime-only rationale from supervisor.sh M1 and M3 case branches; remaining M1/M3 BLOCKED-AUTONOMY rows kept with coupling-risk / cascade-prereq rationale per user 24/7 operation policy.`
 - Done condition: PR merged on `main`. The 5 named rows show `pending` on `plans/issue-board.md`. `plans/overnight-supervisor.sh:1178` and `:1196` no longer reference the 5 released IDs in their case patterns and no longer contain the substring "daytime". Per-issue briefs exist at `plans/issues/M1-007.md`, `plans/issues/M1-009.md`, `plans/issues/M3-001.md`, `plans/issues/M3-002.md`, `plans/issues/M3-005.md`. `npm run lint`, `npm run typecheck`, `bash -n plans/overnight-supervisor.sh` all pass. Configured banned-term scan stays clean across `app components public lib`.
 - Forbidden actions: changing any other case branch in supervisor.sh; flipping any row other than the 5 named; touching M1-002/003/004/005/006/008/010 or M3-003/004/006/007/008 on the board; modifying `.env.local`, `.dev.vars`, `globalapikey/`, `LAUNCH_CONFIRMED`, `STRIPE_LIVE_CUTOVER_APPROVED`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`; force-push `main`; npm publish; live money; DNS / Cloudflare dashboard edits.
+- Worker evidence: 2026-05-23T13:47:03+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/229; Released five scoped M1/M3 rows from supervisor skip clusters and added issue briefs.
 
 ## 2026-05-23T13:33:53+12:00 — M9-002 undeclared-files-in-diff
 
-- Status: pending
+- Status: not_actionable
 - Source: shell supervisor
 - Class: dirty_repo
 - Priority: P1
@@ -325,4 +326,17 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Evidence: plans/task-status.json
 - Suggested Codex action: Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation.
 - Done condition: No PR commits files outside the Codex-declared files_changed list.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T13:50:48+12:00 — Workspace race: M9-002 was blocked by concurrent creation of plans/m25-002-incremental-eval.md; no-git protocol prevents stash split, so rerun M9-002 after isolating the M2.5 plan artifact.
+
+## 2026-05-23T13:58:35+12:00 — M9-003 codex-needs-human:BLOCKED-AUTONOMY
+
+- Status: in_progress
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M9-003
+- Evidence: plans/task-status.json
+- Suggested Codex action: Resolve or narrow the non-user blocker Codex reported for M9-003 without changing live money, dashboards, npm publish state, or secrets.
+- Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
