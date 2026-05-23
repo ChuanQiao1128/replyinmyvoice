@@ -1347,3 +1347,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/blockers-log.md`; `plans/codex-worker-inbox.md`; `plans/decisions-log.md`; `docs/skill-run-log.md`.
 - Verification evidence: Red run: `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` failed on the missing explicit return. Green run: the same focused suite passed 23/23 after the script change.
 - Limitations: No live shell-loop restart, provider call, deploy, dashboard change, live-money action, or secret mutation was performed.
+
+### 2026-05-23 - state-machine-modeling - M9-003 repair unblock
+
+- Agent: Codex
+- Trigger: The M9-003 repair required changing persisted issue-board lifecycle states so the supervisor test suite and prior scoped-release decision agreed.
+- Action: Opened and followed the skill; modeled issue rows with `pending`, `in_progress`, blocked categories, and `done` states, then applied the allowed `BLOCKED-AUTONOMY` to `pending` transition to M1-007, M1-009, M3-001, M3-002, and M3-005, plus the M9-003 repair transition to `done` after implementation and validation.
+- Output artifacts: `plans/issue-board.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
+- Verification evidence: Focused supervisor test passed after the board repair, then `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build --prefix packages/mcp-server` passed.
+- Limitations: No git, GitHub, live money, provider dashboard, npm publish, secret, `.env.local`, or `.dev.vars` action was performed.
