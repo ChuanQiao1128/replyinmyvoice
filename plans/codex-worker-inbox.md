@@ -358,3 +358,15 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Done condition: The issue can proceed autonomously again, or a scoped follow-up row/PR documents the exact engineering prerequisite.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
 - Worker evidence: 2026-05-23T14:07:58+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/230; Implemented M9-003 MCP env config and repaired issue-board statuses so full validation passes.
+
+## 2026-05-23T17:09:29+12:00 — M3-001 codex-no-status
+
+- Status: in_progress
+- Source: shell supervisor
+- Class: autonomy
+- Priority: P1
+- Related issue: M3-001
+- Evidence: plans/codex-exec-M3-001.log
+- Suggested Codex action: Investigate why Codex did not write plans/task-status.json for M3-001; fix the loop prompt/task contract or requeue the issue with evidence.
+- Done condition: The supervisor can run the issue again and receive a valid plans/task-status.json, or the issue is reclassified with a concrete non-user blocker.
+- Forbidden actions: live money, npm publish, dashboard changes, secret changes
