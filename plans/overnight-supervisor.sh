@@ -615,6 +615,7 @@ stash_dirty_worktree() {
     fi
     LAST_STASH_FAILURE_SIGNATURE=""
     STASH_FAILURE_COUNT=0
+    return 0
   fi
 }
 

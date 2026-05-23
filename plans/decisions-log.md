@@ -216,3 +216,10 @@ Each overnight Claude trigger appends here.
 2026-05-23T05:51:18+12:00 | REPAIR-20260523054614 | repair-done | Added .claude/ to .gitignore after confirming it only contains local Claude settings. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/222)
 2026-05-23T05:51:37+12:00 | REPAIR-20260523055137 | repair-started | M7-003 codex-needs-human:BLOCKED-AUTONOMY
 2026-05-23T05:55:17+12:00 | REPAIR-20260523055137 | blocker-narrowed | Reclassified M7-003 to BLOCKED-PROVIDER because npm registry DNS fails in the sandbox and @sentry/nextjs is not cached; package-lock generation needs a networked npm runner.
+2026-05-23T06:01:30+12:00 | REPAIR-20260523055137 | repair-done | Reclassified M7-003 as npm registry provider-blocked and documented the networked lockfile prerequisite. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/223)
+2026-05-23T06:01:49+12:00 | M7-008 | started | M7-008 Post-launch 24h + 7d KPI review
+2026-05-23T11:18:37+12:00 | REPAIR-20260523111837 | repair-started | INV-1: Finder-duplicate files outside M7-008 task scope
+2026-05-23T11:23:06+12:00 | REPAIR-20260523111837 | repair-done | Confirmed the five Finder duplicate files are absent and canonical files remain. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/224)
+2026-05-23T11:23:24+12:00 | REPAIR-20260523112324 | repair-started | M7-008 undeclared-files-in-diff
+2026-05-23T11:28:35+12:00 | REPAIR-20260523112324 | repair-done | Recorded status-only repair: M7-008 mixed diff was caused by already-removed Finder duplicate files; stash review remains owned by the shell supervisor under the no-git protocol. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/225)
+2026-05-23T13:08:25+12:00 | overnight-supervisor-stash-success | Closed 1206 generated dirty-worktree-stash-failed blocker-log entries and three stale repair-inbox items after adding explicit stash-success return coverage; stash count is 0 and STOP remains user-controlled.

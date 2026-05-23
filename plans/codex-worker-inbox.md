@@ -235,7 +235,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-23T06:11:49+12:00 — M7-008 undeclared-files-in-diff
 
-- Status: in_progress
+- Status: done
 - Source: shell supervisor
 - Class: dirty_repo
 - Priority: P1
@@ -244,10 +244,11 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Suggested Codex action: Inspect the preserved stash, split unrelated work into scoped branches, and restore the supervisor to clean-branch operation.
 - Done condition: No PR commits files outside the Codex-declared files_changed list.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T11:28:35+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/225; Recorded status-only repair: M7-008 mixed diff was caused by already-removed Finder duplicate files; stash review remains owned by the shell supervisor under the no-git protocol.
 
 ## 2026-05-22T18:38:00Z — stash-before-repair fails on filenames with spaces (loop hard-stalled)
 
-- Status: pending
+- Status: not_actionable
 - Source: Claude monitor
 - Class: dirty_repo
 - Priority: P0
@@ -256,10 +257,11 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Suggested Codex action: Fix `plans/overnight-supervisor.sh` stash-before-repair-inbox path-quoting so that filenames with spaces (untracked files) are handled correctly — use `git stash -u` or `git ls-files --others --exclude-standard -z | xargs -0 git stash -u` approach rather than per-file pathspec. Also delete the Finder-duplicate files (`plans/m6-validation-report 2.md`, `plans/m6-validation-report 3.md`, `plans/task-status 2.json`, `plans/task-status 3.json`, `plans/task-status 4.json`) before the stash so they stop triggering the bug.
 - Done condition: `plans/overnight.log` shows no more `dirty-worktree-stash-failed` entries; loop processes a repair item successfully and moves on to normal issue work
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T13:08:00+12:00 — auto-closed after confirming the space-named Finder duplicates are gone, stash count is 0, and the supervisor stash-success path now has explicit success return coverage.
 
 ## 2026-05-22T18:38:00Z — INV-4: task-status.json stale (M7-008 BLOCKED on board, file says ready_to_commit)
 
-- Status: pending
+- Status: not_actionable
 - Source: Claude monitor
 - Class: docs
 - Priority: P2
@@ -268,10 +270,11 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Suggested Codex action: Either commit or discard the M7-008 work in the worktree (scripts/launch-kpi-report.ts, tests/unit/launch-kpi-report.test.ts, docs/launch-day-report.md), then reset task-status.json to reflect the active in_progress task M8-001 (or blank if none is currently active)
 - Done condition: task-status.json `issue_id` matches a board in_progress entry (or is reset blank); worktree is clean of M7-008 artefacts
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T13:08:00+12:00 — auto-closed as stale forensic state after PR #225 recorded the M7-008 status-only repair; the supervisor deletes task-status before launching each repair or issue.
 
 ## 2026-05-22T19:40:25Z — stash-accumulation-livelock
 
-- Status: pending
+- Status: not_actionable
 - Source: Claude monitor
 - Class: dirty_repo
 - Priority: P1
@@ -280,3 +283,4 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Suggested Codex action: After space-named files are removed (see P0 item), run `git stash clear` to drop all 387+ accumulated stashes, then confirm `git stash list` is empty.
 - Done condition: `git stash list` returns empty; no new overnight-preserve stashes accumulate in next loop cycle.
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes
+- Worker evidence: 2026-05-23T13:08:00+12:00 — auto-closed after `git stash list | wc -l` returned 0.

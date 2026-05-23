@@ -1311,3 +1311,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/commercialization-north-star.md`; `plans/supervisor-handoff.md`; `plans/codex-implementation-prompt.md`; `docs/skill-run-log.md`.
 - Verification evidence: Documentation now defines autonomous, provider/sandbox, user-only, paid-resource/secret/dashboard, and workspace-race categories; it also defines single-owner default, parallelization criteria, and token-discipline rules including prompt/context-cache efficiency.
 - Limitations: This is an operating-contract update only. It does not change the currently running shell loop process until the docs are merged and the loop next reads them.
+
+### 2026-05-23 - state-machine-modeling - Claude monitor watchdog circuit breaker
+
+- Agent: Codex
+- Trigger: The owner provided a Claude monitor watchdog/circuit-breaker proposal for detecting stale or stuck shell-supervisor runs and escalating after one failed safe restart.
+- Action: Opened and followed the skill; modeled monitor states, events, transition table, invariants, illegal transitions, persistence implications, and a dry-run checklist for the scheduled Sonnet monitor prompt.
+- Output artifacts: `plans/monitor-watchdog-prompt.md`; `docs/skill-run-log.md`.
+- Verification evidence: The prompt now separates `stopped`, `healthy`, `suspect`, `stale`, `stuck`, `restarted_once`, and `escalated`, forbids dispatch/source/board mutations, and requires a single safe `screen` restart before escalation.
+- Limitations: This creates the prompt document only. It does not install or update the remote Claude scheduled task and does not restart the shell loop.
+
+### 2026-05-23 - resilience-test-generation - Claude monitor watchdog recovery rules
+
+- Agent: Codex
+- Trigger: The watchdog proposal changes recovery behavior for stale logs, residual `codex exec` processes, stash growth, repeated error signatures, and duplicate stale triggers.
+- Action: Opened and followed the skill; converted the recovery cases into a failure matrix and dry-run checklist covering timeout, duplicate trigger, partial-success, concurrent runner, stash accumulation, and malformed board/status failures.
+- Output artifacts: `plans/monitor-watchdog-prompt.md`; `docs/skill-run-log.md`.
+- Verification evidence: The prompt limits recovery to one safe restart per failure signature, records state in `codex-supervisor/monitor-watchdog-state.json`, and escalates by touching `plans/STOP-OVERNIGHT.txt` plus writing `codex-supervisor/inbox/emergency-YYYYMMDD-HHMM.md`.
+- Limitations: No live monitor trigger was run and no Claude schedule was modified in this turn.
+
+### 2026-05-23 - state-machine-modeling - Overnight supervisor stash success cleanup
+
+- Agent: Codex
+- Trigger: The supervisor repair-inbox flow had generated repeated dirty-worktree-stash-failed blocker records and needed a precise recovery state for successful stash preservation versus genuine stash failure.
+- Action: Opened and followed the skill; modeled the stash preservation lifecycle as clean/runtime-only, successful preservation, genuine failure, repeated-failure stop, and post-fix cleanup of generated blocker records.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/blockers-log.md`; `plans/codex-worker-inbox.md`; `plans/decisions-log.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused supervisor regression test first failed because the successful stash path lacked an explicit success return, then passed after adding the return. Duplicate generated blocker entries were counted at 1206 and collapsed to one forensic summary.
+- Limitations: This does not restart the loop; `plans/STOP-OVERNIGHT.txt` remains user-controlled.
+
+### 2026-05-23 - resilience-test-generation - Overnight supervisor stash recovery regression
+
+- Agent: Codex
+- Trigger: The change covers timeout recovery, repeated stash failure handling, partial stash behavior, generated blocker cleanup, and safe restart prerequisites for the long-running supervisor loop.
+- Action: Opened and followed the skill; added focused regression coverage for the successful stash path and preserved the existing failure-path coverage for partial stash drop and repeated-failure stop signaling.
+- Output artifacts: `plans/overnight-supervisor.sh`; `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `plans/blockers-log.md`; `plans/codex-worker-inbox.md`; `plans/decisions-log.md`; `docs/skill-run-log.md`.
+- Verification evidence: Red run: `npm run test -- tests/unit/overnight-supervisor-repair-inbox.test.ts` failed on the missing explicit return. Green run: the same focused suite passed 23/23 after the script change.
+- Limitations: No live shell-loop restart, provider call, deploy, dashboard change, live-money action, or secret mutation was performed.

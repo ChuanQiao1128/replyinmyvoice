@@ -355,6 +355,24 @@ describe("overnight supervisor repair inbox orchestration", () => {
     expect(script).toContain("FATAL: repeated stash failure");
   });
 
+  it("returns success explicitly after a successful stash preservation", () => {
+    const script = supervisorScript();
+    const stashFunction = script.slice(
+      script.indexOf("stash_dirty_worktree()"),
+      script.indexOf("verify_status_declares_all_changes()"),
+    );
+
+    const successfulStash = stashFunction.indexOf('if [ "$stash_exit" -ne 0 ]; then');
+    const resetSignature = stashFunction.indexOf('LAST_STASH_FAILURE_SIGNATURE=""', successfulStash);
+    const resetCount = stashFunction.indexOf("STASH_FAILURE_COUNT=0", resetSignature);
+    const explicitReturn = stashFunction.indexOf("return 0", resetCount);
+
+    expect(successfulStash).toBeGreaterThanOrEqual(0);
+    expect(resetSignature).toBeGreaterThan(successfulStash);
+    expect(resetCount).toBeGreaterThan(resetSignature);
+    expect(explicitReturn).toBeGreaterThan(resetCount);
+  });
+
   it("does not merge PRs when CI is still pending, unknown, or has no checks", () => {
     const script = supervisorScript();
 

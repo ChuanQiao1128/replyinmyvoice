@@ -522,3 +522,177 @@ Run finished. Done: 3 | Blocked: 1 | Needs human: 2
 
 ## Trigger at 2026-05-22T18:13:01+12:00
 Run finished. Done: 0 | Blocked: 0 | Needs human: 1 | Repairs done: 1 | Repairs blocked: 0
+
+## Trigger at 2026-05-23T04:35:45+12:00
+Run finished. Done: 0 | Blocked: 0 | Needs human: 4 | Repairs done: 1 | Repairs blocked: 2
+
+## Monitor at 2026-05-22T16:38:10Z
+- Loop: stopped (STOP-OVERNIGHT.txt present — reason: stop repeated M6-007 reselection while supervisor guard patch is missing; set by Codex at 2026-05-23T04:31:17+12:00)
+- Board: 55 done / 25 pending / 2 in_progress / 3 user-blocked / 6 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 2 uncategorized-blocked
+- Invariants: skipped (stop signal active)
+- Recent main: 04c2ac2 docs: narrow M6-005 smoke blocker (#215)
+- Blockers: loop intentionally stopped to prevent M6-007 reselection loop; supervisor guard patch needed before resuming
+- Repair inbox: none (stop signal active — monitor exits after checkpoint)
+- Next commercial gate: auth (M1 Entra migration BLOCKED-AUTONOMY) → rewrite eval → billing → API → MCP → monitoring
+
+## Monitor at 2026-05-22T16:50:26Z
+- Loop: alive (overnight.log 2 min old; codex exec in progress — M6-007 BLOCKED-AUTONOMY repair, 600s timeout, started 04:48:17+12:00 NZ)
+- Board: 55 done / 25 pending / 1 in_progress (M8-001 PR #173 awaiting CI) / 3 user-blocked / 6 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 2 uncategorized-blocked
+- Invariants: INV-2 branch-mismatch (repair branch codex/repair-m6-007-... active while M8-001 is board in_progress; expected during repair cycle, P2 item written)
+- Recent main: 5664354 fix(loop): preserve supervisor ledgers during stashes (#216)
+- Blockers: 22 BLOCKED-AUTONOMY issues dominate pending work; M6-003/M6-004/M6-005 blocked by sandbox DNS; M6-007 repair currently executing
+- Repair inbox: INV-2 P2 branch-mismatch (expected repair context; action only if loop stalls on repair branch)
+- Next commercial gate: auth (M1 Entra migration) → rewrite eval → billing → API (M8-001 PR awaiting CI)
+
+## Monitor at 2026-05-22T17:08:43Z
+- Loop: alive (overnight.log 1.7 min old; codex exec in progress — M6-008 BLOCKED-AUTONOMY repair, 600s timeout, ~3 min in, started 05:05:58+12:00 NZ)
+- Board: 55 done / 24 pending / 1 in_progress (M8-001 PR #173 awaiting CI) / 3 user-blocked / 6 provider-blocked / 10 prereq-blocked / 23 autonomy-blocked / 2 uncategorized-blocked
+- Invariants: INV-2 branch-mismatch (repair branch codex/repair-m6-008-... active while M8-001 is board in_progress; same expected repair-cycle pattern as prior resolved INV-2; P1 item written per spec)
+- Recent main: 34a73a3 Record status-only repair result (#218), 422200e narrow M6-007 blocker (#217), 5664354 fix loop stash (#216)
+- Blockers: M6-008 repair in_progress (Stripe webhook live-test requires human); 23 BLOCKED-AUTONOMY issues — majority blocked by sandbox DNS/EPERM for smoke tests; no new blockers since last checkpoint
+- Repair inbox: INV-2 P1 branch-mismatch (recurring repair-cycle pattern; action only if loop stalls on repair branch after M6-008 exec completes)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 CI) → MCP → monitoring
+
+## Monitor at 2026-05-22T17:39:37Z
+- Loop: alive (overnight.log ~2.9 min old; codex exec in progress — M7-003 Sentry error monitoring, 600s timeout, started 05:35:55+12:00 NZ — within timeout window)
+- Board: 49 done / 19 pending / 2 in_progress (M7-003 active, M8-001 PR #173 awaiting CI) / 4 user-blocked / 5 provider-blocked / 9 prereq-blocked / 21 autonomy-blocked / 3 uncategorized-blocked
+- Invariants: INV-1 transient-dirty (task-status.json absent during active codex exec — expected; .claude/ untracked + not gitignored — P3 inbox item written) | INV-2 clean (branch chore/M7-003 matches M7-003 in_progress) | INV-3 clean (no mixed-M-id commits in last 10) | INV-4 N/A (task-status.json deleted on disk, codex not yet written new one)
+- Recent main: 1ba9a48 fix: ignore task status in supervisor diff checks (#221), 2d60428 Record status-only repair result (#220)
+- Blockers: 21 BLOCKED-AUTONOMY dominate (sandbox DNS/EPERM for smoke tests); M6-008 Stripe live webhook test is BLOCKED-WAITING-USER; no new blockers since last checkpoint
+- Repair inbox: P3 — .claude/ untracked directory not in .gitignore (risk of accidental commit)
+- Next commercial gate: monitoring (M7-003 in progress) → billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 CI)
+
+## Monitor at 2026-05-22T18:08:57Z
+- Loop: alive (overnight.log 5.8 min old; last entry shows Codex exec started for M7-008 at 06:01:49+12:00 NZ with 600s timeout — within window; screen/pgrep checks unreliable from sandbox, log freshness is authoritative)
+- Board: 55 done / 21 pending / 2 in_progress (M7-008 active, M8-001 PR #173 awaiting CI) / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 3 uncategorized-blocked
+- Invariants: INV-1 dirty-repo (5 macOS Finder-duplicate files with space-numbered names untracked outside M7-008 scope — P1 inbox item written) | INV-2 clean (branch chore/M7-008 matches M7-008 in_progress) | INV-3 clean (no mixed-M-id commits in last 10) | INV-4 N/A (task-status.json deleted, no file to evaluate)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223), 06cb678 chore: ignore local Claude settings (#222)
+- Blockers: M6-008 BLOCKED-WAITING-USER (operator live Stripe webhook test required); M7-003 BLOCKED-PROVIDER (npm registry unreachable in sandbox); M7-002 stash of undeclared files needs split/review; 22 BLOCKED-AUTONOMY dominated by sandbox DNS/EPERM for smoke tests
+- Repair inbox: P1 — INV-1 Finder-duplicate files outside M7-008 scope (plans/task-status 2.json, 3.json, 4.json; m6-validation-report 2.md, 3.md)
+- Next commercial gate: monitoring (M7-003 BLOCKED-PROVIDER npm registry) → billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 CI)
+
+## Monitor at 2026-05-22T18:38:00Z
+
+- Loop: stalled — alive (log mtime 13 s ago) but hard-looping on stash failure; no issue work is progressing
+- Board: 19 done / 17 pending / 0 in_progress / 8 prereq-blocked / 18 autonomy-blocked / 3 provider-blocked / 4 uncategorized-blocked
+- Invariants: INV-1 dirty-repo (many files outside any task scope, including Finder duplicates with spaces in names — root cause of stall) | INV-4 stale-status (task-status.json M7-008 ready_to_commit vs board BLOCKED)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223)
+- Blockers: ~50+ consecutive `dirty-worktree-stash-failed` in overnight.log — git pathspec cannot handle untracked filenames with spaces (`plans/m6-validation-report 2.md` etc.); loop never exits the repair-inbox branch
+- Repair inbox: (1) P0 stash-before-repair fails on filenames with spaces — fix script path-quoting + delete Finder duplicates; (2) P2 INV-4 task-status.json stale M7-008
+- Next commercial gate: billing (M8 API key schema currently in_progress on board, PR #173 open)
+
+## Monitor at 2026-05-22T19:09:18Z
+- Loop: stalled — alive (overnight.log ~14 s old at check time) but hard-looping on stash failure every ~15 s; no issue work is progressing; same root cause as 18:38Z checkpoint
+- Board: 55 done / 21 pending / 1 in_progress (M8-001 PR #173 awaiting CI) / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: INV-1 dirty-repo (files outside M7-008 scope: plans/blockers-log.md, codex-worker-inbox.md, current-task.md, decisions-log.md, issue-board.md, overnight-progress.md modified; Finder-duplicate untracked files with spaces still present — all covered by existing P0+P1 pending inbox items) | INV-2 branch-mismatch (branch=main, in_progress=M8-001 — root cause is stall, not a new bleed; P0 stash fix covers path to resolution) | INV-3 clean (last 10 commits single M-id only) | INV-4 stale-status (task-status.json still says M7-008/ready_to_commit, board in_progress = M8-001 — covered by existing P2 inbox item)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223)
+- Blockers: root cause unchanged — `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"'` every ~15 s (git cannot stash untracked files with spaces in names); loop cannot self-heal because it needs to stash before consuming the P0 repair item that would fix stashing; requires user to manually delete Finder-duplicate files (`plans/m6-validation-report 2.md`, `plans/m6-validation-report 3.md`, `plans/task-status 2.json`, `plans/task-status 3.json`, `plans/task-status 4.json`) to break the deadlock
+- Repair inbox: no new items written — all violations covered by existing pending P0/P1/P2 items (stash-path-quoting, Finder-duplicates, task-status.json staleness)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring (M7-003 BLOCKED-PROVIDER npm registry)
+
+## Monitor at 2026-05-22T19:40:25Z
+
+- Loop: **LIVELOCK** — loop process is alive (overnight.log updated 13 s before monitor run), but permanently stuck in a 15-second stash-fail cycle. No repair inbox items can be consumed. 387 stashes accumulated on main (and growing). Screen session is absent; loop is running via another mechanism.
+- Board: 55 done / 21 pending / 2 in_progress / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: **INV-1 dirty-repo** (M7-008 product files in worktree — scripts/launch-kpi-report.ts, tests/unit/launch-kpi-report.test.ts, docs/launch-day-report.md — while M8-001 is the only in_progress board task; plus 5 space-named untracked Finder duplicates outside any task scope) | **INV-4 stale-status** (task-status.json still marks M7-008 as `ready_to_commit` but board shows M7-008 BLOCKED)
+- Recent main: #223 `chore: document M7-003 Sentry package blocker` (c3289a6)
+- Blockers: **CRITICAL — USER ACTION REQUIRED to break livelock.** The 5 space-named Finder-duplicate files (`plans/m6-validation-report 2.md`, `plans/m6-validation-report 3.md`, `plans/task-status 2.json`, `plans/task-status 3.json`, `plans/task-status 4.json`) prevent any git stash from succeeding. The loop cannot consume the P0 inbox repair item that would fix this because the stash step runs before inbox processing. Existing P0 inbox item: `2026-05-22T…M7-008 Finder-duplicate files in worktree`. New P1 item added for stash accumulation cleanup. Fix sequence: (1) `rm` the 5 space-named files, (2) `git stash clear`, (3) loop can then process repair inbox.
+- Repair inbox: Added `stash-accumulation-livelock` (P1) — clean up 387 accumulated stashes after space files are removed.
+- Next commercial gate: billing (M8 API key milestone in progress — M8-001 PR #173 awaiting CI)
+
+## Monitor at 2026-05-22T20:09:10Z
+
+- Loop: **LIVELOCK** — alive (overnight.log updated ~10 s before monitor run, 2026-05-23T08:09:00+12:00), but permanently stuck in 15-second stash-fail cycle; no issue work progressing; no screen session (loop runs as Mac process outside sandbox)
+- Board: 55 done / 21 pending / 2 in_progress / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: **INV-1 dirty-repo** (5 space-named Finder duplicates + M7-008 product files while M8-001 is in_progress — all covered by existing P0/P1 pending inbox items) | **INV-2 branch-mismatch** (branch=main, in_progress=M8-001 — consequence of stall, covered by existing items) | **INV-3 clean** (no mixed-M-id commits in last 10) | **INV-4 stale-status** (task-status.json still M7-008/ready_to_commit vs M8-001 board — covered by existing P2 item)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223) — no new merges since 19:40Z
+- Blockers: **CRITICAL USER ACTION REQUIRED** — stash count grew 387 → 501 since 19:40Z checkpoint (~114 new stashes in ~29 min); root cause unchanged: `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"' did not match any files` every 15 s. User must manually delete the 5 space-named files to break deadlock: `rm "plans/m6-validation-report 2.md" "plans/m6-validation-report 3.md" "plans/task-status 2.json" "plans/task-status 3.json" "plans/task-status 4.json"` (from `/Users/qc/Desktop/CloudFlare`), then run `git stash clear` to drop 501 accumulated stashes
+- Repair inbox: no new items — all violations covered by 4 existing pending items (P0 space-file stash fix, P1 Finder-duplicate cleanup, P1 stash-accumulation-livelock, P2 INV-4 staleness)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring (M7-003 BLOCKED-PROVIDER npm registry)
+
+## Monitor at 2026-05-22T20:38:14Z
+
+- Loop: **LIVELOCK** — alive (overnight.log updated ~47 s before monitor run), permanently stuck in 15-second stash-fail cycle; no issue work progressing; no screen session (loop runs as Mac process outside sandbox)
+- Board: 55 done / 21 pending / 2 in_progress / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: **INV-1 dirty-repo** (M7-008 product files + 5 space-named Finder duplicates in worktree while M8-001 is in_progress — covered by existing P0 inbox item) | **INV-2 branch-mismatch** (branch=main, in_progress=M8-001 — consequence of livelock, covered by existing items) | **INV-3 clean** (no mixed-M-id commits in last 10) | **INV-4 stale-status** (task-status.json still M7-008/ready_to_commit vs M8-001 board — covered by existing P2 item)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223) — no new merges since 19:40Z
+- Blockers: **CRITICAL USER ACTION REQUIRED** — stash count grew 501 → 616 since 20:09Z (~115 new stashes in ~29 min). Root cause unchanged: `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"' did not match any files` every 15 s. User must manually delete 5 space-named files to break livelock: from `/Users/qc/Desktop/CloudFlare` run `rm "plans/m6-validation-report 2.md" "plans/m6-validation-report 3.md" "plans/task-status 2.json" "plans/task-status 3.json" "plans/task-status 4.json"` then `git stash clear` to drop 616 accumulated stashes.
+- Repair inbox: no new items — all violations covered by 5 existing pending items (P0 space-file stash fix, P0 stash-before-repair, P1 undeclared-files, P1 stash-accumulation-livelock, P2 INV-4 staleness)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring (M7-003 BLOCKED-PROVIDER npm registry)
+
+## Monitor at 2026-05-22T21:09:20Z
+
+- Loop: **LIVELOCK** — alive (overnight.log updated ~6 s before run, 2026-05-22T21:08:12Z), permanently stuck in 15-second stash-fail cycle; no issue work progressing; no screen session (loop runs as Mac process outside sandbox)
+- Board: 55 done / 21 pending / 1 in_progress / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: **INV-1 dirty-repo** (5 space-named Finder duplicates + M7-008 product files in worktree while M8-001 is the only in_progress task — all covered by existing P0 inbox items) | **INV-2 clean** (branch=main) | **INV-3 clean** (no mixed-M-id commits in last 10) | **INV-4 stale-status** (task-status.json still M7-008/ready_to_commit vs M8-001 in_progress on board — covered by existing P2 item)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223) — no new merges since 19:40Z checkpoint
+- Blockers: **CRITICAL USER ACTION REQUIRED** — stash count grew 616 → 738 since 20:38Z (~122 new stashes in ~31 min). Root cause unchanged: `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"'` every 15 s. Fix: from `/Users/qc/Desktop/CloudFlare` run `rm "plans/m6-validation-report 2.md" "plans/m6-validation-report 3.md" "plans/task-status 2.json" "plans/task-status 3.json" "plans/task-status 4.json"` then `git stash clear` to drop 738 accumulated stashes. Until done, no issue work can progress.
+- Repair inbox: no new items — all violations covered by existing pending items (P0 space-file stash, P1 stash-accumulation-livelock, P2 INV-4 staleness)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring (M7-003 BLOCKED-PROVIDER npm registry)
+
+## Monitor at 2026-05-22T21:37:51Z
+
+- Loop: **LIVELOCK** — alive (overnight.log updated ~11 s before run, 2026-05-22T21:37:40Z), permanently stuck in 15-second stash-fail cycle; no issue work progressing; no screen session (loop runs as Mac process outside sandbox)
+- Board: 55 done / 21 pending / 2 in_progress / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: **INV-1 dirty-repo** (5 space-named Finder duplicates + M7-008 product files while M8-001 is in_progress — covered by existing P0 inbox items) | **INV-2 branch-mismatch** (branch=main, M8-001 in_progress — covered by existing inbox items from 2026-05-22) | **INV-3 clean** (no mixed-M-id commits in last 10) | **INV-4 stale-status** (task-status.json M7-008/ready_to_commit vs M8-001 on board — covered by existing P2 item)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223) — no new merges since 19:40Z
+- Blockers: **CRITICAL USER ACTION REQUIRED** — stash count grew 738 → 854 since 21:09Z (~116 new stashes in ~28 min, ~4/min rate). Root cause unchanged: `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"'` every 15 s. Fix: from `/Users/qc/Desktop/CloudFlare` run `rm "plans/m6-validation-report 2.md" "plans/m6-validation-report 3.md" "plans/task-status 2.json" "plans/task-status 3.json" "plans/task-status 4.json"` then `git stash clear` to drop 854 accumulated stashes. Until done, no issue work can progress.
+- Repair inbox: no new items — all violations already covered by 5 existing pending inbox items (P0 space-file stash, P0 stash-before-repair, P1 undeclared-files, P1 stash-accumulation-livelock, P2 INV-4 staleness)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring (M7-003 BLOCKED-PROVIDER npm registry)
+
+## Monitor at 2026-05-22T22:07:43Z
+
+- Loop: **LIVELOCK** — alive (overnight.log updated ~3 s before run, 2026-05-22T22:07:40Z), permanently stuck in 15-second stash-fail cycle; no issue work progressing; no screen session (loop runs as Mac process outside sandbox)
+- Board: 55 done / 21 pending / 2 in_progress / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: **INV-1 dirty-repo** (5 space-named Finder duplicates + M7-008 product files while M8-001 is in_progress on board — all covered by existing P0 inbox items) | **INV-2 clean** (branch=main) | **INV-3 clean** (no mixed-M-id commits in last 10) | **INV-4 stale-status** (task-status.json still M7-008/ready_to_commit vs M8-001 in_progress on board — covered by existing P2 item)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223) — no new merges since 19:40Z
+- Blockers: **CRITICAL USER ACTION REQUIRED** — stash count grew 854 → 973 since 21:37Z (~119 new stashes in ~30 min, ~4/min rate). Root cause unchanged: `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"'` every 15 s. Fix: from `/Users/qc/Desktop/CloudFlare` run `rm "plans/m6-validation-report 2.md" "plans/m6-validation-report 3.md" "plans/task-status 2.json" "plans/task-status 3.json" "plans/task-status 4.json"` then `git stash clear` to drop 973 accumulated stashes. Until done, no issue work can progress.
+- Repair inbox: no new items — all violations covered by 5 existing pending inbox items (P0 space-file stash, P0 stash-before-repair, P1 undeclared-files, P1 stash-accumulation-livelock, P2 INV-4 staleness)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring (M7-003 BLOCKED-PROVIDER npm registry)
+
+## Monitor at 2026-05-23T10:38:00+12:00
+- Loop: alive (overnight.log ≤5 s old, writing every 15 s) but **hard-livelocked** on repair-inbox stash failure — same `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"'` repeating every 15 s; not on a screen session but running on host
+- Board: 55 done / 21 pending / 2 in_progress / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: INV-1 dirty-repo (space-named files outside task scope, P0 exists) | INV-2 branch-mismatch (branch=main, in_progress=M8-001, no substring match; P2 task-status item covers) | INV-3 clean | INV-4 stale-status (task-status.json=M7-008 ready_to_commit, board=M7-008 BLOCKED; P2 exists)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223)
+- Blockers: Stash-livelock P0 still unconsumed — stash count now **1089** (was 387 at last check); loop cannot advance to product work until space-named files are removed and `git stash clear` is run
+- Repair inbox: no new items (existing P0 stash-failure, P1 stash-accumulation, P1 undeclared-files, P2 task-status items cover all active violations)
+- Next commercial gate: billing (M8-API in_progress → billing → MCP → monitoring)
+
+## Monitor at 2026-05-22T23:09:07Z
+
+- Loop: **LIVELOCK** — alive (overnight.log ~12 s old at check), permanently stuck in 15-second stash-fail cycle; no new issue work; runs as Mac process outside sandbox (screen check not applicable)
+- Board: 55 done / 21 pending / 2 in_progress / 4 user-blocked / 7 provider-blocked / 10 prereq-blocked / 22 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: **INV-1 dirty-repo** (space-named Finder duplicates + M7-008 product files outside declared task scope; covered by existing P0 inbox items) | **INV-2 branch-mismatch** (branch=main, board in_progress=M8-001; consistent with PR workflow, no new item needed) | **INV-3 clean** (no mixed-M-id commits in last 10) | **INV-4 stale-status** (task-status.json M7-008/ready_to_commit while board shows M7-008 BLOCKED; covered by existing P2 item)
+- Recent main: c3289a6 chore: document M7-003 Sentry package blocker (#223) — no new merges since last checkpoint
+- Blockers: **CRITICAL USER ACTION REQUIRED** — stash count now **1209** (was 1089 at 10:38 NZST, +120 in ~31 min). Same root cause: `fatal: pathspec ':(prefix:0)"plans/m6-validation-report 2.md"'`. Fix: from `/Users/qc/Desktop/CloudFlare` run `rm "plans/m6-validation-report 2.md" "plans/m6-validation-report 3.md" "plans/task-status 2.json" "plans/task-status 3.json" "plans/task-status 4.json"` then `git stash clear`. Until done, no issue work can progress.
+- Repair inbox: no new items — all violations covered by existing pending items (P0 space-file stash, P0 stash-before-repair, P1 undeclared-files, P1 stash-accumulation-livelock, P2 INV-4 staleness)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring (M7-003 BLOCKED-PROVIDER npm registry)
+
+## Monitor at 2026-05-22T23:38:08Z
+
+- Loop: **STOPPED** — `plans/STOP-OVERNIGHT.txt` present; no loop restart attempted
+- Board: 49 done / 17 pending / 1 in_progress / 3 user-blocked / 6 provider-blocked / 9 prereq-blocked / 21 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: skipped (STOP file present)
+- Recent main: 8da66c3 Record M7-008 dirty-repo repair status (#225)
+- Blockers: loop intentionally stopped; prior stash-livelock + space-named file issues from last checkpoint still unresolved
+- Repair inbox: no new items
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring
+
+## Monitor at 2026-05-23T00:32:10Z
+- Loop: stopped (plans/STOP-OVERNIGHT.txt present)
+- Board: 19 done / 17 pending / 0 in_progress / 0 user-blocked / 4 provider-blocked / 7 prereq-blocked / 10 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: skipped (loop stopped — no invariant checks run per spec)
+- Recent main: 9100026 docs: clarify agent permission and allocation policy (#212)
+- Blockers: loop halted by STOP file
+- Repair inbox: none
+- Next commercial gate: auth | rewrite eval | billing | API | MCP | monitoring (loop paused)
+
+## Monitor at 2026-05-23T01:07:34Z
+- Loop: **STOPPED** — `plans/STOP-OVERNIGHT.txt` present; loop detected stop signal at 2026-05-23T11:28:50+12:00 (23:28:50Z) and exited cleanly; overnight.log is 98 min stale
+- Board: 50 done / 17 pending / 1 in_progress (M8-001 PR #173 awaiting CI) / 3 user-blocked / 6 provider-blocked / 9 prereq-blocked / 21 autonomy-blocked / 4 uncategorized-blocked
+- Invariants: skipped (STOP file present)
+- Recent main: 9100026 docs: clarify agent permission and allocation policy (#212); hardening commit f13bdee (PR #226) is present
+- Blockers: loop stopped; no restart attempted; prior stash-livelock + space-named file issues remain unresolved
+- Repair inbox: no new items (stop signal active)
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring
