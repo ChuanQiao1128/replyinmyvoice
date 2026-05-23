@@ -20,6 +20,38 @@ function implementationPrompt(): string {
 }
 
 describe("overnight supervisor repair inbox orchestration", () => {
+  it("releases scoped M1 and M3 rows from broad autonomous skip clusters", () => {
+    const script = supervisorScript();
+    const board = readFileSync(join(root, "plans", "issue-board.md"), "utf8");
+
+    expect(script).not.toContain("daytime");
+
+    const m1Cluster = script.slice(
+      script.indexOf("M1-002|M1-003|M1-004|M1-005|M1-006"),
+      script.indexOf("M2-001|M2-002"),
+    );
+    const m1CaseLine = m1Cluster.split("\n")[0];
+    expect(m1CaseLine).not.toContain("M1-007");
+    expect(m1CaseLine).not.toContain("M1-009");
+    expect(m1Cluster).toContain("couples to live auth path");
+
+    const m3Cluster = script.slice(
+      script.indexOf("M3-003|M3-004|M3-006|M3-007|M3-008"),
+      script.indexOf("M4-011)"),
+    );
+    const m3CaseLine = m3Cluster.split("\n")[0];
+    expect(m3CaseLine).not.toContain("M3-001");
+    expect(m3CaseLine).not.toContain("M3-002");
+    expect(m3CaseLine).not.toContain("M3-005");
+    expect(m3Cluster).toContain("depends on M3-001/002/005 + M3-004");
+
+    for (const id of ["M1-007", "M1-009", "M3-001", "M3-002", "M3-005"]) {
+      expect(board).toContain(`| ${id} |`);
+      expect(board).toContain(`| ${id} `);
+      expect(board).toMatch(new RegExp(`\\| ${id} \\|[^\\n]+\\| pending \\|`));
+    }
+  });
+
   it("checks the Codex repair inbox before selecting the next issue-board item", () => {
     const script = supervisorScript();
 

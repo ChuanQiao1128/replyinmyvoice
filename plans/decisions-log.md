@@ -223,3 +223,24 @@ Each overnight Claude trigger appends here.
 2026-05-23T11:23:24+12:00 | REPAIR-20260523112324 | repair-started | M7-008 undeclared-files-in-diff
 2026-05-23T11:28:35+12:00 | REPAIR-20260523112324 | repair-done | Recorded status-only repair: M7-008 mixed diff was caused by already-removed Finder duplicate files; stash review remains owned by the shell supervisor under the no-git protocol. (PR https://github.com/ChuanQiao1128/replyinmyvoice/pull/225)
 2026-05-23T13:08:25+12:00 | overnight-supervisor-stash-success | Closed 1206 generated dirty-worktree-stash-failed blocker-log entries and three stale repair-inbox items after adding explicit stash-success return coverage; stash count is 0 and STOP remains user-controlled.
+2026-05-23T13:20:04+12:00 | M8-002 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:20:19+12:00 | M8-003 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:20:34+12:00 | M8-004 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:20:49+12:00 | M8-005 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:21:05+12:00 | M8-006 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:21:20+12:00 | M8-007 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:21:35+12:00 | M8-008 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:21:50+12:00 | M8-009 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:22:05+12:00 | M8-010 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:22:20+12:00 | M8-011 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:22:35+12:00 | M8-012 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:22:50+12:00 | M8-013 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:23:05+12:00 | M8-014 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:23:20+12:00 | M8-015 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:23:35+12:00 | M8-016 | blocked-prereq | M8 chain needs M8-001 merged, not a user blocker
+2026-05-23T13:23:57+12:00 | M9-002 | started | M9-002 Implement MCP tools (rewrite_email, analyze_signal, list_scenarios)
+2026-05-23T13:34:12+12:00 | REPAIR-20260523133412 | repair-started | M2.5-002-infra: incremental + resumable eval-scenarios.ts
+2026-05-23T13:36:30+12:00 | REPAIR-20260523133412 | stale-plan-context | Treat the plan references to 0283be8 and BLOCKED-WAITING-ENG as historical context; current hardening evidence is f13bdee (#226) and 52d272e (#228), and the active label is BLOCKED-AUTONOMY.
+2026-05-23T13:38:00+12:00 | REPAIR-20260523133412 | eval-invocation | Use `node --import tsx scripts/eval-scenarios.ts` for the M2.5-002 data loop because the `tsx` CLI IPC pipe is blocked in the Codex sandbox, while the node import path runs the same entrypoint without provider calls when `--limit=0`.
+2026-05-23T13:40:35+12:00 | REPAIR-20260523134035 | repair-started | supervisor-skip-relax: release 5 scoped rows + remove daytime-only rationale
+2026-05-23T13:42:09+12:00 | supervisor-skip-relax | Released M1-007, M1-009, M3-001, M3-002, M3-005 to pending; removed time-of-day rationale from supervisor.sh M1 and M3 case branches; remaining M1/M3 BLOCKED-AUTONOMY rows kept with coupling-risk / cascade-prereq rationale per user 24/7 operation policy.

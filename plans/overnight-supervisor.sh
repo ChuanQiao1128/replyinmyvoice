@@ -1163,8 +1163,8 @@ while true; do
   log ""
   log "─── Issue $ID (#$GH_NUM, $MS): $TITLE"
 
-  # Skip clusters the user has repeatedly deferred to daytime supervised work
-  # (see plans/overnight-progress.md decisions across 2026-05-21 triggers).
+  # Skip only issue clusters that still carry auth-coupling or cascade risk.
+  # Scope-isolated rows should be released with per-issue briefs.
   case "$ID" in
     M7-001|M9-006)
       log "  Skipping $ID (user-only: real money / npm publish)"
@@ -1175,10 +1175,10 @@ while true; do
       sleep "$COOLDOWN_SECONDS"
       continue
       ;;
-    M1-002|M1-003|M1-004|M1-005|M1-006|M1-007|M1-008|M1-009|M1-010)
-      log "  Skipping $ID (Entra auth migration cluster — daytime only)"
+    M1-002|M1-003|M1-004|M1-005|M1-006|M1-008|M1-010)
+      log "  Skipping $ID (Entra auth cluster - couples to live auth path; release individually after per-issue brief)"
       update_board_status "$ID" "BLOCKED-AUTONOMY"
-      append_decision "$ID | blocked-autonomy | Entra cluster deferred to supervised implementation, not a user blocker"
+      append_decision "$ID | blocked-autonomy | Entra auth coupling risk; release individually"
       ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
       sleep "$COOLDOWN_SECONDS"
@@ -1193,10 +1193,10 @@ while true; do
       sleep "$COOLDOWN_SECONDS"
       continue
       ;;
-    M3-001|M3-002|M3-003|M3-004|M3-005|M3-006|M3-007|M3-008)
-      log "  Skipping $ID (V2 layout cascade — typed refactor across lib)"
+    M3-003|M3-004|M3-006|M3-007|M3-008)
+      log "  Skipping $ID (V2 layout cascade - depends on M3-001/002/005 + M3-004 component rewrite)"
       update_board_status "$ID" "BLOCKED-AUTONOMY"
-      append_decision "$ID | blocked-autonomy | V2 cascade deferred to supervised implementation, not a user blocker"
+      append_decision "$ID | blocked-autonomy | V2 cascade depends on M3-001/002/005 + M3-004 component rewrite"
       ISSUES_BLOCKED=$((ISSUES_BLOCKED + 1))
       ISSUES_PROCESSED=$((ISSUES_PROCESSED + 1))
       sleep "$COOLDOWN_SECONDS"

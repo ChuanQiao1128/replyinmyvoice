@@ -20,9 +20,9 @@ Pick next `pending` with lowest M-number, lowest id. Update status: `pending` â†
 | M1-004 | M1-Entra | M1-004 Replace sign-in page with Entra MSAL redirect flow | (dup) | BLOCKED-AUTONOMY |
 | M1-005 | M1-Entra | M1-005 Replace sign-up page with Entra flow | (dup) | BLOCKED-AUTONOMY |
 | M1-006 | M1-Entra | M1-006 Implement /auth/callback for Entra code exchange | (dup) | BLOCKED-AUTONOMY |
-| M1-007 | M1-Entra | M1-007 Add entra_user_id to User Prisma model + migration | (dup) | BLOCKED-AUTONOMY |
+| M1-007 | M1-Entra | M1-007 Add entra_user_id to User Prisma model + migration | (dup) | pending |
 | M1-008 | M1-Entra | M1-008 Update Stripe webhook handler to use entra user lookup | (dup) | BLOCKED-AUTONOMY |
-| M1-009 | M1-Entra | M1-009 Add Entra token validation tests | (dup) | BLOCKED-AUTONOMY |
+| M1-009 | M1-Entra | M1-009 Add Entra token validation tests | (dup) | pending |
 | M1-010 | M1-Entra | M1-010 Add Playwright e2e for Entra sign-in â†’ /app â†’ rewrite â†’ sign-out | (dup) | BLOCKED-AUTONOMY |
 | M1-011 | M1-Entra | M1-011 Remove @clerk/nextjs and related deps from package.json | https://github.com/ChuanQiao1128/replyinmyvoice/pull/154 | done (squash-merged 25beac8) |
 | M1-012 | M1-Entra | M1-012 Strip CLERK_* env references from code + .env.example + lib/env.ts | https://github.com/ChuanQiao1128/replyinmyvoice/pull/155 | done (squash-merged b0b6c99) |
@@ -47,11 +47,11 @@ Pick next `pending` with lowest M-number, lowest id. Update status: `pending` â†
 | M2.5-008 | M2.5-Learning | M2.5-008 Promotion approval UX in /admin/learning | https://github.com/ChuanQiao1128/replyinmyvoice/issues/96 | done |
 | M2.5-009 | M2.5-Learning | M2.5-009 Canary deploy for new strategy | https://github.com/ChuanQiao1128/replyinmyvoice/issues/98 | done (squash-merged #181 52b0eee) |
 | M2.5-010 | M2.5-Learning | M2.5-010 Strategy rollback on regression | https://github.com/ChuanQiao1128/replyinmyvoice/issues/100 | done |
-| M3-001 | M3-V2 | M3-001 Add 5 scenarios to lib/rewrite-presets.ts | (dup) | BLOCKED-AUTONOMY |
-| M3-002 | M3-V2 | M3-002 Reduce visible tone presets to 4 | (dup) | BLOCKED-AUTONOMY |
+| M3-001 | M3-V2 | M3-001 Add 5 scenarios to lib/rewrite-presets.ts | (dup) | pending |
+| M3-002 | M3-V2 | M3-002 Reduce visible tone presets to 4 | (dup) | pending |
 | M3-003 | M3-V2 | M3-003 Add scenario-specific prompt guardrails | (dup) | BLOCKED-AUTONOMY |
 | M3-004 | M3-V2 | M3-004 Rewrite components/app/rewrite-workspace.tsx (V2 layout) | (dup) | BLOCKED-AUTONOMY |
-| M3-005 | M3-V2 | M3-005 Enforce 5000-char combined cap in lib/validation.ts | (dup) | BLOCKED-AUTONOMY |
+| M3-005 | M3-V2 | M3-005 Enforce 5000-char combined cap in lib/validation.ts | (dup) | pending |
 | M3-006 | M3-V2 | M3-006 Add character helper copy + counter | (dup) | BLOCKED-AUTONOMY |
 | M3-007 | M3-V2 | M3-007 Add scenario to API request schema | (dup) | BLOCKED-AUTONOMY |
 | M3-008 | M3-V2 | M3-008 Remove or hide legacy Quick context UI | (dup) | BLOCKED-AUTONOMY |
@@ -93,23 +93,23 @@ Pick next `pending` with lowest M-number, lowest id. Update status: `pending` â†
 | M7-007 | M7-Launch | M7-007 Rollback procedure documented + dry-run | https://github.com/ChuanQiao1128/replyinmyvoice/pull/165 | done (squash-merged c660148) |
 | M7-008 | M7-Launch | M7-008 Post-launch 24h + 7d KPI review | https://github.com/ChuanQiao1128/replyinmyvoice/issues/80 | BLOCKED |
 | M8-001 | M8-API | M8-001 ApiKey + ApiKeyUsage Prisma schema | https://github.com/ChuanQiao1128/replyinmyvoice/pull/173 | in_progress (PR open b21ea9b, awaiting CI) |
-| M8-002 | M8-API | M8-002 API key generate + revoke UI at /app/api-keys | https://github.com/ChuanQiao1128/replyinmyvoice/issues/104 | pending |
-| M8-003 | M8-API | M8-003 API key authentication middleware | https://github.com/ChuanQiao1128/replyinmyvoice/issues/106 | pending |
-| M8-004 | M8-API | M8-004 POST /api/v1/rewrite endpoint (API-key auth) | https://github.com/ChuanQiao1128/replyinmyvoice/issues/108 | pending |
-| M8-005 | M8-API | M8-005 OpenAPI 3.0 spec at /api/v1/openapi.json | https://github.com/ChuanQiao1128/replyinmyvoice/issues/110 | pending |
-| M8-006 | M8-API | M8-006 Per-key rate limiting via Cloudflare KV | https://github.com/ChuanQiao1128/replyinmyvoice/issues/112 | pending |
-| M8-007 | M8-API | M8-007 Per-key monthly quota enforcement | https://github.com/ChuanQiao1128/replyinmyvoice/issues/114 | pending |
-| M8-008 | M8-API | M8-008 Stripe products for B2B tiers | https://github.com/ChuanQiao1128/replyinmyvoice/issues/116 | pending |
-| M8-009 | M8-API | M8-009 B2B subscription state machine | https://github.com/ChuanQiao1128/replyinmyvoice/issues/118 | pending |
-| M8-010 | M8-API | M8-010 B2B Stripe webhook handlers (shared endpoint) | https://github.com/ChuanQiao1128/replyinmyvoice/issues/120 | pending |
-| M8-011 | M8-API | M8-011 B2B customer portal link from /app/api-keys | https://github.com/ChuanQiao1128/replyinmyvoice/issues/122 | pending |
-| M8-012 | M8-API | M8-012 API docs site at /developers | https://github.com/ChuanQiao1128/replyinmyvoice/issues/125 | pending |
-| M8-013 | M8-API | M8-013 Standardized API error JSON format | https://github.com/ChuanQiao1128/replyinmyvoice/issues/127 | pending |
-| M8-014 | M8-API | M8-014 Idempotency-Key header support | https://github.com/ChuanQiao1128/replyinmyvoice/issues/129 | pending |
-| M8-015 | M8-API | M8-015 Webhook subscriptions for API customers | https://github.com/ChuanQiao1128/replyinmyvoice/issues/131 | pending |
-| M8-016 | M8-API | M8-016 B2B onboarding email + Stripe customer creation flow | https://github.com/ChuanQiao1128/replyinmyvoice/issues/133 | pending |
+| M8-002 | M8-API | M8-002 API key generate + revoke UI at /app/api-keys | https://github.com/ChuanQiao1128/replyinmyvoice/issues/104 | BLOCKED-PREREQ |
+| M8-003 | M8-API | M8-003 API key authentication middleware | https://github.com/ChuanQiao1128/replyinmyvoice/issues/106 | BLOCKED-PREREQ |
+| M8-004 | M8-API | M8-004 POST /api/v1/rewrite endpoint (API-key auth) | https://github.com/ChuanQiao1128/replyinmyvoice/issues/108 | BLOCKED-PREREQ |
+| M8-005 | M8-API | M8-005 OpenAPI 3.0 spec at /api/v1/openapi.json | https://github.com/ChuanQiao1128/replyinmyvoice/issues/110 | BLOCKED-PREREQ |
+| M8-006 | M8-API | M8-006 Per-key rate limiting via Cloudflare KV | https://github.com/ChuanQiao1128/replyinmyvoice/issues/112 | BLOCKED-PREREQ |
+| M8-007 | M8-API | M8-007 Per-key monthly quota enforcement | https://github.com/ChuanQiao1128/replyinmyvoice/issues/114 | BLOCKED-PREREQ |
+| M8-008 | M8-API | M8-008 Stripe products for B2B tiers | https://github.com/ChuanQiao1128/replyinmyvoice/issues/116 | BLOCKED-PREREQ |
+| M8-009 | M8-API | M8-009 B2B subscription state machine | https://github.com/ChuanQiao1128/replyinmyvoice/issues/118 | BLOCKED-PREREQ |
+| M8-010 | M8-API | M8-010 B2B Stripe webhook handlers (shared endpoint) | https://github.com/ChuanQiao1128/replyinmyvoice/issues/120 | BLOCKED-PREREQ |
+| M8-011 | M8-API | M8-011 B2B customer portal link from /app/api-keys | https://github.com/ChuanQiao1128/replyinmyvoice/issues/122 | BLOCKED-PREREQ |
+| M8-012 | M8-API | M8-012 API docs site at /developers | https://github.com/ChuanQiao1128/replyinmyvoice/issues/125 | BLOCKED-PREREQ |
+| M8-013 | M8-API | M8-013 Standardized API error JSON format | https://github.com/ChuanQiao1128/replyinmyvoice/issues/127 | BLOCKED-PREREQ |
+| M8-014 | M8-API | M8-014 Idempotency-Key header support | https://github.com/ChuanQiao1128/replyinmyvoice/issues/129 | BLOCKED-PREREQ |
+| M8-015 | M8-API | M8-015 Webhook subscriptions for API customers | https://github.com/ChuanQiao1128/replyinmyvoice/issues/131 | BLOCKED-PREREQ |
+| M8-016 | M8-API | M8-016 B2B onboarding email + Stripe customer creation flow | https://github.com/ChuanQiao1128/replyinmyvoice/issues/133 | BLOCKED-PREREQ |
 | M9-001 | M9-Distribution | M9-001 npm package skeleton @replyinmyvoice/mcp-server | https://github.com/ChuanQiao1128/replyinmyvoice/pull/160 | done (squash-merged 93f295c) |
-| M9-002 | M9-Distribution | M9-002 Implement MCP tools (rewrite_email, analyze_signal, list_scenarios) | https://github.com/ChuanQiao1128/replyinmyvoice/issues/137 | pending |
+| M9-002 | M9-Distribution | M9-002 Implement MCP tools (rewrite_email, analyze_signal, list_scenarios) | https://github.com/ChuanQiao1128/replyinmyvoice/issues/137 | BLOCKED |
 | M9-003 | M9-Distribution | M9-003 MCP server config: REPLY_IN_MY_VOICE_API_KEY env | https://github.com/ChuanQiao1128/replyinmyvoice/issues/139 | pending |
 | M9-004 | M9-Distribution | M9-004 README with install for Codex / Claude Code / Cursor / Continue.dev | https://github.com/ChuanQiao1128/replyinmyvoice/pull/163 | done (squash-merged b8669ec) |
 | M9-005 | M9-Distribution | M9-005 Example workflows in docs/mcp-examples.md | https://github.com/ChuanQiao1128/replyinmyvoice/pull/164 | done (squash-merged 71a02a1) |
