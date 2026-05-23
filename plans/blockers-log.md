@@ -225,3 +225,15 @@ What user needs to do: review the branch chore/M7-002 (if any), the log tail, an
 What was attempted: Added Sentry client/server/edge wiring and docs; needs package-lock update because npm registry access failed.
 
 What engineering needs to do: rerun M7-003 from a networked npm environment that can resolve `registry.npmjs.org`, install `@sentry/nextjs` with npm so `package.json` and `package-lock.json` update together, then re-apply the Sentry client/server/edge wiring. See `plans/m7-003-sentry-prerequisite.md`. No user-only decision, live money action, dashboard mutation, npm publish, secret change, or `.env.local` edit is required for this blocker.
+
+## 2026-05-23T06:11:49+12:00 — M7-008 — undeclared-files-in-diff
+
+What was attempted: Codex reported ready_to_commit but the dirty worktree included files not declared in plans/task-status.json files_changed. Changes were stashed for split/review.
+
+What user needs to do: review the branch chore/M7-008 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-23T06:12:05+12:00..2026-05-23T11:18:18+12:00 — repair-inbox — dirty-worktree-stash-failed burst
+
+What was attempted: The supervisor repeatedly tried to preserve dirty work before processing the repair inbox and logged 1206 duplicate dirty-worktree-stash-failed blocker entries.
+
+What engineering did: Collapsed the duplicate generated entries into this single forensic summary. The loop remains stopped until the supervisor stash-success regression fix and queue cleanup are reviewed.
