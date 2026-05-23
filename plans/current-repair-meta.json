@@ -1,6 +1,6 @@
 {
-  "id": "REPAIR-20260523112324",
-  "title": "M7-008 undeclared-files-in-diff",
-  "header": "## 2026-05-23T06:11:49+12:00 \u2014 M7-008 undeclared-files-in-diff",
-  "slug": "m7-008-undeclared-files-in-diff"
+  "id": "REPAIR-20260523134035",
+  "title": "supervisor-skip-relax: release 5 scoped rows + remove daytime-only rationale",
+  "header": "## 2026-05-23T13:42:00+12:00 \u2014 supervisor-skip-relax: release 5 scoped rows + remove daytime-only rationale",
+  "slug": "supervisor-skip-relax-release-5-scoped-rows-remo"
 }
