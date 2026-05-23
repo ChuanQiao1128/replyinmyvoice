@@ -1,11 +1,84 @@
-import { describe, expect, it } from "vitest";
+import { createSign, generateKeyPairSync } from "node:crypto";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildEntraAuthorizeUrl,
   buildEntraTokenRequestBody,
   createSignedCookieValue,
+  validateEntraBearerToken,
   verifySignedCookieValue,
 } from "../../lib/entra-auth";
+
+const authority = "https://login.example.test/tenant/v2.0";
+const clientId = "reply-api-client";
+const requiredScope = "rewrite.use";
+const jwksUrl = "https://login.example.test/tenant/discovery/v2.0/keys";
+const now = Math.floor(new Date("2026-05-23T00:00:00.000Z").getTime() / 1000);
+
+const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+});
+const publicJwk = {
+  ...publicKey.export({ format: "jwk" }),
+  alg: "RS256",
+  kid: "unit-key-1",
+  use: "sig",
+};
+
+function encodeJwtPart(value: unknown) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function signedToken(claimOverrides: Record<string, unknown> = {}) {
+  const claims = {
+    aud: clientId,
+    email: "casey@example.com",
+    exp: now + 60 * 60,
+    iss: authority,
+    name: "Casey Rivera",
+    oid: "entra-user-1",
+    scp: requiredScope,
+    sub: "entra-subject-1",
+    ...claimOverrides,
+  };
+  const header = encodeJwtPart({ alg: "RS256", kid: "unit-key-1", typ: "JWT" });
+  const payload = encodeJwtPart(claims);
+  const signingInput = `${header}.${payload}`;
+  const signature = createSign("RSA-SHA256")
+    .update(signingInput)
+    .sign(privateKey)
+    .toString("base64url");
+
+  return `${signingInput}.${signature}`;
+}
+
+function mockJwksEndpoint() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string | URL | Request) => {
+      expect(String(url)).toBe(jwksUrl);
+      return Response.json({ keys: [publicJwk] });
+    }),
+  );
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-05-23T00:00:00.000Z"));
+  process.env.NEXT_PUBLIC_ENTRA_AUTHORITY = authority;
+  process.env.NEXT_PUBLIC_ENTRA_CLIENT_ID = clientId;
+  process.env.NEXT_PUBLIC_ENTRA_API_SCOPE = requiredScope;
+  mockJwksEndpoint();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  delete process.env.NEXT_PUBLIC_ENTRA_AUTHORITY;
+  delete process.env.NEXT_PUBLIC_ENTRA_CLIENT_ID;
+  delete process.env.NEXT_PUBLIC_ENTRA_API_SCOPE;
+});
 
 describe("Entra auth helpers", () => {
   it("builds an Entra authorization URL without a brittle provider hint", async () => {
@@ -59,5 +132,67 @@ describe("Entra auth helpers", () => {
     const [payload, signature] = value.split(".");
     const tampered = `${payload.slice(0, -1)}x.${signature}`;
     await expect(verifySignedCookieValue(tampered, secret)).resolves.toBeNull();
+  });
+});
+
+describe("Entra bearer token validation", () => {
+  it("maps a valid signed access token to an authenticated user", async () => {
+    const result = await validateEntraBearerToken(`Bearer ${signedToken()}`, {
+      jwksUrl,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      user: {
+        email: "casey@example.com",
+        exp: now + 60 * 60,
+        name: "Casey Rivera",
+        sub: "entra-subject-1",
+      },
+    });
+  });
+
+  it("rejects an expired signed token with 401", async () => {
+    const result = await validateEntraBearerToken(
+      `Bearer ${signedToken({ exp: now - 1 })}`,
+      { jwksUrl },
+    );
+
+    expect(result).toMatchObject({ ok: false, status: 401 });
+  });
+
+  it("rejects a signed token for the wrong audience with 401", async () => {
+    const result = await validateEntraBearerToken(
+      `Bearer ${signedToken({ aud: "other-client" })}`,
+      { jwksUrl },
+    );
+
+    expect(result).toMatchObject({ ok: false, status: 401 });
+  });
+
+  it("rejects a signed token from the wrong issuer with 401", async () => {
+    const result = await validateEntraBearerToken(
+      `Bearer ${signedToken({ iss: "https://login.example.test/other/v2.0" })}`,
+      { jwksUrl },
+    );
+
+    expect(result).toMatchObject({ ok: false, status: 401 });
+  });
+
+  it("rejects a signed token without the required scope with 403", async () => {
+    const result = await validateEntraBearerToken(
+      `Bearer ${signedToken({ scp: "profile.read" })}`,
+      { jwksUrl },
+    );
+
+    expect(result).toMatchObject({ ok: false, status: 403 });
+  });
+
+  it("rejects a malformed JWT with 401", async () => {
+    const result = await validateEntraBearerToken("Bearer not-a-jwt", {
+      jwksUrl,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 401 });
   });
 });

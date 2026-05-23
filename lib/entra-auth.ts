@@ -40,6 +40,17 @@ export type EntraTokenRequestBodyInput = {
   clientSecret?: string;
 };
 
+export type EntraBearerTokenValidationResult =
+  | { ok: true; user: AuthSession }
+  | { ok: false; status: 401 | 403; error: string };
+
+export type EntraBearerTokenValidationOptions = {
+  audience?: string;
+  issuer?: string;
+  jwksUrl?: string;
+  requiredScope?: string;
+};
+
 function base64UrlEncode(input: Uint8Array | string) {
   const buffer =
     typeof input === "string"
@@ -50,6 +61,14 @@ function base64UrlEncode(input: Uint8Array | string) {
 
 function base64UrlDecode(input: string) {
   return Buffer.from(input, "base64url").toString("utf8");
+}
+
+function base64UrlDecodeArrayBuffer(input: string) {
+  const buffer = Buffer.from(input, "base64url");
+  return buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  ) as ArrayBuffer;
 }
 
 function randomBase64Url(bytes = 32) {
@@ -129,6 +148,14 @@ export function getEntraClientId() {
 
 export function getEntraRedirectUri() {
   return `${getAppUrl()}/auth/callback`;
+}
+
+function getEntraApiScope() {
+  return requireEnv("NEXT_PUBLIC_ENTRA_API_SCOPE");
+}
+
+function getEntraJwksUrl() {
+  return `${getEntraAuthority().replace(/\/v2\.0$/, "")}/discovery/v2.0/keys`;
 }
 
 function getSessionSecret(): string;
@@ -230,6 +257,38 @@ function parseJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+function parseJwtObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(base64UrlDecode(value)) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseJwt(token: string) {
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts.some((part) => !part)) {
+    return null;
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  const header = parseJwtObject(encodedHeader);
+  const claims = parseJwtObject(encodedPayload);
+  if (!header || !claims) {
+    return null;
+  }
+
+  return {
+    claims,
+    header,
+    signature: base64UrlDecodeArrayBuffer(encodedSignature),
+    signingInput: `${encodedHeader}.${encodedPayload}`,
+  };
+}
+
 function stringClaim(claims: Record<string, unknown>, name: string) {
   const value = claims[name];
   return typeof value === "string" && value.trim() ? value : null;
@@ -243,6 +302,18 @@ function emailClaim(claims: Record<string, unknown>) {
 
   const emails = claims.emails;
   return Array.isArray(emails) && typeof emails[0] === "string" ? emails[0] : null;
+}
+
+function claimIncludes(value: unknown, expected: string) {
+  if (typeof value === "string") {
+    return value.split(/\s+/).includes(expected);
+  }
+
+  return Array.isArray(value) && value.includes(expected);
+}
+
+function audienceMatches(value: unknown, expected: string) {
+  return value === expected || (Array.isArray(value) && value.includes(expected));
 }
 
 function validateIdTokenClaims(claims: Record<string, unknown>) {
@@ -261,6 +332,109 @@ function validateIdTokenClaims(claims: Record<string, unknown>) {
     name: stringClaim(claims, "name"),
     exp: Math.min(exp, now + 7 * 24 * 60 * 60),
   } satisfies AuthSession;
+}
+
+async function verifyJwtSignature({
+  header,
+  jwksUrl,
+  signature,
+  signingInput,
+}: {
+  header: Record<string, unknown>;
+  jwksUrl: string;
+  signature: ArrayBuffer;
+  signingInput: string;
+}) {
+  const kid = stringClaim(header, "kid");
+  if (header.alg !== "RS256" || !kid) {
+    return false;
+  }
+
+  const response = await fetch(jwksUrl);
+  const jwks = (await response.json().catch(() => null)) as {
+    keys?: (JsonWebKey & { kid?: string })[];
+  } | null;
+  const key = response.ok ? jwks?.keys?.find((candidate) => candidate.kid === kid) : null;
+  if (!key) {
+    return false;
+  }
+
+  try {
+    const cryptoKey = await crypto.subtle.importKey(
+      "jwk",
+      key,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    return crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      cryptoKey,
+      signature,
+      textEncoder.encode(signingInput),
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function validateEntraBearerToken(
+  authorizationHeader: string | null | undefined,
+  options: EntraBearerTokenValidationOptions = {},
+): Promise<EntraBearerTokenValidationResult> {
+  const token = authorizationHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+
+  const jwt = parseJwt(token);
+  if (!jwt) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+
+  const signatureValid = await verifyJwtSignature({
+    header: jwt.header,
+    jwksUrl: options.jwksUrl ?? getEntraJwksUrl(),
+    signature: jwt.signature,
+    signingInput: jwt.signingInput,
+  });
+  if (!signatureValid) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const exp = typeof jwt.claims.exp === "number" ? jwt.claims.exp : 0;
+  const nbf = typeof jwt.claims.nbf === "number" ? jwt.claims.nbf : null;
+  const sub = stringClaim(jwt.claims, "sub") ?? stringClaim(jwt.claims, "oid");
+
+  if (
+    !sub ||
+    exp <= now ||
+    (nbf !== null && nbf > now) ||
+    !audienceMatches(jwt.claims.aud, options.audience ?? getEntraClientId()) ||
+    stringClaim(jwt.claims, "iss") !== (options.issuer ?? getEntraAuthority())
+  ) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+
+  const requiredScope = options.requiredScope ?? getEntraApiScope();
+  if (
+    requiredScope &&
+    !claimIncludes(jwt.claims.scp, requiredScope) &&
+    !claimIncludes(jwt.claims.roles, requiredScope)
+  ) {
+    return { ok: false, status: 403, error: "forbidden" };
+  }
+
+  return {
+    ok: true,
+    user: {
+      sub,
+      email: emailClaim(jwt.claims),
+      name: stringClaim(jwt.claims, "name"),
+      exp,
+    },
+  };
 }
 
 export async function completeEntraCallback(requestUrl: string) {
