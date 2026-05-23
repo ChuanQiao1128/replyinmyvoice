@@ -1,7 +1,6 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 
-import { LinkButton } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
 import { SiteHeader } from "../../components/site-header";
 
 export const metadata: Metadata = {
@@ -24,71 +23,85 @@ export const metadata: Metadata = {
 
 export default function LaunchPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <main className="rimv">
       <SiteHeader />
-      <main className="mx-auto max-w-3xl px-6 py-16 space-y-12">
-        <header className="space-y-4">
-          <p className="text-sm uppercase tracking-wide text-muted-foreground">
-            Launch announcement
-          </p>
-          <h1 className="text-4xl font-semibold tracking-tight">
-            Reply In My Voice is live.
-          </h1>
-          <p className="text-lg text-muted-foreground">
-            Today we are shipping two products at once: a consumer email
-            rewrite engine that keeps your voice, and a developer platform for
-            embedding that engine into LLM tools.
-          </p>
-        </header>
-
-        <section className="grid gap-6 md:grid-cols-2">
-          <Card className="p-6 space-y-4">
-            <h2 className="text-xl font-semibold">For people who write email</h2>
-            <p className="text-sm text-muted-foreground">
-              Rewrites that stay in your voice, preserve every fact, and refuse
-              to ship a bad result. NZ$9 per month with a free trial — no card
-              up front.
+      <section className="page">
+        <div className="wrap" style={{ maxWidth: 900 }}>
+          <div className="page-head">
+            <div className="eyebrow">
+              <span className="dot" />
+              Launch announcement
+            </div>
+            <h1>Reply In My Voice is live.</h1>
+            <p className="lede">
+              Today we&apos;re shipping two products at once: a consumer email
+              rewrite engine that keeps your voice, and a developer platform for
+              embedding that engine into LLM tools.
             </p>
-            <LinkButton href="/" variant="primary">
-              Try the rewrite engine
-            </LinkButton>
-          </Card>
+          </div>
 
-          <Card className="p-6 space-y-4">
-            <h2 className="text-xl font-semibold">For developers building agents</h2>
-            <p className="text-sm text-muted-foreground">
-              MCP server, Claude Code Skill, and REST API tiers for embedding
-              the rewrite engine into Codex, Claude Code, Cursor, and your own
-              agent workflows.
+          <div className="card-grid" style={{ marginTop: 44 }}>
+            <article className="v2card">
+              <h2 style={{ fontSize: 20 }}>For people who write email</h2>
+              <p>
+                Rewrites that stay in your voice, preserve every fact, and refuse
+                to ship a bad result. NZD $9/month with 3 free rewrites — no card
+                up front.
+              </p>
+              <div style={{ marginTop: 16 }}>
+                <Link href="/" className="btn btn-primary">
+                  Try the rewrite engine <span className="btn-arrow">→</span>
+                </Link>
+              </div>
+            </article>
+
+            <article className="v2card">
+              <h2 style={{ fontSize: 20 }}>For developers building agents</h2>
+              <p>
+                MCP server, Claude Code Skill, and REST API tiers for embedding
+                the rewrite engine into Codex, Claude Code, Cursor, and your own
+                agent workflows.
+              </p>
+              <div style={{ marginTop: 16 }}>
+                <Link href="/developers" className="btn btn-ghost">
+                  Developer docs <span className="btn-arrow">→</span>
+                </Link>
+              </div>
+            </article>
+          </div>
+
+          <article className="v2card" style={{ marginTop: 16 }}>
+            <h2 style={{ fontSize: 20 }}>What changed today</h2>
+            <ul className="content-list">
+              <li>Consumer product live at replyinmyvoice.com.</li>
+              <li>MCP server v0.1 ready for use via npx.</li>
+              <li>Claude Code Skill template available in the docs.</li>
+              <li>REST API tiers and developer subscriptions shipping next.</li>
+            </ul>
+          </article>
+
+          <article className="v2card" style={{ marginTop: 16 }}>
+            <h2 style={{ fontSize: 20 }}>Thank you</h2>
+            <p>
+              Eight months of weekends went into this. To every early reader who
+              shared a draft response, flagged a rough edge, or pointed out a way
+              the rewrite didn&apos;t sound like them — thank you. Your feedback
+              shaped the quality gate that refuses to ship a bad result. Stay in
+              touch.
             </p>
-            <LinkButton href="/developers" variant="secondary">
-              Developer docs
-            </LinkButton>
-          </Card>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-2xl font-semibold">What changed today</h2>
-          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
-            <li>Consumer product live at replyinmyvoice.com.</li>
-            <li>MCP server v0.1 ready for use via npx.</li>
-            <li>Claude Code Skill template available in the docs.</li>
-            <li>REST API tiers and developer subscriptions shipping next.</li>
-          </ul>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-2xl font-semibold">Thank you</h2>
-          <p className="text-sm text-muted-foreground">
-            Eight months of weekends went into this. To every early reader who
-            shared a draft response, flagged a rough edge, or pointed out a
-            way the rewrite did not sound like them — thank you. Your
-            feedback shaped the quality gate that refuses to ship a bad
-            result. Stay in touch.
-          </p>
-          <p className="text-sm text-muted-foreground">— Chuan · TimeAwake Ltd</p>
-        </section>
-      </main>
-    </div>
+            <p
+              style={{
+                marginTop: 12,
+                fontFamily: "var(--mono)",
+                fontSize: 13,
+                color: "var(--muted)",
+              }}
+            >
+              — Chuan · TimeAwake Ltd.
+            </p>
+          </article>
+        </div>
+      </section>
+    </main>
   );
 }

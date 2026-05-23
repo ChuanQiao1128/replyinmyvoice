@@ -45,28 +45,30 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen bg-paper text-ink">
+    <main className="rimv">
       <SiteHeader />
-      <section className="mx-auto max-w-4xl px-6 py-14">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
-          TimeAwake Ltd.
-        </p>
-        <h1 className="mt-3 text-4xl font-semibold md:text-5xl">Privacy</h1>
-        <p className="mt-5 max-w-2xl leading-7 text-ink/65">
-          This page summarizes the MVP data boundaries for Reply In My Voice.
-          It is written for clarity and will be expanded as the product matures.
-        </p>
-        <p className="mt-3 text-sm text-ink/55">Effective date: 22 May 2026.</p>
-        <div className="mt-10 grid gap-4">
-          {sections.map((section) => (
-            <article
-              className="rounded-lg border border-line bg-white/70 p-5"
-              key={section.title}
-            >
-              <h2 className="text-lg font-semibold">{section.title}</h2>
-              <p className="mt-2 leading-7 text-ink/65">{section.text}</p>
-            </article>
-          ))}
+      <section className="page">
+        <div className="wrap" style={{ maxWidth: 920 }}>
+          <div className="page-head">
+            <div className="eyebrow">
+              <span className="dot" />
+              TimeAwake Ltd.
+            </div>
+            <h1>Privacy</h1>
+            <p className="lede">
+              This page summarizes the MVP data boundaries for Reply In My Voice.
+              It is written for clarity and will be expanded as the product matures.
+            </p>
+            <div className="page-meta">Effective date · 22 May 2026</div>
+          </div>
+          <div className="card-stack">
+            {sections.map((section) => (
+              <article className="v2card" key={section.title}>
+                <h2 style={{ fontSize: 18 }}>{section.title}</h2>
+                <p>{section.text}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
     </main>

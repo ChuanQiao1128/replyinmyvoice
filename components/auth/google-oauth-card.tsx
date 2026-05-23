@@ -1,4 +1,3 @@
-import { CheckCircle2, PenLine } from "lucide-react";
 import Link from "next/link";
 
 type AuthMode = "sign-in" | "sign-up";
@@ -7,9 +6,9 @@ const authCopy = {
   "sign-in": {
     eyebrow: "Welcome back",
     heading: "Sign in to your reply workspace.",
-    body: "Continue with Google to open your drafts, remaining usage, and billing state.",
+    body: "Use your email verification code or Google to open your drafts, remaining usage, and billing state.",
     cardTitle: "Continue securely",
-    cardBody: "Google confirms your account before sending you back to the app.",
+    cardBody: "Email code sign-in sends a one-time verification code before returning you to the app.",
     alternateText: "Need an account?",
     alternateHref: "/sign-up",
     alternateLabel: "Start here",
@@ -17,9 +16,9 @@ const authCopy = {
   "sign-up": {
     eyebrow: "Create your account",
     heading: "Start with three free reply rewrites.",
-    body: "Use Google to create your account, then try the workspace before choosing the paid monthly plan.",
-    cardTitle: "Create account with Google",
-    cardBody: "You will land in the workspace after Google confirms your account.",
+    body: "Create an account with an email verification code or Google, then try the workspace before choosing the paid monthly plan.",
+    cardTitle: "Create your account",
+    cardBody: "Email code sign-in verifies your address before sending you back to the workspace.",
     alternateText: "Already signed up?",
     alternateHref: "/sign-in",
     alternateLabel: "Sign in",
@@ -48,79 +47,196 @@ export function GoogleOAuthCard({ mode = "sign-in" }: { mode?: AuthMode }) {
   const copy = authCopy[mode];
 
   return (
-    <main className="min-h-screen bg-paper text-ink">
-      <section className="border-b border-line bg-sky">
-        <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 px-6 py-12 lg:grid-cols-[0.95fr_1fr]">
-          <div className="max-w-xl">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-ink transition hover:text-clay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-sky"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink text-paper shadow-crisp">
-                <PenLine className="h-4 w-4" aria-hidden="true" />
+    <main
+      className="rimv"
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        background: "var(--bg)",
+        padding: "48px 0",
+      }}
+    >
+      <div className="wrap" style={{ width: "100%" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: 48,
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <Link href="/" className="brand">
+              <span className="brand-mark" aria-hidden="true">
+                R
               </span>
-              Reply In My Voice
+              <span>Reply In My Voice</span>
             </Link>
 
-            <p className="mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-clay">
+            <div className="eyebrow" style={{ marginTop: 32 }}>
+              <span className="dot" />
               {copy.eyebrow}
-            </p>
-            <h1 className="mt-3 text-4xl font-semibold leading-tight md:text-5xl">
+            </div>
+            <h1 style={{ marginTop: 16, fontSize: "clamp(32px, 4vw, 50px)", lineHeight: 1.05 }}>
               {copy.heading}
             </h1>
-            <p className="mt-4 max-w-lg leading-7 text-ink/68">{copy.body}</p>
+            <p className="hero-lead" style={{ marginTop: 18, fontSize: 17 }}>
+              {copy.body}
+            </p>
 
-            <div className="mt-7 grid gap-3 text-sm text-ink/68 sm:grid-cols-3">
+            <ul
+              style={{
+                listStyle: "none",
+                padding: 0,
+                margin: "28px 0 0",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
               {highlights.map((highlight) => (
-                <div
+                <li
                   key={highlight}
-                  className="rounded-lg border border-line bg-white/75 p-3 shadow-crisp"
+                  style={{ position: "relative", paddingLeft: 24, fontSize: 14.5, color: "var(--ink-2)" }}
                 >
-                  <CheckCircle2
-                    className="mb-2 h-4 w-4 text-sage"
+                  <span
                     aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: "0.4em",
+                      width: 12,
+                      height: 8,
+                      borderLeft: "1.5px solid var(--accent)",
+                      borderBottom: "1.5px solid var(--accent)",
+                      transform: "rotate(-45deg)",
+                    }}
                   />
-                  <p>{highlight}</p>
-                </div>
+                  {highlight}
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
 
           <section
             aria-labelledby="auth-card-title"
-            className="w-full rounded-lg border border-line bg-white p-5 shadow-soft sm:p-6"
+            style={{
+              background: "var(--card)",
+              border: "1px solid var(--rule)",
+              borderRadius: 18,
+              padding: 32,
+              boxShadow: "0 30px 60px -40px rgba(17,21,15,0.16)",
+            }}
           >
-            <p className="text-sm font-medium text-ink/58">Google account</p>
-            <h2 id="auth-card-title" className="mt-2 text-2xl font-semibold">
+            <div className="eyebrow" style={{ color: "var(--muted)" }}>
+              Email code sign-in
+            </div>
+            <h2 id="auth-card-title" style={{ fontSize: 24, marginTop: 8 }}>
               {copy.cardTitle}
             </h2>
-            <p className="mt-2 text-sm leading-6 text-ink/62">{copy.cardBody}</p>
+            <p style={{ marginTop: 8, fontSize: 14, lineHeight: 1.5, color: "var(--ink-2)" }}>
+              {copy.cardBody}
+            </p>
+
+            <form action="/api/auth/login" style={{ marginTop: 24 }}>
+              <input type="hidden" name="redirectTo" value="/app" />
+              <label
+                htmlFor="auth-email"
+                style={{
+                  fontFamily: "var(--mono)",
+                  fontSize: 12.5,
+                  color: "var(--ink-2)",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                Email address
+              </label>
+              <div
+                style={{
+                  marginTop: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  border: "1px solid var(--rule-2)",
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                  background: "var(--bg)",
+                }}
+              >
+                <input
+                  id="auth-email"
+                  name="loginHint"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  maxLength={320}
+                  placeholder="you@example.com"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    border: 0,
+                    background: "transparent",
+                    outline: "none",
+                    fontSize: 15,
+                    color: "var(--ink)",
+                    fontFamily: "var(--sans)",
+                  }}
+                />
+              </div>
+              <button
+                type="submit"
+                className="btn btn-primary btn-lg"
+                style={{ width: "100%", justifyContent: "center", marginTop: 12 }}
+              >
+                Continue with email code
+              </button>
+            </form>
 
             <a
               href="/api/auth/login?redirectTo=/app"
-              className="mt-7 flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-line bg-paper px-4 py-3 text-base font-semibold text-ink shadow-crisp transition hover:bg-paper-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              className="btn btn-ghost btn-lg"
+              style={{ width: "100%", justifyContent: "center", marginTop: 10 }}
             >
               <span
                 aria-hidden="true"
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-line bg-white text-sm font-bold"
+                style={{
+                  display: "inline-flex",
+                  height: 18,
+                  width: 18,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 4,
+                  border: "1px solid var(--rule-2)",
+                  fontFamily: "var(--mono)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
               >
                 G
               </span>
               Continue with Google
             </a>
 
-            <div className="mt-6 border-t border-line pt-5 text-sm text-ink/62">
+            <div
+              style={{
+                marginTop: 22,
+                paddingTop: 18,
+                borderTop: "1px solid var(--rule)",
+                fontSize: 14,
+                color: "var(--ink-2)",
+              }}
+            >
               <span>{copy.alternateText}</span>{" "}
               <Link
                 href={copy.alternateHref}
-                className="font-semibold text-ink underline decoration-line underline-offset-4 transition hover:text-clay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                style={{ color: "var(--ink)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
               >
                 {copy.alternateLabel}
               </Link>
             </div>
           </section>
         </div>
-      </section>
+      </div>
     </main>
   );
 }

@@ -1,8 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { LinkButton } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
 import { SiteHeader } from "../../components/site-header";
 
 export const metadata: Metadata = {
@@ -59,105 +57,103 @@ mcpServers:
 
 export default function DevelopersPage() {
   return (
-    <main className="min-h-screen bg-paper text-ink">
+    <main className="rimv">
       <SiteHeader />
-      <section className="mx-auto max-w-6xl px-6 pt-14">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
-          Developers
-        </p>
-        <h1 className="mt-3 text-4xl font-semibold md:text-5xl">
-          Bring the rewrite engine into your tools.
-        </h1>
-        <p className="mt-4 max-w-2xl leading-7 text-ink/65">
-          The same rewrite engine that powers replyinmyvoice.com is available
-          to LLM tools through an MCP server and a Claude Code Skill. Wire it
-          into Codex, Claude Code, Cursor, or Continue.dev and ask your agent
-          to rewrite a reply directly.
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <LinkButton href="/sign-up" variant="primary">
-            Create an account
-          </LinkButton>
-          <Link
-            href="https://github.com/ChuanQiao1128/replyinmyvoice/tree/main/packages/mcp-server"
-            className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink/80 hover:text-ink"
-          >
-            View MCP source
-          </Link>
-        </div>
-      </section>
+      <section className="page">
+        <div className="wrap">
+          <div className="page-head">
+            <div className="eyebrow">
+              <span className="dot" />
+              Developers
+            </div>
+            <h1>Bring the rewrite engine into your tools.</h1>
+            <p className="lede">
+              The same rewrite engine that powers replyinmyvoice.com is available
+              to LLM tools through an MCP server and a Claude Code Skill. Wire it
+              into Codex, Claude Code, Cursor, or Continue.dev and ask your agent
+              to rewrite a reply directly.
+            </p>
+            <div className="hero-cta" style={{ marginTop: 28 }}>
+              <Link href="/sign-up" className="btn btn-primary btn-lg">
+                Create an account <span className="btn-arrow">→</span>
+              </Link>
+              <a
+                href="https://github.com/ChuanQiao1128/replyinmyvoice/tree/main/packages/mcp-server"
+                className="btn btn-ghost btn-lg"
+              >
+                View MCP source
+              </a>
+            </div>
+          </div>
 
-      <section className="mx-auto mt-16 max-w-6xl px-6">
-        <Card className="p-6 md:p-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
-            MCP server
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold md:text-4xl">
-            @replyinmyvoice/mcp-server
-          </h2>
-          <p className="mt-4 max-w-2xl leading-7 text-ink/65">
-            A Model Context Protocol server that exposes three tools:
-            <span className="font-mono"> rewrite_email</span>,
-            <span className="font-mono"> analyze_signal</span>, and
-            <span className="font-mono"> list_scenarios</span>. Point any
-            MCP-aware client at it and authenticate with your API key.
-          </p>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {installSnippets.map((snippet) => (
-              <div key={snippet.label} className="rounded-lg border border-line bg-white/70 p-4">
-                <p className="text-sm font-semibold text-ink">{snippet.label}</p>
-                <pre className="mt-2 overflow-x-auto rounded-md bg-ink/95 p-3 text-xs leading-5 text-paper">
-                  <code>{snippet.body}</code>
-                </pre>
+          <div className="card-stack">
+            <article className="v2card">
+              <div className="eyebrow" style={{ color: "var(--muted)" }}>
+                MCP server
               </div>
-            ))}
-          </div>
-        </Card>
-      </section>
+              <h2>
+                <span className="mono">@replyinmyvoice/mcp-server</span>
+              </h2>
+              <p>
+                A Model Context Protocol server that exposes three tools:{" "}
+                <span className="mono">rewrite_email</span>,{" "}
+                <span className="mono">analyze_signal</span>, and{" "}
+                <span className="mono">list_scenarios</span>. Point any MCP-aware
+                client at it and authenticate with your API key.
+              </p>
+              <div className="card-grid">
+                {installSnippets.map((snippet) => (
+                  <div key={snippet.label}>
+                    <div
+                      className="mono"
+                      style={{ fontSize: 12, color: "var(--ink-2)" }}
+                    >
+                      {snippet.label}
+                    </div>
+                    <pre className="code-block">
+                      <code>{snippet.body}</code>
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            </article>
 
-      <section className="mx-auto mt-12 max-w-6xl px-6">
-        <Card className="p-6 md:p-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
-            Claude Code Skill
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold md:text-4xl">
-            replyinmyvoice-rewrite
-          </h2>
-          <p className="mt-4 max-w-2xl leading-7 text-ink/65">
-            A first-party Skill bundles the prompt patterns and tool calls used
-            on the site so Claude Code can drive the rewrite engine with one
-            instruction. Install once, then say
-            <span className="font-mono"> /rewrite this email</span> in any
-            project.
-          </p>
-          <div className="mt-6 rounded-lg border border-line bg-white/70 p-4">
-            <p className="text-sm font-semibold text-ink">Install</p>
-            <pre className="mt-2 overflow-x-auto rounded-md bg-ink/95 p-3 text-xs leading-5 text-paper">
-              <code>{`# Bundled with the MCP server\nclaude skill install @replyinmyvoice/skill-rewrite`}</code>
-            </pre>
-          </div>
-        </Card>
-      </section>
+            <article className="v2card">
+              <div className="eyebrow" style={{ color: "var(--muted)" }}>
+                Claude Code Skill
+              </div>
+              <h2>
+                <span className="mono">replyinmyvoice-rewrite</span>
+              </h2>
+              <p>
+                A first-party Skill bundles the prompt patterns and tool calls
+                used on the site so Claude Code can drive the rewrite engine with
+                one instruction. Install once, then say{" "}
+                <span className="mono">/rewrite this email</span> in any project.
+              </p>
+              <pre className="code-block">
+                <code>{`# Bundled with the MCP server\nclaude skill install @replyinmyvoice/skill-rewrite`}</code>
+              </pre>
+            </article>
 
-      <section className="mx-auto mt-12 max-w-6xl px-6 pb-20">
-        <Card className="p-6 md:p-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
-            HTTP API
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold md:text-4xl">
-            REST endpoint coming soon
-          </h2>
-          <p className="mt-4 max-w-2xl leading-7 text-ink/65">
-            A standalone REST API for server-to-server use is in progress.
-            Want early access? Sign up below — we will email you when the API
-            is ready.
-          </p>
-          <div className="mt-6">
-            <LinkButton href="/sign-up" variant="primary">
-              Get notified
-            </LinkButton>
+            <article className="v2card">
+              <div className="eyebrow" style={{ color: "var(--muted)" }}>
+                HTTP API
+              </div>
+              <h2>REST endpoint — coming soon</h2>
+              <p>
+                A standalone REST API for server-to-server use is in progress.
+                Want early access? Create an account and we&apos;ll email you
+                when the API is ready.
+              </p>
+              <div style={{ marginTop: 16 }}>
+                <Link href="/sign-up" className="btn btn-primary">
+                  Get notified <span className="btn-arrow">→</span>
+                </Link>
+              </div>
+            </article>
           </div>
-        </Card>
+        </div>
       </section>
     </main>
   );
