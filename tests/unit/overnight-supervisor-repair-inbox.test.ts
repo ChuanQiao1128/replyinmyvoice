@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -17,6 +18,20 @@ function implementationPrompt(): string {
     join(root, "plans", "codex-implementation-prompt.md"),
     "utf8",
   );
+}
+
+function classifyNeedsHumanSummary(summary: string): string {
+  const script = supervisorScript();
+  const classifier = script.slice(
+    script.indexOf("classify_needs_human_status()"),
+    script.indexOf("write_status_template_for_codex()"),
+  );
+
+  return execFileSync(
+    "bash",
+    ["-c", `${classifier}\nclassify_needs_human_status "$1"`, "_", summary],
+    { encoding: "utf8" },
+  ).trim();
 }
 
 describe("overnight supervisor repair inbox orchestration", () => {
@@ -260,6 +275,18 @@ describe("overnight supervisor repair inbox orchestration", () => {
     expect(classifier).toContain("socket permission");
     expect(classifier).toContain("named-pipe");
     expect(classifier).toContain("BLOCKED-AUTONOMY");
+  });
+
+  it("does not classify Entra token-validation work as user-only", () => {
+    expect(
+      classifyNeedsHumanSummary(
+        "Implemented mock-JWKS Entra bearer token validation coverage; full test suite is blocked by unrelated issue-board status assertion.",
+      ),
+    ).toBe("BLOCKED-AUTONOMY");
+
+    expect(classifyNeedsHumanSummary("Missing npm publish token for release")).toBe(
+      "BLOCKED-WAITING-USER",
+    );
   });
 
   it("treats merge-command failures as done when the PR already merged remotely", () => {

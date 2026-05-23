@@ -418,7 +418,7 @@ classify_needs_human_status() {
     return
   fi
 
-  if printf "%s" "$summary_lc" | grep -Eq "gh cli not authenticated|github cli|npm_token|token|secret|credential|real money|refund|stripe live|dashboard|manual login|user approval|user decision|missing .*key|api key"; then
+  if printf "%s" "$summary_lc" | grep -Eq "gh cli not authenticated|github cli|npm[_ -]?token|publish token|secret|credential|real money|refund|stripe live|dashboard|manual login|user approval|user decision|missing .*key|missing .*token|api key"; then
     echo "BLOCKED-WAITING-USER"
     return
   fi
