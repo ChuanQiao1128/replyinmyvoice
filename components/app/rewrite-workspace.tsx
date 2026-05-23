@@ -15,14 +15,15 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
+  scenarioOptions,
   tonePresetOptions,
   tonePresetToTone,
+  type ScenarioOption,
   type TonePreset,
 } from "../../lib/rewrite-presets";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { SubscriptionStatus } from "./subscription-status";
 
@@ -64,7 +65,7 @@ type QualityFailure = {
 };
 
 type HistoryItem = {
-  mode: "General reply";
+  mode: ScenarioOption;
   roughDraftReply: string;
   rewrittenText: string;
   tone: "warm" | "direct";
@@ -118,6 +119,76 @@ const progressSteps = [
   "Building candidate replies",
   "Reviewing quality gates",
 ];
+
+type WorkspaceScenario = {
+  id: string;
+  label: string;
+  description: string;
+  rewriteScenario: ScenarioOption;
+  audience: string;
+  purpose: string;
+};
+
+const workspaceScenarioOptions = [
+  {
+    id: "extension-request",
+    label: "Extension request",
+    description: "Ask for more time without overexplaining.",
+    rewriteScenario: scenarioOptions[1],
+    audience: "Lecturer, tutor, manager, or reviewer",
+    purpose: "Ask for more time while keeping the request specific and respectful.",
+  },
+  {
+    id: "lecturer-email",
+    label: "Lecturer email",
+    description: "Write a clear academic message you still own.",
+    rewriteScenario: scenarioOptions[1],
+    audience: "Lecturer, tutor, advisor, or course coordinator",
+    purpose: "Send a clear academic reply while preserving the exact facts.",
+  },
+  {
+    id: "internship-follow-up",
+    label: "Internship follow-up",
+    description: "Follow up after an application, interview, or intro.",
+    rewriteScenario: scenarioOptions[1],
+    audience: "Recruiter, hiring manager, or professional contact",
+    purpose: "Follow up politely without sounding stiff or pushy.",
+  },
+  {
+    id: "group-project",
+    label: "Group project",
+    description: "Align teammates on work, deadlines, or blockers.",
+    rewriteScenario: scenarioOptions[5],
+    audience: "Classmate, teammate, or project group",
+    purpose: "Clarify the project update, next step, or blocker.",
+  },
+  {
+    id: "client-delay",
+    label: "Client delay",
+    description: "Explain a delay and protect trust.",
+    rewriteScenario: scenarioOptions[2],
+    audience: "Client, customer, or account contact",
+    purpose: "Explain a delay clearly while keeping commitments accurate.",
+  },
+  {
+    id: "less-rude",
+    label: "Make this less rude",
+    description: "Keep the point, reduce the friction.",
+    rewriteScenario: scenarioOptions[0],
+    audience: "Person receiving this reply",
+    purpose: "Make the reply clearer and calmer without changing the ask.",
+  },
+  {
+    id: "something-else",
+    label: "Something else",
+    description: "Use the same workspace for another real reply.",
+    rewriteScenario: scenarioOptions[0],
+    audience: "",
+    purpose: "",
+  },
+] satisfies WorkspaceScenario[];
+
+type WorkspaceScenarioId = (typeof workspaceScenarioOptions)[number]["id"];
 
 function Remaining({ value, max }: { value: string; max: number }) {
   return (
@@ -195,6 +266,9 @@ export function RewriteWorkspace({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [selectedScenarioId, setSelectedScenarioId] =
+    useState<WorkspaceScenarioId | null>(null);
+  const [factsExpanded, setFactsExpanded] = useState(false);
   const [freeRewritesRemaining, setFreeRewritesRemaining] = useState(() =>
     Math.max(Math.min(remaining, quota), 0),
   );
@@ -217,8 +291,16 @@ export function RewriteWorkspace({
       form.whatHappened,
     ],
   );
+  const selectedScenario = useMemo(
+    () =>
+      workspaceScenarioOptions.find(
+        (option) => option.id === selectedScenarioId,
+      ) ?? null,
+    [selectedScenarioId],
+  );
   const canSubmit =
     !loading &&
+    Boolean(selectedScenario) &&
     form.roughDraftReply.trim().length >= 10 &&
     combinedLength <= rewriteInputLimits.combined;
 
@@ -259,7 +341,7 @@ export function RewriteWorkspace({
 
   function saveHistory(response: RewriteResponse) {
     const nextItem: HistoryItem = {
-      mode: "General reply",
+      mode: selectedScenario?.rewriteScenario ?? scenarioOptions[0],
       roughDraftReply: form.roughDraftReply,
       rewrittenText: response.rewrittenText,
       tone: form.tone,
@@ -291,7 +373,7 @@ export function RewriteWorkspace({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          scenario: "General reply",
+          scenario: selectedScenario?.rewriteScenario ?? scenarioOptions[0],
           messageToReplyTo: form.messageToReplyTo,
           roughDraftReply: form.roughDraftReply,
           audience: form.audience,
@@ -357,6 +439,18 @@ export function RewriteWorkspace({
     }));
   }
 
+  function selectScenario(option: WorkspaceScenario) {
+    setSelectedScenarioId(option.id as WorkspaceScenarioId);
+    setFactsExpanded(false);
+    setError("");
+    setForm((current) => ({
+      ...current,
+      audience: option.audience,
+      purpose: option.purpose,
+      whatHappened: "",
+    }));
+  }
+
   async function copyReply() {
     if (!result?.rewrittenText) {
       return;
@@ -373,6 +467,8 @@ export function RewriteWorkspace({
 
   function resetWorkspace() {
     setForm(initialForm);
+    setSelectedScenarioId(null);
+    setFactsExpanded(false);
     setResult(null);
     setQualityFailure(null);
     setError("");
@@ -415,242 +511,249 @@ export function RewriteWorkspace({
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.04fr)_minmax(360px,0.96fr)] lg:items-start">
           <form className="space-y-5" onSubmit={submit}>
             <Card className="p-4 md:p-5">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <label
-                  className="text-base font-semibold"
-                  htmlFor="messageToReplyTo"
-                >
-                  Context or message
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
-                    {combinedLength}/{rewriteInputLimits.combined}
-                  </span>
-                  <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
-                    Optional
-                  </span>
-                  <Remaining
-                    max={rewriteInputLimits.messageToReplyTo}
-                    value={form.messageToReplyTo}
-                  />
-                </div>
-              </div>
-              <Textarea
-                className="min-h-36"
-                id="messageToReplyTo"
-                maxLength={rewriteInputLimits.messageToReplyTo}
-                onChange={(event) =>
-                  updateField("messageToReplyTo", event.target.value)
-                }
-                placeholder="Optional. Paste the email, note, job post, or situation you are responding to."
-                rows={5}
-                value={form.messageToReplyTo}
-              />
-            </Card>
-
-            <Card className="p-4 md:p-5">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <label
-                  className="text-base font-semibold"
-                  htmlFor="roughDraftReply"
-                >
-                  Draft to rewrite
-                </label>
-                <Remaining
-                  max={rewriteInputLimits.roughDraftReply}
-                  value={form.roughDraftReply}
-                />
-              </div>
-              <Textarea
-                className="min-h-[14rem]"
-                id="roughDraftReply"
-                maxLength={rewriteInputLimits.roughDraftReply}
-                minLength={10}
-                onChange={(event) =>
-                  updateField("roughDraftReply", event.target.value)
-                }
-                placeholder="Required. Paste the draft that sounds too stiff, generic, or over-polished."
-                required
-                rows={9}
-                value={form.roughDraftReply}
-              />
-            </Card>
-
-            <Card className="p-4 md:p-5">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">Reply details</h2>
-                <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
-                  Optional
-                </span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label className="text-sm font-semibold" htmlFor="audience">
-                      Audience
-                    </label>
-                    <Remaining
-                      max={rewriteInputLimits.audience}
-                      value={form.audience}
-                    />
-                  </div>
-                  <Input
-                    id="audience"
-                    maxLength={rewriteInputLimits.audience}
-                    onChange={(event) =>
-                      updateField("audience", event.target.value)
-                    }
-                    placeholder="Parent, client, manager, lead"
-                    value={form.audience}
-                  />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label className="text-sm font-semibold" htmlFor="purpose">
-                      Purpose
-                    </label>
-                    <Remaining
-                      max={rewriteInputLimits.purpose}
-                      value={form.purpose}
-                    />
-                  </div>
-                  <Input
-                    id="purpose"
-                    maxLength={rewriteInputLimits.purpose}
-                    onChange={(event) =>
-                      updateField("purpose", event.target.value)
-                    }
-                    placeholder="Explain, follow up, decline, confirm"
-                    value={form.purpose}
-                  />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label
-                      className="text-sm font-semibold"
-                      htmlFor="whatHappened"
-                    >
-                      What actually happened
-                    </label>
-                    <Remaining
-                      max={rewriteInputLimits.whatHappened}
-                      value={form.whatHappened}
-                    />
-                  </div>
-                  <Textarea
-                    className="min-h-28"
-                    id="whatHappened"
-                    maxLength={rewriteInputLimits.whatHappened}
-                    onChange={(event) =>
-                      updateField("whatHappened", event.target.value)
-                    }
-                    rows={4}
-                    value={form.whatHappened}
-                  />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <label
-                      className="text-sm font-semibold"
-                      htmlFor="factsToPreserve"
-                    >
-                      Facts to preserve
-                    </label>
-                    <Remaining
-                      max={rewriteInputLimits.factsToPreserve}
-                      value={form.factsToPreserve}
-                    />
-                  </div>
-                  <Textarea
-                    className="min-h-28"
-                    id="factsToPreserve"
-                    maxLength={rewriteInputLimits.factsToPreserve}
-                    onChange={(event) =>
-                      updateField("factsToPreserve", event.target.value)
-                    }
-                    rows={4}
-                    value={form.factsToPreserve}
-                  />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-4 md:p-5">
-              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-                <div>
-                  <h2 className="text-base font-semibold">Tone</h2>
-                  <p className="mt-1 text-sm leading-6 text-ink/55">
-                    Warm adds a little relationship tone. Direct removes padding
-                    without removing facts.
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-clay">
+                  Step 1
+                </p>
+                <h2 className="mt-1 text-base font-semibold">
+                  Pick your reply situation
+                </h2>
+                {selectedScenario ? (
+                  <p className="mt-2 text-sm leading-6 text-ink/60">
+                    {selectedScenario.description}
                   </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {tonePresetOptions.map((tonePreset) => (
+                ) : (
+                  <p className="mt-2 text-sm leading-6 text-ink/60">
+                    {
+                      "Pick a real message you need to send. We'll help you make it clearer while keeping your facts unchanged."
+                    }
+                  </p>
+                )}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {workspaceScenarioOptions.map((option) => {
+                  const active = selectedScenarioId === option.id;
+                  return (
                     <button
-                      aria-pressed={form.tonePreset === tonePreset}
-                      className={`min-h-10 rounded-md border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
-                        form.tonePreset === tonePreset
+                      aria-pressed={active}
+                      className={`min-h-[5.25rem] rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
+                        active
                           ? "border-ink bg-ink text-paper"
-                          : "border-line bg-white text-ink/65 hover:bg-paper hover:text-ink"
+                          : "border-line bg-white text-ink hover:bg-paper"
                       }`}
-                      key={tonePreset}
-                      onClick={() => updateTonePreset(tonePreset)}
+                      key={option.id}
+                      onClick={() => selectScenario(option)}
                       type="button"
                     >
-                      {tonePreset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-                <p className="text-xs text-ink/45">
-                  Successful rewrites count after quality checks pass.
-                </p>
-                <Button disabled={!canSubmit} type="submit">
-                  {loading ? (
-                    <Loader2
-                      className="h-4 w-4 animate-spin"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <Send className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  Begin rewrite
-                </Button>
-              </div>
-              {loading ? (
-                <div
-                  aria-live="polite"
-                  className="mt-4 rounded-lg border border-line bg-mint/65 px-3 py-3"
-                >
-                  <div className="grid gap-2 md:grid-cols-3">
-                    {progressSteps.map((step, index) => (
-                      <div
-                        className={`flex items-center gap-2 text-xs font-semibold ${
-                          index === loadingStepIndex ? "text-ink" : "text-ink/40"
+                      <span className="block text-sm font-semibold">
+                        {option.label}
+                      </span>
+                      <span
+                        className={`mt-1 block text-xs leading-5 ${
+                          active ? "text-paper/70" : "text-ink/55"
                         }`}
-                        key={step}
                       >
-                        {index < loadingStepIndex ? (
-                          <CheckCircle2
-                            className="h-4 w-4 text-sage"
-                            aria-hidden="true"
-                          />
-                        ) : index === loadingStepIndex ? (
-                          <Loader2
-                            className="h-4 w-4 animate-spin text-clay"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <span className="h-4 w-4 rounded-full border border-line bg-white/70" />
-                        )}
-                        {step}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+                        {option.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </Card>
+
+            {selectedScenario ? (
+              <>
+                <Card className="p-4 md:p-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sage">
+                        Step 2
+                      </p>
+                      <label
+                        className="mt-1 block text-base font-semibold"
+                        htmlFor="messageToReplyTo"
+                      >
+                        What message are you replying to?
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-paper-deep px-3 py-1 text-xs font-semibold text-ink/55">
+                        {combinedLength}/{rewriteInputLimits.combined}
+                      </span>
+                      <Remaining
+                        max={rewriteInputLimits.messageToReplyTo}
+                        value={form.messageToReplyTo}
+                      />
+                    </div>
+                  </div>
+                  <Textarea
+                    className="min-h-36"
+                    id="messageToReplyTo"
+                    maxLength={rewriteInputLimits.messageToReplyTo}
+                    onChange={(event) =>
+                      updateField("messageToReplyTo", event.target.value)
+                    }
+                    placeholder="Paste the email, note, message, or situation you need to answer."
+                    rows={5}
+                    value={form.messageToReplyTo}
+                  />
+                </Card>
+
+                <Card className="p-4 md:p-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <label
+                      className="text-base font-semibold"
+                      htmlFor="roughDraftReply"
+                    >
+                      What do you want to say?
+                    </label>
+                    <Remaining
+                      max={rewriteInputLimits.roughDraftReply}
+                      value={form.roughDraftReply}
+                    />
+                  </div>
+                  <Textarea
+                    className="min-h-[14rem]"
+                    id="roughDraftReply"
+                    maxLength={rewriteInputLimits.roughDraftReply}
+                    minLength={10}
+                    onChange={(event) =>
+                      updateField("roughDraftReply", event.target.value)
+                    }
+                    placeholder="Write or paste the rough reply. Short notes are fine as long as the facts are real."
+                    required
+                    rows={9}
+                    value={form.roughDraftReply}
+                  />
+                </Card>
+
+                <Card className="p-4 md:p-5">
+                  <button
+                    aria-controls="factsToPreservePanel"
+                    aria-expanded={factsExpanded}
+                    className="flex w-full items-center justify-between gap-3 text-left font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                    onClick={() => setFactsExpanded((current) => !current)}
+                    type="button"
+                  >
+                    <span>Add facts that must stay true</span>
+                    <span className="rounded-md bg-paper-deep px-2 py-1 text-xs font-semibold text-ink/45">
+                      {factsExpanded ? "Hide" : "Optional"}
+                    </span>
+                  </button>
+                  {factsExpanded ? (
+                    <div className="mt-4" id="factsToPreservePanel">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                        <label
+                          className="text-sm font-semibold"
+                          htmlFor="factsToPreserve"
+                        >
+                          Facts that must stay true
+                        </label>
+                        <Remaining
+                          max={rewriteInputLimits.factsToPreserve}
+                          value={form.factsToPreserve}
+                        />
+                      </div>
+                      <Textarea
+                        className="min-h-28"
+                        id="factsToPreserve"
+                        maxLength={rewriteInputLimits.factsToPreserve}
+                        onChange={(event) =>
+                          updateField("factsToPreserve", event.target.value)
+                        }
+                        placeholder="Optional: dates, names, deadlines, promises the AI must not change."
+                        rows={4}
+                        value={form.factsToPreserve}
+                      />
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm leading-6 text-ink/55">
+                      Optional: dates, names, deadlines, or promises that must
+                      not change.
+                    </p>
+                  )}
+                </Card>
+
+                <Card className="p-4 md:p-5">
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                    <div>
+                      <h2 className="text-base font-semibold">Tone</h2>
+                      <p className="mt-1 text-sm leading-6 text-ink/55">
+                        Warm adds a little relationship tone. Direct removes
+                        padding without removing facts.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {tonePresetOptions.map((tonePreset) => (
+                        <button
+                          aria-pressed={form.tonePreset === tonePreset}
+                          className={`min-h-10 rounded-md border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper ${
+                            form.tonePreset === tonePreset
+                              ? "border-ink bg-ink text-paper"
+                              : "border-line bg-white text-ink/65 hover:bg-paper hover:text-ink"
+                          }`}
+                          key={tonePreset}
+                          onClick={() => updateTonePreset(tonePreset)}
+                          type="button"
+                        >
+                          {tonePreset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+                    <p className="text-xs text-ink/45">
+                      Successful rewrites count after quality checks pass.
+                    </p>
+                    <Button disabled={!canSubmit} type="submit">
+                      {loading ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Send className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      Begin rewrite
+                    </Button>
+                  </div>
+                  {loading ? (
+                    <div
+                      aria-live="polite"
+                      className="mt-4 rounded-lg border border-line bg-mint/65 px-3 py-3"
+                    >
+                      <div className="grid gap-2 md:grid-cols-3">
+                        {progressSteps.map((step, index) => (
+                          <div
+                            className={`flex items-center gap-2 text-xs font-semibold ${
+                              index === loadingStepIndex
+                                ? "text-ink"
+                                : "text-ink/40"
+                            }`}
+                            key={step}
+                          >
+                            {index < loadingStepIndex ? (
+                              <CheckCircle2
+                                className="h-4 w-4 text-sage"
+                                aria-hidden="true"
+                              />
+                            ) : index === loadingStepIndex ? (
+                              <Loader2
+                                className="h-4 w-4 animate-spin text-clay"
+                                aria-hidden="true"
+                              />
+                            ) : (
+                              <span className="h-4 w-4 rounded-full border border-line bg-white/70" />
+                            )}
+                            {step}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </Card>
+              </>
+            ) : null}
 
             {error ? (
               <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

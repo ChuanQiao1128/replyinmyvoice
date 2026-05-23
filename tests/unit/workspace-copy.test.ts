@@ -17,19 +17,28 @@ const paywallSource = readFileSync(
 describe("workspace V2 surface copy", () => {
   it("keeps the reply workflow and confirmed context fields", () => {
     expect(workspaceSource).not.toContain("Quick context");
-    expect(workspaceSource).not.toContain("scenarioOptions");
     expect(workspaceSource).not.toContain("Blank / custom");
     expect(workspaceSource).not.toContain("Email or message reply");
     expect(workspaceSource).not.toContain("Customer support");
     expect(workspaceSource).not.toContain("Cover letter");
     expect(workspaceSource).not.toContain("Work update");
-    expect(workspaceSource).toContain("Context or message");
-    expect(workspaceSource).toContain("Draft to rewrite");
-    expect(workspaceSource).toContain("Audience");
-    expect(workspaceSource).toContain("Purpose");
-    expect(workspaceSource).toContain("What actually happened");
-    expect(workspaceSource).toContain("Facts to preserve");
+    expect(workspaceSource).toContain(
+      "Pick a real message you need to send. We'll help you make it clearer while keeping your facts unchanged.",
+    );
+    expect(workspaceSource).toContain("workspaceScenarioOptions");
+    expect(workspaceSource).toContain("Extension request");
+    expect(workspaceSource).toContain("Lecturer email");
+    expect(workspaceSource).toContain("Internship follow-up");
+    expect(workspaceSource).toContain("Group project");
+    expect(workspaceSource).toContain("Client delay");
+    expect(workspaceSource).toContain("Make this less rude");
+    expect(workspaceSource).toContain("Something else");
+    expect(workspaceSource).toContain("What message are you replying to?");
+    expect(workspaceSource).toContain("What do you want to say?");
+    expect(workspaceSource).toContain("Add facts that must stay true");
     expect(workspaceSource).toContain("factsToPreserve: form.factsToPreserve");
+    expect(workspaceSource).toContain("messageToReplyTo: form.messageToReplyTo");
+    expect(workspaceSource).toContain("roughDraftReply: form.roughDraftReply");
     expect(workspaceSource).toContain("{combinedLength}/{rewriteInputLimits.combined}");
   });
 
