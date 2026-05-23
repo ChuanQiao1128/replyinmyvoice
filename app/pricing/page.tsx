@@ -6,13 +6,102 @@ import { SiteHeader } from "../../components/site-header";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "One clear plan for practical replies: 3 free rewrites after sign-up, then NZD $9/month for 40 monthly rewrites.",
+    "Start free with 3 lifetime rewrites, then choose Starter, Pro/API, Exam Week Pass, or Top-up options for practical replies.",
 };
 
-const pricingHighlights = [
-  "3 free lifetime rewrites after sign-up",
-  "40 rewrites per billing month on the paid plan",
-  "Billing and cancellation handled through Stripe",
+type PaidSku = "starter" | "pro" | "exam_pass" | "top_up";
+
+const priceEnvBySku = {
+  starter: "STRIPE_PRICE_STARTER",
+  pro: "STRIPE_PRICE_PRO",
+  exam_pass: "STRIPE_PRICE_EXAM_PASS",
+  top_up: "STRIPE_PRICE_TOPUP",
+} satisfies Record<PaidSku, string>;
+
+function isPriceConfigured(sku: PaidSku) {
+  return Boolean(process.env[priceEnvBySku[sku]]);
+}
+
+function PlanAction({
+  configured,
+  href,
+  label,
+}: {
+  configured: boolean;
+  href: string;
+  label: string;
+}) {
+  if (!configured) {
+    return (
+      <button
+        className="btn btn-ghost btn-lg"
+        disabled
+        style={{
+          cursor: "not-allowed",
+          opacity: 0.62,
+          width: "100%",
+          justifyContent: "center",
+        }}
+        type="button"
+      >
+        Available soon
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      className="btn btn-primary btn-lg"
+      href={href}
+      style={{ width: "100%", justifyContent: "center" }}
+    >
+      {label} <span className="btn-arrow">-&gt;</span>
+    </Link>
+  );
+}
+
+const monthlyPlans = [
+  {
+    sku: "starter" as const,
+    name: "Starter",
+    price: "NZ$9.90/mo",
+    allowance: "55 rewrites/mo",
+    description: "For students and everyday replies that are becoming routine.",
+    hint: "Most students start with Exam Week Pass or Starter.",
+    bonus: "+5 first-month bonus rewrites",
+    cta: "Choose Starter",
+  },
+  {
+    sku: "pro" as const,
+    name: "Pro/API",
+    price: "NZ$19.90/mo",
+    allowance: "110 rewrites/mo",
+    description: "For heavier workflows and API access across web and developer use.",
+    hint: "Developers choose Pro/API.",
+    bonus: "+15 first-month bonus rewrites",
+    cta: "Choose Pro/API",
+  },
+];
+
+const oneTimeOptions = [
+  {
+    sku: "exam_pass" as const,
+    name: "Exam Week Pass",
+    price: "NZ$4.90",
+    allowance: "25 rewrites",
+    term: "7 days",
+    description: "For deadline weeks, applications, and one concentrated burst.",
+    cta: "Get Exam Week Pass",
+  },
+  {
+    sku: "top_up" as const,
+    name: "Top-up",
+    price: "NZ$2.50",
+    allowance: "+10 rewrites",
+    term: "no period reset",
+    description: "Appears when quota runs low, so there is no surprise metered billing.",
+    cta: "Add Top-up",
+  },
 ];
 
 export default function PricingPage() {
@@ -26,82 +115,149 @@ export default function PricingPage() {
               <span className="dot" />
               Pricing
             </div>
-            <h1>One clear plan for practical replies.</h1>
+            <h1>Start free. Upgrade when replies become part of your routine.</h1>
             <p className="lede">
-              Start with three successful free rewrites after sign-up. Upgrade to
-              the NZD $9 monthly plan when you want a steady workflow for teacher
-              messages, sales follow-ups, workplace email, and client replies.
+              Every signed-in user gets 3 lifetime rewrites with no card. Choose
+              a monthly plan for regular use, or a one-time option when you only
+              need help for a short stretch.
             </p>
-            <ul className="content-list" style={{ maxWidth: "60ch" }}>
-              {pricingHighlights.map((highlight) => (
-                <li key={highlight}>{highlight}</li>
-              ))}
-            </ul>
           </div>
 
-          <div className="pricing-wrap" style={{ marginTop: 48 }}>
+          <div className="pricing-wrap" style={{ marginTop: 44 }}>
             <div className="plan plan-free">
-              <div className="eyebrow">Free start</div>
-              <h3>Try it three times.</h3>
+              <div className="eyebrow">Free tier</div>
+              <h3>Try 3 rewrites first.</h3>
               <div className="plan-price">
-                3<small>rewrites</small>
+                3<small>lifetime rewrites</small>
               </div>
               <p className="uc-body">
-                Sign up, paste a draft, see whether it actually sounds like you.
-                No card required to start.
+                No card required. Paste one real message, rewrite the reply, and
+                decide whether the workflow fits.
               </p>
               <ul className="plan-list">
-                <li>3 successful rewrites after sign-up</li>
-                <li>Naturalness Check before and after</li>
+                <li>3 successful rewrites total</li>
                 <li>Warm and Direct tone presets</li>
-                <li>All four templates included</li>
+                <li>Tone check and facts-preserved view</li>
+                <li>Upgrade only when you need more</li>
               </ul>
               <div className="plan-cta">
-                <Link href="/sign-up" className="btn btn-ghost btn-lg">
-                  Create a free account <span className="btn-arrow">→</span>
+                <Link className="btn btn-ghost btn-lg" href="/sign-up">
+                  Create a free account <span className="btn-arrow">-&gt;</span>
                 </Link>
               </div>
-              <div className="plan-meta">No credit card required</div>
+              <div className="plan-meta">No card required</div>
             </div>
 
-            <div className="plan plan-paid">
+            <div
+              className="plan plan-paid"
+              style={{ background: "var(--ink)", color: "var(--bg)" }}
+            >
               <div className="eyebrow" style={{ color: "var(--bg)" }}>
                 <span className="dot" style={{ background: "var(--bg)" }} />
-                Reply In My Voice — Monthly
+                Monthly plans
               </div>
-              <h3>For people writing replies every day.</h3>
-              <div className="plan-price">
-                NZD $9<small>/ month</small>
-              </div>
-              <p style={{ color: "rgba(246,244,238,0.7)", fontSize: 14.5, lineHeight: 1.5 }}>
-                40 rewrites per billing month. Everything in the free tier, plus a
-                steady working volume for daily use.
-              </p>
-              <ul className="plan-list">
-                <li>40 rewrites per billing month</li>
-                <li>3 free rewrites after sign-up</li>
-                <li>Naturalness Check before and after</li>
-                <li>Teacher, sales, workplace, client templates</li>
-                <li>Cancel anytime</li>
-              </ul>
-              <div className="plan-cta">
-                <Link href="/sign-up" className="btn btn-primary btn-lg">
-                  Start with the NZD $9 plan <span className="btn-arrow">→</span>
-                </Link>
+              <h3>For a steady reply workflow.</h3>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 16,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                }}
+              >
+                {monthlyPlans.map((plan) => (
+                  <article
+                    key={plan.sku}
+                    style={{
+                      border: "1px solid rgba(246,244,238,0.18)",
+                      borderRadius: 8,
+                      padding: 18,
+                      background: "rgba(246,244,238,0.06)",
+                    }}
+                  >
+                    <div className="eyebrow" style={{ color: "var(--bg)" }}>
+                      {plan.name}
+                    </div>
+                    <div className="plan-price" style={{ fontSize: 38 }}>
+                      {plan.price}
+                    </div>
+                    <p style={{ color: "rgba(246,244,238,0.78)", lineHeight: 1.5 }}>
+                      {plan.allowance} · {plan.description}
+                    </p>
+                    <ul className="plan-list" style={{ marginTop: 14 }}>
+                      <li>{plan.hint}</li>
+                      <li>{plan.bonus}</li>
+                      {plan.sku === "pro" ? <li>API access included</li> : null}
+                    </ul>
+                    <div className="plan-cta">
+                      <PlanAction
+                        configured={isPriceConfigured(plan.sku)}
+                        href={`/sign-up?plan=${plan.sku}`}
+                        label={plan.cta}
+                      />
+                    </div>
+                  </article>
+                ))}
               </div>
               <div className="plan-meta">
-                By subscribing you agree to our{" "}
-                <Link href="/terms" style={{ textDecoration: "underline" }}>
-                  Terms
-                </Link>{" "}
-                and{" "}
-                <Link href="/privacy" style={{ textDecoration: "underline" }}>
-                  Privacy Policy
-                </Link>
-                . Operated by TimeAwake Ltd.
+                Monthly quotas reset each billing period. Unused monthly rewrites
+                do not roll over.
               </div>
             </div>
           </div>
+
+          <section style={{ marginTop: 48 }}>
+            <div className="sec-head" style={{ marginBottom: 22 }}>
+              <div>
+                <span className="sec-num">One-time options</span>
+              </div>
+              <div className="sec-head-lead">
+                <h2>For short bursts and quota gaps.</h2>
+                <p className="lede">
+                  Exam Week Pass is built for deadline weeks. Top-up appears
+                  when quota runs low, so extra usage stays intentional.
+                </p>
+              </div>
+            </div>
+            <div
+              className="pricing-wrap"
+              style={{
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 20,
+              }}
+            >
+              {oneTimeOptions.map((option) => (
+                <article className="plan plan-free" key={option.sku}>
+                  <div className="eyebrow">{option.name}</div>
+                  <h3>{option.term}</h3>
+                  <div className="plan-price">
+                    {option.price}<small>{option.allowance}</small>
+                  </div>
+                  <p className="uc-body">{option.description}</p>
+                  <ul className="plan-list">
+                    <li>{option.allowance}</li>
+                    <li>
+                      {option.sku === "exam_pass"
+                        ? "Expires after 7 days"
+                        : "No monthly reset"}
+                    </li>
+                    <li>No metered surprise billing</li>
+                  </ul>
+                  <div className="plan-cta">
+                    <PlanAction
+                      configured={isPriceConfigured(option.sku)}
+                      href={`/sign-up?plan=${option.sku}`}
+                      label={option.cta}
+                    />
+                  </div>
+                  <div className="plan-meta">
+                    {option.sku === "top_up"
+                      ? "Shown when quota runs low"
+                      : "Best for exam and application weeks"}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
         </div>
       </section>
     </main>

@@ -40,7 +40,7 @@ describe("workspace V2 surface copy", () => {
   });
 
   it("has a safe failure state when the signal does not improve", () => {
-    expect(workspaceSource).toContain("Still high AI-like signal");
+    expect(workspaceSource).toContain("Writing signal still high");
     expect(workspaceSource).toContain("We could not produce a better version yet");
   });
 
@@ -62,7 +62,32 @@ describe("workspace V2 surface copy", () => {
     );
     expect(paywallSource).toContain("max-w-6xl");
     expect(paywallSource).toContain("lg:grid-cols-[minmax(0,1fr)_360px]");
+    expect(paywallSource).toContain("Starter");
+    expect(paywallSource).toContain("NZ$9.90/month");
+    expect(paywallSource).toContain("55 rewrites per month");
+    expect(paywallSource).toContain("Exam Week Pass");
+    expect(paywallSource).toContain("Top-ups appear when quota runs low");
     expect(paywallSource).not.toContain("rounded-xl");
     expect(paywallSource).not.toContain("rounded-2xl");
+    expect(paywallSource).not.toContain("NZD $9/month");
+    expect(paywallSource).not.toContain("40 rewrites");
+  });
+
+  it("shows the free-tier upgrade nudge only after successful unpaid rewrites", () => {
+    const appPageSource = readFileSync(
+      new URL("../../app/app/page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(appPageSource).toContain("remaining={usage.remaining}");
+    expect(appPageSource).toContain("quota={usage.quota}");
+    expect(workspaceSource).toContain("remaining: number");
+    expect(workspaceSource).toContain("quota: number");
+    expect(workspaceSource).toContain("freeRewritesRemaining");
+    expect(workspaceSource).toContain("You have");
+    expect(workspaceSource).toContain("free rewrite(s) left");
+    expect(workspaceSource).toContain("That was your last free rewrite");
+    expect(workspaceSource).toContain('href="/pricing"');
+    expect(workspaceSource).toContain("!paid");
   });
 });

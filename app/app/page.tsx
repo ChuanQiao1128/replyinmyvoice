@@ -28,7 +28,7 @@ export default async function AppPage() {
       <>
         <SiteHeader showAdmin={showAdmin} />
         <PaywallCard
-          description="Your 3 free rewrites have been used. Upgrade to keep using the workspace for everyday replies."
+          description="Your 3 free rewrites have been used. Upgrade to Starter for 55 monthly rewrites, choose Pro/API for heavier use, or use a one-time option when you only need a short burst."
           status="Free quota used"
           title="Keep writing in your own voice."
         />
@@ -42,7 +42,7 @@ export default async function AppPage() {
         <SiteHeader showAdmin={showAdmin} />
         <PaywallCard
           action="portal"
-          description="Your monthly rewrite quota has been used for this billing period. You can manage billing or come back when the next period starts."
+          description="Your monthly rewrite quota has been used for this billing period. Top-up appears when quota runs low, or you can manage billing and come back when the next period starts."
           status="Monthly quota used"
           title="Your monthly limit has been reached."
         />
@@ -59,6 +59,8 @@ export default async function AppPage() {
       <SiteHeader showAdmin={showAdmin} />
       <RewriteWorkspace
         paid={paid}
+        quota={usage.quota}
+        remaining={usage.remaining}
         subscriptionStatus={user.subscriptionStatus}
         usageLabel={usageLabel}
       />

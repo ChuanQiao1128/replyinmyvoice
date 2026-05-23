@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-23 - ui-browser-testing - students v2 landing and workspace nudge
+
+- Agent: Codex
+- Trigger: The task changes the `/students` landing page, workspace output UI, responsive layout, browser-visible routing, and local verification expectations.
+- Action: Opened and followed the skill; selected focused unit/source guards plus attempted local browser verification for `/students` after implementation.
+- Output artifacts: `app/students/page.tsx`; `app/globals.css`; `app/sitemap.ts`; `app/app/page.tsx`; `components/app/rewrite-workspace.tsx`; `tests/unit/students-v2-page.test.ts`; `tests/unit/workspace-copy.test.ts`; `tests/unit/pricing-auth-visual-system.test.ts`; `vitest.config.ts`; `.gitignore`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, and full `npm test` passed. The banned-term scan `grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches. Local dev-server startup was attempted for browser verification, but both `0.0.0.0:3000` and `127.0.0.1:3000` failed with sandbox `listen EPERM`.
+- Limitations: No browser screenshot or live responsive browser pass was possible because this sandbox cannot bind a local HTTP port. A fallback `npm run build` was attempted and failed before route compilation because DNS to `fonts.googleapis.com` is unavailable for `next/font`; no secrets, deployment, Stripe, schema, middleware, auth, or rewrite-pipeline changes were made.
+
 ### 2026-05-23 - data-module-review - M1-007 Entra user id migration
 
 - Agent: Codex
@@ -1383,3 +1392,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Red run reproduced the failure by advancing M1-007, M1-009, and M3-001 in a temporary board state; green runs passed the focused supervisor Vitest against both the advanced temporary state and the restored main board state.
 - Limitations: This changes test coverage only. It does not recover the M1-009 or M3-001 stashes, restart the loop, change provider settings, touch secrets, or deploy.
+
+### 2026-05-24 - ui-browser-testing - Students page polish commit
+
+- Agent: Codex
+- Trigger: The task changed browser-visible `/students` page spacing and requested desktop/mobile layout review before a local commit.
+- Action: Opened and followed the skill; inspected the students-page CSS, fixed the hero preview before/after columns to use content-sized height, attempted Codex Browser and live localhost verification, then used a no-network static Chromium render of the students markup with `app/globals.css` for desktop/mobile layout checks.
+- Output artifacts: `app/globals.css`; `docs/skill-run-log.md`.
+- Verification evidence: Static render at 1440px and 390px reported no horizontal overflow, no console errors, and `.student-preview .compare-col` computed `min-height: 0px` with content-sized heights. `npm run typecheck`, `npm run lint`, and `npm test` passed under Node 22.13.1; the banned-term scan returned no matches.
+- Limitations: The Codex Browser plugin reported no available `iab` backend, and live `localhost:3021` browser/curl access from the sandbox was blocked even though `lsof` showed a listener on port 3021, so the browser layout check used a static CSS render rather than the running dev server.
+
+### 2026-05-24 - ui-browser-testing - Pivot Phase 0 reply-decision copy
+
+- Agent: Codex
+- Trigger: The task changed browser-visible landing, pricing, terms, workspace label, and `/students` copy for the reply-decision repositioning.
+- Action: Opened and followed the skill; updated user-visible copy only, verified the dead pricing component was unreferenced before deletion, and checked `/` plus `/students` at desktop and mobile sizes with Playwright.
+- Output artifacts: `components/landing/*`; `app/students/page.tsx`; `app/pricing/page.tsx`; `app/terms/page.tsx`; `components/app/rewrite-workspace.tsx`; `tests/unit/*copy*.test.ts`; `docs/skill-run-log.md`; `plans/decisions-log.md`.
+- Verification evidence: With Node 22.13.1 first on PATH, staged-state `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` passed. The banned-term grep returned no matches. Playwright screenshots for `/` and `/students` at 1440px and 390px showed no horizontal overflow, no console errors, and required hero/boundary copy present.
+- Limitations: Validation used `git stash --keep-index` to exclude pre-existing unstaged tracked changes in `components/site-header.tsx`, `components/site-footer.tsx`, `docs/skill-run-log.md`, `lib/admin-visible.ts`, and `lib/rewrite-completeness.ts`; those unrelated changes were restored afterward and were not part of this task. No deploy, main merge, Stripe, schema, secret, or provider setting changes were made.

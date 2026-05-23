@@ -16,6 +16,7 @@ export async function SiteHeader({ showAdmin = false }: { showAdmin?: boolean })
           <span>Reply In My Voice</span>
         </Link>
         <div className="nav-links">
+          <Link href="/students">Students</Link>
           <Link href="/pricing">Pricing</Link>
           <Link href="/developers">Developers</Link>
           {!session ? (

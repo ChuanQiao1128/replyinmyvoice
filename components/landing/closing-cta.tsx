@@ -11,14 +11,14 @@ export function ClosingCta() {
               Ready when you are
             </div>
             <h2 style={{ marginTop: 20 }}>
-              Prepare replies
+              Get the reply ready
               <br />
-              that feel ready to send.
+              before you send.
             </h2>
             <p>
-              Keep the facts intact, choose the tone, compare the writing
-              signal, and copy a cleaner reply into your existing email
-              workflow.
+              Use it for extension requests, lecturer emails, client replies,
+              and awkward drafts where the facts matter and the wording needs
+              one careful pass.
             </p>
           </div>
           <div className="cta-side">
@@ -27,7 +27,10 @@ export function ClosingCta() {
             </Link>
             <div className="meta">3 free rewrites · No card required</div>
             <div className="meta" style={{ marginTop: 12 }}>
-              NZD $9/mo · 40 rewrites · Cancel anytime
+              Starter NZ$9.90/mo · 55 rewrites · Cancel anytime
+            </div>
+            <div className="meta" style={{ marginTop: 12 }}>
+              Exam Week Pass NZ$4.90 · Top-up NZ$2.50
             </div>
           </div>
         </div>
