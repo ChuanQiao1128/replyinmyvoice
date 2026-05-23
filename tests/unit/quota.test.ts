@@ -5,6 +5,7 @@ import {
   canUseApi,
   consumeOneRewrite,
   getRemaining,
+  getUsageStatus,
   getUsagePlan,
   PLAN_ALLOWANCES,
   QuotaExceededError,
@@ -52,6 +53,14 @@ type FakeQuotaDb = {
   users: FakeUser[];
   usages?: FakeUsage[];
   credits?: FakeCredit[];
+  creditTableMissing?: boolean;
+};
+
+type InstalledQuotaDb = {
+  users: FakeUser[];
+  usages: FakeUsage[];
+  credits: FakeCredit[];
+  creditTableMissing: boolean;
 };
 
 type CapturedQuery = {
@@ -95,7 +104,7 @@ function user(overrides: Partial<FakeUser> & Pick<FakeUser, "id">): FakeUser {
   };
 }
 
-function availableCreditUnits(db: Required<FakeQuotaDb>, userId: string, now: Date) {
+function availableCreditUnits(db: InstalledQuotaDb, userId: string, now: Date) {
   return db.credits
     .filter((credit) => credit.userId === userId)
     .filter((credit) => credit.amountConsumed < credit.amountGranted)
@@ -106,8 +115,55 @@ function availableCreditUnits(db: Required<FakeQuotaDb>, userId: string, now: Da
     );
 }
 
+function availableCreditBreakdown(
+  db: InstalledQuotaDb,
+  userId: string,
+  now: Date,
+) {
+  const groups = new Map<
+    string,
+    { source: string; expiresAt: Date | null; remaining: number }
+  >();
+
+  db.credits
+    .filter((credit) => credit.userId === userId)
+    .filter((credit) => credit.amountConsumed < credit.amountGranted)
+    .filter((credit) => credit.expiresAt === null || credit.expiresAt > now)
+    .forEach((credit) => {
+      const key = `${credit.source}:${credit.expiresAt?.toISOString() ?? "none"}`;
+      const remaining = credit.amountGranted - credit.amountConsumed;
+      const existing = groups.get(key);
+
+      if (existing) {
+        existing.remaining += remaining;
+        return;
+      }
+
+      groups.set(key, {
+        source: credit.source,
+        expiresAt: credit.expiresAt,
+        remaining,
+      });
+    });
+
+  return Array.from(groups.values()).sort((left, right) => {
+    if (left.expiresAt && right.expiresAt) {
+      const expiryDelta = left.expiresAt.getTime() - right.expiresAt.getTime();
+      if (expiryDelta !== 0) {
+        return expiryDelta;
+      }
+    } else if (left.expiresAt) {
+      return -1;
+    } else if (right.expiresAt) {
+      return 1;
+    }
+
+    return left.source.localeCompare(right.source);
+  });
+}
+
 function nextConsumableCredit(
-  db: Required<FakeQuotaDb>,
+  db: InstalledQuotaDb,
   userId: string,
   now: Date,
 ) {
@@ -133,10 +189,11 @@ function nextConsumableCredit(
 }
 
 function installQuotaDb(input: FakeQuotaDb) {
-  const db: Required<FakeQuotaDb> = {
+  const db: InstalledQuotaDb = {
     users: input.users,
     usages: input.usages ?? [],
     credits: input.credits ?? [],
+    creditTableMissing: input.creditTableMissing ?? false,
   };
 
   const execute = (query: CapturedQuery) => {
@@ -147,6 +204,18 @@ function installQuotaDb(input: FakeQuotaDb) {
           candidate.userId === userId && candidate.periodKey === periodKey,
       );
       return Promise.resolve(usage ? [{ count: usage.count }] : []);
+    }
+
+    if (query.text.includes("quota:get_credit_breakdown")) {
+      if (db.creditTableMissing) {
+        throw Object.assign(
+          new Error('relation "RewriteCredit" does not exist'),
+          { code: "42P01" },
+        );
+      }
+
+      const [userId, now] = query.values as [string, Date];
+      return Promise.resolve(availableCreditBreakdown(db, userId, now));
     }
 
     if (query.text.includes("quota:get_credit_remaining")) {
@@ -432,6 +501,95 @@ describe("quota consumption", () => {
       db.credits.find((credit) => credit.id === "credit_no_expiry")
         ?.amountConsumed,
     ).toBe(0);
+  });
+
+  it("returns plan remaining plus a per-source unexpired credit breakdown", async () => {
+    const starterUser = user({
+      id: "user_breakdown",
+      planTier: "starter",
+      stripeSubscriptionId: "sub_breakdown",
+      currentPeriodEnd: new Date("2026-06-24T00:00:00.000Z"),
+    });
+    installQuotaDb({
+      users: [starterUser],
+      usages: [
+        usageRow({
+          userId: starterUser.id,
+          periodKey: "paid:sub_breakdown:2026-06-24T00:00:00.000Z",
+          count: 50,
+        }),
+      ],
+      credits: [
+        creditRow({
+          id: "credit_exam",
+          userId: starterUser.id,
+          source: "exam_pass",
+          amountGranted: 25,
+          amountConsumed: 20,
+          expiresAt: new Date("2026-05-26T00:00:00.000Z"),
+        }),
+        creditRow({
+          id: "credit_topup",
+          userId: starterUser.id,
+          source: "top_up",
+          amountGranted: 10,
+          amountConsumed: 7,
+        }),
+        creditRow({
+          id: "credit_expired",
+          userId: starterUser.id,
+          source: "exam_pass",
+          amountGranted: 25,
+          amountConsumed: 0,
+          expiresAt: new Date("2026-05-23T00:00:00.000Z"),
+        }),
+      ],
+    });
+
+    const status = await getUsageStatus(starterUser);
+
+    expect(status.planRemaining).toBe(5);
+    expect(status.creditRemaining).toBe(8);
+    expect(status.remaining).toBe(13);
+    expect(status.creditBreakdown).toEqual([
+      {
+        source: "exam_pass",
+        label: "Exam Pass",
+        remaining: 5,
+        expiresAt: "2026-05-26T00:00:00.000Z",
+        expiresInDays: 2,
+      },
+      {
+        source: "top_up",
+        label: "Top-up",
+        remaining: 3,
+        expiresAt: null,
+        expiresInDays: null,
+      },
+    ]);
+  });
+
+  it("falls back to plan/free remaining when the credit ledger table is absent", async () => {
+    const freeUser = user({ id: "user_no_credit_table" });
+    installQuotaDb({
+      users: [freeUser],
+      usages: [
+        usageRow({
+          userId: freeUser.id,
+          periodKey: "lifetime",
+          count: 1,
+        }),
+      ],
+      creditTableMissing: true,
+    });
+
+    await expect(getRemaining(freeUser)).resolves.toBe(2);
+
+    const status = await getUsageStatus(freeUser);
+    expect(status.planRemaining).toBe(2);
+    expect(status.creditRemaining).toBe(0);
+    expect(status.remaining).toBe(2);
+    expect(status.creditBreakdown).toEqual([]);
   });
 
   it("excludes expired credits from remaining quota and consumption", async () => {

@@ -47,8 +47,17 @@ export type UsageStatus = UsagePlan & {
   used: number;
   planRemaining: number;
   creditRemaining: number;
+  creditBreakdown: QuotaCreditSource[];
   remaining: number;
   exhausted: boolean;
+};
+
+export type QuotaCreditSource = {
+  source: string;
+  label: string;
+  remaining: number;
+  expiresAt: string | null;
+  expiresInDays: number | null;
 };
 
 type RewriteUsageRow = Omit<
@@ -82,6 +91,12 @@ type QuotaConsumptionRow = {
   grantedAt?: unknown;
   expiresAt?: unknown;
   stripeEventId?: string | null;
+};
+
+type CreditBreakdownRow = {
+  source: string;
+  expiresAt: unknown;
+  remaining: number | string | null;
 };
 
 export type QuotaConsumption =
@@ -201,39 +216,117 @@ async function getUsageCount(userId: string, periodKey: string) {
   return rows[0]?.count ?? 0;
 }
 
-async function getCreditRemaining(userId: string, now = new Date()) {
-  const sql = getSql();
-  const rows = (await sql`
-    /* quota:get_credit_remaining */
-    SELECT COALESCE(
-      SUM(GREATEST("amountGranted" - "amountConsumed", 0)),
-      0
-    )::int AS "remaining"
-    FROM "RewriteCredit"
-    WHERE "userId" = ${userId}
-      AND "amountConsumed" < "amountGranted"
-      AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
-  `) as Array<{ remaining: number | string | null }>;
+function labelForCreditSource(source: string) {
+  if (source === "exam_pass") {
+    return "Exam Pass";
+  }
+  if (source === "top_up") {
+    return "Top-up";
+  }
+  if (source === "first_month_bonus") {
+    return "Bonus";
+  }
 
-  return Number(rows[0]?.remaining ?? 0);
+  return source
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function isMissingCreditTableError(error: unknown) {
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "42P01") {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    (message.includes("rewritecredit") || message.includes('"rewritecredit"')) &&
+    (message.includes("does not exist") ||
+      message.includes("no such table") ||
+      message.includes("relation"))
+  );
+}
+
+export async function getCreditBreakdown(
+  userId: string,
+  now = new Date(),
+): Promise<QuotaCreditSource[]> {
+  const sql = getSql();
+  try {
+    const rows = (await sql`
+      /* quota:get_credit_breakdown */
+      SELECT
+        "source",
+        "expiresAt",
+        COALESCE(
+          SUM(GREATEST("amountGranted" - "amountConsumed", 0)),
+          0
+        )::int AS "remaining"
+      FROM "RewriteCredit"
+      WHERE "userId" = ${userId}
+        AND "amountConsumed" < "amountGranted"
+        AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
+      GROUP BY "source", "expiresAt"
+      HAVING SUM(GREATEST("amountGranted" - "amountConsumed", 0)) > 0
+      ORDER BY "expiresAt" ASC NULLS LAST, "source" ASC
+    `) as CreditBreakdownRow[];
+
+    return rows.map((row) => {
+      const expiresAt = nullableDate(row.expiresAt);
+      const expiresInDays = expiresAt
+        ? Math.max(
+            0,
+            Math.ceil((expiresAt.getTime() - now.getTime()) / 86_400_000),
+          )
+        : null;
+
+      return {
+        source: row.source,
+        label: labelForCreditSource(row.source),
+        remaining: Number(row.remaining ?? 0),
+        expiresAt: expiresAt?.toISOString() ?? null,
+        expiresInDays,
+      };
+    });
+  } catch (error) {
+    if (isMissingCreditTableError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
 }
 
 export async function getRemaining(user: UsageSubject): Promise<number> {
   const plan = getUsagePlan(user);
-  const [used, creditRemaining] = await Promise.all([
+  const [used, creditBreakdown] = await Promise.all([
     getUsageCount(user.id, plan.periodKey),
-    getCreditRemaining(user.id),
+    getCreditBreakdown(user.id),
   ]);
+  const creditRemaining = creditBreakdown.reduce(
+    (total, credit) => total + credit.remaining,
+    0,
+  );
 
   return Math.max(plan.quota - used, 0) + creditRemaining;
 }
 
 export async function getUsageStatus(user: UsageSubject): Promise<UsageStatus> {
   const plan = getUsagePlan(user);
-  const [used, creditRemaining] = await Promise.all([
+  const [used, creditBreakdown] = await Promise.all([
     getUsageCount(user.id, plan.periodKey),
-    getCreditRemaining(user.id),
+    getCreditBreakdown(user.id),
   ]);
+  const creditRemaining = creditBreakdown.reduce(
+    (total, credit) => total + credit.remaining,
+    0,
+  );
   const planRemaining = Math.max(plan.quota - used, 0);
   const remaining = planRemaining + creditRemaining;
 
@@ -242,6 +335,7 @@ export async function getUsageStatus(user: UsageSubject): Promise<UsageStatus> {
     used,
     planRemaining,
     creditRemaining,
+    creditBreakdown,
     remaining,
     exhausted: remaining <= 0,
   };

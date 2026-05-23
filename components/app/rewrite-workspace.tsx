@@ -10,9 +10,11 @@ import {
   Send,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { QuotaCreditSource } from "../../lib/quota";
 
 import {
   scenarioOptions,
@@ -101,6 +103,8 @@ type Props = {
   paid: boolean;
   remaining: number;
   quota: number;
+  planRemaining: number;
+  quotaSources?: QuotaCreditSource[];
 };
 
 const initialForm: FormState = {
@@ -291,13 +295,108 @@ function fallbackWhyThisWorks(scenario: WorkspaceScenario | null) {
   ];
 }
 
+function displayQuotaSourceLabel(source: QuotaCreditSource) {
+  if (source.source === "exam_pass") {
+    return "Exam Pass";
+  }
+  if (source.source === "top_up") {
+    return "Top-up";
+  }
+
+  return source.label;
+}
+
+function expiryText(source: QuotaCreditSource) {
+  if (!source.expiresInDays) {
+    return "";
+  }
+
+  return ` (expires in ${source.expiresInDays}d)`;
+}
+
+function QuotaMeter({
+  paid,
+  totalRemaining,
+  planRemaining,
+  quotaSources = [],
+}: {
+  paid: boolean;
+  totalRemaining: number;
+  planRemaining: number;
+  quotaSources?: QuotaCreditSource[];
+}) {
+  const visibleSources = quotaSources.filter((source) => source.remaining > 0);
+
+  return (
+    <details className="mt-3 rounded-lg border border-line bg-white/80 px-4 py-3 shadow-soft">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+        <span className="text-sm font-semibold">
+          {totalRemaining} rewrites left
+        </span>
+        <span className="text-xs font-semibold text-ink/45">Details</span>
+      </summary>
+      <div className="mt-3 space-y-2 border-t border-line pt-3 text-sm leading-6 text-ink/65">
+        <div className="font-semibold text-ink">
+          {paid ? "Monthly plan:" : "Free plan:"} {planRemaining} left
+        </div>
+        {!paid ? (
+          <p className="rounded-md bg-mint px-3 py-2 text-xs font-medium text-sage">
+            {
+              "3 free rewrites — best used on real messages you actually need to send."
+            }
+          </p>
+        ) : null}
+        {visibleSources.map((source) => (
+          <div
+            className="font-medium text-ink/70"
+            key={`${source.source}:${source.expiresAt ?? "none"}`}
+          >
+            {displayQuotaSourceLabel(source)}: {source.remaining} left
+            {expiryText(source)}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function postCopyUpgradeNudge(scenario: WorkspaceScenario | null) {
+  if (
+    scenario?.id === "extension-request" ||
+    scenario?.id === "lecturer-email" ||
+    scenario?.id === "internship-follow-up" ||
+    scenario?.id === "group-project"
+  ) {
+    return {
+      title: "Keep the next message calm.",
+      body: "Starter gives you 55/month for lecturer emails, extension requests, and internship follow-ups.",
+    };
+  }
+
+  if (scenario?.id === "client-delay" || scenario?.id === "less-rude") {
+    return {
+      title: "Less time second-guessing replies.",
+      body: "Starter helps you handle client, manager, and colleague messages without overthinking every reply.",
+    };
+  }
+
+  return {
+    title: "Use the same voice in your workflow.",
+    body: "Need this inside your workflow? Pro includes API access and shared web/API quota.",
+  };
+}
+
 export function RewriteWorkspace({
   usageLabel,
   subscriptionStatus,
   paid,
   remaining,
   quota,
+  planRemaining,
+  quotaSources,
 }: Props) {
+  const visiblePlanRemaining = Math.max(Math.min(planRemaining, quota), 0);
+  const visibleTotalRemaining = Math.max(remaining, 0);
   const [form, setForm] = useState(initialForm);
   const [result, setResult] = useState<RewriteResponse | null>(null);
   const [qualityFailure, setQualityFailure] = useState<QualityFailure | null>(
@@ -312,9 +411,9 @@ export function RewriteWorkspace({
     useState<WorkspaceScenarioId | null>(null);
   const [factsExpanded, setFactsExpanded] = useState(false);
   const [freeRewritesRemaining, setFreeRewritesRemaining] = useState(() =>
-    Math.max(Math.min(remaining, quota), 0),
+    visiblePlanRemaining,
   );
-  const [showFreeRewriteNudge, setShowFreeRewriteNudge] = useState(false);
+  const [showPostCopyNudge, setShowPostCopyNudge] = useState(false);
 
   const combinedLength = useMemo(
     () =>
@@ -356,8 +455,8 @@ export function RewriteWorkspace({
   }, []);
 
   useEffect(() => {
-    setFreeRewritesRemaining(Math.max(Math.min(remaining, quota), 0));
-  }, [quota, remaining]);
+    setFreeRewritesRemaining(visiblePlanRemaining);
+  }, [visiblePlanRemaining]);
 
   useEffect(() => {
     if (!loading) {
@@ -407,6 +506,7 @@ export function RewriteWorkspace({
     setLoading(true);
     setError("");
     setQualityFailure(null);
+    setShowPostCopyNudge(false);
 
     try {
       const response = await fetch("/api/rewrite", {
@@ -455,7 +555,6 @@ export function RewriteWorkspace({
       setResult(payload);
       if (!paid) {
         setFreeRewritesRemaining((current) => Math.max(current - 1, 0));
-        setShowFreeRewriteNudge(true);
       }
       saveHistory(payload);
     } catch (submitError) {
@@ -500,6 +599,9 @@ export function RewriteWorkspace({
 
     await navigator.clipboard.writeText(result.rewrittenText);
     setCopied(true);
+    if (!paid) {
+      setShowPostCopyNudge(true);
+    }
   }
 
   function clearHistory() {
@@ -515,11 +617,12 @@ export function RewriteWorkspace({
     setQualityFailure(null);
     setError("");
     setCopied(false);
-    setShowFreeRewriteNudge(false);
+    setShowPostCopyNudge(false);
   }
 
   const visibleNaturalness = result?.naturalness ?? qualityFailure?.naturalness;
-  const showFreeNudge = !paid && showFreeRewriteNudge && result !== null;
+  const showCopyNudge = !paid && showPostCopyNudge && result !== null;
+  const copyNudge = postCopyUpgradeNudge(selectedScenario);
   const suppliedFacts = splitFactsToPreserve(form.factsToPreserve);
   const whyThisWorks = result?.changeSummary.length
     ? result.changeSummary.slice(0, 4)
@@ -559,6 +662,12 @@ export function RewriteWorkspace({
           paid={paid}
           status={subscriptionStatus}
           usageLabel={usageLabel}
+        />
+        <QuotaMeter
+          paid={paid}
+          planRemaining={visiblePlanRemaining}
+          quotaSources={quotaSources}
+          totalRemaining={visibleTotalRemaining}
         />
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.04fr)_minmax(360px,0.96fr)] lg:items-start">
           <form className="space-y-5" onSubmit={submit}>
@@ -880,15 +989,31 @@ export function RewriteWorkspace({
                   "Your rewritten text will appear here after you run the workspace."
                 )}
               </div>
-              {showFreeNudge ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink/55">
-                  <span>
-                    {freeRewritesRemaining > 0
-                      ? `You have ${freeRewritesRemaining} free rewrite(s) left`
-                      : "That was your last free rewrite — see plans to keep going"}
-                  </span>
+              {showCopyNudge ? (
+                <div className="mt-3 rounded-lg border border-line bg-mint px-3 py-3 text-sm text-ink/65">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-ink">
+                        {copyNudge.title}
+                      </p>
+                      <p className="mt-1 leading-6">{copyNudge.body}</p>
+                      <p className="mt-1 text-xs text-ink/45">
+                        {freeRewritesRemaining > 0
+                          ? `${freeRewritesRemaining} free rewrite${freeRewritesRemaining === 1 ? "" : "s"} left after this copy.`
+                          : "That was your last free rewrite."}
+                      </p>
+                    </div>
+                    <button
+                      aria-label="Dismiss"
+                      className="rounded-md p-1 text-ink/45 transition hover:bg-white hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35"
+                      onClick={() => setShowPostCopyNudge(false)}
+                      type="button"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
                   <Link
-                    className="font-semibold text-sage underline-offset-4 hover:underline"
+                    className="mt-3 inline-flex font-semibold text-sage underline-offset-4 hover:underline"
                     href="/pricing"
                   >
                     See plans

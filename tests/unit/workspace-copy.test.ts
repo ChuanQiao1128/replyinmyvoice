@@ -98,7 +98,7 @@ describe("workspace V2 surface copy", () => {
     expect(paywallSource).not.toContain("40 rewrites");
   });
 
-  it("shows the free-tier upgrade nudge only after successful unpaid rewrites", () => {
+  it("shows source-level quota and a situational upgrade nudge after copy", () => {
     const appPageSource = readFileSync(
       new URL("../../app/app/page.tsx", import.meta.url),
       "utf8",
@@ -106,13 +106,43 @@ describe("workspace V2 surface copy", () => {
 
     expect(appPageSource).toContain("remaining={usage.remaining}");
     expect(appPageSource).toContain("quota={usage.quota}");
+    expect(appPageSource).toContain("planRemaining={usage.planRemaining}");
+    expect(appPageSource).toContain("quotaSources={usage.creditBreakdown}");
     expect(workspaceSource).toContain("remaining: number");
     expect(workspaceSource).toContain("quota: number");
+    expect(workspaceSource).toContain("QuotaMeter");
+    expect(workspaceSource).toContain("quotaSources");
+    expect(workspaceSource).toContain("planRemaining");
+    expect(workspaceSource).toContain("Monthly plan:");
+    expect(workspaceSource).toContain("Exam Pass");
+    expect(workspaceSource).toContain("Top-up");
+    expect(workspaceSource).toContain(
+      "3 free rewrites — best used on real messages you actually need to send.",
+    );
     expect(workspaceSource).toContain("freeRewritesRemaining");
-    expect(workspaceSource).toContain("You have");
-    expect(workspaceSource).toContain("free rewrite(s) left");
-    expect(workspaceSource).toContain("That was your last free rewrite");
+    expect(workspaceSource).toContain("showPostCopyNudge");
+    expect(workspaceSource).toContain(
+      "Starter gives you 55/month for lecturer emails, extension requests, and internship follow-ups.",
+    );
+    expect(workspaceSource).toContain(
+      "handle client, manager, and colleague messages without overthinking every reply.",
+    );
+    expect(workspaceSource).toContain(
+      "Need this inside your workflow? Pro includes API access and shared web/API quota.",
+    );
+    expect(workspaceSource).toContain("Dismiss");
     expect(workspaceSource).toContain('href="/pricing"');
     expect(workspaceSource).toContain("!paid");
+
+    const submitBody = workspaceSource.slice(
+      workspaceSource.indexOf("async function submit"),
+      workspaceSource.indexOf("function updateField"),
+    );
+    const copyBody = workspaceSource.slice(
+      workspaceSource.indexOf("async function copyReply"),
+      workspaceSource.indexOf("function clearHistory"),
+    );
+    expect(submitBody).not.toContain("setShowPostCopyNudge(true)");
+    expect(copyBody).toContain("setShowPostCopyNudge(true)");
   });
 });

@@ -291,3 +291,4 @@ Each overnight Claude trigger appends here.
 2026-05-23T15:24:35Z | pivot-phase-1d | done | split pricing page + multi-tier site copy + graceful unavailable checkout CTAs; no Stripe objects created; no DB apply; no deploy
 2026-05-23T15:41:45Z | pivot-phase-2a | done | added scenario-first workspace entry + progressive 2+1 input + task-first onboarding; rewrite payload shape preserved; no Stripe; no DB apply; no deploy
 2026-05-23T15:50:51Z | pivot-phase-2b | done | redesigned workspace output as Ready-to-send + Facts-preserved primary with compact Why/Tone/Before-send details; output flow preserved; no Stripe; no DB apply; no deploy
+2026-05-23T16:09:24Z | pivot-phase-2c | done | added per-source quota meter + situational post-copy nudge; flow preserved; no Stripe; no DB apply; no deploy
