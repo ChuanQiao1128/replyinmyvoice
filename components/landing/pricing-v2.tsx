@@ -2,8 +2,6 @@ import Link from "next/link";
 
 /**
  * Landing-page pricing block in the v2 design (free plan + inverted paid plan).
- * Kept separate from `pricing.tsx` (PricingSection), which the standalone
- * /pricing route still renders in its existing style.
  */
 export function PricingV2() {
   return (
@@ -36,7 +34,7 @@ export function PricingV2() {
             </p>
             <ul className="plan-list">
               <li>3 successful rewrites after sign-up</li>
-              <li>Naturalness Check before and after</li>
+              <li>Tone check before and after</li>
               <li>Warm and Direct tone presets</li>
               <li>All four templates included</li>
             </ul>
@@ -64,7 +62,7 @@ export function PricingV2() {
             <ul className="plan-list">
               <li>40 rewrites per billing month</li>
               <li>3 free rewrites after sign-up</li>
-              <li>Naturalness Check before and after</li>
+              <li>Tone check before and after</li>
               <li>Teacher, sales, workplace, client templates</li>
               <li>Cancel anytime</li>
             </ul>

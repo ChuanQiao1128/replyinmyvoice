@@ -1401,3 +1401,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/globals.css`; `docs/skill-run-log.md`.
 - Verification evidence: Static render at 1440px and 390px reported no horizontal overflow, no console errors, and `.student-preview .compare-col` computed `min-height: 0px` with content-sized heights. `npm run typecheck`, `npm run lint`, and `npm test` passed under Node 22.13.1; the banned-term scan returned no matches.
 - Limitations: The Codex Browser plugin reported no available `iab` backend, and live `localhost:3021` browser/curl access from the sandbox was blocked even though `lsof` showed a listener on port 3021, so the browser layout check used a static CSS render rather than the running dev server.
+
+### 2026-05-24 - ui-browser-testing - Pivot Phase 0 reply-decision copy
+
+- Agent: Codex
+- Trigger: The task changed browser-visible landing, pricing, terms, workspace label, and `/students` copy for the reply-decision repositioning.
+- Action: Opened and followed the skill; updated user-visible copy only, verified the dead pricing component was unreferenced before deletion, and checked `/` plus `/students` at desktop and mobile sizes with Playwright.
+- Output artifacts: `components/landing/*`; `app/students/page.tsx`; `app/pricing/page.tsx`; `app/terms/page.tsx`; `components/app/rewrite-workspace.tsx`; `tests/unit/*copy*.test.ts`; `docs/skill-run-log.md`; `plans/decisions-log.md`.
+- Verification evidence: With Node 22.13.1 first on PATH, staged-state `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` passed. The banned-term grep returned no matches. Playwright screenshots for `/` and `/students` at 1440px and 390px showed no horizontal overflow, no console errors, and required hero/boundary copy present.
+- Limitations: Validation used `git stash --keep-index` to exclude pre-existing unstaged tracked changes in `components/site-header.tsx`, `components/site-footer.tsx`, `docs/skill-run-log.md`, `lib/admin-visible.ts`, and `lib/rewrite-completeness.ts`; those unrelated changes were restored afterward and were not part of this task. No deploy, main merge, Stripe, schema, secret, or provider setting changes were made.

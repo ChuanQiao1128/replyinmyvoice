@@ -10,14 +10,14 @@ export function Naturalness() {
           </div>
           <div className="sec-head-lead">
             <h2>
-              A reference signal,
+              Does this
               <br />
-              not a verdict.
+              sound natural?
             </h2>
             <p className="lede">
-              The Naturalness Check compares how AI-like the draft and rewrite
-              feel using a third-party writing signal. It&apos;s a reference — not a
-              guarantee. You always review before sending.
+              Tone check compares the draft and rewrite using a third-party
+              writing signal. It&apos;s a reference — not a guarantee. You always
+              review before sending.
             </p>
           </div>
         </div>
@@ -37,19 +37,17 @@ export function Naturalness() {
               </span>
             </div>
             <div className="nat-disclaimer">
-              The Naturalness Check is a reference writing signal that helps you
-              compare how natural the draft and the rewrite feel. It&apos;s not a
-              guarantee of any outcome. Always review the reply before sending
-              it.
+              Tone check is a reference writing signal that helps you compare
+              how natural the draft and the rewrite feel. It&apos;s not a guarantee
+              of any outcome. Always review the reply before sending it.
             </div>
           </div>
 
           <div className="nat-aside">
-            <h3>We measure the change, you make the call.</h3>
+            <h3>Use the signal, then make the call.</h3>
             <p>
               The score is a useful sanity check — not a green light. A lower
-              number generally means the rewrite reads less like generic AI
-              output, which usually means more like a person.
+              number generally means the rewrite reads less stiff or generic.
             </p>
             <p>
               But you&apos;re the one sending the reply. The signal is there to help

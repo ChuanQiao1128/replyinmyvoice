@@ -18,13 +18,14 @@ export function Hero() {
           Now available · NZD $9 / month · 40 rewrites
         </div>
         <h1 style={{ marginTop: 28 }}>
-          Replies that still
+          Send the message
           <br />
-          sound like <span className="alt">you.</span>
+          you&apos;ve been <span className="alt">avoiding.</span>
         </h1>
         <p className="hero-lead">
-          Turn rough drafts into clear, natural replies for students, customers,
-          colleagues, and clients — without losing the facts or your voice.
+          Turn rough, awkward, or too-stiff drafts into clear, natural replies
+          for extension requests, lecturer emails, client replies, and
+          group-project messages while keeping your facts intact.
         </p>
         <div className="hero-cta">
           <Link href="/sign-up" className="btn btn-primary btn-lg">

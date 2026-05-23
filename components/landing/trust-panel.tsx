@@ -1,18 +1,18 @@
 const trustItems = [
   {
-    k: "Fact-aware",
-    h: "Preserves what must stay",
-    p: "The workspace asks for the facts before it shapes the reply. The model doesn't invent details or add promises you didn't make.",
+    k: "Fact-credible",
+    h: "Keeps the important details visible",
+    p: "The workspace asks for the message, draft, and facts before shaping the reply, so dates, names, deadlines, and promises stay anchored.",
   },
   {
-    k: "Boundary",
-    h: "Reply content isn't stored",
-    p: "Reply content is processed for the request and isn't saved to our database. Your drafts don't sit on our servers.",
+    k: "Decision layer",
+    h: "Built for the moment before send",
+    p: "Use it when you know what happened but the wording feels too stiff, too vague, or sharper than you mean.",
   },
   {
-    k: "Tone presets",
-    h: "Warm or Direct, that's it",
-    p: "Two presets that actually feel different. No twelve-slider tone studio you'll never touch after the first day.",
+    k: "Tone check",
+    h: "A reference, not a promise",
+    p: "Tone check helps compare drafts while you remain the person who reviews the reply and decides what to send.",
   },
   {
     k: "Billing",
@@ -31,14 +31,14 @@ export function TrustPanel() {
           </div>
           <div className="sec-head-lead">
             <h2>
-              Built for real
+              Built for messages
               <br />
-              communication workflows.
+              that matter.
             </h2>
             <p className="lede">
-              The product is small on purpose. Each piece is here because it
-              earns its place in a daily writing routine — not to pad a feature
-              list.
+              The product stays focused on lower-anxiety replies: clear wording,
+              visible facts, and a copy-ready message you can still review in
+              your own judgment.
             </p>
           </div>
         </div>

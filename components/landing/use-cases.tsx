@@ -1,35 +1,43 @@
 const useCases = [
   {
-    icon: "T",
-    title: "Teacher messages",
+    icon: "E",
+    title: "Extension requests",
     k: "01",
-    body: "Reply to students with warmth and clarity while keeping the class policy and facts intact.",
+    body: "Ask for more time without sounding careless, vague, or over-apologetic.",
     snippet:
-      "“I can look at this with you tomorrow and check it against the late-work policy before deciding the next step.”",
+      "I know this is late, but I wanted to ask whether a short extension is possible and explain what happened clearly.",
   },
   {
-    icon: "S",
-    title: "Sales follow-ups",
+    icon: "L",
+    title: "Lecturer emails",
     k: "02",
-    body: "Turn stiff follow-ups into relationship-aware notes — without inventing promises that aren't yours to make.",
+    body: "Turn nervous drafts into polite, specific messages that keep the actual situation intact.",
     snippet:
-      "“Just checking in after our demo on the 8th. No pressure either way — if the timing's wrong, I'd rather know than keep nudging.”",
-  },
-  {
-    icon: "W",
-    title: "Workplace email",
-    k: "03",
-    body: "Make internal updates easier to read and less formulaic. The team stops skimming.",
-    snippet:
-      "“Quick one — do we actually need a meeting for this, or can I send a short doc by Friday and we comment async?”",
+      "I missed class because I was unwell. Could you please let me know what I should catch up on before next week?",
   },
   {
     icon: "C",
     title: "Client replies",
-    k: "04",
-    body: "Respond to customers and clients with the right balance of care and precision. No corporate hedging.",
+    k: "03",
+    body: "Reply to delays, scope questions, and awkward updates with care and precision.",
     snippet:
-      "“I'm going to need until Tuesday rather than Friday — the data took two extra days and I'd rather hand you something I trust.”",
+      "I need until Tuesday rather than Friday, and I want to explain why without sounding defensive.",
+  },
+  {
+    icon: "G",
+    title: "Group-project messages",
+    k: "04",
+    body: "Ask someone to contribute without making the message sharper than it needs to be.",
+    snippet:
+      "We still need your section by Tuesday so the group has time to put everything together.",
+  },
+  {
+    icon: "!",
+    title: "Make this less rude",
+    k: "05",
+    body: "Keep the point, lower the heat, and make the next action clear before you send.",
+    snippet:
+      "I'm frustrated about the outcome and want to understand the next step without escalating the conversation.",
   },
 ];
 
@@ -43,14 +51,14 @@ export function UseCases() {
           </div>
           <div className="sec-head-lead">
             <h2>
-              Better everyday messages.
+              Real reply moments.
               <br />
-              Not generic rewrites.
+              Not blank-box rewriting.
             </h2>
             <p className="lede">
-              Reply In My Voice is designed around the moments where people
-              already use draft assistance — and tuned so the output sounds like
-              a person wrote it, not a template engine.
+              Reply In My Voice is built for the last step before you send:
+              extension requests, lecturer emails, client replies,
+              group-project messages, and drafts that need to sound less sharp.
             </p>
           </div>
         </div>

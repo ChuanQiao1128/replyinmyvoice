@@ -52,7 +52,7 @@ export default function PricingPage() {
               </p>
               <ul className="plan-list">
                 <li>3 successful rewrites after sign-up</li>
-                <li>Naturalness Check before and after</li>
+                <li>Tone check before and after</li>
                 <li>Warm and Direct tone presets</li>
                 <li>All four templates included</li>
               </ul>
@@ -80,7 +80,7 @@ export default function PricingPage() {
               <ul className="plan-list">
                 <li>40 rewrites per billing month</li>
                 <li>3 free rewrites after sign-up</li>
-                <li>Naturalness Check before and after</li>
+                <li>Tone check before and after</li>
                 <li>Teacher, sales, workplace, client templates</li>
                 <li>Cancel anytime</li>
               </ul>

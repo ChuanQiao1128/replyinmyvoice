@@ -40,7 +40,7 @@ describe("workspace V2 surface copy", () => {
   });
 
   it("has a safe failure state when the signal does not improve", () => {
-    expect(workspaceSource).toContain("Still high AI-like signal");
+    expect(workspaceSource).toContain("Writing signal still high");
     expect(workspaceSource).toContain("We could not produce a better version yet");
   });
 

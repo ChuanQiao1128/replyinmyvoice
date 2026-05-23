@@ -5,7 +5,7 @@ import { useState, type KeyboardEvent } from "react";
 const faqs = [
   {
     q: "What does this do?",
-    a: "It turns rough or too-generic reply drafts into clearer, more natural messages for everyday communication — teacher replies, sales follow-ups, workplace email, and client messages.",
+    a: "It is the last step before you send a message that matters: paste the message, your rough reply, and the facts that must stay true, then review a clearer version.",
   },
   {
     q: "Does it invent new facts?",
@@ -13,15 +13,19 @@ const faqs = [
   },
   {
     q: "Who is it for?",
-    a: "Teachers, sales teams, workplace communicators, and anyone replying to students, customers, colleagues, or clients with regular volume.",
+    a: "Students writing lecturer emails, people replying to clients, teams handling awkward work messages, and anyone trying to make a real reply clearer before sending.",
+  },
+  {
+    q: "Is this for assignments?",
+    a: "No. It is built for real messages and replies you are responsible for sending, not writing assignments for you.",
   },
   {
     q: "Can I cancel?",
     a: "Yes. The monthly plan can be managed through Stripe billing — pause or cancel any time from your account.",
   },
   {
-    q: "Is the Naturalness Check a guarantee?",
-    a: "No. It's a reference writing signal that helps you compare drafts. You should always review the reply before sending it.",
+    q: "Is Tone check a guarantee?",
+    a: "No. It is a reference writing signal that helps you compare drafts. You should always review the reply before sending it.",
   },
   {
     q: "Do you save my reply content?",

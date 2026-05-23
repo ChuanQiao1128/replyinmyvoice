@@ -76,7 +76,7 @@ export function InteractiveDemo() {
       <div className="compare-foot">
         <div className="nat">
           <div className="nat-label">
-            Naturalness Check
+            Tone check
             <span
               className="q"
               title="Reference writing signal — not a guarantee"

@@ -57,7 +57,7 @@ const situations = [
 const reasons = [
   "One click on your actual message and draft, without writing a careful prompt first.",
   "It keeps your supplied facts in view and should not add details you did not give it.",
-  "Naturalness Check lets you compare the draft and rewrite before you send.",
+  "Tone check lets you compare the draft and rewrite before you send.",
 ];
 
 export default function StudentsPage() {
@@ -73,12 +73,14 @@ export default function StudentsPage() {
               Extension requests · lecturer emails · internship follow-ups
             </div>
             <h1 style={{ marginTop: 28 }}>
-              Sound like yourself when the message matters.
+              Write the message you&apos;re nervous to send.
             </h1>
             <p className="hero-lead">
               Turn rough student replies into clear, polite messages for
               extension requests, lecturer emails, internship follow-ups,
               group-project messages, and awkward replies when you are stressed.
+              <br />
+              Built for real messages, not writing assignments for you.
             </p>
             <div className="hero-cta">
               <Link href="/sign-up" className="btn btn-primary btn-lg">
@@ -89,6 +91,10 @@ export default function StudentsPage() {
                 Back to home
               </Link>
             </div>
+            <p className="page-meta">
+              Your 3 free rewrites are best used on real messages you actually
+              need to send.
+            </p>
           </div>
 
           <div className="student-preview" aria-label="Before and after preview">
@@ -189,7 +195,8 @@ export default function StudentsPage() {
               </h2>
               <p>
                 Start with three successful free rewrites after sign-up. No
-                card is needed to try the workspace.
+                card is needed to try the workspace. Your 3 free rewrites are
+                best used on real messages you actually need to send.
               </p>
             </div>
             <div className="cta-side">

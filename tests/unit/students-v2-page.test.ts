@@ -17,7 +17,7 @@ describe("students v2 landing page", () => {
     expect(page).toContain("<SiteHeader />");
     expect(page).toContain('title: "Student email & message rewriter"');
     expect(page).toContain("Extension requests · lecturer emails · internship follow-ups");
-    expect(page).toContain("Sound like yourself when the message matters.");
+    expect(page).toContain("Write the message you&apos;re nervous to send.");
     expect(page).toContain("Try 3 free rewrites — no card");
     expect(page).toContain('href="/sign-up"');
     expect(page).not.toContain("NZD $9");
@@ -27,6 +27,10 @@ describe("students v2 landing page", () => {
     const page = source("app/students/page.tsx");
 
     expect(page).toContain("For messages you actually need to send.");
+    expect(page).toContain("Built for real messages, not writing assignments for you.");
+    expect(page).toContain(
+      "Your 3 free rewrites are best used on real messages you actually",
+    );
     expect(page).toContain("Ask for an assignment extension");
     expect(page).toContain("Tell a group member they need to contribute");
     expect(page).toContain("Why not just use ChatGPT?");

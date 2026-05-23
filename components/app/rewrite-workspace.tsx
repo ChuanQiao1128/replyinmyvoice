@@ -160,12 +160,12 @@ function labelForNaturalness(naturalness?: Naturalness) {
     return "Signal unavailable";
   }
   if (naturalness.label === "lower") {
-    return "Lower AI-like signal";
+    return "Writing signal improved";
   }
   if (naturalness.label === "low_signal") {
-    return "Low AI-like signal";
+    return "Writing signal already low";
   }
-  return "Still high AI-like signal";
+  return "Writing signal still high";
 }
 
 function titleForQualityFailure(reason?: string) {
@@ -745,18 +745,18 @@ export function RewriteWorkspace({
 
             <Card className="p-4 md:p-5">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Naturalness Check</h2>
+                <h2 className="text-lg font-semibold">Tone check</h2>
                 <span className="rounded-md bg-mint px-3 py-1 text-xs font-semibold text-sage">
                   {labelForNaturalness(visibleNaturalness)}
                 </span>
               </div>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <SignalBar
-                  label="Draft AI-like signal"
+                  label="Draft writing signal"
                   value={visibleNaturalness?.draftAiLikePercent ?? null}
                 />
                 <SignalBar
-                  label="Rewrite AI-like signal"
+                  label="Rewrite writing signal"
                   value={visibleNaturalness?.rewriteAiLikePercent ?? null}
                   variant="sage"
                 />
