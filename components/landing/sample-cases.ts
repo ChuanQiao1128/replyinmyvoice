@@ -1,5 +1,7 @@
 export type HomepageSampleCase = {
   label: string;
+  /** Single-letter monogram shown on the comparison-card tab. */
+  icon: string;
   context: string;
   draft: string;
   rewrite: string;
@@ -11,6 +13,7 @@ export type HomepageSampleCase = {
 export const homepageSampleCases: HomepageSampleCase[] = [
   {
     label: "Teacher Message",
+    icon: "T",
     context:
       "Maya asks whether she can still submit a missed reflection after a family issue.",
     draft:
@@ -23,6 +26,7 @@ export const homepageSampleCases: HomepageSampleCase[] = [
   },
   {
     label: "Sales Follow-Up",
+    icon: "S",
     context:
       "Jordan says the team is still comparing vendors and may need another week.",
     draft:
@@ -35,6 +39,7 @@ export const homepageSampleCases: HomepageSampleCase[] = [
   },
   {
     label: "Workplace Email",
+    icon: "W",
     context:
       "A teammate needs revised numbers for a partner update, but the source file arrived late.",
     draft:
@@ -47,6 +52,7 @@ export const homepageSampleCases: HomepageSampleCase[] = [
   },
   {
     label: "Client Reply",
+    icon: "C",
     context:
       "Priya asks why this month's report totals look different from last month.",
     draft:

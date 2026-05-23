@@ -1,59 +1,83 @@
+"use client";
+
+import { useState, type KeyboardEvent } from "react";
+
 const faqs = [
   {
-    question: "What does this do?",
-    answer:
-      "It turns rough or too-generic reply drafts into clearer, more natural messages for everyday communication.",
+    q: "What does this do?",
+    a: "It turns rough or too-generic reply drafts into clearer, more natural messages for everyday communication — teacher replies, sales follow-ups, workplace email, and client messages.",
   },
   {
-    question: "Does it invent new facts?",
-    answer:
-      "No. It is designed to preserve facts and use only the context you provide.",
+    q: "Does it invent new facts?",
+    a: "No. It's designed to preserve facts and use only the context you provide. You can mark specific details as 'must stay intact' before the rewrite.",
   },
   {
-    question: "Who is it for?",
-    answer:
-      "Teachers, sales teams, workplace communicators, and anyone replying to students, customers, colleagues, or clients.",
+    q: "Who is it for?",
+    a: "Teachers, sales teams, workplace communicators, and anyone replying to students, customers, colleagues, or clients with regular volume.",
   },
   {
-    question: "Can I cancel?",
-    answer: "Yes. The monthly plan can be managed through Stripe billing.",
+    q: "Can I cancel?",
+    a: "Yes. The monthly plan can be managed through Stripe billing — pause or cancel any time from your account.",
   },
   {
-    question: "Is the Naturalness Check a guarantee?",
-    answer:
-      "No. It is a reference writing signal that helps compare drafts. You should still review the reply before sending.",
+    q: "Is the Naturalness Check a guarantee?",
+    a: "No. It's a reference writing signal that helps you compare drafts. You should always review the reply before sending it.",
   },
   {
-    question: "Do you save my reply content?",
-    answer:
-      "The app processes reply content for the request. It does not save pasted messages or rewritten replies to the database.",
+    q: "Do you save my reply content?",
+    a: "The app processes reply content for the request only. It doesn't save your pasted messages or rewritten replies to the database.",
   },
   {
-    question: "Who operates the product?",
-    answer:
-      "Reply In My Voice is operated by TimeAwake Ltd. for practical email and message workflows.",
+    q: "Who operates the product?",
+    a: "Reply In My Voice is operated by TimeAwake Ltd. for practical email and message workflows. Billing runs through Stripe.",
   },
 ];
 
 export function FAQ() {
+  const [open, setOpen] = useState(0);
+
+  const toggle = (index: number) => setOpen(index === open ? -1 : index);
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, index: number) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle(index);
+    }
+  };
+
   return (
-    <section className="bg-paper">
-      <div className="mx-auto max-w-3xl px-6 py-16">
-        <h2 className="text-3xl font-semibold md:text-4xl">FAQ</h2>
-        <div className="mt-8 divide-y divide-line border-y border-line">
-          {faqs.map((item, index) => (
-            <details className="group py-5" key={item.question} open={index === 0}>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
-                <span className="font-semibold">{item.question}</span>
-                <span className="rounded-full border border-line px-2 py-0.5 text-sm text-ink/55 transition group-open:rotate-45">
-                  +
-                </span>
-              </summary>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/65">
-                {item.answer}
-              </p>
-            </details>
-          ))}
+    <section className="block" id="faq">
+      <div className="wrap">
+        <div className="sec-head">
+          <div>
+            <span className="sec-num">07 · Questions</span>
+          </div>
+          <div className="sec-head-lead">
+            <h2>FAQ.</h2>
+            <p className="lede">
+              The short answers people usually want before they sign up.
+            </p>
+          </div>
+        </div>
+
+        <div className="faq-list">
+          {faqs.map((item, index) => {
+            const isOpen = index === open;
+            return (
+              <div
+                key={item.q}
+                className={"faq-item" + (isOpen ? " open" : "")}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isOpen}
+                onClick={() => toggle(index)}
+                onKeyDown={(event) => onKeyDown(event, index)}
+              >
+                <div className="faq-q">{item.q}</div>
+                <div className="faq-toggle" aria-hidden="true" />
+                <div className="faq-a">{item.a}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

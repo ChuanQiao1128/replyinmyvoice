@@ -1,40 +1,135 @@
-const steps = [
-  {
-    title: "Paste the thread",
-    text: "Paste the message you are answering and the rough reply you already have.",
-  },
-  {
-    title: "Pick quick context",
-    text: "Choose audience, purpose, and anything that must stay unchanged. Most fields are optional.",
-  },
-  {
-    title: "Choose a tone preset",
-    text: "Choose Warm or Direct, then let the app shape the reply around your context.",
-  },
-  {
-    title: "Review the signal",
-    text: "Compare the before and after AI-like signal, then copy the reply when it feels right.",
-  },
-];
-
 export function HowItWorks() {
   return (
-    <section className="border-y border-line bg-mint">
-      <div className="mx-auto max-w-6xl px-6 py-16">
-        <div className="max-w-2xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-sage">
-            Four quick steps
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold md:text-4xl">How it works</h2>
+    <section className="block" id="how">
+      <div className="wrap">
+        <div className="sec-head">
+          <div>
+            <span className="sec-num">03 · Workflow</span>
+          </div>
+          <div className="sec-head-lead">
+            <h2>
+              Four quick steps,
+              <br />
+              then a reply you&apos;d actually send.
+            </h2>
+            <p className="lede">
+              Paste the thread. Add the facts that must stay. Pick a tone.
+              Compare the signal. Copy it into your email. Under a minute.
+            </p>
+          </div>
         </div>
-        <div className="mt-8 grid gap-4 md:grid-cols-4">
-          {steps.map((step, index) => (
-            <div key={step.title} className="rounded-lg border border-line bg-white p-5 shadow-crisp">
-              <span className="text-sm font-semibold text-clay">0{index + 1}</span>
-              <p className="mt-3 text-lg font-semibold">{step.title}</p>
-              <p className="mt-2 text-sm leading-6 text-ink/62">{step.text}</p>
+
+        <div className="steps">
+          <div className="step">
+            <div className="step-num">Step 01</div>
+            <h3>Paste the thread</h3>
+            <p>
+              Paste the message you&apos;re answering plus the rough draft you
+              already have.
+            </p>
+            <div className="step-figure">
+              <div style={{ color: "var(--muted)" }}>{"// thread.txt"}</div>
+              <div style={{ paddingTop: 6 }}>From: Maya</div>
+              <div>Subject: Missed reflection</div>
+              <div style={{ color: "var(--muted)", paddingTop: 4 }}>
+                — rough reply —
+              </div>
+              <div>
+                <span className="caret">▍</span>Dear Maya, I acknowled…
+              </div>
             </div>
-          ))}
+          </div>
+
+          <div className="step">
+            <div className="step-num">Step 02</div>
+            <h3>Pick quick context</h3>
+            <p>
+              Choose audience, purpose, and anything that must stay unchanged.
+              Most fields are optional.
+            </p>
+            <div className="step-figure">
+              <div className="field-line">
+                <span className="k">audience</span>
+                <span className="v">student</span>
+              </div>
+              <div className="field-line">
+                <span className="k">purpose</span>
+                <span className="v">policy reply</span>
+              </div>
+              <div className="field-line">
+                <span className="k">keep</span>
+                <span className="v">
+                  <span className="chip">late-work policy</span>
+                  <span className="chip">tomorrow</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="step">
+            <div className="step-num">Step 03</div>
+            <h3>Choose a tone preset</h3>
+            <p>
+              Choose Warm or Direct. The app shapes the reply around your
+              context — never inventing.
+            </p>
+            <div className="step-figure">
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <span
+                  className="chip"
+                  style={{ background: "var(--ink)", color: "var(--bg)" }}
+                >
+                  ● Warm
+                </span>
+                <span
+                  className="chip"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--rule-2)",
+                    color: "var(--ink-2)",
+                  }}
+                >
+                  Direct
+                </span>
+              </div>
+              <div style={{ color: "var(--muted)" }}>{"// preview"}</div>
+              <div>
+                Hi Maya, thanks for letting me
+                <br />
+                know what happened…
+              </div>
+            </div>
+          </div>
+
+          <div className="step">
+            <div className="step-num">Step 04</div>
+            <h3>Review the signal</h3>
+            <p>
+              Compare the before/after AI-like signal, then copy the reply when
+              it feels right.
+            </p>
+            <div className="step-figure">
+              <div className="field-line">
+                <span className="k">before</span>
+                <span className="v" style={{ color: "var(--warn)" }}>
+                  81%
+                </span>
+              </div>
+              <div className="field-line">
+                <span className="k">after</span>
+                <span className="v" style={{ color: "var(--accent)" }}>
+                  39%
+                </span>
+              </div>
+              <div className="field-line">
+                <span className="k">delta</span>
+                <span className="v">−42 pts</span>
+              </div>
+              <div style={{ marginTop: 6, color: "var(--accent)" }}>
+                ↓ ⌘ Copy reply
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
