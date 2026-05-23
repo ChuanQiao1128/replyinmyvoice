@@ -1,15 +1,19 @@
 {
-  "issue_id": "REPAIR-20260523112324",
-  "branch": "chore/REPAIR-20260523112324",
+  "issue_id": "REPAIR-20260523135854",
+  "branch": "codex/repair-m9-003-codex-needs-human-blocked-autonomy-REPAIR-20260523135854",
   "files_changed": [
-    "plans/task-status.json"
+    "packages/mcp-server/src/config.ts",
+    "packages/mcp-server/src/index.ts",
+    "tests/unit/mcp-server-config.test.ts",
+    "plans/issue-board.md",
+    "docs/skill-run-log.md"
   ],
   "lint": "pass",
   "typecheck": "pass",
   "tests": "pass",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Recorded status-only repair: M7-008 mixed diff was caused by already-removed Finder duplicate files; stash review remains owned by the shell supervisor under the no-git protocol.",
-  "title": "Record M7-008 dirty-repo repair status",
+  "summary": "Implemented M9-003 MCP env config and repaired issue-board statuses so full validation passes.",
+  "title": "fix: add MCP env config",
   "next_action": "ready_to_commit"
 }

@@ -237,3 +237,15 @@ What user needs to do: review the branch chore/M7-008 (if any), the log tail, an
 What was attempted: The supervisor repeatedly tried to preserve dirty work before processing the repair inbox and logged 1206 duplicate dirty-worktree-stash-failed blocker entries.
 
 What engineering did: Collapsed the duplicate generated entries into this single forensic summary. The loop remains stopped until the supervisor stash-success regression fix and queue cleanup are reviewed.
+
+## 2026-05-23T13:33:53+12:00 — M9-002 — undeclared-files-in-diff
+
+What was attempted: Codex reported ready_to_commit but the dirty worktree included files not declared in plans/task-status.json files_changed. Changes were stashed for split/review.
+
+What user needs to do: review the branch chore/M9-002 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.
+
+## 2026-05-23T13:58:35+12:00 — M9-003 — codex-needs-human:BLOCKED-AUTONOMY
+
+What was attempted: Implemented MCP env config; full test suite is blocked by an unrelated issue-board status expectation.
+
+What user needs to do: review the branch chore/M9-003 (if any), the log tail, and decide whether to retry, fix the brief, or close the issue.

@@ -1,0 +1,2120 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-23T15:15:00+12:00",
+  "generated_by": "claude-phase1-draft per plans/issue-classification.md (Amendments 2026-05-23-A + B + C)",
+  "note": "DRAFT \u2014 Phase 1 smoke test must pass and user must say 'registry-go' before dispatcher reads this file.",
+  "defaults": {
+    "lane": "evidence",
+    "owner_class": "human-only",
+    "worker_class": "coordinator-poll",
+    "worker_runtime": "none",
+    "review_class": "none",
+    "coupling": "high",
+    "brief_state": "missing",
+    "status": "pending",
+    "initial_lease_seconds": 1200,
+    "lease_renewal_interval_seconds": 1200,
+    "heartbeat_interval_seconds": 300,
+    "max_wall_seconds": 7200,
+    "min_level": 1,
+    "current_level": 1,
+    "level_attempts": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "epics": {
+    "M1-Entra": {
+      "title": "Migrate auth from Clerk to Entra External ID",
+      "planner_representative": "M1-002",
+      "integration_strategy": "single-pr",
+      "epic_branch": "epic/M1-entra",
+      "member_ids": [
+        "M1-002",
+        "M1-003",
+        "M1-004",
+        "M1-005",
+        "M1-006",
+        "M1-007",
+        "M1-008",
+        "M1-009",
+        "M1-010"
+      ]
+    },
+    "M2-Quality": {
+      "title": "Hard quality gate + diagnosis-driven repair pipeline",
+      "planner_representative": "M2-001",
+      "integration_strategy": "single-pr",
+      "epic_branch": "epic/M2-quality",
+      "member_ids": [
+        "M2-001",
+        "M2-002",
+        "M2-003",
+        "M2-004",
+        "M2-005",
+        "M2-006",
+        "M2-008",
+        "M2-009"
+      ]
+    },
+    "M2.5-LearningOps": {
+      "title": "Scheduled LearningOps Cron Trigger",
+      "planner_representative": "M2.5-007",
+      "integration_strategy": "single-pr",
+      "epic_branch": "epic/M2.5-learningops",
+      "member_ids": [
+        "M2.5-007"
+      ]
+    },
+    "M3-V2": {
+      "title": "V2 workspace + scenarios + prompt guardrails",
+      "planner_representative": "M3-001",
+      "integration_strategy": "single-pr",
+      "epic_branch": "epic/M3-v2",
+      "member_ids": [
+        "M3-001",
+        "M3-002",
+        "M3-003",
+        "M3-004",
+        "M3-005",
+        "M3-006",
+        "M3-007",
+        "M3-008"
+      ]
+    },
+    "M4-FrontendPolish": {
+      "title": "Frontend visual redesign + responsive polish",
+      "planner_representative": "M4-011",
+      "integration_strategy": "single-pr",
+      "epic_branch": "epic/M4-frontend-polish",
+      "member_ids": [
+        "M4-011",
+        "M4-015"
+      ]
+    },
+    "M8-API": {
+      "title": "B2B API key + rate limit + quota + Stripe tiers + docs",
+      "planner_representative": "M8-002",
+      "integration_strategy": "single-pr",
+      "epic_branch": "epic/M8-api",
+      "member_ids": [
+        "M8-002",
+        "M8-003",
+        "M8-004",
+        "M8-005",
+        "M8-006",
+        "M8-007",
+        "M8-008",
+        "M8-009",
+        "M8-010",
+        "M8-011",
+        "M8-012",
+        "M8-013",
+        "M8-014",
+        "M8-015",
+        "M8-016"
+      ]
+    }
+  },
+  "items": [
+    {
+      "id": "M1-002",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "planner-representative for M1-Entra",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M1-003",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M1-004",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M1-005",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M1-006",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M1-007",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "borderline: schema-only could be direct-medium; safer as epic for v0",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M1-008",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M1-007"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M1-009",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "borderline: test-only could be direct-medium",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M1-010",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M1-Entra",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M1-002",
+        "M1-003",
+        "M1-004",
+        "M1-005",
+        "M1-006",
+        "M1-007",
+        "M1-008",
+        "M1-009"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2-001",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2-Quality",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "planner-representative for M2-Quality",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2-002",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2-Quality",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2-003",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2-Quality",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2-004",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2-Quality",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "borderline: single test-fixture file could be direct-medium",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2-005",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2-Quality",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2-006",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2-Quality",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M2-005"
+      ],
+      "notes": "DeepSeek budget consumed",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2-008",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2-Quality",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2-009",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2-Quality",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2.5-002",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "file-present",
+      "expected_artifact": "docs/learning-baseline.md",
+      "expected_shape": "~100 sample rows",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "DeepSeek+Sapling budget capped at NZ$20/session per \u00a76",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M2.5-007",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M2.5-LearningOps",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M2.5-002"
+      ],
+      "notes": "single-item epic; cron handler + worker config",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M3-001",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M3-V2",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "planner-representative for M3-V2",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M3-002",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M3-V2",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "borderline: UI-only could be direct-medium; also Phase 5 smoke target",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M3-003",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M3-V2",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M3-004",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M3-V2",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "V2 centerpiece \u2014 rewrite-workspace.tsx",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M3-005",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M3-V2",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "borderline: single-file validation could be direct-low",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M3-006",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M3-V2",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M3-005"
+      ],
+      "notes": "borderline: UI copy + counter could be direct-low",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M3-007",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M3-V2",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M3-008",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M3-V2",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M3-004"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M4-001",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "file-present",
+      "expected_artifact": "docs/sample-cases.md",
+      "expected_shape": "4 documented sample-case rewrite outputs",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "DeepSeek budget",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M4-011",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M4-FrontendPolish",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "planner-representative for M4-FrontendPolish; web-design-engineer skill orchestration",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M4-015",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M4-FrontendPolish",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M4-011"
+      ],
+      "notes": "browser-based \u2014 sandbox limited; manual review for verification",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M5-003",
+      "lane": "direct",
+      "owner_class": "loop",
+      "coupling": "medium",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": null,
+      "owned_paths": [
+        "scripts/**",
+        "tests/**"
+      ],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**",
+        "app/**",
+        "components/**",
+        "lib/billing/**",
+        "lib/auth/**",
+        "prisma/schema.prisma",
+        "prisma/migrations/**"
+      ],
+      "depends_on": [],
+      "notes": "brief writer needs to produce detailed brief before dispatch \u2014 direct gate requires brief_state=detailed",
+      "worker_class": "scoped",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 120,
+      "max_wall_seconds": 7200,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M6-001",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "expected_artifact": "plans/cloudflare-secrets-diff.md",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "Cloudflare API blocked in sandbox; operator runs wrangler secret list",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M6-002",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M6-001"
+      ],
+      "notes": "wrangler secret put \u2014 operator action",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M6-003",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M6-002"
+      ],
+      "notes": "http-200 verifier blocked in sandbox per \u00a75.5",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M6-004",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M6-003"
+      ],
+      "notes": "Cloudflare custom-domain attach \u2014 dashboard action, never automated per \u00a76",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M6-005",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M6-004"
+      ],
+      "notes": "http-200 to prod blocked in sandbox",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M6-007",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "medium",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M6-005"
+      ],
+      "notes": "Playwright suite blocked on loopback EPERM; manual until non-sandboxed runner",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M6-008",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "stripe-event",
+      "expected_shape": "live webhook event for replyinmyvoice product matching subscription.created/updated",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M6-005"
+      ],
+      "notes": "auto_verify=yes via STRIPE_SECRET_KEY",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M7-001",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "stripe-event",
+      "expected_shape": "first paid txn (stripe-event + db-row Subscription with status=active)",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M6-008"
+      ],
+      "notes": "user-only action per \u00a76; verifier compound check (stripe-event AND db-row)",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M7-002",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "manual until POSTHOG_API_KEY; promotes to posthog-api per \u00a75.5",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M7-003",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "manual until SENTRY_DSN + SENTRY_AUTH_TOKEN; promotes to sentry-api per \u00a75.5",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M7-008",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "medium",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M7-001"
+      ],
+      "notes": "operator KPI review",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-001",
+      "lane": "direct",
+      "owner_class": "loop",
+      "coupling": "medium",
+      "brief_state": "detailed",
+      "status": "in_progress",
+      "epic_id": null,
+      "evidence_type": null,
+      "owned_paths": [
+        "prisma/schema.prisma",
+        "prisma/migrations/**"
+      ],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**",
+        "app/**",
+        "components/**"
+      ],
+      "depends_on": [],
+      "github_issue": "https://github.com/ChuanQiao1128/replyinmyvoice/pull/173",
+      "notes": "PR #173 open \u2014 DO NOT re-dispatch",
+      "worker_class": "scoped",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 120,
+      "max_wall_seconds": 7200,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-002",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-001"
+      ],
+      "notes": "planner-representative for M8-API",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-003",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-001"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-004",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-001",
+        "M8-003"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-005",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-004"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-006",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-003"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-007",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-001"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-008",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [],
+      "notes": "Stripe Products API allowed per sprint posture; real-charge automation still blocked per \u00a76",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-009",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-001",
+        "M8-008"
+      ],
+      "notes": "state-machine-modeling skill applies",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-010",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-008",
+        "M8-009"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-011",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-002",
+        "M8-008"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-012",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-005"
+      ],
+      "notes": "extends existing /developers page from M9-009",
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-013",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-004"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-014",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-004"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-015",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-004"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M8-016",
+      "lane": "epic",
+      "owner_class": "strong-model",
+      "coupling": "high",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": "M8-API",
+      "evidence_type": null,
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M8-008",
+        "M8-002"
+      ],
+      "worker_class": "completion-bound",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 300,
+      "max_wall_seconds": 28800,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M9-002",
+      "lane": "direct",
+      "owner_class": "loop",
+      "coupling": "medium",
+      "brief_state": "manifest-only",
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": null,
+      "owned_paths": [
+        "packages/mcp-server/src/**",
+        "packages/mcp-server/tests/**"
+      ],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**",
+        "app/**",
+        "components/**",
+        "lib/**",
+        "prisma/**"
+      ],
+      "depends_on": [],
+      "notes": "was started 2026-05-23T13:23 (decisions-log line 241); operator should confirm current state before re-dispatch \u2014 registry may need status update",
+      "worker_class": "scoped",
+      "initial_lease_seconds": 1200,
+      "lease_renewal_interval_seconds": 1200,
+      "heartbeat_interval_seconds": 120,
+      "max_wall_seconds": 7200,
+      "worker_runtime": "codex-cli",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    },
+    {
+      "id": "M9-006",
+      "lane": "evidence",
+      "owner_class": "human-only",
+      "coupling": "low",
+      "brief_state": null,
+      "status": "pending",
+      "epic_id": null,
+      "evidence_type": "manual-only",
+      "expected_shape": "npm registry shows @replyinmyvoice/mcp-server@<version> published",
+      "owned_paths": [],
+      "forbidden_paths": [
+        ".env*",
+        "globalapikey/**"
+      ],
+      "depends_on": [
+        "M9-002"
+      ],
+      "notes": "npm publish is user-only per \u00a76; verifier could be promoted to file-present check against npm registry HTTP response",
+      "worker_class": "coordinator-poll",
+      "initial_lease_seconds": null,
+      "lease_renewal_interval_seconds": null,
+      "heartbeat_interval_seconds": null,
+      "max_wall_seconds": 300,
+      "worker_runtime": "none",
+      "review_class": "none",
+      "min_level": 1,
+      "current_level": 1,
+      "level_attempts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0
+      }
+    }
+  ]
+}

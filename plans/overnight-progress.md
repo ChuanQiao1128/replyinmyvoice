@@ -4,6 +4,22 @@ Running tally appended by each scheduled supervisor trigger.
 
 ---
 
+## Monitor checkpoint at 2026-05-23T02:39:26Z
+
+- State: stopped (no_pending_work)
+- overnight.log age: 28 min — stale, but explained by clean supervisor exit ("No more pending issues — exiting" at 2026-05-23T02:09:29Z)
+- Supervisor ran full cycle: 31 issues processed, 26 blocked, 2 repairs done, 2 repairs blocked
+- Latest commit: 0f267bf (fix: add MCP env config, PR #230 merged)
+- f13bdee hardening: present ✓
+- No lock file, no stop signal, no active supervisor process
+- Stash count: 42 (unchanged from last check — was 42 in prior state.json)
+- M8-001 in_progress (PR #173 open, awaiting CI — not a monitor concern)
+- Inbox note: M9-003 repair item shows pending in inbox but repair PR #230 was merged; inbox stale (monitor does not process inbox)
+- Action: no restart — supervisor exited cleanly on no_pending_work
+- Next check: monitor will re-evaluate; if user restarts the loop manually, it will pick up BLOCKED issues that become unblocked
+
+---
+
 ## Trigger at 2026-05-21T11:13:33Z
 
 - Worked: M0-006 (Update AGENTS.md to reflect Stripe live state)
@@ -696,3 +712,60 @@ Run finished. Done: 0 | Blocked: 0 | Needs human: 4 | Repairs done: 1 | Repairs 
 - Blockers: loop stopped; no restart attempted; prior stash-livelock + space-named file issues remain unresolved
 - Repair inbox: no new items (stop signal active)
 - Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI) → MCP → monitoring
+
+## Monitor at 2026-05-23T01:37Z
+- Loop: **HEALTHY** — overnight.log mtime 3 min ago (01:34:12Z); codex exec in progress for repair REPAIR-20260523133412 (M2.5-002-infra: incremental + resumable eval-scenarios.ts), 600s timeout, ~3 min in
+- Board: 49 done / 2 pending (M9-003, plus repair queue) / 1 in_progress (M8-001 PR #173 awaiting CI)
+- Stash count: 39 (down from prior livelock peak of 1209+; stash-livelock resolved)
+- Latest main: 52d272e Harden supervisor stash success handling (#228); f13bdee (#226) present
+- Repair queue: REPAIR-20260523133412 in_progress (M2.5-002-infra eval-scenarios.ts refactor); M9-002-undeclared-files pending
+- Anomalies: M9-002 produced 1 undeclared file (plans/m25-002-incremental-eval.md); loop correctly stashed + queued repair — no new issue
+- BLOCKED-WAITING-USER: M7-001 (live Stripe test), M9-006 (NPM_TOKEN)
+- Action taken: checkpoint recorded; no restart (loop healthy)
+- Next monitor: if repair completes normally, expect M2.5-002-infra PR open + M9-003 to be picked up next
+
+## Monitor at 2026-05-23T02:07Z
+- Loop: **HEALTHY** — overnight.log mtime <10s ago (02:07:17Z); CI-polling repair PR #230 (M9-003 fix) in progress at log tail; no stop signals
+- Board: ~51 done / ~7 pending (M1-007, M1-009, M3-001, M3-002, M3-005 released by PR #229 + 2 others) / 1 in_progress (M8-001 PR #173 awaiting CI) / 3 user-blocked (M6-008, M7-001, M9-006) / ~6 provider-blocked / ~13 prereq-blocked / ~14 autonomy-blocked / ~5 uncategorized-blocked
+- Stash count: 42 (was 39 at 01:37Z trigger — minor increase of 3; flagged as suspect, no action needed given fresh log)
+- Latest main: 0f267bf fix: add MCP env config (#230) — PR #230 already merged; f13bdee (#226) ancestor confirmed
+- Blockers: M7-003 (npm registry DNS in sandbox), M6-001/003/004/005 (Cloudflare API DNS in sandbox), M9-006 (NPM_TOKEN user-only)
+- Repair inbox: M9-003 inbox item now `in_progress`→completing; M2.5-002-infra item still `not_actionable`; M9-002 undeclared-files item still pending
+- Action taken: checkpoint recorded; no restart (log fresh); stash increase noted as minor/suspect
+- Next commercial gate: API (M8-001 PR #173 CI result) → pending M1-007/M3 batch → billing verification (M7-001 user-only)
+
+## Trigger at 2026-05-23T14:09:29+12:00
+Run finished. Done: 0 | Blocked: 26 | Needs human: 1 | Repairs done: 2 | Repairs blocked: 2
+
+## Monitor at 2026-05-23T03:05Z
+
+- Loop: **STOPPED (natural exit)** — overnight.log is 56 min stale (last modified 02:09:29Z); supervisor exited cleanly at `[2026-05-23T14:09:29+12:00]` with "No more pending issues — exiting"; no overnight-supervisor or codex exec process running
+- Board: ~50 done / **0 pending** / 1 in_progress (M8-001 PR #173 awaiting CI) / 3 user-blocked / ~6 provider-blocked / ~10 prereq-blocked / ~22 autonomy-blocked / ~4 uncategorized-blocked
+- Stash count: 42 (unchanged from 02:07Z checkpoint)
+- Latest main: 0f267bf fix: add MCP env config (#230); f13bdee (#226) ancestor confirmed
+- **ACTION NEEDED — PR #229 board-flip incomplete**: `supervisor-skip-relax` inbox item is marked `done` (PR #229 merged) but the 5 rows it was supposed to flip to `pending` are still `BLOCKED-AUTONOMY` on the board: M1-007, M1-009, M3-001, M3-002, M3-005. Loop exited because it saw 0 pending rows. Until these 5 rows are flipped to `pending`, the loop will exit immediately on next start.
+- **M8-001**: PR #173 open and awaiting CI merge — needs external monitoring or loop restart after board fix.
+- **M2.5-002-infra**: inbox item `not_actionable` — incremental eval-scenarios.ts refactor brief never executed (M2.5-002 still BLOCKED-AUTONOMY).
+- Repair inbox: all items `done` or `not_actionable`; no actionable pending repairs
+- Next commercial gate: billing (M7-001 BLOCKED-WAITING-USER live Stripe test) → API (M8-001 PR #173 awaiting CI merge) → MCP → monitoring
+- Action taken: checkpoint recorded; no restart (precondition fails — 0 pending board rows + 0 actionable repair items); **user action needed to flip 5 board rows**
+
+## Monitor at 2026-05-23T03:37Z
+- Loop: **STOPPED (no pending work)** — overnight.log last modified 02:09:29Z (88 min stale); supervisor exited cleanly with "No more pending issues"; no overnight-supervisor or codex exec processes running
+- Board: ~50 done / **0 pending** / 1 in_progress (M8-001 PR #173 awaiting CI) / 3 user-blocked / multiple provider/prereq/autonomy-blocked
+- Stash count: 42 (unchanged from previous checkpoint)
+- Latest main: 0f267bf fix: add MCP env config (#230); f13bdee (#226) ancestor confirmed
+- Action taken: checkpoint recorded; no restart (precondition fails — 0 pending board rows); state unchanged from 03:05Z checkpoint
+- User action still needed: flip M1-007, M1-009, M3-001, M3-002, M3-005 from BLOCKED-AUTONOMY → pending in plans/issue-board.md to resume loop; also 1 pending codex-worker-inbox item (phase1-dispatcher P1)
+- Next commercial gate: M8-001 PR #173 CI merge (autonomous once board has pending rows) → M7-001 live Stripe test (user-only)
+
+## Monitor at 2026-05-23T03:55Z
+- Loop: **STALE (clean exit, inbox item pending)** — overnight.log is 101 min stale (loop exited cleanly at 14:09:29+12:00 with "No more pending issues"); no supervisor/codex/screen processes running
+- Board: ~56 done / **0 pending** / 1 in_progress (M8-001 PR #173 awaiting CI) / 3+ user-blocked / ~7 provider-blocked / ~25 prereq-blocked / ~22 autonomy-blocked / ~4 uncategorized-blocked
+- Stash count: 42 (unchanged)
+- Latest main: 0f267bf fix: add MCP env config (#230); f13bdee (#226) ancestor confirmed
+- **Pending inbox item**: phase1-lane-dispatcher (P1, class:autonomy) — written by Cowork session AFTER loop's last cycle; loop never processed it
+- Restart attempted: YES — screen -dmS rimv-overnight failed (sandbox cannot start persistent screen sessions on user's Mac)
+- **User action needed**: manually restart the supervisor loop from a Mac terminal: `cd /Users/qc/Desktop/CloudFlare && screen -dmS rimv-overnight bash -lc 'cd /Users/qc/Desktop/CloudFlare && bash plans/overnight-supervisor.sh'` — loop will process the phase1-dispatcher inbox item first, then check for board rows
+- **M8-001**: PR #173 open awaiting CI — loop restart will poll and merge when CI passes
+- Next commercial gate: API (M8-001 PR #173 CI merge) → billing verification (M7-001 user-only live Stripe test)
