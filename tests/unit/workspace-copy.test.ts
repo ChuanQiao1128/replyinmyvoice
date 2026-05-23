@@ -53,6 +53,22 @@ describe("workspace V2 surface copy", () => {
     expect(workspaceSource).toContain("We could not produce a better version yet");
   });
 
+  it("structures output as a compact reply-decision layer", () => {
+    expect(workspaceSource).toContain("Ready to send");
+    expect(workspaceSource).toContain("Facts preserved");
+    expect(workspaceSource).toContain("Facts you asked us to keep");
+    expect(workspaceSource).toContain("splitFactsToPreserve");
+    expect(workspaceSource).toContain("Why this works");
+    expect(workspaceSource).toContain("Before you send");
+    expect(workspaceSource).toContain("check the deadline/date is correct");
+    expect(workspaceSource).toContain("make sure the reason is true");
+    expect(workspaceSource).toContain("edit anything that feels too formal");
+    expect(workspaceSource).toContain("Tone check");
+    expect(workspaceSource).toContain("reference signal");
+    expect(workspaceSource).not.toContain("Change summary");
+    expect(workspaceSource).not.toContain("Risk notes");
+  });
+
   it("keeps the workspace shell dense and stable for repeated use", () => {
     expect(workspaceSource).toContain("max-w-6xl");
     expect(workspaceSource).toContain(
