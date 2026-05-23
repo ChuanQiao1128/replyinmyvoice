@@ -1356,3 +1356,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/issue-board.md`; `docs/skill-run-log.md`; `plans/task-status.json`.
 - Verification evidence: Focused supervisor test passed after the board repair, then `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build --prefix packages/mcp-server` passed.
 - Limitations: No git, GitHub, live money, provider dashboard, npm publish, secret, `.env.local`, or `.dev.vars` action was performed.
+
+### 2026-05-23 - state-machine-modeling - Main loop pending-row restart unblock
+
+- Agent: Codex
+- Trigger: The overnight loop exited immediately because scoped M1/M3 rows were still persisted as `BLOCKED-AUTONOMY` on `main`, leaving no pending work for the supervisor.
+- Action: Opened and followed the skill; modeled the issue-board rows with `pending`, `in_progress`, and blocked states, then applied the allowed `BLOCKED-AUTONOMY` to `pending` transition for M1-007, M1-009, M3-001, M3-002, and M3-005 after confirming each has a scoped issue brief.
+- Output artifacts: `plans/issue-board.md`; `plans/overnight-progress.md`; `docs/skill-run-log.md`.
+- Verification evidence: Issue-board row checks confirmed all five target rows are `pending`; focused supervisor Vitest passed before restart.
+- Limitations: This does not change provider settings, secrets, `.env.local`, `.dev.vars`, live money, or deployment configuration.

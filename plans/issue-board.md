@@ -20,9 +20,9 @@ Pick next `pending` with lowest M-number, lowest id. Update status: `pending` â†
 | M1-004 | M1-Entra | M1-004 Replace sign-in page with Entra MSAL redirect flow | (dup) | BLOCKED-AUTONOMY |
 | M1-005 | M1-Entra | M1-005 Replace sign-up page with Entra flow | (dup) | BLOCKED-AUTONOMY |
 | M1-006 | M1-Entra | M1-006 Implement /auth/callback for Entra code exchange | (dup) | BLOCKED-AUTONOMY |
-| M1-007 | M1-Entra | M1-007 Add entra_user_id to User Prisma model + migration | (dup) | BLOCKED-AUTONOMY |
+| M1-007 | M1-Entra | M1-007 Add entra_user_id to User Prisma model + migration | (dup) | pending |
 | M1-008 | M1-Entra | M1-008 Update Stripe webhook handler to use entra user lookup | (dup) | BLOCKED-AUTONOMY |
-| M1-009 | M1-Entra | M1-009 Add Entra token validation tests | (dup) | BLOCKED-AUTONOMY |
+| M1-009 | M1-Entra | M1-009 Add Entra token validation tests | (dup) | pending |
 | M1-010 | M1-Entra | M1-010 Add Playwright e2e for Entra sign-in â†’ /app â†’ rewrite â†’ sign-out | (dup) | BLOCKED-AUTONOMY |
 | M1-011 | M1-Entra | M1-011 Remove @clerk/nextjs and related deps from package.json | https://github.com/ChuanQiao1128/replyinmyvoice/pull/154 | done (squash-merged 25beac8) |
 | M1-012 | M1-Entra | M1-012 Strip CLERK_* env references from code + .env.example + lib/env.ts | https://github.com/ChuanQiao1128/replyinmyvoice/pull/155 | done (squash-merged b0b6c99) |
@@ -47,11 +47,11 @@ Pick next `pending` with lowest M-number, lowest id. Update status: `pending` â†
 | M2.5-008 | M2.5-Learning | M2.5-008 Promotion approval UX in /admin/learning | https://github.com/ChuanQiao1128/replyinmyvoice/issues/96 | done |
 | M2.5-009 | M2.5-Learning | M2.5-009 Canary deploy for new strategy | https://github.com/ChuanQiao1128/replyinmyvoice/issues/98 | done (squash-merged #181 52b0eee) |
 | M2.5-010 | M2.5-Learning | M2.5-010 Strategy rollback on regression | https://github.com/ChuanQiao1128/replyinmyvoice/issues/100 | done |
-| M3-001 | M3-V2 | M3-001 Add 5 scenarios to lib/rewrite-presets.ts | (dup) | BLOCKED-AUTONOMY |
-| M3-002 | M3-V2 | M3-002 Reduce visible tone presets to 4 | (dup) | BLOCKED-AUTONOMY |
+| M3-001 | M3-V2 | M3-001 Add 5 scenarios to lib/rewrite-presets.ts | (dup) | pending |
+| M3-002 | M3-V2 | M3-002 Reduce visible tone presets to 4 | (dup) | pending |
 | M3-003 | M3-V2 | M3-003 Add scenario-specific prompt guardrails | (dup) | BLOCKED-AUTONOMY |
 | M3-004 | M3-V2 | M3-004 Rewrite components/app/rewrite-workspace.tsx (V2 layout) | (dup) | BLOCKED-AUTONOMY |
-| M3-005 | M3-V2 | M3-005 Enforce 5000-char combined cap in lib/validation.ts | (dup) | BLOCKED-AUTONOMY |
+| M3-005 | M3-V2 | M3-005 Enforce 5000-char combined cap in lib/validation.ts | (dup) | pending |
 | M3-006 | M3-V2 | M3-006 Add character helper copy + counter | (dup) | BLOCKED-AUTONOMY |
 | M3-007 | M3-V2 | M3-007 Add scenario to API request schema | (dup) | BLOCKED-AUTONOMY |
 | M3-008 | M3-V2 | M3-008 Remove or hide legacy Quick context UI | (dup) | BLOCKED-AUTONOMY |
