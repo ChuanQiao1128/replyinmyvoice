@@ -21,9 +21,14 @@ model User {
   stripePriceId        String?
   subscriptionStatus   String                  @default("inactive")
   currentPeriodEnd     DateTime?
+  planTier             String                  @default("free")
+  referralCode         String?                 @unique
+  referredByUserId     String?
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
   usages               RewriteUsage[]
+  credits              RewriteCredit[]
+  referralsMade        Referral[]              @relation("referrer")
   learningSamples      RewriteLearningSample[]
   costLogs             RewriteCostLog[]
   apiKeys              ApiKey[]
@@ -41,6 +46,33 @@ model RewriteUsage {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, periodKey])
+}
+
+model RewriteCredit {
+  id             String    @id @default(cuid())
+  userId         String
+  source         String
+  amountGranted  Int
+  amountConsumed Int       @default(0)
+  grantedAt      DateTime  @default(now())
+  expiresAt      DateTime?
+  stripeEventId  String?
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([stripeEventId])
+}
+
+model Referral {
+  id           String    @id @default(cuid())
+  referrerId   String
+  refereeId    String    @unique
+  status       String    @default("pending")
+  creditedAt   DateTime?
+  signupIpHash String?
+  referrer     User      @relation("referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId, creditedAt])
 }
 
 model StripeEvent {

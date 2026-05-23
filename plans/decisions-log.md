@@ -285,3 +285,4 @@ Each overnight Claude trigger appends here.
 2026-05-23T16:59:28+12:00 | M3-001 | started | M3-001 Add 5 scenarios to lib/rewrite-presets.ts
 2026-05-23T17:13:00+12:00 | M1-009 | done | Recovered mock-JWKS Entra bearer token validation work from stash after supervisor board-status test fix; targeted tests, lint, typecheck, and full Vitest passed.
 2026-05-24T02:41:24+12:00 | pivot-phase-0 | done | repositioning copy + Tone-check rename + removed dead pricing.tsx; no price/schema/Stripe change
+2026-05-23T14:54:24Z | pivot-phase-1a | done | added RewriteCredit/Referral/planTier + create-only additive migration; not applied to DB; no Stripe
