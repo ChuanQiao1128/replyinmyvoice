@@ -730,21 +730,23 @@ describe("rewriteWithFactReconstruct", () => {
     expect(result.optimization.selectionStatus).toBe("passed");
   });
 
-  it("rejects a rewrite that raises an already-low draft signal", async () => {
-    const { FactReconstructQualityError, rewriteWithFactReconstruct } =
-      await import("../../lib/rewrite-pipeline/pipeline");
-
-    mocks.measureWritingSignal
-      .mockResolvedValueOnce({ aiLikePercent: 22 })
-      .mockResolvedValueOnce({ aiLikePercent: 28 })
-      .mockResolvedValueOnce({ aiLikePercent: 24 })
-      .mockResolvedValueOnce({ aiLikePercent: 23 })
-      .mockResolvedValueOnce({ aiLikePercent: 23 });
-
-    await expect(rewriteWithFactReconstruct(input)).rejects.toBeInstanceOf(
-      FactReconstructQualityError,
+  it("accepts a rewrite under the threshold even when it raised an already-low draft signal", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
     );
-    expect(mocks.escalateCandidate).toHaveBeenCalledTimes(1);
+
+    // draft 22 -> final 28: the rewrite rose above the draft but stays well
+    // under the 40 threshold. The old draft-relative rule rejected this; the
+    // robust gate accepts it, with no needless escalation.
+    mocks.measureWritingSignal
+      .mockResolvedValue({ aiLikePercent: 28 })
+      .mockResolvedValueOnce({ aiLikePercent: 22 });
+
+    const result = await rewriteWithFactReconstruct(input);
+
+    expect(result.optimization.selectionStatus).toBe("passed");
+    expect(result.naturalness.rewriteAiLikePercent).toBe(28);
+    expect(mocks.escalateCandidate).not.toHaveBeenCalled();
   });
 
   it("fails without a successful rewrite when the signal provider is unavailable", async () => {

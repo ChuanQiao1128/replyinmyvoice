@@ -104,7 +104,6 @@ function selectedScore(review: ReviewResult) {
 function naturalnessPasses({
   config,
   draftPercent,
-  rewriteSignal,
   rewritePercent,
 }: {
   config: FactReconstructConfig;
@@ -116,21 +115,13 @@ function naturalnessPasses({
     return false;
   }
 
-  const sentenceScores = rewriteSignal?.sentenceScores ?? [];
-  if (
-    draftPercent > config.naturalnessThreshold &&
-    sentenceScores.length >= 3 &&
-    sentenceScores.every(
-      (sentence) => sentence.aiLikePercent <= config.naturalnessThreshold,
-    )
-  ) {
-    return true;
-  }
-
-  if (draftPercent <= config.naturalnessThreshold) {
-    return rewritePercent <= draftPercent;
-  }
-
+  // rewritePercent is the robust median of the cleaned sentence scores
+  // (lib/writing-signal.ts), so it only exceeds the threshold when at least half
+  // the reply reads AI-like. A single boilerplate or list-marker sentence can no
+  // longer veto a fact-perfect email. We intentionally do NOT require
+  // `rewrite <= draft` when the draft is already clean: that old rule forced an
+  // already-human draft (e.g. 5%) below the threshold and punished normal
+  // rewriting.
   return rewritePercent <= config.naturalnessThreshold;
 }
 
@@ -376,6 +367,7 @@ function buildPassedResponse({
   rewritePercent,
   rewritePlanSummary,
   riskNotes,
+  selectionStatus = "passed",
 }: {
   attemptLedger?: RewriteAttemptLedgerEntry[];
   candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
@@ -389,6 +381,7 @@ function buildPassedResponse({
   rewritePercent: number | null;
   rewritePlanSummary: string;
   riskNotes: string[];
+  selectionStatus?: RewriteResponsePayload["optimization"]["selectionStatus"];
 }): RewriteResponsePayload {
   return {
     rewrittenText,
@@ -400,7 +393,7 @@ function buildPassedResponse({
       repairCandidatesTried,
       rejectedCandidates,
       userUsageCharged: 1,
-      selectionStatus: "passed",
+      selectionStatus,
       diagnosisTags,
       rewritePlanSummary,
       attemptLedger,
@@ -1285,30 +1278,56 @@ export async function rewriteWithFactReconstruct(
       });
     }
 
-    throwQualityFailure({
+    // Graceful degradation: repairs, escalation, and the facts-first fallback
+    // all missed the naturalness gate, but finalEmail already cleared the fact
+    // gate above, so it is fact-complete. Returning it (flagged best_available)
+    // beats emptying a correct reply over a noisy style signal. Genuine fact
+    // failures are handled earlier and still produce no output.
+    return buildPassedResponse({
       attemptLedger,
-      candidateSignals,
-      diagnosisTags,
+      rewrittenText: finalEmail,
+      changeSummary: [
+        "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
+        "Returned the fact-complete version after repairs could not lower the style signal further.",
+      ],
+      riskNotes: [
+        ...(review.risk_notes.length ? review.risk_notes : []),
+        "The style signal still reads a little formal, but every locked fact is preserved — review the tone before sending.",
+      ],
       draftPercent: draftSignal.aiLikePercent,
-      rewritePercent: fallbackAttempt.signal.aiLikePercent,
-      rejectedCandidates: targetedRepairTried + 3,
+      rewritePercent: finalSignal.aiLikePercent,
+      internalStrategiesTried: 4,
       repairCandidatesTried: targetedRepairTried + 2,
+      rejectedCandidates: targetedRepairTried + 3,
+      diagnosisTags,
       rewritePlanSummary,
-      reason: fallbackAttempt.factSafe
-        ? "naturalness_gate_failed"
-        : "fact_check_failed",
+      candidateSignals,
+      selectionStatus: "best_available",
     });
   }
 
-  throwQualityFailure({
+  // Graceful degradation (escalations disabled): finalEmail cleared the fact
+  // gate but missed naturalness and there is no further repair budget. Return
+  // the fact-complete reply flagged best_available rather than emptying it.
+  return buildPassedResponse({
     attemptLedger,
-    candidateSignals,
-    diagnosisTags,
+    rewrittenText: finalEmail,
+    changeSummary: [
+      "Rebuilt the reply from extracted facts instead of paraphrasing the draft.",
+      "Returned the fact-complete version; the style signal reads a little formal but every fact is preserved.",
+    ],
+    riskNotes: [
+      ...(review.risk_notes.length ? review.risk_notes : []),
+      "The style signal still reads a little formal, but every locked fact is preserved — review the tone before sending.",
+    ],
     draftPercent: draftSignal.aiLikePercent,
     rewritePercent: finalSignal.aiLikePercent,
+    internalStrategiesTried: 3,
+    repairCandidatesTried: targetedRepairTried,
     rejectedCandidates: 1,
-    repairCandidatesTried: 0,
+    diagnosisTags,
     rewritePlanSummary,
-    reason: "naturalness_gate_failed",
+    candidateSignals,
+    selectionStatus: "best_available",
   });
 }

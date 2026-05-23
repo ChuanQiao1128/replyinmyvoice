@@ -75,7 +75,11 @@ describe("measureWritingSignal", () => {
       sent_scores: true,
       score_string: false,
     });
-    expect(result.aiLikePercent).toBe(73);
+    // aiLikePercent is the median of the cleaned sentence scores (median of
+    // [91, 12] = 52), not Sapling's outlier-dominated overall (73, preserved
+    // as rawAiLikePercent).
+    expect(result.aiLikePercent).toBe(52);
+    expect(result.rawAiLikePercent).toBe(73);
     expect(result.sentenceScores).toEqual([
       { sentence: "This sounds polished.", aiLikePercent: 91 },
       { sentence: "Jordan can come by Tuesday.", aiLikePercent: 12 },
@@ -100,39 +104,79 @@ describe("measureWritingSignal", () => {
       role: "final_signal",
     });
 
-    expect(result.aiLikePercent).toBe(28);
+    // Single sentence "Plain reply." (0.2) -> median 20; raw overall was 28.
+    expect(result.aiLikePercent).toBe(20);
     expect(result.chars).toBe("Plain reply.".length);
     expect(result.callCount).toBe(1);
     expect(result.latencyMs).toEqual(expect.any(Number));
   });
 
-  it("can calibrate high overall scores when all sentence scores are low", async () => {
+  it("uses the median of sentence scores so one outlier sentence cannot dominate", async () => {
     process.env.WRITING_SIGNAL_PROVIDER = "sapling";
     process.env.SAPLING_API_KEY = "test-sapling-key";
 
+    // The 050 scenario: Sapling's overall behaves like a max — one boilerplate
+    // sentence pins it to 100% even though every factual sentence reads human.
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
         Response.json({
           score: 1,
           sentence_scores: [
-            { sentence: "First sentence.", score: 0 },
-            { sentence: "Second sentence.", score: 0.08 },
-            { sentence: "Third sentence.", score: 0 },
+            {
+              sentence: "Proposal P-311 covers 62 users for $18,400 annually.",
+              score: 0,
+            },
+            { sentence: "The onboarding fee is already included.", score: 0 },
+            { sentence: "Implementation runs 30 to 45 days after kickoff.", score: 0 },
+            { sentence: "I want to make sure you have the full picture.", score: 1 },
           ],
         }),
       ),
     );
 
-    const raw = await measureWritingSignal("First sentence. Second sentence. Third sentence.");
-    const calibrated = await measureWritingSignal(
-      "First sentence. Second sentence. Third sentence.",
-      { calibrateSentenceScores: true },
+    const result = await measureWritingSignal("dense factual reply", {
+      role: "final_signal",
+    });
+
+    // median of [0, 0, 0, 100] = 0; the lone 100% outlier no longer vetoes it.
+    expect(result.aiLikePercent).toBe(0);
+    expect(result.rawAiLikePercent).toBe(100);
+  });
+
+  it("excludes list markers and single-token fragments from the aggregate", async () => {
+    process.env.WRITING_SIGNAL_PROVIDER = "sapling";
+    process.env.SAPLING_API_KEY = "test-sapling-key";
+
+    // The 047 scenario: numbered-list markers get split into standalone
+    // "sentences" and scored high. They must not vote in the aggregate.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          score: 1,
+          sentence_scores: [
+            { sentence: "Here are your options:", score: 0 },
+            { sentence: "1.", score: 1 },
+            { sentence: "2.", score: 1 },
+            { sentence: "3.", score: 1 },
+            { sentence: "I need your decision by noon May 28.", score: 0.05 },
+            {
+              sentence: "No substitution can happen without written approval.",
+              score: 0,
+            },
+          ],
+        }),
+      ),
     );
 
-    expect(raw.aiLikePercent).toBe(100);
-    expect(calibrated.aiLikePercent).toBe(3);
-    expect(calibrated.rawAiLikePercent).toBe(100);
+    const result = await measureWritingSignal("options reply", {
+      role: "final_signal",
+    });
+
+    // "1." "2." "3." are dropped; median of the real sentences [0, 5, 0] = 0.
+    expect(result.aiLikePercent).toBe(0);
+    expect(result.rawAiLikePercent).toBe(100);
   });
 
   it("calibrates short rewrites when provider sentence scores are consistently low", async () => {

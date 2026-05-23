@@ -20,6 +20,8 @@ export type WritingSignalResult = {
 };
 
 type MeasureWritingSignalOptions = {
+  // Retained for call-site compatibility. Robust sentence-level aggregation
+  // (see robustAiLikePercent) is now always applied, so this flag is a no-op.
   calibrateSentenceScores?: boolean;
   role?: "draft_signal" | "candidate_signal" | "repair_signal" | "final_signal";
   telemetry?: RewriteTelemetryCollector;
@@ -227,8 +229,7 @@ export async function measureWritingSignal(
         : undefined;
 
       const rawAiLikePercent = scoreToPercent(payload.score);
-      const calibratedAiLikePercent = calibrateWithSentenceScores({
-        calibrate: options.calibrateSentenceScores === true,
+      const aiLikePercent = robustAiLikePercent({
         rawAiLikePercent,
         sentenceScores,
       });
@@ -243,11 +244,9 @@ export async function measureWritingSignal(
       });
 
       return {
-        aiLikePercent: calibratedAiLikePercent,
+        aiLikePercent,
         ...measurementMeta(),
-        ...(calibratedAiLikePercent !== rawAiLikePercent
-          ? { rawAiLikePercent }
-          : {}),
+        ...(aiLikePercent !== rawAiLikePercent ? { rawAiLikePercent } : {}),
         ...(sentenceScores ? { sentenceScores } : {}),
         ...(tokens ? { tokens } : {}),
         ...(tokenProbabilities ? { tokenProbabilities } : {}),
@@ -285,26 +284,57 @@ export async function measureWritingSignal(
   };
 }
 
-function calibrateWithSentenceScores({
-  calibrate,
+// Bare list markers ("1.", "2)", "a.", "-", "•") that Sapling's sentence
+// splitter emits as standalone "sentences" and then scores wildly. They are not
+// real sentences and must not vote in the overall signal.
+const LIST_MARKER_PATTERN = /^(\d+[.)]|[a-z][.)]|[-*•·–—]+)$/i;
+
+function isScorableSentence(sentence: string): boolean {
+  const trimmed = sentence.trim();
+  if (trimmed.length === 0 || LIST_MARKER_PATTERN.test(trimmed)) {
+    return false;
+  }
+
+  // Drop single-token fragments (stray markers, lone sign-offs) the splitter
+  // over-segments; they carry no reliable signal but skew aggregates. Genuine
+  // short sentences ("Thanks again.", "No rush.") are 2+ words and kept.
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+  return wordCount >= 2;
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+
+  return sorted.length % 2 === 1
+    ? sorted[mid]
+    : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+// Sapling's raw overall AI-score behaves like a max: one boilerplate or
+// list-marker sentence pins it to 100% even when every factual sentence reads
+// human (scores 0%). That emptied fact-perfect emails. Use the median of the
+// real (scorable) sentence scores instead — it only crosses the threshold when
+// at least half the email reads AI-like, so a single outlier can no longer veto
+// an otherwise-human reply. Robustness is always applied; the previous timid
+// calibration (mean, only when *every* sentence was already clean) was a no-op
+// in exactly the outlier cases that needed it.
+function robustAiLikePercent({
   rawAiLikePercent,
   sentenceScores,
 }: {
-  calibrate: boolean;
   rawAiLikePercent: number;
-  sentenceScores?: Array<{ aiLikePercent: number }>;
-}) {
-  if (!calibrate || rawAiLikePercent <= 50 || !sentenceScores?.length) {
+  sentenceScores?: Array<{ sentence: string; aiLikePercent: number }>;
+}): number {
+  const scorable = (sentenceScores ?? []).filter((sentence) =>
+    isScorableSentence(sentence.sentence),
+  );
+
+  // Only fall back to the raw overall when there is no real sentence to score.
+  // Even 1–2 sentences are more trustworthy than the outlier-dominated overall.
+  if (scorable.length === 0) {
     return rawAiLikePercent;
   }
 
-  if (sentenceScores.every((sentence) => sentence.aiLikePercent <= 40)) {
-    const average =
-      sentenceScores.reduce((sum, sentence) => sum + sentence.aiLikePercent, 0) /
-      sentenceScores.length;
-
-    return Math.round(average);
-  }
-
-  return rawAiLikePercent;
+  return median(scorable.map((sentence) => sentence.aiLikePercent));
 }
