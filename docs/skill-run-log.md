@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-23 - data-module-review - M1-007 Entra user id migration
+
+- Agent: Codex
+- Trigger: M1-007 changes the Prisma `User` model and adds a database migration for the Entra migration window.
+- Action: Opened and followed the skill; reviewed the owned `User` table, existing migrations, auth identifier context, uniqueness invariant, and migration safety before editing.
+- Output artifacts: `prisma/schema.prisma`; `prisma/migrations/20260523090000_add_user_entra_user_id/migration.sql`; `plans/clerk-to-entra-user-backfill.md`; `plans/task-status.json`; `docs/skill-run-log.md`.
+- Verification evidence: `agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80` ran and the scoped migration is additive only: nullable `entraUserId` plus a unique index.
+- Limitations: Application lookup changes and the actual production backfill are intentionally left to later M1 issues. No secret files, provider dashboards, live money, git, or GitHub actions were touched.
+
 ### 2026-05-22 - web-design-engineer - M4-012 landing/header/footer refresh
 
 - Agent: Codex
