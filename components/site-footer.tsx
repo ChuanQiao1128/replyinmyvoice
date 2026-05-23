@@ -13,8 +13,8 @@ export function SiteFooter() {
               <span>Reply In My Voice</span>
             </Link>
             <p className="footer-blurb">
-              Operated by TimeAwake Ltd. Built for practical replies in teacher,
-              sales, workplace, and client communication.
+              Operated by TimeAwake Ltd. Built for practical replies in student,
+              teacher, sales, workplace, and client communication.
             </p>
           </div>
           <div>
@@ -25,6 +25,9 @@ export function SiteFooter() {
               </li>
               <li>
                 <Link href="/app">App</Link>
+              </li>
+              <li>
+                <Link href="/students">For students</Link>
               </li>
               <li>
                 <Link href="/pricing">Pricing</Link>
