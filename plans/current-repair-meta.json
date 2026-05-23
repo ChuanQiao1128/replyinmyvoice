@@ -1,6 +1,6 @@
 {
-  "id": "REPAIR-20260523135854",
-  "title": "M9-003 codex-needs-human:BLOCKED-AUTONOMY",
-  "header": "## 2026-05-23T13:58:35+12:00 \u2014 M9-003 codex-needs-human:BLOCKED-AUTONOMY",
-  "slug": "m9-003-codex-needs-human-blocked-autonomy"
+  "id": "REPAIR-20260523160844",
+  "title": "Phase 1 lane-dispatcher implementation (LANE_DISPATCH=1 opt-in)",
+  "header": "## 2026-05-23T15:55:00+12:00 \u2014 Phase 1 lane-dispatcher implementation (LANE_DISPATCH=1 opt-in)",
+  "slug": "phase-1-lane-dispatcher-implementation-lane-disp"
 }

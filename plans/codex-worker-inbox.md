@@ -49,7 +49,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 
 ## 2026-05-23T15:55:00+12:00 — Phase 1 lane-dispatcher implementation (LANE_DISPATCH=1 opt-in)
 
-- Status: pending
+- Status: not_actionable
 - Source: Claude supervisor (via Cowork session 2026-05-23 Phase 1)
 - Class: autonomy
 - Priority: P1
@@ -76,6 +76,7 @@ Claude remains monitor-only: it does not implement code and does not call Codex 
 - Forbidden actions: live money, npm publish, dashboard changes, secret changes, deploys, printing `.env.local` values
 - Result: Retried the read-only `wrangler secret list --name replyinmyvoice-app --format json` path with Wrangler logs redirected to writable temp storage. Wrangler still failed before returning Worker metadata because `api.cloudflare.com` / `dash.cloudflare.com` DNS resolution is unavailable from this shell. Direct DNS lookup returned `ENOTFOUND` for both hosts. No secret values were printed or written, no secrets were pushed, no deploy ran, no dashboard state changed, and `.env.local` was not modified. Current evidence is recorded in `plans/worker-secret-diff.md`.
 - Worker evidence: 2026-05-22T18:06:47+12:00 — merged https://github.com/ChuanQiao1128/replyinmyvoice/pull/195; Retried read-only Wrangler secret listing, recorded current Cloudflare DNS blocker evidence, and reclassified M6-002 as prerequisite-blocked.
+- Worker evidence: 2026-05-23T16:17:48+12:00 — Implemented read-only lane selector and dry-run; full npm test is blocked by current issue-board M1-007 status mismatch.
 
 ## 2026-05-22T18:12:46+12:00 — M6-003 codex-needs-human:BLOCKED-PROVIDER
 

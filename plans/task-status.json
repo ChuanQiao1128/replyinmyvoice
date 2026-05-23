@@ -1,19 +1,18 @@
 {
-  "issue_id": "REPAIR-20260523135854",
-  "branch": "codex/repair-m9-003-codex-needs-human-blocked-autonomy-REPAIR-20260523135854",
+  "issue_id": "REPAIR-20260523160844",
+  "branch": "codex/repair-phase-1-lane-dispatcher-implementation-lane-disp-REPAIR-20260523160844",
   "files_changed": [
-    "packages/mcp-server/src/config.ts",
-    "packages/mcp-server/src/index.ts",
-    "tests/unit/mcp-server-config.test.ts",
-    "plans/issue-board.md",
-    "docs/skill-run-log.md"
+    "plans/overnight-supervisor.sh",
+    "tests/supervisor/test-lane-dispatch.sh",
+    "docs/skill-run-log.md",
+    "plans/task-status.json"
   ],
   "lint": "pass",
   "typecheck": "pass",
-  "tests": "pass",
+  "tests": "fail",
   "dotnet_tests": "skipped",
   "banned_terms_found": [],
-  "summary": "Implemented M9-003 MCP env config and repaired issue-board statuses so full validation passes.",
-  "title": "fix: add MCP env config",
-  "next_action": "ready_to_commit"
+  "summary": "Implemented read-only lane selector and dry-run; full npm test is blocked by current issue-board M1-007 status mismatch.",
+  "title": "Phase 1: opt-in lane dispatcher",
+  "next_action": "needs_human"
 }

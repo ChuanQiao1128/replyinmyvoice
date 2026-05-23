@@ -20,6 +20,13 @@
 #   tail -f plans/overnight.log
 #   cat plans/issue-board.md | grep -E "done|BLOCKED" | wc -l
 
+# Wrap the whole script body in { ... } so bash slurps it into memory
+# before executing the first command. The script runs `git pull` mid-flow,
+# which can update this file on disk while bash is still reading it; the
+# brace wrap is the standard defense against the resulting parser corruption.
+# See plans/overnight.log on 2026-05-23 for the failure mode this prevents.
+{
+
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -1685,3 +1692,5 @@ log "  done:         $REPAIRS_DONE"
 log "  blocked:      $REPAIRS_BLOCKED"
 
 append_progress "Run finished. Done: $ISSUES_DONE | Blocked: $ISSUES_BLOCKED | Needs human: $ISSUES_NEEDS_HUMAN | Repairs done: $REPAIRS_DONE | Repairs blocked: $REPAIRS_BLOCKED"
+}
+exit $?

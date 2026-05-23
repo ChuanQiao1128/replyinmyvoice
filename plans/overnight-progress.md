@@ -769,3 +769,25 @@ Run finished. Done: 0 | Blocked: 26 | Needs human: 1 | Repairs done: 2 | Repairs
 - **User action needed**: manually restart the supervisor loop from a Mac terminal: `cd /Users/qc/Desktop/CloudFlare && screen -dmS rimv-overnight bash -lc 'cd /Users/qc/Desktop/CloudFlare && bash plans/overnight-supervisor.sh'` — loop will process the phase1-dispatcher inbox item first, then check for board rows
 - **M8-001**: PR #173 open awaiting CI — loop restart will poll and merge when CI passes
 - Next commercial gate: API (M8-001 PR #173 CI merge) → billing verification (M7-001 user-only live Stripe test)
+
+## Monitor at 2026-05-23T04:07Z
+- Loop: **STOPPED (clean exit)** — overnight.log is 118 min stale (last modified 02:09:29Z); loop exited normally at [2026-05-23T14:09:29+12:00] with "No more pending issues — exiting"; no supervisor/codex/screen processes running
+- Board: ~56 done / **0 pending** / 1 in_progress (M8-001 PR #173 awaiting CI) / 3 user-blocked / ~7 provider-blocked / ~25 prereq-blocked / ~22 autonomy-blocked
+- Stash count: 42 (unchanged from prior triggers)
+- Latest commit: 56ea56e (remove stale supervisor-lock, 1 local commit ahead of origin/main 0f267bf)
+- Inbox: phase1-lane-dispatcher item now `in_progress` (was `pending` at 03:55Z); no codex running to execute it; loop-registry.json and current-repair-meta.json modified since log mtime
+- Action taken: checkpoint recorded; no restart (STOPPED state — 0 pending board rows; loop must see pending work to run usefully)
+- User action still needed: (1) ensure phase1-dispatcher inbox item completes or is handled; (2) loop will need pending rows to resume — either flip BLOCKED-AUTONOMY rows to pending or wait for M8-001 PR #173 CI merge to unblock M8-002+; (3) manually restart loop when ready: `cd /Users/qc/Desktop/CloudFlare && screen -dmS rimv-overnight bash -lc 'cd /Users/qc/Desktop/CloudFlare && bash plans/overnight-supervisor.sh'`
+- Next commercial gate: API (M8-001 PR #173 CI merge → unblocks M8-002..M8-016) → billing verification (M7-001 BLOCKED-WAITING-USER live Stripe test)
+
+## Monitor checkpoint at 2026-05-23T04:13:00Z
+- State: **healthy**
+- overnight.log age: 4 min (last modified 04:08:44Z) — fresh, well under 25-minute threshold
+- Loop restarted at 04:08:40Z UTC (16:08:40+12:00 NZ); picked up phase1-lane-dispatcher repair item from inbox
+- Supervisor stashed dirty files (pre-repair-inbox preserve: stash count 42→43, expected) + created branch `codex/repair-phase-1-lane-dispatcher-...` + called codex exec with 600s timeout at 04:08:44Z — ~4 min into 600s window
+- Board: 1 pending / 1 in_progress M8-001 (PR #173 awaiting CI — not a monitor concern) / 3 user-blocked / ~7 provider-blocked / ~25 prereq-blocked / ~22 autonomy-blocked
+- Stash count: 43 (was 42 — +1 expected pre-repair-inbox stash)
+- Latest main: 56ea56e (remove stale supervisor-lock); f13bdee (PR #226 hardening) ancestor confirmed ✓
+- No stop signals, no lock file, no screen session visible from sandbox (loop runs as Mac process — log freshness is authoritative)
+- Action taken: state file updated; checkpoint recorded; no restart (loop healthy)
+- Next commercial gate: API (M8-001 PR #173 CI merge → unblocks M8-002..M8-016) → billing (M7-001 BLOCKED-WAITING-USER)
