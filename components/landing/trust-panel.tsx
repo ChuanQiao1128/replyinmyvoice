@@ -1,58 +1,56 @@
-import { ClipboardCheck, DatabaseZap, Gauge, ShieldCheck } from "lucide-react";
-
-const items = [
+const trustItems = [
   {
-    title: "Fact-aware rewriting",
-    text: "The workspace asks for the facts that must stay intact before it shapes the reply.",
-    icon: ClipboardCheck,
+    k: "Fact-aware",
+    h: "Preserves what must stay",
+    p: "The workspace asks for the facts before it shapes the reply. The model doesn't invent details or add promises you didn't make.",
   },
   {
-    title: "Naturalness Check",
-    text: "Before and after percentages give a reference writing signal without promising a perfect score.",
-    icon: Gauge,
+    k: "Boundary",
+    h: "Reply content isn't stored",
+    p: "Reply content is processed for the request and isn't saved to our database. Your drafts don't sit on our servers.",
   },
   {
-    title: "Draft storage boundary",
-    text: "Reply content is processed for the request and is not saved to our database.",
-    icon: DatabaseZap,
+    k: "Tone presets",
+    h: "Warm or Direct, that's it",
+    p: "Two presets that actually feel different. No twelve-slider tone studio you'll never touch after the first day.",
   },
   {
-    title: "Commercial billing",
-    text: "Subscriptions are managed through Stripe for NZD $9/month, operated by TimeAwake Ltd.",
-    icon: ShieldCheck,
+    k: "Billing",
+    h: "Managed by Stripe",
+    p: "Subscriptions are NZD $9/month through Stripe, operated by TimeAwake Ltd. Cancel from your account anytime.",
   },
 ];
 
 export function TrustPanel() {
   return (
-    <section className="border-b border-line bg-white">
-      <div className="mx-auto max-w-6xl px-6 py-14">
-        <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr] lg:items-start">
+    <section className="block" id="trust">
+      <div className="wrap">
+        <div className="sec-head">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">
-              Built for trust
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold md:text-4xl">
-              Built for real communication workflows.
+            <span className="sec-num">05 · Trust</span>
+          </div>
+          <div className="sec-head-lead">
+            <h2>
+              Built for real
+              <br />
+              communication workflows.
             </h2>
-            <p className="mt-4 leading-7 text-ink/65">
-              Reply In My Voice is designed around the moments where people
-              already use draft assistance: student replies, sales follow-ups,
-              client support, and workplace updates.
+            <p className="lede">
+              The product is small on purpose. Each piece is here because it
+              earns its place in a daily writing routine — not to pad a feature
+              list.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {items.map((item) => (
-              <div
-                className="rounded-lg border border-line bg-paper p-5 shadow-crisp"
-                key={item.title}
-              >
-                <item.icon className="h-5 w-5 text-sage" aria-hidden="true" />
-                <h3 className="mt-4 font-semibold">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-ink/65">{item.text}</p>
-              </div>
-            ))}
-          </div>
+        </div>
+
+        <div className="trust">
+          {trustItems.map((item) => (
+            <div className="trust-item" key={item.k}>
+              <div className="k">{item.k}</div>
+              <h4>{item.h}</h4>
+              <p>{item.p}</p>
+            </div>
+          ))}
         </div>
       </div>
     </section>

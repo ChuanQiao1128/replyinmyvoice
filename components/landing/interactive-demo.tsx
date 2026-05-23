@@ -1,112 +1,116 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { useState } from "react";
 
 import { homepageSampleCases } from "./sample-cases";
+import { NatBar } from "./nat-bar";
 
-function SignalBar({
-  label,
-  value,
-  variant = "clay",
-}: {
-  label: string;
-  value: number;
-  variant?: "clay" | "sage";
-}) {
-  const fillClass = variant === "sage" ? "bg-sage" : "bg-clay";
+const TONES = ["Warm", "Direct"] as const;
+type Tone = (typeof TONES)[number];
 
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-xs font-medium text-ink/65">
-        <span>{label}</span>
-        <span>{value}%</span>
-      </div>
-      <div className="h-2 rounded-full bg-paper-deep">
-        <div
-          className={`h-2 rounded-full ${fillClass}`}
-          style={{ width: `${value}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
+/**
+ * Hero centerpiece — a tabbed rough-draft → in-your-voice comparison for each
+ * real use case, with the Naturalness Check meter, tone presets, and a copy
+ * button. Samples come from the documented, test-aligned fixtures.
+ */
 export function InteractiveDemo() {
   const [index, setIndex] = useState(0);
-  const scenario = homepageSampleCases[index];
-  const change = useMemo(() => scenario.after - scenario.before, [scenario]);
+  const [tone, setTone] = useState<Tone>("Warm");
+  const [copied, setCopied] = useState(false);
+
+  const sample = homepageSampleCases[index];
+  const delta = sample.before - sample.after;
+
+  async function copyReply() {
+    try {
+      await navigator.clipboard.writeText(sample.rewrite);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard unavailable (e.g. insecure context) — leave the label as-is.
+    }
+  }
 
   return (
-    <div
-      id="examples"
-      className="min-w-0 rounded-lg border border-line bg-white/85 p-4 shadow-soft md:p-5"
-    >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">
-            Workflow preview
-          </p>
-          <p className="mt-1 text-sm text-ink/62">Draft plus context to send-ready reply</p>
-        </div>
-        <div className="rounded-md bg-mint px-3 py-1 text-xs font-semibold text-sage">
-          Fact-aware
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
+    <div className="compare" id="workflow">
+      <div className="compare-tabs">
         {homepageSampleCases.map((item, itemIndex) => (
           <button
             key={item.label}
-            className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${
-              itemIndex === index
-                ? "border-ink bg-ink text-paper"
-                : "border-line bg-white text-ink/70 hover:text-ink"
-            }`}
-            onClick={() => setIndex(itemIndex)}
             type="button"
+            className={"compare-tab " + (itemIndex === index ? "active" : "")}
+            onClick={() => setIndex(itemIndex)}
+            aria-pressed={itemIndex === index}
           >
-            {item.label}
+            <span className="ico" aria-hidden="true">
+              {item.icon}
+            </span>
+            <span>{item.label}</span>
           </button>
         ))}
+        <div className="compare-context">CTX · {sample.context}</div>
       </div>
-      <div className="mt-5 rounded-lg border border-line bg-sky px-4 py-3 text-sm leading-6 text-ink/68">
-        {scenario.context}
-      </div>
-      <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
-        <div className="rounded-lg border border-line bg-paper p-4 md:min-h-72">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink/45">
+
+      <div className="compare-cols">
+        <div className="compare-col before">
+          <h4>
             Rough draft
-          </p>
-          <p className="mt-3 text-sm leading-6 text-ink/75">{scenario.draft}</p>
+            <span className="pill">stiff · {sample.before}%</span>
+          </h4>
+          <div className="compare-body">{sample.draft}</div>
         </div>
-        <div className="hidden items-center text-clay md:flex">
-          <ArrowRight className="h-5 w-5" aria-hidden="true" />
+        <div className="compare-arrow" aria-hidden="true">
+          →
         </div>
-        <div className="rounded-lg border border-line bg-white p-4 md:min-h-72">
-          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-sage">
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+        <div className="compare-col after">
+          <h4>
             In your voice
-          </p>
-          <p className="mt-3 text-sm leading-6 text-ink">{scenario.rewrite}</p>
+            <span className="pill">
+              {tone.toLowerCase()} · {sample.after}%
+            </span>
+          </h4>
+          <div className="compare-body">{sample.rewrite}</div>
         </div>
       </div>
-      <div className="mt-5 rounded-lg border border-line bg-white p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="font-semibold">Naturalness Check</p>
-          <p className="text-sm font-medium text-sage">{change} pts</p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SignalBar label="Draft AI-like signal" value={scenario.before} />
-          <SignalBar
-            label="Rewrite AI-like signal"
-            value={scenario.after}
-            variant="sage"
+
+      <div className="compare-foot">
+        <div className="nat">
+          <div className="nat-label">
+            Naturalness Check
+            <span
+              className="q"
+              title="Reference writing signal — not a guarantee"
+              aria-hidden="true"
+            >
+              ?
+            </span>
+          </div>
+          <NatBar
+            key={index}
+            before={sample.before}
+            after={sample.after}
+            animate
           />
+          <div className="nat-delta">−{delta} pts</div>
         </div>
-        <p className="mt-3 text-xs leading-5 text-ink/55">
-          A third-party reference signal that helps compare how natural the draft
-          and rewrite feel. It is not a guarantee; review the reply before sending.
-        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="tone-toggle" role="group" aria-label="Tone preset">
+            {TONES.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={option === tone ? "active" : ""}
+                onClick={() => setTone(option)}
+                aria-pressed={option === tone}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="copy-btn" onClick={copyReply}>
+            {copied ? "✓ Copied" : "⌘ Copy reply"}
+          </button>
+        </div>
       </div>
     </div>
   );
