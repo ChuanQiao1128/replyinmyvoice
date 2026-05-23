@@ -1374,3 +1374,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/issue-board.md`; `plans/overnight-progress.md`; `docs/skill-run-log.md`.
 - Verification evidence: Issue-board row checks confirmed all five target rows are `pending`; focused supervisor Vitest passed before restart.
 - Limitations: This does not change provider settings, secrets, `.env.local`, `.dev.vars`, live money, or deployment configuration.
+
+### 2026-05-23 - state-machine-modeling - State-agnostic supervisor board test
+
+- Agent: Codex
+- Trigger: The overnight loop repeatedly misclassified otherwise completed issue work because a supervisor unit test required scoped board rows to remain `pending` even after those rows advanced to `in_progress`, `done`, or blocked states.
+- Action: Opened and followed the skill; modeled issue-board status as a lifecycle field that may move through `pending`, `in_progress`, blocked states, and `done`, then changed the test to validate row presence and table structure instead of one transient status value.
+- Output artifacts: `tests/unit/overnight-supervisor-repair-inbox.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Red run reproduced the failure by advancing M1-007, M1-009, and M3-001 in a temporary board state; green runs passed the focused supervisor Vitest against both the advanced temporary state and the restored main board state.
+- Limitations: This changes test coverage only. It does not recover the M1-009 or M3-001 stashes, restart the loop, change provider settings, touch secrets, or deploy.

@@ -46,9 +46,19 @@ describe("overnight supervisor repair inbox orchestration", () => {
     expect(m3Cluster).toContain("depends on M3-001/002/005 + M3-004");
 
     for (const id of ["M1-007", "M1-009", "M3-001", "M3-002", "M3-005"]) {
-      expect(board).toContain(`| ${id} |`);
-      expect(board).toContain(`| ${id} `);
-      expect(board).toMatch(new RegExp(`\\| ${id} \\|[^\\n]+\\| pending \\|`));
+      const row = board.split("\n").find((line) => line.startsWith(`| ${id} |`));
+      expect(row, `${id} board row`).toBeTruthy();
+
+      const cells = (row ?? "")
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim());
+
+      expect(cells).toHaveLength(5);
+      expect(cells[0]).toBe(id);
+      expect(cells[1]).toMatch(/^M[0-9]/);
+      expect(cells[2]).toContain(id);
+      expect(cells[4]).not.toBe("");
     }
   });
 
