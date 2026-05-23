@@ -6,6 +6,8 @@ import { getSql } from "../../../../lib/db";
 import {
   getStripe,
   applySubscriptionToUser,
+  grantCheckoutSessionRewriteCredit,
+  grantFirstMonthBonusCredit,
   markSubscriptionInactive,
   retrieveStripeSubscription,
 } from "../../../../lib/stripe";
@@ -97,7 +99,10 @@ async function markStripeEventFailed(event: Stripe.Event, error: unknown) {
   `;
 }
 
-async function updateCustomerFromSession(session: Stripe.Checkout.Session) {
+async function updateCustomerFromSession(
+  session: Stripe.Checkout.Session,
+  eventId: string,
+) {
   const clerkUserId =
     session.client_reference_id ?? session.metadata?.clerkUserId ?? null;
   const customerId = stripeObjectId(session.customer);
@@ -110,10 +115,17 @@ async function updateCustomerFromSession(session: Stripe.Checkout.Session) {
   if (subscriptionId) {
     const subscription = await retrieveStripeSubscription(subscriptionId);
     await applySubscriptionToUser(subscription, { clerkUserId });
+    return;
+  }
+
+  if (session.mode === "payment") {
+    await grantCheckoutSessionRewriteCredit(session, eventId);
   }
 }
 
-async function updateFromInvoice(invoice: Stripe.Invoice) {
+async function updateFromInvoice(invoice: Stripe.Invoice, options: {
+  grantFirstMonthBonus: boolean;
+}) {
   const subscriptionId = stripeObjectId(invoice.subscription);
   if (!subscriptionId) {
     return;
@@ -121,6 +133,9 @@ async function updateFromInvoice(invoice: Stripe.Invoice) {
 
   const subscription = await retrieveStripeSubscription(subscriptionId);
   await applySubscriptionToUser(subscription);
+  if (options.grantFirstMonthBonus) {
+    await grantFirstMonthBonusCredit({ invoice, subscription });
+  }
 }
 
 async function handleStripeEvent(event: Stripe.Event) {
@@ -128,6 +143,7 @@ async function handleStripeEvent(event: Stripe.Event) {
     case "checkout.session.completed":
       await updateCustomerFromSession(
         event.data.object as Stripe.Checkout.Session,
+        event.id,
       );
       break;
     case "customer.subscription.created":
@@ -138,8 +154,14 @@ async function handleStripeEvent(event: Stripe.Event) {
       await markSubscriptionInactive(event.data.object as Stripe.Subscription);
       break;
     case "invoice.paid":
+      await updateFromInvoice(event.data.object as Stripe.Invoice, {
+        grantFirstMonthBonus: true,
+      });
+      break;
     case "invoice.payment_failed":
-      await updateFromInvoice(event.data.object as Stripe.Invoice);
+      await updateFromInvoice(event.data.object as Stripe.Invoice, {
+        grantFirstMonthBonus: false,
+      });
       break;
     default:
       break;

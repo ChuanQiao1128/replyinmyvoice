@@ -287,3 +287,4 @@ Each overnight Claude trigger appends here.
 2026-05-24T02:41:24+12:00 | pivot-phase-0 | done | repositioning copy + Tone-check rename + removed dead pricing.tsx; no price/schema/Stripe change
 2026-05-23T14:54:24Z | pivot-phase-1a | done | added RewriteCredit/Referral/planTier + create-only additive migration; not applied to DB; no Stripe
 2026-05-23T15:04:25Z | pivot-phase-1b | done | added tier allowances and credit-ledger quota consumption tests/service; no DB apply; no Stripe; no UI
+2026-05-23T15:13:06Z | pivot-phase-1c | done | added Stripe price-to-tier map, sub/one-time checkout params, and idempotent webhook credit grants; no Stripe objects created; no DB apply; no deploy
