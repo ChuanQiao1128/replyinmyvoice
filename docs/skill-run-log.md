@@ -1527,3 +1527,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `tests/e2e/commercial-site.spec.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Production `https://replyinmyvoice.com/` returned HTTP 200; `https://replyinmyvoice.com/api/health/db` returned `{"ok":true,"database":"azure-sql"}` with HTTP 200; unsigned production `POST /api/rewrite` returned HTTP 401 with `{"error":"unauthorized"}`. The focused Playwright failure was traced to stale expected copy: the page now says "Built for practical replies..." instead of the previous "Built for real communication workflows".
 - Limitations: Browser E2E covers signed-out gates and static commercial pages only; authenticated rewrite UX remains untested without a real user session token.
+
+### 2026-05-24 - ui-browser-testing - Entra Google callback returns to sign-in
+
+- Agent: Codex
+- Trigger: Owner reported that Google login successfully reached `/auth/callback` and redirected to `/app`, but `/app` immediately bounced back to `/sign-in`.
+- Action: Opened and followed the skill; traced the auth cookie write/read path through `lib/entra-auth.ts`, `middleware.ts`, `/auth/callback`, and existing auth tests. Added a regression test proving the signed `rimv_session` cookie exceeded the browser 4KB limit when it embedded Entra access/refresh tokens, then changed `rimv_session` to persist only the browser gate identity fields while storing the Azure access token in separate signed chunked cookies for server-side Azure proxy calls.
+- Output artifacts: `lib/entra-auth.ts`, `tests/unit/entra-auth.test.ts`, `docs/skill-run-log.md`.
+- Verification evidence: Watched the new test fail at 8378-byte cookie size before the fix. After the fix, `npm test -- tests/unit/entra-auth.test.ts`, `npm test -- tests/unit/middleware.test.ts`, full `npm test` (94 tests on the current `origin/main` line), `npm run typecheck`, `npm run lint`, `npx playwright test tests/e2e/auth-gate.spec.ts --project=chromium`, and a clean standalone `npm run cf:build` all passed. An earlier parallel `cf:build` run was invalid because it raced with the Playwright dev server over `.next`; rerunning it alone passed.
+- Limitations: No live production Google login was performed from the owner's browser in this turn, and no deployment was run. No secrets, token values, `.env.local` contents, or provider credentials were logged.

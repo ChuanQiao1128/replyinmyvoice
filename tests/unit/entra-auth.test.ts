@@ -2,10 +2,25 @@ import { createSign, generateKeyPairSync } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { mockCookieStore } = vi.hoisted(() => ({
+  mockCookieStore: {
+    delete: vi.fn(),
+    get: vi.fn(),
+    set: vi.fn(),
+  },
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => mockCookieStore),
+}));
+
 import {
   buildEntraAuthorizeUrl,
   buildEntraTokenRequestBody,
+  createSessionFromTokens,
   createSignedCookieValue,
+  getCurrentAccessToken,
+  sessionCookieName,
   validateEntraBearerToken,
   verifySignedCookieValue,
 } from "../../lib/entra-auth";
@@ -53,6 +68,21 @@ function signedToken(claimOverrides: Record<string, unknown> = {}) {
   return `${signingInput}.${signature}`;
 }
 
+function unsignedToken(claimOverrides: Record<string, unknown> = {}) {
+  return [
+    encodeJwtPart({ alg: "none", typ: "JWT" }),
+    encodeJwtPart({
+      aud: clientId,
+      email: "casey@example.com",
+      exp: now + 60 * 60,
+      name: "Casey Rivera",
+      sub: "entra-subject-1",
+      ...claimOverrides,
+    }),
+    "signature",
+  ].join(".");
+}
+
 function mockJwksEndpoint() {
   vi.stubGlobal(
     "fetch",
@@ -66,18 +96,25 @@ function mockJwksEndpoint() {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-05-23T00:00:00.000Z"));
+  mockCookieStore.delete.mockReset();
+  mockCookieStore.get.mockReset();
+  mockCookieStore.set.mockReset();
+  process.env.AUTH_SESSION_SECRET = "unit-session-secret";
   process.env.NEXT_PUBLIC_ENTRA_AUTHORITY = authority;
   process.env.NEXT_PUBLIC_ENTRA_CLIENT_ID = clientId;
   process.env.NEXT_PUBLIC_ENTRA_API_SCOPE = requiredScope;
+  process.env.NEXT_PUBLIC_APP_URL = "https://replyinmyvoice.com";
   mockJwksEndpoint();
 });
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  delete process.env.AUTH_SESSION_SECRET;
   delete process.env.NEXT_PUBLIC_ENTRA_AUTHORITY;
   delete process.env.NEXT_PUBLIC_ENTRA_CLIENT_ID;
   delete process.env.NEXT_PUBLIC_ENTRA_API_SCOPE;
+  delete process.env.NEXT_PUBLIC_APP_URL;
 });
 
 describe("Entra auth helpers", () => {
@@ -147,6 +184,54 @@ describe("Entra auth helpers", () => {
     const [payload, signature] = value.split(".");
     const tampered = `${payload.slice(0, -1)}x.${signature}`;
     await expect(verifySignedCookieValue(tampered, secret)).resolves.toBeNull();
+  });
+
+  it("keeps the browser session cookie below the 4KB browser limit", async () => {
+    const session = await createSessionFromTokens({
+      idToken: unsignedToken(),
+      accessToken: unsignedToken({ pad: "x".repeat(3500) }),
+      refreshToken: "refresh-token-" + "y".repeat(1200),
+    });
+
+    expect(session.accessToken).toBeTruthy();
+
+    const sessionCookieCall = mockCookieStore.set.mock.calls.find(
+      ([name]) => name === sessionCookieName,
+    );
+    expect(sessionCookieCall).toBeTruthy();
+
+    const [, cookieValue] = sessionCookieCall!;
+    expect(cookieValue.length).toBeLessThan(4096);
+
+    const persistedSession = await verifySignedCookieValue<Record<string, unknown>>(
+      cookieValue,
+      "unit-session-secret",
+    );
+    expect(persistedSession).toMatchObject({
+      sub: "entra-subject-1",
+      email: "casey@example.com",
+      name: "Casey Rivera",
+    });
+    expect(persistedSession).not.toHaveProperty("accessToken");
+    expect(persistedSession).not.toHaveProperty("refreshToken");
+
+    const accessTokenCookieCalls = mockCookieStore.set.mock.calls.filter(([name]) =>
+      String(name).startsWith("rimv_access_"),
+    );
+    expect(accessTokenCookieCalls.length).toBeGreaterThan(1);
+    for (const [, accessTokenCookieValue] of accessTokenCookieCalls) {
+      expect(accessTokenCookieValue.length).toBeLessThan(4096);
+    }
+
+    const storedCookies = new Map(
+      mockCookieStore.set.mock.calls.map(([name, value]) => [String(name), value]),
+    );
+    mockCookieStore.get.mockImplementation((name: string) => {
+      const value = storedCookies.get(name);
+      return value ? { value } : undefined;
+    });
+
+    await expect(getCurrentAccessToken()).resolves.toBe(session.accessToken);
   });
 });
 

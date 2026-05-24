@@ -6,6 +6,9 @@ const textEncoder = new TextEncoder();
 
 export const sessionCookieName = "rimv_session";
 export const oauthStateCookieName = "rimv_oauth";
+const accessTokenCookieName = "rimv_access";
+const accessTokenCookieChunkSize = 3000;
+const accessTokenCookieMaxChunks = 8;
 
 export type AuthSession = {
   sub: string;
@@ -15,6 +18,14 @@ export type AuthSession = {
   accessToken?: string;
   accessTokenExp?: number;
   refreshToken?: string;
+};
+
+type BrowserSessionCookie = Pick<AuthSession, "sub" | "email" | "name" | "exp">;
+
+type AccessTokenCookie = {
+  accessToken: string;
+  accessTokenExp: number;
+  exp: number;
 };
 
 type OAuthState = {
@@ -139,6 +150,61 @@ export async function verifySignedCookieValue<T>(
     return JSON.parse(base64UrlDecode(encodedPayload)) as T;
   } catch {
     return null;
+  }
+}
+
+type MutableCookieStore = Awaited<ReturnType<typeof cookies>>;
+
+function chunkCookieName(baseName: string, index: number) {
+  return `${baseName}_${index}`;
+}
+
+async function setChunkedSignedCookie(
+  cookieStore: MutableCookieStore,
+  baseName: string,
+  payload: unknown,
+  secret: string,
+  options: NonNullable<Parameters<MutableCookieStore["set"]>[2]>,
+) {
+  const value = await createSignedCookieValue(payload, secret);
+  const chunks = value.match(new RegExp(`.{1,${accessTokenCookieChunkSize}}`, "g")) ?? [""];
+  if (chunks.length > accessTokenCookieMaxChunks) {
+    throw new Error("Signed access token cookie is too large.");
+  }
+
+  chunks.forEach((chunk, index) => {
+    cookieStore.set(chunkCookieName(baseName, index), chunk, options);
+  });
+
+  for (let index = chunks.length; index < accessTokenCookieMaxChunks; index += 1) {
+    cookieStore.delete(chunkCookieName(baseName, index));
+  }
+}
+
+async function readChunkedSignedCookie<T>(
+  cookieStore: MutableCookieStore,
+  baseName: string,
+  secret: string,
+) {
+  const chunks: string[] = [];
+  for (let index = 0; index < accessTokenCookieMaxChunks; index += 1) {
+    const chunk = cookieStore.get(chunkCookieName(baseName, index))?.value;
+    if (!chunk) {
+      break;
+    }
+    chunks.push(chunk);
+  }
+
+  if (!chunks.length) {
+    return null;
+  }
+
+  return verifySignedCookieValue<T>(chunks.join(""), secret);
+}
+
+function deleteChunkedCookie(cookieStore: MutableCookieStore, baseName: string) {
+  for (let index = 0; index < accessTokenCookieMaxChunks; index += 1) {
+    cookieStore.delete(chunkCookieName(baseName, index));
   }
 }
 
@@ -468,10 +534,9 @@ export async function validateEntraBearerToken(
 }
 
 /**
- * Mints the rimv_session cookie from a freshly issued token set. Shared by the
- * browser-redirect callback (completeEntraCallback) and the native email-OTP routes
- * so both produce an identical session — downstream code (middleware, /api/me, .NET)
- * is unchanged regardless of which path the user took.
+ * Mints the rimv_session cookie from a freshly issued token set. Keep the
+ * browser cookie small: Entra access/refresh tokens can push a signed cookie
+ * past the 4KB browser limit, which makes the next /app request look signed out.
  */
 export async function createSessionFromTokens(tokens: {
   idToken: string;
@@ -497,14 +562,27 @@ export async function createSessionFromTokens(tokens: {
   } satisfies AuthSession;
 
   const cookieStore = await cookies();
-  const sessionCookie = await createSignedCookieValue(session, getSessionSecret());
-  cookieStore.set(sessionCookieName, sessionCookie, {
+  const cookieOptions = {
     httpOnly: true,
     secure: getAppUrl().startsWith("https://"),
-    sameSite: "lax",
+    sameSite: "lax" as const,
     path: "/",
     maxAge: Math.max(60, session.exp - Math.floor(Date.now() / 1000)),
-  });
+  };
+  const browserSession = {
+    sub: session.sub,
+    email: session.email,
+    name: session.name,
+    exp: session.exp,
+  } satisfies BrowserSessionCookie;
+  const secret = getSessionSecret();
+  const sessionCookie = await createSignedCookieValue(browserSession, secret);
+  cookieStore.set(sessionCookieName, sessionCookie, cookieOptions);
+  await setChunkedSignedCookie(cookieStore, accessTokenCookieName, {
+    accessToken: session.accessToken,
+    accessTokenExp: session.accessTokenExp,
+    exp: session.exp,
+  } satisfies AccessTokenCookie, secret, cookieOptions);
 
   return session;
 }
@@ -634,6 +712,24 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
 }
 
 export async function getCurrentAccessToken(): Promise<string | null> {
+  const secret = getSessionSecret({ required: false });
+  if (secret) {
+    const cookieStore = await cookies();
+    const token = await readChunkedSignedCookie<AccessTokenCookie>(
+      cookieStore,
+      accessTokenCookieName,
+      secret,
+    );
+    const now = Math.floor(Date.now() / 1000);
+    if (
+      token?.accessToken &&
+      token.accessTokenExp > now &&
+      token.exp > now
+    ) {
+      return token.accessToken;
+    }
+  }
+
   const session = await getCurrentSession();
   if (!session?.accessToken || !session.accessTokenExp) {
     return null;
@@ -650,4 +746,5 @@ export async function clearCurrentSession() {
   const cookieStore = await cookies();
   cookieStore.delete(sessionCookieName);
   cookieStore.delete(oauthStateCookieName);
+  deleteChunkedCookie(cookieStore, accessTokenCookieName);
 }
