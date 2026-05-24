@@ -23,40 +23,22 @@ import {
   type TonePreset,
 } from "../../lib/rewrite-presets";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
+import {
+  getRewriteAttemptId,
+  isRewritePendingPayload,
+  normalizeNaturalness,
+  normalizeRewriteResponse,
+  type Naturalness,
+  type RewriteResponse,
+} from "../../lib/rewrite-response";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Textarea } from "../ui/textarea";
 import { SubscriptionStatus } from "./subscription-status";
 
 const HISTORY_KEY = "rimv.rewrite.history.v1";
-
-type Naturalness = {
-  draftAiLikePercent: number | null;
-  rewriteAiLikePercent: number | null;
-  changePoints: number | null;
-  label: "lower" | "low_signal" | "still_high" | "unavailable";
-};
-
-type RewriteResponse = {
-  rewrittenText: string;
-  changeSummary: string[];
-  riskNotes: string[];
-  naturalness: Naturalness;
-  optimization: {
-    internalStrategiesTried: number;
-    userUsageCharged: 1;
-    selectionStatus?: "passed" | "best_available";
-    diagnosisTags?: string[];
-    rewritePlanSummary?: string;
-    candidateSignals?: Array<{
-      stage: "initial" | "targeted_repair" | "repair" | "fallback";
-      aiLikePercent: number | null;
-      status: string;
-      rejected: boolean;
-      reason: string;
-    }>;
-  };
-};
+const rewriteAttemptPollLimit = 30;
+const rewriteAttemptPollDelayMs = 1500;
 
 type QualityFailure = {
   error: string;
@@ -393,6 +375,142 @@ function postCopyUpgradeNudge(scenario: WorkspaceScenario | null) {
   };
 }
 
+function payloadString(payload: unknown, key: string) {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function payloadNaturalness(payload: unknown) {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const value = (payload as Record<string, unknown>).naturalness;
+  return value === undefined ? undefined : normalizeNaturalness(value);
+}
+
+function qualityFailureFromPayload(payload: unknown): QualityFailure {
+  return {
+    error:
+      payloadString(payload, "error") ??
+      "We could not produce a better version yet. Try again or adjust the draft.",
+    naturalness: payloadNaturalness(payload),
+    reason: payloadString(payload, "reason"),
+    charged: false,
+  };
+}
+
+class RewriteQualityFailureError extends Error {
+  constructor(readonly failure: QualityFailure) {
+    super(failure.error);
+  }
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function readJsonPayload(response: Response) {
+  return (await response.json().catch(() => null)) as unknown;
+}
+
+async function pollRewriteAttempt(attemptId: string) {
+  for (let attempt = 0; attempt < rewriteAttemptPollLimit; attempt += 1) {
+    await delay(rewriteAttemptPollDelayMs);
+
+    const response = await fetch(
+      `/api/rewrite-attempts/${encodeURIComponent(attemptId)}`,
+      { cache: "no-store" },
+    );
+    const payload = await readJsonPayload(response);
+
+    if (response.status === 202 || isRewritePendingPayload(payload)) {
+      continue;
+    }
+
+    if (!response.ok) {
+      if (
+        response.status === 422 &&
+        payloadString(payload, "code") === "quality_gate_failed"
+      ) {
+        throw new RewriteQualityFailureError(qualityFailureFromPayload(payload));
+      }
+
+      throw new Error(
+        payloadString(payload, "error") ?? "Could not rewrite this draft.",
+      );
+    }
+
+    const normalizedPayload = normalizeRewriteResponse(payload);
+    if (!normalizedPayload) {
+      throw new Error("Rewrite response was incomplete. Try again in a moment.");
+    }
+
+    return normalizedPayload;
+  }
+
+  throw new Error("Rewrite is still processing. Try again in a moment.");
+}
+
+function normalizeHistoryItems(payload: unknown): HistoryItem[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((item) => normalizeHistoryItem(item))
+    .filter((item): item is HistoryItem => item !== null)
+    .slice(0, 5);
+}
+
+function normalizeHistoryItem(payload: unknown): HistoryItem | null {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const rewrittenText =
+    typeof record.rewrittenText === "string" ? record.rewrittenText : "";
+  if (!rewrittenText.trim()) {
+    return null;
+  }
+
+  const rawMode = record.mode;
+  const mode = scenarioOptions.includes(rawMode as ScenarioOption)
+    ? (rawMode as ScenarioOption)
+    : scenarioOptions[0];
+  const rawTonePreset = record.tonePreset;
+  const tonePreset = tonePresetOptions.includes(rawTonePreset as TonePreset)
+    ? (rawTonePreset as TonePreset)
+    : "Warm";
+
+  return {
+    mode,
+    roughDraftReply:
+      typeof record.roughDraftReply === "string" ? record.roughDraftReply : "",
+    rewrittenText,
+    tone: tonePresetToTone(tonePreset),
+    tonePreset,
+    changeSummary: Array.isArray(record.changeSummary)
+      ? record.changeSummary.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [],
+    riskNotes: Array.isArray(record.riskNotes)
+      ? record.riskNotes.filter((item): item is string => typeof item === "string")
+      : [],
+    naturalness: normalizeNaturalness(record.naturalness),
+    createdAt:
+      typeof record.createdAt === "string"
+        ? record.createdAt
+        : new Date().toISOString(),
+  };
+}
+
 export function RewriteWorkspace({
   usageLabel,
   subscriptionStatus,
@@ -455,7 +573,7 @@ export function RewriteWorkspace({
   useEffect(() => {
     try {
       const saved = localStorage.getItem(HISTORY_KEY);
-      setHistory(saved ? (JSON.parse(saved) as HistoryItem[]) : []);
+      setHistory(saved ? normalizeHistoryItems(JSON.parse(saved)) : []);
     } catch {
       setHistory([]);
     }
@@ -533,38 +651,57 @@ export function RewriteWorkspace({
           tonePreset: form.tonePreset,
         }),
       });
-      const payload = (await response.json()) as RewriteResponse & {
-        code?: string;
-        error?: string;
-        naturalness?: Naturalness;
-        reason?: string;
-        charged?: false;
-      };
+      const payload = await readJsonPayload(response);
 
       if (!response.ok) {
-        if (response.status === 422 && payload.code === "quality_gate_failed") {
+        if (
+          response.status === 422 &&
+          payloadString(payload, "code") === "quality_gate_failed"
+        ) {
           setResult(null);
-          setQualityFailure({
-            error:
-              payload.error ??
-              "We could not produce a better version yet. Try again or adjust the draft.",
-            naturalness: payload.naturalness,
-            reason: payload.reason,
-            charged: payload.charged,
-          });
+          setQualityFailure(qualityFailureFromPayload(payload));
           setError("");
           return;
         }
-        throw new Error(payload.error ?? "Could not rewrite this draft.");
+        throw new Error(
+          payloadString(payload, "error") ?? "Could not rewrite this draft.",
+        );
+      }
+
+      let normalizedPayload: RewriteResponse;
+      if (response.status === 202 || isRewritePendingPayload(payload)) {
+        const attemptId = getRewriteAttemptId(payload);
+        if (!attemptId) {
+          throw new Error(
+            payloadString(payload, "error") ??
+              "Rewrite is still processing. Try again in a moment.",
+          );
+        }
+        normalizedPayload = await pollRewriteAttempt(attemptId);
+      } else {
+        const immediatePayload = normalizeRewriteResponse(payload);
+        if (!immediatePayload) {
+          throw new Error(
+            "Rewrite response was incomplete. Try again in a moment.",
+          );
+        }
+        normalizedPayload = immediatePayload;
       }
 
       setQualityFailure(null);
-      setResult(payload);
+      setResult(normalizedPayload);
       if (!paid) {
         setFreeRewritesRemaining((current) => Math.max(current - 1, 0));
       }
-      saveHistory(payload);
+      saveHistory(normalizedPayload);
     } catch (submitError) {
+      if (submitError instanceof RewriteQualityFailureError) {
+        setResult(null);
+        setQualityFailure(submitError.failure);
+        setError("");
+        return;
+      }
+
       setError(
         submitError instanceof Error
           ? submitError.message
@@ -631,14 +768,16 @@ export function RewriteWorkspace({
   const showCopyNudge = !paid && showPostCopyNudge && result !== null;
   const copyNudge = postCopyUpgradeNudge(selectedScenario);
   const suppliedFacts = splitFactsToPreserve(form.factsToPreserve);
-  const whyThisWorks = result?.changeSummary.length
-    ? result.changeSummary.slice(0, 4)
+  const resultChangeSummary = result?.changeSummary ?? [];
+  const resultRiskNotes = result?.riskNotes ?? [];
+  const whyThisWorks = resultChangeSummary.length
+    ? resultChangeSummary.slice(0, 4)
     : fallbackWhyThisWorks(selectedScenario);
   const beforeSendChecks = [
     "check the deadline/date is correct",
     "make sure the reason is true",
     "edit anything that feels too formal",
-    ...(result?.riskNotes ?? []),
+    ...resultRiskNotes,
   ];
 
   return (

@@ -5,6 +5,10 @@ const routeSource = readFileSync(
   new URL("../../app/api/rewrite/route.ts", import.meta.url),
   "utf8",
 );
+const attemptRouteSource = readFileSync(
+  new URL("../../app/api/rewrite-attempts/[attemptId]/route.ts", import.meta.url),
+  "utf8",
+);
 
 describe("rewrite API quality failure handling", () => {
   it("proxies rewrite requests to the Azure Functions C# backend", () => {
@@ -18,5 +22,13 @@ describe("rewrite API quality failure handling", () => {
     expect(routeSource).not.toContain("isFactReconstructV2Enabled");
     expect(routeSource).not.toContain("chargeSuccessfulRewrite");
     expect(routeSource).not.toContain("ensureQuotaAvailable");
+  });
+
+  it("normalizes direct success payloads and keeps pending attempts distinct", () => {
+    expect(routeSource).toContain("normalizeRewriteResponse");
+    expect(routeSource).toContain('code: "rewrite_pending"');
+    expect(routeSource).toContain("attemptId");
+    expect(attemptRouteSource).toContain("normalizeRewriteResponse");
+    expect(attemptRouteSource).toContain('code: "rewrite_pending"');
   });
 });

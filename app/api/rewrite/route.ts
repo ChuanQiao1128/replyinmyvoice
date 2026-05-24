@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAzureApiBaseUrl } from "../../../lib/azure-api";
 import { getCurrentAccessToken } from "../../../lib/entra-auth";
 import { jsonError, requireSameOrigin } from "../../../lib/http";
+import { normalizeRewriteResponse } from "../../../lib/rewrite-response";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,12 @@ function sleep(milliseconds: number) {
 
 function jsonFromResultJson(resultJson: string) {
   try {
-    return NextResponse.json(JSON.parse(resultJson));
+    const payload = normalizeRewriteResponse(JSON.parse(resultJson));
+    if (!payload) {
+      return jsonError("Rewrite result was invalid.", 502);
+    }
+
+    return NextResponse.json(payload);
   } catch {
     return jsonError("Rewrite result was not valid JSON.", 502);
   }
@@ -58,20 +64,42 @@ function failedAttemptResponse(errorCode?: string | null) {
   return jsonError("Could not rewrite this draft right now.", 500);
 }
 
+async function readJsonPayload(response: Response) {
+  return (await response.json().catch(() => null)) as unknown;
+}
+
+function parseAttemptPayload(payload: unknown) {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const attemptPayload = payload as AzureRewriteAttemptResponse;
+  const parsed = {
+    attemptId: attemptPayload.attemptId ?? attemptPayload.AttemptId,
+    status: attemptPayload.status ?? attemptPayload.Status,
+    resultJson: attemptPayload.resultJson ?? attemptPayload.ResultJson,
+    errorCode: attemptPayload.errorCode ?? attemptPayload.ErrorCode,
+  };
+
+  if (
+    !parsed.attemptId &&
+    !parsed.status &&
+    !parsed.resultJson &&
+    !parsed.errorCode
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
 async function parseAttemptResponse(response: Response) {
-  const payload = (await response.json().catch(() => null)) as
-    | AzureRewriteAttemptResponse
-    | null;
+  const payload = parseAttemptPayload(await readJsonPayload(response));
   if (!payload) {
     return null;
   }
 
-  return {
-    attemptId: payload.attemptId ?? payload.AttemptId,
-    status: payload.status ?? payload.Status,
-    resultJson: payload.resultJson ?? payload.ResultJson,
-    errorCode: payload.errorCode ?? payload.ErrorCode,
-  };
+  return payload;
 }
 
 async function pollAttempt({
@@ -120,6 +148,7 @@ async function pollAttempt({
   return NextResponse.json(
     {
       code: "rewrite_pending",
+      attemptId,
       error: "Rewrite is still processing. Try again in a moment.",
     },
     { status: 202 },
@@ -169,12 +198,22 @@ export async function POST(request: Request) {
   }
 
   if (response.ok) {
-    const payload = await parseAttemptResponse(response);
-    if (payload?.status === "Succeeded" && payload.resultJson) {
-      return jsonFromResultJson(payload.resultJson);
+    const rawPayload = await readJsonPayload(response);
+    const directPayload = normalizeRewriteResponse(rawPayload);
+    if (directPayload) {
+      return NextResponse.json(directPayload);
     }
 
-    return new NextResponse(JSON.stringify(payload ?? {}), {
+    const attemptPayload = parseAttemptPayload(rawPayload);
+    if (attemptPayload?.status === "Succeeded" && attemptPayload.resultJson) {
+      return jsonFromResultJson(attemptPayload.resultJson);
+    }
+
+    if (!attemptPayload) {
+      return jsonError("Rewrite response was invalid.", 502);
+    }
+
+    return new NextResponse(JSON.stringify(attemptPayload), {
       status: response.status,
       headers: {
         "Content-Type": "application/json",
