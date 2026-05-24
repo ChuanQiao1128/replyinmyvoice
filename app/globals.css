@@ -450,6 +450,35 @@ select {
 .compare-col.before .compare-body {
   color: var(--ink-2);
 }
+.compare-body.clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
+}
+.compare-expand {
+  appearance: none;
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--card);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.compare-expand:hover {
+  background: var(--bg-2);
+  color: var(--ink);
+}
 .compare-arrow {
   position: absolute;
   left: 50%;
@@ -537,13 +566,6 @@ select {
   position: absolute;
   top: 0;
   bottom: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 500;
-  color: #fff;
   border-radius: 6px 0 0 6px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -559,10 +581,6 @@ select {
   z-index: 2;
   border-radius: 6px;
   box-shadow: 0 0 0 2px var(--card);
-}
-.nat-after .lbl,
-.nat-before .lbl {
-  white-space: nowrap;
 }
 .nat-delta {
   font-family: var(--mono);
@@ -1029,11 +1047,6 @@ section.block {
 }
 .nat-callout .nat-bar {
   height: 36px;
-}
-.nat-callout .nat-bar .nat-before,
-.nat-callout .nat-bar .nat-after {
-  font-size: 12px;
-  padding: 0 12px;
 }
 .nat-legend {
   margin-top: 18px;

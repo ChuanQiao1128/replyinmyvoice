@@ -32,13 +32,13 @@ export function HowItWorks() {
             </p>
             <div className="step-figure">
               <div style={{ color: "var(--muted)" }}>{"// thread.txt"}</div>
-              <div style={{ paddingTop: 6 }}>From: Ms Alvarez</div>
-              <div>Subject: Permission slip</div>
+              <div style={{ paddingTop: 6 }}>From: Daniel</div>
+              <div>Subject: Missed Friday&apos;s quiz</div>
               <div style={{ color: "var(--muted)", paddingTop: 4 }}>
                 — rough reply —
               </div>
               <div>
-                <span className="caret">▍</span>Hello, I checked and I do not…
+                <span className="caret">▍</span>Dear Daniel, thank you very…
               </div>
             </div>
           </div>
@@ -56,7 +56,7 @@ export function HowItWorks() {
             <div className="step-figure">
               <div className="field-line">
                 <span className="k">audience</span>
-                <span className="v">parent</span>
+                <span className="v">student</span>
               </div>
               <div className="field-line">
                 <span className="k">purpose</span>
@@ -65,8 +65,8 @@ export function HowItWorks() {
               <div className="field-line">
                 <span className="k">keep</span>
                 <span className="v">
-                  <span className="chip">permission slip</span>
-                  <span className="chip">April 2</span>
+                  <span className="chip">Room 204</span>
+                  <span className="chip">Wed deadline</span>
                 </span>
               </div>
             </div>
@@ -103,9 +103,9 @@ export function HowItWorks() {
               </div>
               <div style={{ color: "var(--muted)" }}>{"// preview"}</div>
               <div>
-                Hi Ms. Alvarez, I checked the
+                Hi Daniel — sorry you were out
                 <br />
-                classroom folder basket…
+                sick, hope you&apos;re on the mend…
               </div>
             </div>
           </div>

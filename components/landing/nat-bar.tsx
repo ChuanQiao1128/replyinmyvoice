@@ -10,9 +10,10 @@ type NatBarProps = {
 };
 
 /**
- * Naturalness Check meter — two stacked fills (draft vs rewrite) inside a
- * single track. Lower is better, so the rewrite fill sits in front and the
- * draft fill shows how far the signal dropped.
+ * Naturalness Check meter — a draft fill (warn) behind a shorter rewrite fill
+ * (accent) in one track, so the visible gap shows how far the signal dropped.
+ * Purely visual: the numbers live in the adjacent pills / legend, and the
+ * values are exposed to assistive tech via the bar's aria-label.
  */
 export function NatBar({ before, after, animate = false }: NatBarProps) {
   const [b, setB] = useState(animate ? 0 : before);
@@ -35,14 +36,14 @@ export function NatBar({ before, after, animate = false }: NatBarProps) {
   }, [before, after, animate]);
 
   return (
-    <div className="nat-bar">
+    <div
+      className="nat-bar"
+      role="img"
+      aria-label={`Draft signal ${before} percent, rewrite signal ${after} percent`}
+    >
       <div className="nat-track" />
-      <div className="nat-before" style={{ width: `${b}%` }}>
-        <span className="lbl">Draft {before}%</span>
-      </div>
-      <div className="nat-after" style={{ width: `${a}%` }}>
-        <span className="lbl">Rewrite {after}%</span>
-      </div>
+      <div className="nat-before" style={{ width: `${b}%` }} />
+      <div className="nat-after" style={{ width: `${a}%` }} />
     </div>
   );
 }

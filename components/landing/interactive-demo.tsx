@@ -17,6 +17,7 @@ export function InteractiveDemo() {
   const [index, setIndex] = useState(0);
   const [tone, setTone] = useState<Tone>("Warm");
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const sample = homepageSampleCases[index];
   const delta = sample.before - sample.after;
@@ -39,7 +40,10 @@ export function InteractiveDemo() {
             key={item.label}
             type="button"
             className={"compare-tab " + (itemIndex === index ? "active" : "")}
-            onClick={() => setIndex(itemIndex)}
+            onClick={() => {
+              setIndex(itemIndex);
+              setExpanded(false);
+            }}
             aria-pressed={itemIndex === index}
           >
             <span className="ico" aria-hidden="true">
@@ -57,7 +61,9 @@ export function InteractiveDemo() {
             Rough draft
             <span className="pill">rough · {sample.before}%</span>
           </h4>
-          <div className="compare-body">{sample.draft}</div>
+          <div className={"compare-body" + (expanded ? "" : " clamped")}>
+            {sample.draft}
+          </div>
         </div>
         <div className="compare-arrow" aria-hidden="true">
           →
@@ -69,9 +75,20 @@ export function InteractiveDemo() {
               {tone.toLowerCase()} · {sample.after}%
             </span>
           </h4>
-          <div className="compare-body">{sample.rewrite}</div>
+          <div className={"compare-body" + (expanded ? "" : " clamped")}>
+            {sample.rewrite}
+          </div>
         </div>
       </div>
+
+      <button
+        type="button"
+        className="compare-expand"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+      >
+        {expanded ? "Show less ↑" : "Show full reply ↓"}
+      </button>
 
       <div className="compare-foot">
         <div className="nat">
