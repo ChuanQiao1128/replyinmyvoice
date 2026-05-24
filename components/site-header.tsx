@@ -1,9 +1,8 @@
 import Link from "next/link";
 
-import { AdminEntry } from "./app/admin-entry";
 import { getCurrentSession } from "../lib/entra-auth";
 
-export async function SiteHeader({ showAdmin = false }: { showAdmin?: boolean }) {
+export async function SiteHeader() {
   const session = await getCurrentSession();
 
   return (
@@ -28,7 +27,6 @@ export async function SiteHeader({ showAdmin = false }: { showAdmin?: boolean })
             </>
           ) : (
             <>
-              <AdminEntry visible={showAdmin} />
               <a href="/api/auth/logout">Sign out</a>
               <Link href="/app" className="btn btn-primary">
                 Open app <span className="btn-arrow">→</span>

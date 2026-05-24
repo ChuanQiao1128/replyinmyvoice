@@ -27,7 +27,7 @@ const sections = [
   },
   {
     title: "Vendors and subprocessors",
-    text: "We use Cloudflare (hosting and edge runtime), Neon (Postgres database), Microsoft Entra External ID (sign-in), Stripe (payments), and AI providers for rewrite generation (DeepSeek) and writing-signal analysis (Sapling). These subprocessors process the data necessary to deliver the service and are bound by their own data protection terms.",
+    text: "We use Cloudflare (hosting and edge runtime), Microsoft Azure (SQL database and backend services), Microsoft Entra External ID (sign-in), Stripe (payments), and AI providers for rewrite generation (DeepSeek) and writing-signal analysis (Sapling). These subprocessors process the data necessary to deliver the service and are bound by their own data protection terms.",
   },
   {
     title: "Local history",

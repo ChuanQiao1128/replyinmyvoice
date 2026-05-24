@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { PaywallCard } from "../../components/app/paywall-card";
 import { RewriteWorkspace } from "../../components/app/rewrite-workspace";
 import { SiteHeader } from "../../components/site-header";
-import { shouldShowAdminEntry } from "../../lib/admin-visible";
 import { fetchAzureAccountSummary } from "../../lib/azure-api";
 
 export const dynamic = "force-dynamic";
@@ -19,15 +18,11 @@ export default async function AppPage() {
 
   const usage = account.usage;
   const paid = usage.scope === "paid" || paidStatuses.has(account.subscriptionStatus);
-  const showAdmin = shouldShowAdminEntry({
-    userId: account.externalAuthUserId,
-    email: account.email,
-  });
 
   if (usage.exhausted && !paid) {
     return (
       <>
-        <SiteHeader showAdmin={showAdmin} />
+        <SiteHeader />
         <PaywallCard
           description="Your 3 free rewrites have been used. Upgrade to Starter for 55 monthly rewrites, choose Pro/API for heavier use, or use a one-time option when you only need a short burst."
           status="Free quota used"
@@ -40,7 +35,7 @@ export default async function AppPage() {
   if (usage.exhausted && paid) {
     return (
       <>
-        <SiteHeader showAdmin={showAdmin} />
+        <SiteHeader />
         <PaywallCard
           action="portal"
           description="Your monthly rewrite quota has been used for this billing period. Top-up appears when quota runs low, or you can manage billing and come back when the next period starts."
@@ -57,7 +52,7 @@ export default async function AppPage() {
 
   return (
     <>
-      <SiteHeader showAdmin={showAdmin} />
+      <SiteHeader />
       <RewriteWorkspace
         paid={paid}
         planRemaining={usage.remaining}
