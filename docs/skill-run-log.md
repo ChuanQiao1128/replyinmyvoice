@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-24 - dotnet-backend-testing - Azure Functions bare API audience auth
+
+- Agent: Codex
+- Trigger: Production Google login still returned to `/sign-in` after callback success, and Azure `/api/me` continued returning 401. The remaining likely token-validation boundary is Entra access-token audience shape.
+- Action: Opened and followed the skill; added a focused xUnit regression that resolves both `api://<api-client-id>` and bare `<api-client-id>` from the configured API scope, then updated `FunctionAuthResolver` so either valid Entra audience form is accepted while keeping the required scope/role gate.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/FunctionAuthResolver.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/FunctionAuthResolverTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: The new `ResolveAudiences_accepts_api_uri_and_bare_api_client_id_from_scope` regression failed before implementation because the resolver did not expose/derive the bare API client id audience. After the fix, `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter FunctionAuthResolverTests --no-restore` passed 9/9 and `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 76/76.
+- Limitations: Codex still cannot perform the owner's live Google login in this session. No access-token values, cookies, `.env.local` values, API tokens, private keys, or provider secrets were logged.
+
 ### 2026-05-24 - ui-browser-testing - Entra login token-shape diagnostics
 
 - Agent: Codex

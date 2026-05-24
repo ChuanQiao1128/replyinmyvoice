@@ -168,7 +168,7 @@ public static class FunctionAuthResolver
         configuration["NEXT_PUBLIC_ENTRA_AUTHORITY"] ??
         configuration["AZURE_EXTERNAL_ID_AUTHORITY"];
 
-    private static List<string> ResolveAudiences(IConfiguration configuration)
+    public static List<string> ResolveAudiences(IConfiguration configuration)
     {
         var audiences = new List<string>();
         AddIfPresent(audiences, configuration["ENTRA_API_AUDIENCE"]);
@@ -179,6 +179,7 @@ public static class FunctionAuthResolver
         var scope = ResolveRequiredScope(configuration);
         var scopeAudience = ResolveAudienceFromScope(scope);
         AddIfPresent(audiences, scopeAudience);
+        AddIfPresent(audiences, ResolveBareApiAudience(scopeAudience));
 
         return audiences
             .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -223,6 +224,14 @@ public static class FunctionAuthResolver
 
         var slashIndex = scope.LastIndexOf('/');
         return slashIndex > 0 ? scope[..slashIndex] : null;
+    }
+
+    private static string? ResolveBareApiAudience(string? audience)
+    {
+        const string apiUriPrefix = "api://";
+        return audience?.StartsWith(apiUriPrefix, StringComparison.OrdinalIgnoreCase) == true
+            ? audience[apiUriPrefix.Length..]
+            : null;
     }
 
     public static bool HasRequiredScopeOrRole(ClaimsPrincipal principal, IConfiguration configuration)

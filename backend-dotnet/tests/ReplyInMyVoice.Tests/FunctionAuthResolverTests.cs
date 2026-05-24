@@ -117,6 +117,19 @@ public sealed class FunctionAuthResolverTests
     }
 
     [Fact]
+    public void ResolveAudiences_accepts_api_uri_and_bare_api_client_id_from_scope()
+    {
+        var audiences = FunctionAuthResolver.ResolveAudiences(BuildConfiguration(new Dictionary<string, string?>
+        {
+            ["NEXT_PUBLIC_ENTRA_API_SCOPE"] =
+                "api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32/access_as_user",
+        }));
+
+        audiences.Should().Contain("api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32");
+        audiences.Should().Contain("1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32");
+    }
+
+    [Fact]
     public async Task ResolveUserAsync_rejects_header_identity_unless_enabled()
     {
         var request = CreateRequest();
