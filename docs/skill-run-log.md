@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-24 - ui-browser-testing - Entra login token-shape diagnostics
+
+- Agent: Codex
+- Trigger: Production Google login still redirected back to `/sign-in` after the CIAM metadata-issuer fix, and Cloudflare tail continued to show Azure `/api/me` returning 401 after `/auth/callback` succeeded.
+- Action: Opened and followed the skill; added safe Worker-side diagnostics that log only access-token shape on Azure auth rejection: summarized audience form, issuer host, scope names, role count, and whether stable identity claims exist. The diagnostic intentionally avoids logging token values, email, name, or raw private claims.
+- Output artifacts: `lib/azure-api.ts`; `tests/unit/azure-api.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm test -- tests/unit/azure-api.test.ts` failed before the diagnostic helper existed, then passed after implementation. `npm test -- tests/unit/azure-api.test.ts tests/unit/entra-auth.test.ts tests/unit/middleware.test.ts`, `npm run typecheck`, `npm run lint`, and `npm run cf:build` passed.
+- Limitations: This is diagnostic instrumentation, not a final auth fix. It needs one post-deploy owner login retry to capture the safe token profile. No raw access tokens, cookies, `.env.local` values, API tokens, private keys, or provider secrets were logged.
+
 ### 2026-05-24 - dotnet-backend-testing - Azure Functions CIAM metadata issuer auth
 
 - Agent: Codex

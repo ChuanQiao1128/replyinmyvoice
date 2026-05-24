@@ -28,6 +28,85 @@ export function getAzureApiBaseUrl() {
   ).replace(/\/$/, "");
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const [, encodedPayload] = token.split(".");
+  if (!encodedPayload) {
+    return null;
+  }
+
+  try {
+    const padded = encodedPayload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(encodedPayload.length / 4) * 4, "=");
+    const decoded = atob(padded);
+    const parsed = JSON.parse(decoded) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringClaim(claims: Record<string, unknown>, name: string) {
+  const value = claims[name];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function stringArrayClaim(claims: Record<string, unknown>, name: string) {
+  const value = claims[name];
+  if (typeof value === "string") {
+    return value.split(/\s+/).filter(Boolean);
+  }
+  if (Array.isArray(value)) {
+    return value.filter((candidate): candidate is string => typeof candidate === "string");
+  }
+  return [];
+}
+
+function summarizeAudience(value: unknown) {
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .filter((candidate): candidate is string => typeof candidate === "string" && !!candidate)
+    .map((candidate) => {
+      if (candidate.startsWith("api://")) {
+        return `api-uri:${candidate.slice(-8)}`;
+      }
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate)) {
+        return `guid:${candidate.slice(-8)}`;
+      }
+      try {
+        return `url-host:${new URL(candidate).host}`;
+      } catch {
+        return `other:${candidate.length}`;
+      }
+    });
+}
+
+export function summarizeAccessTokenForLog(token: string) {
+  const claims = decodeJwtPayload(token);
+  if (!claims) {
+    return { parseable: false };
+  }
+
+  const issuer = stringClaim(claims, "iss");
+  const roles = stringArrayClaim(claims, "roles");
+  const scopes = stringArrayClaim(claims, "scp");
+
+  return {
+    aud: summarizeAudience(claims.aud),
+    hasOid: Boolean(stringClaim(claims, "oid")),
+    hasRoles: roles.length > 0,
+    hasScp: scopes.length > 0,
+    hasSub: Boolean(stringClaim(claims, "sub")),
+    issHost: issuer ? new URL(issuer).host : null,
+    roleCount: roles.length,
+    scopeNames: scopes,
+    ver: stringClaim(claims, "ver"),
+  };
+}
+
 export async function fetchAzureAccountSummary(): Promise<AzureAccountSummary | null> {
   const accessToken = await getCurrentAccessToken();
   if (!accessToken) {
@@ -43,7 +122,10 @@ export async function fetchAzureAccountSummary(): Promise<AzureAccountSummary | 
   });
 
   if (response.status === 401 || response.status === 403) {
-    console.warn("azure_account_summary_auth_rejected", { status: response.status });
+    console.warn("azure_account_summary_auth_rejected", {
+      status: response.status,
+      token: summarizeAccessTokenForLog(accessToken),
+    });
     return null;
   }
 
