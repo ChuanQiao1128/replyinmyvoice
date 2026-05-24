@@ -1473,3 +1473,21 @@ claude-heavy-planning-handoff
 - Output artifacts: None beyond this log entry.
 - Verification evidence: Codex implemented and verified the migration slice directly with the checks listed above.
 - Limitations: No Claude handoff document or Claude CLI result was produced, so Claude Code did not participate in this run.
+
+### 2026-05-24 - dotnet-backend-testing - Post-deploy backend verification
+
+- Agent: Codex
+- Trigger: The owner asked Codex to keep testing after production deployment, fix issues autonomously, and ensure the C# Azure backend remained deployed successfully.
+- Action: Opened and followed the skill; reran the full .NET backend suite after the production merge and rechecked the remote Azure Functions health boundary.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 60/60; `https://replyinmyvoice-func-dev.azurewebsites.net/api/health` returned `{"ok":true,"service":"replyinmyvoice-functions"}` with HTTP 200.
+- Limitations: No signed-in live rewrite was executed because this Codex session does not have an authenticated user access token.
+
+### 2026-05-24 - ui-browser-testing - Post-deploy frontend and E2E verification
+
+- Agent: Codex
+- Trigger: The owner asked Codex to keep testing after production deployment; the browser-visible Cloudflare Worker, landing page, auth gate, and API proxy behavior needed verification.
+- Action: Opened and followed the skill; ran Playwright E2E, investigated the landing-page assertion failure, and updated the test to match the current footer positioning copy.
+- Output artifacts: `tests/e2e/commercial-site.spec.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Production `https://replyinmyvoice.com/` returned HTTP 200; `https://replyinmyvoice.com/api/health/db` returned `{"ok":true,"database":"azure-sql"}` with HTTP 200; unsigned production `POST /api/rewrite` returned HTTP 401 with `{"error":"unauthorized"}`. The focused Playwright failure was traced to stale expected copy: the page now says "Built for practical replies..." instead of the previous "Built for real communication workflows".
+- Limitations: Browser E2E covers signed-out gates and static commercial pages only; authenticated rewrite UX remains untested without a real user session token.
