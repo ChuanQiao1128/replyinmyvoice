@@ -1410,3 +1410,66 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/landing/*`; `app/students/page.tsx`; `app/pricing/page.tsx`; `app/terms/page.tsx`; `components/app/rewrite-workspace.tsx`; `tests/unit/*copy*.test.ts`; `docs/skill-run-log.md`; `plans/decisions-log.md`.
 - Verification evidence: With Node 22.13.1 first on PATH, staged-state `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` passed. The banned-term grep returned no matches. Playwright screenshots for `/` and `/students` at 1440px and 390px showed no horizontal overflow, no console errors, and required hero/boundary copy present.
 - Limitations: Validation used `git stash --keep-index` to exclude pre-existing unstaged tracked changes in `components/site-header.tsx`, `components/site-footer.tsx`, `docs/skill-run-log.md`, `lib/admin-visible.ts`, and `lib/rewrite-completeness.ts`; those unrelated changes were restored afterward and were not part of this task. No deploy, main merge, Stripe, schema, secret, or provider setting changes were made.
+
+### 2026-05-24 - cloud-architecture-cost-review - C# rewrite backend migration
+
+- Agent: Codex
+- Trigger: The owner set the goal to keep Azure Functions Consumption + Azure SQL + Service Bus, move the backend runtime to C#, avoid App Service, then merge and deploy.
+- Action: Opened and followed the skill; kept the existing scale-to-zero Azure Functions architecture, explicitly rejected App Service reintroduction, checked Azure app-setting names without printing values, and used GitHub Actions as the Cloudflare deploy path after local wrangler lacked `CLOUDFLARE_API_TOKEN`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/RewriteEngine/RewriteEngineCore.cs`; C# provider adapters; Azure proxy routes; `README.md`; `docs/business-qa-and-deploy-result.md`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 60/60; `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and `npm run cf:build` passed; Azure Functions deploy passed; Azure `/api/health`, `/api/health/db`, and unsigned `/api/rewrite` auth-boundary smokes passed.
+- Limitations: No new paid resources were created. Local Cloudflare deploy could not complete without `CLOUDFLARE_API_TOKEN`; production Cloudflare deploy is expected through GitHub Actions secrets after merge.
+
+### 2026-05-24 - system-spec-synthesis - Public backend C# runtime target
+
+- Agent: Codex
+- Trigger: The task converted a loose goal, "backend all C# and services all Azure," into implementation boundaries spanning rewrite, billing/webhook proxies, account/quota reads, deployment, and verification.
+- Action: Opened and followed the skill; scoped the implementation to the public runtime path first: C# rewrite provider and adapters, Cloudflare BFF proxies to Azure Functions, Azure account/quota reads, and documented remaining legacy TS cleanup.
+- Output artifacts: `app/api/rewrite/route.ts`; `app/api/stripe/checkout/route.ts`; `app/api/stripe/webhook/route.ts`; `app/app/page.tsx`; C# rewrite engine/provider files; tests; `README.md`; `docs/business-qa-and-deploy-result.md`.
+- Verification evidence: Frontend and backend tests/builds passed as recorded in `docs/business-qa-and-deploy-result.md`.
+- Limitations: Legacy TS rewrite/learningops/observability files remain for historical tests/admin cleanup and were not deleted in this slice.
+
+### 2026-05-24 - state-machine-modeling - Rewrite quality failure and quota lifecycle
+
+- Agent: Codex
+- Trigger: Moving rewrite execution to C# affects rewrite attempt states, queued worker processing, quality failures, and quota reservation/finalization behavior.
+- Action: Opened and followed the skill; preserved the existing `Pending -> Processing -> Succeeded/Failed/Expired` attempt lifecycle and implemented provider quality failures as failed provider results so `RewriteJobProcessor` releases reservations instead of finalizing quota.
+- Output artifacts: `FactReconstructRewriteProvider.cs`; C# rewrite tests; existing `RewriteJobProcessor` integration path.
+- Verification evidence: `FactReconstructRewriteProviderTests` cover Sapling unavailable, structure failure, naturalness failure, and successful output; full .NET suite passed 60/60.
+- Limitations: No database schema transition was required in this slice.
+
+### 2026-05-24 - data-module-review - Public runtime Prisma dependency removal
+
+- Agent: Codex
+- Trigger: The public `/app`, rewrite, Stripe checkout, and webhook paths moved away from TS/Prisma/Neon helpers toward Azure Functions and Azure SQL.
+- Action: Opened and followed the skill; removed public route imports of `lib/users`, `lib/quota`, and TS Stripe handlers; changed `/app` to use Azure account summary; removed generated Prisma client type imports from remaining legacy helpers so typecheck no longer depends on generated Prisma client.
+- Output artifacts: `app/app/page.tsx`; `app/api/stripe/checkout/route.ts`; `app/api/stripe/webhook/route.ts`; `lib/users.ts`; `lib/quota.ts`; `lib/subscription.ts`; related tests.
+- Verification evidence: `npm run typecheck`, `npm test`, and `npm run build` passed; Azure `/api/health/db` returned Azure SQL.
+- Limitations: Legacy Prisma/Neon helper files still exist for historical tests and admin/learning cleanup; no data migration or schema deletion was attempted.
+
+### 2026-05-24 - resilience-test-generation - C# provider failure gates
+
+- Agent: Codex
+- Trigger: The C# rewrite provider touches external model and Sapling boundaries where timeouts, unavailable signals, malformed output, structure failures, and naturalness failures must not charge quota.
+- Action: Opened and followed the skill; added deterministic fakes and tests for Sapling unavailable before model call, structure-gate failure, naturalness-gate failure, and successful result JSON; added HTTP adapter tests for OpenAI-compatible/DeepSeek and Sapling request/response behavior.
+- Output artifacts: `FactReconstructRewriteProviderTests.cs`; `RewriteProviderAdapterTests.cs`; provider implementation files.
+- Verification evidence: Focused provider tests passed, then full .NET suite passed 60/60.
+- Limitations: Live signed-in rewrite was not executed because this Codex session has no authenticated Entra user token.
+
+### 2026-05-24 - dotnet-backend-testing - C# rewrite engine/provider implementation
+
+- Agent: Codex
+- Trigger: The task added C#/.NET rewrite-engine logic, provider adapters, DI registration, and worker-facing failure behavior.
+- Action: Opened and followed the skill; used xUnit and deterministic fakes, verified RED failures before implementation, then added domain, provider, adapter, and DI tests.
+- Output artifacts: `RewriteEngineCoreTests.cs`; `FactReconstructRewriteProviderTests.cs`; `RewriteProviderAdapterTests.cs`; `InfrastructureServiceCollectionTests.cs`; C# domain/infrastructure files.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 60/60 and `dotnet build backend-dotnet/ReplyInMyVoice.sln --no-restore` passed.
+- Limitations: Tests use fake model/Sapling clients for deterministic coverage; live provider behavior was limited to app-setting-name checks and unauthenticated Azure smokes.
+
+### 2026-05-24 - claude-heavy-planning-handoff - C# backend migration routing
+
+- Agent: Codex
+- Trigger: The requested goal spans multiple services and could qualify for Claude Code heavy planning.
+- Action: Opened and followed the skill's routing guidance, but did not call Claude CLI because the owner explicitly asked Codex to proceed with implementation and the first safe public-runtime slice was locally executable.
+- Output artifacts: None beyond this log entry.
+- Verification evidence: Codex implemented and verified the migration slice directly with the checks listed above.
+- Limitations: No Claude handoff document or Claude CLI result was produced, so Claude Code did not participate in this run.

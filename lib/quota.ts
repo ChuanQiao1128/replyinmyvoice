@@ -1,6 +1,34 @@
-import type { RewriteCredit, RewriteUsage, User } from "./generated/prisma/client";
-
 import { createId, getSql, nullableDate, requiredDate } from "./db";
+
+export type User = {
+  id: string;
+  subscriptionStatus: string;
+  stripeSubscriptionId: string | null;
+  currentPeriodEnd: Date | null;
+  planTier?: string | null;
+};
+
+export type RewriteUsage = {
+  id: string;
+  userId: string;
+  periodKey: string;
+  periodStart: Date | null;
+  periodEnd: Date | null;
+  count: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type RewriteCredit = {
+  id: string;
+  userId: string;
+  source: string;
+  amountGranted: number;
+  amountConsumed: number;
+  grantedAt: Date;
+  expiresAt: Date | null;
+  stripeEventId: string | null;
+};
 
 export const PLAN_ALLOWANCES = {
   free: 3,

@@ -188,6 +188,56 @@ npm test -- tests/unit/quota.test.ts tests/unit/stripe-webhook-events.test.ts
 - Authenticated `/app` manual smoke with a real Entra session still needs a human browser check because local automated tests do not have a live user access token.
 - Stripe remains sandbox/test mode; no live-mode payment or real charge was performed.
 
+## 2026-05-24 C# Rewrite Backend Migration Slice
+
+This run moved the public rewrite path and remaining public billing/webhook BFF routes toward the all-C#/Azure target while keeping the existing low-cost Azure Functions Consumption + Azure SQL + Service Bus architecture.
+
+Implemented:
+
+- Added C# rewrite-engine deterministic core types for input analysis, fact ledger extraction, strategy routing, budget caps, and structure gates.
+- Added a C# `FactReconstructRewriteProvider` that runs draft Sapling signal, model candidate generation, structure gate, final Sapling signal, and no-charge quality failure handling.
+- Added OpenAI-compatible/DeepSeek and Sapling HTTP adapters in the .NET backend.
+- Updated .NET DI so configured model + Sapling keys use the C# fact-reconstruct provider; local no-key runs keep deterministic fallback.
+- Changed Cloudflare `/api/rewrite` from in-process TS rewrite execution to an Azure Functions proxy with idempotency-key generation and short attempt polling.
+- Changed Cloudflare Stripe checkout and webhook routes to Azure Functions proxies.
+- Changed `/app` to read Azure account/quota state instead of TS/Prisma user/quota helpers.
+- Removed generated Prisma client type dependencies from remaining legacy TS helpers so the app can typecheck without regenerating Prisma client.
+
+Verification:
+
+```text
+dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore: 60 passed
+dotnet build backend-dotnet/ReplyInMyVoice.sln --no-restore: passed
+npm run lint: passed
+npm run typecheck: passed
+npm test: 51 files / 325 tests passed
+npm run build: passed
+npm run cf:build: passed
+restricted-term scan over app/components/public/lib/scripts/tests/backend-dotnet: no matches
+dotnet publish ReplyInMyVoice.Functions Release: passed
+```
+
+Deployment:
+
+```text
+Azure Functions deploy: passed, https://replyinmyvoice-func-dev.azurewebsites.net
+Azure GET /api/health: 200
+Azure GET /api/health/db: 200, Azure SQL
+Azure POST /api/rewrite without auth: 401
+```
+
+Cloudflare local deploy note:
+
+```text
+npm run cf:deploy built successfully but local wrangler deploy stopped because CLOUDFLARE_API_TOKEN is not present in this non-interactive shell. Use GitHub Actions main-branch deployment secrets for the Cloudflare production deploy path.
+```
+
+Limitations:
+
+- The C# rewrite provider now owns the public runtime path, but legacy TS rewrite, learningops, and observability files remain for historical tests/admin cleanup. They should be removed in a follow-up cleanup slice after their admin/reporting replacements are confirmed.
+- No live signed-in browser rewrite was run from this Codex session because no authenticated user access token was available.
+- No Stripe live-mode payment or real charge was performed.
+
 ## 2026-05-23 Azure Backend Cutover QA
 
 Cloudflare production Worker now routes public backend work to Azure Functions and Azure SQL.

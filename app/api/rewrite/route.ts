@@ -1,50 +1,129 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
 
-import { isProduction, optionalEnv } from "../../../lib/env";
+import { getAzureApiBaseUrl } from "../../../lib/azure-api";
+import { getCurrentAccessToken } from "../../../lib/entra-auth";
 import { jsonError, requireSameOrigin } from "../../../lib/http";
-import {
-  chargeSuccessfulRewrite,
-  ensureQuotaAvailable,
-  QuotaExceededError,
-} from "../../../lib/quota";
-import {
-  FactReconstructQualityError,
-  rewriteWithFactReconstruct,
-} from "../../../lib/rewrite-pipeline/pipeline";
-import { getFactReconstructConfig } from "../../../lib/rewrite-pipeline/config";
-import {
-  getRewriteCanaryConfig,
-  getRewriteCanaryDecision,
-  selectRewriteCanaryAssignment,
-} from "../../../lib/rewrite-pipeline/canary";
-import { tryLogRewriteLearningSample } from "../../../lib/rewrite-learning";
-import {
-  createRewriteTelemetryCollector,
-  type RewriteTelemetryCollector,
-  tryPersistRewriteCostLog,
-} from "../../../lib/observability/rewrite-telemetry";
-import { getCurrentAppUser } from "../../../lib/users";
-import { rewriteRequestSchema } from "../../../lib/validation";
 
 export const dynamic = "force-dynamic";
 
-function allowDevQuotaOverride() {
-  const envName = ["ALLOW", "DEV", "SUBSCRIPTION", "BY" + "PASS"].join("_");
-  return (
-    !isProduction() && optionalEnv(envName) === "true"
+type AzureRewriteAttemptResponse = {
+  attemptId?: string;
+  AttemptId?: string;
+  status?: string;
+  Status?: string;
+  resultJson?: string | null;
+  ResultJson?: string | null;
+  errorCode?: string | null;
+  ErrorCode?: string | null;
+};
+
+const qualityFailureCodes = new Set([
+  "quality_signal_unavailable",
+  "structure_gate_failed",
+  "naturalness_gate_failed",
+  "fact_gate_failed",
+  "policy_intent_gate_failed",
+]);
+
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function jsonFromResultJson(resultJson: string) {
+  try {
+    return NextResponse.json(JSON.parse(resultJson));
+  } catch {
+    return jsonError("Rewrite result was not valid JSON.", 502);
+  }
+}
+
+function qualityFailureResponse(errorCode?: string | null) {
+  return NextResponse.json(
+    {
+      code: "quality_gate_failed",
+      charged: false,
+      reason: errorCode ?? "quality_gate_failed",
+      error:
+        "We couldn't produce a rewrite that met our internal quality bar. This attempt was not charged.",
+    },
+    { status: 422 },
   );
 }
 
-function safeErrorMessage(error: unknown) {
-  if (!(error instanceof Error)) {
-    return "Unknown rewrite failure";
+function failedAttemptResponse(errorCode?: string | null) {
+  if (errorCode && qualityFailureCodes.has(errorCode)) {
+    return qualityFailureResponse(errorCode);
   }
 
-  return error.message
-    .replace(/postgresql:\/\/\S+/gi, "[redacted-database-url]")
-    .replace(/Bearer\s+\S+/gi, "Bearer [redacted-token]")
-    .slice(0, 240);
+  return jsonError("Could not rewrite this draft right now.", 500);
+}
+
+async function parseAttemptResponse(response: Response) {
+  const payload = (await response.json().catch(() => null)) as
+    | AzureRewriteAttemptResponse
+    | null;
+  if (!payload) {
+    return null;
+  }
+
+  return {
+    attemptId: payload.attemptId ?? payload.AttemptId,
+    status: payload.status ?? payload.Status,
+    resultJson: payload.resultJson ?? payload.ResultJson,
+    errorCode: payload.errorCode ?? payload.ErrorCode,
+  };
+}
+
+async function pollAttempt({
+  accessToken,
+  attemptId,
+}: {
+  accessToken: string;
+  attemptId: string;
+}) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await sleep(750);
+
+    const response = await fetch(
+      `${getAzureApiBaseUrl()}/api/rewrite-attempts/${attemptId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      return new NextResponse(await response.text(), {
+        status: response.status,
+        headers: {
+          "Content-Type": response.headers.get("content-type") ?? "application/json",
+        },
+      });
+    }
+
+    const payload = await parseAttemptResponse(response);
+    if (!payload?.status) {
+      return jsonError("Rewrite attempt response was invalid.", 502);
+    }
+
+    if (payload.status === "Succeeded" && payload.resultJson) {
+      return jsonFromResultJson(payload.resultJson);
+    }
+
+    if (payload.status === "Failed" || payload.status === "Expired") {
+      return failedAttemptResponse(payload.errorCode);
+    }
+  }
+
+  return NextResponse.json(
+    {
+      code: "rewrite_pending",
+      error: "Rewrite is still processing. Try again in a moment.",
+    },
+    { status: 202 },
+  );
 }
 
 export async function POST(request: Request) {
@@ -53,134 +132,60 @@ export async function POST(request: Request) {
     return originError;
   }
 
-  let input;
-  try {
-    input = rewriteRequestSchema.parse(await request.json());
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        { error: "Invalid rewrite request.", details: error.flatten() },
-        { status: 400 },
-      );
-    }
-    return jsonError("Invalid JSON request body.", 400);
-  }
-
-  const user = await getCurrentAppUser();
-  if (!user) {
+  const accessToken = await getCurrentAccessToken();
+  if (!accessToken) {
     return jsonError("Authentication required.", 401);
   }
 
-  const skipQuotaForLocalDev = allowDevQuotaOverride();
-  const telemetry: RewriteTelemetryCollector = createRewriteTelemetryCollector();
-  const baseRewriteConfig = getFactReconstructConfig();
-  const canaryConfig = getRewriteCanaryConfig(process.env, {
-    controlStrategyVersion: baseRewriteConfig.strategyVersion,
-  });
-  const canaryDecision = await getRewriteCanaryDecision({
-    config: canaryConfig,
-  });
-  const canaryAssignment = selectRewriteCanaryAssignment({
-    config: canaryConfig,
-    decision: canaryDecision,
-    stickinessKey: user.id || telemetry.requestId,
-  });
-  const rewriteConfig = getFactReconstructConfig({
-    strategyVersion: canaryAssignment.strategyVersion,
-  });
-  const strategyVersion = rewriteConfig.strategyVersion;
-
-  try {
-    if (!skipQuotaForLocalDev) {
-      await ensureQuotaAvailable(user);
-    }
-
-    const rewrite = await rewriteWithFactReconstruct(input, {
-      config: rewriteConfig,
-      telemetry,
-    });
-
-    if (!skipQuotaForLocalDev) {
-      await chargeSuccessfulRewrite(user);
-    }
-
-    const learningSampleId = await tryLogRewriteLearningSample({
-      user,
-      input,
-      status: "success",
-      response: rewrite,
-    });
-
-    await tryPersistRewriteCostLog(
-      telemetry.finish({
-        userId: user.id,
-        learningSampleId,
-        input,
-        status: "success",
-        response: rewrite,
-        strategyVersion,
-      }),
-    );
-
-    return NextResponse.json(rewrite);
-  } catch (error) {
-    if (error instanceof QuotaExceededError) {
-      return jsonError("Rewrite quota exhausted.", 402);
-    }
-
-    if (error instanceof FactReconstructQualityError) {
-      console.info("quality_gate_failed", {
-        rejectedCandidates: error.rejectedCandidates,
-        repairCandidatesTried: error.repairCandidatesTried,
-        reason: error.reason,
-      });
-
-      const learningSampleId = await tryLogRewriteLearningSample({
-        user,
-        input,
-        status: "quality_failed",
-        qualityError: error,
-      });
-
-      await tryPersistRewriteCostLog(
-        telemetry.finish({
-          userId: user.id,
-          learningSampleId,
-          input,
-          status: "quality_failed",
-          qualityError: error,
-          strategyVersion,
-        }),
-      );
-
-      return NextResponse.json(
-        {
-          code: "quality_gate_failed",
-          charged: false,
-          reason: error.reason,
-          error:
-            "We couldn't produce a rewrite that met our internal quality bar. This attempt was not charged.",
-          naturalness: error.naturalness,
-        },
-        { status: 422 },
-      );
-    }
-
-    console.error("rewrite_failed", {
-      name: error instanceof Error ? error.name : "UnknownError",
-      message: safeErrorMessage(error),
-    });
-
-    await tryPersistRewriteCostLog(
-      telemetry.finish({
-        userId: user.id,
-        input,
-        status: "server_failed",
-        errorCode: "server_failed",
-        strategyVersion,
-      }),
-    );
-
-    return jsonError("Could not rewrite this draft right now.", 500);
+  const body = await request.text();
+  if (!body.trim()) {
+    return jsonError("Invalid JSON request body.", 400);
   }
+
+  const idempotencyKey =
+    request.headers.get("X-Idempotency-Key") ??
+    (typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
+  const response = await fetch(`${getAzureApiBaseUrl()}/api/rewrite`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": request.headers.get("content-type") ?? "application/json",
+      "X-Idempotency-Key": idempotencyKey,
+    },
+    body,
+    cache: "no-store",
+  });
+
+  if (response.status === 202) {
+    const payload = await parseAttemptResponse(response);
+    if (!payload?.attemptId) {
+      return jsonError("Rewrite attempt response was invalid.", 502);
+    }
+
+    return pollAttempt({ accessToken, attemptId: payload.attemptId });
+  }
+
+  if (response.ok) {
+    const payload = await parseAttemptResponse(response);
+    if (payload?.status === "Succeeded" && payload.resultJson) {
+      return jsonFromResultJson(payload.resultJson);
+    }
+
+    return new NextResponse(JSON.stringify(payload ?? {}), {
+      status: response.status,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  return new NextResponse(await response.text(), {
+    status: response.status,
+    headers: {
+      "Content-Type": response.headers.get("content-type") ?? "application/json",
+    },
+  });
 }

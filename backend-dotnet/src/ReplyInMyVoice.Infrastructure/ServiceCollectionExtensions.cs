@@ -67,28 +67,79 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IRewriteJobPublisher>(sp => sp.GetRequiredService<InMemoryRewriteJobPublisher>());
         }
 
-        services.AddScoped<IRewriteProvider>(sp =>
-        {
-            var apiKey = configuration["OPENAI_API_KEY"];
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                return new DeterministicRewriteProvider();
-            }
+        var openAiBaseUrl = configuration["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1";
+        var modelApiKey = ResolveOpenAiCompatibleApiKey(configuration, openAiBaseUrl);
+        var saplingApiKey = configuration["SAPLING_API_KEY"];
+        var model = configuration["OPENAI_MODEL_MID_WRITER"]
+            ?? configuration["OPENAI_MODEL"]
+            ?? "gpt-4o-mini";
+        var openAiTimeoutSeconds = int.TryParse(configuration["OPENAI_TIMEOUT_SEC"], out var parsedOpenAiTimeout)
+            ? parsedOpenAiTimeout
+            : 35;
+        var signalTimeoutSeconds = int.TryParse(configuration["WRITING_SIGNAL_TIMEOUT_SEC"], out var parsedSignalTimeout)
+            ? parsedSignalTimeout
+            : 10;
 
-            var clientFactory = sp.GetRequiredService<IHttpClientFactory>();
-            var model = configuration["OPENAI_MODEL"] ?? "gpt-4o-mini";
-            var baseUrl = configuration["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1";
-            var timeoutSeconds = int.TryParse(configuration["OPENAI_TIMEOUT_SEC"], out var parsed)
-                ? parsed
-                : 25;
-            return new OpenAiRewriteProvider(
-                clientFactory.CreateClient(nameof(OpenAiRewriteProvider)),
-                apiKey,
-                model,
-                baseUrl,
-                TimeSpan.FromSeconds(timeoutSeconds));
-        });
+        if (string.IsNullOrWhiteSpace(modelApiKey) && string.IsNullOrWhiteSpace(saplingApiKey))
+        {
+            services.AddScoped<IRewriteProvider, DeterministicRewriteProvider>();
+        }
+        else
+        {
+            services.AddScoped<IRewriteModelClient>(sp =>
+            {
+                if (string.IsNullOrWhiteSpace(modelApiKey))
+                {
+                    return new UnavailableRewriteModelClient("model_not_configured");
+                }
+
+                var clientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                return new OpenAiCompatibleRewriteModelClient(
+                    clientFactory.CreateClient(nameof(OpenAiCompatibleRewriteModelClient)),
+                    modelApiKey,
+                    model,
+                    openAiBaseUrl,
+                    TimeSpan.FromSeconds(openAiTimeoutSeconds));
+            });
+            services.AddScoped<IWritingSignalClient>(sp =>
+            {
+                if (string.IsNullOrWhiteSpace(saplingApiKey))
+                {
+                    return new UnavailableWritingSignalClient("sapling_not_configured");
+                }
+
+                var clientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                return new SaplingWritingSignalClient(
+                    clientFactory.CreateClient(nameof(SaplingWritingSignalClient)),
+                    saplingApiKey,
+                    TimeSpan.FromSeconds(signalTimeoutSeconds));
+            });
+            services.AddScoped<IRewriteProvider, FactReconstructRewriteProvider>();
+        }
 
         return services;
+    }
+
+    private static string? ResolveOpenAiCompatibleApiKey(IConfiguration configuration, string baseUrl)
+    {
+        if (IsDeepSeekBaseUrl(baseUrl))
+        {
+            return configuration["DEEPSEEK_API_KEY"] ?? configuration["OPENAI_API_KEY"];
+        }
+
+        return configuration["OPENAI_API_KEY"] ?? configuration["DEEPSEEK_API_KEY"];
+    }
+
+    private static bool IsDeepSeekBaseUrl(string value)
+    {
+        try
+        {
+            var host = new Uri(value).Host.ToLowerInvariant();
+            return host == "api.deepseek.com" || host.EndsWith(".deepseek.com", StringComparison.Ordinal);
+        }
+        catch (UriFormatException)
+        {
+            return false;
+        }
     }
 }

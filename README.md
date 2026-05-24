@@ -7,8 +7,6 @@ Reply In My Voice turns rough drafts into clear, natural replies for teacher mes
 ```bash
 npm install
 cp .env.example .env.local
-npm run prisma:generate
-npm run prisma:migrate -- --name init
 npm run dev
 ```
 
@@ -21,9 +19,11 @@ nvm use
 ## Required Services
 
 - Microsoft Entra External ID with Google sign-in for authentication
-- Neon Postgres for Prisma data
+- Azure Functions for public backend API routes
+- Azure SQL for account, quota, rewrite attempts, Stripe events, and operational data
+- Azure Service Bus for queued rewrite processing
 - Stripe sandbox for Checkout, Billing Portal, and webhooks
-- OpenAI for rewrite generation
+- DeepSeek/OpenAI-compatible chat completions for rewrite generation
 - Sapling for Naturalness Check
 - Cloudflare Workers/OpenNext for deployment
 
@@ -44,20 +44,30 @@ npm run eval:scenarios
 
 ## Rewrite Strategy
 
-The default production strategy is `fact_reconstruct`: extract facts, infer a
-lightweight scenario/style card, generate three candidates, review/finalize,
-run fact gates, then use Sapling as a final Naturalness Check gate. Sapling
-scores are not fed into prompts. When the full-text Naturalness Check misses,
-the pipeline uses sentence-level scores internally to repair only the highest
-risk sentences before trying strong-model escalation. If the bounded workflow
-cannot produce a fact-safe rewrite under the configured quality bar, the API
-returns a quality-failure response and does not charge usage.
+The public `/api/rewrite` route is a Cloudflare/Next compatibility proxy to the
+.NET Azure Functions backend. The C# backend owns rewrite attempts, quota
+reservation/finalization, Service Bus processing, model calls, and Sapling
+Naturalness Check gating. If the bounded workflow cannot produce a fact-safe
+rewrite under the configured quality bar, the backend marks the attempt failed,
+releases the reservation, and the proxy returns a no-charge quality-failure
+response.
 
 ## Database
 
-Runtime uses `DATABASE_URL`. Migrations use `DIRECT_URL`.
+Public runtime data is served by Azure SQL through Azure Functions.
 
-Allowed migration commands:
+EF Core migration commands:
+
+```bash
+dotnet ef database update \
+  --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
+  --startup-project backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj \
+  --context AppDbContext
+```
+
+Legacy Prisma/Neon files remain for historical tests and cleanup work only; they
+are not the public account/quota/rewrite runtime path. Historical Prisma
+migration commands:
 
 ```bash
 npx prisma generate

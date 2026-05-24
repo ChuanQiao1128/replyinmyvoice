@@ -1,0 +1,52 @@
+using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using ReplyInMyVoice.Infrastructure;
+using ReplyInMyVoice.Infrastructure.Providers;
+
+namespace ReplyInMyVoice.Tests;
+
+public sealed class InfrastructureServiceCollectionTests
+{
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_uses_deterministic_rewrite_provider_without_live_keys()
+    {
+        var provider = BuildProvider([]);
+
+        provider.GetRequiredService<IRewriteProvider>()
+            .Should()
+            .BeOfType<DeterministicRewriteProvider>();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_uses_fact_reconstruct_provider_when_model_and_signal_keys_are_configured()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OPENAI_BASE_URL"] = "https://api.deepseek.com",
+            ["DEEPSEEK_API_KEY"] = "deepseek-test-key",
+            ["OPENAI_MODEL_MID_WRITER"] = "deepseek-v4-pro",
+            ["SAPLING_API_KEY"] = "sapling-test-key",
+        });
+
+        provider.GetRequiredService<IRewriteProvider>()
+            .Should()
+            .BeOfType<FactReconstructRewriteProvider>();
+        provider.GetRequiredService<IRewriteModelClient>()
+            .Should()
+            .BeOfType<OpenAiCompatibleRewriteModelClient>();
+        provider.GetRequiredService<IWritingSignalClient>()
+            .Should()
+            .BeOfType<SaplingWritingSignalClient>();
+    }
+
+    private static ServiceProvider BuildProvider(Dictionary<string, string?> values)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(values)
+            .Build();
+        var services = new ServiceCollection();
+        services.AddReplyInMyVoiceInfrastructure(configuration);
+        return services.BuildServiceProvider();
+    }
+}
