@@ -4,9 +4,9 @@ import { InteractiveDemo } from "./interactive-demo";
 
 const stats = [
   { v: "3 free", l: "rewrites after sign-up" },
-  { v: "Packs", l: "from NZ$2.50 · no subscription" },
-  { v: "Pro/API", l: "NZ$19.90/mo · 90 + API" },
-  { v: "Warm · Direct", l: "simple tone presets" },
+  { v: "Any draft", l: "emails, replies, notes, messages" },
+  { v: "Facts intact", l: "no invented details" },
+  { v: "No bad result", l: "or it doesn't count" },
 ];
 
 export function Hero() {
@@ -18,21 +18,21 @@ export function Hero() {
           Start free · Buy rewrites from NZ$2.50 · Pro/API for developers
         </div>
         <h1 style={{ marginTop: 28 }}>
-          Send the message
+          Send it like
           <br />
-          you&apos;ve been <span className="alt">avoiding.</span>
+          you <span className="alt">wrote it.</span>
         </h1>
         <p className="hero-lead">
-          Turn rough, awkward, or too-stiff drafts into clear, natural replies
-          for extension requests, lecturer emails, client replies, and
-          group-project messages while keeping your facts intact.
+          Paste a draft that sounds stiff, generic, or too polished. Reply In
+          My Voice rewrites it into a clear, natural message — your meaning and
+          facts intact.
         </p>
         <div className="hero-cta">
           <Link href="/sign-up" className="btn btn-primary btn-lg">
             Start rewriting <span className="btn-arrow">→</span>
           </Link>
           <a href="#workflow" className="btn btn-ghost btn-lg">
-            See examples
+            See before &amp; after
           </a>
         </div>
         <div className="hero-stats">
