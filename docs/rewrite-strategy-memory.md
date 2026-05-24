@@ -897,3 +897,29 @@ Latest smoke evidence:
 - Semantic and policy preservation belongs to the LLM fact check plus the policy/forbidden gate. A candidate that keeps every atom, passes structure, passes policy/forbidden checks, and receives an LLM fact pass should not be rejected only because the prose was naturally reworded.
 - Facts-first fallback is terminal when it keeps all locked atoms and passes structure plus policy/forbidden checks. Empty `fact_check_failed` should be reserved for real atom loss, invented concrete data, or unrepairable policy/forbidden violations.
 - Option labels such as `Accept` and `Switch` can be natural action wording for source-provided options. They should not be treated as invented person facts, while invented names, amounts, dates, counts, and IDs remain hard failures.
+
+## 2026-05-24 C# DeepSeek/Sapling 100-Case Eval Lessons
+
+Latest C# provider evidence:
+
+- Date: 2026-05-24.
+- Mode: `EVAL_MODE=full EVAL_LIMIT=100 EVAL_MAX_ATTEMPTS=10`.
+- Provider route: C# `FactReconstructRewriteProvider` with DeepSeek-compatible chat completions and Sapling writing signal.
+- Cases evaluated: 100.
+- Successful rewrites: 100/100.
+- Measured cases: 100/100.
+- Rewrites below 50% signal: 100/100.
+- Baseline-above-threshold average signal drop: 60 points across 13 cases.
+- Total real-provider calls: 133 model calls and 206 Sapling calls.
+- Report artifact: `docs/rewrite-eval-results/20260524-034340-csharp-rewrite-full.md`.
+
+Promoted lessons:
+
+- C# rewrite parity must be measured through the production provider path, not only the legacy TypeScript eval harness. A small C# eval runner now exercises the real provider, gates, DeepSeek-compatible model client, and Sapling client together.
+- Sapling unavailable/timeout responses need bounded retry before no-charge quality failure. The C# provider retries transient writing-signal unavailability up to three attempts.
+- Exact fact gates must normalize common count equivalents: `both` and number words should satisfy matching digit count facts, while wrong or missing amounts/dates still fail.
+- Amount extraction must support thousands separators and cents, including values such as `$2,220`, `$2,012.50`, and `$9,212.50`.
+- Dense billing, membership, refund, return, renewal, and transfer cases must explicitly include original paid amounts and original purchase/start dates when provided.
+- Sponsor/package and scheduling replies must explicitly preserve included benefits, requested days, and available options before asking for assets, confirmation, or next decisions.
+- Workplace coaching replies must not invent judgment labels such as `dismissive`, `careless`, `rude`, `negligent`, or `unprofessional` unless the source facts provide that wording.
+- No-advice constraints should be handled by stating operational facts only. Do not add professional-advice redirects such as asking an accountant, lawyer, or doctor unless the source facts provide that next step.

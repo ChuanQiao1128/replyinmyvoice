@@ -269,7 +269,7 @@ public static class RewriteInputAnalyzer
     {
         var patterns = new[]
         {
-            @"\b(?:NZD|USD|AUD)?\s?\$\d+(?:[.,]\d{2})?\b",
+            @"\b(?:NZD|USD|AUD)?\s?\$(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?\b",
             @"\b\d+\b",
             @"\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b",
             @"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\b",
@@ -283,7 +283,7 @@ public static class RewriteInputAnalyzer
 public static class FactLedgerExtractor
 {
     private static readonly Regex AmountRegex = new(
-        @"\b(?:NZD|USD|AUD)?\s?\$\d+(?:[.,]\d{2})?\b",
+        @"\b(?:NZD|USD|AUD)?\s?\$(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex DateRegex = new(
@@ -291,7 +291,7 @@ public static class FactLedgerExtractor
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex CountRegex = new(
-        @"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b",
+        @"(?<![$#A-Za-z0-9.,-])(?:one|two|three|four|five|six|seven|eight|nine|ten|(?:\d{1,3}(?:,\d{3})+|\d+))(?![A-Za-z0-9.,-])",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex NegativeConstraintRegex = new(
@@ -525,6 +525,10 @@ public static class RewriteStructureGate
         @"(?m)^\s*(?:\d+[.)]|[-*•]|>|"")",
         RegexOptions.Compiled);
 
+    private static readonly Regex PlaceholderOrDanglingLabelRegex = new(
+        @"(?:\[[^\]]*(?:name|title|role)[^\]]*\]|(?:^|[.!?]\s+)(?:New Student|Customer Support Team|Support Team|Teacher Name)\s*$)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public static RewriteGateResult Check(string candidateText, RewriteInputAnalysis analysis)
     {
         var failureKinds = new List<RewriteFailureKind>();
@@ -546,6 +550,12 @@ public static class RewriteStructureGate
         {
             failureKinds.Add(RewriteFailureKind.BrokenQuoteBoundary);
             reasons.Add("Candidate may have broken quote or list boundaries.");
+        }
+
+        if (PlaceholderOrDanglingLabelRegex.IsMatch(candidateText))
+        {
+            failureKinds.Add(RewriteFailureKind.SupportMacroVoice);
+            reasons.Add("Candidate contains a placeholder or dangling role label.");
         }
 
         return new RewriteGateResult(failureKinds.Count == 0, failureKinds, reasons);
@@ -573,4 +583,94 @@ public static class RewriteStructureGate
 
     private static bool HasLikelyBrokenQuoteBoundary(string text) =>
         ListOrQuoteRegex.IsMatch(text) && DetachedNumberedMarkerRegex.IsMatch(text);
+}
+
+public static class RewriteFactGate
+{
+    private static readonly Regex UnsupportedJudgmentRegex = new(
+        @"\b(?:careless|dismissive|irresponsible|negligent|rude|unprofessional)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public static RewriteGateResult Check(string candidateText, RewriteFactLedger factLedger)
+    {
+        var missingFacts = factLedger.Facts
+            .Where(IsExactCriticalFact)
+            .Where(fact => !ContainsFact(candidateText, fact.Text))
+            .ToArray();
+        var unsupportedJudgments = UnsupportedJudgmentRegex.Matches(candidateText)
+            .Select(match => match.Value)
+            .Where(judgment => !LedgerContains(factLedger, judgment))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (missingFacts.Length == 0 && unsupportedJudgments.Length == 0)
+        {
+            return new RewriteGateResult(true, [], []);
+        }
+
+        var failureKinds = new List<RewriteFailureKind>();
+        var reasons = new List<string>();
+        if (missingFacts.Length > 0)
+        {
+            failureKinds.Add(RewriteFailureKind.FactLoss);
+            reasons.AddRange(missingFacts.Select(fact => $"Candidate is missing critical {fact.Category} fact: {fact.Text}."));
+        }
+
+        if (unsupportedJudgments.Length > 0)
+        {
+            failureKinds.Add(RewriteFailureKind.UnsupportedFact);
+            reasons.AddRange(unsupportedJudgments.Select(judgment => $"Candidate adds unsupported judgment label: {judgment}."));
+        }
+
+        return new RewriteGateResult(
+            false,
+            failureKinds,
+            reasons);
+    }
+
+    private static bool IsExactCriticalFact(RewriteFact fact) =>
+        fact.Importance == RewriteFactImportance.Critical &&
+        fact.Source is "whatHappened" or "factsToPreserve" &&
+        !string.Equals(fact.Text, "00", StringComparison.Ordinal) &&
+        fact.Category is RewriteFactCategory.Amount
+            or RewriteFactCategory.DateOrDeadline
+            or RewriteFactCategory.Count;
+
+    private static bool ContainsFact(string candidateText, string factText) =>
+        NormalizeForFactCheck(candidateText).Contains(NormalizeForFactCheck(factText), StringComparison.Ordinal);
+
+    private static bool LedgerContains(RewriteFactLedger factLedger, string value) =>
+        factLedger.Facts.Any(fact =>
+            NormalizeForFactCheck(fact.Text).Contains(NormalizeForFactCheck(value), StringComparison.Ordinal));
+
+    private static string NormalizeForFactCheck(string value)
+    {
+        var normalized = NormalizeNumberWords(value.ToLowerInvariant());
+        normalized = Regex.Replace(normalized, @"(?<=\d),(?=\d)", string.Empty);
+        return Regex.Replace(normalized, @"\s+", " ").Trim();
+    }
+
+    private static string NormalizeNumberWords(string value)
+    {
+        var normalized = value;
+        foreach (var (word, digit) in new[]
+                 {
+                     ("both", "2"),
+                     ("one", "1"),
+                     ("two", "2"),
+                     ("three", "3"),
+                     ("four", "4"),
+                     ("five", "5"),
+                     ("six", "6"),
+                     ("seven", "7"),
+                     ("eight", "8"),
+                     ("nine", "9"),
+                     ("ten", "10"),
+                 })
+        {
+            normalized = Regex.Replace(normalized, $@"\b{word}\b", digit, RegexOptions.IgnoreCase);
+        }
+
+        return normalized;
+    }
 }

@@ -22,7 +22,17 @@ public sealed record RewriteModelRequest(
     RewriteRequest UserRequest,
     RewriteInputAnalysis InputAnalysis,
     RewriteFactLedger FactLedger,
-    RewriteStrategy Strategy);
+    RewriteStrategy Strategy,
+    IReadOnlyList<RewriteAttemptHistoryItem> AttemptHistory);
+
+public sealed record RewriteAttemptHistoryItem(
+    int AttemptNo,
+    RewriteStrategy Strategy,
+    string CandidateText,
+    IReadOnlyList<RewriteFailureKind> FailureKinds,
+    string FailureAnalysis,
+    int? DraftAiLikePercent,
+    int? RewriteAiLikePercent);
 
 public sealed record RewriteModelResult(
     string? CandidateText,
@@ -43,6 +53,8 @@ public sealed class FactReconstructRewriteProvider(
     IWritingSignalClient writingSignalClient,
     FactReconstructRewriteOptions? options = null) : IRewriteProvider
 {
+    private const int MaxWritingSignalAttempts = 3;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -56,7 +68,7 @@ public sealed class FactReconstructRewriteProvider(
         RewriteRequest request,
         CancellationToken cancellationToken)
     {
-        var draftSignal = await writingSignalClient.MeasureAsync(request.RoughDraftReply, cancellationToken);
+        var draftSignal = await MeasureWritingSignalWithRetryAsync(request.RoughDraftReply, cancellationToken);
         if (!HasSignal(draftSignal))
         {
             return new RewriteProviderResult(null, false, "quality_signal_unavailable");
@@ -65,60 +77,176 @@ public sealed class FactReconstructRewriteProvider(
         var analysis = RewriteInputAnalyzer.Analyze(request);
         var ledger = FactLedgerExtractor.Extract(request);
         var budget = RewriteBudgetManager.Create(analysis, _options.RequestedMaxAttempts);
-        _ = budget;
-
         var decision = RewriteStrategyRouter.ChooseInitial(analysis);
-        var modelResult = await modelClient.GenerateCandidateAsync(
-            new RewriteModelRequest(attemptId, request, analysis, ledger, decision.Strategy),
-            cancellationToken);
+        var history = new List<RewriteAttemptHistoryItem>();
 
-        if (!modelResult.Success || string.IsNullOrWhiteSpace(modelResult.CandidateText))
+        for (var attemptNo = 1; attemptNo <= budget.MaxAttempts; attemptNo++)
         {
-            return new RewriteProviderResult(null, false, modelResult.ErrorCode ?? "rewrite_model_failed");
+            if (decision.Strategy == RewriteStrategy.QualityFailure)
+            {
+                break;
+            }
+
+            var modelResult = await modelClient.GenerateCandidateAsync(
+                new RewriteModelRequest(
+                    attemptId,
+                    request,
+                    analysis,
+                    ledger,
+                    decision.Strategy,
+                    history),
+                cancellationToken);
+
+            if (!modelResult.Success || string.IsNullOrWhiteSpace(modelResult.CandidateText))
+            {
+                return new RewriteProviderResult(null, false, modelResult.ErrorCode ?? "rewrite_model_failed");
+            }
+
+            var candidate = modelResult.CandidateText.Trim();
+            var structureGate = RewriteStructureGate.Check(candidate, analysis);
+            if (!structureGate.Passed)
+            {
+                history.Add(CreateHistoryItem(
+                    attemptNo,
+                    decision.Strategy,
+                    candidate,
+                    structureGate.FailureKinds,
+                    string.Join(" ", structureGate.Reasons),
+                    draftSignal.AiLikePercent,
+                    null));
+                decision = ChooseNext(analysis, history);
+                continue;
+            }
+
+            var factGate = RewriteFactGate.Check(candidate, ledger);
+            if (!factGate.Passed)
+            {
+                history.Add(CreateHistoryItem(
+                    attemptNo,
+                    decision.Strategy,
+                    candidate,
+                    factGate.FailureKinds,
+                    string.Join(" ", factGate.Reasons),
+                    draftSignal.AiLikePercent,
+                    null));
+                decision = ChooseNext(analysis, history);
+                continue;
+            }
+
+            var rewriteSignal = await MeasureWritingSignalWithRetryAsync(candidate, cancellationToken);
+            if (!HasSignal(rewriteSignal))
+            {
+                return new RewriteProviderResult(null, false, "quality_signal_unavailable");
+            }
+
+            if (!PassesNaturalnessRule(draftSignal.AiLikePercent!.Value, rewriteSignal.AiLikePercent!.Value))
+            {
+                history.Add(CreateHistoryItem(
+                    attemptNo,
+                    decision.Strategy,
+                    candidate,
+                    [NaturalnessFailureKind(draftSignal.AiLikePercent.Value, rewriteSignal.AiLikePercent.Value)],
+                    $"Naturalness gate failed: draft {draftSignal.AiLikePercent.Value}%, rewrite {rewriteSignal.AiLikePercent.Value}%.",
+                    draftSignal.AiLikePercent,
+                    rewriteSignal.AiLikePercent));
+                decision = ChooseNext(analysis, history);
+                continue;
+            }
+
+            return new RewriteProviderResult(
+                JsonSerializer.Serialize(
+                    new RewriteProviderSuccessPayload(
+                        candidate,
+                        ["Rebuilt the reply from request facts."],
+                        [],
+                        NaturalnessPayload.From(
+                            draftSignal.AiLikePercent.Value,
+                            rewriteSignal.AiLikePercent.Value),
+                        new RewriteOptimizationPayload(
+                            decision.Strategy.ToString(),
+                            analysis.Scenario.ToString(),
+                            ledger.Facts.Count,
+                            attemptNo,
+                            history.Count)),
+                    JsonOptions),
+                true,
+                null);
         }
 
-        var structureGate = RewriteStructureGate.Check(modelResult.CandidateText, analysis);
-        if (!structureGate.Passed)
-        {
-            return new RewriteProviderResult(null, false, "structure_gate_failed");
-        }
-
-        var rewriteSignal = await writingSignalClient.MeasureAsync(modelResult.CandidateText, cancellationToken);
-        if (!HasSignal(rewriteSignal))
-        {
-            return new RewriteProviderResult(null, false, "quality_signal_unavailable");
-        }
-
-        if (!PassesNaturalnessRule(draftSignal.AiLikePercent!.Value, rewriteSignal.AiLikePercent!.Value))
-        {
-            return new RewriteProviderResult(null, false, "naturalness_gate_failed");
-        }
+        var lastFailure = history.LastOrDefault();
+        var errorCode = lastFailure?.FailureKinds.Contains(RewriteFailureKind.SignalNotImproved) == true ||
+            lastFailure?.FailureKinds.Contains(RewriteFailureKind.LowSignalGotWorse) == true
+                ? "naturalness_gate_failed"
+                : lastFailure?.FailureKinds.Contains(RewriteFailureKind.FactLoss) == true
+                    ? "fact_gate_failed"
+                    : lastFailure?.FailureKinds.Count > 0
+                        ? "structure_gate_failed"
+                        : "rewrite_quality_failed";
 
         return new RewriteProviderResult(
             JsonSerializer.Serialize(
-                new RewriteProviderSuccessPayload(
-                    modelResult.CandidateText.Trim(),
-                    ["Rebuilt the reply from request facts."],
-                    [],
-                    NaturalnessPayload.From(
-                        draftSignal.AiLikePercent.Value,
-                        rewriteSignal.AiLikePercent.Value),
-                    new RewriteOptimizationPayload(
-                        decision.Strategy.ToString(),
-                        analysis.Scenario.ToString(),
-                        ledger.Facts.Count)),
+                new RewriteProviderFailurePayload(errorCode, history),
                 JsonOptions),
-            true,
-            null);
+            false,
+            errorCode);
     }
 
     private static bool HasSignal(WritingSignalResult result) =>
         result.Available && result.AiLikePercent is >= 0 and <= 100;
 
+    private async Task<WritingSignalResult> MeasureWritingSignalWithRetryAsync(
+        string text,
+        CancellationToken cancellationToken)
+    {
+        WritingSignalResult? lastResult = null;
+        for (var attempt = 1; attempt <= MaxWritingSignalAttempts; attempt++)
+        {
+            lastResult = await writingSignalClient.MeasureAsync(text, cancellationToken);
+            if (HasSignal(lastResult))
+            {
+                return lastResult;
+            }
+        }
+
+        return lastResult ?? new WritingSignalResult(false, null, "quality_signal_unavailable");
+    }
+
     private bool PassesNaturalnessRule(int draftPercent, int rewritePercent) =>
         draftPercent > _options.NaturalnessThreshold
             ? rewritePercent <= _options.NaturalnessThreshold
             : rewritePercent <= draftPercent;
+
+    private static RewriteStrategyDecision ChooseNext(
+        RewriteInputAnalysis analysis,
+        IReadOnlyList<RewriteAttemptHistoryItem> history) =>
+        RewriteStrategyRouter.ChooseNext(
+            analysis,
+            new RewriteFailureEvidence(
+                history.Last().FailureKinds,
+                history.Select(item => item.Strategy).ToArray(),
+                history.Count));
+
+    private static RewriteAttemptHistoryItem CreateHistoryItem(
+        int attemptNo,
+        RewriteStrategy strategy,
+        string candidate,
+        IReadOnlyList<RewriteFailureKind> failureKinds,
+        string failureAnalysis,
+        int? draftAiLikePercent,
+        int? rewriteAiLikePercent) =>
+        new(
+            attemptNo,
+            strategy,
+            candidate,
+            failureKinds,
+            string.IsNullOrWhiteSpace(failureAnalysis) ? "Candidate failed rewrite gates." : failureAnalysis,
+            draftAiLikePercent,
+            rewriteAiLikePercent);
+
+    private static RewriteFailureKind NaturalnessFailureKind(int draftPercent, int rewritePercent) =>
+        rewritePercent > draftPercent
+            ? RewriteFailureKind.LowSignalGotWorse
+            : RewriteFailureKind.SignalNotImproved;
 
     private sealed record RewriteProviderSuccessPayload(
         string RewrittenText,
@@ -153,5 +281,11 @@ public sealed class FactReconstructRewriteProvider(
     private sealed record RewriteOptimizationPayload(
         string Strategy,
         string Scenario,
-        int FactCount);
+        int FactCount,
+        int AttemptsUsed,
+        int FailedAttempts);
+
+    private sealed record RewriteProviderFailurePayload(
+        string ErrorCode,
+        IReadOnlyList<RewriteAttemptHistoryItem> AttemptHistory);
 }
