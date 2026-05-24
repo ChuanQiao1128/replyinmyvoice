@@ -82,6 +82,7 @@ public sealed class OpenAiCompatibleRewriteModelClient(
                     You write send-ready email replies from provided facts.
                     Return JSON only with rewrittenText.
                     Preserve names, dates, money, counts, conditions, policies, and negative constraints.
+                    Preserve uncertainty: do not change may, might, seems, appears, likely, or looks like into definite claims such as is, will, confirmed, or due to.
                     Carry reviewed Amount, DateOrDeadline, and Count values into the reply exactly.
                     In payment, invoice, refund, return, membership, renewal, or transfer cases, include the original paid amount and original purchase/start date when provided.
                     If the facts name included benefits, requested days, or available options, state those explicitly before asking for assets or a decision.
@@ -167,7 +168,7 @@ public sealed class OpenAiCompatibleRewriteModelClient(
             RewriteStrategy.FullStructureRewrite =>
                 "Group related facts into send-ready paragraphs: acknowledge, explain status, give options or constraints, then ask for the next step when needed.",
             RewriteStrategy.SupportPolicyOptionsRewrite =>
-                "Preserve policy limits, eligibility conditions, IDs, invoice totals, original paid amounts, start or purchase dates, and no-change-without-confirmation constraints. Make options clear without promising approval.",
+                "Preserve policy limits, uncertainty, eligibility conditions, IDs, invoice totals, original paid amounts, start or purchase dates, and no-change-without-confirmation constraints. Make options clear without promising approval.",
             RewriteStrategy.QuoteListSafeRewrite =>
                 "Keep list or quoted-thread boundaries clear. Answer items in a stable structure without detached list markers.",
             RewriteStrategy.MessyThreadCleanupRewrite =>

@@ -223,6 +223,13 @@ Remaining risk:
 - If all measured candidates are incomplete and the original draft also lacks message/context facts, the API must raise a quality failure instead of returning an incomplete original as success.
 - Customer-usable pass and strict signal pass are separate metrics. Customer-usable release gating is facts preserved, no unsupported additions, no quality failure, and no worse selected signal. Strict signal pass is still tracked for ongoing optimization.
 
+## Certainty Preservation Lesson Promoted On 2026-05-25
+
+- A rewrite can lower the AI-like signal and still create fact risk by strengthening uncertainty. Logistics, billing, support-policy, legal, medical, financial, and eligibility replies must preserve modal language such as `may`, `might`, `seems`, `appears`, `likely`, and `looks like`.
+- Do not rewrite `The delay seems to be related to...` as `The delay is due to...` unless the source facts explicitly confirm the cause. A safe rewrite can still be concise by using language such as `The delay looks like it is due to...`.
+- Promote uncertainty preservation into deterministic fact gates, not only prompt guidance. If a candidate restates the same uncertain source claim without an uncertainty marker, reject it as policy/intent drift and retry through the facts-first or policy-safe strategy.
+- Prompt guidance should explicitly tell model candidates not to turn uncertain source claims into definite claims such as `is`, `will`, `confirmed`, or `due to`.
+
 ## Current Diagnosis Tags
 
 Use these tags to explain why a draft or failed candidate is likely scoring high:

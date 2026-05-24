@@ -1599,3 +1599,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `lib/rewrite-response.ts`; `app/api/rewrite/route.ts`; `app/api/rewrite-attempts/[attemptId]/route.ts`; `components/app/rewrite-workspace.tsx`; `tests/unit/rewrite-response.test.ts`; `tests/unit/rewrite-api-quality.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Watched the new focused tests fail before implementation, then pass. `npm test` passed 99/99; `npm run typecheck` passed; `npm run lint` passed; `npx playwright test tests/e2e/auth-gate.spec.ts --project=chromium` passed 3/3; `npm run cf:build` completed and included `/api/rewrite-attempts/[attemptId]`.
 - Limitations: Local Playwright verification covered signed-out browser gates and API rejection only; this Codex session still does not have the owner's authenticated production browser session, so the final live signed-in rewrite flow needs owner-side retest after deployment.
+
+### 2026-05-25 - dotnet-backend-testing - Rewrite certainty-preservation gate
+
+- Agent: Codex
+- Trigger: Owner asked to modify the rewrite engine after a test case showed good AI-signal reduction but a fact risk from changing `seems` into a definite `is due to` claim.
+- Action: Opened and followed the skill; wrote a failing xUnit regression test before production changes, then added deterministic uncertainty-preservation handling in the C# rewrite fact gate and prompt guidance.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineCoreTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/RewriteEngine/RewriteEngineCore.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Providers/FactReconstructRewriteProvider.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Providers/OpenAiCompatibleRewriteModelClient.cs`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: The focused test `FactGate_blocks_uncertainty_strengthening_from_seems_to_is_due_to` first failed because the current gate passed the candidate; after implementation it passed. `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore --filter Rewrite` passed 38/38.
+- Limitations: This verifies deterministic gate behavior and rewrite prompt guidance locally; it does not prove a live Sapling/DeepSeek production rewrite score for the exact Emma sample until remote authenticated rewrite smoke runs after deployment.
+
+### 2026-05-25 - resilience-test-generation - Applicability check for certainty-preservation change
+
+- Agent: Codex
+- Trigger: The change touches provider-backed rewrite quality gates, so Codex checked whether resilience-test-generation was needed for retries, provider failures, idempotency, or recovery behavior.
+- Action: Opened the skill and determined this was a deterministic fact-preservation bugfix, not a retry/timeout/provider-failure behavior change. No resilience matrix was generated.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Existing rewrite provider retry tests remained within the `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore --filter Rewrite` run, which passed 38/38.
+- Limitations: No new provider failure scenario was added because the requested behavior is certainty preservation, not dependency failure handling.

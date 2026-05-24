@@ -177,7 +177,10 @@ public sealed class FactReconstructRewriteProvider(
         var errorCode = lastFailure?.FailureKinds.Contains(RewriteFailureKind.SignalNotImproved) == true ||
             lastFailure?.FailureKinds.Contains(RewriteFailureKind.LowSignalGotWorse) == true
                 ? "naturalness_gate_failed"
-                : lastFailure?.FailureKinds.Contains(RewriteFailureKind.FactLoss) == true
+                : lastFailure?.FailureKinds.Contains(RewriteFailureKind.FactLoss) == true ||
+                    lastFailure?.FailureKinds.Contains(RewriteFailureKind.UnsupportedFact) == true ||
+                    lastFailure?.FailureKinds.Contains(RewriteFailureKind.PolicyIntentDrift) == true ||
+                    lastFailure?.FailureKinds.Contains(RewriteFailureKind.NoChangeWithoutConfirmationMissing) == true
                     ? "fact_gate_failed"
                     : lastFailure?.FailureKinds.Count > 0
                         ? "structure_gate_failed"

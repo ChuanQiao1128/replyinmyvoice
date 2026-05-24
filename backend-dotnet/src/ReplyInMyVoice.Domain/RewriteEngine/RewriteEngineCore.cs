@@ -298,6 +298,10 @@ public static class FactLedgerExtractor
         @"(?<sentence>[^.!?\n]*(?:not|no|never|without confirmation|unless|cannot|can't|will not|do not|does not|did not)[^.!?\n]*[.!?]?)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex UncertainConditionRegex = new(
+        @"(?<sentence>[^.!?\n]*(?:(?:\bmay\b(?!\s+\d))|\bmight\b|\bcould\b|\blikely\b|\bprobably\b|\bpossibly\b|\bseems?\b|\bappears?\b|\blooks?\s+like\b)[^.!?\n]*[.!?]?)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly Regex PersonRegex = new(
         @"\b[A-Z][a-z]{2,}\b",
         RegexOptions.Compiled);
@@ -374,6 +378,15 @@ public static class FactLedgerExtractor
             if (sentence.Length > 0)
             {
                 facts.Add(CreateFact(source, sentence, RewriteFactCategory.NegativeConstraint));
+            }
+        }
+
+        foreach (Match match in UncertainConditionRegex.Matches(text))
+        {
+            var sentence = match.Groups["sentence"].Value.Trim();
+            if (sentence.Length > 0)
+            {
+                facts.Add(CreateFact(source, sentence, RewriteFactCategory.Condition));
             }
         }
 
@@ -591,6 +604,53 @@ public static class RewriteFactGate
         @"\b(?:careless|dismissive|irresponsible|negligent|rude|unprofessional)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex UncertaintyMarkerRegex = new(
+        @"(?:(?:\bmay\b(?!\s+\d))|\bmight\b|\bcould\b|\blikely\b|\bprobably\b|\bpossibly\b|\bseems?\b|\bappears?\b|\blooks?\s+like\b)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex SentenceRegex = new(
+        @"[^.!?\n]+[.!?]?",
+        RegexOptions.Compiled);
+
+    private static readonly Regex TokenRegex = new(
+        @"\b[\p{L}\p{N}'-]+\b",
+        RegexOptions.Compiled);
+
+    private static readonly HashSet<string> CertaintyStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "been",
+        "being",
+        "by",
+        "for",
+        "from",
+        "has",
+        "have",
+        "i",
+        "is",
+        "it",
+        "it's",
+        "of",
+        "on",
+        "or",
+        "our",
+        "s",
+        "that",
+        "the",
+        "this",
+        "to",
+        "was",
+        "were",
+        "with",
+        "your",
+    };
+
     public static RewriteGateResult Check(string candidateText, RewriteFactLedger factLedger)
     {
         var missingFacts = factLedger.Facts
@@ -602,8 +662,9 @@ public static class RewriteFactGate
             .Where(judgment => !LedgerContains(factLedger, judgment))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var certaintyDrifts = FindCertaintyDrifts(candidateText, factLedger);
 
-        if (missingFacts.Length == 0 && unsupportedJudgments.Length == 0)
+        if (missingFacts.Length == 0 && unsupportedJudgments.Length == 0 && certaintyDrifts.Length == 0)
         {
             return new RewriteGateResult(true, [], []);
         }
@@ -620,6 +681,12 @@ public static class RewriteFactGate
         {
             failureKinds.Add(RewriteFailureKind.UnsupportedFact);
             reasons.AddRange(unsupportedJudgments.Select(judgment => $"Candidate adds unsupported judgment label: {judgment}."));
+        }
+
+        if (certaintyDrifts.Length > 0)
+        {
+            failureKinds.Add(RewriteFailureKind.PolicyIntentDrift);
+            reasons.AddRange(certaintyDrifts.Select(source => $"Candidate strengthens uncertain source claim: {source}."));
         }
 
         return new RewriteGateResult(
@@ -642,6 +709,54 @@ public static class RewriteFactGate
     private static bool LedgerContains(RewriteFactLedger factLedger, string value) =>
         factLedger.Facts.Any(fact =>
             NormalizeForFactCheck(fact.Text).Contains(NormalizeForFactCheck(value), StringComparison.Ordinal));
+
+    private static string[] FindCertaintyDrifts(string candidateText, RewriteFactLedger factLedger)
+    {
+        var candidateSentences = SentenceRegex.Matches(candidateText)
+            .Select(match => match.Value.Trim())
+            .Where(sentence => sentence.Length > 0)
+            .Where(sentence => !UncertaintyMarkerRegex.IsMatch(sentence))
+            .Select(sentence => new
+            {
+                Text = sentence,
+                Tokens = ContentTokens(sentence),
+            })
+            .Where(sentence => sentence.Tokens.Count >= 3)
+            .ToArray();
+
+        if (candidateSentences.Length == 0)
+        {
+            return [];
+        }
+
+        return factLedger.Facts
+            .Where(fact => fact.Category == RewriteFactCategory.Condition)
+            .Where(fact => UncertaintyMarkerRegex.IsMatch(fact.Text))
+            .Select(fact => new
+            {
+                fact.Text,
+                Tokens = ContentTokens(UncertaintyMarkerRegex.Replace(fact.Text, " ")),
+            })
+            .Where(fact => fact.Tokens.Count >= 3)
+            .Where(fact => candidateSentences.Any(sentence => HasStrongTokenOverlap(fact.Tokens, sentence.Tokens)))
+            .Select(fact => fact.Text)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static HashSet<string> ContentTokens(string value) =>
+        TokenRegex.Matches(value.ToLowerInvariant())
+            .Select(match => match.Value.Trim('\'', '-'))
+            .Where(token => token.Length >= 3)
+            .Where(token => !CertaintyStopWords.Contains(token))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static bool HasStrongTokenOverlap(HashSet<string> sourceTokens, HashSet<string> candidateTokens)
+    {
+        var overlap = sourceTokens.Count(candidateTokens.Contains);
+        return overlap >= Math.Min(3, sourceTokens.Count) &&
+            overlap >= Math.Ceiling(sourceTokens.Count * 0.5);
+    }
 
     private static string NormalizeForFactCheck(string value)
     {

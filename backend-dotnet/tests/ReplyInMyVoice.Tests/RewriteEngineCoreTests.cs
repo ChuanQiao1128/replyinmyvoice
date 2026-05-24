@@ -292,4 +292,26 @@ public sealed class RewriteEngineCoreTests
         result.Passed.Should().BeFalse();
         result.FailureKinds.Should().Contain(RewriteFailureKind.UnsupportedFact);
     }
+
+    [Fact]
+    public void FactGate_blocks_uncertainty_strengthening_from_seems_to_is_due_to()
+    {
+        var request = new RewriteRequest(
+            "Emma asked why her order is delayed.",
+            "The delay seems to be related to a temporary processing issue at the local distribution facility.",
+            "Customer",
+            "Explain the tracking status.",
+            "The order has left the fulfillment center and is with the delivery carrier.",
+            "The delay seems to be related to a temporary processing issue at the local distribution facility.",
+            "direct");
+        var ledger = FactLedgerExtractor.Extract(request);
+
+        var result = RewriteFactGate.Check(
+            "The delay is due to a temporary processing issue at the local distribution facility, not a problem with your order.",
+            ledger);
+
+        result.Passed.Should().BeFalse();
+        result.FailureKinds.Should().Contain(RewriteFailureKind.PolicyIntentDrift);
+        result.Reasons.Should().Contain(reason => reason.Contains("uncertain", StringComparison.OrdinalIgnoreCase));
+    }
 }
