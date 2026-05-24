@@ -11,6 +11,8 @@ public sealed class UsageReservation
     public UsagePeriod? UsagePeriod { get; set; }
     public Guid RewriteAttemptId { get; set; }
     public RewriteAttempt? RewriteAttempt { get; set; }
+    public Guid? RewriteCreditId { get; set; }
+    public RewriteCredit? RewriteCredit { get; set; }
     public UsageReservationStatus Status { get; set; } = UsageReservationStatus.Pending;
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

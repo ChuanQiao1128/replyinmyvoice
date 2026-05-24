@@ -164,6 +164,175 @@ public sealed class QuotaServiceTests
     }
 
     [Fact]
+    public async Task ReserveAsync_uses_valid_credit_when_period_quota_is_full_and_success_keeps_credit_consumed()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-05-25T00:00:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 3,
+                ReservedCount = 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 2,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var service = new QuotaService(fixture.CreateContext);
+
+        var result = await service.ReserveAsync(
+            user.Id,
+            "idem-credit-success",
+            "hash-credit-success",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            quotaLimit: 3,
+            now,
+            TimeSpan.FromMinutes(10));
+
+        result.Kind.Should().Be(ReserveRewriteResultKind.Created);
+        await using (var reservedDb = fixture.CreateContext())
+        {
+            var period = await reservedDb.UsagePeriods.SingleAsync();
+            period.UsedCount.Should().Be(3);
+            period.ReservedCount.Should().Be(0);
+            (await reservedDb.RewriteCredits.SingleAsync()).AmountConsumed.Should().Be(1);
+            (await reservedDb.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Pending);
+            (await reservedDb.OutboxMessages.CountAsync()).Should().Be(1);
+        }
+
+        await service.FinalizeSuccessAsync(result.AttemptId, "{\"rewrittenText\":\"hello\"}", now.AddMinutes(1));
+
+        await using var finalizedDb = fixture.CreateContext();
+        var finalizedPeriod = await finalizedDb.UsagePeriods.SingleAsync();
+        finalizedPeriod.UsedCount.Should().Be(3);
+        finalizedPeriod.ReservedCount.Should().Be(0);
+        (await finalizedDb.RewriteCredits.SingleAsync()).AmountConsumed.Should().Be(1);
+        (await finalizedDb.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Finalized);
+        (await finalizedDb.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_refunds_credit_backed_reservation_without_touching_period_counters()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-05-25T00:00:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 3,
+                ReservedCount = 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 1,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var service = new QuotaService(fixture.CreateContext);
+        var result = await service.ReserveAsync(
+            user.Id,
+            "idem-credit-release",
+            "hash-credit-release",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            now,
+            TimeSpan.FromMinutes(10));
+
+        result.Kind.Should().Be(ReserveRewriteResultKind.Created);
+
+        await service.ReleaseAsync(result.AttemptId, "provider_failed", now.AddMinutes(1));
+
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(3);
+        period.ReservedCount.Should().Be(0);
+        (await db.RewriteCredits.SingleAsync()).AmountConsumed.Should().Be(0);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Released);
+        (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Failed);
+    }
+
+    [Fact]
+    public async Task ReserveAsync_returns_quota_exceeded_when_period_full_and_no_usable_credit()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-05-25T00:00:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 3,
+                ReservedCount = 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 5,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-100),
+                ExpiresAt = now.AddSeconds(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var service = new QuotaService(fixture.CreateContext);
+
+        var result = await service.ReserveAsync(
+            user.Id,
+            "idem-no-credit",
+            "hash-no-credit",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            now,
+            TimeSpan.FromMinutes(10));
+
+        result.Kind.Should().Be(ReserveRewriteResultKind.QuotaExceeded);
+
+        await using var db = fixture.CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(0);
+        (await db.RewriteCredits.SingleAsync()).AmountConsumed.Should().Be(0);
+    }
+
+    [Fact]
     public async Task MarkProcessingAsync_allows_only_one_pending_claim()
     {
         await using var fixture = await DbFixture.CreateAsync();

@@ -5,6 +5,7 @@ public interface IStripeBillingService
     Task<string> CreateCheckoutSessionUrlAsync(
         string externalAuthUserId,
         string? email,
+        string? sku,
         CancellationToken cancellationToken);
 
     Task<string> CreatePortalSessionUrlAsync(

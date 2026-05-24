@@ -184,7 +184,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Rewrite_paid_quota_is_forty_requests_per_period()
+    public async Task Rewrite_paid_quota_is_ninety_requests_per_period()
     {
         await using (var db = CreateContext())
         {
@@ -206,20 +206,20 @@ public sealed class RewriteApiTests : IAsyncLifetime
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_paid_quota");
 
-        for (var index = 0; index < 40; index += 1)
+        for (var index = 0; index < 90; index += 1)
         {
             var accepted = await PostRewriteAsync(client, $"api-idem-paid-{index}");
             accepted.StatusCode.Should().Be(HttpStatusCode.Accepted);
         }
 
-        var exhausted = await PostRewriteAsync(client, "api-idem-paid-40");
+        var exhausted = await PostRewriteAsync(client, "api-idem-paid-90");
 
         exhausted.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
         await using var verifyDb = CreateContext();
         var period = await verifyDb.UsagePeriods.SingleAsync();
-        period.QuotaLimit.Should().Be(40);
-        period.ReservedCount.Should().Be(40);
-        (await verifyDb.RewriteAttempts.CountAsync()).Should().Be(40);
+        period.QuotaLimit.Should().Be(90);
+        period.ReservedCount.Should().Be(90);
+        (await verifyDb.RewriteAttempts.CountAsync()).Should().Be(90);
     }
 
     private WebApplicationFactory<Program> CreateFactory(string environment = "Testing")

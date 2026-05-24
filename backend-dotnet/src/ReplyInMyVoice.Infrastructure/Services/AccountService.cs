@@ -59,7 +59,19 @@ public sealed class AccountService(Func<AppDbContext> dbContextFactory)
             cancellationToken);
         var used = period?.UsedCount ?? 0;
         var reserved = period?.ReservedCount ?? 0;
-        var remaining = Math.Max(usagePlan.QuotaLimit - used - reserved, 0);
+        var periodRemaining = Math.Max(usagePlan.QuotaLimit - used - reserved, 0);
+        var now = DateTimeOffset.UtcNow;
+        // Materialize by user id, then filter ExpiresAt in memory: SQLite (test DB)
+        // cannot translate DateTimeOffset comparisons in SQL.
+        var userCredits = await db.RewriteCredits
+            .AsNoTracking()
+            .Where(x => x.UserId == user.Id)
+            .Select(x => new { x.AmountGranted, x.AmountConsumed, x.ExpiresAt })
+            .ToListAsync(cancellationToken);
+        var creditRemaining = userCredits
+            .Where(x => x.ExpiresAt == null || x.ExpiresAt > now)
+            .Sum(x => Math.Max(x.AmountGranted - x.AmountConsumed, 0));
+        var remaining = periodRemaining + creditRemaining;
 
         return new AccountSummary(
             user.Id,
@@ -69,7 +81,7 @@ public sealed class AccountService(Func<AppDbContext> dbContextFactory)
             new AccountUsageSummary(
                 usagePlan.Scope,
                 usagePlan.PeriodKey,
-                usagePlan.QuotaLimit,
+                usagePlan.QuotaLimit + creditRemaining,
                 used,
                 reserved,
                 remaining,
@@ -83,7 +95,7 @@ public sealed class AccountService(Func<AppDbContext> dbContextFactory)
             return new AccountUsagePlan(
                 "paid",
                 $"paid:{user.StripeSubscriptionId ?? user.Id.ToString()}:{user.CurrentPeriodEnd?.ToString("O") ?? "no-period"}",
-                user.SubscriptionStatus == SubscriptionStatus.Testing ? 10_000 : 40);
+                user.SubscriptionStatus == SubscriptionStatus.Testing ? 10_000 : 90);
         }
 
         return new AccountUsagePlan("free", "free:lifetime", 3);

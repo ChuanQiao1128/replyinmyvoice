@@ -54,7 +54,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
 
         try
         {
-            await SyncEntitlementAsync(type, rawBody, now, cancellationToken);
+            await SyncEntitlementAsync(eventId, type, rawBody, now, cancellationToken);
             await MarkProcessedAsync(eventId, now, cancellationToken);
             return true;
         }
@@ -158,6 +158,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
     }
 
     private async Task SyncEntitlementAsync(
+        string eventId,
         string type,
         string rawBody,
         DateTimeOffset now,
@@ -178,7 +179,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
 
         if (type == "checkout.session.completed")
         {
-            await SyncCheckoutSessionAsync(stripeObject, now, cancellationToken);
+            await SyncCheckoutSessionAsync(eventId, stripeObject, now, cancellationToken);
         }
     }
 
@@ -217,6 +218,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
     }
 
     private async Task SyncCheckoutSessionAsync(
+        string eventId,
         JsonElement stripeObject,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -246,7 +248,41 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
 
+        if (IsPaidPaymentSession(stripeObject) &&
+            !await db.RewriteCredits.AnyAsync(x => x.StripeEventId == eventId, cancellationToken) &&
+            ResolveGrantedRewrites(stripeObject) is { } rewrites)
+        {
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = rewrites,
+                AmountConsumed = 0,
+                GrantedAt = now,
+                ExpiresAt = now.AddDays(90),
+                StripeEventId = eventId,
+            });
+        }
+
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool IsPaidPaymentSession(JsonElement stripeObject) =>
+        GetString(stripeObject, "mode") == "payment" &&
+        GetString(stripeObject, "payment_status") == "paid";
+
+    private static int? ResolveGrantedRewrites(JsonElement stripeObject)
+    {
+        var metadataRewrites = GetMetadataString(stripeObject, "rewrites");
+        if (int.TryParse(metadataRewrites, out var parsedRewrites) && parsedRewrites > 0)
+        {
+            return parsedRewrites;
+        }
+
+        var sku = GetMetadataString(stripeObject, "sku");
+        return StripeBillingService.TryGetSkuDefinition(sku, out var definition)
+            ? definition!.Rewrites
+            : null;
     }
 
     private static SubscriptionStatus MapSubscriptionStatus(string? status) =>

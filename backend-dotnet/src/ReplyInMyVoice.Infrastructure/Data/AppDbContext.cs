@@ -71,6 +71,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.RewriteAttemptId).IsUnique();
+            entity.HasIndex(x => x.RewriteCreditId);
             entity.HasIndex(x => new { x.UserId, x.Status });
             entity.HasIndex(x => new { x.Status, x.ExpiresAt });
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
@@ -86,6 +87,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(x => x.RewriteAttempt)
                 .WithOne(x => x.Reservation)
                 .HasForeignKey<UsageReservation>(x => x.RewriteAttemptId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RewriteCredit)
+                .WithMany()
+                .HasForeignKey(x => x.RewriteCreditId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

@@ -75,12 +75,6 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
             period.RowVersion = Guid.NewGuid();
         }
 
-        if (period.UsedCount + period.ReservedCount >= quotaLimit)
-        {
-            await transaction.CommitAsync(cancellationToken);
-            return ReserveRewriteResult.QuotaExceeded();
-        }
-
         var attempt = new RewriteAttempt
         {
             UserId = userId,
@@ -91,6 +85,37 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
             CreatedAt = now,
             ExpiresAt = now.Add(reservationTtl),
         };
+
+        if (period.UsedCount + period.ReservedCount >= quotaLimit)
+        {
+            var credit = await FindUsableCreditAsync(db, userId, now, cancellationToken);
+            if (credit is null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return ReserveRewriteResult.QuotaExceeded();
+            }
+
+            credit.AmountConsumed += 1;
+            credit.RowVersion = Guid.NewGuid();
+
+            db.RewriteAttempts.Add(attempt);
+            db.UsageReservations.Add(new UsageReservation
+            {
+                UserId = userId,
+                UsagePeriod = period,
+                RewriteAttempt = attempt,
+                RewriteCredit = credit,
+                Status = UsageReservationStatus.Pending,
+                CreatedAt = now,
+                ExpiresAt = now.Add(reservationTtl),
+            });
+            AddRewriteJobOutbox(db, attempt, now);
+
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return new ReserveRewriteResult(ReserveRewriteResultKind.Created, attempt.Id, attempt.Status);
+        }
 
         var reservation = new UsageReservation
         {
@@ -106,17 +131,7 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         period.RowVersion = Guid.NewGuid();
         db.RewriteAttempts.Add(attempt);
         db.UsageReservations.Add(reservation);
-        db.OutboxMessages.Add(new OutboxMessage
-        {
-            MessageType = "RewriteJobCreated",
-            PayloadJson = JsonSerializer.Serialize(new RewriteJobCreatedPayload(attempt.Id), JsonOptions),
-            Status = OutboxMessageStatus.Pending,
-            CreatedAt = now,
-            NextAttemptAt = now,
-            AttemptCount = 0,
-            MaxAttempts = 10,
-            CorrelationId = attempt.Id.ToString(),
-        });
+        AddRewriteJobOutbox(db, attempt, now);
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -139,9 +154,13 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         var reservation = await db.UsageReservations
             .AsTracking()
             .SingleAsync(x => x.RewriteAttemptId == attemptId, cancellationToken);
-        var period = await db.UsagePeriods
-            .AsTracking()
-            .SingleAsync(x => x.Id == reservation.UsagePeriodId, cancellationToken);
+        UsagePeriod? period = null;
+        if (reservation.RewriteCreditId is null)
+        {
+            period = await db.UsagePeriods
+                .AsTracking()
+                .SingleAsync(x => x.Id == reservation.UsagePeriodId, cancellationToken);
+        }
 
         if (attempt.Status == RewriteAttemptStatus.Succeeded &&
             reservation.Status == UsageReservationStatus.Finalized)
@@ -159,10 +178,15 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
 
         if (reservation.Status == UsageReservationStatus.Pending)
         {
-            period.ReservedCount = Math.Max(0, period.ReservedCount - 1);
-            period.UsedCount += 1;
-            period.UpdatedAt = now;
-            period.RowVersion = Guid.NewGuid();
+            if (reservation.RewriteCreditId is null)
+            {
+                var usagePeriod = period!;
+                usagePeriod.ReservedCount = Math.Max(0, usagePeriod.ReservedCount - 1);
+                usagePeriod.UsedCount += 1;
+                usagePeriod.UpdatedAt = now;
+                usagePeriod.RowVersion = Guid.NewGuid();
+            }
+
             reservation.Status = UsageReservationStatus.Finalized;
             reservation.FinalizedAt = now;
             reservation.RowVersion = Guid.NewGuid();
@@ -216,15 +240,27 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         var reservation = await db.UsageReservations
             .AsTracking()
             .SingleAsync(x => x.RewriteAttemptId == attemptId, cancellationToken);
-        var period = await db.UsagePeriods
-            .AsTracking()
-            .SingleAsync(x => x.Id == reservation.UsagePeriodId, cancellationToken);
 
         if (reservation.Status == UsageReservationStatus.Pending)
         {
-            period.ReservedCount = Math.Max(0, period.ReservedCount - 1);
-            period.UpdatedAt = now;
-            period.RowVersion = Guid.NewGuid();
+            if (reservation.RewriteCreditId is { } creditId)
+            {
+                var credit = await db.RewriteCredits
+                    .AsTracking()
+                    .SingleAsync(x => x.Id == creditId, cancellationToken);
+                credit.AmountConsumed = Math.Max(0, credit.AmountConsumed - 1);
+                credit.RowVersion = Guid.NewGuid();
+            }
+            else
+            {
+                var period = await db.UsagePeriods
+                    .AsTracking()
+                    .SingleAsync(x => x.Id == reservation.UsagePeriodId, cancellationToken);
+                period.ReservedCount = Math.Max(0, period.ReservedCount - 1);
+                period.UpdatedAt = now;
+                period.RowVersion = Guid.NewGuid();
+            }
+
             reservation.Status = UsageReservationStatus.Released;
             reservation.ReleasedAt = now;
             reservation.RowVersion = Guid.NewGuid();
@@ -253,6 +289,7 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
             .AsTracking()
             .Include(x => x.RewriteAttempt)
             .Include(x => x.UsagePeriod)
+            .Include(x => x.RewriteCredit)
             .ToListAsync(cancellationToken);
         var expiredReservations = expiredCandidates
             .Where(x =>
@@ -266,9 +303,17 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
             reservation.Status = UsageReservationStatus.Expired;
             reservation.ReleasedAt = now;
             reservation.RowVersion = Guid.NewGuid();
-            reservation.UsagePeriod!.ReservedCount = Math.Max(0, reservation.UsagePeriod.ReservedCount - 1);
-            reservation.UsagePeriod.UpdatedAt = now;
-            reservation.UsagePeriod.RowVersion = Guid.NewGuid();
+            if (reservation.RewriteCredit is not null)
+            {
+                reservation.RewriteCredit.AmountConsumed = Math.Max(0, reservation.RewriteCredit.AmountConsumed - 1);
+                reservation.RewriteCredit.RowVersion = Guid.NewGuid();
+            }
+            else
+            {
+                reservation.UsagePeriod!.ReservedCount = Math.Max(0, reservation.UsagePeriod.ReservedCount - 1);
+                reservation.UsagePeriod.UpdatedAt = now;
+                reservation.UsagePeriod.RowVersion = Guid.NewGuid();
+            }
 
             if (reservation.RewriteAttempt!.Status is not RewriteAttemptStatus.Succeeded)
             {
@@ -282,6 +327,46 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return expiredReservations.Count;
+    }
+
+    private static async Task<RewriteCredit?> FindUsableCreditAsync(
+        AppDbContext db,
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        // Materialize by user id, then filter/order in memory: SQLite (test DB)
+        // cannot translate DateTimeOffset comparisons/ordering in SQL. Earliest-expiring
+        // usable grant first (non-null expiry before null), then oldest grant.
+        var userCredits = await db.RewriteCredits
+            .AsTracking()
+            .Where(x => x.UserId == userId)
+            .ToListAsync(cancellationToken);
+
+        return userCredits
+            .Where(x => (x.ExpiresAt == null || x.ExpiresAt > now) && x.AmountGranted - x.AmountConsumed > 0)
+            .OrderBy(x => x.ExpiresAt.HasValue ? 0 : 1)
+            .ThenBy(x => x.ExpiresAt ?? DateTimeOffset.MaxValue)
+            .ThenBy(x => x.GrantedAt)
+            .FirstOrDefault();
+    }
+
+    private static void AddRewriteJobOutbox(
+        AppDbContext db,
+        RewriteAttempt attempt,
+        DateTimeOffset now)
+    {
+        db.OutboxMessages.Add(new OutboxMessage
+        {
+            MessageType = "RewriteJobCreated",
+            PayloadJson = JsonSerializer.Serialize(new RewriteJobCreatedPayload(attempt.Id), JsonOptions),
+            Status = OutboxMessageStatus.Pending,
+            CreatedAt = now,
+            NextAttemptAt = now,
+            AttemptCount = 0,
+            MaxAttempts = 10,
+            CorrelationId = attempt.Id.ToString(),
+        });
     }
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);

@@ -69,7 +69,7 @@ public sealed class AccountServiceTests : IAsyncLifetime
             {
                 UserId = userId,
                 PeriodKey = $"paid:sub_paid:{periodEnd:O}",
-                QuotaLimit = 40,
+                QuotaLimit = 90,
                 UsedCount = 7,
                 ReservedCount = 2,
                 CreatedAt = DateTimeOffset.UtcNow,
@@ -88,10 +88,74 @@ public sealed class AccountServiceTests : IAsyncLifetime
         summary.Email.Should().Be("paid-updated@example.com");
         summary.Usage.Scope.Should().Be("paid");
         summary.Usage.PeriodKey.Should().Be($"paid:sub_paid:{periodEnd:O}");
-        summary.Usage.Quota.Should().Be(40);
+        summary.Usage.Quota.Should().Be(90);
         summary.Usage.Used.Should().Be(7);
         summary.Usage.Reserved.Should().Be(2);
-        summary.Usage.Remaining.Should().Be(31);
+        summary.Usage.Remaining.Should().Be(81);
+        summary.Usage.Exhausted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetOrCreateAccountSummary_includes_valid_rewrite_credits_and_ignores_expired_credits()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-credit",
+                Email = "credit@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = userId,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 3,
+                ReservedCount = 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RewriteCredits.AddRange(
+                new RewriteCredit
+                {
+                    UserId = userId,
+                    Source = "PURCHASE",
+                    AmountGranted = 10,
+                    AmountConsumed = 7,
+                    GrantedAt = now.AddDays(-1),
+                    ExpiresAt = now.AddDays(30),
+                },
+                new RewriteCredit
+                {
+                    UserId = userId,
+                    Source = "PURCHASE",
+                    AmountGranted = 20,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddDays(-100),
+                    ExpiresAt = now.AddDays(-1),
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var summary = await service.GetOrCreateAccountSummaryAsync(
+            "entra-credit",
+            "credit@example.com",
+            CancellationToken.None);
+
+        summary.Usage.Scope.Should().Be("free");
+        summary.Usage.Quota.Should().Be(6);
+        summary.Usage.Used.Should().Be(3);
+        summary.Usage.Reserved.Should().Be(0);
+        summary.Usage.Remaining.Should().Be(3);
         summary.Usage.Exhausted.Should().BeFalse();
     }
 

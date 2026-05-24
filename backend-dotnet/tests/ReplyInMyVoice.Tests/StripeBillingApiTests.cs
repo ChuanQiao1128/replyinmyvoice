@@ -52,6 +52,36 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<BillingUrlResponse>();
         body!.Url.Should().Be("https://billing.test/checkout");
         fakeBilling.CheckoutUserId.Should().Be("clerk_checkout");
+        fakeBilling.CheckoutSku.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Checkout_forwards_allowed_sku_to_billing_service()
+    {
+        var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
+        await using var factory = CreateFactory(fakeBilling);
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_sku");
+
+        var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        fakeBilling.CheckoutUserId.Should().Be("clerk_checkout_sku");
+        fakeBilling.CheckoutSku.Should().Be("quick_pack");
+    }
+
+    [Fact]
+    public async Task Checkout_rejects_unknown_sku()
+    {
+        var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
+        await using var factory = CreateFactory(fakeBilling);
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_bad_sku");
+
+        var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "unknown_pack" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        fakeBilling.CheckoutUserId.Should().BeNull();
     }
 
     [Fact]
@@ -107,14 +137,17 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
 internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBillingService
 {
     public string? CheckoutUserId { get; private set; }
+    public string? CheckoutSku { get; private set; }
     public InvalidOperationException? PortalError { get; init; }
 
     public Task<string> CreateCheckoutSessionUrlAsync(
         string externalAuthUserId,
         string? email,
+        string? sku,
         CancellationToken cancellationToken)
     {
         CheckoutUserId = externalAuthUserId;
+        CheckoutSku = sku;
         return Task.FromResult(checkoutUrl);
     }
 

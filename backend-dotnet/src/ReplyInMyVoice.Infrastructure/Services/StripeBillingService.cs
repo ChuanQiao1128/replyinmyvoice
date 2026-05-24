@@ -13,21 +13,37 @@ public sealed class StripeBillingService(
     Func<AppDbContext> dbContextFactory,
     IConfiguration configuration) : IStripeBillingService
 {
+    private const string LegacyPriceEnvVar = "STRIPE_PRICE_ID";
+
+    private static readonly IReadOnlyDictionary<string, CheckoutSkuDefinition> SkuDefinitions =
+        new Dictionary<string, CheckoutSkuDefinition>(StringComparer.Ordinal)
+        {
+            ["quick_pack"] = new("quick_pack", "STRIPE_PRICE_QUICK_PACK_NZD", "payment", 10),
+            ["value_pack"] = new("value_pack", "STRIPE_PRICE_VALUE_PACK_NZD", "payment", 30),
+            ["pro_api"] = new("pro_api", "STRIPE_PRICE_PRO_API_MONTHLY_NZD", "subscription", 90),
+            ["focus_pack"] = new("focus_pack", "STRIPE_PRICE_FOCUS_PACK_NZD", "payment", 20),
+        };
+
     public async Task<string> CreateCheckoutSessionUrlAsync(
         string externalAuthUserId,
         string? email,
+        string? sku,
         CancellationToken cancellationToken)
     {
         var stripeClient = CreateStripeClient();
         var user = await GetOrCreateUserAsync(externalAuthUserId, email, cancellationToken);
         var customerId = await GetOrCreateCustomerIdAsync(stripeClient, user, email, cancellationToken);
         var appUrl = GetRequiredConfiguration("NEXT_PUBLIC_APP_URL").TrimEnd('/');
-        var priceId = GetRequiredConfiguration("STRIPE_PRICE_ID");
+        var skuDefinition = ResolveSkuDefinition(sku);
+        var priceEnvVar = skuDefinition?.PriceEnvVar ?? LegacyPriceEnvVar;
+        var priceId = GetRequiredConfiguration(priceEnvVar);
+        var mode = skuDefinition?.Mode ?? "subscription";
+        var metadata = CreateCheckoutMetadata(externalAuthUserId, skuDefinition);
 
         var sessionService = new Stripe.Checkout.SessionService(stripeClient);
-        var session = await sessionService.CreateAsync(new Stripe.Checkout.SessionCreateOptions
+        var options = new Stripe.Checkout.SessionCreateOptions
         {
-            Mode = "subscription",
+            Mode = mode,
             Customer = customerId,
             ClientReferenceId = externalAuthUserId,
             SuccessUrl = $"{appUrl}/app?checkout=success",
@@ -40,18 +56,18 @@ public sealed class StripeBillingService(
                     Quantity = 1,
                 }
             ],
-            Metadata = new Dictionary<string, string>
+            Metadata = metadata,
+        };
+
+        if (mode == "subscription")
+        {
+            options.SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
             {
-                ["externalAuthUserId"] = externalAuthUserId,
-            },
-            SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
-            {
-                Metadata = new Dictionary<string, string>
-                {
-                    ["externalAuthUserId"] = externalAuthUserId,
-                },
-            },
-        }, cancellationToken: cancellationToken);
+                Metadata = metadata,
+            };
+        }
+
+        var session = await sessionService.CreateAsync(options, cancellationToken: cancellationToken);
 
         return session.Url ?? throw new InvalidOperationException("stripe_checkout_url_missing");
     }
@@ -155,4 +171,42 @@ public sealed class StripeBillingService(
 
     private string GetRequiredConfiguration(string key) =>
         configuration[key] ?? throw new InvalidOperationException($"{key}_missing");
+
+    public static bool IsKnownSku(string sku) => SkuDefinitions.ContainsKey(sku);
+
+    public static bool TryGetSkuDefinition(string? sku, out CheckoutSkuDefinition? definition)
+    {
+        if (!string.IsNullOrWhiteSpace(sku) &&
+            SkuDefinitions.TryGetValue(sku, out var resolved))
+        {
+            definition = resolved;
+            return true;
+        }
+
+        definition = null;
+        return false;
+    }
+
+    private static CheckoutSkuDefinition? ResolveSkuDefinition(string? sku) =>
+        TryGetSkuDefinition(sku, out var definition) ? definition : null;
+
+    private static Dictionary<string, string> CreateCheckoutMetadata(
+        string externalAuthUserId,
+        CheckoutSkuDefinition? skuDefinition)
+    {
+        var metadata = new Dictionary<string, string>
+        {
+            ["externalAuthUserId"] = externalAuthUserId,
+        };
+
+        if (skuDefinition is not null)
+        {
+            metadata["sku"] = skuDefinition.Sku;
+            metadata["rewrites"] = skuDefinition.Rewrites.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return metadata;
+    }
 }
+
+public sealed record CheckoutSkuDefinition(string Sku, string PriceEnvVar, string Mode, int Rewrites);

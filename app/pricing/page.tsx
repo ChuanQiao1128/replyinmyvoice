@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { BuyButton } from "../../components/landing/buy-button";
 import { SiteHeader } from "../../components/site-header";
 
 export const metadata: Metadata = {
@@ -29,11 +30,11 @@ function isFocusPackEnabled() {
 
 function PlanAction({
   configured,
-  href,
+  sku,
   label,
 }: {
   configured: boolean;
-  href: string;
+  sku: PaidSku;
   label: string;
 }) {
   if (!configured) {
@@ -54,15 +55,7 @@ function PlanAction({
     );
   }
 
-  return (
-    <Link
-      className="btn btn-primary btn-lg"
-      href={href}
-      style={{ width: "100%", justifyContent: "center" }}
-    >
-      {label} <span className="btn-arrow">-&gt;</span>
-    </Link>
-  );
+  return <BuyButton sku={sku} label={label} />;
 }
 
 type Pack = {
@@ -218,7 +211,7 @@ export default function PricingPage() {
                     <div className="plan-cta">
                       <PlanAction
                         configured={isPriceConfigured(pack.sku)}
-                        href={`/sign-up?plan=${pack.sku}`}
+                        sku={pack.sku}
                         label={pack.cta}
                       />
                     </div>

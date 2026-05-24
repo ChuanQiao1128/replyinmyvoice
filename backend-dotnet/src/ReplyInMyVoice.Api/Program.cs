@@ -210,11 +210,27 @@ app.MapPost("/api/stripe/checkout", async (
 
     try
     {
+        var checkoutRequest = await ReadCheckoutSessionRequestAsync(httpRequest, cancellationToken);
+        var sku = checkoutRequest?.Sku?.Trim();
+        if (!string.IsNullOrWhiteSpace(sku) && !StripeBillingService.IsKnownSku(sku))
+        {
+            return Results.Problem(
+                title: "Unknown checkout SKU",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
         var url = await billingService.CreateCheckoutSessionUrlAsync(
             externalUserId,
             ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+            string.IsNullOrWhiteSpace(sku) ? null : sku,
             cancellationToken);
         return Results.Ok(new BillingUrlResponse(url));
+    }
+    catch (JsonException)
+    {
+        return Results.Problem(
+            title: "Invalid checkout request",
+            statusCode: StatusCodes.Status400BadRequest);
     }
     catch (InvalidOperationException ex) when (ex.Message.EndsWith("_missing", StringComparison.Ordinal))
     {
@@ -350,6 +366,38 @@ static string? ValidateRewriteRequest(RewriteRequest request)
     return null;
 }
 
+static async Task<CheckoutSessionRequest?> ReadCheckoutSessionRequestAsync(
+    HttpRequest request,
+    CancellationToken cancellationToken)
+{
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync(cancellationToken);
+    if (string.IsNullOrWhiteSpace(body))
+    {
+        return null;
+    }
+
+    using var document = JsonDocument.Parse(body);
+    if (document.RootElement.ValueKind == JsonValueKind.Undefined ||
+        document.RootElement.ValueKind == JsonValueKind.Null)
+    {
+        return null;
+    }
+
+    if (document.RootElement.ValueKind != JsonValueKind.Object)
+    {
+        throw new JsonException("Checkout request must be a JSON object.");
+    }
+
+    if (!document.RootElement.TryGetProperty("sku", out var sku) ||
+        sku.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+    {
+        return null;
+    }
+
+    return new CheckoutSessionRequest(sku.ValueKind == JsonValueKind.String ? sku.GetString() : sku.ToString());
+}
+
 static string? ResolveExternalUserId(
     HttpRequest request,
     IWebHostEnvironment environment,
@@ -459,5 +507,7 @@ public sealed record RewriteAttemptResponse(
     string? ErrorCode);
 
 public sealed record BillingUrlResponse(string Url);
+
+public sealed record CheckoutSessionRequest(string? Sku);
 
 public partial class Program;
