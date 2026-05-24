@@ -233,9 +233,16 @@ public static class FunctionAuthResolver
                 .Any(allowedScopeValues.Contains));
     }
 
+    // Canonical user key = the Entra `oid` (object id). `oid` is stable and IDENTICAL across the
+    // ID token (aud = frontend client) and the access token (aud = api://<API client id>), whereas
+    // `sub` is pairwise per audience and therefore differs between those two tokens for the same
+    // human. Keying AppUser on `sub` would fork one user into two records. We check the raw `oid`
+    // claim and the inbound-mapped long URI so this is correct whether or not the JWT handler's
+    // claim mapping is enabled, then fall back to `sub` / NameIdentifier only if `oid` is absent.
     private static string? ResolveUserIdFromClaims(ClaimsPrincipal principal) =>
-        principal.FindFirstValue("sub") ??
         principal.FindFirstValue("oid") ??
+        principal.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier") ??
+        principal.FindFirstValue("sub") ??
         principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
     private static string? ResolveEmail(ClaimsPrincipal principal) =>
