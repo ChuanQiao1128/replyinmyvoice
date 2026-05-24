@@ -103,6 +103,20 @@ public sealed class FunctionAuthResolverTests
     }
 
     [Fact]
+    public void ResolveValidIssuers_accepts_ciam_metadata_issuer_for_alias_authority()
+    {
+        // Entra External ID may publish endpoints under a tenant subdomain alias while the
+        // discovery document's issuer uses the canonical tenant-id host. Token validation must
+        // trust the metadata issuer fetched from the configured authority.
+        var issuers = FunctionAuthResolver.ResolveValidIssuers(
+            "https://replyinmyvoicecustomers.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0",
+            "https://614ea821-6ef3-43e2-8613-d4b13fae115d.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0");
+
+        issuers.Should().Contain(
+            "https://614ea821-6ef3-43e2-8613-d4b13fae115d.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0");
+    }
+
+    [Fact]
     public async Task ResolveUserAsync_rejects_header_identity_unless_enabled()
     {
         var request = CreateRequest();

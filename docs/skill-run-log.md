@@ -45,6 +45,24 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-24 - dotnet-backend-testing - Azure Functions CIAM metadata issuer auth
+
+- Agent: Codex
+- Trigger: Production Google login still returned to `/sign-in`; Cloudflare logs showed `/auth/callback` succeeded and `/app` had an access token, but Azure Functions `/api/me` still returned 401.
+- Action: Opened and followed the skill; added a focused xUnit regression proving Entra External ID CIAM alias authority must accept the canonical issuer published by the discovery metadata, then updated `FunctionAuthResolver` to include the metadata issuer in JWT `ValidIssuers`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/FunctionAuthResolver.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/FunctionAuthResolverTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: The new `ResolveValidIssuers_accepts_ciam_metadata_issuer_for_alias_authority` regression failed before implementation because the resolver lacked metadata issuer support. After the fix, `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter FunctionAuthResolverTests --no-restore` passed 8/8 and `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 75/75.
+- Limitations: Codex cannot perform the owner's live Google login in this session; no access-token values, `.env.local` values, API tokens, private keys, or provider secrets were logged.
+
+### 2026-05-24 - ui-browser-testing - Entra login Azure 401 redirect loop
+
+- Agent: Codex
+- Trigger: The production browser-visible login flow still redirected back to `/sign-in` after Google callback.
+- Action: Opened and followed the skill; used Cloudflare production tail evidence to trace the browser flow through `/auth/callback`, `/app`, and the Azure account-summary request, then compared Worker Entra config with Azure Functions app settings and the CIAM discovery document.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Production tail showed `/auth/callback` succeeded, `/app` loaded, and `azure_account_summary_auth_rejected { status: 401 }` immediately preceded the `/sign-in` redirect. CIAM discovery returned a canonical metadata issuer host different from the configured tenant-subdomain authority, matching the backend issuer-validation failure fixed in this run.
+- Limitations: No authenticated browser screenshot or signed-in `/app` Playwright run was possible without the owner's Google session. No secrets or raw token values were logged.
+
 ### 2026-05-24 - dotnet-backend-testing - Azure Functions mapped Entra scope auth
 
 - Agent: Codex

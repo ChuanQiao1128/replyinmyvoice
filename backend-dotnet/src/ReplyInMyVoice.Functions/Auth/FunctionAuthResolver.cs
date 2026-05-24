@@ -141,7 +141,7 @@ public static class FunctionAuthResolver
             ValidateIssuerSigningKey = true,
             IssuerSigningKeys = openIdConfiguration.SigningKeys,
             ValidateIssuer = true,
-            ValidIssuers = ResolveIssuers(authority),
+            ValidIssuers = ResolveValidIssuers(authority, openIdConfiguration.Issuer),
             ValidateAudience = true,
             ValidAudiences = audiences,
             ValidateLifetime = true,
@@ -186,11 +186,27 @@ public static class FunctionAuthResolver
             .ToList();
     }
 
-    private static IEnumerable<string> ResolveIssuers(string authority)
+    public static IReadOnlyList<string> ResolveValidIssuers(string authority, string? metadataIssuer)
     {
-        var normalized = authority.TrimEnd('/');
-        yield return normalized;
-        yield return $"{normalized}/";
+        var issuers = new List<string>();
+        AddIssuerVariants(issuers, authority);
+        AddIssuerVariants(issuers, metadataIssuer);
+
+        return issuers
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static void AddIssuerVariants(ICollection<string> issuers, string? issuer)
+    {
+        if (string.IsNullOrWhiteSpace(issuer))
+        {
+            return;
+        }
+
+        var normalized = issuer.TrimEnd('/');
+        issuers.Add(normalized);
+        issuers.Add($"{normalized}/");
     }
 
     private static string? ResolveRequiredScope(IConfiguration configuration) =>
