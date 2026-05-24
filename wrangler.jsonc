@@ -7,9 +7,6 @@
   "minify": true,
   "workers_dev": true,
   "preview_urls": true,
-  "triggers": {
-    "crons": ["0 13 * * *"]
-  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
