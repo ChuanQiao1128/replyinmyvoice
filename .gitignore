@@ -15,6 +15,7 @@ local.settings.json
 node_modules/
 lib/generated/
 .next/
+.next-build/
 .open-next/
 .vercel/
 .wrangler/

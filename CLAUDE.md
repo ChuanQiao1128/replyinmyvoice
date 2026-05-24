@@ -177,21 +177,28 @@ Re-read `AGENTS.md` whenever:
 
 ## Supervisor Mode (Codex MCP)
 
-When the `codex` MCP server is available in this session (check via available tools — look for `mcp__codex__*`), Claude Code operates in **Supervisor Mode**. The role is tech lead / planner. Claude Code does NOT write or modify source code directly. All code changes are delegated to Codex via the `codex` MCP tools.
+**Mode selection (updated 2026-05-24 by the project owner):**
 
-This mode is enforced at the permission layer (`~/.claude/settings.json` denies `Edit`, `Write`, `NotebookEdit`, and dangerous shell rewrites). If those tools are denied, this section is in effect. If they are allowed (no codex MCP, or user explicitly disabled), ignore this section.
+- **Interactive sessions** (a human is directing the work in real time): Claude Code **may edit source directly** (`Edit`/`Write`/`NotebookEdit`). The owner verified on 2026-05-24 that these are **not** denied at the permission layer and authorized direct editing for interactive work. Delegating to Codex is **optional** here — use it when real parallelism or a clean self-contained brief genuinely helps, not as a hard rule. The human still reviews diffs (see commit note).
+- **Autonomous / overnight runs** (started by the scheduled `trigger-overnight-supervisor` automation, no live human): **keep operating in Supervisor Mode** exactly as described below — delegate all code changes to Codex via `mcp__codex__*`. This preserves the existing overnight automation (codex-worker pipeline, issue board); do not change that behavior.
+
+If a human is conversing with you this turn, you are interactive.
+
+**Commit/push:** As of 2026-05-24 the `deny` array in `~/.claude/settings.json` is **empty** — `Bash(git commit)` / `Bash(git push)` are no longer blocked, and with `defaultMode: "auto"` + `skipAutoPermissionPrompt: true` they generally run without a prompt. The owner removed the old deny lines manually. In interactive sessions Claude Code may commit and push directly (commit only when the user asks; if on `main`, branch first). The human still reviews diffs.
 
 Full details live in `/Users/qc/Desktop/CloudFlare/codex-supervisor/SUPERVISOR.md`. The load-bearing rules are mirrored below so Claude Code cannot violate them on a first turn.
 
-### Hard Rules
+### Hard Rules (autonomous / overnight path)
 
-1. **Never use `Edit`, `Write`, or `NotebookEdit` on source files.** Permission layer will block these anyway, but do not attempt them. The only files Claude Code may write directly are planning / spec markdown under `docs/`, `plans/`, or `codex-supervisor/`, and throwaway scratch notes in the session outputs folder. Claude Code may freely **read** any file (Read, Grep, Glob) to understand the codebase before delegating.
+These bind autonomous runs (no live human) as a **workflow convention**, not a permission-layer block. As of 2026-05-24 the `deny` array in `~/.claude/settings.json` is empty — nothing below (`Edit`/`Write`/`NotebookEdit`, `git commit`/`git push`, or shell-rewrites like `sed`/`awk`/`tee`/`git apply`) is actually denied by the harness. In **interactive** sessions these rules are guidance only; in autonomous runs, follow them by discipline to keep every overnight code change flowing through the codex-worker pipeline.
+
+1. **In autonomous runs, do not use `Edit`, `Write`, or `NotebookEdit` on source files.** The permission layer no longer blocks them — this is a convention to keep all overnight code changes flowing through the codex-worker pipeline. The only files Claude Code writes directly are planning / spec markdown under `docs/`, `plans/`, or `codex-supervisor/`, and throwaway scratch notes in the session outputs folder. Claude Code may freely **read** any file (Read, Grep, Glob) to understand the codebase before delegating.
 
 2. **All code changes go through `mcp__codex__*` tools.** When a task requires editing a `.ts`, `.tsx`, `.js`, `.cs`, `.py`, `.json`, Prisma schema, SQL migration, Dockerfile, GitHub Actions workflow, or any other source artifact, call the `codex` MCP tool with a self-contained task brief.
 
 3. **No shell-based edits.** Do not use `bash` with `sed`, `awk`, `tee`, heredoc redirects (`>`, `>>`), `git apply`, or similar to indirectly modify source. Bash is allowed for read-only inspection (`ls`, `cat`, `grep`, `git log`, `git diff`, `git status`, `npm test`, `dotnet test`).
 
-4. **No `git commit` or `git push`.** Permission layer denies them. The human reviews diffs and pushes.
+4. **In autonomous runs, leave `git commit` / `git push` to the codex-worker pipeline.** These are no longer denied by the permission layer (`deny` is empty); in interactive sessions Claude Code may commit/push directly. The human reviews diffs.
 
 ### Workflow Per Request
 
@@ -199,7 +206,7 @@ Full details live in `/Users/qc/Desktop/CloudFlare/codex-supervisor/SUPERVISOR.m
 2. **Plan.** Write a short plan (3–8 bullets) describing the change. For non-trivial work, save it as `plans/<slug>.md`.
 3. **Delegate.** Call the `codex` MCP tool with a brief containing: goal, files to touch (absolute paths), `AGENTS.md` constraints that apply (especially banned terms `humanizer/bypass/undetect/detector/evade`), acceptance criteria, and any required interface signatures.
 4. **Review.** When Codex returns, read the diff. Check against the plan, banned terms, secrets policy, and test coverage.
-5. **Iterate or accept.** If wrong, re-delegate with corrections. Do not "just fix it yourself" — that breaks the supervisor contract and the permission layer will block it anyway.
+5. **Iterate or accept.** If wrong, re-delegate with corrections. In autonomous runs, don't "just fix it yourself" — that breaks the supervisor contract (the permission layer won't stop you, so honoring it is on you).
 6. **Verify.** Run tests / linters / builds via `bash` (read-only commands). Report results to the user.
 
 ### Codex Brief Template
@@ -233,7 +240,7 @@ DO NOT:
 
 ### When To Push Back
 
-If the user asks Claude Code to "just edit this one line," remind them supervisor mode is active and offer to either (a) delegate even the one-liner to Codex, or (b) have them temporarily disable supervisor by commenting out the `deny` block in `~/.claude/settings.json`. Do not silently bypass.
+If — during an autonomous run — the user asks Claude Code to "just edit this one line," remind them autonomous supervisor mode delegates code to Codex, and offer to either (a) delegate even the one-liner to Codex, or (b) treat the turn as interactive and edit directly. (There is no longer a `deny` block to comment out — the permission layer is open; the supervisor discipline is now convention.) Do not silently switch modes.
 
 ### Skills Still Apply
 

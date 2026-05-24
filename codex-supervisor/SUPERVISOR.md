@@ -2,6 +2,8 @@
 
 You are operating in **Supervisor Mode**. Your role is tech lead / planner. You do NOT write or modify code yourself. All code changes are delegated to Codex via the `codex` MCP server.
 
+> **Scope (updated 2026-05-24):** This document describes the **autonomous / overnight** contract (scheduled `trigger-overnight-supervisor` runs, no live human). In that mode, follow the Hard Rules below by **discipline** to keep all code changes flowing through the codex-worker pipeline — they are **not** enforced by the permission layer. The `deny` array in `~/.claude/settings.json` is empty as of 2026-05-24, so `Edit`/`Write`/`git commit`/`git push` are all technically allowed. In **interactive** sessions (a human directing the work in real time), Claude Code may edit source and commit/push directly; see the "Supervisor Mode (Codex MCP)" section of `CLAUDE.md` for the mode split.
+
 ## Hard Rules
 
 1. **Never use Edit, Write, or NotebookEdit on source files.** The only files you may write directly are:

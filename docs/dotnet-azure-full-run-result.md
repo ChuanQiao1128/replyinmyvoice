@@ -206,3 +206,65 @@ Windows B1 App Service fixed run-rate removed.
 Azure Functions consumption runtime expected to be near zero at low traffic.
 Azure SQL Basic remains the main predictable Azure dev cost.
 ```
+
+## 2026-05-23 Production Backend Cutover Completion
+
+The live Cloudflare Worker now treats Azure Functions as the backend runtime and Azure SQL as the account/quota database for public app flows.
+
+Implemented:
+
+- Added Azure `/api/me` account summary backed by EF Core/Azure SQL.
+- Added Azure Functions `/api/me` and `/api/health/db`.
+- Added Entra Bearer-token validation in Functions; production header-only auth is disabled.
+- Updated Cloudflare `/app` to read account, quota, and billing state from Azure instead of Neon.
+- Updated rewrite workspace, checkout, portal, DB health, and Stripe webhook paths to call or proxy Azure Functions.
+- Disabled the unfinished API-key management runtime path until it has an Azure-backed data model.
+- Deployed Azure Functions to `https://replyinmyvoice-func-dev.azurewebsites.net`.
+- Deployed Cloudflare Worker `replyinmyvoice-app` to `replyinmyvoice.com` and `www.replyinmyvoice.com`.
+
+Verification:
+
+```text
+dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore: 47 passed
+npm run lint: passed
+npm run typecheck: passed
+npm run test: 48 files / 313 tests passed
+dotnet publish API/Worker/Functions Release: passed
+PATH=/usr/local/bin:$PATH NEXT_DIST_DIR=.next-build npm run build: passed
+PATH=/usr/local/bin:$PATH npm run cf:build: passed
+infra/azure/functions-provision.sh: passed
+infra/azure/migrate.sh: database already up to date
+infra/azure/functions-deploy.sh: passed
+PATH=/usr/local/bin:$PATH npm run cf:deploy: deployed version 19086619-cd41-48e9-bb8d-d64deaa76dd1
+```
+
+Remote smoke:
+
+```text
+GET Azure /api/health: 200
+GET Azure /api/health/db: 200, {"ok":true,"database":"azure-sql"}
+GET Azure /api/me without auth: 401
+POST Azure /api/rewrite without auth: 401
+OPTIONS Azure /api/rewrite from replyinmyvoice.com: 204 with authorization/content-type/x-idempotency-key allowed
+GET replyinmyvoice.com/: 200
+GET replyinmyvoice.com/pricing: 200
+GET replyinmyvoice.com/app without auth: 307 to /sign-in
+GET replyinmyvoice.com/api/health/db: 200, Azure SQL health
+POST replyinmyvoice.com/api/rewrite without session: 401
+GET replyinmyvoice.com/api/stripe/webhook: 200, backend azure-functions
+```
+
+Runtime settings confirmed:
+
+```text
+ALLOW_HEADER_AUTH=false
+OPENAI_BASE_URL=https://api.deepseek.com
+NEXT_PUBLIC_ENTRA_API_SCOPE=api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32/access_as_user
+ENTRA_API_AUDIENCE=api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32
+```
+
+Limitations:
+
+- A live signed-in Entra browser rewrite was not run from this Codex session because no authenticated user access token was available.
+- Stripe dashboard endpoint settings were not changed directly; the existing Cloudflare webhook route now proxies events to Azure Functions for compatibility.
+- The repository still contains legacy Prisma/Neon helper modules and tests, but public Cloudflare app routes no longer call them.

@@ -56,10 +56,32 @@ if (!string.IsNullOrWhiteSpace(clerkIssuer))
 
 app.MapGet("/health", () => Results.Ok(new { ok = true, service = "replyinmyvoice-api" }));
 
+app.MapGet("/api/me", async (
+    HttpRequest httpRequest,
+    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    CancellationToken cancellationToken) =>
+{
+    var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
+    if (string.IsNullOrWhiteSpace(externalUserId))
+    {
+        return Results.Problem(
+            title: "Authentication required",
+            detail: "A valid authenticated user is required.",
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var account = await accountService.GetOrCreateAccountSummaryAsync(
+        externalUserId,
+        ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+        cancellationToken);
+
+    return Results.Ok(account);
+});
+
 app.MapPost("/api/rewrite", async (
     HttpRequest httpRequest,
     [FromBody] RewriteRequest request,
-    AppDbContext db,
+    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
     RewriteRequestService rewriteRequestService,
     CancellationToken cancellationToken) =>
 {
@@ -90,8 +112,11 @@ app.MapPost("/api/rewrite", async (
             statusCode: StatusCodes.Status400BadRequest);
     }
 
-    var user = await GetOrCreateUserAsync(db, externalUserId, cancellationToken);
-    var plan = GetUsagePlan(user);
+    var user = await accountService.GetOrCreateUserAsync(
+        externalUserId,
+        ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+        cancellationToken);
+    var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user);
 
     var result = await rewriteRequestService.CreateAttemptAsync(
         user.Id,
@@ -187,7 +212,7 @@ app.MapPost("/api/stripe/checkout", async (
     {
         var url = await billingService.CreateCheckoutSessionUrlAsync(
             externalUserId,
-            ResolveEmail(httpRequest),
+            ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
             cancellationToken);
         return Results.Ok(new BillingUrlResponse(url));
     }
@@ -300,39 +325,6 @@ app.MapPost("/api/stripe/webhook", async (
 
 app.Run();
 
-static async Task<AppUser> GetOrCreateUserAsync(
-    AppDbContext db,
-    string externalUserId,
-    CancellationToken cancellationToken)
-{
-    var user = await db.AppUsers.SingleOrDefaultAsync(
-        x => x.ExternalAuthUserId == externalUserId,
-        cancellationToken);
-
-    if (user is not null)
-    {
-        return user;
-    }
-
-    user = new AppUser
-    {
-        ExternalAuthUserId = externalUserId,
-        SubscriptionStatus = SubscriptionStatus.Inactive,
-        CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow,
-    };
-    db.AppUsers.Add(user);
-    await db.SaveChangesAsync(cancellationToken);
-    return user;
-}
-
-static UsagePlan GetUsagePlan(AppUser user)
-{
-    return user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing
-        ? new UsagePlan($"paid:{user.StripeSubscriptionId ?? user.Id.ToString()}:{user.CurrentPeriodEnd?.ToString("O") ?? "no-period"}", user.SubscriptionStatus == SubscriptionStatus.Testing ? 10_000 : 40)
-        : new UsagePlan("free:lifetime", 3);
-}
-
 static string? ValidateRewriteRequest(RewriteRequest request)
 {
     if (request.RoughDraftReply.Trim().Length < 10)
@@ -376,15 +368,36 @@ static string? ResolveExternalUserId(
     if (request.HttpContext.User.Identity?.IsAuthenticated == true)
     {
         return request.HttpContext.User.FindFirstValue("sub") ??
+            request.HttpContext.User.FindFirstValue("oid") ??
             request.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 
     return null;
 }
 
-static string? ResolveEmail(HttpRequest request) =>
-    request.HttpContext.User.FindFirstValue(ClaimTypes.Email) ??
-    request.HttpContext.User.FindFirstValue("email");
+static string? ResolveRequestEmail(
+    HttpRequest request,
+    IWebHostEnvironment environment,
+    IConfiguration configuration)
+{
+    var allowHeaderAuth = environment.IsDevelopment() ||
+        environment.IsEnvironment("Testing") ||
+        string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase);
+
+    if (allowHeaderAuth)
+    {
+        var headerEmail = request.Headers["X-User-Email"].ToString();
+        if (!string.IsNullOrWhiteSpace(headerEmail))
+        {
+            return headerEmail;
+        }
+    }
+
+    return request.HttpContext.User.FindFirstValue(ClaimTypes.Email) ??
+        request.HttpContext.User.FindFirstValue("email") ??
+        request.HttpContext.User.FindFirstValue("emails") ??
+        request.HttpContext.User.FindFirstValue("preferred_username");
+}
 
 static string? ResolveClerkIssuer(IConfiguration configuration)
 {
@@ -440,8 +453,6 @@ public sealed record RewriteAttemptResponse(
     string Status,
     string? ResultJson,
     string? ErrorCode);
-
-public sealed record UsagePlan(string PeriodKey, int QuotaLimit);
 
 public sealed record BillingUrlResponse(string Url);
 

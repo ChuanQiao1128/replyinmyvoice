@@ -5,7 +5,6 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Contracts;
-using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
@@ -17,6 +16,7 @@ namespace ReplyInMyVoice.Functions.Functions;
 public sealed class RewriteHttpFunctions(
     IConfiguration configuration,
     AppDbContext db,
+    AccountService accountService,
     RewriteRequestService rewriteRequestService)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -30,8 +30,8 @@ public sealed class RewriteHttpFunctions(
         HttpRequest request,
         CancellationToken cancellationToken)
     {
-        var externalUserId = FunctionAuthResolver.ResolveExternalUserId(request, configuration);
-        if (string.IsNullOrWhiteSpace(externalUserId))
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
         {
             return FunctionHttpResults.Problem(
                 "Authentication required",
@@ -81,8 +81,11 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status400BadRequest);
         }
 
-        var user = await GetOrCreateUserAsync(externalUserId, cancellationToken);
-        var plan = GetUsagePlan(user);
+        var user = await accountService.GetOrCreateUserAsync(
+            authUser.ExternalAuthUserId,
+            authUser.Email,
+            cancellationToken);
+        var plan = AccountService.GetUsagePlan(user);
         var result = await rewriteRequestService.CreateAttemptAsync(
             user.Id,
             idempotencyKey,
@@ -126,8 +129,8 @@ public sealed class RewriteHttpFunctions(
         Guid attemptId,
         CancellationToken cancellationToken)
     {
-        var externalUserId = FunctionAuthResolver.ResolveExternalUserId(request, configuration);
-        if (string.IsNullOrWhiteSpace(externalUserId))
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
         {
             return FunctionHttpResults.Problem(
                 "Authentication required",
@@ -136,7 +139,7 @@ public sealed class RewriteHttpFunctions(
         }
 
         var user = await db.AppUsers.SingleOrDefaultAsync(
-            x => x.ExternalAuthUserId == externalUserId,
+            x => x.ExternalAuthUserId == authUser.ExternalAuthUserId,
             cancellationToken);
         if (user is null)
         {
@@ -158,39 +161,6 @@ public sealed class RewriteHttpFunctions(
             attempt.Status.ToString(),
             attempt.ResultJson,
             attempt.ErrorCode));
-    }
-
-    private async Task<AppUser> GetOrCreateUserAsync(
-        string externalUserId,
-        CancellationToken cancellationToken)
-    {
-        var user = await db.AppUsers.SingleOrDefaultAsync(
-            x => x.ExternalAuthUserId == externalUserId,
-            cancellationToken);
-        if (user is not null)
-        {
-            return user;
-        }
-
-        user = new AppUser
-        {
-            ExternalAuthUserId = externalUserId,
-            SubscriptionStatus = SubscriptionStatus.Inactive,
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
-        db.AppUsers.Add(user);
-        await db.SaveChangesAsync(cancellationToken);
-        return user;
-    }
-
-    private static UsagePlan GetUsagePlan(AppUser user)
-    {
-        return user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing
-            ? new UsagePlan(
-                $"paid:{user.StripeSubscriptionId ?? user.Id.ToString()}:{user.CurrentPeriodEnd?.ToString("O") ?? "no-period"}",
-                user.SubscriptionStatus == SubscriptionStatus.Testing ? 10_000 : 40)
-            : new UsagePlan("free:lifetime", 3);
     }
 
     private static string? ValidateRewriteRequest(RewriteRequest request)
@@ -224,5 +194,3 @@ public sealed record RewriteAttemptResponse(
     string Status,
     string? ResultJson,
     string? ErrorCode);
-
-public sealed record UsagePlan(string PeriodKey, int QuotaLimit);

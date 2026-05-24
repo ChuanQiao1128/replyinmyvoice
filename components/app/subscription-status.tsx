@@ -1,5 +1,6 @@
 import { CreditCard, RefreshCcw, ShieldCheck } from "lucide-react";
 
+import { azureApiFetch } from "../../lib/client-azure-api";
 import { Button } from "../ui/button";
 
 type Props = {
@@ -9,7 +10,7 @@ type Props = {
 };
 
 async function openBillingPortal() {
-  const response = await fetch("/api/stripe/portal", { method: "POST" });
+  const response = await azureApiFetch("/api/stripe/portal", { method: "POST" });
   const payload = (await response.json()) as { url?: string; error?: string };
 
   if (!response.ok || !payload.url) {
@@ -20,7 +21,7 @@ async function openBillingPortal() {
 }
 
 async function openCheckout() {
-  const response = await fetch("/api/stripe/checkout", { method: "POST" });
+  const response = await azureApiFetch("/api/stripe/checkout", { method: "POST" });
   const payload = (await response.json()) as { url?: string; error?: string };
 
   if (!response.ok || !payload.url) {

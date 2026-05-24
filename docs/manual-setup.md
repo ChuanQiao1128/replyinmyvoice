@@ -4,7 +4,9 @@ These steps are dashboard-only or final-cutover tasks. They should not block loc
 
 ## Azure Functions / Azure SQL / Entra External ID Migration
 
-The next backend/auth target is to move production runtime identity and data away from Clerk/Neon and onto:
+2026-05-23 status: the production Cloudflare Worker is now cut over to Azure Functions for public app backend calls, and Azure SQL is the account/quota database for `/app`, rewrite, billing, webhook, and DB health flows. The old Cloudflare API routes are retained as compatibility proxies to Azure, not as Neon/Stripe/OpenAI business-logic handlers.
+
+The backend/auth target is:
 
 ```text
 Cloudflare frontend
@@ -66,7 +68,7 @@ AZURE_EXTERNAL_ID_SIGN_IN_FLOW_NAME=
 GOOGLE_CLIENT_ID_FOR_ENTRA=
 GOOGLE_CLIENT_SECRET_FOR_ENTRA=
 
-NEXT_PUBLIC_AZURE_API_BASE_URL=
+NEXT_PUBLIC_AZURE_API_BASE_URL=https://replyinmyvoice-func-dev.azurewebsites.net
 NEXT_PUBLIC_ENTRA_AUTHORITY=
 NEXT_PUBLIC_ENTRA_CLIENT_ID=
 NEXT_PUBLIC_ENTRA_API_SCOPE=
@@ -78,12 +80,28 @@ Dashboard steps:
 2. Create a frontend app registration for `replyinmyvoice.com`.
 3. Create an API app registration for the Azure Functions backend and expose one API scope.
 4. Create a sign-up/sign-in user flow and attach the frontend app.
-5. In Google Cloud Console, create a Google OAuth web app for Entra federation.
-6. Add `replyinmyvoice.com` to Google OAuth consent screen authorized domains if required.
-7. Add the exact redirect URI shown by Entra External ID when configuring Google federation.
-8. Copy the Google client id/secret into `.env.local`.
-9. Add the Google client id/secret to Entra External ID identity providers.
-10. Select Google in the Entra user flow.
+5. In the same Entra External ID user flow, enable email one-time passcode / email verification as a local account sign-up and sign-in method.
+6. In Google Cloud Console, create a Google OAuth web app for Entra federation.
+7. Add `replyinmyvoice.com` to Google OAuth consent screen authorized domains if required.
+8. Add the exact redirect URI shown by Entra External ID when configuring Google federation.
+9. Copy the Google client id/secret into `.env.local`.
+10. Add the Google client id/secret to Entra External ID identity providers.
+11. Select Google in the Entra user flow.
+
+Email code sign-in behavior:
+
+```text
+The app does not generate, store, or validate one-time email codes itself.
+The sign-in page sends the user's email as `login_hint` to Entra External ID.
+Entra External ID sends and verifies the email code inside the hosted user flow.
+After callback, `/api/me` in the .NET/Azure API upserts the verified Entra subject and email into Azure SQL through AccountService.
+```
+
+Reference:
+
+```text
+https://learn.microsoft.com/en-us/entra/external-id/customers/concept-authentication-methods-customers
+```
 
 Important:
 
@@ -104,6 +122,8 @@ Finish Google first, then add additional social providers later.
 - User-facing copy should display `NZD $9/month`.
 - Webhook endpoint currently points to:
   - `https://replyinmyvoice.com/api/stripe/webhook`
+- As of 2026-05-23 this Cloudflare webhook route proxies the raw webhook body and Stripe signature to Azure Functions. If the Stripe dashboard is later changed directly, use the Azure endpoint:
+  - `https://replyinmyvoice-func-dev.azurewebsites.net/api/stripe/webhook`
 - Required events implemented in code:
   - `checkout.session.completed`
   - `customer.subscription.created`
@@ -116,9 +136,16 @@ Finish Google first, then add additional social providers later.
 
 ## Cloudflare Variables
 
-Set production runtime variables/secrets for the Worker:
+Set production runtime variables/secrets for the Worker. Public app backend calls now require:
 
 - `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_AZURE_API_BASE_URL`
+- `NEXT_PUBLIC_ENTRA_AUTHORITY`
+- `NEXT_PUBLIC_ENTRA_CLIENT_ID`
+- `NEXT_PUBLIC_ENTRA_API_SCOPE`
+
+Legacy Clerk/Neon variables may remain in the dashboard while old admin/library code is cleaned up, but public `/app`, rewrite, billing, webhook, and DB health routes should not depend on them after the 2026-05-23 cutover:
+
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
 - `NEXT_PUBLIC_CLERK_SIGN_IN_URL`
@@ -192,8 +219,14 @@ Launch update on 2026-05-18:
 
 ## Database Runtime Note
 
-Prisma remains the source of truth for schema, migrations, and generated types.
-Runtime database access in the Worker uses the Neon serverless driver directly.
+2026-05-23 update: public app runtime data is now served by Azure SQL through Azure Functions. Cloudflare Worker routes for rewrite, billing, Stripe webhook, and database health proxy to Azure.
+
+Legacy Prisma/Neon code remains in the repository for historical tests, admin/learning cleanup work, and unfinished feature branches. It should not be treated as the production account/quota/rewrite database path after the Azure cutover.
+
+Historical note:
+
+Prisma previously remained the source of truth for schema, migrations, and generated types.
+Runtime database access in the Worker used the Neon serverless driver directly.
 
 Reason: the Prisma generated client path for the JS engine currently emits a
 query compiler WASM artifact that does not run correctly in the OpenNext

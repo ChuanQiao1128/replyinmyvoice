@@ -9,6 +9,7 @@ public sealed class OpenAiRewriteProvider(
     HttpClient httpClient,
     string apiKey,
     string model,
+    string baseUrl,
     TimeSpan timeout) : IRewriteProvider
 {
     public async Task<RewriteProviderResult> RewriteAsync(Guid attemptId, RewriteRequest rewriteRequest, CancellationToken cancellationToken)
@@ -27,7 +28,7 @@ public sealed class OpenAiRewriteProvider(
             }
         };
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions");
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildChatCompletionsUri(baseUrl));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
@@ -67,6 +68,20 @@ public sealed class OpenAiRewriteProvider(
         {
             return new RewriteProviderResult(null, false, "openai_network_failed");
         }
+    }
+
+    private static Uri BuildChatCompletionsUri(string configuredBaseUrl)
+    {
+        var normalizedBaseUrl = string.IsNullOrWhiteSpace(configuredBaseUrl)
+            ? "https://api.openai.com/v1"
+            : configuredBaseUrl.Trim();
+
+        if (!normalizedBaseUrl.EndsWith("/", StringComparison.Ordinal))
+        {
+            normalizedBaseUrl += "/";
+        }
+
+        return new Uri(new Uri(normalizedBaseUrl), "chat/completions");
     }
 
     private static string BuildPrompt(Guid attemptId, RewriteRequest request) =>

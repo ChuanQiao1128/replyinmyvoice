@@ -185,5 +185,37 @@ npm test -- tests/unit/quota.test.ts tests/unit/stripe-webhook-events.test.ts
 
 - Some blank-note and cover-letter cases still preserve facts but do not reduce the third-party signal enough.
 - Two latest eval cases had unavailable final third-party signal; future runs should distinguish provider unavailability from rewrite quality failure.
-- Authenticated `/app` manual smoke with a real Clerk session still needs a human browser check because local automated tests do not have a Clerk test login session.
+- Authenticated `/app` manual smoke with a real Entra session still needs a human browser check because local automated tests do not have a live user access token.
 - Stripe remains sandbox/test mode; no live-mode payment or real charge was performed.
+
+## 2026-05-23 Azure Backend Cutover QA
+
+Cloudflare production Worker now routes public backend work to Azure Functions and Azure SQL.
+
+Passed verification:
+
+- `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore`: 47 passed
+- `npm run lint`: passed
+- `npm run typecheck`: passed
+- `npm run test`: 48 files / 313 tests passed
+- `npm run cf:deploy`: deployed Worker version `19086619-cd41-48e9-bb8d-d64deaa76dd1`
+- Azure SQL migration: already up to date
+- Azure Functions deploy: passed
+
+Remote smoke passed:
+
+- `GET https://replyinmyvoice-func-dev.azurewebsites.net/api/health`: 200
+- `GET https://replyinmyvoice-func-dev.azurewebsites.net/api/health/db`: 200, Azure SQL
+- `GET https://replyinmyvoice-func-dev.azurewebsites.net/api/me` without auth: 401
+- `POST https://replyinmyvoice-func-dev.azurewebsites.net/api/rewrite` without auth: 401
+- Azure CORS preflight from `https://replyinmyvoice.com`: 204 with `authorization`, `content-type`, and `x-idempotency-key`
+- `GET https://replyinmyvoice.com/`: 200
+- `GET https://replyinmyvoice.com/pricing`: 200
+- `GET https://replyinmyvoice.com/app` signed out: 307 to sign-in
+- `GET https://replyinmyvoice.com/api/health/db`: 200, Azure SQL
+- `POST https://replyinmyvoice.com/api/rewrite` signed out: 401
+- `GET https://replyinmyvoice.com/api/stripe/webhook`: reports `backend:"azure-functions"`
+
+Deployment note:
+
+- Codex desktop preview repeatedly auto-started `next dev` / `next start`, which can race with OpenNext writes to `.next`. For local deployment from Codex, run Cloudflare build/deploy with a short watchdog that stops those preview processes during the build. Normal CI should not need this workaround.

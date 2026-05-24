@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { getAppUrl } from "../../../../lib/env";
+import { getAzureApiBaseUrl } from "../../../../lib/azure-api";
+import { getCurrentAccessToken } from "../../../../lib/entra-auth";
 import { jsonError, requireSameOrigin } from "../../../../lib/http";
-import { createStripePortalSession } from "../../../../lib/stripe";
-import { getCurrentAppUser } from "../../../../lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -13,15 +12,22 @@ export async function POST(request: Request) {
     return originError;
   }
 
-  const user = await getCurrentAppUser();
-  if (!user?.stripeCustomerId) {
-    return jsonError("Billing customer not found.", 400);
+  const accessToken = await getCurrentAccessToken();
+  if (!accessToken) {
+    return jsonError("Authentication required.", 401);
   }
 
-  const session = await createStripePortalSession({
-    customerId: user.stripeCustomerId,
-    returnUrl: `${getAppUrl()}/app`,
+  const response = await fetch(`${getAzureApiBaseUrl()}/api/stripe/portal`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
   });
 
-  return NextResponse.json({ url: session.url });
+  return new NextResponse(await response.text(), {
+    status: response.status,
+    headers: {
+      "Content-Type": response.headers.get("content-type") ?? "application/json",
+    },
+  });
 }

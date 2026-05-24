@@ -12,6 +12,9 @@ export type AuthSession = {
   email: string | null;
   name: string | null;
   exp: number;
+  accessToken?: string;
+  accessTokenExp?: number;
+  refreshToken?: string;
 };
 
 type OAuthState = {
@@ -29,6 +32,7 @@ export type EntraAuthorizeUrlInput = {
   state: string;
   nonce: string;
   codeVerifier: string;
+  loginHint?: string;
   prompt?: "select_account";
 };
 
@@ -154,6 +158,10 @@ function getEntraApiScope() {
   return requireEnv("NEXT_PUBLIC_ENTRA_API_SCOPE");
 }
 
+function getEntraOAuthScopes() {
+  return `openid profile email ${getEntraApiScope()}`;
+}
+
 function getEntraJwksUrl() {
   return `${getEntraAuthority().replace(/\/v2\.0$/, "")}/discovery/v2.0/keys`;
 }
@@ -183,7 +191,7 @@ export async function buildEntraAuthorizeUrl(input: EntraAuthorizeUrlInput) {
   url.searchParams.set("client_id", input.clientId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", input.redirectUri);
-  url.searchParams.set("scope", "openid profile email");
+  url.searchParams.set("scope", getEntraOAuthScopes());
   url.searchParams.set("response_mode", "query");
   url.searchParams.set("state", input.state);
   url.searchParams.set("nonce", input.nonce);
@@ -192,6 +200,10 @@ export async function buildEntraAuthorizeUrl(input: EntraAuthorizeUrlInput) {
 
   if (input.prompt) {
     url.searchParams.set("prompt", input.prompt);
+  }
+
+  if (input.loginHint) {
+    url.searchParams.set("login_hint", input.loginHint);
   }
 
   return url;
@@ -204,7 +216,7 @@ export function buildEntraTokenRequestBody(input: EntraTokenRequestBodyInput) {
     code: input.code,
     redirect_uri: input.redirectUri,
     code_verifier: input.codeVerifier,
-    scope: "openid profile email",
+    scope: getEntraOAuthScopes(),
   });
 
   if (input.clientSecret) {
@@ -214,7 +226,10 @@ export function buildEntraTokenRequestBody(input: EntraTokenRequestBodyInput) {
   return body;
 }
 
-export async function createLoginRedirectUrl(redirectTo = "/app") {
+export async function createLoginRedirectUrl(
+  redirectTo = "/app",
+  options: { loginHint?: string } = {},
+) {
   const state = randomBase64Url(24);
   const nonce = randomBase64Url(24);
   const codeVerifier = randomBase64Url(48);
@@ -240,6 +255,7 @@ export async function createLoginRedirectUrl(redirectTo = "/app") {
     state,
     nonce,
     codeVerifier,
+    loginHint: options.loginHint,
     prompt: "select_account",
   });
 }
@@ -305,11 +321,25 @@ function emailClaim(claims: Record<string, unknown>) {
 }
 
 function claimIncludes(value: unknown, expected: string) {
+  const expectedValues = scopeAlternates(expected);
+
   if (typeof value === "string") {
-    return value.split(/\s+/).includes(expected);
+    return value
+      .split(/\s+/)
+      .some((candidate) => expectedValues.includes(candidate));
   }
 
-  return Array.isArray(value) && value.includes(expected);
+  return Array.isArray(value) &&
+    value.some((candidate) => typeof candidate === "string" && expectedValues.includes(candidate));
+}
+
+function scopeAlternates(scope: string) {
+  const segments = [scope];
+  const slashIndex = scope.lastIndexOf("/");
+  if (slashIndex >= 0 && slashIndex < scope.length - 1) {
+    segments.push(scope.slice(slashIndex + 1));
+  }
+  return segments;
 }
 
 function audienceMatches(value: unknown, expected: string) {
@@ -437,6 +467,93 @@ export async function validateEntraBearerToken(
   };
 }
 
+/**
+ * Mints the rimv_session cookie from a freshly issued token set. Shared by the
+ * browser-redirect callback (completeEntraCallback) and the native email-OTP routes
+ * so both produce an identical session — downstream code (middleware, /api/me, .NET)
+ * is unchanged regardless of which path the user took.
+ */
+export async function createSessionFromTokens(tokens: {
+  idToken: string;
+  accessToken: string;
+  refreshToken?: string | null;
+}): Promise<AuthSession> {
+  const claims = parseJwtPayload(tokens.idToken);
+  const baseSession = claims ? validateIdTokenClaims(claims) : null;
+  if (!baseSession) {
+    throw new Error("Invalid Entra identity token.");
+  }
+
+  const accessClaims = parseJwtPayload(tokens.accessToken);
+  const accessTokenExp =
+    accessClaims && typeof accessClaims.exp === "number" ? accessClaims.exp : baseSession.exp;
+
+  const session = {
+    ...baseSession,
+    accessToken: tokens.accessToken,
+    accessTokenExp,
+    refreshToken: tokens.refreshToken ?? undefined,
+    exp: Math.min(baseSession.exp, accessTokenExp),
+  } satisfies AuthSession;
+
+  const cookieStore = await cookies();
+  const sessionCookie = await createSignedCookieValue(session, getSessionSecret());
+  cookieStore.set(sessionCookieName, sessionCookie, {
+    httpOnly: true,
+    secure: getAppUrl().startsWith("https://"),
+    sameSite: "lax",
+    path: "/",
+    maxAge: Math.max(60, session.exp - Math.floor(Date.now() / 1000)),
+  });
+
+  return session;
+}
+
+export const signupFlowCookieName = "rimv_signup";
+
+/**
+ * Short-lived signed cookie that threads the native-auth email+password sign-up flow
+ * (email-verification step) across requests. Sign-in is single-shot and needs no cookie.
+ */
+export type SignupFlowState = {
+  continuationToken: string;
+  email: string;
+  displayName: string | null;
+  codeLength: number;
+  channelLabel: string | null;
+  lastSentAt: number;
+  exp: number;
+};
+
+export async function setSignupFlowCookie(state: SignupFlowState) {
+  const cookieStore = await cookies();
+  const value = await createSignedCookieValue(state, getSessionSecret());
+  cookieStore.set(signupFlowCookieName, value, {
+    httpOnly: true,
+    secure: getAppUrl().startsWith("https://"),
+    sameSite: "lax",
+    path: "/",
+    maxAge: Math.max(60, state.exp - Math.floor(Date.now() / 1000)),
+  });
+}
+
+export async function readSignupFlowCookie(): Promise<SignupFlowState | null> {
+  const cookieStore = await cookies();
+  const state = await verifySignedCookieValue<SignupFlowState>(
+    cookieStore.get(signupFlowCookieName)?.value,
+    getSessionSecret(),
+  );
+  if (!state || state.exp <= Math.floor(Date.now() / 1000)) {
+    return null;
+  }
+  return state;
+}
+
+export async function clearSignupFlowCookie() {
+  const cookieStore = await cookies();
+  cookieStore.delete(signupFlowCookieName);
+}
+
 export async function completeEntraCallback(requestUrl: string) {
   const url = new URL(requestUrl);
   const code = url.searchParams.get("code");
@@ -476,30 +593,21 @@ export async function completeEntraCallback(requestUrl: string) {
   );
 
   const payload = (await tokenResponse.json().catch(() => null)) as {
+    access_token?: string;
     id_token?: string;
     error?: string;
     error_description?: string;
   } | null;
 
-  if (!tokenResponse.ok || !payload?.id_token) {
+  if (!tokenResponse.ok || !payload?.id_token || !payload.access_token) {
     throw new Error(
       `Entra token exchange failed: ${payload?.error ?? tokenResponse.status} ${payload?.error_description ?? ""}`.trim(),
     );
   }
 
-  const claims = parseJwtPayload(payload.id_token);
-  const session = claims ? validateIdTokenClaims(claims) : null;
-  if (!session) {
-    throw new Error("Invalid Entra identity token.");
-  }
-
-  const sessionCookie = await createSignedCookieValue(session, getSessionSecret());
-  cookieStore.set(sessionCookieName, sessionCookie, {
-    httpOnly: true,
-    secure: getAppUrl().startsWith("https://"),
-    sameSite: "lax",
-    path: "/",
-    maxAge: Math.max(60, session.exp - Math.floor(Date.now() / 1000)),
+  const session = await createSessionFromTokens({
+    idToken: payload.id_token,
+    accessToken: payload.access_token,
   });
   cookieStore.delete(oauthStateCookieName);
 
@@ -523,6 +631,19 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
   }
 
   return session;
+}
+
+export async function getCurrentAccessToken(): Promise<string | null> {
+  const session = await getCurrentSession();
+  if (!session?.accessToken || !session.accessTokenExp) {
+    return null;
+  }
+
+  if (session.accessTokenExp <= Math.floor(Date.now() / 1000)) {
+    return null;
+  }
+
+  return session.accessToken;
 }
 
 export async function clearCurrentSession() {
