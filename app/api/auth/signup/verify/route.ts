@@ -32,12 +32,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
   }
 
-  await createSessionFromTokens({
-    idToken: result.tokens.idToken,
-    accessToken: result.tokens.accessToken,
-    refreshToken: result.tokens.refreshToken,
-  });
-  await clearSignupFlowCookie();
+  const response = NextResponse.json({ ok: true, redirectTo: "/app" });
+  await createSessionFromTokens(
+    {
+      idToken: result.tokens.idToken,
+      accessToken: result.tokens.accessToken,
+      refreshToken: result.tokens.refreshToken,
+    },
+    response.cookies,
+  );
+  await clearSignupFlowCookie(response.cookies);
 
-  return NextResponse.json({ ok: true, redirectTo: "/app" });
+  return response;
 }

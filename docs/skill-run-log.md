@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-24 - ui-browser-testing - Entra callback access-cookie redirect loop
+
+- Agent: Codex
+- Trigger: Owner reported that production Google sign-in still returned to `/sign-in` after `/auth/callback` redirected to `/app`; this is a browser-visible auth redirect and cookie persistence flow.
+- Action: Opened and followed the skill; used production request logs, route/source tracing, and focused Playwright auth-gate verification. Changed callback/password/signup session writes to attach cookies directly to the outgoing `NextResponse.cookies` object, added signed metadata for access-token cookie chunks, reduced callback Set-Cookie churn, and added safe auth-boundary logging for `/app` account-summary failures.
+- Output artifacts: `app/auth/callback/route.ts`; `app/api/auth/password/route.ts`; `app/api/auth/signup/start/route.ts`; `app/api/auth/signup/resend/route.ts`; `app/api/auth/signup/verify/route.ts`; `lib/entra-auth.ts`; `lib/azure-api.ts`; `tests/unit/entra-auth.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm test -- tests/unit/entra-auth.test.ts tests/unit/middleware.test.ts` passed 18/18; full `npm test` passed 95/95; `npm run typecheck`, `npm run lint`, standalone `npm run build`, standalone `npm run cf:build`, and `npx playwright test tests/e2e/auth-gate.spec.ts --project=chromium` passed.
+- Limitations: Codex cannot complete the owner's real Google account login inside this session. The deployed fix still needs a production retry from a real browser, and no token values, `.env.local` contents, or provider secrets were logged.
+
 ### 2026-05-24 - cloud-architecture-cost-review - C# rewrite real-provider optimization
 
 - Agent: Codex

@@ -31,10 +31,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: result.error }, { status });
   }
 
-  await createSessionFromTokens({
-    idToken: result.tokens.idToken,
-    accessToken: result.tokens.accessToken,
-    refreshToken: result.tokens.refreshToken,
-  });
-  return NextResponse.json({ ok: true, redirectTo: "/app" });
+  const response = NextResponse.json({ ok: true, redirectTo: "/app" });
+  await createSessionFromTokens(
+    {
+      idToken: result.tokens.idToken,
+      accessToken: result.tokens.accessToken,
+      refreshToken: result.tokens.refreshToken,
+    },
+    response.cookies,
+  );
+  return response;
 }

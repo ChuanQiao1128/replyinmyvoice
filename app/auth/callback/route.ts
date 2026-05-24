@@ -7,8 +7,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const result = await completeEntraCallback(request.url);
-    return NextResponse.redirect(`${getAppUrl()}${result.redirectTo}`);
+    const response = new NextResponse(null, { status: 307 });
+    const result = await completeEntraCallback(request.url, response.cookies);
+    response.headers.set("Location", `${getAppUrl()}${result.redirectTo}`);
+    return response;
   } catch (error) {
     console.error("entra_callback_failed", {
       message: error instanceof Error ? error.message : "Unknown callback failure",

@@ -28,6 +28,7 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
   }
 
+  const response = NextResponse.json({ ok: true, cooldownSeconds: RESEND_COOLDOWN_SECONDS });
   await setSignupFlowCookie({
     ...flow,
     continuationToken: result.continuationToken,
@@ -35,7 +36,7 @@ export async function POST() {
     channelLabel: result.channelLabel,
     lastSentAt: now,
     exp: now + FLOW_TTL_SECONDS,
-  });
+  }, response.cookies);
 
-  return NextResponse.json({ ok: true, cooldownSeconds: RESEND_COOLDOWN_SECONDS });
+  return response;
 }

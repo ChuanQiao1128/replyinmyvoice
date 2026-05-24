@@ -216,12 +216,14 @@ describe("Entra auth helpers", () => {
     expect(persistedSession).not.toHaveProperty("refreshToken");
 
     const accessTokenCookieCalls = mockCookieStore.set.mock.calls.filter(([name]) =>
-      String(name).startsWith("rimv_access_"),
+      /^rimv_access_\d+$/.test(String(name)),
     );
     expect(accessTokenCookieCalls.length).toBeGreaterThan(1);
     for (const [, accessTokenCookieValue] of accessTokenCookieCalls) {
       expect(accessTokenCookieValue.length).toBeLessThan(4096);
     }
+    expect(mockCookieStore.set.mock.calls.some(([name]) => name === "rimv_access_meta"))
+      .toBe(true);
 
     const storedCookies = new Map(
       mockCookieStore.set.mock.calls.map(([name, value]) => [String(name), value]),
@@ -232,6 +234,30 @@ describe("Entra auth helpers", () => {
     });
 
     await expect(getCurrentAccessToken()).resolves.toBe(session.accessToken);
+  });
+
+  it("can attach session cookies directly to a response cookie writer", async () => {
+    const responseCookieWriter = {
+      set: vi.fn(),
+    };
+
+    await createSessionFromTokens(
+      {
+        idToken: unsignedToken(),
+        accessToken: unsignedToken({ pad: "x".repeat(3500) }),
+      },
+      responseCookieWriter,
+    );
+
+    expect(mockCookieStore.set).not.toHaveBeenCalled();
+    expect(responseCookieWriter.set.mock.calls.some(([name]) => name === sessionCookieName))
+      .toBe(true);
+    expect(responseCookieWriter.set.mock.calls.some(([name]) => name === "rimv_access_meta"))
+      .toBe(true);
+    expect(
+      responseCookieWriter.set.mock.calls.filter(([name]) => /^rimv_access_\d+$/.test(String(name)))
+        .length,
+    ).toBeGreaterThan(1);
   });
 });
 

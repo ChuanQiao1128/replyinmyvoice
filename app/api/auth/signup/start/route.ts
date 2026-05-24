@@ -36,6 +36,11 @@ export async function POST(request: Request) {
   }
 
   const now = Math.floor(Date.now() / 1000);
+  const response = NextResponse.json({
+    ok: true,
+    codeLength: result.codeLength,
+    channelLabel: result.channelLabel,
+  });
   await setSignupFlowCookie({
     continuationToken: result.continuationToken,
     email,
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
     channelLabel: result.channelLabel,
     lastSentAt: now,
     exp: now + FLOW_TTL_SECONDS,
-  });
+  }, response.cookies);
 
-  return NextResponse.json({ ok: true, codeLength: result.codeLength, channelLabel: result.channelLabel });
+  return response;
 }

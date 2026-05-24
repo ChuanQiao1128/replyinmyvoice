@@ -7,6 +7,7 @@ const textEncoder = new TextEncoder();
 export const sessionCookieName = "rimv_session";
 export const oauthStateCookieName = "rimv_oauth";
 const accessTokenCookieName = "rimv_access";
+const accessTokenCookieMetaName = "rimv_access_meta";
 const accessTokenCookieChunkSize = 3000;
 const accessTokenCookieMaxChunks = 8;
 
@@ -25,6 +26,11 @@ type BrowserSessionCookie = Pick<AuthSession, "sub" | "email" | "name" | "exp">;
 type AccessTokenCookie = {
   accessToken: string;
   accessTokenExp: number;
+  exp: number;
+};
+
+type AccessTokenCookieMeta = {
+  chunks: number;
   exp: number;
 };
 
@@ -122,6 +128,32 @@ function timingSafeEqual(left: string, right: string) {
   return diff === 0;
 }
 
+type CookieWriteOptions = {
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "lax";
+  path: string;
+  maxAge: number;
+};
+
+export type CookieWriter = {
+  set(name: string, value: string, options: CookieWriteOptions): unknown;
+};
+
+function authCookieOptions(maxAge: number): CookieWriteOptions {
+  return {
+    httpOnly: true,
+    secure: getAppUrl().startsWith("https://"),
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+  };
+}
+
+function expireAuthCookie(cookieStore: CookieWriter, name: string) {
+  cookieStore.set(name, "", authCookieOptions(0));
+}
+
 export async function createSignedCookieValue(payload: unknown, secret: string) {
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   const signature = await signPayload(encodedPayload, secret);
@@ -160,11 +192,11 @@ function chunkCookieName(baseName: string, index: number) {
 }
 
 async function setChunkedSignedCookie(
-  cookieStore: MutableCookieStore,
+  cookieStore: CookieWriter,
   baseName: string,
   payload: unknown,
   secret: string,
-  options: NonNullable<Parameters<MutableCookieStore["set"]>[2]>,
+  options: CookieWriteOptions,
 ) {
   const value = await createSignedCookieValue(payload, secret);
   const chunks = value.match(new RegExp(`.{1,${accessTokenCookieChunkSize}}`, "g")) ?? [""];
@@ -176,9 +208,15 @@ async function setChunkedSignedCookie(
     cookieStore.set(chunkCookieName(baseName, index), chunk, options);
   });
 
-  for (let index = chunks.length; index < accessTokenCookieMaxChunks; index += 1) {
-    cookieStore.delete(chunkCookieName(baseName, index));
-  }
+  const meta = {
+    chunks: chunks.length,
+    exp: Math.floor(Date.now() / 1000) + options.maxAge,
+  } satisfies AccessTokenCookieMeta;
+  cookieStore.set(
+    accessTokenCookieMetaName,
+    await createSignedCookieValue(meta, secret),
+    options,
+  );
 }
 
 async function readChunkedSignedCookie<T>(
@@ -186,10 +224,27 @@ async function readChunkedSignedCookie<T>(
   baseName: string,
   secret: string,
 ) {
+  const meta = await verifySignedCookieValue<AccessTokenCookieMeta>(
+    cookieStore.get(accessTokenCookieMetaName)?.value,
+    secret,
+  );
+  const requestedChunks =
+    meta &&
+    meta.exp > Math.floor(Date.now() / 1000) &&
+    Number.isInteger(meta.chunks) &&
+    meta.chunks > 0 &&
+    meta.chunks <= accessTokenCookieMaxChunks
+      ? meta.chunks
+      : null;
+
   const chunks: string[] = [];
-  for (let index = 0; index < accessTokenCookieMaxChunks; index += 1) {
+  const maxChunks = requestedChunks ?? accessTokenCookieMaxChunks;
+  for (let index = 0; index < maxChunks; index += 1) {
     const chunk = cookieStore.get(chunkCookieName(baseName, index))?.value;
     if (!chunk) {
+      if (requestedChunks) {
+        return null;
+      }
       break;
     }
     chunks.push(chunk);
@@ -202,9 +257,10 @@ async function readChunkedSignedCookie<T>(
   return verifySignedCookieValue<T>(chunks.join(""), secret);
 }
 
-function deleteChunkedCookie(cookieStore: MutableCookieStore, baseName: string) {
+function deleteChunkedCookie(cookieStore: CookieWriter, baseName: string) {
+  expireAuthCookie(cookieStore, accessTokenCookieMetaName);
   for (let index = 0; index < accessTokenCookieMaxChunks; index += 1) {
-    cookieStore.delete(chunkCookieName(baseName, index));
+    expireAuthCookie(cookieStore, chunkCookieName(baseName, index));
   }
 }
 
@@ -306,13 +362,7 @@ export async function createLoginRedirectUrl(
   );
 
   const cookieStore = await cookies();
-  cookieStore.set(oauthStateCookieName, cookieValue, {
-    httpOnly: true,
-    secure: getAppUrl().startsWith("https://"),
-    sameSite: "lax",
-    path: "/",
-    maxAge: 10 * 60,
-  });
+  cookieStore.set(oauthStateCookieName, cookieValue, authCookieOptions(10 * 60));
 
   return buildEntraAuthorizeUrl({
     authority: getEntraAuthority(),
@@ -542,7 +592,7 @@ export async function createSessionFromTokens(tokens: {
   idToken: string;
   accessToken: string;
   refreshToken?: string | null;
-}): Promise<AuthSession> {
+}, cookieWriter?: CookieWriter): Promise<AuthSession> {
   const claims = parseJwtPayload(tokens.idToken);
   const baseSession = claims ? validateIdTokenClaims(claims) : null;
   if (!baseSession) {
@@ -561,14 +611,10 @@ export async function createSessionFromTokens(tokens: {
     exp: Math.min(baseSession.exp, accessTokenExp),
   } satisfies AuthSession;
 
-  const cookieStore = await cookies();
-  const cookieOptions = {
-    httpOnly: true,
-    secure: getAppUrl().startsWith("https://"),
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: Math.max(60, session.exp - Math.floor(Date.now() / 1000)),
-  };
+  const cookieStore = cookieWriter ?? await cookies();
+  const cookieOptions = authCookieOptions(
+    Math.max(60, session.exp - Math.floor(Date.now() / 1000)),
+  );
   const browserSession = {
     sub: session.sub,
     email: session.email,
@@ -603,16 +649,17 @@ export type SignupFlowState = {
   exp: number;
 };
 
-export async function setSignupFlowCookie(state: SignupFlowState) {
-  const cookieStore = await cookies();
+export async function setSignupFlowCookie(
+  state: SignupFlowState,
+  cookieWriter?: CookieWriter,
+) {
+  const cookieStore = cookieWriter ?? await cookies();
   const value = await createSignedCookieValue(state, getSessionSecret());
-  cookieStore.set(signupFlowCookieName, value, {
-    httpOnly: true,
-    secure: getAppUrl().startsWith("https://"),
-    sameSite: "lax",
-    path: "/",
-    maxAge: Math.max(60, state.exp - Math.floor(Date.now() / 1000)),
-  });
+  cookieStore.set(
+    signupFlowCookieName,
+    value,
+    authCookieOptions(Math.max(60, state.exp - Math.floor(Date.now() / 1000))),
+  );
 }
 
 export async function readSignupFlowCookie(): Promise<SignupFlowState | null> {
@@ -627,12 +674,15 @@ export async function readSignupFlowCookie(): Promise<SignupFlowState | null> {
   return state;
 }
 
-export async function clearSignupFlowCookie() {
-  const cookieStore = await cookies();
-  cookieStore.delete(signupFlowCookieName);
+export async function clearSignupFlowCookie(cookieWriter?: CookieWriter) {
+  const cookieStore = cookieWriter ?? await cookies();
+  expireAuthCookie(cookieStore, signupFlowCookieName);
 }
 
-export async function completeEntraCallback(requestUrl: string) {
+export async function completeEntraCallback(
+  requestUrl: string,
+  cookieWriter?: CookieWriter,
+) {
   const url = new URL(requestUrl);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -683,11 +733,15 @@ export async function completeEntraCallback(requestUrl: string) {
     );
   }
 
-  const session = await createSessionFromTokens({
-    idToken: payload.id_token,
-    accessToken: payload.access_token,
-  });
-  cookieStore.delete(oauthStateCookieName);
+  const responseCookieStore = cookieWriter ?? cookieStore;
+  const session = await createSessionFromTokens(
+    {
+      idToken: payload.id_token,
+      accessToken: payload.access_token,
+    },
+    responseCookieStore,
+  );
+  expireAuthCookie(responseCookieStore, oauthStateCookieName);
 
   return { session, redirectTo: oauthState.redirectTo || "/app" };
 }
@@ -744,7 +798,7 @@ export async function getCurrentAccessToken(): Promise<string | null> {
 
 export async function clearCurrentSession() {
   const cookieStore = await cookies();
-  cookieStore.delete(sessionCookieName);
-  cookieStore.delete(oauthStateCookieName);
+  expireAuthCookie(cookieStore, sessionCookieName);
+  expireAuthCookie(cookieStore, oauthStateCookieName);
   deleteChunkedCookie(cookieStore, accessTokenCookieName);
 }

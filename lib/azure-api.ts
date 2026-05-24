@@ -31,6 +31,7 @@ export function getAzureApiBaseUrl() {
 export async function fetchAzureAccountSummary(): Promise<AzureAccountSummary | null> {
   const accessToken = await getCurrentAccessToken();
   if (!accessToken) {
+    console.warn("azure_account_summary_missing_access_token");
     return null;
   }
 
@@ -42,6 +43,7 @@ export async function fetchAzureAccountSummary(): Promise<AzureAccountSummary | 
   });
 
   if (response.status === 401 || response.status === 403) {
+    console.warn("azure_account_summary_auth_rejected", { status: response.status });
     return null;
   }
 
