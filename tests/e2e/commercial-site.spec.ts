@@ -15,7 +15,7 @@ test("landing page carries commercial trust and company attribution", async ({
   await expect(
     footer.getByRole("link", { name: "Terms", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Built for real communication workflows")).toBeVisible();
+  await expect(page.getByText("Built for practical replies")).toBeVisible();
   await expect(page.getByText("Pick quick context")).toBeVisible();
   await expect(page.getByText("Choose a tone preset")).toBeVisible();
   await expect(footer.getByRole("link", { name: "Contact", exact: true })).toHaveAttribute(
