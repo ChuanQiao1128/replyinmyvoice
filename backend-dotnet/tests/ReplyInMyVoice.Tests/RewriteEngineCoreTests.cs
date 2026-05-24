@@ -142,4 +142,154 @@ public sealed class RewriteEngineCoreTests
         result.FailureKinds.Should().Contain(RewriteFailureKind.BrokenNumberedList);
         result.FailureKinds.Should().Contain(RewriteFailureKind.SentencePerParagraph);
     }
+
+    [Fact]
+    public void StructureGate_blocks_dangling_title_case_labels_at_the_end()
+    {
+        var request = new RewriteRequest(
+            "Can I turn this in Monday?",
+            "Accept by Monday at 8:00 AM with no late penalty.",
+            "Student",
+            "Reply with the extension boundary.",
+            "The student can submit Monday at 8:00 AM.",
+            "No late penalty if submitted by Monday at 8:00 AM.",
+            "warm");
+        var analysis = RewriteInputAnalyzer.Analyze(request);
+        var candidate = "Hi, I can accept this by Monday at 8:00 AM with no late penalty. Please email me if uploading still does not work. New Student";
+
+        var result = RewriteStructureGate.Check(candidate, analysis);
+
+        result.Passed.Should().BeFalse();
+        result.FailureKinds.Should().Contain(RewriteFailureKind.SupportMacroVoice);
+    }
+
+    [Fact]
+    public void FactLedger_extracts_thousands_amounts_for_exact_fact_gate()
+    {
+        var request = new RewriteRequest(
+            null,
+            "Reply to the customer.",
+            "Customer",
+            "Explain invoice discrepancy.",
+            null,
+            "1,200 M8 brackets at $1.85 each, invoice $2,220. Short 240 worth $444.",
+            "direct");
+
+        var ledger = FactLedgerExtractor.Extract(request);
+
+        ledger.Facts.Should().Contain(fact =>
+            fact.Category == RewriteFactCategory.Amount &&
+            fact.Text == "$2,220");
+
+        var result = RewriteFactGate.Check(
+            "The 1,200 M8 brackets were $1.85 each, and the short 240 units are worth $444.",
+            ledger);
+
+        result.Passed.Should().BeFalse();
+        result.Reasons.Should().Contain(reason => reason.Contains("$2,220", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FactGate_accepts_both_as_equivalent_to_two_count_fact()
+    {
+        var request = new RewriteRequest(
+            null,
+            "Reply to the customer.",
+            "Customer",
+            "Explain return status.",
+            null,
+            "Two jackets returned June 4. $64 refund posted June 7 for one jacket. $52 refund is pending.",
+            "warm");
+        var ledger = FactLedgerExtractor.Extract(request);
+
+        var result = RewriteFactGate.Check(
+            "I can confirm we received both jackets on June 4. The $64 refund posted June 7 for one jacket, and the $52 refund is pending.",
+            ledger);
+
+        result.Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void FactGate_accepts_number_words_as_equivalent_to_digit_count_facts()
+    {
+        var request = new RewriteRequest(
+            null,
+            "Reply to the candidate.",
+            "Candidate",
+            "Confirm interview details.",
+            null,
+            "60-minute panel with 4 interviewers.",
+            "warm");
+        var ledger = FactLedgerExtractor.Extract(request);
+
+        var result = RewriteFactGate.Check(
+            "The interview is a 60-minute panel with four interviewers.",
+            ledger);
+
+        result.Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void FactGate_blocks_dense_procurement_reply_missing_invoice_total()
+    {
+        var request = new RewriteRequest(
+            null,
+            "Reply to the customer.",
+            "Customer",
+            "Explain shortage review.",
+            null,
+            "Bellwick Manufacturing PO-944. 1,200 M8 brackets at $1.85 each, invoice $2,220. Receiving counted 960, short 240 worth $444.",
+            "direct");
+        var ledger = FactLedgerExtractor.Extract(request);
+
+        var result = RewriteFactGate.Check(
+            "Hi Bellwick Manufacturing, thank you for flagging the shortage on PO-944. We can discuss a $444 credit for the 240 short units at $1.85 each.",
+            ledger);
+
+        result.Passed.Should().BeFalse();
+        result.Reasons.Should().Contain(reason => reason.Contains("$2,220", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FactGate_blocks_membership_reply_missing_original_payment_and_start_date()
+    {
+        var request = new RewriteRequest(
+            null,
+            "Reply to the member.",
+            "Member",
+            "Explain transfer options.",
+            null,
+            "Hana Wells paid $540 for six-month membership starting March 1. Four months remain as of May 1 and original end date is August 31. One transfer allowed with $35 admin fee.",
+            "warm");
+        var ledger = FactLedgerExtractor.Extract(request);
+
+        var result = RewriteFactGate.Check(
+            "Hi Hana, you can transfer the membership to Mia with a $35 admin fee. Four months remain as of May 1 and the original end date is August 31.",
+            ledger);
+
+        result.Passed.Should().BeFalse();
+        result.Reasons.Should().Contain(reason => reason.Contains("$540", StringComparison.Ordinal));
+        result.Reasons.Should().Contain(reason => reason.Contains("March 1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FactGate_blocks_unsupported_workplace_judgment_labels()
+    {
+        var request = new RewriteRequest(
+            null,
+            "Reply to the employee.",
+            "Employee",
+            "Schedule a private follow-up.",
+            "Two teammates reported feeling interrupted during roadmap discussion.",
+            "Do not name teammates. Do not promise HR will never be involved.",
+            "direct");
+        var ledger = FactLedgerExtractor.Extract(request);
+
+        var result = RewriteFactGate.Check(
+            "Two teammates said they felt interrupted, and your comments came across as dismissive.",
+            ledger);
+
+        result.Passed.Should().BeFalse();
+        result.FailureKinds.Should().Contain(RewriteFailureKind.UnsupportedFact);
+    }
 }

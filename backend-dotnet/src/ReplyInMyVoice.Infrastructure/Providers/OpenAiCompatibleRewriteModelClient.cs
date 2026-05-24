@@ -82,6 +82,13 @@ public sealed class OpenAiCompatibleRewriteModelClient(
                     You write send-ready email replies from provided facts.
                     Return JSON only with rewrittenText.
                     Preserve names, dates, money, counts, conditions, policies, and negative constraints.
+                    Carry reviewed Amount, DateOrDeadline, and Count values into the reply exactly.
+                    In payment, invoice, refund, return, membership, renewal, or transfer cases, include the original paid amount and original purchase/start date when provided.
+                    If the facts name included benefits, requested days, or available options, state those explicitly before asking for assets or a decision.
+                    Do not add professional-advice redirects such as "ask your accountant/lawyer/doctor" unless the source facts explicitly provide that next step.
+                    Prefer concise, concrete wording over generic email templates, especially when the rough draft is short.
+                    Avoid stock phrases like "thank you for reaching out", "I completely understand", "looking forward", and generic signoffs unless the draft used them.
+                    Do not add unsupported judgment labels such as dismissive, careless, rude, negligent, or unprofessional.
                     Do not invent promises, discounts, timelines, policies, people, or outcomes.
                     Do not mention quality gates, scores, external scoring tools, or internal strategy names.
                     """,
@@ -114,6 +121,8 @@ public sealed class OpenAiCompatibleRewriteModelClient(
         Tone: {{request.UserRequest.Tone}}
         Strategy: {{request.Strategy}}
         Scenario: {{request.InputAnalysis.Scenario}}
+        Strategy instructions:
+        {{StrategyInstructions(request.Strategy)}}
 
         Message to reply to:
         {{request.UserRequest.MessageToReplyTo}}
@@ -136,11 +145,56 @@ public sealed class OpenAiCompatibleRewriteModelClient(
         Reviewed facts:
         {{string.Join("\n", facts)}}
 
+        Prior failed attempts:
+        {{AttemptHistoryText(request.AttemptHistory)}}
+
         Return JSON only:
         {
           "rewrittenText": "..."
         }
         """;
+    }
+
+    private static string StrategyInstructions(RewriteStrategy strategy) =>
+        strategy switch
+        {
+            RewriteStrategy.MinimalPolish =>
+                "Keep the reply close to the draft, but remove stiff wording and preserve every concrete fact.",
+            RewriteStrategy.TargetedSentenceRepair =>
+                "Repair the previous failure by shortening generic phrasing, using concrete plain language, and keeping all facts. Do not simply split the prior candidate into short paragraphs.",
+            RewriteStrategy.FactsFirstReconstruct =>
+                "Rebuild the reply from the reviewed facts instead of paraphrasing line by line. Use natural paragraphs and include the requested next step.",
+            RewriteStrategy.FullStructureRewrite =>
+                "Group related facts into send-ready paragraphs: acknowledge, explain status, give options or constraints, then ask for the next step when needed.",
+            RewriteStrategy.SupportPolicyOptionsRewrite =>
+                "Preserve policy limits, eligibility conditions, IDs, invoice totals, original paid amounts, start or purchase dates, and no-change-without-confirmation constraints. Make options clear without promising approval.",
+            RewriteStrategy.QuoteListSafeRewrite =>
+                "Keep list or quoted-thread boundaries clear. Answer items in a stable structure without detached list markers.",
+            RewriteStrategy.MessyThreadCleanupRewrite =>
+                "Separate old quoted context from the current reply. Clarify what changed without leaking messy thread fragments.",
+            RewriteStrategy.StrongModelRestructure =>
+                "Do a final concise facts-first restructure. Use plain direct wording, remove stock email phrases, and preserve every constraint.",
+            _ => "Return a safe quality failure by not producing a candidate.",
+        };
+
+    private static string AttemptHistoryText(IReadOnlyList<RewriteAttemptHistoryItem> history)
+    {
+        if (history.Count == 0)
+        {
+            return "None.";
+        }
+
+        return string.Join(
+            "\n\n",
+            history.Select(item =>
+                $$"""
+                Attempt {{item.AttemptNo}} failed.
+                Strategy: {{item.Strategy}}
+                Failure tags: {{string.Join(", ", item.FailureKinds)}}
+                Failure analysis: {{item.FailureAnalysis}}
+                Failed candidate:
+                {{item.CandidateText}}
+                """));
     }
 
     private static string? ExtractCandidateText(string rawContent)

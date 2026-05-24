@@ -100,7 +100,8 @@ public sealed class RewriteProviderAdapterTests
             request,
             analysis,
             FactLedgerExtractor.Extract(request),
-            RewriteStrategy.FactsFirstReconstruct);
+            RewriteStrategy.FactsFirstReconstruct,
+            []);
     }
 
     private static HttpResponseMessage JsonResponse(string json) =>

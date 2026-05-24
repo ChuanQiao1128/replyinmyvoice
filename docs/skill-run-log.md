@@ -45,6 +45,42 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-24 - cloud-architecture-cost-review - C# rewrite real-provider optimization
+
+- Agent: Codex
+- Trigger: The task uses real DeepSeek and Sapling provider calls and prepares Azure/Cloudflare production deployment, so it affects provider spend and cloud deployment posture.
+- Action: Opened and followed the cost gate; kept the existing Azure Functions Consumption + Azure SQL + Service Bus architecture, avoided new paid infrastructure, and used staged real-provider evals before the final full run.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/`; `docs/rewrite-eval-results/20260524-034340-csharp-rewrite-full.md`; `docs/rewrite-strategy-memory.md`.
+- Verification evidence: Final full C# eval completed 100/100 provider success with 133 model calls and 206 Sapling calls; no new Azure resources were created by the implementation.
+- Limitations: Real provider usage incurred variable DeepSeek/Sapling API cost. Exact provider billing was not fetched, and no secrets were logged.
+
+### 2026-05-24 - system-spec-synthesis - C# rewrite eval and gate scope
+
+- Agent: Codex
+- Trigger: The task changes multi-module C# rewrite behavior, provider contracts, eval reporting, and deployment readiness.
+- Action: Opened and followed the planning workflow; scoped the implementation to the C# rewrite provider path, eval runner, gates, prompt strategy, and regression tests without changing the hosting architecture.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Providers/FactReconstructRewriteProvider.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Providers/OpenAiCompatibleRewriteModelClient.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/RewriteEngine/RewriteEngineCore.cs`.
+- Verification evidence: Final eval report `docs/rewrite-eval-results/20260524-034340-csharp-rewrite-full.md` records 100/100 successful measured rewrites and 100/100 below 50% signal.
+- Limitations: This run optimizes the C# rewrite engine path; it does not migrate unrelated learning/admin/API-key datastore workstreams.
+
+### 2026-05-24 - resilience-test-generation - rewrite provider retries and gates
+
+- Agent: Codex
+- Trigger: The implementation changes Sapling unavailable handling, provider retry behavior, naturalness gate recovery, and deterministic fact/unsupported-judgment gates.
+- Action: Opened and followed the resilience workflow; added retry tests for transient writing-signal unavailability and gate regression tests for amount/count preservation and unsupported workplace judgments.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/FactReconstructRewriteProviderTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineCoreTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Providers/FactReconstructRewriteProvider.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/RewriteEngine/RewriteEngineCore.cs`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 71/71 tests; the final real-provider eval had zero provider failures.
+- Limitations: Retry coverage is unit-level plus real-provider eval evidence; it does not simulate every Sapling HTTP status separately.
+
+### 2026-05-24 - dotnet-backend-testing - C# rewrite provider tests
+
+- Agent: Codex
+- Trigger: The task adds and changes C#/.NET provider behavior, xUnit tests, and a C# console eval tool.
+- Action: Opened and followed the .NET testing workflow; added focused xUnit coverage for Sapling retries, attempt-history retries, exact fact gates, number-word normalization, thousands amounts, membership payment/date preservation, and unsupported judgment labels.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/FactReconstructRewriteProviderTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineCoreTests.cs`; `backend-dotnet/tools/ReplyInMyVoice.Eval/`.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln --no-restore -maxcpucount:1` passed; `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 71/71 tests.
+- Limitations: Browser-visible UI did not change in this run, so no UI/browser skill was used.
+
 ### 2026-05-23 - ui-browser-testing - students v2 landing and workspace nudge
 
 - Agent: Codex
