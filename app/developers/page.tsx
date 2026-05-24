@@ -6,89 +6,119 @@ import { SiteHeader } from "../../components/site-header";
 export const metadata: Metadata = {
   title: "Developers",
   description:
-    "Reply In My Voice for developers — an MCP server, Claude Code Skill, and HTTP API for embedding email rewrites into LLM tools. In active development.",
+    "Reply In My Voice for developers — an HTTP API that drops fact-preserving, in-your-voice reply rewrites straight into your own product. In active development.",
   openGraph: {
     title: "Reply In My Voice for developers",
     description:
-      "The rewrite engine is coming to Codex, Claude Code, Cursor, and Continue.dev via an MCP server, a Skill, and an HTTP API.",
+      "Call the rewrite engine behind replyinmyvoice.com from your own app over a simple HTTP API. In active development.",
     url: "https://replyinmyvoice.com/developers",
   },
   twitter: {
     card: "summary_large_image",
     title: "Reply In My Voice for developers",
     description:
-      "The rewrite engine is coming to Codex, Claude Code, Cursor, and Continue.dev via an MCP server, a Skill, and an HTTP API.",
+      "Call the rewrite engine behind replyinmyvoice.com from your own app over a simple HTTP API. In active development.",
   },
 };
 
-const roadmap = [
+const apiValue = [
   {
-    tag: "MCP server",
-    pill: "Building now",
-    pillClass: "now",
-    handle: "@replyinmyvoice/mcp-server",
-    body: "A Model Context Protocol server that exposes the rewrite engine to any MCP-aware client. Point Claude Code, Codex, Cursor, or Continue.dev at it and ask your agent to rewrite a reply in place.",
-    tools: ["rewrite_email", "analyze_signal", "list_scenarios"],
+    title: "Runs inside your product",
+    body: "Call the rewrite engine straight from your app, CRM, or help desk. Your users get a reply in their own voice without ever leaving your product to paste into our site.",
   },
   {
-    tag: "Claude Code Skill",
-    pill: "Building now",
-    pillClass: "now",
-    handle: "replyinmyvoice-rewrite",
-    body: "A first-party Skill that bundles the prompts and tool calls used on the site, so one instruction drives a full rewrite. Install once, then say /rewrite in any project.",
-    tools: [],
+    title: "The same engine as the site",
+    body: "Identical fact-preserving rewrites and the before/after naturalness reference you see on replyinmyvoice.com — exposed over plain HTTP, so any language or runtime can call it.",
   },
   {
-    tag: "HTTP REST API",
-    pill: "Planned",
-    pillClass: "planned",
-    handle: "POST /v1/rewrite",
-    body: "A standalone REST endpoint for server-to-server use — the same rewrite engine, language-agnostic, with API-key auth for active Pro/API accounts.",
-    tools: [],
-  },
-  {
-    tag: "Metered API keys",
-    pill: "Exploring",
-    pillClass: "exploring",
-    handle: "rmv_live_…",
-    body: "Per-key usage, quotas, and billing so teams can wire rewrites into their own products. We're still shaping how keys and limits should work.",
-    tools: [],
+    title: "One key, metered per account",
+    body: "Authenticate with a single bearer token tied to a Pro / API account. Usage is metered per key, so you can wire rewrites into production with predictable limits.",
   },
 ];
 
-const installSnippets = [
+const endpoints = [
   {
-    label: "Claude Code",
-    body: `claude mcp add reply-in-my-voice -- npx @replyinmyvoice/mcp-server`,
+    method: "POST",
+    path: "/api/v1/rewrite",
+    body: "Rewrite a rough draft into a clear, send-ready reply in the writer's voice — facts preserved, nothing invented.",
   },
   {
-    label: "Codex CLI",
-    body: `codex mcp add reply-in-my-voice -- npx @replyinmyvoice/mcp-server`,
-  },
-  {
-    label: "Cursor",
-    body: `// ~/.cursor/mcp.json
-{
-  "mcpServers": {
-    "reply-in-my-voice": {
-      "command": "npx",
-      "args": ["@replyinmyvoice/mcp-server"],
-      "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_..." }
-    }
-  }
-}`,
-  },
-  {
-    label: "Continue.dev",
-    body: `# ~/.continue/config.yaml
-mcpServers:
-  - name: reply-in-my-voice
-    command: npx
-    args: ["@replyinmyvoice/mcp-server"]
-    env:
-      REPLY_IN_MY_VOICE_API_KEY: rmv_live_...`,
+    method: "POST",
+    path: "/api/v1/analyze-signal",
+    body: "Return the before/after naturalness reference signal for a piece of text, the same one shown on the site.",
   },
 ];
+
+type CodeToken = { t: string; c?: string };
+type CodeLine = CodeToken[];
+
+const requestLines: CodeLine[] = [
+  [
+    { t: "curl", c: "t-cmd" },
+    { t: " https://replyinmyvoice.com/api/v1/rewrite " },
+    { t: "\\", c: "t-punc" },
+  ],
+  [
+    { t: "  -H", c: "t-flag" },
+    { t: " " },
+    { t: '"Authorization: Bearer rmv_live_…"', c: "t-str" },
+    { t: " " },
+    { t: "\\", c: "t-punc" },
+  ],
+  [
+    { t: "  -d", c: "t-flag" },
+    { t: " " },
+    { t: "'{ ", c: "t-str" },
+    { t: '"draft"', c: "t-key" },
+    { t: ": ", c: "t-str" },
+    { t: '"order is delayed, ships next week"', c: "t-str" },
+    { t: " }'", c: "t-str" },
+  ],
+];
+
+const responseLines: CodeLine[] = [
+  [{ t: "{", c: "t-punc" }],
+  [
+    { t: '  "rewrittenText"', c: "t-key" },
+    { t: ": ", c: "t-punc" },
+    {
+      t: "\"Hi Sam — your order's running a little behind; it ships next week.\"",
+      c: "t-str",
+    },
+    { t: ",", c: "t-punc" },
+  ],
+  [
+    { t: '  "signal"', c: "t-key" },
+    { t: ": { ", c: "t-punc" },
+    { t: '"draft"', c: "t-key" },
+    { t: ": ", c: "t-punc" },
+    { t: "78", c: "t-num" },
+    { t: ", ", c: "t-punc" },
+    { t: '"rewrite"', c: "t-key" },
+    { t: ": ", c: "t-punc" },
+    { t: "24", c: "t-num" },
+    { t: " }", c: "t-punc" },
+  ],
+  [{ t: "}", c: "t-punc" }],
+];
+
+function CodeBlock({ lines }: { lines: CodeLine[] }) {
+  return (
+    <pre className="api-code">
+      <code>
+        {lines.map((line, i) => (
+          <span className="cl" key={i}>
+            {line.map((tok, j) => (
+              <span className={tok.c} key={j}>
+                {tok.t}
+              </span>
+            ))}
+          </span>
+        ))}
+      </code>
+    </pre>
+  );
+}
 
 export default function DevelopersPage() {
   return (
@@ -101,84 +131,93 @@ export default function DevelopersPage() {
               <span className="dot" />
               Developers
             </div>
-            <h1>The developer platform is on the way.</h1>
+            <h1>Put the rewrite engine inside your own product.</h1>
             <p className="lede">
-              The same rewrite engine behind replyinmyvoice.com is becoming
-              available to LLM tools — an MCP server, a Claude Code Skill, and an
-              HTTP API. Here&apos;s what we&apos;re building and what it will look
-              like to use.
+              We&apos;re building an HTTP API for replyinmyvoice.com — so you can
+              turn a rough draft into a reply in someone&apos;s own voice, with
+              the facts preserved, directly from your app. No sending people to
+              our site to copy and paste a result back.
             </p>
             <div className="dev-badge">
               <span className="dot" />
-              In active development · not yet published
+              In active development · not yet public
             </div>
             <div className="hero-cta" style={{ marginTop: 28 }}>
               <Link href="/sign-up" className="btn btn-primary btn-lg">
                 Get early access <span className="btn-arrow">→</span>
               </Link>
-              <a
-                href="https://github.com/ChuanQiao1128/replyinmyvoice"
-                className="btn btn-ghost btn-lg"
-              >
-                Follow on GitHub
+              <a href="#api" className="btn btn-ghost btn-lg">
+                See the API
               </a>
             </div>
           </div>
 
-          <div className="pp-includes-head">What we&apos;re building</div>
+          <div className="pp-includes-head">Why build on the API</div>
           <div className="card-grid">
-            {roadmap.map((item) => (
-              <article className="v2card" key={item.tag}>
-                <div className="v2card-head">
-                  <div className="eyebrow" style={{ color: "var(--muted)" }}>
-                    {item.tag}
-                  </div>
-                  <span className={"dev-pill " + item.pillClass}>
-                    {item.pill}
-                  </span>
-                </div>
-                <h2>
-                  <span className="mono">{item.handle}</span>
-                </h2>
+            {apiValue.map((item) => (
+              <article className="v2card" key={item.title}>
+                <h3>{item.title}</h3>
                 <p>{item.body}</p>
-                {item.tools.length ? (
-                  <div className="dev-tools">
-                    {item.tools.map((tool) => (
-                      <span className="dev-tool" key={tool}>
-                        {tool}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
               </article>
             ))}
           </div>
 
-          <div className="pp-includes-head">A preview of the developer experience</div>
-          <article className="v2card">
-            <p style={{ marginTop: 0 }}>
-              Wiring it in will look like this once the MCP server ships. These
-              commands are a preview — the package isn&apos;t published yet, so
-              they won&apos;t resolve today.
-            </p>
-            <div className="card-grid">
-              {installSnippets.map((snippet) => (
-                <div key={snippet.label}>
-                  <div
-                    className="mono"
-                    style={{ fontSize: 12, color: "var(--ink-2)" }}
-                  >
-                    {snippet.label}
-                  </div>
-                  <pre className="code-block">
-                    <code>{snippet.body}</code>
-                  </pre>
+          <div id="api" className="pp-includes-head">
+            What the API looks like
+          </div>
+          <div className="api-panel">
+            <div className="api-bar">
+              <span className="dots">
+                <i />
+                <i />
+                <i />
+              </span>
+              <span className="bar-label">POST /api/v1/rewrite</span>
+            </div>
+            <div className="api-seg">
+              <div className="api-seg-label">Request</div>
+              <CodeBlock lines={requestLines} />
+            </div>
+            <div className="api-seg">
+              <div className="api-seg-label">
+                Response <span className="api-status">200 OK</span>
+              </div>
+              <CodeBlock lines={responseLines} />
+            </div>
+          </div>
+          <div className="dev-note">
+            {
+              "// Preview only · the API is in development, so endpoints and shapes may change before launch"
+            }
+          </div>
+
+          <div className="pp-includes-head">What each endpoint does</div>
+          <div className="api-endpoints">
+            {endpoints.map((endpoint) => (
+              <article className="api-endpoint" key={endpoint.path}>
+                <div className="ep-head">
+                  <span className="method-badge">{endpoint.method}</span>
+                  <span className="ep-path">{endpoint.path}</span>
                 </div>
-              ))}
+                <p>{endpoint.body}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="pp-includes-head">Also coming</div>
+          <article className="v2card">
+            <div className="v2card-head">
+              <div className="eyebrow" style={{ color: "var(--muted)" }}>
+                MCP
+              </div>
+              <span className="dev-pill planned">Later</span>
             </div>
-            <div className="dev-note">
-              {"// Preview only · names and APIs may change before launch"}
-            </div>
+            <h2>MCP for Codex</h2>
+            <p>
+              Later on we&apos;ll expose the same rewrite engine through a Model
+              Context Protocol server, so Codex can call it in place. We&apos;ll
+              share the details closer to launch.
+            </p>
           </article>
 
           <div style={{ marginTop: 64 }}>
@@ -194,8 +233,8 @@ export default function DevelopersPage() {
                   rewrite engine?
                 </h2>
                 <p>
-                  Create an account and we&apos;ll email you the moment the MCP
-                  server, Skill, and API are ready for early access.
+                  Create an account and we&apos;ll email you the moment the API
+                  is ready for early access.
                 </p>
               </div>
               <div className="cta-side">
