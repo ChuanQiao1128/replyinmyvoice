@@ -4,23 +4,24 @@ import { PaywallCard } from "../../components/app/paywall-card";
 import { RewriteWorkspace } from "../../components/app/rewrite-workspace";
 import { SiteHeader } from "../../components/site-header";
 import { shouldShowAdminEntry } from "../../lib/admin-visible";
-import { getUsageStatus, isPaidSubscriptionStatus } from "../../lib/quota";
-import { getCurrentAppUser } from "../../lib/users";
+import { fetchAzureAccountSummary } from "../../lib/azure-api";
 
 export const dynamic = "force-dynamic";
 
-export default async function AppPage() {
-  const user = await getCurrentAppUser();
+const paidStatuses = new Set(["active", "trialing", "testing"]);
 
-  if (!user) {
+export default async function AppPage() {
+  const account = await fetchAzureAccountSummary();
+
+  if (!account) {
     redirect("/sign-in");
   }
 
-  const usage = await getUsageStatus(user);
-  const paid = isPaidSubscriptionStatus(user.subscriptionStatus);
+  const usage = account.usage;
+  const paid = usage.scope === "paid" || paidStatuses.has(account.subscriptionStatus);
   const showAdmin = shouldShowAdminEntry({
-    userId: user.clerkUserId,
-    email: user.email,
+    userId: account.externalAuthUserId,
+    email: account.email,
   });
 
   if (usage.exhausted && !paid) {
@@ -59,11 +60,11 @@ export default async function AppPage() {
       <SiteHeader showAdmin={showAdmin} />
       <RewriteWorkspace
         paid={paid}
-        planRemaining={usage.planRemaining}
+        planRemaining={usage.remaining}
         quota={usage.quota}
-        quotaSources={usage.creditBreakdown}
+        quotaSources={[]}
         remaining={usage.remaining}
-        subscriptionStatus={user.subscriptionStatus}
+        subscriptionStatus={account.subscriptionStatus}
         usageLabel={usageLabel}
       />
     </>

@@ -7,17 +7,16 @@ const routeSource = readFileSync(
 );
 
 describe("rewrite API quality failure handling", () => {
-  it("uses only the fact-reconstruct pipeline and charges after quality gates pass", () => {
-    expect(routeSource).toContain("FactReconstructQualityError");
-    expect(routeSource).toContain("rewriteWithFactReconstruct");
+  it("proxies rewrite requests to the Azure Functions C# backend", () => {
+    expect(routeSource).toContain("getAzureApiBaseUrl");
+    expect(routeSource).toContain("getCurrentAccessToken");
+    expect(routeSource).toContain("X-Idempotency-Key");
+    expect(routeSource).toContain("/api/rewrite");
+    expect(routeSource).toContain("Authorization");
+    expect(routeSource).not.toContain("rewriteWithFactReconstruct");
     expect(routeSource).not.toContain("rewriteWithOptimization");
     expect(routeSource).not.toContain("isFactReconstructV2Enabled");
-    expect(
-      routeSource.indexOf("const rewrite = await rewriteWithFactReconstruct(input)"),
-    ).toBeLessThan(
-      routeSource.indexOf("await chargeSuccessfulRewrite"),
-    );
-    expect(routeSource).toContain("quality_gate_failed");
-    expect(routeSource).toContain("422");
+    expect(routeSource).not.toContain("chargeSuccessfulRewrite");
+    expect(routeSource).not.toContain("ensureQuotaAvailable");
   });
 });

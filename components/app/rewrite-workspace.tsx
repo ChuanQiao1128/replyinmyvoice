@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { QuotaCreditSource } from "../../lib/quota";
 
 import {
   scenarioOptions,
@@ -105,6 +104,14 @@ type Props = {
   quota: number;
   planRemaining: number;
   quotaSources?: QuotaCreditSource[];
+};
+
+type QuotaCreditSource = {
+  source: string;
+  label: string;
+  remaining: number;
+  expiresAt: string | null;
+  expiresInDays: number | null;
 };
 
 const initialForm: FormState = {

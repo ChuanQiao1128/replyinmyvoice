@@ -1,7 +1,18 @@
-import type { User } from "./generated/prisma/client";
-
 import { createId, getSql, nullableDate, requiredDate } from "./db";
 import { getCurrentSession, type AuthSession } from "./entra-auth";
+
+export type User = {
+  id: string;
+  clerkUserId: string;
+  email: string | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  subscriptionStatus: string;
+  currentPeriodEnd: Date | null;
+  planTier?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 type UserRow = Omit<User, "currentPeriodEnd" | "createdAt" | "updatedAt"> & {
   currentPeriodEnd: unknown;

@@ -98,7 +98,7 @@ describe("workspace V2 surface copy", () => {
     expect(paywallSource).not.toContain("40 rewrites");
   });
 
-  it("shows source-level quota and a situational upgrade nudge after copy", () => {
+  it("shows Azure-backed quota and a situational upgrade nudge after copy", () => {
     const appPageSource = readFileSync(
       new URL("../../app/app/page.tsx", import.meta.url),
       "utf8",
@@ -106,8 +106,8 @@ describe("workspace V2 surface copy", () => {
 
     expect(appPageSource).toContain("remaining={usage.remaining}");
     expect(appPageSource).toContain("quota={usage.quota}");
-    expect(appPageSource).toContain("planRemaining={usage.planRemaining}");
-    expect(appPageSource).toContain("quotaSources={usage.creditBreakdown}");
+    expect(appPageSource).toContain("planRemaining={usage.remaining}");
+    expect(appPageSource).toContain("quotaSources={[]}");
     expect(workspaceSource).toContain("remaining: number");
     expect(workspaceSource).toContain("quota: number");
     expect(workspaceSource).toContain("QuotaMeter");
