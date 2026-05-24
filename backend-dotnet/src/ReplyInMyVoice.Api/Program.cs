@@ -367,8 +367,12 @@ static string? ResolveExternalUserId(
 
     if (request.HttpContext.User.Identity?.IsAuthenticated == true)
     {
-        return request.HttpContext.User.FindFirstValue("sub") ??
-            request.HttpContext.User.FindFirstValue("oid") ??
+        // Canonical user key = the Entra `oid` (stable across the ID token and the access token);
+        // `sub` is pairwise per audience and differs between them. See FunctionAuthResolver for the
+        // full rationale. Check raw `oid` + the inbound-mapped long URI before falling back to `sub`.
+        return request.HttpContext.User.FindFirstValue("oid") ??
+            request.HttpContext.User.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier") ??
+            request.HttpContext.User.FindFirstValue("sub") ??
             request.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 

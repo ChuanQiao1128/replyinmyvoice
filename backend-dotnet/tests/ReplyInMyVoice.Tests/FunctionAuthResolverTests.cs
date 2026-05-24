@@ -45,6 +45,44 @@ public sealed class FunctionAuthResolverTests
     }
 
     [Fact]
+    public async Task ResolveUserAsync_prefers_oid_over_sub_for_stable_cross_token_key()
+    {
+        // Regression guard for the Entra pairwise-`sub` bug: the ID token (aud = frontend client)
+        // and the access token (aud = api://<API client id>) carry DIFFERENT `sub` values for the
+        // same human, but the SAME `oid`. The user key must be `oid` so the two tokens resolve to
+        // one AppUser. With both claims present, `oid` must win over `sub`.
+        var request = CreateRequest(
+            new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim("sub", "access-token-pairwise-sub"),
+                new Claim("oid", "stable-object-id"),
+            ], "Bearer")));
+
+        var user = await FunctionAuthResolver.ResolveUserAsync(request, BuildConfiguration());
+
+        user.Should().NotBeNull();
+        user!.ExternalAuthUserId.Should().Be("stable-object-id");
+    }
+
+    [Fact]
+    public async Task ResolveUserAsync_reads_oid_from_inbound_mapped_objectidentifier_claim()
+    {
+        // JwtSecurityTokenHandler claim mapping renames `oid` to this long URI. The resolver must
+        // still find the object id (and still prefer it over `sub`) whether or not mapping is on.
+        var request = CreateRequest(
+            new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim("sub", "access-token-pairwise-sub"),
+                new Claim("http://schemas.microsoft.com/identity/claims/objectidentifier", "mapped-object-id"),
+            ], "Bearer")));
+
+        var user = await FunctionAuthResolver.ResolveUserAsync(request, BuildConfiguration());
+
+        user.Should().NotBeNull();
+        user!.ExternalAuthUserId.Should().Be("mapped-object-id");
+    }
+
+    [Fact]
     public async Task ResolveUserAsync_rejects_header_identity_unless_enabled()
     {
         var request = CreateRequest();
