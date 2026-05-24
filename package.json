@@ -19,10 +19,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "eval:naturalness": "tsx scripts/eval-naturalness.ts",
-    "eval:scenarios": "tsx scripts/eval-scenarios.ts",
     "memory:rewrite": "tsx scripts/rewrite-memory-agent.ts",
-    "learningops:run": "tsx scripts/learningops-run.ts",
     "postinstall": "prisma generate",
     "package:skill": "node scripts/package-skill.mjs"
   },
