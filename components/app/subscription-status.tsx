@@ -1,7 +1,6 @@
-import { CreditCard, RefreshCcw, ShieldCheck } from "lucide-react";
+import { CreditCard, RefreshCcw } from "lucide-react";
 
 import { azureApiFetch } from "../../lib/client-azure-api";
-import { Button } from "../ui/button";
 
 type Props = {
   status: string;
@@ -33,48 +32,29 @@ async function openCheckout() {
 
 export function SubscriptionStatus({ status, usageLabel, paid }: Props) {
   return (
-    <section className="rounded-lg border border-line bg-sky/80 p-4 shadow-crisp">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">
-              Account status
-            </p>
-            <p className="mt-1 text-sm font-semibold text-ink">
-              {paid ? `Subscription: ${status}` : "Free workspace"}
-            </p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">
-              Usage remaining
-            </p>
-            <p className="mt-1 text-sm font-semibold text-sage">{usageLabel}</p>
-          </div>
-        </div>
-        {paid ? (
-          <Button
-            onClick={() => void openBillingPortal()}
-            type="button"
-            variant="secondary"
-          >
-            <CreditCard className="h-4 w-4" aria-hidden="true" />
-            Manage billing
-          </Button>
-        ) : (
-          <Button
-            onClick={() => void openCheckout()}
-            type="button"
-            variant="secondary"
-          >
-            <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-            Upgrade
-          </Button>
-        )}
+    <section className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 rounded-xl border border-line bg-sky/60 px-4 py-2.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink/40">
+          {paid ? "Subscription" : "Free workspace"}
+        </span>
+        {paid ? <span className="font-medium text-ink">{status}</span> : null}
+        <span aria-hidden="true" className="text-ink/25">
+          ·
+        </span>
+        <span className="font-semibold text-sage">{usageLabel}</span>
       </div>
-      <p className="mt-3 flex items-start gap-1.5 text-xs leading-5 text-ink/45">
-        <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        Operated by TimeAwake Ltd. Billing is handled by Stripe.
-      </p>
+      <button
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink/65 underline-offset-4 transition hover:text-ink hover:underline"
+        onClick={() => void (paid ? openBillingPortal() : openCheckout())}
+        type="button"
+      >
+        {paid ? (
+          <CreditCard className="h-4 w-4" aria-hidden="true" />
+        ) : (
+          <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+        )}
+        {paid ? "Manage billing" : "Upgrade"}
+      </button>
     </section>
   );
 }

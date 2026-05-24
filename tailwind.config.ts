@@ -17,7 +17,18 @@ const config: Config = {
         line: "#d8d4c4",
         clay: "#1e6b4a",
         sage: "#1e6b4a",
+        rust: "#c45a1a",
         gold: "#9a7b2e",
+      },
+      fontFamily: {
+        serif: ["var(--font-instrument)", "Georgia", "serif"],
+        mono: [
+          "var(--font-geist-mono)",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "monospace",
+        ],
       },
       boxShadow: {
         soft: "0 18px 45px rgba(17, 21, 15, 0.10)",
