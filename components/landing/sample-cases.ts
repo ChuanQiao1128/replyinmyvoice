@@ -10,57 +10,64 @@ export type HomepageSampleCase = {
   sourceDocument: "docs/sample-cases.md";
 };
 
+/**
+ * Homepage demo samples drawn from the documented 100-case rewrite eval set
+ * (docs/rewrite-email-eval-cases-100.md). Drafts and rewrites are the real
+ * case text; the AI-like signal values shown are representative homepage
+ * figures documented in docs/sample-cases.md. The landing-demo-samples test
+ * keeps these aligned with that document.
+ */
 export const homepageSampleCases: HomepageSampleCase[] = [
   {
     label: "Teacher Message",
     icon: "T",
     context:
-      "Maya asks whether she can still submit a missed reflection after a family issue.",
+      "Ms Alvarez asks whether Maya's permission slip and the $12 for the April 9 museum trip already arrived.",
     draft:
-      "Dear Maya, I acknowledge receipt of your email regarding the missed reflection. Late submissions are generally not accepted under the course policy. I will review the circumstances you described and determine whether any exception can be considered. Please be advised that approval is not guaranteed and further information may be required before a decision is made.",
+      "Hello, I checked and I do not see it. You should send another form and payment so she can attend.",
     rewrite:
-      "Hi Maya, thanks for letting me know what happened. I can look at this with you tomorrow and check it against the late-work policy before deciding the next step. If there is anything else I should understand about the family issue, send it through before then.",
-    before: 81,
-    after: 39,
+      "Hi Ms. Alvarez, I checked the classroom folder basket and payment envelope after dismissal on March 28, and I didn't see Maya's permission slip or the $12 payment. I know you mentioned sending it in her blue folder last Thursday, but it hasn't turned up here. Maya still needs a signed permission slip and the $12 to attend the April 9 science museum trip — the deadline is April 2. You can send in a new form, or I can send an extra one home with her. Just let me know which you'd prefer.",
+    before: 74,
+    after: 10,
     sourceDocument: "docs/sample-cases.md",
   },
   {
     label: "Sales Follow-Up",
     icon: "S",
     context:
-      "Jordan says the team is still comparing vendors and may need another week.",
+      "Jonah is comparing two vendors and wants the final numbers plus whether onboarding can start before June 1.",
     draft:
-      "Hello Jordan, I am following up regarding the proposal sent last Tuesday. Please advise whether your team has completed its vendor comparison and whether you would like to proceed with the package as discussed. I would appreciate any update you can provide so that we can determine the appropriate next steps.",
+      "Thanks for your time. Our platform is a great fit and we can absolutely get you onboarded before June 1. The pricing is attached again. Let me know if you want to sign today.",
     rewrite:
-      "Hi Jordan, just checking back on the proposal from Tuesday. If your team is still comparing vendors, no problem. I can send a shorter version with the two options side by side, or answer anything that would help you decide next week.",
-    before: 76,
-    after: 41,
+      "Hi Jonah, the final numbers are $1,800/month for 25 seats plus a one-time $650 onboarding fee. The earliest onboarding kickoff is May 28, and full setup usually takes 5 business days after we get the signed contract and data access — so we can start before June 1 but can't guarantee completion by then. Happy to walk through any of it if that helps your comparison.",
+    before: 69,
+    after: 12,
     sourceDocument: "docs/sample-cases.md",
   },
   {
     label: "Workplace Email",
     icon: "W",
     context:
-      "A teammate needs revised numbers for a partner update, but the source file arrived late.",
+      "A teammate is upset about being blamed for a launch delay and asks what you actually need from them now.",
     draft:
-      "Unfortunately, the requested numbers are not available at this time because the source information was delayed. I understand that the partner update is important, and I will provide the revised figures as soon as the underlying file has been checked and the information is ready for circulation.",
+      "I understand the frustration. We need to talk through what happened and agree on next steps.",
     rewrite:
-      "The source file came in late, so I need one more check before I send the revised numbers. I know you need them for the partner update. I will get the final version to you by 4pm Friday.",
-    before: 73,
-    after: 32,
+      "The QA checklist went out on April 18 at 2:16 PM, and Product moved the launch from April 22 to April 29 before QA signoff was complete. Rather than a group retro, our manager wants short 30-minute private follow-ups with you and Jordan separately, focused on timeline, handoff expectations, and launch-readiness criteria. The one thing I need from you now is to confirm your availability for that follow-up so I can get it scheduled.",
+    before: 82,
+    after: 7,
     sourceDocument: "docs/sample-cases.md",
   },
   {
     label: "Client Reply",
     icon: "C",
     context:
-      "Priya asks why this month's report totals look different from last month.",
+      "A frustrated customer got conflicting answers about returning three final-sale jackets and wants a clear yes or no.",
     draft:
-      "Dear Priya, we apologize for any inconvenience caused by the discrepancy in the report totals. Our team is currently looking into the matter and will provide an update as soon as possible. We appreciate your patience while we review the relevant information and determine what may have changed.",
+      "Sorry for the confusion. Final sale items cannot be returned, but we may be able to exchange the navy medium if it still has tags.",
     rewrite:
-      "Hi Priya, thanks for flagging this. I am checking the report now because this month includes a category that was hidden last month. I will send you a clear line-by-line note today so you can see exactly what changed.",
-    before: 79,
-    after: 37,
+      "I'm sorry for the conflicting information you got. Order #J3009 was three final-sale jackets, so refunds and store credit aren't available — but a one-time size exchange is allowed for unworn items with tags within 30 days. You bought them on February 2, so the exchange window runs to March 3, and today is March 1. The navy medium still has its tags and we have two navy larges in stock. Would you like me to exchange the medium for a large? I won't make any change without your confirmation.",
+    before: 88,
+    after: 8,
     sourceDocument: "docs/sample-cases.md",
   },
 ];

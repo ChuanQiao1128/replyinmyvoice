@@ -55,7 +55,7 @@ export function InteractiveDemo() {
         <div className="compare-col before">
           <h4>
             Rough draft
-            <span className="pill">stiff · {sample.before}%</span>
+            <span className="pill">rough · {sample.before}%</span>
           </h4>
           <div className="compare-body">{sample.draft}</div>
         </div>

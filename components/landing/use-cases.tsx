@@ -42,6 +42,8 @@ const useCases = [
 ];
 
 export function UseCases() {
+  const [feature, ...rest] = useCases;
+
   return (
     <section className="block" id="cases">
       <div className="wrap">
@@ -64,16 +66,38 @@ export function UseCases() {
         </div>
 
         <div className="usecases">
-          {useCases.map((item) => (
-            <div className="uc" key={item.title}>
+          <article className="uc uc-feature">
+            <div className="uc-top">
               <div className="uc-icon" aria-hidden="true">
-                {item.icon}
+                {feature.icon}
+              </div>
+              <div className="uc-tag">№ {feature.k}</div>
+            </div>
+            <h3>{feature.title}</h3>
+            <p className="uc-body">{feature.body}</p>
+            <ul className="uc-points">
+              <li>Keeps your reason and dates intact</li>
+              <li>Warm or Direct — your call</li>
+              <li>Copy-ready in a single pass</li>
+            </ul>
+            <div className="uc-snippet">
+              <span className="uc-snippet-tag">Example draft</span>
+              {feature.snippet}
+            </div>
+          </article>
+
+          {rest.map((item) => (
+            <article className="uc" key={item.title}>
+              <div className="uc-top">
+                <div className="uc-icon" aria-hidden="true">
+                  {item.icon}
+                </div>
+                <div className="uc-tag">№ {item.k}</div>
               </div>
               <h3>{item.title}</h3>
               <p className="uc-body">{item.body}</p>
               <div className="uc-snippet">{item.snippet}</div>
-              <div className="uc-tag">№ {item.k}</div>
-            </div>
+            </article>
           ))}
         </div>
       </div>

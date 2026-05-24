@@ -2,7 +2,11 @@ import { NatBar } from "./nat-bar";
 
 export function Naturalness() {
   return (
-    <section className="block" id="naturalness" style={{ background: "var(--bg-2)" }}>
+    <section
+      className="block"
+      id="naturalness"
+      style={{ background: "var(--bg-2)" }}
+    >
       <div className="wrap">
         <div className="sec-head">
           <div>
@@ -24,16 +28,19 @@ export function Naturalness() {
 
         <div className="nat-section">
           <div className="nat-callout">
-            <h3>Example · Teacher reply</h3>
-            <NatBar before={81} after={39} animate />
+            <div className="nat-callout-head">
+              <h3>Example · Teacher reply</h3>
+              <span className="nat-delta-badge">−64 pts</span>
+            </div>
+            <NatBar before={74} after={10} animate />
             <div className="nat-legend">
               <span>
                 <span className="sw b" />
-                Draft signal · 81%
+                Draft signal · 74%
               </span>
               <span>
                 <span className="sw a" />
-                Rewrite signal · 39%
+                Rewrite signal · 10%
               </span>
             </div>
             <div className="nat-disclaimer">

@@ -114,6 +114,25 @@ const focusPack: Pack = {
   cta: "Get Focus Pack",
 };
 
+const includes = [
+  {
+    k: "Tone check",
+    p: "A before/after reference signal on every rewrite — a guide, never a guarantee.",
+  },
+  {
+    k: "Facts preserved",
+    p: "Dates, names, and amounts you mark stay intact through the rewrite.",
+  },
+  {
+    k: "Warm · Direct",
+    p: "Two simple tone presets that shape the reply around your real context.",
+  },
+  {
+    k: "Private history",
+    p: "Recent rewrites stay in your browser only — not saved to our database.",
+  },
+];
+
 export default function PricingPage() {
   const visiblePacks = isFocusPackEnabled() ? [...packs, focusPack] : packs;
 
@@ -137,7 +156,10 @@ export default function PricingPage() {
 
           <div className="pricing-wrap" style={{ marginTop: 44 }}>
             <div className="plan plan-free">
-              <div className="eyebrow">Free tier</div>
+              <div className="eyebrow">
+                <span className="dot" />
+                Free tier
+              </div>
               <h3>Try 3 rewrites first.</h3>
               <div className="plan-price">
                 3<small>lifetime rewrites</small>
@@ -160,70 +182,59 @@ export default function PricingPage() {
               <div className="plan-meta">No card required</div>
             </div>
 
-            <div
-              className="plan plan-paid"
-              style={{ background: "var(--ink)", color: "var(--bg)" }}
-            >
+            <div className="plan plan-paid">
               <div className="eyebrow" style={{ color: "var(--bg)" }}>
                 <span className="dot" style={{ background: "var(--bg)" }} />
                 Rewrite packs & Pro/API
               </div>
-              <h3>Pay for what you need.</h3>
-              <div
-                style={{
-                  display: "grid",
-                  gap: 16,
-                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                }}
-              >
+              <h3>Pay only for what you need.</h3>
+
+              <div className="pp-packs">
                 {visiblePacks.map((pack) => (
                   <article
                     key={pack.sku}
-                    style={{
-                      border: pack.highlight
-                        ? "1px solid var(--accent)"
-                        : "1px solid rgba(246,244,238,0.18)",
-                      borderRadius: 8,
-                      padding: 18,
-                      background: pack.highlight
-                        ? "rgba(246,244,238,0.12)"
-                        : "rgba(246,244,238,0.06)",
-                    }}
+                    className={"pp-pack" + (pack.highlight ? " pp-pop" : "")}
                   >
-                    <div className="eyebrow" style={{ color: "var(--bg)" }}>
-                      {pack.name}
-                      {pack.badge ? ` · ${pack.badge}` : ""}
+                    <div className="pp-pack-head">
+                      <div>
+                        <div className="pp-pack-name">
+                          {pack.name}
+                          {pack.badge ? (
+                            <span className="pack-tag">{pack.badge}</span>
+                          ) : null}
+                        </div>
+                        <div className="pp-pack-sub">
+                          {pack.allowance} · {pack.term}
+                        </div>
+                      </div>
+                      <div className="pp-pack-price">{pack.price}</div>
                     </div>
-                    <div className="plan-price" style={{ fontSize: 34 }}>
-                      {pack.price}
-                    </div>
-                    <p style={{ color: "rgba(246,244,238,0.78)", lineHeight: 1.5 }}>
-                      {pack.allowance} · {pack.term}
-                    </p>
-                    <ul className="plan-list" style={{ marginTop: 12 }}>
-                      <li>{pack.description}</li>
-                      {pack.apiNote ? (
-                        <li>API access for active Pro/API only</li>
-                      ) : (
-                        <li>One-time — no subscription</li>
-                      )}
-                    </ul>
-                    <div className="plan-cta">
-                      <PlanAction
-                        configured={isPriceConfigured(pack.sku)}
-                        sku={pack.sku}
-                        label={pack.cta}
-                      />
-                    </div>
+                    <p className="pp-pack-desc">{pack.description}</p>
+                    <PlanAction
+                      configured={isPriceConfigured(pack.sku)}
+                      sku={pack.sku}
+                      label={pack.cta}
+                    />
                   </article>
                 ))}
               </div>
+
               <div className="plan-meta">
                 Packs are one-time and valid 90 days. Pro/API is billed monthly
                 through Stripe; monthly rewrites reset each period and do not roll
                 over.
               </div>
             </div>
+          </div>
+
+          <div className="pp-includes-head">Every plan includes</div>
+          <div className="pp-includes">
+            {includes.map((item) => (
+              <div className="pp-include" key={item.k}>
+                <div className="k">{item.k}</div>
+                <p>{item.p}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

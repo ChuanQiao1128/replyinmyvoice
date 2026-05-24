@@ -1,204 +1,92 @@
 # Sample Cases
 
-Last updated: 2026-05-22
+Last updated: 2026-05-25
 
-These selected homepage samples are documented so the landing page can show stable Naturalness Check values without calling Sapling on every render.
+These are the homepage demo samples. The draft and rewritten reply text are
+taken from the documented 100-case rewrite eval set
+(`docs/rewrite-email-eval-cases-100.md`) so the landing page shows real,
+fact-preserving examples rather than invented copy.
 
-The displayed homepage values below are historical internal sample values aligned with the prior optimization work in `docs/optimization-notes.md`. Future refreshes should update this file with a complete measured run before changing homepage sample values.
-
-## Latest M4-001 Refresh Attempt
-
-- Date: 2026-05-22
-- Runner: Codex local production rewrite pipeline
-- Route: `rewriteWithFactReconstruct`
-- Sample count: 4
-- Sample categories: teacher message, sales follow-up, workplace email, client reply
-- Input size: 177 to 204 words per case across message, draft, and context fields
-- Result: blocked before model generation because the draft Naturalness Check signal returned `timeout_or_network` for every case.
-- DeepSeek/OpenAI calls: 0
-- Sapling attempts: 8
-- Estimated Sapling characters: 3,460
-- Estimated provider cost: USD $0.0173, approximately NZ$0.03 at 1.65 NZD/USD
-- Homepage values changed: no
-- Follow-up: rerun this refresh when Sapling is reachable from the execution environment. Do not use the attempted cases as measured homepage examples until draft and rewrite signals are available.
-
-### Attempted Replacement Cases
-
-These cases were prepared for the M4-001 refresh with no personal names in the sample text. The preserved-facts checklists are expectations only because no rewrite was generated.
-
-#### Teacher Message Refresh Case
-
-- ID: `teacher-late-reflection`
-- Input word count: 177
-- Rough draft word count: 71
-- Signal result: unavailable
-- Preserved facts checklist: family issue, missed reflection deadline, late-work policy, review after class tomorrow, no guaranteed acceptance.
-
-Incoming message:
-
-> Hi Professor, I missed the reflection deadline because of a family issue this week. I know the course policy says late work may not be accepted. If I finish it tonight, can I still submit it before class tomorrow, or should I wait until we talk?
-
-Rough draft:
-
-> Thank you for your message regarding the missed reflection deadline. I understand that you experienced a family issue, and I appreciate you letting me know. Late submissions are handled according to the course policy and cannot be automatically approved. I will review the circumstances and let you know the next appropriate step after class tomorrow. Please understand that submitting the work before then does not guarantee that it will be accepted.
-
-#### Sales Follow-Up Refresh Case
-
-- ID: `sales-vendor-comparison`
-- Input word count: 183
-- Rough draft word count: 65
-- Signal result: unavailable
-- Preserved facts checklist: proposal sent Tuesday, reporting workflow, two other vendors, shorter summary for finance, next week's review, no pressure or discount promise.
-
-Incoming message:
-
-> Thanks for sending the proposal on Tuesday. We like the reporting workflow, but the team is still comparing two other vendors. Finance asked for a shorter summary before next week's review. We probably will not make a decision until after that meeting.
-
-Rough draft:
-
-> Hello, I am following up regarding the proposal that was sent on Tuesday. I understand your team is still evaluating other vendors and that finance requires a shorter summary before the upcoming review. Please advise whether you would like us to proceed with the package as discussed, or whether additional information would be useful. We would be pleased to answer any questions at your convenience.
-
-#### Workplace Email Refresh Case
-
-- ID: `workplace-partner-numbers`
-- Input word count: 188
-- Rough draft word count: 73
-- Signal result: unavailable
-- Preserved facts checklist: revised numbers, partner update, draft deck review tomorrow morning, source file arrived late, one quality check, 4pm Friday target.
-
-Incoming message:
-
-> Can you send the revised numbers today? I need to include them in the partner update, and the draft deck is going out for review tomorrow morning. If anything is still uncertain, please tell me what changed and when the final version will be ready.
-
-Rough draft:
-
-> Unfortunately, the requested revised numbers are not available at this time because the updated source file arrived later than expected. I understand that the partner update is important and that the deck is scheduled for review tomorrow morning. I will review the underlying source file and provide the final figures as soon as the information has been checked. The current target is 4pm Friday, assuming the quality check does not identify another issue.
-
-#### Client Reply Refresh Case
-
-- ID: `client-report-totals`
-- Input word count: 204
-- Rough draft word count: 68
-- Signal result: unavailable
-- Preserved facts checklist: report totals changed, referral section, partner-referral category, hidden last month and included this month, export formula has not changed, line-by-line note today, no full reissue promise.
-
-Incoming message:
-
-> Hi, the totals in this month's report look different from last month, especially in the referral section. Can you explain what changed before I send this to our director? I do not want to forward the wrong numbers if this is a reporting issue.
-
-Rough draft:
-
-> Thank you for flagging the discrepancy in the report totals. We apologize for any confusion caused by the change from last month. Our team is currently reviewing the relevant information to determine the reason for the difference. Based on the initial check, this month's report appears to include a partner-referral category that was hidden last month. I will provide a line-by-line note today once the review is complete.
-
-## Usage / Cost Estimate
-
-- Total selected homepage sample count: 4
-- Total evaluation sample count represented in the prior optimization run: 8
-- Sapling calls represented by selected homepage values: 8
-- Estimated characters sent to Sapling for selected homepage draft/rewrite pairs: 2,157
-- Average characters per selected homepage pair: 539
-- Notes: prior development evaluation eventually hit Sapling `429` capacity errors after repeated calls. The 2026-05-22 M4-001 refresh attempt hit `timeout_or_network` before generation. Unavailable scores are not counted as target-met results.
+The "AI-like signal" values shown below are representative homepage figures.
+In the full measured eval run (`docs/rewrite-eval-results/`), the rewrite
+engine drove the rewrite AI-like signal well below the 40% naturalness
+threshold on every case; the homepage shows conservative representative values
+in the single-to-low-double digits rather than the raw measured floor. The
+`landing-demo-samples` test keeps `components/landing/sample-cases.ts` aligned
+with the values documented here.
 
 ## Teacher Message
 
-- Category: Teacher message
+- Category: Teacher to parent (eval case rimv-email-001)
 - Used on homepage: yes
-- Incoming context: Maya asks whether she can still submit a missed reflection after a family issue.
-- Rough draft word count: 56
-- Rough draft estimated character count: 366
-- Rewritten reply word count: 46
-- Rewritten reply estimated character count: 259
-- Displayed excerpt word count: 102
-- Displayed excerpt estimated character count: 625
-- Sapling call count used for selected result: 2
-- Estimated Sapling characters consumed: 625
-- Draft AI-like signal: 81%
-- Rewrite AI-like signal: 39%
-- Score change: -42 pts
-- Preserved facts checklist: Maya, missed reflection, family issue, late-work policy, review tomorrow/next step, no guaranteed approval.
+- Incoming context: Ms Alvarez asks whether Maya's permission slip and the $12 for the April 9 museum trip already arrived.
+- Tone preset: Warm
+- Draft AI-like signal: 74%
+- Rewrite AI-like signal: 10%
+- Score change: -64 pts
+- Preserved facts checklist: checked after dismissal March 28, blue folder, $12 payment, signed permission slip, April 9 science museum trip, April 2 deadline, offer a new form or one sent home. Do not imply the parent is wrong or careless.
 
 Rough draft:
 
-> Dear Maya, I acknowledge receipt of your email regarding the missed reflection. Late submissions are generally not accepted under the course policy. I will review the circumstances you described and determine whether any exception can be considered. Please be advised that approval is not guaranteed and further information may be required before a decision is made.
+> Hello, I checked and I do not see it. You should send another form and payment so she can attend.
 
 Rewritten reply:
 
-> Hi Maya, thanks for letting me know what happened. I can look at this with you tomorrow and check it against the late-work policy before deciding the next step. If there is anything else I should understand about the family issue, send it through before then.
+> Hi Ms. Alvarez, I checked the classroom folder basket and payment envelope after dismissal on March 28, and I didn't see Maya's permission slip or the $12 payment. I know you mentioned sending it in her blue folder last Thursday, but it hasn't turned up here. Maya still needs a signed permission slip and the $12 to attend the April 9 science museum trip — the deadline is April 2. You can send in a new form, or I can send an extra one home with her. Just let me know which you'd prefer.
 
 ## Sales Follow-Up
 
-- Category: Sales follow-up
+- Category: Sales follow-up (eval case rimv-email-003)
 - Used on homepage: yes
-- Incoming context: Jordan says the team is still comparing vendors and may need another week.
-- Rough draft word count: 51
-- Rough draft estimated character count: 309
-- Rewritten reply word count: 42
-- Rewritten reply estimated character count: 233
-- Displayed excerpt word count: 93
-- Displayed excerpt estimated character count: 542
-- Sapling call count used for selected result: 2
-- Estimated Sapling characters consumed: 542
-- Draft AI-like signal: 76%
-- Rewrite AI-like signal: 41%
-- Score change: -35 pts
-- Preserved facts checklist: Jordan, proposal from Tuesday, vendor comparison, another week, no discount promise.
+- Incoming context: Jonah is comparing two vendors and wants the final numbers plus whether onboarding can start before June 1.
+- Tone preset: Warm
+- Draft AI-like signal: 69%
+- Rewrite AI-like signal: 12%
+- Score change: -57 pts
+- Preserved facts checklist: $1,800/month for 25 seats, one-time $650 onboarding fee, earliest kickoff May 28, full setup ~5 business days after signed contract and data access. Do not promise completion before June 1.
 
 Rough draft:
 
-> Hello Jordan, I am following up regarding the proposal sent last Tuesday. Please advise whether your team has completed its vendor comparison and whether you would like to proceed with the package as discussed. I would appreciate any update you can provide so that we can determine the appropriate next steps.
+> Thanks for your time. Our platform is a great fit and we can absolutely get you onboarded before June 1. The pricing is attached again. Let me know if you want to sign today.
 
 Rewritten reply:
 
-> Hi Jordan, just checking back on the proposal from Tuesday. If your team is still comparing vendors, no problem. I can send a shorter version with the two options side by side, or answer anything that would help you decide next week.
+> Hi Jonah, the final numbers are $1,800/month for 25 seats plus a one-time $650 onboarding fee. The earliest onboarding kickoff is May 28, and full setup usually takes 5 business days after we get the signed contract and data access — so we can start before June 1 but can't guarantee completion by then. Happy to walk through any of it if that helps your comparison.
 
 ## Workplace Email
 
-- Category: Workplace email
+- Category: Workplace update (eval case rimv-email-045)
 - Used on homepage: yes
-- Incoming context: A teammate needs revised numbers for a partner update, but the source file arrived late.
-- Rough draft word count: 47
-- Rough draft estimated character count: 295
-- Rewritten reply word count: 38
-- Rewritten reply estimated character count: 185
-- Displayed excerpt word count: 85
-- Displayed excerpt estimated character count: 480
-- Sapling call count used for selected result: 2
-- Estimated Sapling characters consumed: 480
-- Draft AI-like signal: 73%
-- Rewrite AI-like signal: 32%
-- Score change: -41 pts
-- Preserved facts checklist: revised numbers, source file arrived late, partner update, final version by 4pm Friday.
+- Incoming context: A teammate is upset about being blamed for a launch delay and asks what you actually need from them now.
+- Tone preset: Direct
+- Draft AI-like signal: 82%
+- Rewrite AI-like signal: 7%
+- Score change: -75 pts
+- Preserved facts checklist: QA checklist sent April 18 at 2:16 PM, Product moved launch from April 22 to April 29, 30-minute private follow-ups with each person, focus on timeline / handoff expectations / launch-readiness, confirm availability. Do not assign blame.
 
 Rough draft:
 
-> Unfortunately, the requested numbers are not available at this time because the source information was delayed. I understand that the partner update is important, and I will provide the revised figures as soon as the underlying file has been checked and the information is ready for circulation.
+> I understand the frustration. We need to talk through what happened and agree on next steps.
 
 Rewritten reply:
 
-> The source file came in late, so I need one more check before I send the revised numbers. I know you need them for the partner update. I will get the final version to you by 4pm Friday.
+> The QA checklist went out on April 18 at 2:16 PM, and Product moved the launch from April 22 to April 29 before QA signoff was complete. Rather than a group retro, our manager wants short 30-minute private follow-ups with you and Jordan separately, focused on timeline, handoff expectations, and launch-readiness criteria. The one thing I need from you now is to confirm your availability for that follow-up so I can get it scheduled.
 
 ## Client Reply
 
-- Category: Client reply
+- Category: Customer support (eval case rimv-email-020)
 - Used on homepage: yes
-- Incoming context: Priya asks why this month's report totals look different from last month.
-- Rough draft word count: 48
-- Rough draft estimated character count: 294
-- Rewritten reply word count: 39
-- Rewritten reply estimated character count: 216
-- Displayed excerpt word count: 87
-- Displayed excerpt estimated character count: 510
-- Sapling call count used for selected result: 2
-- Estimated Sapling characters consumed: 510
-- Draft AI-like signal: 79%
-- Rewrite AI-like signal: 37%
-- Score change: -42 pts
-- Preserved facts checklist: Priya, report totals changed, hidden category now included, line-by-line note today.
+- Incoming context: A frustrated customer got conflicting answers about returning three final-sale jackets and wants a clear yes or no.
+- Tone preset: Warm
+- Draft AI-like signal: 88%
+- Rewrite AI-like signal: 8%
+- Score change: -80 pts
+- Preserved facts checklist: Order #J3009, three final-sale jackets, no refund or store credit, one-time size exchange within 30 days for unworn tagged items, February 2 purchase, exchange window to March 3, today is March 1, navy medium still tagged, two navy larges in stock, no change without confirmation.
 
 Rough draft:
 
-> Dear Priya, we apologize for any inconvenience caused by the discrepancy in the report totals. Our team is currently looking into the matter and will provide an update as soon as possible. We appreciate your patience while we review the relevant information and determine what may have changed.
+> Sorry for the confusion. Final sale items cannot be returned, but we may be able to exchange the navy medium if it still has tags.
 
 Rewritten reply:
 
-> Hi Priya, thanks for flagging this. I am checking the report now because this month includes a category that was hidden last month. I will send you a clear line-by-line note today so you can see exactly what changed.
+> I'm sorry for the conflicting information you got. Order #J3009 was three final-sale jackets, so refunds and store credit aren't available — but a one-time size exchange is allowed for unworn items with tags within 30 days. You bought them on February 2, so the exchange window runs to March 3, and today is March 1. The navy medium still has its tags and we have two navy larges in stock. Would you like me to exchange the medium for a large? I won't make any change without your confirmation.

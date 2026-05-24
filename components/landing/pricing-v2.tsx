@@ -23,10 +23,13 @@ export function PricingV2() {
 
         <div className="pricing-wrap">
           <div className="plan plan-free">
-            <div className="eyebrow">Free tier</div>
+            <div className="eyebrow">
+              <span className="dot" />
+              Free tier
+            </div>
             <h3>Try it three times.</h3>
             <div className="plan-price">
-              3<small>rewrites</small>
+              3<small>free rewrites</small>
             </div>
             <p className="uc-body">
               Sign up, paste a draft, and see whether it sounds closer to you.
@@ -52,44 +55,43 @@ export function PricingV2() {
               Rewrite packs & Pro/API
             </div>
             <h3>Buy a pack, or go Pro/API for more.</h3>
-            <div
-              style={{
-                display: "grid",
-                gap: 16,
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              }}
-            >
-              <div>
-                <div className="plan-price" style={{ fontSize: 32 }}>
-                  NZ$2.50
+
+            <div className="pack-list">
+              <div className="pack-row">
+                <div>
+                  <div className="pack-name">Quick Pack</div>
+                  <div className="pack-sub">
+                    10 rewrites · one-time · valid 90 days
+                  </div>
                 </div>
-                <p style={{ color: "rgba(246,244,238,0.75)", lineHeight: 1.5 }}>
-                  Quick Pack · 10 rewrites · one-time.
-                </p>
+                <div className="pack-price">NZ$2.50</div>
               </div>
-              <div>
-                <div className="plan-price" style={{ fontSize: 32 }}>
-                  NZ$6.90
+
+              <div className="pack-row pack-pop">
+                <div>
+                  <div className="pack-name">
+                    Value Pack <span className="pack-tag">Most popular</span>
+                  </div>
+                  <div className="pack-sub">
+                    30 rewrites · one-time · best price per rewrite
+                  </div>
                 </div>
-                <p style={{ color: "rgba(246,244,238,0.75)", lineHeight: 1.5 }}>
-                  Value Pack · 30 rewrites · most popular.
-                </p>
+                <div className="pack-price">NZ$6.90</div>
               </div>
-              <div>
-                <div className="plan-price" style={{ fontSize: 32 }}>
+
+              <div className="pack-row">
+                <div>
+                  <div className="pack-name">Pro/API</div>
+                  <div className="pack-sub">
+                    90 rewrites / month · includes API access
+                  </div>
+                </div>
+                <div className="pack-price">
                   NZ$19.90<small>/mo</small>
                 </div>
-                <p style={{ color: "rgba(246,244,238,0.75)", lineHeight: 1.5 }}>
-                  Pro/API · 90 rewrites/mo · API access.
-                </p>
               </div>
             </div>
-            <ul className="plan-list">
-              <li>Most people start with the Value Pack</li>
-              <li>Packs are one-time and valid 90 days</li>
-              <li>Pro/API adds API access for active subscribers</li>
-              <li>Monthly Pro/API rewrites do not roll over</li>
-            </ul>
+
             <div className="plan-cta">
               <Link href="/pricing" className="btn btn-primary btn-lg">
                 Compare plans <span className="btn-arrow">-&gt;</span>

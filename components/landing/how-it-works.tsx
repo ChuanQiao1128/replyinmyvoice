@@ -21,7 +21,10 @@ export function HowItWorks() {
 
         <div className="steps">
           <div className="step">
-            <div className="step-num">Step 01</div>
+            <div className="step-head">
+              <span className="step-node">01</span>
+              <span className="step-line" aria-hidden="true" />
+            </div>
             <h3>Paste the thread</h3>
             <p>
               Paste the message you&apos;re answering plus the rough draft you
@@ -29,19 +32,22 @@ export function HowItWorks() {
             </p>
             <div className="step-figure">
               <div style={{ color: "var(--muted)" }}>{"// thread.txt"}</div>
-              <div style={{ paddingTop: 6 }}>From: Maya</div>
-              <div>Subject: Missed reflection</div>
+              <div style={{ paddingTop: 6 }}>From: Ms Alvarez</div>
+              <div>Subject: Permission slip</div>
               <div style={{ color: "var(--muted)", paddingTop: 4 }}>
                 — rough reply —
               </div>
               <div>
-                <span className="caret">▍</span>Dear Maya, I acknowled…
+                <span className="caret">▍</span>Hello, I checked and I do not…
               </div>
             </div>
           </div>
 
           <div className="step">
-            <div className="step-num">Step 02</div>
+            <div className="step-head">
+              <span className="step-node">02</span>
+              <span className="step-line" aria-hidden="true" />
+            </div>
             <h3>Pick quick context</h3>
             <p>
               Choose audience, purpose, and anything that must stay unchanged.
@@ -50,24 +56,27 @@ export function HowItWorks() {
             <div className="step-figure">
               <div className="field-line">
                 <span className="k">audience</span>
-                <span className="v">student</span>
+                <span className="v">parent</span>
               </div>
               <div className="field-line">
                 <span className="k">purpose</span>
-                <span className="v">policy reply</span>
+                <span className="v">reply + next step</span>
               </div>
               <div className="field-line">
                 <span className="k">keep</span>
                 <span className="v">
-                  <span className="chip">late-work policy</span>
-                  <span className="chip">tomorrow</span>
+                  <span className="chip">permission slip</span>
+                  <span className="chip">April 2</span>
                 </span>
               </div>
             </div>
           </div>
 
           <div className="step">
-            <div className="step-num">Step 03</div>
+            <div className="step-head">
+              <span className="step-node">03</span>
+              <span className="step-line" aria-hidden="true" />
+            </div>
             <h3>Choose a tone preset</h3>
             <p>
               Choose Warm or Direct. The app shapes the reply around your
@@ -94,15 +103,18 @@ export function HowItWorks() {
               </div>
               <div style={{ color: "var(--muted)" }}>{"// preview"}</div>
               <div>
-                Hi Maya, thanks for letting me
+                Hi Ms. Alvarez, I checked the
                 <br />
-                know what happened…
+                classroom folder basket…
               </div>
             </div>
           </div>
 
           <div className="step">
-            <div className="step-num">Step 04</div>
+            <div className="step-head">
+              <span className="step-node">04</span>
+              <span className="step-line" aria-hidden="true" />
+            </div>
             <h3>Review the signal</h3>
             <p>
               Compare the before/after AI-like signal, then copy the reply when
@@ -112,18 +124,18 @@ export function HowItWorks() {
               <div className="field-line">
                 <span className="k">before</span>
                 <span className="v" style={{ color: "var(--warn)" }}>
-                  81%
+                  74%
                 </span>
               </div>
               <div className="field-line">
                 <span className="k">after</span>
                 <span className="v" style={{ color: "var(--accent)" }}>
-                  39%
+                  10%
                 </span>
               </div>
               <div className="field-line">
                 <span className="k">delta</span>
-                <span className="v">−42 pts</span>
+                <span className="v">−64 pts</span>
               </div>
               <div style={{ marginTop: 6, color: "var(--accent)" }}>
                 ↓ ⌘ Copy reply
