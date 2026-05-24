@@ -13,130 +13,82 @@ const paywallSource = readFileSync(
   new URL("../../components/app/paywall-card.tsx", import.meta.url),
   "utf8",
 );
+const appPageSource = readFileSync(
+  new URL("../../app/app/page.tsx", import.meta.url),
+  "utf8",
+);
 
-describe("workspace V2 surface copy", () => {
-  it("keeps the reply workflow and confirmed context fields", () => {
-    expect(workspaceSource).not.toContain("Quick context");
-    expect(workspaceSource).not.toContain("Blank / custom");
-    expect(workspaceSource).not.toContain("Email or message reply");
-    expect(workspaceSource).not.toContain("Customer support");
-    expect(workspaceSource).not.toContain("Cover letter");
-    expect(workspaceSource).not.toContain("Work update");
+describe("rewrite workspace surface copy", () => {
+  it("is a single-input workspace without the old wizard scaffolding", () => {
+    // The simplified workspace submits only the draft plus a default tone,
+    // so the backend RewriteRequest contract is unchanged.
+    expect(workspaceSource).toContain("roughDraftReply: draft");
+    expect(workspaceSource).toContain('tone: "warm"');
+
+    // The multi-step wizard, tone presets, and extra context fields are gone.
+    expect(workspaceSource).not.toContain("workspaceScenarioOptions");
+    expect(workspaceSource).not.toContain("tonePresetOptions");
+    expect(workspaceSource).not.toContain("messageToReplyTo");
+    expect(workspaceSource).not.toContain("factsToPreserve");
+    expect(workspaceSource).not.toContain("What message are you replying to?");
+    expect(workspaceSource).not.toContain("Add facts that must stay true");
+  });
+
+  it("keeps a safe failure state and the reference-signal disclaimer", () => {
+    expect(workspaceSource).toContain("titleForQualityFailure");
+    expect(workspaceSource).toContain("Still high");
     expect(workspaceSource).toContain(
-      "Pick a real message you need to send. We'll help you make it clearer while keeping your facts unchanged.",
+      "We could not produce a better version yet",
     );
-    expect(workspaceSource).toContain("workspaceScenarioOptions");
-    expect(workspaceSource).toContain("Extension request");
-    expect(workspaceSource).toContain("Lecturer email");
-    expect(workspaceSource).toContain("Internship follow-up");
-    expect(workspaceSource).toContain("Group project");
-    expect(workspaceSource).toContain("Client delay");
-    expect(workspaceSource).toContain("Make this less rude");
-    expect(workspaceSource).toContain("Something else");
-    expect(workspaceSource).toContain("What message are you replying to?");
-    expect(workspaceSource).toContain("What do you want to say?");
-    expect(workspaceSource).toContain("Add facts that must stay true");
-    expect(workspaceSource).toContain("factsToPreserve: form.factsToPreserve");
-    expect(workspaceSource).toContain("messageToReplyTo: form.messageToReplyTo");
-    expect(workspaceSource).toContain("roughDraftReply: form.roughDraftReply");
-    expect(workspaceSource).toContain("{combinedLength}/{rewriteInputLimits.combined}");
-  });
-
-  it("renders tone choices from the reduced preset list", () => {
-    expect(workspaceSource).toContain("tonePresetOptions.map");
-    expect(workspaceSource).not.toContain("Firm but polite");
-    expect(workspaceSource).not.toContain("Apologetic");
-  });
-
-  it("has a safe failure state when the signal does not improve", () => {
-    expect(workspaceSource).toContain("Writing signal still high");
-    expect(workspaceSource).toContain("We could not produce a better version yet");
-  });
-
-  it("structures output as a compact reply-decision layer", () => {
-    expect(workspaceSource).toContain("Ready to send");
-    expect(workspaceSource).toContain("Facts preserved");
-    expect(workspaceSource).toContain("Facts you asked us to keep");
-    expect(workspaceSource).toContain("splitFactsToPreserve");
-    expect(workspaceSource).toContain("Why this works");
-    expect(workspaceSource).toContain("Before you send");
-    expect(workspaceSource).toContain("check the deadline/date is correct");
-    expect(workspaceSource).toContain("make sure the reason is true");
-    expect(workspaceSource).toContain("edit anything that feels too formal");
-    expect(workspaceSource).toContain("Tone check");
     expect(workspaceSource).toContain("reference signal");
-    expect(workspaceSource).not.toContain("Change summary");
-    expect(workspaceSource).not.toContain("Risk notes");
   });
 
-  it("keeps the workspace shell dense and stable for repeated use", () => {
-    expect(workspaceSource).toContain("max-w-6xl");
+  it("shows the before/after AI Signal with the shared two-tone meter", () => {
+    expect(workspaceSource).toContain('from "../landing/nat-bar"');
+    expect(workspaceSource).toContain("NatBar");
+    expect(workspaceSource).toContain("AI Signal");
+    expect(workspaceSource).toContain("draftAiLikePercent");
+    expect(workspaceSource).toContain("rewriteAiLikePercent");
+  });
+
+  it("keeps local rewrite history without persisting drafts to the database", () => {
+    expect(workspaceSource).toContain("rimv.rewrite.history.v1");
+    expect(workspaceSource).toContain("Recent rewrites");
     expect(workspaceSource).toContain(
-      "lg:grid-cols-[minmax(0,1.04fr)_minmax(360px,0.96fr)]",
+      "Rewrites stay in this browser only and are not saved to the",
     );
-    expect(workspaceSource).toContain("lg:sticky lg:top-20");
-    expect(workspaceSource).toContain("min-h-[24rem]");
-    expect(workspaceSource).not.toContain("rounded-xl");
-    expect(workspaceSource).not.toContain("rounded-2xl");
   });
 
-  it("keeps quota status and paywall surfaces aligned with the app shell", () => {
+  it("keeps the slim quota bar and the paywall aligned with the app shell", () => {
     expect(subscriptionStatusSource).toContain("bg-sky");
-    expect(subscriptionStatusSource).toContain(
-      "md:grid-cols-[minmax(0,1fr)_auto]",
-    );
-    expect(paywallSource).toContain("max-w-6xl");
-    expect(paywallSource).toContain("lg:grid-cols-[minmax(0,1fr)_360px]");
+    expect(subscriptionStatusSource).toContain("Manage billing");
+    expect(subscriptionStatusSource).toContain("Upgrade");
     expect(paywallSource).toContain("Starter");
     expect(paywallSource).toContain("NZ$9.90/month");
     expect(paywallSource).toContain("55 rewrites per month");
     expect(paywallSource).toContain("Exam Week Pass");
     expect(paywallSource).toContain("Top-ups appear when quota runs low");
-    expect(paywallSource).not.toContain("rounded-xl");
-    expect(paywallSource).not.toContain("rounded-2xl");
     expect(paywallSource).not.toContain("NZD $9/month");
     expect(paywallSource).not.toContain("40 rewrites");
   });
 
-  it("shows Azure-backed quota and a situational upgrade nudge after copy", () => {
-    const appPageSource = readFileSync(
-      new URL("../../app/app/page.tsx", import.meta.url),
-      "utf8",
-    );
-
+  it("wires Azure-backed quota and a post-copy upgrade nudge", () => {
     expect(appPageSource).toContain("remaining={usage.remaining}");
     expect(appPageSource).toContain("quota={usage.quota}");
     expect(appPageSource).toContain("planRemaining={usage.remaining}");
     expect(appPageSource).toContain("quotaSources={[]}");
-    expect(workspaceSource).toContain("remaining: number");
     expect(workspaceSource).toContain("quota: number");
-    expect(workspaceSource).toContain("QuotaMeter");
-    expect(workspaceSource).toContain("quotaSources");
     expect(workspaceSource).toContain("planRemaining");
-    expect(workspaceSource).toContain("Monthly plan:");
-    expect(workspaceSource).toContain("Exam Pass");
-    expect(workspaceSource).toContain("Top-up");
-    expect(workspaceSource).toContain(
-      "3 free rewrites — best used on real messages you actually need to send.",
-    );
     expect(workspaceSource).toContain("freeRewritesRemaining");
     expect(workspaceSource).toContain("showPostCopyNudge");
-    expect(workspaceSource).toContain(
-      "Starter gives you 55/month for lecturer emails, extension requests, and internship follow-ups.",
-    );
-    expect(workspaceSource).toContain(
-      "handle client, manager, and colleague messages without overthinking every reply.",
-    );
-    expect(workspaceSource).toContain(
-      "Need this inside your workflow? Pro includes API access and shared web/API quota.",
-    );
     expect(workspaceSource).toContain("Dismiss");
     expect(workspaceSource).toContain('href="/pricing"');
     expect(workspaceSource).toContain("!paid");
 
+    // The upgrade nudge only appears after a copy, never mid-rewrite.
     const submitBody = workspaceSource.slice(
       workspaceSource.indexOf("async function submit"),
-      workspaceSource.indexOf("function updateField"),
+      workspaceSource.indexOf("async function copyReply"),
     );
     const copyBody = workspaceSource.slice(
       workspaceSource.indexOf("async function copyReply"),
