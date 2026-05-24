@@ -11,6 +11,7 @@ namespace ReplyInMyVoice.Functions.Auth;
 
 public static class FunctionAuthResolver
 {
+    private const string MappedScopeClaimType = "http://schemas.microsoft.com/identity/claims/scope";
     private static readonly ConcurrentDictionary<string, ConfigurationManager<OpenIdConnectConfiguration>> ConfigurationManagers = new();
 
     public static async Task<FunctionAuthUser?> ResolveUserAsync(
@@ -208,7 +209,7 @@ public static class FunctionAuthResolver
         return slashIndex > 0 ? scope[..slashIndex] : null;
     }
 
-    private static bool HasRequiredScopeOrRole(ClaimsPrincipal principal, IConfiguration configuration)
+    public static bool HasRequiredScopeOrRole(ClaimsPrincipal principal, IConfiguration configuration)
     {
         var requiredScope = ResolveRequiredScope(configuration);
         if (string.IsNullOrWhiteSpace(requiredScope))
@@ -227,11 +228,14 @@ public static class FunctionAuthResolver
         }
 
         return principal.Claims.Any(claim =>
-            (claim.Type is "scp" or "roles" or ClaimTypes.Role) &&
+            IsScopeOrRoleClaimType(claim.Type) &&
             claim.Value
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Any(allowedScopeValues.Contains));
     }
+
+    private static bool IsScopeOrRoleClaimType(string claimType) =>
+        claimType is "scp" or "scope" or MappedScopeClaimType or "roles" or ClaimTypes.Role;
 
     // Canonical user key = the Entra `oid` (object id). `oid` is stable and IDENTICAL across the
     // ID token (aud = frontend client) and the access token (aud = api://<API client id>), whereas

@@ -83,6 +83,26 @@ public sealed class FunctionAuthResolverTests
     }
 
     [Fact]
+    public void HasRequiredScopeOrRole_accepts_inbound_mapped_scope_claim()
+    {
+        // JwtSecurityTokenHandler maps Entra's raw `scp` claim to this URI claim type by default.
+        // The live Functions auth path must treat it the same as raw `scp`.
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(
+                "http://schemas.microsoft.com/identity/claims/scope",
+                "access_as_user"),
+        ], "Bearer"));
+        var configuration = BuildConfiguration(new Dictionary<string, string?>
+        {
+            ["NEXT_PUBLIC_ENTRA_API_SCOPE"] =
+                "api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32/access_as_user",
+        });
+
+        FunctionAuthResolver.HasRequiredScopeOrRole(principal, configuration).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ResolveUserAsync_rejects_header_identity_unless_enabled()
     {
         var request = CreateRequest();

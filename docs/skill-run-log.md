@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-24 - dotnet-backend-testing - Azure Functions mapped Entra scope auth
+
+- Agent: Codex
+- Trigger: Production Google login reached `/app`, but Cloudflare logs showed Azure `/api/me` returned 401 after access-token retrieval, requiring a .NET Functions auth fix and xUnit regression coverage.
+- Action: Opened and followed the skill; added a focused xUnit regression for `JwtSecurityTokenHandler`'s inbound-mapped Entra scope claim and updated `FunctionAuthResolver` to accept the mapped Microsoft scope URI alongside raw `scp`, `scope`, and role claims.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/FunctionAuthResolver.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/FunctionAuthResolverTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: The new `HasRequiredScopeOrRole_accepts_inbound_mapped_scope_claim` test failed before the resolver fix, then `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter FunctionAuthResolverTests --no-restore` passed 7/7.
+- Limitations: Live signed-in Google login must be retried by the owner after deployment. No token values, `.env.local` values, API tokens, private keys, or provider secrets were logged.
+
 ### 2026-05-24 - ui-browser-testing - Entra callback access-cookie redirect loop
 
 - Agent: Codex
