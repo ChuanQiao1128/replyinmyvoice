@@ -12,11 +12,11 @@ export function PricingV2() {
             <span className="sec-num">06 · Pricing</span>
           </div>
           <div className="sec-head-lead">
-            <h2>Start free, then choose the right pace.</h2>
+            <h2>Start free, then buy rewrites as you need them.</h2>
             <p className="lede">
-              Everyone starts with 3 lifetime rewrites and no card. Use Starter
-              for regular replies, Pro/API for developer workflows, or a one-time
-              option when you only need a short burst.
+              Everyone starts with 3 lifetime rewrites and no card. After that,
+              buy one-time rewrite packs, or go Pro/API for monthly rewrites and
+              developer access.
             </p>
           </div>
         </div>
@@ -49,38 +49,46 @@ export function PricingV2() {
           <div className="plan plan-paid">
             <div className="eyebrow" style={{ color: "var(--bg)" }}>
               <span className="dot" style={{ background: "var(--bg)" }} />
-              Monthly plans
+              Rewrite packs & Pro/API
             </div>
-            <h3>Starter for routine replies. Pro/API for heavier workflows.</h3>
+            <h3>Buy a pack, or go Pro/API for more.</h3>
             <div
               style={{
                 display: "grid",
                 gap: 16,
-                gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
               }}
             >
               <div>
-                <div className="plan-price" style={{ fontSize: 38 }}>
-                  NZ$9.90<small>/mo</small>
+                <div className="plan-price" style={{ fontSize: 32 }}>
+                  NZ$2.50
                 </div>
                 <p style={{ color: "rgba(246,244,238,0.75)", lineHeight: 1.5 }}>
-                  Starter · 55 rewrites/mo · +5 first-month bonus.
+                  Quick Pack · 10 rewrites · one-time.
                 </p>
               </div>
               <div>
-                <div className="plan-price" style={{ fontSize: 38 }}>
+                <div className="plan-price" style={{ fontSize: 32 }}>
+                  NZ$6.90
+                </div>
+                <p style={{ color: "rgba(246,244,238,0.75)", lineHeight: 1.5 }}>
+                  Value Pack · 30 rewrites · most popular.
+                </p>
+              </div>
+              <div>
+                <div className="plan-price" style={{ fontSize: 32 }}>
                   NZ$19.90<small>/mo</small>
                 </div>
                 <p style={{ color: "rgba(246,244,238,0.75)", lineHeight: 1.5 }}>
-                  Pro/API · 110 rewrites/mo · API access · +15 first-month bonus.
+                  Pro/API · 90 rewrites/mo · API access.
                 </p>
               </div>
             </div>
             <ul className="plan-list">
-              <li>Most students start with Exam Week Pass or Starter</li>
-              <li>Exam Week Pass: NZ$4.90 for 25 rewrites over 7 days</li>
-              <li>Top-up: NZ$2.50 for +10 rewrites when quota runs low</li>
-              <li>No rollover for monthly quota</li>
+              <li>Most people start with the Value Pack</li>
+              <li>Packs are one-time and valid 90 days</li>
+              <li>Pro/API adds API access for active subscribers</li>
+              <li>Monthly Pro/API rewrites do not roll over</li>
             </ul>
             <div className="plan-cta">
               <Link href="/pricing" className="btn btn-primary btn-lg">
@@ -88,7 +96,8 @@ export function PricingV2() {
               </Link>
             </div>
             <div className="plan-meta">
-              Billing is managed through Stripe. One-time passes expire as shown.
+              Billing is managed through Stripe. Packs expire 90 days after
+              purchase.
             </div>
           </div>
         </div>

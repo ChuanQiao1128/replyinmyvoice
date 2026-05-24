@@ -652,7 +652,7 @@ export function RewriteWorkspace({
                         Keep writing in your own voice.
                       </p>
                       <p className="mt-1 leading-6">
-                        Starter gives you 55 rewrites a month for the emails and
+                        The Value Pack gives you 30 rewrites for the emails and
                         messages you actually need to send.
                       </p>
                       <p className="mt-1 font-mono text-[11px] text-ink/45">

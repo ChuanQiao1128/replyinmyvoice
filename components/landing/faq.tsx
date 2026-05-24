@@ -13,7 +13,7 @@ const faqs = [
   },
   {
     q: "Who is it for?",
-    a: "Students writing lecturer emails, people replying to clients, teams handling awkward work messages, and anyone trying to make a real reply clearer before sending.",
+    a: "Teachers replying to students and parents, people answering clients, teams handling awkward work messages, and anyone trying to make a real reply clearer before sending.",
   },
   {
     q: "Is this for assignments?",
@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     q: "Can I cancel?",
-    a: "Yes. The monthly plan can be managed through Stripe billing — pause or cancel any time from your account.",
+    a: "Rewrite packs are one-time with nothing to cancel. The Pro/API subscription can be paused or cancelled any time through Stripe billing from your account.",
   },
   {
     q: "Is Tone check a guarantee?",

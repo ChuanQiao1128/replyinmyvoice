@@ -17,7 +17,7 @@ const trustItems = [
   {
     k: "Billing",
     h: "Managed by Stripe",
-    p: "Starter is NZ$9.90/month, Pro/API is NZ$19.90/month, and one-time options are available for short bursts. Payments are managed by Stripe.",
+    p: "Buy rewrites as one-time packs from NZ$2.50, or go Pro/API at NZ$19.90/month for 90 rewrites and API access. Payments are managed by Stripe.",
   },
 ];
 

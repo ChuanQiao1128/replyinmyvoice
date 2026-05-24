@@ -10,29 +10,32 @@ function source(path: string) {
 }
 
 describe("pricing and auth visual system", () => {
-  it("keeps the pricing route aligned with the M4-012 section bands and quota copy", () => {
+  it("keeps the pricing route aligned with the rewrite-packs model and graceful gating", () => {
     const pricingPage = source("app/pricing/page.tsx");
 
     expect(pricingPage).toContain('<main className="rimv">');
     expect(pricingPage).toContain('className="page"');
     expect(pricingPage).toContain('className="pricing-wrap"');
-    expect(pricingPage).toContain("Start free. Upgrade when replies become part of your routine.");
-    expect(pricingPage).toContain("Monthly plans");
-    expect(pricingPage).toContain("One-time options");
-    expect(pricingPage).toContain("Starter");
-    expect(pricingPage).toContain("NZ$9.90/mo");
-    expect(pricingPage).toContain("55 rewrites/mo");
+    expect(pricingPage).toContain("Start free. Buy rewrites when you need them.");
+    expect(pricingPage).toContain("Rewrite packs & Pro/API");
+    expect(pricingPage).toContain("Quick Pack");
+    expect(pricingPage).toContain("NZ$2.50");
+    expect(pricingPage).toContain("10 rewrites");
+    expect(pricingPage).toContain("Value Pack");
+    expect(pricingPage).toContain("NZ$6.90");
+    expect(pricingPage).toContain("30 rewrites");
+    expect(pricingPage).toContain("Most popular");
     expect(pricingPage).toContain("Pro/API");
     expect(pricingPage).toContain("NZ$19.90/mo");
-    expect(pricingPage).toContain("110 rewrites/mo");
-    expect(pricingPage).toContain("Exam Week Pass");
-    expect(pricingPage).toContain("NZ$4.90");
-    expect(pricingPage).toContain("25 rewrites");
-    expect(pricingPage).toContain("Top-up");
-    expect(pricingPage).toContain("NZ$2.50");
-    expect(pricingPage).toContain("+10 rewrites");
+    expect(pricingPage).toContain("90 rewrites");
     expect(pricingPage).toContain("Available soon");
     expect(pricingPage).toContain("isPriceConfigured");
+    // Old subscription-era copy must be gone.
+    expect(pricingPage).not.toContain("Starter");
+    expect(pricingPage).not.toContain("Exam Week Pass");
+    expect(pricingPage).not.toContain("NZ$9.90");
+    expect(pricingPage).not.toContain("55 rewrites");
+    expect(pricingPage).not.toContain("110 rewrites");
     expect(pricingPage).not.toContain("unlimited rewrites");
     expect(pricingPage).not.toContain("NZD $9");
     expect(pricingPage).not.toContain("40 rewrites");

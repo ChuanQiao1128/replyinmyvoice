@@ -6,20 +6,25 @@ import { SiteHeader } from "../../components/site-header";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Start free with 3 lifetime rewrites, then choose Starter, Pro/API, Exam Week Pass, or Top-up options for practical replies.",
+    "Start free with 3 lifetime rewrites, then buy one-time rewrite packs or go Pro/API for monthly rewrites and developer API access.",
 };
 
-type PaidSku = "starter" | "pro" | "exam_pass" | "top_up";
+type PaidSku = "quick_pack" | "value_pack" | "pro_api" | "focus_pack";
 
 const priceEnvBySku = {
-  starter: "STRIPE_PRICE_STARTER",
-  pro: "STRIPE_PRICE_PRO",
-  exam_pass: "STRIPE_PRICE_EXAM_PASS",
-  top_up: "STRIPE_PRICE_TOPUP",
+  quick_pack: "STRIPE_PRICE_QUICK_PACK_NZD",
+  value_pack: "STRIPE_PRICE_VALUE_PACK_NZD",
+  pro_api: "STRIPE_PRICE_PRO_API_MONTHLY_NZD",
+  focus_pack: "STRIPE_PRICE_FOCUS_PACK_NZD",
 } satisfies Record<PaidSku, string>;
 
 function isPriceConfigured(sku: PaidSku) {
   return Boolean(process.env[priceEnvBySku[sku]]);
+}
+
+// Focus Pack stays hidden unless its price is configured AND the flag is on.
+function isFocusPackEnabled() {
+  return isPriceConfigured("focus_pack") && process.env.SHOW_FOCUS_PACK === "true";
 }
 
 function PlanAction({
@@ -60,51 +65,65 @@ function PlanAction({
   );
 }
 
-const monthlyPlans = [
+type Pack = {
+  sku: PaidSku;
+  name: string;
+  price: string;
+  allowance: string;
+  term: string;
+  description: string;
+  cta: string;
+  highlight?: boolean;
+  badge?: string;
+  apiNote?: boolean;
+};
+
+const packs: Pack[] = [
   {
-    sku: "starter" as const,
-    name: "Starter",
-    price: "NZ$9.90/mo",
-    allowance: "55 rewrites/mo",
-    description: "For students and everyday replies that are becoming routine.",
-    hint: "Most students start with Exam Week Pass or Starter.",
-    bonus: "+5 first-month bonus rewrites",
-    cta: "Choose Starter",
+    sku: "quick_pack",
+    name: "Quick Pack",
+    price: "NZ$2.50",
+    allowance: "10 rewrites",
+    term: "Valid 90 days",
+    description: "The lowest-cost way to start. No subscription, no auto-renew.",
+    cta: "Get Quick Pack",
   },
   {
-    sku: "pro" as const,
+    sku: "value_pack",
+    name: "Value Pack",
+    price: "NZ$6.90",
+    allowance: "30 rewrites",
+    term: "Valid 90 days",
+    description: "Best price per rewrite — most people start here.",
+    cta: "Get Value Pack",
+    highlight: true,
+    badge: "Most popular",
+  },
+  {
+    sku: "pro_api",
     name: "Pro/API",
     price: "NZ$19.90/mo",
-    allowance: "110 rewrites/mo",
-    description: "For heavier workflows and API access across web and developer use.",
-    hint: "Developers choose Pro/API.",
-    bonus: "+15 first-month bonus rewrites",
-    cta: "Choose Pro/API",
+    allowance: "90 rewrites/mo",
+    term: "Monthly subscription",
+    description: "For heavy use and developers. Includes API access.",
+    cta: "Go Pro/API",
+    apiNote: true,
   },
 ];
 
-const oneTimeOptions = [
-  {
-    sku: "exam_pass" as const,
-    name: "Exam Week Pass",
-    price: "NZ$4.90",
-    allowance: "25 rewrites",
-    term: "7 days",
-    description: "For deadline weeks, applications, and one concentrated burst.",
-    cta: "Get Exam Week Pass",
-  },
-  {
-    sku: "top_up" as const,
-    name: "Top-up",
-    price: "NZ$2.50",
-    allowance: "+10 rewrites",
-    term: "no period reset",
-    description: "Appears when quota runs low, so there is no surprise metered billing.",
-    cta: "Add Top-up",
-  },
-];
+const focusPack: Pack = {
+  sku: "focus_pack",
+  name: "Focus Pack",
+  price: "NZ$4.90",
+  allowance: "20 rewrites",
+  term: "Valid 90 days",
+  description: "A mid-size pack for one concentrated stretch.",
+  cta: "Get Focus Pack",
+};
 
 export default function PricingPage() {
+  const visiblePacks = isFocusPackEnabled() ? [...packs, focusPack] : packs;
+
   return (
     <main className="rimv">
       <SiteHeader />
@@ -115,11 +134,11 @@ export default function PricingPage() {
               <span className="dot" />
               Pricing
             </div>
-            <h1>Start free. Upgrade when replies become part of your routine.</h1>
+            <h1>Start free. Buy rewrites when you need them.</h1>
             <p className="lede">
-              Every signed-in user gets 3 lifetime rewrites with no card. Choose
-              a monthly plan for regular use, or a one-time option when you only
-              need help for a short stretch.
+              Every signed-in user gets 3 lifetime rewrites with no card. After
+              that, buy one-time rewrite packs, or go Pro/API for monthly
+              rewrites and developer API access.
             </p>
           </div>
 
@@ -154,110 +173,65 @@ export default function PricingPage() {
             >
               <div className="eyebrow" style={{ color: "var(--bg)" }}>
                 <span className="dot" style={{ background: "var(--bg)" }} />
-                Monthly plans
+                Rewrite packs & Pro/API
               </div>
-              <h3>For a steady reply workflow.</h3>
+              <h3>Pay for what you need.</h3>
               <div
                 style={{
                   display: "grid",
                   gap: 16,
-                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
                 }}
               >
-                {monthlyPlans.map((plan) => (
+                {visiblePacks.map((pack) => (
                   <article
-                    key={plan.sku}
+                    key={pack.sku}
                     style={{
-                      border: "1px solid rgba(246,244,238,0.18)",
+                      border: pack.highlight
+                        ? "1px solid var(--accent)"
+                        : "1px solid rgba(246,244,238,0.18)",
                       borderRadius: 8,
                       padding: 18,
-                      background: "rgba(246,244,238,0.06)",
+                      background: pack.highlight
+                        ? "rgba(246,244,238,0.12)"
+                        : "rgba(246,244,238,0.06)",
                     }}
                   >
                     <div className="eyebrow" style={{ color: "var(--bg)" }}>
-                      {plan.name}
+                      {pack.name}
+                      {pack.badge ? ` · ${pack.badge}` : ""}
                     </div>
-                    <div className="plan-price" style={{ fontSize: 38 }}>
-                      {plan.price}
+                    <div className="plan-price" style={{ fontSize: 34 }}>
+                      {pack.price}
                     </div>
                     <p style={{ color: "rgba(246,244,238,0.78)", lineHeight: 1.5 }}>
-                      {plan.allowance} · {plan.description}
+                      {pack.allowance} · {pack.term}
                     </p>
-                    <ul className="plan-list" style={{ marginTop: 14 }}>
-                      <li>{plan.hint}</li>
-                      <li>{plan.bonus}</li>
-                      {plan.sku === "pro" ? <li>API access included</li> : null}
+                    <ul className="plan-list" style={{ marginTop: 12 }}>
+                      <li>{pack.description}</li>
+                      {pack.apiNote ? (
+                        <li>API access for active Pro/API only</li>
+                      ) : (
+                        <li>One-time — no subscription</li>
+                      )}
                     </ul>
                     <div className="plan-cta">
                       <PlanAction
-                        configured={isPriceConfigured(plan.sku)}
-                        href={`/sign-up?plan=${plan.sku}`}
-                        label={plan.cta}
+                        configured={isPriceConfigured(pack.sku)}
+                        href={`/sign-up?plan=${pack.sku}`}
+                        label={pack.cta}
                       />
                     </div>
                   </article>
                 ))}
               </div>
               <div className="plan-meta">
-                Monthly quotas reset each billing period. Unused monthly rewrites
-                do not roll over.
+                Packs are one-time and valid 90 days. Pro/API is billed monthly
+                through Stripe; monthly rewrites reset each period and do not roll
+                over.
               </div>
             </div>
           </div>
-
-          <section style={{ marginTop: 48 }}>
-            <div className="sec-head" style={{ marginBottom: 22 }}>
-              <div>
-                <span className="sec-num">One-time options</span>
-              </div>
-              <div className="sec-head-lead">
-                <h2>For short bursts and quota gaps.</h2>
-                <p className="lede">
-                  Exam Week Pass is built for deadline weeks. Top-up appears
-                  when quota runs low, so extra usage stays intentional.
-                </p>
-              </div>
-            </div>
-            <div
-              className="pricing-wrap"
-              style={{
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: 20,
-              }}
-            >
-              {oneTimeOptions.map((option) => (
-                <article className="plan plan-free" key={option.sku}>
-                  <div className="eyebrow">{option.name}</div>
-                  <h3>{option.term}</h3>
-                  <div className="plan-price">
-                    {option.price}<small>{option.allowance}</small>
-                  </div>
-                  <p className="uc-body">{option.description}</p>
-                  <ul className="plan-list">
-                    <li>{option.allowance}</li>
-                    <li>
-                      {option.sku === "exam_pass"
-                        ? "Expires after 7 days"
-                        : "No monthly reset"}
-                    </li>
-                    <li>No metered surprise billing</li>
-                  </ul>
-                  <div className="plan-cta">
-                    <PlanAction
-                      configured={isPriceConfigured(option.sku)}
-                      href={`/sign-up?plan=${option.sku}`}
-                      label={option.cta}
-                    />
-                  </div>
-                  <div className="plan-meta">
-                    {option.sku === "top_up"
-                      ? "Shown when quota runs low"
-                      : "Best for exam and application weeks"}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
         </div>
       </section>
     </main>

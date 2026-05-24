@@ -16,7 +16,7 @@ const authCopy = {
   "sign-up": {
     eyebrow: "Create your account",
     heading: "Start with three free reply rewrites.",
-    body: "Create an account with an email verification code or Google, then try the workspace before choosing Starter, Pro/API, or a one-time option.",
+    body: "Create an account with an email verification code or Google, then try the workspace before choosing a rewrite pack or Pro/API.",
     cardTitle: "Create your account",
     cardBody: "Email code sign-in verifies your address before sending you back to the workspace.",
     alternateText: "Already signed up?",
@@ -40,7 +40,7 @@ const authCopy = {
 const highlights = [
   "Facts stay in the reply",
   "Warm or Direct tone",
-  "Starter gives 55 rewrites/mo",
+  "Value Pack: 30 rewrites for NZ$6.90",
 ];
 
 export function GoogleOAuthCard({ mode = "sign-in" }: { mode?: AuthMode }) {

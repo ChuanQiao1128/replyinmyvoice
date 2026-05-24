@@ -27,10 +27,10 @@ export function ClosingCta() {
             </Link>
             <div className="meta">3 free rewrites · No card required</div>
             <div className="meta" style={{ marginTop: 12 }}>
-              Starter NZ$9.90/mo · 55 rewrites · Cancel anytime
+              Value Pack NZ$6.90 · 30 rewrites · most popular
             </div>
             <div className="meta" style={{ marginTop: 12 }}>
-              Exam Week Pass NZ$4.90 · Top-up NZ$2.50
+              Quick Pack NZ$2.50 · Pro/API NZ$19.90/mo with API
             </div>
           </div>
         </div>

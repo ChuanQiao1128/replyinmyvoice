@@ -1600,6 +1600,15 @@ claude-heavy-planning-handoff
 - Verification evidence: Watched the new focused tests fail before implementation, then pass. `npm test` passed 99/99; `npm run typecheck` passed; `npm run lint` passed; `npx playwright test tests/e2e/auth-gate.spec.ts --project=chromium` passed 3/3; `npm run cf:build` completed and included `/api/rewrite-attempts/[attemptId]`.
 - Limitations: Local Playwright verification covered signed-out browser gates and API rejection only; this Codex session still does not have the owner's authenticated production browser session, so the final live signed-in rewrite flow needs owner-side retest after deployment.
 
+### 2026-05-24 - cloud-architecture-cost-review - Rewrite packs pricing analysis
+
+- Agent: Codex
+- Trigger: Owner asked for analysis of the latest rewrite-pack pricing scheme, including Stripe fees, GST exposure, AI/provider cost per rewrite, and launch guardrails.
+- Action: Opened and followed the skill; reviewed `docs/rewrite-packs-pricing-spec.md`, compared the proposed Free Trial / Quick Pack / Value Pack / Pro/API / Focus Pack economics, and verified current public Stripe NZ card fees plus IRD GST rate/registration-threshold guidance from official sources.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Official Stripe NZ pricing confirmed domestic cards at 2.65% + NZ$0.30, international cards at 3.5% + NZ$0.30, and +2% if currency conversion is required. Official IRD pages confirmed GST registration at NZ$60,000 taxable turnover expectation/actual threshold and GST at 15% for registered businesses.
+- Limitations: This was a pricing/cost review only; no code, Stripe products, Stripe Prices, database migrations, or paid resources were created. Real provider cost per rewrite still needs production measurement from rewrite cost telemetry before increasing included rewrite counts.
+
 ### 2026-05-25 - dotnet-backend-testing - Rewrite certainty-preservation gate
 
 - Agent: Codex
@@ -1617,3 +1626,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/skill-run-log.md`.
 - Verification evidence: Existing rewrite provider retry tests remained within the `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore --filter Rewrite` run, which passed 38/38.
 - Limitations: No new provider failure scenario was added because the requested behavior is certainty preservation, not dependency failure handling.
+
+### 2026-05-25 - ui-browser-testing - Rewrite-packs pricing cutover (homepage, /pricing, paywall)
+
+- Agent: Claude Code
+- Trigger: UI/copy cutover replacing the old subscription pricing (Starter NZ$9.90/55, Pro 110, Exam Week Pass, Top-up, Students framing) with the rewrite-packs model across the homepage, /pricing, and the /app paywall; required local webpage verification.
+- Action: Skill is not indexed in this Claude Code session, so followed the project source checklist (`agent-skills/ui-browser-testing`) via the harness preview tools. Started the Next.js dev server and verified /pricing (desktop + mobile), homepage hero/stats/pricing block, footer + nav, and the /students -> / redirect; checked console for errors; captured desktop and mobile screenshots.
+- Output artifacts: `app/pricing/page.tsx`; `components/landing/{pricing-v2,hero,trust-panel,closing-cta,faq}.tsx`; `components/site-header.tsx`; `components/site-footer.tsx`; `app/sitemap.ts`; `components/app/paywall-card.tsx`; `app/app/page.tsx`; `components/app/rewrite-workspace.tsx`; `components/auth/google-oauth-card.tsx`; `app/terms/page.tsx`; `next.config.ts` (redirects); `tests/unit/{pricing-auth-visual-system,workspace-copy}.test.ts`; removed `app/students/page.tsx`, `app/launch/page.tsx`, `tests/unit/students-v2-page.test.ts`.
+- Verification evidence: `npm run typecheck`, `npm run test` (95 passed / 18 files), `npm run build`, and `npm run cf:build` all passed; banned-term grep clean; dev-server preview showed /pricing rendering Quick/Value(Most popular)/Pro·API with graceful "Available soon" gating, homepage pricing block + hero updated, footer/nav free of old model and "Students", and /students + /launch returning to / with no console errors (desktop + mobile screenshots captured).
+- Limitations: Local dev-server verification only; the OpenNext/Cloudflare Worker runtime can differ from local (prerendered pages have 500'd in prod before despite local gates passing), so /pricing, the /students redirect, and the /app paywall must be re-verified on the deployed Worker. The /app paywall and workspace nudge were verified via source/contract tests, not an authenticated exhausted-quota browser session. Stripe pack Prices are not yet created, so all paid CTAs are intentionally "Available soon".

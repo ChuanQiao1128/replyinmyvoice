@@ -4,8 +4,8 @@ import { InteractiveDemo } from "./interactive-demo";
 
 const stats = [
   { v: "3 free", l: "rewrites after sign-up" },
-  { v: "55 / mo", l: "on Starter" },
-  { v: "110 / mo", l: "with Pro/API" },
+  { v: "Packs", l: "from NZ$2.50 · no subscription" },
+  { v: "Pro/API", l: "NZ$19.90/mo · 90 + API" },
   { v: "Warm · Direct", l: "simple tone presets" },
 ];
 
@@ -15,7 +15,7 @@ export function Hero() {
       <div className="wrap">
         <div className="eyebrow">
           <span className="dot" />
-          Start free · Starter NZ$9.90/mo · Pro/API for developers
+          Start free · Buy rewrites from NZ$2.50 · Pro/API for developers
         </div>
         <h1 style={{ marginTop: 28 }}>
           Send the message

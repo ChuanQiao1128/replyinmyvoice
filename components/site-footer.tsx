@@ -13,8 +13,8 @@ export function SiteFooter() {
               <span>Reply In My Voice</span>
             </Link>
             <p className="footer-blurb">
-              Operated by TimeAwake Ltd. Built for practical replies in student,
-              teacher, sales, workplace, and client communication.
+              Operated by TimeAwake Ltd. Built for practical replies in teacher,
+              sales, workplace, and client communication.
             </p>
           </div>
           <div>
@@ -25,9 +25,6 @@ export function SiteFooter() {
               </li>
               <li>
                 <Link href="/app">App</Link>
-              </li>
-              <li>
-                <Link href="/students">For students</Link>
               </li>
               <li>
                 <Link href="/pricing">Pricing</Link>
@@ -68,7 +65,7 @@ export function SiteFooter() {
         </div>
         <div className="footer-bottom">
           <span>© 2026 TimeAwake Ltd. All rights reserved.</span>
-          <span>3 free rewrites · Starter NZ$9.90/mo · Pro/API NZ$19.90/mo</span>
+          <span>3 free rewrites · Rewrite packs from NZ$2.50 · Pro/API NZ$19.90/mo</span>
         </div>
       </div>
     </footer>

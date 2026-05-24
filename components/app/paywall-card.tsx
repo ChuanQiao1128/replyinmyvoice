@@ -4,7 +4,7 @@ import { ArrowRight, CreditCard } from "lucide-react";
 import { useState } from "react";
 
 import { azureApiFetch } from "../../lib/client-azure-api";
-import { Button } from "../ui/button";
+import { Button, LinkButton } from "../ui/button";
 import { Card } from "../ui/card";
 
 type Props = {
@@ -67,30 +67,37 @@ export function PaywallCard({
         </Card>
         <aside className="rounded-lg border border-line bg-white/80 p-5 shadow-crisp lg:sticky lg:top-20">
           <p className="text-sm font-medium text-ink/60">Reply In My Voice</p>
-          <p className="mt-2 text-3xl font-semibold">Starter</p>
-          <p className="mt-1 text-xl font-semibold">NZ$9.90/month</p>
+          <p className="mt-2 text-3xl font-semibold">Value Pack</p>
+          <p className="mt-1 text-xl font-semibold">NZ$6.90</p>
           <p className="mt-2 text-sm text-ink/60">
-            55 rewrites per month. Cancel anytime.
+            30 rewrites, valid 90 days. Best price per rewrite.
           </p>
           <p className="mt-2 text-sm text-ink/60">
-            Pro/API includes 110 rewrites per month and API access.
+            Quick Pack is NZ$2.50 for 10 rewrites to start.
           </p>
           <p className="mt-2 text-sm text-ink/60">
-            Exam Week Pass covers 25 rewrites for 7 days. Top-ups appear when quota runs low.
+            Pro/API is NZ$19.90/month for 90 rewrites and API access.
           </p>
           <p className="mt-2 text-xs leading-5 text-ink/45">
             Operated by TimeAwake Ltd. Payments are managed by Stripe.
           </p>
-          <Button
-            className="mt-6 w-full"
-            disabled={loading}
-            onClick={startCheckout}
-            type="button"
-            variant="clay"
-          >
-            {action === "checkout" ? "Subscribe and continue" : "Manage billing"}
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          {action === "portal" ? (
+            <Button
+              className="mt-6 w-full"
+              disabled={loading}
+              onClick={startCheckout}
+              type="button"
+              variant="clay"
+            >
+              Manage billing
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : (
+            <LinkButton className="mt-6 w-full" href="/pricing" variant="clay">
+              See plans and buy rewrites
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </LinkButton>
+          )}
           {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
         </aside>
       </section>

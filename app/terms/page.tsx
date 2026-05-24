@@ -19,11 +19,11 @@ const sections = [
   },
   {
     title: "Billing and quota",
-    text: "Free access includes 3 successful lifetime rewrites. Starter is NZ$9.90 per month for 55 successful rewrites per billing month, and Pro/API is NZ$19.90 per month for 110 successful rewrites per billing month plus API access. Monthly quota resets at the start of each billing period; unused monthly rewrites do not roll over. Exam Week Pass one-time credits expire after 7 days. Top-up credits add the stated rewrite amount and do not create surprise metered billing. Subscriptions and payment details are managed through Stripe.",
+    text: "Free access includes 3 successful lifetime rewrites. After that, you can buy one-time rewrite packs — for example Quick Pack (NZ$2.50 for 10 successful rewrites) and Value Pack (NZ$6.90 for 30 successful rewrites) — which are valid for 90 days from purchase. Pro/API is NZ$19.90 per month for 90 successful rewrites per billing month plus API access; the monthly quota resets at the start of each billing period and unused monthly rewrites do not roll over. Subscriptions, packs, and payment details are managed through Stripe.",
   },
   {
     title: "Cancellation",
-    text: "You can cancel your subscription at any time from the customer portal. Your paid quota stays active until the end of the current billing period; no partial-month refunds are issued for cancellations.",
+    text: "You can cancel your Pro/API subscription at any time from the customer portal. Your paid quota stays active until the end of the current billing period; no partial-month refunds are issued for cancellations. One-time rewrite packs are not subscriptions and are not cancellable; unused pack rewrites simply expire 90 days after purchase.",
   },
   {
     title: "Refunds",

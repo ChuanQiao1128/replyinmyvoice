@@ -59,15 +59,17 @@ describe("rewrite workspace surface copy", () => {
     );
   });
 
-  it("keeps the slim quota bar and the paywall aligned with the app shell", () => {
+  it("keeps the slim quota bar and the paywall aligned with the rewrite-packs model", () => {
     expect(subscriptionStatusSource).toContain("bg-sky");
     expect(subscriptionStatusSource).toContain("Manage billing");
     expect(subscriptionStatusSource).toContain("Upgrade");
-    expect(paywallSource).toContain("Starter");
-    expect(paywallSource).toContain("NZ$9.90/month");
-    expect(paywallSource).toContain("55 rewrites per month");
-    expect(paywallSource).toContain("Exam Week Pass");
-    expect(paywallSource).toContain("Top-ups appear when quota runs low");
+    expect(paywallSource).toContain("Value Pack");
+    expect(paywallSource).toContain("NZ$6.90");
+    expect(paywallSource).toContain("30 rewrites");
+    expect(paywallSource).toContain("Pro/API");
+    expect(paywallSource).toContain('href="/pricing"');
+    expect(paywallSource).not.toContain("Starter");
+    expect(paywallSource).not.toContain("Exam Week Pass");
     expect(paywallSource).not.toContain("NZD $9/month");
     expect(paywallSource).not.toContain("40 rewrites");
   });
