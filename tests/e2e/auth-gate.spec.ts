@@ -7,6 +7,21 @@ test("signed-out users are sent to sign in before opening the workspace", async 
   await expect(page).toHaveURL(/sign-in/);
 });
 
+test("sign-in offers email verification code and Google options", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
+
+  await expect(page.getByText("Email code sign-in", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue with email code" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Continue with Google" }),
+  ).toBeVisible();
+});
+
 test("rewrite API rejects signed-out requests", async ({ request }) => {
   const response = await request.post("/api/rewrite", {
     data: {

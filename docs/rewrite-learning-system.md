@@ -272,3 +272,21 @@ Learning implication:
 - Real QA failures that expose internal notes should be promoted as deterministic clean-final patterns first.
 - Prompt updates should reinforce the same rule, but prompt wording is not the only control.
 - A low Naturalness Check score is not enough to return a rewrite if the final email is not send-ready.
+
+## 2026-05-23 Ten-Case Smoke Learning Promotion
+
+The DeepSeek 10-case smoke reached 10/10 customer-usable and 10/10 strict signal after promoting lessons through code-backed tests, not live prompt self-modification.
+
+Promotion lessons:
+
+- Rewrite/repair learning should distinguish content facts from policy constraints before generation. This prevents `Do not...` instructions from becoming literal required output text.
+- Recipient-name safety is a first-class learning category. A source-backed capitalized token is not enough evidence for a greeting.
+- Semantic equivalence belongs in tested normalization, not in ad hoc manual scoring. Examples promoted in this pass include confirmation wording, no-promise wording, plan-pricing shorthand, and teacher scheduling phrasing.
+- A successful learning pass can include both runtime fixes and eval-harness fixes, but eval fixes must be narrow and backed by regression tests.
+- Provider resilience belongs in the learning loop: transient timeout/429/5xx errors should be retried inside bounded limits so a single provider blip does not invalidate a long evaluation window.
+
+Current evidence:
+
+- Focused unit tests passed for rewrite output, fact extraction, fact ledger review, policy intent gate, adaptive checks, model retry behavior, and eval corpus matching.
+- Provider-backed smoke result: 10 measured cases, 0 fact/unsupported failures, 10/10 customer-usable, 10/10 strict signal.
+- Full 100-case eval should resume only after these 10-case lessons are accepted as the baseline for the Rewrite Agent and Repair Agent.

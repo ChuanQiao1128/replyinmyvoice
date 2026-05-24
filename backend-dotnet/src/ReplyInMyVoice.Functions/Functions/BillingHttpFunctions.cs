@@ -18,8 +18,8 @@ public sealed class BillingHttpFunctions(
         HttpRequest request,
         CancellationToken cancellationToken)
     {
-        var externalUserId = FunctionAuthResolver.ResolveExternalUserId(request, configuration);
-        if (string.IsNullOrWhiteSpace(externalUserId))
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
         {
             return FunctionHttpResults.Problem(
                 "Authentication required",
@@ -30,8 +30,8 @@ public sealed class BillingHttpFunctions(
         try
         {
             var url = await billingService.CreateCheckoutSessionUrlAsync(
-                externalUserId,
-                FunctionAuthResolver.ResolveEmail(request),
+                authUser.ExternalAuthUserId,
+                authUser.Email,
                 cancellationToken);
             return new OkObjectResult(new BillingUrlResponse(url));
         }
@@ -50,8 +50,8 @@ public sealed class BillingHttpFunctions(
         HttpRequest request,
         CancellationToken cancellationToken)
     {
-        var externalUserId = FunctionAuthResolver.ResolveExternalUserId(request, configuration);
-        if (string.IsNullOrWhiteSpace(externalUserId))
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
         {
             return FunctionHttpResults.Problem(
                 "Authentication required",
@@ -61,7 +61,7 @@ public sealed class BillingHttpFunctions(
 
         try
         {
-            var url = await billingService.CreatePortalSessionUrlAsync(externalUserId, cancellationToken);
+            var url = await billingService.CreatePortalSessionUrlAsync(authUser.ExternalAuthUserId, cancellationToken);
             return new OkObjectResult(new BillingUrlResponse(url));
         }
         catch (InvalidOperationException ex) when (ex.Message == "stripe_customer_missing")

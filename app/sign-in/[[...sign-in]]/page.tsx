@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in to Reply In My Voice with your Google account.",
+  description: "Sign in to Reply In My Voice with an email verification code or Google.",
 };
 
 

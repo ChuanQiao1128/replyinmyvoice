@@ -3,6 +3,7 @@
 import { ArrowRight, CreditCard } from "lucide-react";
 import { useState } from "react";
 
+import { azureApiFetch } from "../../lib/client-azure-api";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 
@@ -27,7 +28,7 @@ export function PaywallCard({
     setError("");
 
     try {
-      const response = await fetch(
+      const response = await azureApiFetch(
         action === "checkout" ? "/api/stripe/checkout" : "/api/stripe/portal",
         { method: "POST" },
       );

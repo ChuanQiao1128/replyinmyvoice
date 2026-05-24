@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Sign up",
-  description: "Create your Reply In My Voice account with Google.",
+  description: "Create your Reply In My Voice account with an email verification code or Google.",
 };
 
 

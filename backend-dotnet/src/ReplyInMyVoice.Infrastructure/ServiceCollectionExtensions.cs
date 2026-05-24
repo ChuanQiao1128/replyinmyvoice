@@ -35,7 +35,9 @@ public static class ServiceCollectionExtensions
             var options = sp.GetRequiredService<DbContextOptions<AppDbContext>>();
             return () => new AppDbContext(options);
         });
+        services.AddScoped<AccountService>();
         services.AddScoped<QuotaService>();
+        services.AddScoped<AccountService>();
         services.AddScoped<RewriteRequestService>();
         services.AddScoped<RewriteJobProcessor>();
         services.AddScoped<OutboxDispatcherService>();
@@ -75,6 +77,7 @@ public static class ServiceCollectionExtensions
 
             var clientFactory = sp.GetRequiredService<IHttpClientFactory>();
             var model = configuration["OPENAI_MODEL"] ?? "gpt-4o-mini";
+            var baseUrl = configuration["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1";
             var timeoutSeconds = int.TryParse(configuration["OPENAI_TIMEOUT_SEC"], out var parsed)
                 ? parsed
                 : 25;
@@ -82,6 +85,7 @@ public static class ServiceCollectionExtensions
                 clientFactory.CreateClient(nameof(OpenAiRewriteProvider)),
                 apiKey,
                 model,
+                baseUrl,
                 TimeSpan.FromSeconds(timeoutSeconds));
         });
 

@@ -6,6 +6,11 @@
     "ConnectionStrings__DefaultConnection": "",
     "ServiceBus": "",
     "SERVICEBUS_QUEUE_NAME": "rewrite-jobs",
-    "ALLOW_HEADER_AUTH": "true"
+    "ALLOW_HEADER_AUTH": "true",
+    "NEXT_PUBLIC_ENTRA_AUTHORITY": "",
+    "NEXT_PUBLIC_ENTRA_CLIENT_ID": "",
+    "NEXT_PUBLIC_ENTRA_API_SCOPE": "",
+    "ENTRA_API_AUDIENCE": "",
+    "OPENAI_BASE_URL": "https://api.deepseek.com"
   }
 }

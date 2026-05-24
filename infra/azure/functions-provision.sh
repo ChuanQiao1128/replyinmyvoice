@@ -86,14 +86,30 @@ arch -arm64 az functionapp config appsettings set \
     "ConnectionStrings__DefaultConnection=$SQL_CONNECTION" \
     "ServiceBus=$SERVICE_BUS_CONNECTION" \
     "SERVICEBUS_QUEUE_NAME=$SERVICE_BUS_QUEUE" \
-    "ALLOW_HEADER_AUTH=$(read_env ALLOW_HEADER_AUTH true)" \
+    "ALLOW_HEADER_AUTH=$(read_env ALLOW_HEADER_AUTH false)" \
     "OPENAI_MODEL=$(read_env OPENAI_MODEL gpt-4o-mini)" \
+    "OPENAI_BASE_URL=$(read_env OPENAI_BASE_URL https://api.deepseek.com)" \
     "OPENAI_TIMEOUT_SEC=$(read_env OPENAI_TIMEOUT_SEC 25)" \
     "NEXT_PUBLIC_APP_URL=$(read_env NEXT_PUBLIC_APP_URL "https://${FUNCTION_APP_NAME}.azurewebsites.net")" \
+    "NEXT_PUBLIC_ENTRA_AUTHORITY=$(read_env NEXT_PUBLIC_ENTRA_AUTHORITY "$(read_env AZURE_EXTERNAL_ID_AUTHORITY)")" \
+    "NEXT_PUBLIC_ENTRA_CLIENT_ID=$(read_env NEXT_PUBLIC_ENTRA_CLIENT_ID "$(read_env AZURE_EXTERNAL_ID_FRONTEND_CLIENT_ID)")" \
+    "NEXT_PUBLIC_ENTRA_API_SCOPE=$(read_env NEXT_PUBLIC_ENTRA_API_SCOPE "$(read_env AZURE_EXTERNAL_ID_API_SCOPE)")" \
+    "ENTRA_API_AUDIENCE=$(read_env ENTRA_API_AUDIENCE "$(read_env AZURE_EXTERNAL_ID_API_AUDIENCE)")" \
     "STRIPE_PRICE_ID=$(read_env STRIPE_PRICE_ID)" \
     "WRITING_SIGNAL_PROVIDER=$(read_env WRITING_SIGNAL_PROVIDER sapling)" \
     "WRITING_SIGNAL_TIMEOUT_SEC=$(read_env WRITING_SIGNAL_TIMEOUT_SEC 10)" \
   --output none
+
+for origin in \
+  "https://replyinmyvoice.com" \
+  "https://www.replyinmyvoice.com" \
+  "http://localhost:3000"; do
+  arch -arm64 az functionapp cors add \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$FUNCTION_APP_NAME" \
+    --allowed-origins "$origin" \
+    --output none || true
+done
 
 if [[ -n "$APPINSIGHTS_CONNECTION" ]]; then
   arch -arm64 az functionapp config appsettings set \

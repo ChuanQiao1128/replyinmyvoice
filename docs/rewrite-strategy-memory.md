@@ -831,3 +831,69 @@ Required regression:
 - `rimv-email-006` must not output `Hi Upgrade`.
 - `rimv-email-007` must not output `Hi Original`.
 - Do not run focused/full eval until the next smoke eliminates these locked-constraint and recipient-name failures.
+
+## 2026-05-23 DeepSeek 10-Case Smoke Lessons For Rewrite And Repair Agents
+
+Latest smoke evidence:
+
+- Date: 2026-05-23.
+- Mode: `EVAL_CORPUS=email-100 --mode=smoke`.
+- Cases evaluated: 10.
+- Measured cases: 10/10.
+- Average AI-like signal drop: 60 points.
+- Rewrites below 50% AI-like signal: 10/10.
+- Final selected rewrites worse than draft: 0/10.
+- Fact preservation or unsupported-addition failures: 0.
+- Customer-usable pass count: 10/10.
+- Strict signal pass count: 10/10.
+- Full 100-case eval was intentionally stopped after the user asked to summarize these 10-case lessons first.
+
+### Rewrite Agent Lessons
+
+- Treat `facts_to_preserve` and `what_actually_happened` as the authoritative content source when present. The rough draft often contains wrong promises, missing facts, or dismissive phrasing that must not steer the final answer.
+- Do not infer a recipient from departments, product plans, status labels, policy nouns, or mentioned students. Examples now treated as unsafe addressees include `Finance`, `Basic`, `Team`, `Solo`, `Acceptable`, `Upgrade`, `Original`, `Reopening`, `Order`, and `Liam` when Liam is the student, not the parent. If there is no explicit addressee, use a neutral opener or omit the name.
+- Split mandatory facts from policy constraints. `Do not offer a refund`, `Do not promise completion before June 1`, and `Do not cancel or downgrade without confirmation` are absence/intent constraints, not literal sentences that must appear in the rewrite.
+- Prefer a facts-first deterministic shape when the message is short, factual, and high-risk: billing proration, cancellation/downgrade, damaged replacement, account verification, teacher scheduling, and workplace status/dependency updates.
+- A low Naturalness Check score is not enough. The rewrite still has to be send-ready: no blank success, no fact dumps, no repeated hard facts, no internal-context phrases such as `the user`, and no mechanical sentence-per-fact formatting.
+- When the draft already scores low, the rewrite must be especially conservative. Do not add polished filler or broad possibility language just to sound warm.
+- Preserve concrete option/dependency language exactly enough to stay actionable: dates, times, counts, prices, deadlines, confirmation requirements, and available options should survive even if sentence wording changes.
+
+### Repair Agent Lessons
+
+- A repair attempt must change strategy class after a hard miss. Do not keep retrying the same polished email shape after `fact_loss`, `unsupported_greeting`, `changed_policy_or_condition`, or `naturalness_not_improved`.
+- Use failed candidates as negative evidence only. The repair prompt may inspect them to avoid repeated mistakes, but the source of truth remains the original input plus reviewed fact/constraint ledger.
+- For `fact_loss`, route to full facts-first reconstruct or a scenario deterministic fallback, not sentence-level polish.
+- For `changed_policy_or_condition`, repair the policy meaning before naturalness. Example: saying onboarding completion is `possible` near a no-promise deadline still violates `Do not promise completion before June 1`.
+- For `unsupported_greeting`, remove the greeting name instead of trying a different guessed name.
+- For `naturalness_not_improved` with facts already safe, try a shorter facts-first structure before strong escalation. The parent-conference case passed only after the fallback became direct and concrete instead of a polished teacher email.
+- For billing and subscription cases, preserve the money and lifecycle facts in the same repair: upgrade date, billing cycle, plan prices, invoice total, renewal date, downgrade option, admin approval, and no-change-without-confirmation.
+
+### Gate And Evaluation Lessons
+
+- Runtime gates need semantic normalization, but only for fact-equivalent wording that tests cover. Promoted examples include `$1,800/month` -> `$1,800 per month`, `until you confirm` -> `without confirmation`, `please confirm whether` -> `ask whether`, `upgrading` -> `upgrade`, and `did not fail` -> `not a failure`.
+- Eval matcher fixes must not weaken production fact gates. Each equivalence promotion should have a unit test and should still require the concrete dates, amounts, counts, and options.
+- Provider failures should not abort an evaluation window. The model wrapper now retries transient OpenAI-compatible timeouts/429/5xx responses before failing the current rewrite step.
+- Sapling sentence scores can be noisy for greetings and option sentences. They are useful as a gate, but repair should optimize for concise human structure, not for score wording.
+
+### Required Regression Set Before Full 100-Case Eval
+
+- 10-case smoke must stay at 10/10 customer-usable and 10/10 strict signal before starting full 100.
+- `rimv-email-003` must block broad `possible before June 1` wording unless the no-promise constraint is explicitly preserved.
+- `rimv-email-004` must preserve the Q2 forecast dependency, Finance confirmation count, 9:30 AM May 7 -> 11:00 AM timing, and duplicate renewal-row delay.
+- `rimv-email-006` must preserve Basic/Team prices, May 1-May 31 cycle, May 10 upgrade, `$27.43`, and not-random-fee explanation without `Hi Basic` or `Hi Team`.
+- `rimv-email-008` must not greet the student as recipient and must preserve both meeting slots plus the ask for which time works.
+- `rimv-email-009` must preserve renewal date, current/Solo prices, admin/no-change confirmation boundary, and ask for cancellation-at-renewal versus downgrade.
+
+## 2026-05-23 Extraction And Gate Resilience Lessons
+
+- Sentence-initial business labels are not people. Words such as `Move`, `Options`, `Requested`, `Manager`, `Sender`, `Suggested`, `Purpose`, `Staff`, `Exact`, `Next`, and `Signing` should not become person anchors or locked output facts only because they are capitalized at the start of a sentence.
+- Real full names must remain locked. The extraction filter should keep person-shaped names such as `Priya Shah`, `Martin Hale`, `Lee Tran`, and `Elena Ruiz` while rejecting common labels.
+- The internal locked-fact gate should recognize tested semantic equivalents while still requiring the concrete data. Examples: `Price was $689` can be preserved as `cost is $689`, and `Credit covers invoice` can be preserved as `credit can be used for the invoice`; wrong amounts, dropped names, and dropped dates remain hard failures.
+- OpenAI-compatible network failures should use the same bounded retry budget as other transient provider failures. If the retry budget is exhausted, the request should become a no-charge quality failure path rather than an uncaught request crash.
+
+## 2026-05-24 Fact-Gate Redesign Lesson
+
+- Deterministic locked-fact checks should own concrete atoms only: money, dates/times, counts, identifiers, and proper names. Non-atomic prose such as `requested`, `confirming`, `arrive`, or `possible` should not be required literally.
+- Semantic and policy preservation belongs to the LLM fact check plus the policy/forbidden gate. A candidate that keeps every atom, passes structure, passes policy/forbidden checks, and receives an LLM fact pass should not be rejected only because the prose was naturally reworded.
+- Facts-first fallback is terminal when it keeps all locked atoms and passes structure plus policy/forbidden checks. Empty `fact_check_failed` should be reserved for real atom loss, invented concrete data, or unrepairable policy/forbidden violations.
+- Option labels such as `Accept` and `Switch` can be natural action wording for source-provided options. They should not be treated as invented person facts, while invented names, amounts, dates, counts, and IDs remain hard failures.
