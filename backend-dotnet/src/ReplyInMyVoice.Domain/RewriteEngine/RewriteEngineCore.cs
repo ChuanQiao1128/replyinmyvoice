@@ -604,8 +604,14 @@ public static class RewriteFactGate
         @"\b(?:careless|dismissive|irresponsible|negligent|rude|unprofessional)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // "appear(s)" is an uncertainty marker only in the epistemic sense ("appears to be",
+    // "it appears that"). The future-visibility sense ("the refund will appear on your
+    // statement", "the credit will appear against the invoice") is a certain statement,
+    // common in billing/refund/return replies — excluding it stops the certainty-drift gate
+    // from false-positively rejecting faithfully preserved billing sentences. Genuine
+    // strengthening via may/might/could/seems/appears-to is still caught.
     private static readonly Regex UncertaintyMarkerRegex = new(
-        @"(?:(?:\bmay\b(?!\s+\d))|\bmight\b|\bcould\b|\blikely\b|\bprobably\b|\bpossibly\b|\bseems?\b|\bappears?\b|\blooks?\s+like\b)",
+        @"(?:(?:\bmay\b(?!\s+\d))|\bmight\b|\bcould\b|\blikely\b|\bprobably\b|\bpossibly\b|\bseems?\b|(?<!\b(?:will|shall|should|would)\s)\bappears?\b(?!\s+(?:on|against|in|by|within|under)\b)|\blooks?\s+like\b)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex SentenceRegex = new(
