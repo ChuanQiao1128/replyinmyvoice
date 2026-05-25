@@ -36,10 +36,10 @@ describe("rewrite email eval corpus parser", () => {
     });
   });
 
-  it("parses the first 20 materialized single-input draft dev cases", () => {
+  it("parses all 100 materialized single-input draft cases", () => {
     const cases = parseRewriteEmailEvalCases(markdown);
 
-    expect(cases).toHaveLength(20);
+    expect(cases).toHaveLength(100);
     expect(cases[0]).toMatchObject({
       caseNumber: 1,
       id: "rewrite-draft-001",
@@ -55,8 +55,8 @@ describe("rewrite email eval corpus parser", () => {
     expect(cases[0].rewriteQualityTargets.length).toBeGreaterThan(20);
 
     expect(cases.at(-1)).toMatchObject({
-      caseNumber: 20,
-      id: "rewrite-draft-020",
+      caseNumber: 100,
+      id: "rewrite-draft-100",
     });
     expect(cases.at(-1)!.category).toBeTruthy();
     expect(cases.at(-1)!.mustKeep.length).toBeGreaterThanOrEqual(6);
@@ -70,12 +70,12 @@ describe("rewrite email eval corpus parser", () => {
     }
   });
 
-  it("selects staged materialized corpus sizes without inventing missing case bodies", () => {
+  it("selects materialized corpus sizes per mode", () => {
     const cases = parseRewriteEmailEvalCases(markdown);
 
     expect(selectRewriteEmailEvalCases(cases, "smoke")).toHaveLength(10);
-    expect(selectRewriteEmailEvalCases(cases, "focused")).toHaveLength(20);
-    expect(selectRewriteEmailEvalCases(cases, "full")).toHaveLength(20);
+    expect(selectRewriteEmailEvalCases(cases, "focused")).toHaveLength(40);
+    expect(selectRewriteEmailEvalCases(cases, "full")).toHaveLength(100);
   });
 
   it("maps draft eval cases into the product single-input warm rewrite request", () => {
@@ -109,7 +109,7 @@ describe("rewrite email eval corpus parser", () => {
   it("validates corpus plan and materialized draft cases", () => {
     expect(validateRewriteEmailEvalCorpus(markdown)).toEqual({
       planRows: 100,
-      materializedCases: 20,
+      materializedCases: 100,
     });
   });
 });
