@@ -214,10 +214,15 @@ public sealed class FactReconstructRewriteProvider(
         return lastResult ?? new WritingSignalResult(false, null, "quality_signal_unavailable");
     }
 
+    // A rewrite passes when its robust-median AI-like score is at or below the human
+    // threshold. We do NOT additionally require rewrite <= draft when the draft is already
+    // clean: that older rule punished normal rewriting of an already-human draft and, in the
+    // 2026-05-26 100-case eval, was the only cause of recoverable naturalness failures
+    // (e.g. case 078). Matches the validated TS gate. Because it only relaxes the
+    // clean-draft branch (draft <= threshold), it cannot regress a rewrite that already
+    // passed — the pass set is a strict superset of the old one.
     private bool PassesNaturalnessRule(int draftPercent, int rewritePercent) =>
-        draftPercent > _options.NaturalnessThreshold
-            ? rewritePercent <= _options.NaturalnessThreshold
-            : rewritePercent <= draftPercent;
+        rewritePercent <= _options.NaturalnessThreshold;
 
     private static RewriteStrategyDecision ChooseNext(
         RewriteInputAnalysis analysis,

@@ -29,6 +29,8 @@ tsconfig.tsbuildinfo
 **/bin/
 **/obj/
 backend-dotnet/artifacts/
+# Sharded eval run outputs (raw per-worker JSON/MD); commit only curated summaries.
+docs/rewrite-eval-results/run-*/
 
 # Logs
 *.log
