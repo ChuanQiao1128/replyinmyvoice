@@ -203,14 +203,29 @@ public static class ForbiddenClaimScreen
 
     private static readonly char[] SentenceEnders = { '.', '!', '?', '\n', ';' };
 
-    private static readonly HashSet<string> NegationWords = new(StringComparer.Ordinal)
+    // A forbidden assertion only counts as a violation when stated unconditionally. These
+    // markers hedge it — negation ("cannot refund"), conditionality ("if confirmed",
+    // "whether ... or", "once we receive", "until review"), or partiality ("partial/prorated
+    // refund") — so a sentence containing one is NOT a forbidden promise. "may" is
+    // deliberately excluded because it collides with the month name "May".
+    private static readonly HashSet<string> NonCommitmentMarkers = new(StringComparer.Ordinal)
     {
         "cannot", "can't", "cant", "not", "no", "never", "unable", "won't", "wont",
         "don't", "dont", "doesn't", "doesnt", "didn't", "didnt", "isn't", "isnt",
         "aren't", "arent", "wasn't", "hasn't", "hasnt", "haven't", "havent",
         "wouldn't", "couldn't", "shouldn't", "without", "instead", "decline",
         "declined", "unfortunately", "rather", "unless", "before", "until", "once",
+        // Conditional / hypothetical / partial hedges (clear conditional-refund false
+        // positives like "if confirmed we will refund", "whether ... or a full refund").
+        "if", "whether", "would", "might", "could", "pending", "depending", "provided",
+        "partial", "prorated", "goodwill", "potentially", "possibly",
     };
+
+    // A completed past action ("the $22.50 refund was issued on June 6") reports a fact, not
+    // a forward promise, so it is hedged too.
+    private static readonly Regex CompletedActionRegex = new(
+        @"\b(was|were|already|has been|have been|had been)\b[^.;!?]{0,40}\b(issued|processed|refunded|credited|applied|sent|completed|posted)\b",
+        RegexOptions.Compiled);
 
     public static Result Check(string outputText, IReadOnlyList<string> mustNotClaim)
     {
@@ -229,7 +244,7 @@ public static class ForbiddenClaimScreen
                 continue;
             }
 
-            if (category.AssertionMarkers.Any(marker => ContainsUnnegated(text, marker)))
+            if (category.AssertionMarkers.Any(marker => ContainsUnhedgedAssertion(text, marker)))
             {
                 violations.Add(claim);
             }
@@ -238,15 +253,15 @@ public static class ForbiddenClaimScreen
         return new Result(violations, abstained);
     }
 
-    private static bool ContainsUnnegated(string text, string marker)
+    private static bool ContainsUnhedgedAssertion(string text, string marker)
     {
         var index = 0;
         while ((index = text.IndexOf(marker, index, StringComparison.Ordinal)) >= 0)
         {
             // Examine the whole sentence containing the marker (not a fixed window) so
-            // policy-careful negations like "I cannot issue a cash refund ... not a direct
-            // refund" are recognized. Token-based to avoid "not" matching inside "another".
-            if (!HasNegation(SentenceAround(text, index)))
+            // policy-careful hedges like "I cannot issue a cash refund ... not a direct
+            // refund" or "if confirmed we will refund" are recognized.
+            if (!IsHedged(SentenceAround(text, index)))
             {
                 return true;
             }
@@ -257,15 +272,42 @@ public static class ForbiddenClaimScreen
         return false;
     }
 
+    // Sentence containing the index, with a decimal point treated as part of a number rather
+    // than a sentence ender. Without this, "a full $74.00 refund" splits at the "." in 74.00,
+    // stranding "00 refund" away from its "cannot promise" hedge -> false positive.
     private static string SentenceAround(string text, int index)
     {
-        var start = text.LastIndexOfAny(SentenceEnders, Math.Min(index, text.Length - 1));
-        var end = text.IndexOfAny(SentenceEnders, index);
-        return text[(start + 1)..(end < 0 ? text.Length : end)];
+        index = Math.Min(index, text.Length - 1);
+        var start = index;
+        while (start > 0 && !IsSentenceBoundary(text, start - 1))
+        {
+            start--;
+        }
+
+        var end = index;
+        while (end < text.Length && !IsSentenceBoundary(text, end))
+        {
+            end++;
+        }
+
+        return text[start..end];
     }
 
-    private static bool HasNegation(string sentence) =>
-        Regex.Split(sentence, @"[^a-z']+").Any(token => NegationWords.Contains(token));
+    private static bool IsSentenceBoundary(string text, int i)
+    {
+        var c = text[i];
+        if (c == '.' && i > 0 && i + 1 < text.Length
+            && char.IsDigit(text[i - 1]) && char.IsDigit(text[i + 1]))
+        {
+            return false; // decimal point inside a number, e.g. 74.00
+        }
+
+        return Array.IndexOf(SentenceEnders, c) >= 0;
+    }
+
+    private static bool IsHedged(string sentence) =>
+        Regex.Split(sentence, @"[^a-z']+").Any(token => NonCommitmentMarkers.Contains(token))
+        || CompletedActionRegex.IsMatch(sentence);
 
     private static string Normalize(string value) =>
         Regex.Replace(value.ToLowerInvariant().Replace('’', '\''), @"\s+", " ").Trim();

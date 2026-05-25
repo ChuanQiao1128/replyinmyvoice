@@ -188,4 +188,59 @@ public class RewriteEvalHarnessTests
 
         result.Violations.Should().BeEmpty();
     }
+
+    [Theory]
+    // Decimal point no longer splits the sentence away from its "cannot" hedge (case 032).
+    [InlineData("Our policy lets me issue a prorated credit if confirmed, but I cannot promise a full $74.00 refund at this point.")]
+    // Partial refund is not the forbidden full refund (case 041).
+    [InlineData("Because you reported within the window, I can process a partial refund for the mixing bowl set only.")]
+    // Refund conditioned on receipt; decimal-safe sentence keeps the "once" hedge (case 061).
+    [InlineData("Once it arrives, I can process a $34.00 refund to your card within 3-5 business days.")]
+    // Completed past action reports a fact, not a forward promise (case 061).
+    [InlineData("The $22.50 refund was issued on June 6 and should appear on your statement within 2 business days.")]
+    // "whether ... or a full refund" is an open question, not a promise (case 071).
+    [InlineData("I understand you need an answer by May 2 — whether a replacement ships or a full refund of $94.00 will be issued to your card.")]
+    // Conditional "if ... we will refund" (case 092).
+    [InlineData("If the duplicate is confirmed on our end, we will refund $247.00 to the original payment method.")]
+    public void ForbiddenScreen_does_not_flag_conditional_partial_or_completed_refund(string rewrite)
+    {
+        ForbiddenClaimScreen.Check(rewrite, new[] { "Do not promise a full refund." })
+            .Violations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ForbiddenScreen_still_flags_unconditional_promise_with_decimal_amount()
+    {
+        // Guard: the decimal-aware sentence split must not blind the screen to a genuine,
+        // un-hedged commitment that happens to contain a "$94.00"-style amount.
+        ForbiddenClaimScreen.Check(
+                "I will issue a full refund of $94.00 to your original card today.",
+                new[] { "Do not promise a full refund." })
+            .Violations.Should().ContainSingle();
+    }
+
+    [Theory]
+    // Verb-inflection / paraphrase pairs that false-negatived on the 2026-05-26 baseline.
+    [InlineData("No fix date can be promised.", "I cannot promise a fix date at this point — the team is still working on it.")]
+    [InlineData("No fix can be promised at this time.", "I don't have a fix to announce yet and I can't promise it'll be resolved soon.")]
+    [InlineData("The team is actively investigating.", "Our team is looking into it and will post an update by noon.")]
+    [InlineData("No perishable donations.", "Bring items to donate to the silent auction; please no perishables and nothing above $75.")]
+    [InlineData("The teacher is not making an assessment or diagnosis.", "I'm not drawing conclusions and I'm not qualified to make any kind of assessment.")]
+    [InlineData("Missing the new deadline risks the June 4 staging sign-off.", "Wednesday noon is the latest we can accept it and still hit the June 4 staging sign-off.")]
+    [InlineData("No further detailed feedback beyond those two points can be shared.", "I am not able to go further than that in terms of feedback, but I can share the two specific points the panel noted.")]
+    public void FactChecker_matches_paraphrased_facts(string fact, string rewrite)
+    {
+        FactExpectationChecker.Check(rewrite, new[] { fact }).Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void FactChecker_paraphrase_aliases_do_not_pass_a_dropped_anchor()
+    {
+        // Guard: a fact whose proper-noun/ID anchor is absent stays missing even when some
+        // of its paraphrasable words appear — aliases must not manufacture a false pass.
+        FactExpectationChecker.Check(
+                "I cannot promise a fix date for your ticket yet.",
+                new[] { "The ticket is SUP-20847." })
+            .Passed.Should().BeFalse();
+    }
 }
