@@ -1,0 +1,1257 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  generateGuaranteedRewriteCandidate,
+  generateRewriteCandidate,
+  getOpenAiModelForStage,
+  getRewriteStrategies,
+  normalizeRewriteOutput,
+} from "../../lib/openai";
+import { createRewriteTelemetryCollector } from "../../lib/observability/rewrite-telemetry";
+import {
+  parseRewriteEmailEvalCases,
+  rewriteEmailEvalCaseToRequestInput,
+} from "../../lib/rewrite-eval-cases";
+import { isCandidateCompleteEnough } from "../../lib/rewrite-completeness";
+
+describe("normalizeRewriteOutput", () => {
+  it("accepts string summaries from the model and normalizes them to arrays", () => {
+    const result = normalizeRewriteOutput({
+      rewrittenText: "Thanks for letting me know. I can review this tomorrow.",
+      changeSummary: "Softened the opening and made the reply more specific.",
+      riskNotes: "Review the late-work policy before sending.",
+    });
+
+    expect(result.changeSummary).toEqual([
+      "Softened the opening and made the reply more specific.",
+    ]);
+    expect(result.riskNotes).toEqual([
+      "Review the late-work policy before sending.",
+    ]);
+  });
+
+  it("replaces empty risk notes with a review reminder", () => {
+    const result = normalizeRewriteOutput({
+      rewrittenText: "I can send the numbers by 10am tomorrow.",
+      changeSummary: ["Made the timing clear."],
+      riskNotes: [""],
+    });
+
+    expect(result.riskNotes).toEqual(["Review the reply before sending."]);
+  });
+
+  it("fills safe defaults when the model omits metadata but returns rewritten text", () => {
+    const result = normalizeRewriteOutput({
+      rewrittenText: "I can send the corrected file before Monday at 10am.",
+    });
+
+    expect(result.changeSummary).toEqual([
+      "Rewrote the draft into a more natural reply.",
+    ]);
+    expect(result.riskNotes).toEqual(["Review the reply before sending."]);
+  });
+});
+
+describe("OpenAI model configuration", () => {
+  it("supports staged model overrides with legacy fallback", () => {
+    const original = {
+      OPENAI_MODEL: process.env.OPENAI_MODEL,
+      OPENAI_MODEL_PRIMARY: process.env.OPENAI_MODEL_PRIMARY,
+      OPENAI_MODEL_REPAIR: process.env.OPENAI_MODEL_REPAIR,
+      OPENAI_MODEL_ESCALATION: process.env.OPENAI_MODEL_ESCALATION,
+      OPENAI_MODEL_FINAL_STRONG: process.env.OPENAI_MODEL_FINAL_STRONG,
+    };
+
+    try {
+      process.env.OPENAI_MODEL = "legacy-model";
+      process.env.OPENAI_MODEL_PRIMARY = "primary-model";
+      process.env.OPENAI_MODEL_REPAIR = "repair-model";
+      process.env.OPENAI_MODEL_ESCALATION = "escalation-model";
+      process.env.OPENAI_MODEL_FINAL_STRONG = "strong-model";
+
+      expect(getOpenAiModelForStage("primary")).toBe("primary-model");
+      expect(getOpenAiModelForStage("repair")).toBe("repair-model");
+      expect(getOpenAiModelForStage("escalation")).toBe("escalation-model");
+      expect(getOpenAiModelForStage("final_strong")).toBe("strong-model");
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+});
+
+describe("OpenAI rewrite telemetry", () => {
+  it("records token and cost telemetry for model-backed rewrite calls", async () => {
+    const originalEnv = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_MODEL_PRIMARY: process.env.OPENAI_MODEL_PRIMARY,
+      OPENAI_PRICE_MID_INPUT_PER_1M: process.env.OPENAI_PRICE_MID_INPUT_PER_1M,
+      OPENAI_PRICE_MID_OUTPUT_PER_1M: process.env.OPENAI_PRICE_MID_OUTPUT_PER_1M,
+    };
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL_PRIMARY = "test-primary-model";
+    process.env.OPENAI_PRICE_MID_INPUT_PER_1M = "1";
+    process.env.OPENAI_PRICE_MID_OUTPUT_PER_1M = "2";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  rewrittenText: "Hi Monica, Jordan can finish this by Friday.",
+                  changeSummary: ["Made the reply clearer."],
+                  riskNotes: ["Review before sending."],
+                }),
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+          },
+        }),
+      ),
+    );
+
+    try {
+      const strategy = getRewriteStrategies().find(
+        (candidate) => candidate.id === "plain_note",
+      );
+      const telemetry = createRewriteTelemetryCollector({
+        requestId: "req_openai_legacy",
+        startedAt: new Date("2026-05-22T01:00:00.000Z"),
+      });
+
+      await generateRewriteCandidate(
+        {
+          scenario: "General reply",
+          messageToReplyTo: "",
+          roughDraftReply: "Hi Monica, Jordan can finish this by Friday.",
+          audience: "",
+          purpose: "",
+          whatHappened: "",
+          factsToPreserve: "",
+          tone: "warm",
+          tonePreset: "Warm",
+        },
+        strategy!,
+        undefined,
+        { telemetry },
+      );
+
+      const log = telemetry.finish({
+        input: {
+          scenario: "General reply",
+          messageToReplyTo: "",
+          roughDraftReply: "Hi Monica, Jordan can finish this by Friday.",
+          audience: "",
+          purpose: "",
+          whatHappened: "",
+          factsToPreserve: "",
+          tone: "warm",
+          tonePreset: "Warm",
+        },
+        status: "server_failed",
+        errorCode: "test_only",
+        strategyVersion: "legacy_test",
+      });
+
+      expect(log.providerCalls).toHaveLength(1);
+      expect(log.providerCalls[0]).toMatchObject({
+        provider: "openai",
+        role: "mid_writer",
+        model: "test-primary-model",
+        inputTokens: 1000,
+        outputTokens: 500,
+        success: true,
+      });
+      expect(log.openAiCostUsd).toBeCloseTo(0.002, 8);
+    } finally {
+      vi.unstubAllGlobals();
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
+  it("keeps email-corpus judge-only fields out of the rewrite provider payload", async () => {
+    const originalEnv = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_MODEL_PRIMARY: process.env.OPENAI_MODEL_PRIMARY,
+    };
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_MODEL_PRIMARY = "test-primary-model";
+
+    let requestBody = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init) => {
+        requestBody = String((init as RequestInit).body ?? "");
+
+        return Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  rewrittenText: "Hi Jordan, I checked the record and can help.",
+                  changeSummary: ["Kept the draft as a single-input rewrite."],
+                  riskNotes: ["Review before sending."],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    try {
+      const markdown = readFileSync(
+        path.join(process.cwd(), "docs", "rewrite-email-eval-cases-100.md"),
+        "utf8",
+      );
+      const [sample] = parseRewriteEmailEvalCases(markdown);
+      const input = rewriteEmailEvalCaseToRequestInput(sample);
+      const strategy = getRewriteStrategies().find(
+        (candidate) => candidate.id === "plain_note",
+      );
+
+      await generateRewriteCandidate(input, strategy!);
+
+      const providerPayload = JSON.parse(requestBody) as {
+        messages: Array<{ content: string }>;
+      };
+      const providerText = providerPayload.messages
+        .map((message) => message.content)
+        .join("\n");
+
+      expect(providerText).toContain(sample.inputDraft);
+      expect(providerText).toContain("Tone preset: Warm");
+      expect(providerText).not.toContain(sample.whatHappened);
+      expect(providerText).not.toContain(sample.rewriteQualityTargets);
+      expect(providerText).not.toContain(sample.expectedRewriteChallenges);
+      for (const fact of sample.mustKeep) {
+        expect(providerText).not.toContain(fact);
+      }
+      for (const claim of sample.mustNotClaim) {
+        expect(providerText).not.toContain(claim);
+      }
+      expect(providerText).not.toContain("must_keep");
+      expect(providerText).not.toContain("must_not_claim");
+      expect(providerText).not.toContain("what_actually_happened");
+      expect(providerText).not.toContain("factsToPreserve");
+    } finally {
+      vi.unstubAllGlobals();
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+});
+
+describe("thread fallback rewrite pass", () => {
+  const threadFallback = getRewriteStrategies().find(
+    (strategy) => strategy.id === "thread_reply",
+  );
+
+  it("infers a teacher-parent reply from a general draft-only request", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "General reply",
+        messageToReplyTo: "",
+        roughDraftReply: [
+          "Hi Monica,",
+          "Jordan is missing the reading response, vocabulary practice, and the short reflection paragraph from Friday.",
+          "He should start with the reading response and vocabulary practice because those can be done quickly.",
+          "Then he can work on the reflection paragraph.",
+          "If he turns everything in by the end of this week, I can still accept it for partial credit.",
+          "Best regards,",
+          "Ms. Carter",
+        ].join("\n\n"),
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "warm",
+        tonePreset: "Warm",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Hi Monica");
+    expect(result.rewrittenText).toContain("Jordan");
+    expect(result.rewrittenText).toContain("reading response");
+    expect(result.rewrittenText).toContain("vocabulary practice");
+    expect(result.rewrittenText).toContain("end of this week");
+    expect(result.rewrittenText).toContain("partial credit");
+    expect(result.rewrittenText).toContain("Ms. Carter");
+  });
+
+  it("infers a support reply from a general billing request", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "General reply",
+        messageToReplyTo: "",
+        roughDraftReply:
+          "Hi Priya, the usage report shows 18 active seats, but the renewal only approved 15 regular seats. The extra NZD $126 appears tied to three temporary contractors who were active during May. The base plan did not change.",
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "direct",
+        tonePreset: "Direct",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Priya");
+    expect(result.rewrittenText).toContain("18 active seats");
+    expect(result.rewrittenText).toContain("15 regular seats");
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.rewrittenText).toContain("base plan");
+  });
+
+  it("infers export support from a general request and keeps message facts", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "General reply",
+        messageToReplyTo:
+          "The CSV export from the dashboard is missing the custom tags column. We need the export for our Monday board packet, and the team cannot reconcile April without that column.",
+        roughDraftReply:
+          "Thank you for reaching out. We apologize for any inconvenience caused by the missing custom tags column in your CSV export. Our team is currently investigating the matter and will provide an update.",
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "direct",
+        tonePreset: "Direct",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("custom tags column");
+    expect(result.rewrittenText).toContain("Monday");
+    expect(result.rewrittenText).toContain("April");
+  });
+
+  it("uses invoice facts from the request instead of hardcoded sample details", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Customer support",
+        messageToReplyTo: "Why is this invoice higher than last month?",
+        roughDraftReply:
+          "Thank you for contacting us regarding your invoice. The amount may vary based on service usage.",
+        audience: "A customer asking about invoice amount",
+        purpose: "Explain without sounding generic",
+        whatHappened: "They added three seats on June 2.",
+        factsToPreserve:
+          "Three seats added June 2. Includes prorated seat charges.",
+        tone: "direct",
+        tonePreset: "Direct",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Three seats");
+    expect(result.rewrittenText).toContain("June 2");
+    expect(result.rewrittenText).not.toContain("two seats");
+    expect(result.rewrittenText).not.toContain("May 4");
+  });
+
+  it("uses delay timing from the request instead of hardcoded sample timing", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Work update",
+        messageToReplyTo: "Can you send the numbers today?",
+        roughDraftReply:
+          "Unfortunately, due to unforeseen circumstances, the requested numbers cannot be provided today.",
+        audience: "A teammate waiting for numbers",
+        purpose: "Explain a short delay",
+        whatHappened: "The source file arrived late.",
+        factsToPreserve: "Source file arrived late. Send by 4pm Friday.",
+        tone: "warm",
+        tonePreset: "Warm",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("4pm Friday");
+    expect(result.rewrittenText).not.toContain("10am tomorrow");
+  });
+
+  it("keeps export support facts in the deterministic support fallback", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Customer support",
+        messageToReplyTo:
+          "The April and May CSV exports are missing the custom tags column for the Northeast region, and we need a corrected file before Monday at 10am.",
+        roughDraftReply:
+          "Thank you for contacting us regarding the missing custom tags column. Our team is investigating and will provide an update.",
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "direct",
+        tonePreset: "Direct",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("custom tags column");
+    expect(result.rewrittenText).toContain("April");
+    expect(result.rewrittenText).toContain("May");
+    expect(result.rewrittenText).toContain("Northeast region");
+    expect(result.rewrittenText).toContain("Monday");
+    expect(result.rewrittenText).toContain("10am");
+  });
+
+  it("answers sales follow-up context instead of repeating generic proposal language", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Email or message reply",
+        messageToReplyTo:
+          "We like the reporting feature, but the team is comparing two other vendors and probably will not decide until next month.",
+        roughDraftReply:
+          "Hello Jordan, I am following up on our previous communication regarding the proposal. Please advise whether you would like to proceed with the proposal as discussed.",
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "warm",
+        tonePreset: "Warm",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Jordan");
+    expect(result.rewrittenText).toContain("reporting feature");
+    expect(result.rewrittenText).toContain("next month");
+    expect(result.rewrittenText).not.toContain("Please advise");
+  });
+
+  it("uses a teacher-parent fallback instead of returning a polished grade memo", async () => {
+    expect(threadFallback).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Email or message reply",
+        messageToReplyTo:
+          "Hi Ms. Carter, Jordan has a low grade and told me he turned in most assignments. What is missing, and is there still time to make up the work?",
+        roughDraftReply: [
+          "Hi Monica,",
+          "Thank you for reaching out and sharing your concerns about Jordan’s current grade.",
+          "At this point, Jordan is missing several assignments from the past two weeks, including the reading response, the vocabulary practice, and the short reflection paragraph from Friday.",
+          "He has participated in class discussions, but the missing written work is having a significant impact on his overall grade.",
+          "I would recommend that Jordan first focus on the reading response and vocabulary practice, since those can be completed more quickly.",
+          "After that, he can work on the short reflection paragraph from Friday.",
+          "If he turns these in by the end of this week, I will still accept them for partial credit.",
+          "I also encourage him to speak with me after class or during lunch if he needs clarification.",
+          "I appreciate your partnership and your willingness to help Jordan take responsibility.",
+          "I believe he can get back on track with a clear plan and steady follow-through.",
+          "Best regards,",
+          "Ms. Carter",
+        ].join("\n\n"),
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "warm",
+        tonePreset: "Warm",
+      },
+      threadFallback!,
+    );
+
+    expect(result.rewrittenText).toContain("Hi Monica");
+    expect(result.rewrittenText).toContain("Jordan is missing");
+    expect(result.rewrittenText).toContain(
+      "start with the reading response and vocabulary practice",
+    );
+    expect(result.rewrittenText).toContain("since those should be the quickest");
+    expect(result.rewrittenText).toContain(
+      "Then he can work on the short reflection paragraph from Friday",
+    );
+    expect(result.rewrittenText).toContain("reading response");
+    expect(result.rewrittenText).toContain("vocabulary practice");
+    expect(result.rewrittenText).toContain("reflection paragraph");
+    expect(result.rewrittenText).toContain("end of this week");
+    expect(result.rewrittenText).toContain("partial credit");
+    expect(result.rewrittenText).toContain("after class or during lunch");
+    expect(result.rewrittenText).toContain("partnership");
+    expect(result.rewrittenText).toContain("take responsibility");
+    expect(result.rewrittenText).toContain("clear plan");
+    expect(result.rewrittenText).toContain("steady follow-through");
+    expect(result.rewrittenText).toContain("Best regards");
+    expect(result.rewrittenText).toContain("Ms. Carter");
+    expect(result.rewrittenText).not.toContain("Carter is missing");
+    expect(result.rewrittenText).not.toContain("I appreciate you reaching out");
+    expect(result.rewrittenText).not.toContain("overall grade");
+  });
+
+  it("keeps long teacher draft facts in the deterministic fallback", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Monica,",
+        "Thank you for reaching out and sharing your concerns about Jordan's grade. I understand how stressful this situation can feel, and I appreciate you checking in so we can work together to help him catch up.",
+        "Right now, Jordan is missing three assignments from the past two weeks: the reading response, the vocabulary practice, and the short reflection paragraph from last Friday. He continues to participate in class discussions, and I want to recognize that his verbal contributions have been thoughtful. However, the missing written work is beginning to have a significant impact on his overall grade.",
+        "I recommend that Jordan begin with the reading response and vocabulary practice, since those should be the quickest to complete. After that, he can work on the short reflection paragraph. If he submits all three assignments by this Friday at 5 p.m., I will still accept them for partial credit.",
+        "I also want to clarify that he does not need to redo any work he has already completed. This only applies to the three missing assignments listed above. If he has any questions about the instructions, he is welcome to come see me during lunch on Tuesday or Thursday, and I would be happy to walk him through what is expected.",
+        "Thank you again for your support and for helping Jordan take responsibility for catching up. I believe he can get back on track if he completes the missing work this week and builds a more consistent routine moving forward.",
+        "Best regards,",
+        "Ms. Carter",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Hi Monica");
+    expect(result.rewrittenText).toContain("Jordan");
+    expect(result.rewrittenText).toContain("three assignments");
+    expect(result.rewrittenText).toContain("past two weeks");
+    expect(result.rewrittenText).toContain("reading response");
+    expect(result.rewrittenText).toContain("vocabulary practice");
+    expect(result.rewrittenText).toContain("short reflection paragraph from last Friday");
+    expect(result.rewrittenText).toContain("this Friday at 5 p.m.");
+    expect(result.rewrittenText).toContain("partial credit");
+    expect(result.rewrittenText).toContain("does not need to redo");
+    expect(result.rewrittenText).toContain("Tuesday or Thursday");
+    expect(result.rewrittenText).toContain("Best regards");
+    expect(result.rewrittenText).toContain("Ms. Carter");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("builds a facts-first support rewrite from extracted billing facts", async () => {
+    const factsFirst = getRewriteStrategies().find(
+      (strategy) => strategy.id === "facts_first",
+    );
+    expect(factsFirst).toBeDefined();
+
+    const result = await generateRewriteCandidate(
+      {
+        scenario: "Customer support",
+        messageToReplyTo: "",
+        roughDraftReply: [
+          "Hi Priya,",
+          "Thanks for explaining the situation clearly.",
+          "Based on what you've described, the increase is most likely related to the three contractor accounts that were added during the first week of May.",
+          "That would explain why the dashboard is showing 18 active seats instead of the 15 regular seats your team approved.",
+          "In plain English, this looks like a prorated seat charge rather than a change to your base plan.",
+          "So the extra NZD $126 is likely coming from the three temporary users being active for part of the billing period.",
+          "You could explain it to your finance manager like this.",
+          "For the next step, please check whether those three contractor accounts are still active.",
+          "If you send over the names or email addresses of the three contractors, we can help confirm whether they are still active.",
+        ].join("\n\n"),
+        audience: "",
+        purpose: "",
+        whatHappened: "",
+        factsToPreserve: "",
+        tone: "warm",
+        tonePreset: "Warm",
+      },
+      factsFirst!,
+    );
+
+    expect(result.rewrittenText).toContain("Priya");
+    expect(result.rewrittenText).toContain("18 active seats");
+    expect(result.rewrittenText).toContain("15 regular seats");
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.rewrittenText).toContain("finance manager");
+    expect(result.rewrittenText).toContain("names or email addresses");
+    expect(result.rewrittenText).not.toContain("Based on what");
+    expect(result.rewrittenText).not.toContain("For the next step");
+  });
+
+  it("does not route every customer-support fallback through invoice billing", () => {
+    const input = {
+      scenario: "Customer support",
+      messageToReplyTo:
+        "Mina was added to our workspace yesterday, but she still sees the old pilot workspace after logging in with mina@northstar.example. We resent the invite twice and she cannot access the billing report folder.",
+      roughDraftReply:
+        "Hello, thank you for contacting support. It may be related to the user's previous workspace association.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "direct",
+      tonePreset: "Direct",
+    } as const;
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Mina");
+    expect(result.rewrittenText).toContain("email address");
+    expect(result.rewrittenText).toContain("mina@northstar.example");
+    expect(result.rewrittenText).toContain("invite was resent twice");
+    expect(result.rewrittenText).toContain("billing report folder");
+    expect(result.rewrittenText).not.toContain("invoice preview");
+    expect(result.rewrittenText).not.toContain("temporary users");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("uses a plan-change billing fallback instead of seat billing language", () => {
+    const result = generateGuaranteedRewriteCandidate({
+      scenario: "Customer support",
+      messageToReplyTo:
+        "We switched from the Starter plan to the Team plan on May 3 because our manager wanted shared templates. The invoice preview shows the old plan credit and new plan charge separately.",
+      roughDraftReply:
+        "Thank you for reaching out regarding the invoice preview after your recent plan change from Starter to Team.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    });
+
+    expect(result.rewrittenText).toContain("Starter plan");
+    expect(result.rewrittenText).toContain("Team plan");
+    expect(result.rewrittenText).toContain("May 3");
+    expect(result.rewrittenText).toContain("shared templates");
+    expect(result.rewrittenText).toContain("old plan credit");
+    expect(result.rewrittenText).toContain("new plan charge");
+    expect(result.rewrittenText).not.toContain("active seats");
+  });
+
+  it("uses a package-delay support fallback instead of a generic quick update", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Emma,",
+        "Thank you for contacting us about the delay with your recent order.",
+        "Your order has already left our fulfillment center and is currently with the delivery carrier.",
+        "The delay seems to be related to a temporary processing issue at the local distribution facility, rather than a problem with the order itself.",
+        "Your package is still in transit and has not been marked as lost or returned.",
+        "We expect the delivery carrier to provide a new delivery update within the next one to two business days.",
+        "There is no action required from you right now.",
+        "If the tracking status does not change within two business days, please reply and we can open a follow-up investigation with the carrier.",
+        "Best regards,",
+        "Customer Support Team",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Hi Emma");
+    expect(result.rewrittenText).toContain("fulfillment center");
+    expect(result.rewrittenText).toContain("delivery carrier");
+    expect(result.rewrittenText).toContain("temporary processing issue");
+    expect(result.rewrittenText).toContain("local distribution facility");
+    expect(result.rewrittenText).toContain("still in transit");
+    expect(result.rewrittenText).toContain("lost or returned");
+    expect(result.rewrittenText).toContain("one to two business days");
+    expect(result.rewrittenText).toContain("no action is required");
+    expect(result.rewrittenText).toContain("follow-up investigation with the carrier");
+    expect(result.rewrittenText).toContain("Customer Support Team");
+    expect(result.rewrittenText).not.toContain("Quick update: Hi Emma");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("uses damaged-item replacement facts instead of the package-delay fallback", () => {
+    const input = {
+      scenario: "Customer support",
+      messageToReplyTo:
+        "My order #R8142 arrived today and two of the six mugs were broken. The box had no padding on one side. I need these for a client event on April 18.",
+      roughDraftReply:
+        "Sorry about that. We can replace the mugs. Please send photos and we will process it.",
+      audience: "Upset retail customer.",
+      purpose: "Acknowledge the issue and offer a replacement path quickly.",
+      whatHappened:
+        "Company policy requires photos of damaged items and packaging before replacement. The team can ship 2 replacement mugs by express service at no extra cost if photos arrive by 2:00 PM on April 12. A refund has not been approved.",
+      factsToPreserve:
+        "Order #R8142. Two of six mugs broken. Need photos of mugs and packaging. Express replacement for 2 mugs can be sent at no extra cost if photos arrive by 2:00 PM April 12. Do not offer a refund.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("R8142");
+    expect(result.rewrittenText).toContain("two of the six mugs");
+    expect(result.rewrittenText).toContain("photos");
+    expect(result.rewrittenText).toContain("packaging");
+    expect(result.rewrittenText).toContain("2 replacement mugs");
+    expect(result.rewrittenText).toContain("2:00 PM");
+    expect(result.rewrittenText).toContain("April 12");
+    expect(result.rewrittenText).not.toContain("fulfillment center");
+    expect(result.rewrittenText).not.toContain("delivery carrier");
+    expect(result.rewrittenText).not.toContain("refund");
+  });
+
+  it("uses draft-only lamp replacement facts and preserves the refund limit", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Jordan Park, I checked the support ticket and photo upload on May 9.",
+        "The record I found is order number HL-48219.",
+        "Right now, two damage photos are on file.",
+        "The relevant date for the cracked FinchLite desk lamp is May 6.",
+        "The shipping credit is $9.80.",
+        "The deadline I have to work with is May 14.",
+        "I can send a replacement shade after address confirmation, but I cannot refund more than the $9.80 shipping credit.",
+        "The next step is to confirm the mailing address.",
+      ].join(" "),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Jordan Park");
+    expect(result.rewrittenText).toContain("HL-48219");
+    expect(result.rewrittenText).toContain("cracked FinchLite desk lamp");
+    expect(result.rewrittenText).toContain("May 6");
+    expect(result.rewrittenText).toContain("May 9");
+    expect(result.rewrittenText).toContain("May 14");
+    expect(result.rewrittenText).toContain("$9.80");
+    expect(result.rewrittenText).toContain("replacement shade");
+    expect(result.rewrittenText).toContain("confirm the mailing address");
+    expect(result.rewrittenText).toContain("cannot refund more than the $9.80 shipping credit");
+  });
+
+  it("uses draft-only field trip facts and preserves the museum topic", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Maya's parent, I checked the folder basket, payment envelope, and teacher log on March 28.",
+        "The record I found is class trip record FieldTrip-4A-09.",
+        "Right now, the permission slip is not on file.",
+        "The relevant date for the April 9 science museum field trip is April 9.",
+        "The trip fee is $12.",
+        "The $12 payment is not on file.",
+        "The front office has spare blank forms.",
+        "The deadline I have to work with is April 2.",
+        "I can provide a spare blank form through the front office, but I cannot add Maya after April 2.",
+        "The next step is to send a new signed slip with the $12 trip fee.",
+      ].join(" "),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Maya");
+    expect(result.rewrittenText).toContain("FieldTrip-4A-09");
+    expect(result.rewrittenText).toContain("April 9 science museum field trip");
+    expect(result.rewrittenText).toContain("March 28");
+    expect(result.rewrittenText).toContain("April 2");
+    expect(result.rewrittenText).toContain("$12");
+    expect(result.rewrittenText).toContain("front office");
+    expect(result.rewrittenText).toContain("new signed slip");
+    expect(result.rewrittenText).toContain("cannot add Maya after April 2");
+  });
+
+  it("uses draft-only volunteer shift facts instead of returning an empty fallback", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Samira Holt, I checked the volunteer roster and training log on October 4.",
+        "The record I found is signup code PAN-332.",
+        "Right now, Samira is assigned to packing station two.",
+        "The relevant date for the Saturday pantry volunteer shift is October 7.",
+        "The shift length is 3 hours.",
+        "The deadline I have to work with is October 6 at noon.",
+        "I can reserve the three-hour packing shift for Samira, but I cannot place Samira at client intake without intake training.",
+        "The next step is to arrive at the west entrance by 8:45 a.m.",
+      ].join(" "),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Samira Holt");
+    expect(result.rewrittenText).toContain("PAN-332");
+    expect(result.rewrittenText).toContain("packing station two");
+    expect(result.rewrittenText).toContain("Saturday pantry volunteer shift");
+    expect(result.rewrittenText).toContain("October 7");
+    expect(result.rewrittenText).toContain("October 6 at noon");
+    expect(result.rewrittenText).toContain("3 hours");
+    expect(result.rewrittenText).toContain("west entrance by 8:45 a.m.");
+    expect(result.rewrittenText).toContain("cannot place Samira at client intake without intake training");
+  });
+
+  it("uses draft-only final interview facts and preserves the travel reimbursement limit", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Mina Patel, I checked the interview calendar and recruiting notes on January 11.",
+        "The record I found is candidate ID CAND-914.",
+        "Right now, one 90-minute panel slot is available.",
+        "The relevant date for the product analyst final interview is January 16.",
+        "The interview panel length is 90 minutes.",
+        "The deadline I have to work with is January 12 at 3 p.m.",
+        "I can hold the January 16 slot until January 12 at 3 p.m., but I cannot promise travel reimbursement for the cancelled train.",
+        "The next step is to confirm the January 16 interview slot.",
+      ].join(" "),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Mina Patel");
+    expect(result.rewrittenText).toContain("CAND-914");
+    expect(result.rewrittenText).toContain("product analyst final interview");
+    expect(result.rewrittenText).toContain("January 11");
+    expect(result.rewrittenText).toContain("January 16");
+    expect(result.rewrittenText).toContain("90-minute panel");
+    expect(result.rewrittenText).toContain("January 12 at 3 p.m.");
+    expect(result.rewrittenText).toContain("cannot promise travel reimbursement for the cancelled train");
+  });
+
+  it("uses draft-only cardiology scheduling facts and preserves the referral boundary", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Elaine Porter, I checked the referral queue and scheduling calendar on November 29.",
+        "The record I found is chart message CM-8841.",
+        "Right now, the referral is not in the queue.",
+        "The relevant date for the cardiology scheduling request is December 3.",
+        "The available hold length is 48 hours.",
+        "The deadline I have to work with is December 1.",
+        "I can hold the December 3 slot for 48 hours, but I cannot book the appointment before the referral arrives.",
+        "The next step is to ask the primary care office to resend the referral.",
+      ].join(" "),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Elaine Porter");
+    expect(result.rewrittenText).toContain("CM-8841");
+    expect(result.rewrittenText).toContain("cardiology scheduling request");
+    expect(result.rewrittenText).toContain("November 29");
+    expect(result.rewrittenText).toContain("December 3");
+    expect(result.rewrittenText).toContain("48 hours");
+    expect(result.rewrittenText).toContain("December 1");
+    expect(result.rewrittenText).toContain("primary care office");
+    expect(result.rewrittenText).toContain("cannot book the appointment before the referral arrives");
+  });
+
+  it("uses sales pricing and onboarding facts instead of delivery-delay support language", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Hi Jonah, thanks for the demo. We are comparing two vendors this week. Can you send the final numbers again and confirm whether onboarding could start before June 1 if we move forward?",
+      roughDraftReply:
+        "Thanks for your time. Our platform is a great fit and we can absolutely get you onboarded before June 1. The pricing is attached again. Let me know if you want to sign today.",
+      audience: "Operations lead at a prospective B2B customer.",
+      purpose:
+        "Follow up with pricing and answer the onboarding timing question without overpromising.",
+      whatHappened:
+        "The current proposal is $1,800 per month for 25 seats, plus a one-time $650 onboarding fee. The earliest onboarding kickoff slot is May 28, and full setup usually takes 5 business days after contract signature and data access.",
+      factsToPreserve:
+        "Price is $1,800 per month for 25 seats plus $650 onboarding. Earliest kickoff is May 28. Full setup usually takes 5 business days after signature and data access. Do not promise completion before June 1.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Hi Jonah");
+    expect(result.rewrittenText).toContain("$1,800");
+    expect(result.rewrittenText).toContain("25 seats");
+    expect(result.rewrittenText).toContain("$650");
+    expect(result.rewrittenText).toContain("May 28");
+    expect(result.rewrittenText).toContain("5 business days");
+    expect(result.rewrittenText).toContain("June 1");
+    expect(result.rewrittenText).not.toContain("fulfillment center");
+    expect(result.rewrittenText).not.toContain("delivery carrier");
+  });
+
+  it("uses parent-conference scheduling facts in the deterministic fallback", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Could we meet about Liam's reading grade? I am worried because he said he failed the last quiz. I can do Tuesday after work or maybe Friday morning.",
+      roughDraftReply:
+        "Yes, we can meet. Liam did not fail, but he is missing some assignments. Tuesday after school works.",
+      audience: "Parent of a middle school student.",
+      purpose: "Schedule a conference and lower the parent's immediate concern.",
+      whatHappened:
+        "Liam scored 72 percent on the March 20 reading quiz. He is missing two journal entries. Teacher is available Tuesday, March 26 at 4:15 PM or Friday, March 29 at 8:05 AM.",
+      factsToPreserve:
+        "Quiz score was 72 percent, not a failure. Missing two journal entries. Offer Tuesday, March 26 at 4:15 PM or Friday, March 29 at 8:05 AM. Ask which time works.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("72 percent");
+    expect(result.rewrittenText).toContain("did not fail");
+    expect(result.rewrittenText).toContain("two missing journal entries");
+    expect(result.rewrittenText).toContain("Tuesday, March 26 at 4:15 PM");
+    expect(result.rewrittenText).toContain("Friday, March 29 at 8:05 AM");
+    expect(result.rewrittenText).toContain("Which time works");
+  });
+
+  it("uses dashboard forecast dependency facts in the deterministic fallback", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Can you send the dashboard update before the exec prep meeting tomorrow? Finance is asking whether the Q2 forecast tab will be ready.",
+      roughDraftReply:
+        "I am still working on it and it is delayed because the export was wrong. I can maybe send it tomorrow morning.",
+      audience: "Manager and project stakeholder.",
+      purpose: "Explain status, name the blocker, and give a realistic next update.",
+      whatHappened:
+        "The CRM export received at 3:30 PM on May 6 had duplicate renewal rows. The user corrected 41 duplicates but still needs Finance to confirm 7 accounts. The core dashboard is ready. The Q2 forecast tab will be ready by 11:00 AM May 7 if Finance confirms by 9:30 AM.",
+      factsToPreserve:
+        "Core dashboard is ready. Q2 forecast tab depends on Finance confirming 7 accounts. Need Finance confirmation by 9:30 AM May 7 to send by 11:00 AM. Duplicate renewal rows caused the delay.",
+      tone: "direct",
+      tonePreset: "Direct",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("core dashboard is ready");
+    expect(result.rewrittenText).toContain("Q2 forecast tab");
+    expect(result.rewrittenText).toContain("Finance");
+    expect(result.rewrittenText).toContain("7 accounts");
+    expect(result.rewrittenText).toContain("9:30 AM May 7");
+    expect(result.rewrittenText).toContain("11:00 AM");
+    expect(result.rewrittenText).toContain("duplicate renewal rows");
+    expect(result.rewrittenText).not.toContain("Hi Finance");
+  });
+
+  it("uses basic-to-team proration facts in the deterministic fallback", () => {
+    const input = {
+      scenario: "Customer support",
+      messageToReplyTo:
+        "I upgraded from Basic to Team on May 10, but the invoice shows $27.43 and I thought Team was $49 monthly. Why am I being charged a random amount?",
+      roughDraftReply:
+        "The amount is prorated because you upgraded mid-cycle. The system calculated it automatically and it is correct.",
+      audience: "SaaS customer asking about a charge.",
+      purpose: "Explain the prorated invoice clearly and reduce confusion.",
+      whatHappened:
+        "Customer's billing cycle runs May 1 to May 31. Basic is $19 monthly and Team is $49 monthly. The prorated upgrade charge covers May 10 to May 31, crediting unused Basic time and charging the Team difference. The exact invoice total is $27.43.",
+      factsToPreserve:
+        "Upgrade date May 10. Billing cycle May 1 to May 31. Basic is $19 monthly, Team is $49 monthly, invoice total is $27.43. Explain that it is a prorated difference, not a random fee.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("May 10");
+    expect(result.rewrittenText).toContain("May 1 to May 31");
+    expect(result.rewrittenText).toContain("$19 monthly");
+    expect(result.rewrittenText).toContain("$49 monthly");
+    expect(result.rewrittenText).toContain("$27.43");
+    expect(result.rewrittenText).toContain("not a random fee");
+    expect(result.rewrittenText).not.toContain("Hi Basic");
+    expect(result.rewrittenText).not.toContain("Hi Team");
+  });
+
+  it("uses cancellation confirmation facts in the deterministic fallback", () => {
+    const input = {
+      scenario: "Customer support",
+      messageToReplyTo:
+        "Please cancel our subscription before it renews. We are not using the team features enough to justify another month.",
+      roughDraftReply:
+        "I can cancel it for you, but we also have a cheaper plan. Would you like to downgrade instead?",
+      audience: "Small business account admin.",
+      purpose:
+        "Confirm the cancellation request and offer a downgrade without making account changes.",
+      whatHappened:
+        "The subscription renews on June 3 at $89 monthly. The account can be downgraded to Solo at $29 monthly, but only the admin can approve the change. No cancellation or downgrade should be processed until the customer confirms which option they want.",
+      factsToPreserve:
+        "Renewal date June 3. Current plan is $89 monthly. Solo plan is $29 monthly. Do not cancel or downgrade without confirmation. Ask whether they want cancellation at renewal or downgrade.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("June 3");
+    expect(result.rewrittenText).toContain("$89");
+    expect(result.rewrittenText).toContain("Solo");
+    expect(result.rewrittenText).toContain("$29");
+    expect(result.rewrittenText).toContain("I will not cancel or downgrade");
+    expect(result.rewrittenText).toContain("confirm");
+  });
+
+  it("does not infer policy eligibility greetings from status nouns", () => {
+    const input = {
+      scenario: "Customer support",
+      messageToReplyTo:
+        "I applied for the hardship discount and got a message saying I am not eligible. My income changed after I submitted the form. Can someone review it again?",
+      roughDraftReply:
+        "You were marked ineligible based on the original application. You can send more documents and we can review them.",
+      audience: "Customer requesting reconsideration.",
+      purpose: "Invite updated documentation and explain review limits.",
+      whatHappened:
+        "The team can reopen the application once within 30 days if the customer provides a recent payslip or unemployment notice. Reopening does not guarantee approval. The original application was submitted on March 3, so documents must arrive by April 2.",
+      factsToPreserve:
+        "Can reopen once within 30 days. Original application date March 3. Updated documents due by April 2. Acceptable documents are recent payslip or unemployment notice. No guarantee of approval.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).not.toContain("Hi Reopening");
+    expect(result.rewrittenText).toContain("30 days");
+    expect(result.rewrittenText).toContain("March 3");
+    expect(result.rewrittenText).toContain("April 2");
+    expect(result.rewrittenText).toContain("payslip");
+    expect(result.rewrittenText).toContain("unemployment notice");
+    expect(result.rewrittenText).toContain("does not guarantee approval");
+  });
+
+  it("keeps long billing facts without rejecting plain-English wording as a name", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Priya needs to explain why the invoice preview shows 18 active seats instead of 15 regular seats. The preview is NZD $126 higher, the three temporary contractors were supposed to be removed after May 8, and she needs a plain English explanation for her finance manager. The base plan has not changed.",
+      roughDraftReply:
+        "Hi Priya, thank you for reaching out about the invoice preview. From what you described, the increase is probably a prorated charge from three temporary contractors, not a base plan change. Please check whether those contractor accounts are still active before the invoice is finalized.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Priya");
+    expect(result.rewrittenText).toContain("18 active seats");
+    expect(result.rewrittenText).toContain("15 regular seats");
+    expect(result.rewrittenText).toContain("NZD $126");
+    expect(result.rewrittenText).toContain("finance manager");
+    expect(result.rewrittenText).toContain("base plan");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps long export facts including region, months, and deadline", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "The April and May CSV exports are missing the custom tags column for the Northeast region. We need a corrected file before Monday at 10am, and the original data should remain safe.",
+      roughDraftReply:
+        "Thank you for contacting us regarding the missing custom tags column in your April and May CSV exports. We are investigating the export behavior and can provide a workaround for the Monday board packet.",
+      audience: "",
+      purpose: "",
+      whatHappened:
+        "The operations team imports the CSV into a spreadsheet, checks each campaign against its custom tag, and then sends the reconciled numbers to finance and the board assistant.",
+      factsToPreserve: "",
+      tone: "direct",
+      tonePreset: "Direct",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("April and May");
+    expect(result.rewrittenText).toContain("Northeast region");
+    expect(result.rewrittenText).toContain("custom tags column");
+    expect(result.rewrittenText).toContain("Monday at 10am");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps implementation schedule facts instead of routing a general export mention to CSV support", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Morgan,",
+        "Thank you for sending over the revised onboarding timeline and the notes from yesterday's implementation call.",
+        "The overall timeline still looks workable, but the training session originally planned for Tuesday, 4 June will need to move.",
+        "The best replacement time on our side is Thursday, 6 June at 10:30 a.m. If that does not work for your team, the backup option is Friday, 7 June after 2 p.m.",
+        "Please do not change the go-live date yet. We are still aiming for Monday, 17 June, as long as the user-permission issue is resolved by the end of next week.",
+        "The main blocker is that the warehouse supervisors can see the dashboard, but they cannot approve shift changes.",
+        "We also noticed that the export file is missing the approved by column, which our finance team needs for the weekly reconciliation report.",
+        "We are not adding the SMS reminder feature in this phase, and we are not ready to approve the additional NZD $480 setup fee for that feature.",
+        "I do want the team to document it as a possible phase-two item, because our regional managers may ask about it later.",
+        "Could you send us an updated implementation note that includes the proposed training time change, the permission issue, the missing approved by column, a note that SMS reminders are not part of this phase, and confirmation that the go-live date is still Monday, 17 June unless the permission issue is not resolved?",
+        "Best,",
+        "Avery",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Hi Morgan");
+    expect(result.rewrittenText).toContain("Tuesday, 4 June");
+    expect(result.rewrittenText).toContain("Thursday, 6 June at 10:30 a.m.");
+    expect(result.rewrittenText).toContain("Friday, 7 June after 2 p.m.");
+    expect(result.rewrittenText).toContain("Monday, 17 June");
+    expect(result.rewrittenText).toContain("user-permission issue");
+    expect(result.rewrittenText).toContain("warehouse supervisors");
+    expect(result.rewrittenText).toContain("cannot approve shift changes");
+    expect(result.rewrittenText).toContain("approved by column");
+    expect(result.rewrittenText).toContain("weekly reconciliation report");
+    expect(result.rewrittenText).toContain("SMS reminders are not part of this phase");
+    expect(result.rewrittenText).toContain("NZD $480");
+    expect(result.rewrittenText).toContain("phase-two item");
+    expect(result.rewrittenText).toContain("regional managers");
+    expect(result.rewrittenText).toContain("Avery");
+    expect(result.rewrittenText).not.toContain("custom tags column");
+    expect(result.rewrittenText).not.toContain("underlying campaign data");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps long workshop room-change facts in the deterministic fallback", () => {
+    const input = {
+      scenario: "Blank / custom",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "This message is to inform participants that the Saturday workshop location has changed due to maintenance in the library. The session will now take place in Room 204, and the start time remains 6:30pm. The agenda is unchanged and will still include scholarship forms, supporting documents, and the application timeline. Participants who already submitted questions do not need to send them again.",
+        "Additional details for the note: families received the original workshop reminder on Tuesday, so this update should focus only on the room change and not repeat the full registration instructions.",
+        "Participants may still bring printed scholarship drafts if they want feedback during the session.",
+      ].join("\n\n"),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Saturday");
+    expect(result.rewrittenText).toContain("Room 204");
+    expect(result.rewrittenText).toContain("6:30pm");
+    expect(result.rewrittenText).toContain("scholarship forms");
+    expect(result.rewrittenText).toContain("supporting documents");
+    expect(result.rewrittenText).toContain("application timeline");
+    expect(result.rewrittenText).toContain("Tuesday");
+    expect(result.rewrittenText).toContain("do not need to send them again");
+    expect(result.rewrittenText).toContain("Printed scholarship drafts");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps sales renewal facts from message context during general fallback", () => {
+    const input = {
+      scenario: "General reply",
+      messageToReplyTo:
+        "Thanks for the renewal proposal. We like the reporting feature and the new team templates, but finance asked us to compare two other vendors before we commit. The earliest we can decide is the first week of June. If you have a shorter summary of the two plan options, send it over and I will include it in our internal thread.",
+      roughDraftReply:
+        "Hello Jordan, I am following up regarding the renewal proposal. We appreciate your interest in the reporting feature and the new team templates. We understand that your finance team is comparing multiple vendors before making a final decision during the first week of June.",
+      audience: "",
+      purpose: "",
+      whatHappened:
+        "Keep the reporting feature, team templates, finance review, two other vendors, and first week of June. This should sound like a real sales follow-up.",
+      factsToPreserve:
+        "Preserve Jordan's name if it appears in the draft. Do not invent a company.",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Jordan");
+    expect(result.rewrittenText).toContain("reporting feature");
+    expect(result.rewrittenText).toContain("team templates");
+    expect(result.rewrittenText).toContain("two other vendors");
+    expect(result.rewrittenText).toContain("first week of June");
+    expect(isCandidateCompleteEnough(input, result.rewrittenText)).toBe(true);
+  });
+
+  it("keeps support-specialist seniority constraints in cover-letter fallback", () => {
+    const input = {
+      scenario: "Cover letter",
+      messageToReplyTo:
+        "Role: Support Specialist for a small SaaS company. The applicant is early in their support career and wants the letter to sound confident without pretending to be senior. They have direct experience answering email and chat, noticing recurring customer issues, summarizing patterns for the product team, and updating help center articles.",
+      roughDraftReply:
+        "I am excited to submit my application for the Support Specialist role. In my previous position, I answered customer questions through email and chat, summarized recurring issues for our product team, and updated help center articles when we noticed the same question coming up repeatedly. I enjoy making complicated product details easier for customers to understand.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    } as const;
+
+    const result = generateGuaranteedRewriteCandidate(input);
+
+    expect(result.rewrittenText).toContain("Support Specialist");
+    expect(result.rewrittenText).toContain("email and chat");
+    expect(result.rewrittenText).toContain("recurring issues");
+    expect(result.rewrittenText).toContain("product team");
+    expect(result.rewrittenText).toContain("help center articles");
+    expect(result.rewrittenText).toContain("small SaaS");
+    expect(result.rewrittenText).toMatch(
+      /early in my support career|Support Specialist level|without pretending to be senior|do not make me sound senior/i,
+    );
+  });
+});
