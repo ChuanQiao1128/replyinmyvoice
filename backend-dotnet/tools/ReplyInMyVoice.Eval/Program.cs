@@ -8,6 +8,28 @@ var startedAt = DateTimeOffset.UtcNow;
 var config = EvalConfig.FromEnvironment();
 LoadEnvFileIfPresent(Path.Combine(config.RepoRoot, ".env.local"));
 
+var cases = EvalCaseParser.Parse(await File.ReadAllTextAsync(config.CasesPath));
+var selectedCases = SelectCases(cases, config);
+
+// EVAL_DRY_RUN validates parsing + selection with zero provider calls (no secrets needed).
+if (IsTruthy(Environment.GetEnvironmentVariable("EVAL_DRY_RUN")))
+{
+    Console.WriteLine($"[dry-run] parsed {cases.Count} cases from {config.CasesPath}");
+    Console.WriteLine(
+        $"[dry-run] selected {selectedCases.Count} for mode={config.Mode} "
+        + $"ids={(config.CaseIds.Count > 0 ? string.Join(",", config.CaseIds) : "(mode)")}");
+    foreach (var dryCase in selectedCases)
+    {
+        Console.WriteLine(
+            $"[dry-run] {dryCase.Id} #{dryCase.CaseNumber:000} tone={dryCase.TonePreset} "
+            + $"mustKeep={dryCase.MustKeep.Count} mustNotClaim={dryCase.MustNotClaim.Count} "
+            + $"draftWords={dryCase.InputDraft.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length}");
+    }
+
+    Console.WriteLine("[dry-run] parser + selection OK; no provider calls made.");
+    return 0;
+}
+
 var apiKey = ResolveApiKey(config);
 var saplingApiKey = Environment.GetEnvironmentVariable("SAPLING_API_KEY");
 if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(saplingApiKey))
@@ -16,8 +38,6 @@ if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(saplingApiKey
     return 2;
 }
 
-var cases = EvalCaseParser.Parse(await File.ReadAllTextAsync(config.CasesPath));
-var selectedCases = SelectCases(cases, config);
 Directory.CreateDirectory(config.OutputDirectory);
 
 using var modelHttpClient = new HttpClient();
@@ -45,18 +65,28 @@ var rows = new List<EvalResultRow>();
 foreach (var sample in selectedCases)
 {
     var request = sample.ToRewriteRequest();
-    var expected = EvalExpectations.FromFactsToPreserve(sample.FactsToPreserve);
+    var expected = EvalExpectations.FromCase(sample);
     var result = await provider.RewriteAsync(Guid.NewGuid(), request, CancellationToken.None);
     var payload = RewritePayload.TryParse(result.ResultJson);
     var failurePayload = RewriteFailurePayload.TryParse(result.ResultJson);
+    var attemptHistory = failurePayload?.AttemptHistory ?? [];
     var rewrittenText = payload?.RewrittenText ?? string.Empty;
-    var factCheck = FactExpectationChecker.Check(rewrittenText, expected.ExpectedFacts);
+    var hasOutput = !string.IsNullOrWhiteSpace(rewrittenText);
+
+    var factCheck = FactExpectationChecker.Check(rewrittenText, expected.MustKeep);
+    var forbidden = ForbiddenClaimScreen.Check(rewrittenText, expected.MustNotClaim);
+    var customerUsable = CustomerUsableEvaluator.IsCustomerUsable(
+        result.Success, hasOutput, factCheck.Passed, forbidden.Violations.Count);
+    var wouldPassRelaxedGate = !result.Success
+        && result.ErrorCode == "naturalness_gate_failed"
+        && RelaxedNaturalnessProbe.WouldPassUnderRelaxedGate(
+            attemptHistory, expected.MustKeep, expected.MustNotClaim, config.NaturalnessThreshold);
 
     rows.Add(new EvalResultRow(
         sample.Id,
         sample.CaseNumber,
         sample.Category,
-        sample.Tone,
+        request.Tone,
         result.Success,
         result.ErrorCode,
         payload?.Naturalness?.DraftAiLikePercent,
@@ -64,11 +94,16 @@ foreach (var sample in selectedCases)
         payload?.Naturalness?.ChangePoints,
         factCheck.Passed,
         factCheck.MissingFacts,
-        expected.ForbiddenClaims,
+        forbidden.Violations,
+        forbidden.Abstained,
+        customerUsable,
+        wouldPassRelaxedGate,
         rewrittenText,
-        failurePayload?.AttemptHistory ?? []));
+        attemptHistory));
 
-    Console.WriteLine($"{sample.Id}: success={result.Success} error={result.ErrorCode ?? "none"} facts={factCheck.Passed}");
+    Console.WriteLine(
+        $"{sample.Id}: usable={customerUsable} success={result.Success} facts={factCheck.Passed} "
+        + $"forbidden={forbidden.Violations.Count} error={result.ErrorCode ?? "none"}");
 }
 
 var summary = EvalSummary.Create(
@@ -92,8 +127,10 @@ await File.WriteAllTextAsync(mdPath, MarkdownReport.Render(summary, rows));
 
 Console.WriteLine($"Wrote {jsonPath}");
 Console.WriteLine($"Wrote {mdPath}");
-Console.WriteLine($"Summary: success={summary.SuccessCount}/{summary.CasesEvaluated}, factPass={summary.FactPassCount}/{summary.CasesEvaluated}, measured={summary.MeasuredCount}, avgDrop={summary.AverageDropPoints?.ToString() ?? "unavailable"}, highBaselineAvgDrop={summary.BaselineAboveThresholdAverageDropPoints?.ToString() ?? "unavailable"} ({summary.BaselineAboveThresholdCount}), below50={summary.RewritesBelow50Count}/{summary.MeasuredCount}, modelCalls={summary.ModelCalls}, saplingCalls={summary.SaplingCalls}");
+Console.WriteLine($"Summary: customerUsable={summary.CustomerUsableCount}/{summary.CasesEvaluated}, success={summary.SuccessCount}/{summary.CasesEvaluated}, factPass={summary.FactPassCount}/{summary.CasesEvaluated}, forbiddenViol={summary.ForbiddenViolationCaseCount}, relaxedRecoverable={summary.RelaxedGateRecoverableCount}, measured={summary.MeasuredCount}, avgDrop={summary.AverageDropPoints?.ToString() ?? "unavailable"}, highBaselineAvgDrop={summary.BaselineAboveThresholdAverageDropPoints?.ToString() ?? "unavailable"} ({summary.BaselineAboveThresholdCount}), below50={summary.RewritesBelow50Count}/{summary.MeasuredCount}, modelCalls={summary.ModelCalls}, saplingCalls={summary.SaplingCalls}");
 return summary.ProviderFailureCount == 0 ? 0 : 1;
+
+static bool IsTruthy(string? value) => value is "1" or "true" or "yes" or "on";
 
 static IReadOnlyList<EvalCase> SelectCases(IReadOnlyList<EvalCase> cases, EvalConfig config)
 {
@@ -213,126 +250,7 @@ sealed record EvalConfig(
         int.TryParse(Environment.GetEnvironmentVariable(name), out var value) && value > 0 ? value : null;
 }
 
-sealed record EvalCase(
-    int CaseNumber,
-    string Title,
-    string Id,
-    string Category,
-    string MessageToReplyTo,
-    string RoughDraftReply,
-    string Audience,
-    string Purpose,
-    string WhatHappened,
-    string FactsToPreserve)
-{
-    public string Tone => Category.Contains("workplace", StringComparison.OrdinalIgnoreCase) ||
-        Category.Contains("procurement", StringComparison.OrdinalIgnoreCase) ||
-        Category.Contains("legal", StringComparison.OrdinalIgnoreCase) ||
-        Category.Contains("logistics", StringComparison.OrdinalIgnoreCase) ||
-        Category.Contains("professional_services", StringComparison.OrdinalIgnoreCase)
-            ? "direct"
-            : "warm";
-
-    public RewriteRequest ToRewriteRequest() =>
-        new(
-            MessageToReplyTo,
-            RoughDraftReply,
-            Audience,
-            Purpose,
-            WhatHappened,
-            FactsToPreserve,
-            Tone);
-}
-
-static class EvalCaseParser
-{
-    private static readonly Regex HeaderRegex = new(@"^### Case (?<number>\d{3}) - (?<title>.+)$", RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex FieldRegex = new(@"^- (?<name>[a-z_]+):\s*(?<value>.*)$", RegexOptions.Compiled);
-
-    public static IReadOnlyList<EvalCase> Parse(string markdown)
-    {
-        var headers = HeaderRegex.Matches(markdown).ToArray();
-        var cases = new List<EvalCase>();
-        for (var index = 0; index < headers.Length; index++)
-        {
-            var header = headers[index];
-            var bodyStart = header.Index + header.Length;
-            var bodyEnd = index + 1 < headers.Length ? headers[index + 1].Index : markdown.Length;
-            var fields = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var line in markdown[bodyStart..bodyEnd].Split(["\r\n", "\n"], StringSplitOptions.None))
-            {
-                var match = FieldRegex.Match(line);
-                if (match.Success)
-                {
-                    fields[match.Groups["name"].Value] = match.Groups["value"].Value.Trim();
-                }
-            }
-
-            cases.Add(new EvalCase(
-                int.Parse(header.Groups["number"].Value),
-                header.Groups["title"].Value.Trim(),
-                Read(fields, "id", header),
-                Read(fields, "category", header),
-                Read(fields, "message_to_reply_to", header),
-                Read(fields, "rough_draft_reply", header),
-                Read(fields, "audience", header),
-                Read(fields, "purpose", header),
-                Read(fields, "what_actually_happened", header),
-                Read(fields, "facts_to_preserve", header)));
-        }
-
-        return cases;
-    }
-
-    private static string Read(IReadOnlyDictionary<string, string> fields, string name, Match header) =>
-        fields.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new InvalidOperationException($"Case {header.Groups["number"].Value} is missing {name}.");
-}
-
-sealed record EvalExpectations(IReadOnlyList<string> ExpectedFacts, IReadOnlyList<string> ForbiddenClaims)
-{
-    public static EvalExpectations FromFactsToPreserve(string value)
-    {
-        var expectedFacts = new List<string>();
-        var forbiddenClaims = new List<string>();
-        foreach (var item in Regex.Split(value, @"(?<=\.)\s+"))
-        {
-            var trimmed = item.Trim();
-            if (trimmed.Length == 0)
-            {
-                continue;
-            }
-
-            if (IsForbiddenOnlyConstraint(trimmed))
-            {
-                forbiddenClaims.Add(trimmed);
-            }
-            else
-            {
-                expectedFacts.Add(trimmed);
-            }
-        }
-
-        return new EvalExpectations(expectedFacts, forbiddenClaims);
-    }
-
-    private static bool IsForbiddenOnlyConstraint(string value) =>
-        Regex.IsMatch(
-            value,
-            @"^\s*(?:do not|don't)\s+(?:ask|assign|disclose|offer|promise|imply|guess|mention|state|say|provide|give|comment|blame|share|name|diagnose|invent|approve|confirm|reveal)\b",
-            RegexOptions.IgnoreCase) ||
-        Regex.IsMatch(
-            value,
-            @"^\s*no\s+(?:guarantee|promise|promised|implied outcome|coverage promise|legal interpretation|clinical advice|medical advice|tax advice|diagnosis disclosure|admission)\b",
-            RegexOptions.IgnoreCase) ||
-        Regex.IsMatch(
-            value,
-            @"^\s*keep\s+(?:exact\s+)?quoted lines?\b",
-            RegexOptions.IgnoreCase);
-}
-
-static class FactExpectationChecker
+public static class FactExpectationChecker
 {
     private static readonly HashSet<string> StopWords = new(StringComparer.Ordinal)
     {
@@ -461,7 +379,7 @@ static class FactExpectationChecker
             "fee").Trim();
 }
 
-sealed record FactCheckResult(bool Passed, IReadOnlyList<string> MissingFacts);
+public sealed record FactCheckResult(bool Passed, IReadOnlyList<string> MissingFacts);
 
 sealed record RewritePayload(
     string RewrittenText,
@@ -549,7 +467,10 @@ sealed record EvalResultRow(
     int? ChangePoints,
     bool FactsPreserved,
     IReadOnlyList<string> MissingFacts,
-    IReadOnlyList<string> ForbiddenClaims,
+    IReadOnlyList<string> ForbiddenViolations,
+    IReadOnlyList<string> ForbiddenAbstained,
+    bool CustomerUsable,
+    bool WouldPassRelaxedGate,
     string RewrittenText,
     IReadOnlyList<RewriteAttemptHistoryItem> AttemptHistory);
 
@@ -570,7 +491,10 @@ sealed record EvalSummary(
     int SaplingCalls,
     int MaxAttempts,
     string Model,
-    int NaturalnessThreshold)
+    int NaturalnessThreshold,
+    int CustomerUsableCount,
+    int ForbiddenViolationCaseCount,
+    int RelaxedGateRecoverableCount)
 {
     public static EvalSummary Create(
         DateTimeOffset startedAt,
@@ -610,7 +534,10 @@ sealed record EvalSummary(
             saplingCalls,
             config.MaxAttempts,
             config.Model,
-            config.NaturalnessThreshold);
+            config.NaturalnessThreshold,
+            rows.Count(row => row.CustomerUsable),
+            rows.Count(row => row.ForbiddenViolations.Count > 0),
+            rows.Count(row => row.WouldPassRelaxedGate));
     }
 }
 
@@ -627,6 +554,9 @@ static class MarkdownReport
             $"Cases evaluated: {summary.CasesEvaluated}",
             $"Successful rewrites: {summary.SuccessCount}/{summary.CasesEvaluated}",
             $"Fact pass count: {summary.FactPassCount}/{summary.CasesEvaluated}",
+            $"Customer-usable pass: {summary.CustomerUsableCount}/{summary.CasesEvaluated} (output + all must_keep preserved + engine success + no forbidden violation)",
+            $"Forbidden-claim violations (deterministic screen): {summary.ForbiddenViolationCaseCount}/{summary.CasesEvaluated}",
+            $"Naturalness failures recoverable under relaxed gate (rewrite <= {summary.NaturalnessThreshold}): {summary.RelaxedGateRecoverableCount}",
             $"Measured rewrites: {summary.MeasuredCount}",
             $"Average signal drop: {summary.AverageDropPoints?.ToString() ?? "unavailable"} pts",
             $"Baseline-above-threshold average drop: {summary.BaselineAboveThresholdAverageDropPoints?.ToString() ?? "unavailable"} pts ({summary.BaselineAboveThresholdCount} cases)",
@@ -636,8 +566,8 @@ static class MarkdownReport
             $"Model: {summary.Model}",
             $"Max attempts: {summary.MaxAttempts}",
             "",
-            "| Case | Category | Tone | Success | Draft | Rewrite | Change | Facts | Error | Missing facts |",
-            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+            "| Case | Category | Tone | Usable | Success | Draft | Rewrite | Change | Facts | Forbidden | Error | Missing facts |",
+            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
         };
 
         lines.AddRange(rows.Select(row => string.Join(" | ", new[]
@@ -645,11 +575,13 @@ static class MarkdownReport
             row.Id,
             row.Category,
             row.Tone,
+            row.CustomerUsable ? "yes" : "no",
             row.Success ? "yes" : "no",
             Points(row.DraftAiLikePercent),
             Points(row.RewriteAiLikePercent),
             row.ChangePoints?.ToString() ?? "unavailable",
             row.FactsPreserved ? "yes" : "no",
+            row.ForbiddenViolations.Count.ToString(),
             row.ErrorCode ?? "",
             string.Join("; ", row.MissingFacts).Replace("|", "/", StringComparison.Ordinal),
         })));
