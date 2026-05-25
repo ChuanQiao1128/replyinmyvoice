@@ -930,3 +930,60 @@ Promoted lessons:
 - Sponsor/package and scheduling replies must explicitly preserve included benefits, requested days, and available options before asking for assets, confirmation, or next decisions.
 - Workplace coaching replies must not invent judgment labels such as `dismissive`, `careless`, `rude`, `negligent`, or `unprofessional` unless the source facts provide that wording.
 - No-advice constraints should be handled by stating operational facts only. Do not add professional-advice redirects such as asking an accountant, lawyer, or doctor unless the source facts provide that next step.
+
+## 2026-05-25 Two-Field Product/Eval Contract Lesson
+
+- The public product contract is now draft-first: frontend sends only `roughDraftReply`
+  and `tone`. Optional fields such as `messageToReplyTo`, `audience`, `purpose`,
+  `whatHappened`, and `factsToPreserve` may remain for backend compatibility, but the
+  main product/eval path must not rely on them.
+- The 100-case Markdown corpus uses `must_keep` and `must_not_claim` as evaluator
+  answer keys only. They must not be passed into the rewrite engine as a pre-digested
+  fact list.
+- The engine-visible text for email-100 provider tests is `rough_draft_reply`. If a
+  fact is graded in `must_keep`, it must be checkable from that rough draft.
+- Draft input should be controlled by word count, not character count. The product
+  cap is 400 words, with a practical target under 300 words for ordinary email
+  replies.
+- The next quality window should target most successful measured rewrites below 30%
+  Naturalness Check signal, with below 20% as a stretch target, while keeping 0
+  critical fact losses and 0 forbidden-claim violations.
+
+## 2026-05-25 Single-Input Draft Eval Correction
+
+- The new Markdown regression corpus must model the actual product surface as
+  `input_draft` plus `tone_preset: warm`. Do not evaluate a hidden richer interface
+  that supplies `message_to_reply_to`, `audience`, or `purpose` to the rewrite engine.
+- Old dual-input email scenarios can be reused only as seeds. Each materialized eval
+  case must be rewritten into one self-contained user draft, with all graded facts
+  visible inside `input_draft`.
+- `what_actually_happened`, `must_keep`, `must_not_claim`, quality targets, and challenge
+  notes are judge-only fields. They are not prompt input and must not be mapped into
+  `factsToPreserve`.
+- The first stable corpus shape is: a 100-row case plan, 10 materialized smoke cases,
+  local parser validation, then provider smoke only after local validation passes.
+- Quality scoring should compare original draft versus rewrite for clarity, warmth,
+  structure, conciseness, actionability, voice, and format. Sapling remains diagnostic
+  and gate-supporting, not the only pass/fail metric.
+
+## 2026-05-25 Warm Rewrite Locked-Fact Calibration
+
+- Warm tone must not mean shorter-at-all-costs. For short draft-only inputs, the
+  safest behavior is usually a close rewrite with paragraphing and tone cleanup, not
+  a summary.
+- Locked facts used by the rewrite path must come only from the user's draft. Eval
+  answer keys such as `must_keep`, `must_not_claim`, and `what_actually_happened`
+  remain judge-only.
+- Scheduling rewrites need hard unsupported checks for new weekdays, dates, times,
+  time ranges, deadlines, and options. Candidate selection should reject invented
+  alternatives before finalization.
+- Boundary sentences with `cannot`, `not`, `without`, `unless`, `only if`, `must`,
+  `requires`, `before`, `after`, and similar dependency wording should be locked, but
+  the deterministic gate should allow natural paraphrases when polarity and concrete
+  atoms are preserved.
+- Smoke 10 pipeline-fix-v1 improved from eval-harness-v2 customer pass 2/10 to 8/10,
+  with missing facts reduced to 1, forbidden claims 0, unsupported temporal/options
+  additions 0, and average quality delta +0.7.
+- Remaining lessons: support replies should keep the positive remedy path before a
+  refund-denial boundary, and confirmation clauses such as `as soon as you reply`
+  need to be locked as next-step dependencies.

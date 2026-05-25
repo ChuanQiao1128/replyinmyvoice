@@ -45,6 +45,141 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-05-25 - system-spec-synthesis - Corrected smoke 10 eval and pipeline split
+
+- Agent: Codex
+- Trigger: User provided a two-step implementation contract separating eval harness/report reliability from rewrite pipeline behavior.
+- Action: Opened/followed the planning workflow and kept Step A and Step B as separate implementation/commit scopes.
+- Output artifacts: `scripts/eval-scenarios.ts`; `tests/unit/eval-scenarios-corpus.test.ts`; `tests/unit/openai-output.test.ts`; `lib/fact-extraction.ts`; `lib/rewrite-pipeline/checks.ts`; `lib/rewrite-pipeline/model.ts`; `lib/rewrite-pipeline/pipeline.ts`; `tests/unit/rewrite-pipeline-checks.test.ts`; `tests/unit/rewrite-pipeline.test.ts`; `docs/eval-runs/single-input-smoke-10-eval-harness-v2.md`; `docs/eval-runs/single-input-smoke-10-pipeline-fix-v1.md`; `docs/eval-runs/single-input-smoke-10-comparison.md`.
+- Verification evidence: Step A committed as `45bb57d`; Step B focused tests passed with `npm test -- tests/unit/rewrite-pipeline-checks.test.ts tests/unit/fact-extraction.test.ts tests/unit/rewrite-pipeline.test.ts`; provider smoke 10 completed in smoke mode only with customer pass 8/10.
+- Limitations: Did not expand cases 011-100, did not run focused/full mode, and did not run the old dual-input provider eval. No secrets or provider payloads were logged.
+
+### 2026-05-25 - resilience-test-generation - Semantic judge retry and eval resume
+
+- Agent: Codex
+- Trigger: Corrected smoke 10 previously failed on a DeepSeek semantic judge timeout, requiring retry/resume behavior.
+- Action: Opened/followed the resilience workflow; added bounded semantic judge retry/backoff and per-case progress checkpoint/resume to the eval runner, with tests using mock providers.
+- Output artifacts: `scripts/eval-scenarios.ts`; `tests/unit/eval-scenarios-corpus.test.ts`; `docs/eval-runs/single-input-smoke-10-eval-harness-v2.md`.
+- Verification evidence: Focused Step A tests passed with `npm test -- tests/unit/fact-extraction.test.ts tests/unit/eval-scenarios-corpus.test.ts tests/unit/openai-output.test.ts`; Step A smoke wrote a progress checkpoint and final report without rerunning completed cases.
+- Limitations: Retry behavior was verified with mock-provider tests and the smoke run, but no forced live provider outage was induced. No raw provider payloads or credentials were logged.
+
+### 2026-05-25 - state-machine-modeling - Rewrite candidate/fallback gate lifecycle
+
+- Agent: Codex
+- Trigger: Step B changed the multi-step rewrite lifecycle: fact extraction, candidate generation, candidate selection, finalization, deterministic gates, policy gates, repair/escalation, fallback, and quality failure.
+- Action: Opened/followed the state workflow to keep transitions bounded and explicit; candidate selection now checks reviewer, deterministic, and policy gates before selecting, and fallback must pass fact plus naturalness gates before success.
+- Output artifacts: `lib/rewrite-pipeline/pipeline.ts`; `lib/rewrite-pipeline/checks.ts`; `tests/unit/rewrite-pipeline.test.ts`; `tests/unit/rewrite-pipeline-checks.test.ts`.
+- Verification evidence: `npm test -- tests/unit/rewrite-pipeline-checks.test.ts tests/unit/fact-extraction.test.ts tests/unit/rewrite-pipeline.test.ts` passed 94/94.
+- Limitations: This did not change quota, billing, persistence, or async queue states. No secrets were logged.
+
+### 2026-05-25 - data-module-review - Persistence scope check for rewrite eval work
+
+- Agent: Codex
+- Trigger: The task touched rewrite/eval workflows and required checking whether persistence invariants or data modules were involved.
+- Action: Opened/reviewed the data-module workflow and ruled out persistence changes for this scoped eval/rewrite pipeline patch.
+- Output artifacts: No Prisma, EF Core, migration, transaction, usage-counter, idempotency, or database-access files were changed for this Step A/Step B work.
+- Verification evidence: Scoped implementation touched eval scripts, rewrite pipeline modules, tests, and docs only; no data-module test or migration was needed.
+- Limitations: This is a negative scope check, not a database review. Existing unrelated data/quota test failures, if present in full `npm test`, were not fixed here. No secrets were logged.
+
+### 2026-05-25 - system-spec-synthesis - Two-field rewrite contract implementation
+
+- Agent: Codex
+- Trigger: User approved implementing the two-field frontend/backend contract, 400-word draft cap, new eval parser/grader, and next test strategy.
+- Action: Used the previously synthesized contract to implement scoped changes across frontend validation, .NET API validation, eval parsing, and strategy docs.
+- Output artifacts: `components/app/rewrite-workspace.tsx`; `lib/rewrite-limits.ts`; `lib/rewrite-word-count.ts`; `lib/validation.ts`; `lib/rewrite-eval-cases.ts`; `scripts/eval-scenarios.ts`; `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteRequestLimits.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`; `backend-dotnet/tools/ReplyInMyVoice.Eval/Program.cs`; `docs/deepseek-adaptive-rewrite-attempt-ledger-strategy.md`; `docs/rewrite-strategy-memory.md`.
+- Verification evidence: Focused frontend/parser/eval unit tests passed, .NET `RewriteApiTests` passed, C# eval tool build passed, and `npm run lint` passed. `npm run typecheck` was attempted but is blocked by a pre-existing missing `stripe` package import in `lib/stripe.ts`.
+- Limitations: Did not run live provider eval in this turn. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
+### 2026-05-25 - dotnet-backend-testing - Two-field rewrite API word limit
+
+- Agent: Codex
+- Trigger: Backend behavior changed to accept the frontend two-field request shape and reject drafts over 400 words without creating usage or attempts.
+- Action: Added ASP.NET API integration coverage before implementation, then updated shared .NET rewrite request limits and both ASP.NET/Functions validation paths.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteRequestLimits.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter RewriteApiTests --no-restore` passed 11/11; broader `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter Rewrite --no-restore` passed 42/42.
+- Limitations: NuGet vulnerability metadata checks warned because `https://api.nuget.org/v3/index.json` could not be reached, but restore/build/test artifacts were available. No secrets were logged.
+
+### 2026-05-25 - ui-browser-testing - Rewrite workspace word counter
+
+- Agent: Codex
+- Trigger: Frontend rewrite workspace changed from character-count display to 400-word draft limit display and submit gating.
+- Action: Updated the existing single-input workspace without adding extra context fields; verified the signed-out browser route loads cleanly and identified that authenticated `/app` workspace visual verification requires a signed-in session.
+- Output artifacts: `components/app/rewrite-workspace.tsx`; `lib/rewrite-word-count.ts`; `tests/unit/workspace-copy.test.ts` verification.
+- Verification evidence: `npm test -- tests/unit/workspace-copy.test.ts tests/unit/rewrite-email-eval-cases.test.ts tests/unit/validation.test.ts tests/unit/eval-scenarios-corpus.test.ts tests/unit/openai-compatible.test.ts tests/unit/rewrite-pipeline-model.test.ts` passed 61/61; Playwright browser check reached `/sign-in?redirect_to=%2Fapp` with no console errors or failed requests.
+- Limitations: Could not visually inspect the authenticated workspace without a valid local signed-in session. No credentials, cookies, or tokens were logged.
+
+### 2026-05-25 - cloud-architecture-cost-review - Staged provider eval strategy implementation
+
+- Agent: Codex
+- Trigger: User wants the next provider test window to target sub-30% or sub-20% third-party writing signal scores without unbounded provider spend.
+- Action: Updated the DeepSeek adaptive strategy and rewrite memory docs to require staged smoke/focused/full eval, answer-key isolation, provider call reporting, and hard fact/forbidden-claim bars.
+- Output artifacts: `docs/deepseek-adaptive-rewrite-attempt-ledger-strategy.md`; `docs/rewrite-strategy-memory.md`.
+- Verification evidence: No new cloud resources or fixed-cost infrastructure were introduced. The recommended next command uses smoke mode first and keeps full 100-case runs as a later gate.
+- Limitations: Exact provider prices were not quoted because no fixed budget estimate was requested and no official pricing pages were consulted. No secrets were logged.
+
+### 2026-05-25 - system-spec-synthesis - Two-field rewrite contract and eval strategy
+
+- Agent: Codex
+- Trigger: User clarified that the product frontend should only send `roughDraftReply` and `tone`, asked what backend/frontend/eval changes are needed, and requested a strategy before implementation.
+- Action: Opened and followed the skill to structure the contract, non-goals, rollout order, verification, and open questions.
+- Output artifacts: Analysis in the current Codex thread; no frontend, backend, eval, or product code changes.
+- Verification evidence: Reviewed the current frontend submit payload, Next proxy, .NET rewrite request contract, .NET validation, model prompt assembly, rewrite engine fact extraction, and eval parser/grader boundaries.
+- Limitations: No implementation or live rewrite evaluation was run in this planning pass. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
+### 2026-05-25 - cloud-architecture-cost-review - Rewrite eval threshold and provider-cost strategy
+
+- Agent: Codex
+- Trigger: User wants the new corpus used to drive rewrite quality toward sub-30% or sub-20% third-party writing signal scores, which affects DeepSeek/OpenAI-compatible and Sapling evaluation call volume.
+- Action: Opened and followed the skill to keep the proposed strategy staged and bounded rather than repeatedly running full 100-case provider evals.
+- Output artifacts: Analysis in the current Codex thread; no cloud resources, deploy commands, or provider configuration changes.
+- Verification evidence: Identified that parser/test changes have no fixed infrastructure cost, while semantic grading plus rewrite evaluation adds variable provider calls. Recommended smoke/focused/full progression and call-count reporting before full runs.
+- Limitations: Exact provider pricing was not quoted because no fixed budget estimate was requested and no official pricing pages were consulted. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
+### 2026-05-25 - ui-browser-testing - Two-field rewrite workspace verification plan
+
+- Agent: Codex
+- Trigger: User clarified the frontend should keep only the current two-field rewrite payload and asked what needs to change.
+- Action: Opened and followed the skill to identify browser-visible checks needed if the word-limit UI or submit behavior changes later.
+- Output artifacts: Analysis in the current Codex thread; no UI code changes.
+- Verification evidence: Reviewed the rewrite workspace submit payload and current client-side character-limit gating. Planned future verification around word counter, disabled state, submit payload, error state, desktop/mobile layout, console, and network behavior.
+- Limitations: No dev server, Playwright, Codex Browser, screenshots, or live browser verification were run because this turn was analysis-only. No secrets or credentials were logged.
+
+### 2026-05-25 - dotnet-backend-testing - Two-field rewrite API verification plan
+
+- Agent: Codex
+- Trigger: User asked to adjust the backend around the frontend's two-field rewrite contract and word-count limits.
+- Action: Opened and followed the skill to identify required xUnit/API coverage for future .NET backend changes.
+- Output artifacts: Analysis in the current Codex thread; no .NET code changes.
+- Verification evidence: Reviewed `RewriteRequest`, Azure Functions validation, ASP.NET API validation, `RewriteApiTests`, and existing tests that already use two-field JSON payloads for quota/job flows.
+- Limitations: No backend tests were added or run in this planning pass. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
+### 2026-05-25 - cloud-architecture-cost-review - Semantic judge eval cost gate
+
+- Agent: Codex
+- Trigger: The proposed semantic fact judge for the new 100-case rewrite corpus would add LLM provider calls to evaluation runs.
+- Action: Opened and followed the skill as a pre-implementation cost gate; reviewed the DeepSeek adaptive rewrite strategy, fact-reconstruct target, and manual setup context.
+- Output artifacts: Analysis in the current Codex thread; no cloud resource, deployment, or product code changes.
+- Verification evidence: Confirmed no new fixed cloud infrastructure is required for the corpus/parser/grader work. Identified variable usage-cost risk from one additional semantic judge model call per evaluated email case, on top of existing rewrite pipeline and Sapling calls.
+- Limitations: Did not quote exact provider prices because no exact budget was requested and no provider pricing page was consulted. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
+### 2026-05-25 - system-spec-synthesis - New 100-case rewrite eval corpus analysis
+
+- Agent: Codex
+- Trigger: User replaced `docs/rewrite-email-eval-cases-100.md` and asked for an implementation-impact analysis before code changes.
+- Action: Opened and followed the skill to separate source facts, assumptions, component impact, rollout order, and verification needs.
+- Output artifacts: Analysis in the current Codex thread; no product code changes.
+- Verification evidence: Validated the new corpus has 100 `### Case` entries, required inline fields and `####` sections, non-empty `must_keep` and `must_not_claim` lists, and no banned positioning terms. Ran `npm run test -- tests/unit/rewrite-email-eval-cases.test.ts`, which failed at the expected old-parser boundary.
+- Limitations: Did not implement parser, test, semantic grader, or rewrite-engine changes in this analysis pass. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
+### 2026-05-25 - replyinmyvoice-rewrite - New eval corpus rewrite impact review
+
+- Agent: Codex
+- Trigger: User asked whether the new 100-case corpus requires rewrite agent or engine changes.
+- Action: Opened the project rewrite skill and used it as context for evaluating corpus, naturalness, fact-preservation, and rewrite-engine boundaries.
+- Output artifacts: Analysis in the current Codex thread; no product code changes.
+- Verification evidence: Reviewed the new corpus schema, current parser/test/eval runner usage, and product request path around `factsToPreserve`, `messageToReplyTo`, `whatHappened`, and fact extraction.
+- Limitations: Did not call the MCP rewrite tool or run live rewrite quality evaluation. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
 ### 2026-05-24 - dotnet-backend-testing - Azure Functions bare API audience auth
 
 - Agent: Codex
@@ -1635,3 +1770,84 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/pricing/page.tsx`; `components/landing/{pricing-v2,hero,trust-panel,closing-cta,faq}.tsx`; `components/site-header.tsx`; `components/site-footer.tsx`; `app/sitemap.ts`; `components/app/paywall-card.tsx`; `app/app/page.tsx`; `components/app/rewrite-workspace.tsx`; `components/auth/google-oauth-card.tsx`; `app/terms/page.tsx`; `next.config.ts` (redirects); `tests/unit/{pricing-auth-visual-system,workspace-copy}.test.ts`; removed `app/students/page.tsx`, `app/launch/page.tsx`, `tests/unit/students-v2-page.test.ts`.
 - Verification evidence: `npm run typecheck`, `npm run test` (95 passed / 18 files), `npm run build`, and `npm run cf:build` all passed; banned-term grep clean; dev-server preview showed /pricing rendering Quick/Value(Most popular)/Pro·API with graceful "Available soon" gating, homepage pricing block + hero updated, footer/nav free of old model and "Students", and /students + /launch returning to / with no console errors (desktop + mobile screenshots captured).
 - Limitations: Local dev-server verification only; the OpenNext/Cloudflare Worker runtime can differ from local (prerendered pages have 500'd in prod before despite local gates passing), so /pricing, the /students redirect, and the /app paywall must be re-verified on the deployed Worker. The /app paywall and workspace nudge were verified via source/contract tests, not an authenticated exhausted-quota browser session. Stripe pack Prices are not yet created, so all paid CTAs are intentionally "Available soon".
+
+### 2026-05-25 - system-spec-synthesis - Single-input draft rewrite eval contract
+
+- Agent: Codex
+- Trigger: Owner corrected the rewrite-quality eval target from a dual-input reply eval to the current product-shaped single-input draft rewrite eval.
+- Action: Opened and followed the skill, then wrote an implementation-ready spec covering context, goals, non-goals, current system, proposed architecture, data model, runner contract, state/error handling, privacy, rollout, and verification.
+- Output artifacts: `docs/single-input-draft-rewrite-eval-spec.md`; `docs/rewrite-email-eval-cases-100.md`; `lib/rewrite-eval-cases.ts`; `scripts/eval-scenarios.ts`; `tests/unit/rewrite-email-eval-cases.test.ts`; `tests/unit/eval-scenarios-corpus.test.ts`; `docs/rewrite-strategy-memory.md`; `docs/deepseek-adaptive-rewrite-attempt-ledger-strategy.md`.
+- Verification evidence: `npm test -- tests/unit/rewrite-email-eval-cases.test.ts tests/unit/eval-scenarios-corpus.test.ts` passed 30/30; `EVAL_CORPUS=email-100 npx tsx scripts/eval-scenarios.ts --mode=smoke --limit=0 --output=/tmp/replyinmyvoice-single-input-eval-dry-run.md` loaded 10 smoke cases and exited without provider calls.
+- Limitations: Only cases 001-010 are materialized. Provider smoke was intentionally not run after the contract pivot. `npm run typecheck` remains blocked by the existing missing `stripe` package/type declaration in `lib/stripe.ts`.
+
+### 2026-05-25 - cloud-architecture-cost-review - Eval provider-cost gate
+
+- Agent: Codex
+- Trigger: The requested rewrite-quality eval path can spend DeepSeek and Sapling calls; the old provider smoke had already run against the wrong dual-input corpus.
+- Action: Opened and followed the skill's cost-control posture. Stopped the old eval process, kept this turn to local parser/runner validation, and documented staged provider usage: local validation first, 10-case smoke second, focused/full only after the corpus and judge shape are stable.
+- Output artifacts: `docs/single-input-draft-rewrite-eval-spec.md`; `docs/rewrite-email-eval-cases-100.md`; `docs/deepseek-adaptive-rewrite-attempt-ledger-strategy.md`; `docs/skill-run-log.md`.
+- Verification evidence: Local dry-run used `--limit=0`, loaded 10 smoke cases, wrote `/tmp/replyinmyvoice-single-input-eval-dry-run.md`, and did not require DeepSeek or Sapling calls.
+- Limitations: No new cost telemetry was generated because no provider calls were made under the corrected corpus contract.
+
+### 2026-05-25 - cloud-architecture-cost-review - Corrected single-input smoke calibration
+
+- Agent: Codex
+- Trigger: Owner asked to run the corrected single-input warm-tone smoke 10 against the real provider path as a calibration run, explicitly limited to the 10 materialized cases.
+- Action: Opened and followed the skill's provider-cost gate. Confirmed no eval process was running, reran local tests and lint, performed a `--limit=0` dry-run, then ran only `--mode=smoke --limit=10` against the existing provider environment. Did not run focused/full mode, materialize more cases, or change prompts/scoring/parser/corpus.
+- Output artifacts: `docs/eval-runs/single-input-smoke-10-corrected.md`; `docs/eval-runs/single-input-smoke-10-corrected-triage.md`; `docs/skill-run-log.md`.
+- Verification evidence: `npm test -- tests/unit/rewrite-email-eval-cases.test.ts tests/unit/eval-scenarios-corpus.test.ts` passed 30/30; `npm run lint` passed; dry-run loaded exactly 10 smoke cases; completed smoke report recorded 10/10 evaluated, 4/10 customer-usable pass, 4/10 strict signal pass.
+- Limitations: The first provider attempt aborted on a DeepSeek connect timeout during semantic judging; after a no-credential endpoint probe returned HTTP 401, one identical rerun completed. Raw provider payloads are not logged, so judge-only separation is verified by mapping tests and report behavior rather than request capture. No optimization fixes were made in this run.
+
+### 2026-05-25 - cloud-architecture-cost-review - Admin Mongo/ELK necessity review
+
+- Agent: Codex
+- Trigger: Owner asked whether the Reply In My Voice admin console needs MongoDB or ELK.
+- Action: Opened and followed the skill; reviewed current manual setup/run-result docs, admin pages, cost/learning metric helpers, EF Core models, and Application Insights wiring. Selected the existing SQL + Application Insights architecture for the production admin console and rejected MongoDB/ELK as duplicate paid/operational infrastructure for the current workload.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Confirmed `/admin` uses request-level rewrite quality/cost/learning telemetry; confirmed `RewriteCostLog`, `RewriteProviderCall`, `LearningRun`, `LearningFinding`, `StrategyCandidate`, and `RewriteLearningSample` are already modeled in SQL/EF or Prisma history; confirmed Application Insights is already configured for API/Functions/Worker observability.
+- Limitations: Exact current MongoDB/Cosmos/Elastic pricing was not checked because no numeric monthly run-rate was quoted; this was an architecture necessity review, not an implementation or deployment change.
+
+### 2026-05-25 - data-module-review - Admin Mongo/ELK persistence fit review
+
+- Agent: Codex
+- Trigger: The MongoDB question affects persistence boundaries for admin telemetry, learning samples, quota, billing, and rewrite-attempt records.
+- Action: Opened and followed the skill; inspected SQL schema ownership and invariants around `RewriteAttempt`, `UsageReservation`, `StripeEvent`, `OutboxMessage`, admin cost logs, provider calls, and learning tables. Determined MongoDB should not become an authoritative store for admin, billing, quota, or rewrite job state.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: SQL schema already has unique/idempotency constraints, row-version concurrency tokens, foreign keys, and indexed admin lookup paths for current admin screens. A helper `scan_data_risks.py --limit 80` run was started but stopped after it did not return promptly in the dirty workspace; manual targeted reads supplied the review evidence.
+- Limitations: No code, migrations, tests, or database resources were changed. This does not rule out a future isolated, non-authoritative local Mongo/ELK portfolio demo fed from exported events.
+
+### 2026-05-25 - system-spec-synthesis - Admin console capability and phase review
+
+- Agent: Codex
+- Trigger: Owner asked what the management/admin console should include and what order to build it in.
+- Action: Opened and followed the skill; converted the loose admin-console question into staged requirements covering actors, current system, data ownership, read/write boundaries, operational modules, state lifecycles, security, rollout, and verification.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Reviewed current `/admin` overview, metric queries, admin auth helper, manual setup notes, Azure cutover docs, and EF Core table mappings for users, quota, rewrite attempts, Stripe events, outbox, cost logs, learning, API keys, and referrals.
+- Limitations: This was an analysis/specification response only; no implementation spec file, admin API, UI, migration, or cloud resource was created.
+
+### 2026-05-25 - state-machine-modeling - Admin lifecycle coverage review
+
+- Agent: Codex
+- Trigger: The admin console requirements review covers lifecycle-heavy areas: rewrite attempts, usage reservations, Stripe webhook processing, outbox dispatch, subscriptions, credits, canary rollback, and API keys.
+- Action: Opened and followed the skill; identified which admin phases must expose state lists, transition history, illegal/stuck states, retryable failures, and recovery actions without bypassing C#/.NET transition logic.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Confirmed persisted state-bearing tables and indexes in EF Core: `RewriteAttempts`, `UsageReservations`, `StripeEvents`, `OutboxMessages`, `RewriteCredits`, `LearningRuns`, `StrategyCandidates`, `RewriteCanaryRollbacks`, `ApiKeys`, and `ApiKeyUsages`.
+- Limitations: No formal state-machine markdown was generated and no transition helper/test changes were made; this was used to order admin-console capabilities.
+
+### 2026-05-25 - cloud-architecture-cost-review - Admin console phased architecture review
+
+- Agent: Codex
+- Trigger: Owner asked about admin-console phases, including whether Python should participate and how to avoid unnecessary infrastructure.
+- Action: Opened and followed the skill; recommended keeping the production admin on existing Next.js/.NET/Azure SQL/Application Insights foundations, using Python only as an optional read-only analytics/reporting layer, and rejecting always-on duplicate admin stacks until a clear cost-approved need exists.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Current docs show Cloudflare frontend, Azure Functions/.NET API, Azure SQL, Service Bus, and Application Insights as the production target; prior App Service fixed run-rate was removed in favor of Azure Functions consumption.
+- Limitations: Exact current cloud prices were not checked because no specific monthly run-rate was quoted and no paid resource change was proposed.
+
+### 2026-05-25 - data-module-review - Admin console data ownership review
+
+- Agent: Codex
+- Trigger: Admin-console phase planning touches user, quota, billing, webhook, queue, cost, learning, and API-key persistence invariants.
+- Action: Opened and followed the skill; reviewed the SQL/EF table set and current admin query layer to classify which modules should be read-only, which future operator actions require C# API endpoints, and which actions need audit logging.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Current admin metrics query `RewriteCostLog`/`RewriteProviderCall`; EF Core has unique/idempotency indexes and concurrency tokens for the lifecycle-critical tables; manual setup notes say runtime account/quota/rewrite data is now served from Azure SQL through Azure Functions.
+- Limitations: No new admin audit-log schema was added; direct SQL write prevention remains a design recommendation until implemented.
