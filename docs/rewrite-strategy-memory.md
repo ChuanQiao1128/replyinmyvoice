@@ -987,3 +987,24 @@ Promoted lessons:
 - Remaining lessons: support replies should keep the positive remedy path before a
   refund-denial boundary, and confirmation clauses such as `as soon as you reply`
   need to be locked as next-step dependencies.
+
+## 2026-05-25 Single-Input Dev-20 Expansion Lessons
+
+- Dev 20 final v5 passed 20/20 customer-usable and 20/20 strict signal on
+  `docs/rewrite-email-eval-cases-100.md` cases 001-020.
+- Line-wrapped Markdown prose can hide facts when extraction splits on single newlines.
+  Normalize wrapped lines before sentence extraction so dates such as `May 6` remain
+  visible to deterministic gates.
+- Conditional next-step dependencies are locked facts when they contain concrete user
+  actions, for example `If ... please send one updated photo today`.
+- Extractive fallback must protect `a.m.` and `p.m.` abbreviations before sentence
+  splitting. Otherwise it creates false fragments such as `Because the room is
+  unavailable` and `Or Friday at 9 a.m.`.
+- Structural fragment gates should reject actual detached `Because` / `Or` fragments
+  after time abbreviations, but allow valid lowercase continuations and valid `If`
+  action sentences after a time.
+- Upload-evidence facts such as `empty file attempt`, named project handoff phrases,
+  and operational reasons such as `room is unavailable` need deterministic anchors
+  because they are easy for warm rewrites to compress away.
+- Next expansion should materialize cases 021-040 and run a controlled dev-40 pass.
+  Full 100 should remain a release or major-strategy-change gate.

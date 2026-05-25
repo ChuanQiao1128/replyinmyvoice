@@ -4,10 +4,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  factsToPreserveExpectations,
+  parseRewriteEmailEvalCasePlan,
   parseRewriteEmailEvalCases,
   rewriteEmailEvalCaseToRequestInput,
   selectRewriteEmailEvalCases,
+  validateRewriteEmailEvalCorpus,
 } from "../../lib/rewrite-eval-cases";
 
 const corpusPath = path.join(
@@ -19,59 +20,84 @@ const corpusPath = path.join(
 describe("rewrite email eval corpus parser", () => {
   const markdown = readFileSync(corpusPath, "utf8");
 
-  it("parses the synthetic 100-case markdown corpus", () => {
-    const cases = parseRewriteEmailEvalCases(markdown);
+  it("parses the 100-row single-input draft case plan", () => {
+    const plan = parseRewriteEmailEvalCasePlan(markdown);
 
-    expect(cases).toHaveLength(100);
-    expect(cases[0]).toMatchObject({
+    expect(plan).toHaveLength(100);
+    expect(plan[0]).toMatchObject({
       caseNumber: 1,
-      id: "rimv-email-001",
-      category: "teacher_parent",
+      id: "rewrite-draft-001",
+      sourceType: "email",
       tonePreset: "Warm",
-      messageToReplyTo: expect.stringContaining("Maya"),
-      roughDraftReply: expect.stringContaining("I checked"),
-      factsToPreserve: expect.stringContaining("April 2"),
     });
-    expect(cases.at(-1)).toMatchObject({
+    expect(plan.at(-1)).toMatchObject({
       caseNumber: 100,
-      id: "rimv-email-100",
-      category: "professional_services",
-      factsToPreserve: expect.stringContaining("Do not send revised quote"),
+      id: "rewrite-draft-100",
     });
   });
 
-  it("selects staged corpus sizes for smoke, focused, and full runs", () => {
+  it("parses the first 20 materialized single-input draft dev cases", () => {
+    const cases = parseRewriteEmailEvalCases(markdown);
+
+    expect(cases).toHaveLength(20);
+    expect(cases[0]).toMatchObject({
+      caseNumber: 1,
+      id: "rewrite-draft-001",
+      category: "teacher_parent",
+      tonePreset: "Warm",
+      sourceType: "email",
+      inputWordCountBand: "160-280",
+    });
+    expect(cases[0].inputDraft.length).toBeGreaterThan(50);
+    expect(cases[0].inputDraft.split(/\s+/).length).toBeLessThanOrEqual(400);
+    expect(cases[0].mustKeep.length).toBeGreaterThanOrEqual(6);
+    expect(cases[0].mustNotClaim.length).toBeGreaterThanOrEqual(2);
+    expect(cases[0].rewriteQualityTargets.length).toBeGreaterThan(20);
+
+    expect(cases.at(-1)).toMatchObject({
+      caseNumber: 20,
+      id: "rewrite-draft-020",
+    });
+    expect(cases.at(-1)!.category).toBeTruthy();
+    expect(cases.at(-1)!.mustKeep.length).toBeGreaterThanOrEqual(6);
+    expect(cases.at(-1)!.mustNotClaim.length).toBeGreaterThanOrEqual(2);
+
+    for (const sample of cases) {
+      expect(sample.tonePreset).toBe("Warm");
+      for (const forbiddenClaim of sample.mustNotClaim) {
+        expect(forbiddenClaim).toMatch(/^Do not /i);
+      }
+    }
+  });
+
+  it("selects staged materialized corpus sizes without inventing missing case bodies", () => {
     const cases = parseRewriteEmailEvalCases(markdown);
 
     expect(selectRewriteEmailEvalCases(cases, "smoke")).toHaveLength(10);
-    expect(selectRewriteEmailEvalCases(cases, "focused")).toHaveLength(40);
-    expect(selectRewriteEmailEvalCases(cases, "full")).toHaveLength(100);
+    expect(selectRewriteEmailEvalCases(cases, "focused")).toHaveLength(20);
+    expect(selectRewriteEmailEvalCases(cases, "full")).toHaveLength(20);
   });
 
-  it("maps email eval cases into rewrite inputs with all context fields", () => {
-    const [sample] = parseRewriteEmailEvalCases(markdown);
-    const input = rewriteEmailEvalCaseToRequestInput(sample);
+  it("maps draft eval cases into the product single-input warm rewrite request", () => {
+    const cases = parseRewriteEmailEvalCases(markdown);
 
-    expect(input.messageToReplyTo).toContain("Maya");
-    expect(input.roughDraftReply).toContain("another form");
-    expect(input.audience).toBe("Parent of a fourth grade student.");
-    expect(input.purpose).toContain("help the parent");
-    expect(input.whatHappened).toContain("March 28");
-    expect(input.factsToPreserve).toContain("April 2");
+    for (const sample of cases) {
+      const input = rewriteEmailEvalCaseToRequestInput(sample);
+
+      expect(input.messageToReplyTo).toBe("");
+      expect(input.roughDraftReply).toBe(sample.inputDraft);
+      expect(input.audience).toBe("");
+      expect(input.purpose).toBe("");
+      expect(input.whatHappened).toBe("");
+      expect(input.factsToPreserve).toBe("");
+      expect(input.tonePreset).toBe("Warm");
+    }
   });
 
-  it("separates must-include facts from forbidden-claim constraints", () => {
-    const expectations = factsToPreserveExpectations(
-      "Price is $1,800 per month for 25 seats plus $650 onboarding. Earliest kickoff is May 28. Do not promise completion before June 1. Do not offer a refund.",
-    );
-
-    expect(expectations.expectedFacts).toEqual([
-      "Price is $1,800 per month for 25 seats plus $650 onboarding.",
-      "Earliest kickoff is May 28.",
-    ]);
-    expect(expectations.forbiddenClaims).toEqual([
-      "Do not promise completion before June 1.",
-      "Do not offer a refund.",
-    ]);
+  it("validates corpus plan and materialized draft cases", () => {
+    expect(validateRewriteEmailEvalCorpus(markdown)).toEqual({
+      planRows: 100,
+      materializedCases: 20,
+    });
   });
 });

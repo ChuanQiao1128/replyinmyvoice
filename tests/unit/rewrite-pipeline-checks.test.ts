@@ -795,6 +795,42 @@ describe("deterministicCheck", () => {
     );
   });
 
+  it("rejects detached sentence fragments in short rewrites", () => {
+    const rewritten = [
+      "Hi Ren,",
+      "I need to move our Thursday, May 16 appointment from 11 a.m. Because the room is unavailable.",
+      "I can offer Thursday at 2:30 p.m. Or Friday at 9 a.m.",
+      "Please choose one by Wednesday at noon.",
+    ].join("\n\n");
+
+    expect(detectStructureIssues(input, rewritten)).toContain(
+      "structure:sentence_fragment",
+    );
+  });
+
+  it("does not treat lowercase continuations after a.m. or p.m. as fragments", () => {
+    const rewritten = [
+      "Hi Ren,",
+      "I need to move our Thursday, May 16 appointment from 11 a.m. because the room is unavailable.",
+      "I can offer Thursday at 2:30 p.m. or Friday at 9 a.m. Please choose one by Wednesday at noon.",
+    ].join("\n\n");
+
+    expect(detectStructureIssues(input, rewritten)).not.toContain(
+      "structure:sentence_fragment",
+    );
+  });
+
+  it("does not treat valid If action sentences after p.m. as fragments", () => {
+    const rewritten = [
+      "Hi Drew,",
+      "Please reply yes or no by Friday at 5 p.m. If the rail has gotten worse since your last message, please send one updated photo today.",
+    ].join("\n\n");
+
+    expect(detectStructureIssues(input, rewritten)).not.toContain(
+      "structure:sentence_fragment",
+    );
+  });
+
   it("rejects greetings inferred from department or status nouns", () => {
     expect(
       detectStructureIssues(

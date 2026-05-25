@@ -245,6 +245,8 @@ const phraseFacts: Array<{
   { category: "constraint", pattern: /\bno grade penalty\b/i, text: "no grade penalty" },
   { category: "constraint", pattern: /\bmanager approval\b/i, text: "manager approval" },
   { category: "constraint", pattern: /\baccount credit\b/i, text: "account credit" },
+  { category: "task", pattern: /\bempty file attempt\b/i, text: "empty file attempt" },
+  { category: "constraint", pattern: /\broom is unavailable\b/i, text: "room is unavailable" },
   { category: "constraint", pattern: /\bbase subscription\b/i, text: "base subscription" },
   { category: "constraint", pattern: /\bbase plan\b/i, text: "base plan" },
   { category: "constraint", pattern: /\bnew approval cycle\b/i, text: "new approval cycle" },
@@ -825,6 +827,12 @@ function extractFromText(
   }
 
   for (const match of normalizedText.matchAll(
+    /\b[A-Z][A-Za-z0-9'-]+(?:\s+[A-Za-z0-9'-]+){0,2}\s+(?:dashboard|handoff|rollout|project|initiative)\b/g,
+  )) {
+    addFact(facts, match[0], "quoted_phrase", source);
+  }
+
+  for (const match of normalizedText.matchAll(
     /\b(?:order number|billing ticket|proposal number|signup code|candidate id)\s+([A-Z]{2,8}-\d+[A-Z0-9-]*)\b/gi,
   )) {
     addFact(facts, match[1], "quoted_phrase", source);
@@ -966,6 +974,9 @@ function extractFromText(
         /\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2}(?::\d{2})?\s*(?:a\.m\.?|p\.m\.?|am|pm))\b/i.test(sentence)) ||
       (/\b(?:offer|option|options|available|either|or)\b/i.test(sentence) &&
         /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|noon|\d{1,2}(?::\d{2})?\s*(?:a\.m\.?|p\.m\.?|am|pm))\b/i.test(sentence))
+      ||
+      (/\bif\b/i.test(sentence) &&
+        /\b(?:send|reply|confirm|call|email|provide|attach|upload|choose|bring|check in|pick up)\b/i.test(sentence))
     ) {
       addFact(facts, sentence, "constraint", source);
     }
@@ -989,7 +1000,12 @@ function extractFromText(
 }
 
 function splitSentences(value: string) {
-  return value
+  const unwrapped = value
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\n+/g, " "))
+    .join("\n\n");
+
+  return unwrapped
     .split(/[.!?]\s+|\n+/)
     .map((part) => part.trim())
     .filter(Boolean);

@@ -713,6 +713,29 @@ function hasRepeatedFactSentence(text: string) {
   return false;
 }
 
+function hasDetachedSentenceFragment(text: string) {
+  if (/\b[ap]\.m\.\s+(?:Because|Or)\b/.test(text)) {
+    return true;
+  }
+
+  const protectedText = text.replace(/\b([ap])\.m\./gi, "$1__time_period__");
+
+  return protectedText
+    .replace(/\n+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .some((sentence) => {
+      if (/^(?:because|or)\b/i.test(sentence)) {
+        return true;
+      }
+
+      return /^if\b/i.test(sentence) &&
+        !sentence.includes(",") &&
+        wordCount(sentence) <= 10;
+    });
+}
+
 export function detectStructureIssues(
   input: RewriteRequestInput,
   rewrittenText: string,
@@ -736,6 +759,10 @@ export function detectStructureIssues(
 
   if (hasRepeatedFactSentence(rewrittenText)) {
     issues.push("structure:repeated_fact");
+  }
+
+  if (hasDetachedSentenceFragment(rewrittenText)) {
+    issues.push("structure:sentence_fragment");
   }
 
   if (/\bthe user\b/i.test(rewrittenText)) {

@@ -1,75 +1,62 @@
 import type { RewriteRequestInput } from "./validation";
-import type { ScenarioOption, TonePreset } from "./rewrite-presets";
+import type { TonePreset } from "./rewrite-presets";
 import { tonePresetToTone } from "./rewrite-presets";
 
 export type RewriteEmailEvalMode = "smoke" | "focused" | "full";
+export type RewriteDraftSourceType = "email" | "message" | "note" | "announcement";
+
+export type RewriteEmailEvalCasePlanRow = {
+  caseNumber: number;
+  id: string;
+  category: string;
+  sourceType: RewriteDraftSourceType;
+  wordBand: string;
+  primaryFailureMode: string;
+  secondaryFailureMode: string;
+  mustIncludeFactTypes: string[];
+  riskTags: string[];
+  complexity: string;
+  tonePreset: TonePreset;
+};
 
 export type RewriteEmailEvalCase = {
   caseNumber: number;
   title: string;
   id: string;
   category: string;
+  sourceType: RewriteDraftSourceType;
   riskTags: string[];
-  scenario: ScenarioOption;
   tonePreset: TonePreset;
-  messageToReplyTo: string;
-  roughDraftReply: string;
-  audience: string;
-  purpose: string;
+  inputWordCountBand: string;
+  inputDraft: string;
   whatHappened: string;
-  factsToPreserve: string;
+  mustKeep: string[];
+  mustNotClaim: string[];
+  rewriteQualityTargets: string;
   expectedRewriteChallenges: string;
 };
 
-export type FactsToPreserveExpectations = {
-  expectedFacts: string[];
-  forbiddenClaims: string[];
-};
-
-const REQUIRED_FIELDS = [
+const REQUIRED_INLINE_FIELDS = [
   "id",
   "category",
+  "source_type",
+  "tone_preset",
   "risk_tags",
-  "message_to_reply_to",
-  "rough_draft_reply",
-  "audience",
-  "purpose",
+  "input_word_count_band",
+] as const;
+
+const REQUIRED_TEXT_SECTIONS = [
+  "input_draft",
   "what_actually_happened",
-  "facts_to_preserve",
+  "rewrite_quality_targets",
   "expected_rewrite_challenges",
 ] as const;
 
-function scenarioForCategory(category: string): ScenarioOption {
-  if (
-    category.includes("customer") ||
-    category.includes("billing") ||
-    category.includes("subscription") ||
-    category.includes("account_access") ||
-    category.includes("policy")
-  ) {
-    return "Customer support";
-  }
-
-  return "General reply";
-}
-
-function toneForCategory(category: string): TonePreset {
-  if (
-    category.includes("workplace") ||
-    category.includes("procurement") ||
-    category.includes("legal") ||
-    category.includes("logistics") ||
-    category.includes("professional_services")
-  ) {
-    return "Direct";
-  }
-
-  return "Warm";
-}
+const REQUIRED_LIST_SECTIONS = ["must_keep", "must_not_claim"] as const;
 
 function readField(
   fields: Map<string, string>,
-  field: (typeof REQUIRED_FIELDS)[number],
+  field: (typeof REQUIRED_INLINE_FIELDS)[number],
   caseNumber: number,
 ) {
   const value = fields.get(field);
@@ -80,13 +67,158 @@ function readField(
   return value;
 }
 
+function parseSections(body: string, caseNumber: number) {
+  const sectionPattern = /^#### ([a-z_]+)\s*$/gm;
+  const headers = [...body.matchAll(sectionPattern)];
+  const sections = new Map<string, string>();
+
+  for (const [index, header] of headers.entries()) {
+    const name = header[1];
+    const contentStart = (header.index ?? 0) + header[0].length;
+    const contentEnd =
+      index + 1 < headers.length ? headers[index + 1].index ?? body.length : body.length;
+    sections.set(name, body.slice(contentStart, contentEnd).trim());
+  }
+
+  for (const section of [...REQUIRED_TEXT_SECTIONS, ...REQUIRED_LIST_SECTIONS]) {
+    if (!sections.get(section)) {
+      throw new Error(`Case ${caseNumber} is missing ${section}.`);
+    }
+  }
+
+  return sections;
+}
+
+function readSection(
+  sections: Map<string, string>,
+  section: (typeof REQUIRED_TEXT_SECTIONS)[number],
+  caseNumber: number,
+) {
+  const value = sections.get(section);
+  if (!value) {
+    throw new Error(`Case ${caseNumber} is missing ${section}.`);
+  }
+
+  return value;
+}
+
+function readListSection(
+  sections: Map<string, string>,
+  section: (typeof REQUIRED_LIST_SECTIONS)[number],
+  caseNumber: number,
+) {
+  const value = sections.get(section);
+  if (!value) {
+    throw new Error(`Case ${caseNumber} is missing ${section}.`);
+  }
+
+  const items = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.slice(2).trim())
+    .filter(Boolean);
+
+  if (items.length === 0) {
+    throw new Error(`Case ${caseNumber} has an empty ${section} list.`);
+  }
+
+  return items;
+}
+
+const bannedSubstrings = [
+  "detector bypass",
+  "detector-bypass",
+  "undetectable",
+  "humanizer",
+  "score hacking",
+  "score-hacking",
+  "bypass detector",
+  "evade detector",
+];
+
+function wordCount(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function parseSourceType(value: string, caseNumber: number): RewriteDraftSourceType {
+  if (
+    value === "email" ||
+    value === "message" ||
+    value === "note" ||
+    value === "announcement"
+  ) {
+    return value;
+  }
+
+  throw new Error(`Case ${caseNumber} has unsupported source_type: ${value}.`);
+}
+
+function parseTonePreset(value: string, caseNumber: number): TonePreset {
+  if (/^warm$/i.test(value)) {
+    return "Warm";
+  }
+
+  throw new Error(`Case ${caseNumber} must use tone_preset: warm.`);
+}
+
+function assertNoBannedSubstrings(value: string, label: string) {
+  const normalized = value.toLowerCase();
+  const found = bannedSubstrings.find((term) => normalized.includes(term));
+  if (found) {
+    throw new Error(`${label} contains banned positioning term: ${found}.`);
+  }
+}
+
+function assertSequentialCaseNumbers(cases: Array<{ caseNumber: number }>) {
+  cases.forEach((sample, index) => {
+    const expected = index + 1;
+    if (sample.caseNumber !== expected) {
+      throw new Error(
+        `Materialized case numbers must be sequential; expected ${expected}, found ${sample.caseNumber}.`,
+      );
+    }
+  });
+}
+
+function assertCaseLists(sample: RewriteEmailEvalCase) {
+  if (sample.mustKeep.length < 6 || sample.mustKeep.length > 12) {
+    throw new Error(
+      `Case ${sample.caseNumber} must_keep must contain 6-12 bullets; found ${sample.mustKeep.length}.`,
+    );
+  }
+
+  if (sample.mustNotClaim.length < 2 || sample.mustNotClaim.length > 5) {
+    throw new Error(
+      `Case ${sample.caseNumber} must_not_claim must contain 2-5 bullets; found ${sample.mustNotClaim.length}.`,
+    );
+  }
+
+  for (const claim of sample.mustNotClaim) {
+    if (!/^Do not\b/.test(claim)) {
+      throw new Error(
+        `Case ${sample.caseNumber} must_not_claim entries must start with "Do not".`,
+      );
+    }
+  }
+}
+
+function assertInputDraftWordCount(sample: RewriteEmailEvalCase) {
+  const count = wordCount(sample.inputDraft);
+  if (count < 40 || count > 400) {
+    throw new Error(
+      `Case ${sample.caseNumber} input_draft must be 40-400 words; found ${count}.`,
+    );
+  }
+}
+
 export function parseRewriteEmailEvalCases(
   markdown: string,
 ): RewriteEmailEvalCase[] {
   const headerPattern = /^### Case (\d{3}) - (.+)$/gm;
   const headers = [...markdown.matchAll(headerPattern)];
 
-  return headers.map((header, index) => {
+  const cases = headers.map((header, index) => {
     const caseNumber = Number(header[1]);
     const title = header[2].trim();
     const bodyStart = (header.index ?? 0) + header[0].length;
@@ -94,6 +226,7 @@ export function parseRewriteEmailEvalCases(
       index + 1 < headers.length ? headers[index + 1].index ?? markdown.length : markdown.length;
     const body = markdown.slice(bodyStart, bodyEnd);
     const fields = new Map<string, string>();
+    const sections = parseSections(body, caseNumber);
 
     for (const line of body.split(/\r?\n/)) {
       const match = line.match(/^- ([a-z_]+):\s*(.*)$/);
@@ -102,36 +235,54 @@ export function parseRewriteEmailEvalCases(
       }
     }
 
-    for (const field of REQUIRED_FIELDS) {
+    for (const field of REQUIRED_INLINE_FIELDS) {
       readField(fields, field, caseNumber);
     }
 
     const category = readField(fields, "category", caseNumber);
+    const inputDraft = readSection(sections, "input_draft", caseNumber);
+    const tonePreset = parseTonePreset(
+      readField(fields, "tone_preset", caseNumber),
+      caseNumber,
+    );
 
-    return {
+    const sample: RewriteEmailEvalCase = {
       caseNumber,
       title,
       id: readField(fields, "id", caseNumber),
       category,
+      sourceType: parseSourceType(readField(fields, "source_type", caseNumber), caseNumber),
       riskTags: readField(fields, "risk_tags", caseNumber)
         .split(",")
         .map((tag) => tag.trim())
         .filter(Boolean),
-      scenario: scenarioForCategory(category),
-      tonePreset: toneForCategory(category),
-      messageToReplyTo: readField(fields, "message_to_reply_to", caseNumber),
-      roughDraftReply: readField(fields, "rough_draft_reply", caseNumber),
-      audience: readField(fields, "audience", caseNumber),
-      purpose: readField(fields, "purpose", caseNumber),
-      whatHappened: readField(fields, "what_actually_happened", caseNumber),
-      factsToPreserve: readField(fields, "facts_to_preserve", caseNumber),
-      expectedRewriteChallenges: readField(
-        fields,
+      tonePreset,
+      inputWordCountBand: readField(fields, "input_word_count_band", caseNumber),
+      inputDraft,
+      whatHappened: readSection(sections, "what_actually_happened", caseNumber),
+      mustKeep: readListSection(sections, "must_keep", caseNumber),
+      mustNotClaim: readListSection(sections, "must_not_claim", caseNumber),
+      rewriteQualityTargets: readSection(
+        sections,
+        "rewrite_quality_targets",
+        caseNumber,
+      ),
+      expectedRewriteChallenges: readSection(
+        sections,
         "expected_rewrite_challenges",
         caseNumber,
       ),
     };
+
+    assertCaseLists(sample);
+    assertInputDraftWordCount(sample);
+    assertNoBannedSubstrings(body, `Case ${caseNumber}`);
+
+    return sample;
   });
+
+  assertSequentialCaseNumbers(cases);
+  return cases;
 }
 
 export function selectRewriteEmailEvalCases(
@@ -143,45 +294,118 @@ export function selectRewriteEmailEvalCases(
   return cases.slice(0, Math.min(limit, cases.length));
 }
 
-function isForbiddenClaimExpectation(value: string) {
-  return /^\s*(?:do not|don't)\s+(?:offer|promise|imply|guess|mention|send revised quote|make me sound|state|say)\b/i.test(
-    value,
-  );
+function parseMarkdownTableRow(line: string) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) {
+    return null;
+  }
+
+  const cells = trimmed
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => cell.trim());
+
+  if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) {
+    return null;
+  }
+
+  return cells;
 }
 
-export function factsToPreserveExpectations(
-  value: string,
-): FactsToPreserveExpectations {
-  const expectedFacts: string[] = [];
-  const forbiddenClaims: string[] = [];
+function splitCommaList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
-  for (const item of value.split(/(?<=\.)\s+/)) {
-    const trimmed = item.trim();
-    if (!trimmed) {
+export function parseRewriteEmailEvalCasePlan(
+  markdown: string,
+): RewriteEmailEvalCasePlanRow[] {
+  const rows: RewriteEmailEvalCasePlanRow[] = [];
+  let headers: string[] | null = null;
+
+  for (const line of markdown.split(/\r?\n/)) {
+    const cells = parseMarkdownTableRow(line);
+    if (!cells) {
       continue;
     }
 
-    if (isForbiddenClaimExpectation(trimmed)) {
-      forbiddenClaims.push(trimmed);
-    } else {
-      expectedFacts.push(trimmed);
+    if (cells[0] === "case") {
+      headers = cells;
+      continue;
+    }
+
+    if (!headers || cells.length !== headers.length || !/^\d{3}$/.test(cells[0])) {
+      continue;
+    }
+
+    const row = new Map(headers.map((header, index) => [header, cells[index] ?? ""]));
+    const caseNumber = Number(row.get("case"));
+    const tonePreset = parseTonePreset(row.get("tone_preset") ?? "", caseNumber);
+
+    rows.push({
+      caseNumber,
+      id: row.get("id") ?? "",
+      category: row.get("category") ?? "",
+      sourceType: parseSourceType(row.get("source_type") ?? "", caseNumber),
+      wordBand: row.get("word_band") ?? "",
+      primaryFailureMode: row.get("primary_failure_mode") ?? "",
+      secondaryFailureMode: row.get("secondary_failure_mode") ?? "",
+      mustIncludeFactTypes: splitCommaList(row.get("must_include_fact_types") ?? ""),
+      riskTags: splitCommaList(row.get("risk_tags") ?? ""),
+      complexity: row.get("complexity") ?? "",
+      tonePreset,
+    });
+  }
+
+  if (rows.length !== 100) {
+    throw new Error(`Case plan must contain exactly 100 rows; found ${rows.length}.`);
+  }
+
+  rows.forEach((row, index) => {
+    const expectedCaseNumber = index + 1;
+    const expectedId = `rewrite-draft-${String(expectedCaseNumber).padStart(3, "0")}`;
+    if (row.caseNumber !== expectedCaseNumber || row.id !== expectedId) {
+      throw new Error(
+        `Case plan row ${index + 1} must be ${expectedId}; found ${row.id}.`,
+      );
+    }
+  });
+
+  return rows;
+}
+
+export function validateRewriteEmailEvalCorpus(markdown: string) {
+  const plan = parseRewriteEmailEvalCasePlan(markdown);
+  const cases = parseRewriteEmailEvalCases(markdown);
+  const plannedIds = new Set(plan.map((row) => row.id));
+
+  for (const sample of cases) {
+    if (!plannedIds.has(sample.id)) {
+      throw new Error(`Materialized case ${sample.id} is not present in the case plan.`);
     }
   }
 
-  return { expectedFacts, forbiddenClaims };
+  assertNoBannedSubstrings(markdown, "Corpus");
+
+  return {
+    planRows: plan.length,
+    materializedCases: cases.length,
+  };
 }
 
 export function rewriteEmailEvalCaseToRequestInput(
   sample: RewriteEmailEvalCase,
 ): RewriteRequestInput {
   return {
-    scenario: sample.scenario,
-    messageToReplyTo: sample.messageToReplyTo,
-    roughDraftReply: sample.roughDraftReply,
-    audience: sample.audience,
-    purpose: sample.purpose,
-    whatHappened: sample.whatHappened,
-    factsToPreserve: sample.factsToPreserve,
+    scenario: "General reply",
+    messageToReplyTo: "",
+    roughDraftReply: sample.inputDraft,
+    audience: "",
+    purpose: "",
+    whatHappened: "",
+    factsToPreserve: "",
     tone: tonePresetToTone(sample.tonePreset),
     tonePreset: sample.tonePreset,
   };
