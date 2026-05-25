@@ -1,11 +1,13 @@
-import { optionalEnv } from "../env";
-import { createId, getSql } from "../db";
 import { normalizeRewriteRequestFailureReason } from "../rewrite-failure-reasons";
 import type { FactReconstructQualityError } from "../rewrite-pipeline/pipeline";
 import type { RewriteResponsePayload } from "../rewrite-types";
 import type { RewriteRequestInput } from "../validation";
 import type { ProviderCallTelemetry } from "./rewrite-cost";
 import { summarizeProviderCalls } from "./rewrite-cost";
+
+function createId(): string {
+  return crypto.randomUUID();
+}
 
 export type RewriteCostLogStatus =
   | "success"
@@ -152,171 +154,4 @@ export function createRewriteTelemetryCollector({
       };
     },
   };
-}
-
-export function serializeRewriteCostLog(log: RewriteCostLogInsert) {
-  return {
-    ...log,
-    providerCallsJson: JSON.stringify(log.providerCalls),
-    modelsUsedJson: log.modelsUsedJson,
-  };
-}
-
-function isCostLoggingEnabled() {
-  return optionalEnv("REWRITE_COST_LOG_ENABLED", "true") !== "false";
-}
-
-export async function persistRewriteCostLog(log: RewriteCostLogInsert) {
-  if (!isCostLoggingEnabled()) {
-    return null;
-  }
-
-  const sql = getSql();
-
-  await sql.transaction((txn) => [
-    txn`
-      INSERT INTO "RewriteCostLog" (
-        "id",
-        "userId",
-        "learningSampleId",
-        "requestId",
-        "strategyVersion",
-        "scenario",
-        "tonePreset",
-        "status",
-        "errorCode",
-        "startedAt",
-        "finishedAt",
-        "durationMs",
-        "inputCharCount",
-        "draftWordCount",
-        "rewriteWordCount",
-        "draftAiLikePercent",
-        "rewriteAiLikePercent",
-        "changePoints",
-        "internalStrategies",
-        "repairCandidates",
-        "rejectedCandidates",
-        "usedEscalation",
-        "openAiInputTokens",
-        "openAiOutputTokens",
-        "openAiCostUsd",
-        "saplingCallCount",
-        "saplingCharacters",
-        "saplingCostUsd",
-        "totalEstimatedCostUsd",
-        "modelsUsedJson",
-        "providerCallsJson",
-        "createdAt",
-        "updatedAt"
-      )
-      VALUES (
-        ${log.id},
-        ${log.userId},
-        ${log.learningSampleId},
-        ${log.requestId},
-        ${log.strategyVersion},
-        ${log.scenario},
-        ${log.tonePreset},
-        ${log.status},
-        ${log.errorCode},
-        ${log.startedAt},
-        ${log.finishedAt},
-        ${log.durationMs},
-        ${log.inputCharCount},
-        ${log.draftWordCount},
-        ${log.rewriteWordCount},
-        ${log.draftAiLikePercent},
-        ${log.rewriteAiLikePercent},
-        ${log.changePoints},
-        ${log.internalStrategies},
-        ${log.repairCandidates},
-        ${log.rejectedCandidates},
-        ${log.usedEscalation},
-        ${log.openAiInputTokens},
-        ${log.openAiOutputTokens},
-        ${log.openAiCostUsd},
-        ${log.saplingCallCount},
-        ${log.saplingCharacters},
-        ${log.saplingCostUsd},
-        ${log.totalEstimatedCostUsd},
-        ${log.modelsUsedJson},
-        ${log.providerCallsJson},
-        now(),
-        now()
-      )
-      ON CONFLICT ("requestId") DO UPDATE SET
-        "id" = EXCLUDED."id",
-        "status" = EXCLUDED."status",
-        "errorCode" = EXCLUDED."errorCode",
-        "finishedAt" = EXCLUDED."finishedAt",
-        "durationMs" = EXCLUDED."durationMs",
-        "draftAiLikePercent" = EXCLUDED."draftAiLikePercent",
-        "rewriteAiLikePercent" = EXCLUDED."rewriteAiLikePercent",
-        "changePoints" = EXCLUDED."changePoints",
-        "internalStrategies" = EXCLUDED."internalStrategies",
-        "repairCandidates" = EXCLUDED."repairCandidates",
-        "rejectedCandidates" = EXCLUDED."rejectedCandidates",
-        "usedEscalation" = EXCLUDED."usedEscalation",
-        "openAiInputTokens" = EXCLUDED."openAiInputTokens",
-        "openAiOutputTokens" = EXCLUDED."openAiOutputTokens",
-        "openAiCostUsd" = EXCLUDED."openAiCostUsd",
-        "saplingCallCount" = EXCLUDED."saplingCallCount",
-        "saplingCharacters" = EXCLUDED."saplingCharacters",
-        "saplingCostUsd" = EXCLUDED."saplingCostUsd",
-        "totalEstimatedCostUsd" = EXCLUDED."totalEstimatedCostUsd",
-        "modelsUsedJson" = EXCLUDED."modelsUsedJson",
-        "providerCallsJson" = EXCLUDED."providerCallsJson",
-        "updatedAt" = now()
-    `,
-    txn`
-      DELETE FROM "RewriteProviderCall"
-      WHERE "costLogId" = ${log.id}
-    `,
-    ...log.providerCalls.map((call) => txn`
-      INSERT INTO "RewriteProviderCall" (
-        "id",
-        "costLogId",
-        "provider",
-        "role",
-        "model",
-        "inputTokens",
-        "outputTokens",
-        "characters",
-        "estimatedCostUsd",
-        "latencyMs",
-        "success",
-        "errorCode",
-        "createdAt"
-      )
-      VALUES (
-        ${createId()},
-        ${log.id},
-        ${call.provider},
-        ${call.role},
-        ${call.model ?? null},
-        ${call.inputTokens ?? null},
-        ${call.outputTokens ?? null},
-        ${call.characters ?? null},
-        ${call.estimatedCostUsd},
-        ${call.latencyMs ?? null},
-        ${call.success},
-        ${call.errorCode ?? null},
-        now()
-      )
-    `),
-  ]);
-
-  return log.id;
-}
-
-export async function tryPersistRewriteCostLog(log: RewriteCostLogInsert) {
-  try {
-    return await persistRewriteCostLog(log);
-  } catch (error) {
-    console.warn("rewrite_cost_log_failed", {
-      message: error instanceof Error ? error.message.slice(0, 180) : "Unknown",
-    });
-    return null;
-  }
 }
