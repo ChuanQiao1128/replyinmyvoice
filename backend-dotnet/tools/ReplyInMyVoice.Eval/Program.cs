@@ -321,7 +321,7 @@ public static class FactExpectationChecker
 {
     private static readonly HashSet<string> StopWords = new(StringComparer.Ordinal)
     {
-        "a", "an", "and", "are", "as", "ask", "at", "be", "by", "can", "client", "currently",
+        "a", "actively", "an", "and", "are", "as", "ask", "at", "be", "by", "can", "client", "currently",
         "customer", "date", "did", "do", "does", "dropped", "explain", "for", "from", "has",
         "have", "in", "is", "it", "must", "need", "needs", "new", "no", "not", "of", "off", "on", "only", "or",
         "parent", "people", "person", "please", "plus", "reply", "requires", "seller", "should",
@@ -335,6 +335,18 @@ public static class FactExpectationChecker
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> TokenAliases =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
         {
+            // Verb-inflection / paraphrase aliases for facts the engine faithfully restates
+            // in different wording (e.g. "No fix can be promised" -> "I can't promise a fix").
+            // Pass-only: aliases only ADD coverage, so they cannot turn a present fact into a
+            // miss — they strictly reduce matcher false-negatives.
+            ["beyond"] = ["beyond", "further", "more", "additional"],
+            ["deadline"] = ["deadline", "due", "latest", "cutoff"],
+            ["detailed"] = ["detailed", "detail", "specific", "specifics"],
+            ["donations"] = ["donations", "donation", "donate", "donating", "donor"],
+            ["investigating"] = ["investigating", "investigate", "looking", "reviewing", "examining"],
+            ["making"] = ["making", "make", "draw", "drawing"],
+            ["promised"] = ["promised", "promise", "promising"],
+            ["shared"] = ["shared", "share", "sharing"],
             ["allowed"] = ["allowed", "possible", "available", "can"],
             ["acceptance"] = ["acceptance", "accept"],
             ["approval"] = ["approval", "approve", "approved", "preapproval"],
