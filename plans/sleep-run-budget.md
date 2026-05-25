@@ -43,4 +43,6 @@ Running total: NZ$~12–23 (est). OVER the NZ$20 soft cap (user authorized "略�
 2026-05-25T16:00:00+1200 | csharp-eval-100-baseline | DeepSeek+Sapling | USD ~$1-3 est | NZ$~2-5 est | full 100 ran (10/10 shards). Raw customerUsable 38/100 — established to be an EVAL artifact (matcher false-neg + forbidden false-pos), not engine quality.
 2026-05-25T16:03:00+1200 | dense-rerun-attempts10 | DeepSeek+Sapling | USD ~$0.3-0.7 est | NZ$~0.5-1.2 est | 7 dense/failed cases re-run at attempts=10 (real-vs-budget + gate-port validation). modelCalls ~31+21.
 2026-05-25T16:05:00+1200 | rescore-after-eval-fix | none | USD $0 | NZ$0 | re-scored SAVED outputs with fixed matcher+screen: customerUsable 38→85, factPass 48→89, forbiddenViol 14→4. Zero model calls.
-Running total (2026-05-26 window): NZ$~3-9 est. Under NZ$20 cap.
+2026-05-26T10:00:00+1200 | gate-fix-confirm-3case | DeepSeek+Sapling | USD ~$0.03 | NZ$~0.05 | 061/082/078 at attempts=10 confirming the certainty-drift "appear" fix: 082 dead→usable, 061 dead→engine-success+facts-true (residual forbidden = eval FP), 078 no regression. 3 model + 6 Sapling calls.
+2026-05-26T10:05:00+1200 | gate-fix-full100 | launch | USD $0 | NZ$0 | full 100, C# engine WITH certainty-drift fix, 10x10 / 2 waves of 5, EVAL_MAX_ATTEMPTS=10 (prod fidelity, stricter no-regression check); est NZ$3-7.
+Running total (2026-05-26 window): NZ$~3-9 est (pre-full100). Under NZ$20 cap; full-100 will add ~NZ$3-7.

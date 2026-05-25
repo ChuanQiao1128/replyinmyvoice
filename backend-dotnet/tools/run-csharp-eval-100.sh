@@ -31,7 +31,7 @@ shard_ids() {
 
 run_shard() {
   local k=$1
-  EVAL_MAX_ATTEMPTS=4 \
+  EVAL_MAX_ATTEMPTS="${EVAL_MAX_ATTEMPTS:-4}" \
   EVAL_CASES_PATH="$CORPUS" \
   EVAL_CASE_IDS="$(shard_ids "$k")" \
   EVAL_OUTPUT_DIR="$OUTROOT/worker-$k" \

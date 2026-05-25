@@ -314,4 +314,79 @@ public sealed class RewriteEngineCoreTests
         result.FailureKinds.Should().Contain(RewriteFailureKind.PolicyIntentDrift);
         result.Reasons.Should().Contain(reason => reason.Contains("uncertain", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void FactGate_allows_future_visibility_will_appear_against_invoice()
+    {
+        // Regression for eval case 082. "the credit will appear against invoice" is a certain
+        // future-visibility statement, not an uncertain claim. Faithfully preserving it must not
+        // be read as strengthening an uncertain source claim. (Before the fix, "appear" counted
+        // as an uncertainty marker, so this faithful billing sentence was wrongly rejected.)
+        var ledger = new RewriteFactLedger(new[]
+        {
+            new RewriteFact(
+                "f1",
+                "the credit will appear against invoice INV-20741",
+                "factsToPreserve",
+                RewriteFactImportance.Critical,
+                RewriteFactCategory.Condition,
+                CanBeRephrased: true),
+        });
+
+        var result = RewriteFactGate.Check(
+            "I have applied the credit, and you will see it listed against invoice INV-20741 on your next statement.",
+            ledger);
+
+        result.Passed.Should().BeTrue();
+        result.FailureKinds.Should().NotContain(RewriteFailureKind.PolicyIntentDrift);
+    }
+
+    [Fact]
+    public void FactGate_allows_should_appear_on_statement_visibility()
+    {
+        // Regression for eval case 061. "the refund should appear on your statement" is certain
+        // future visibility, not a hedge — preserving it must not trip the certainty-drift gate.
+        var ledger = new RewriteFactLedger(new[]
+        {
+            new RewriteFact(
+                "f1",
+                "the refund should appear on your statement within 2 business days",
+                "factsToPreserve",
+                RewriteFactImportance.Critical,
+                RewriteFactCategory.Condition,
+                CanBeRephrased: true),
+        });
+
+        var result = RewriteFactGate.Check(
+            "The refund was issued, and your statement will reflect it within 2 business days.",
+            ledger);
+
+        result.Passed.Should().BeTrue();
+        result.FailureKinds.Should().NotContain(RewriteFailureKind.PolicyIntentDrift);
+    }
+
+    [Fact]
+    public void FactGate_still_blocks_epistemic_appears_to_be_strengthening()
+    {
+        // Guard the other direction: the epistemic sense of "appears" ("appears to be X") is still
+        // an uncertainty marker, so strengthening it into a definite claim ("is X") is still caught.
+        var ledger = new RewriteFactLedger(new[]
+        {
+            new RewriteFact(
+                "f1",
+                "the outage appears to be caused by a misconfigured load balancer",
+                "factsToPreserve",
+                RewriteFactImportance.Critical,
+                RewriteFactCategory.Condition,
+                CanBeRephrased: true),
+        });
+
+        var result = RewriteFactGate.Check(
+            "The outage is caused by a misconfigured load balancer on our side.",
+            ledger);
+
+        result.Passed.Should().BeFalse();
+        result.FailureKinds.Should().Contain(RewriteFailureKind.PolicyIntentDrift);
+        result.Reasons.Should().Contain(reason => reason.Contains("uncertain", StringComparison.OrdinalIgnoreCase));
+    }
 }
