@@ -156,4 +156,36 @@ public class RewriteEvalHarnessTests
                 naturalnessThreshold: 40)
             .Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("The recipient is Ren.", "Hi Ren, I need to move our appointment.")]
+    [InlineData("The account is Northstar.", "Thanks again for the call about the Northstar rollout.")]
+    [InlineData("The candidate is Alina.", "Hi Alina, thank you for meeting with the product team.")]
+    [InlineData("The order identifier is ORD-66120.", "I looked into order ORD-66120 this morning.")]
+    [InlineData("The invoice INV-8842 was for $186.00.", "I reviewed invoice INV-8842 for $186.00.")]
+    public void FactChecker_matches_declarative_facts_via_anchors(string fact, string rewrite)
+    {
+        // These were false-negatives before the anchor-first matcher fix (2026-05-26 baseline).
+        FactExpectationChecker.Check(rewrite, new[] { fact }).Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void FactChecker_still_fails_a_genuinely_absent_fact()
+    {
+        FactExpectationChecker.Check(
+                "Hi Ren, your appointment is set.",
+                new[] { "The order identifier is ORD-99999." })
+            .Passed.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ForbiddenScreen_does_not_flag_negated_refund_in_policy_text()
+    {
+        // The 2026-05-26 baseline false-flagged these; sentence-level negation now clears them.
+        var result = ForbiddenClaimScreen.Check(
+            "I cannot issue a cash refund for both items; our policy allows a replacement, not a direct refund.",
+            new[] { "Do not promise a cash refund." });
+
+        result.Violations.Should().BeEmpty();
+    }
 }

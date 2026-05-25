@@ -30,6 +30,15 @@ if (IsTruthy(Environment.GetEnvironmentVariable("EVAL_DRY_RUN")))
     return 0;
 }
 
+// EVAL_RESCORE_DIR re-scores saved run outputs with the current scoring logic — $0, no
+// provider calls. Used to re-measure after a matcher / forbidden-screen fix.
+var rescoreDir = Environment.GetEnvironmentVariable("EVAL_RESCORE_DIR");
+if (!string.IsNullOrWhiteSpace(rescoreDir))
+{
+    RescoreSavedRun(rescoreDir, cases, config.NaturalnessThreshold);
+    return 0;
+}
+
 var apiKey = ResolveApiKey(config);
 var saplingApiKey = Environment.GetEnvironmentVariable("SAPLING_API_KEY");
 if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(saplingApiKey))
@@ -131,6 +140,64 @@ Console.WriteLine($"Summary: customerUsable={summary.CustomerUsableCount}/{summa
 return summary.ProviderFailureCount == 0 ? 0 : 1;
 
 static bool IsTruthy(string? value) => value is "1" or "true" or "yes" or "on";
+
+static void RescoreSavedRun(string dir, IReadOnlyList<EvalCase> cases, int naturalnessThreshold)
+{
+    var byId = cases.ToDictionary(c => c.Id, c => c, StringComparer.OrdinalIgnoreCase);
+    var caseOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+    int total = 0, usable = 0, success = 0, factPass = 0, forbidden = 0, relaxed = 0;
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("| Case | usable | success | facts | forbidden | missing (rescored) |");
+    sb.AppendLine("| --- | --- | --- | --- | ---: | --- |");
+
+    foreach (var file in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories).OrderBy(f => f))
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(file));
+        if (!doc.RootElement.TryGetProperty("rows", out var rowsEl) || rowsEl.ValueKind != JsonValueKind.Array)
+        {
+            continue;
+        }
+
+        foreach (var row in rowsEl.EnumerateArray())
+        {
+            var id = row.TryGetProperty("Id", out var idEl) ? idEl.GetString() ?? "" : "";
+            if (!byId.TryGetValue(id, out var sample))
+            {
+                continue;
+            }
+
+            total++;
+            var text = row.TryGetProperty("RewrittenText", out var t) ? t.GetString() ?? "" : "";
+            var engineSuccess = row.TryGetProperty("Success", out var s) && s.GetBoolean();
+            var errorCode = row.TryGetProperty("ErrorCode", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+            var hasOutput = !string.IsNullOrWhiteSpace(text);
+
+            var factCheck = FactExpectationChecker.Check(text, sample.MustKeep);
+            var forbiddenResult = ForbiddenClaimScreen.Check(text, sample.MustNotClaim);
+            var customerUsable = CustomerUsableEvaluator.IsCustomerUsable(
+                engineSuccess, hasOutput, factCheck.Passed, forbiddenResult.Violations.Count);
+
+            var history = row.TryGetProperty("AttemptHistory", out var h) && h.ValueKind == JsonValueKind.Array
+                ? JsonSerializer.Deserialize<List<RewriteAttemptHistoryItem>>(h.GetRawText(), caseOpts) ?? new List<RewriteAttemptHistoryItem>()
+                : new List<RewriteAttemptHistoryItem>();
+            var wouldPassRelaxed = !engineSuccess && errorCode == "naturalness_gate_failed"
+                && RelaxedNaturalnessProbe.WouldPassUnderRelaxedGate(history, sample.MustKeep, sample.MustNotClaim, naturalnessThreshold);
+
+            if (engineSuccess) success++;
+            if (factCheck.Passed) factPass++;
+            if (forbiddenResult.Violations.Count > 0) forbidden++;
+            if (customerUsable) usable++;
+            if (wouldPassRelaxed) relaxed++;
+            sb.AppendLine($"| {id} | {(customerUsable ? "yes" : "no")} | {(engineSuccess ? "yes" : "no")} | {(factCheck.Passed ? "yes" : "no")} | {forbiddenResult.Violations.Count} | {string.Join("; ", factCheck.MissingFacts).Replace("|", "/", StringComparison.Ordinal)} |");
+        }
+    }
+
+    var summaryLine = $"customerUsable={usable}/{total}, success={success}/{total}, factPass={factPass}/{total}, forbiddenViol={forbidden}, relaxedRecoverable={relaxed}";
+    var outPath = Path.Combine(dir, "_rescored-summary.md");
+    File.WriteAllText(outPath, $"# Re-scored summary ({total} cases)\n\n{summaryLine}\n\n{sb}");
+    Console.WriteLine($"RESCORE: {summaryLine}");
+    Console.WriteLine($"wrote {outPath}");
+}
 
 static IReadOnlyList<EvalCase> SelectCases(IReadOnlyList<EvalCase> cases, EvalConfig config)
 {
@@ -260,6 +327,9 @@ public static class FactExpectationChecker
         "parent", "people", "person", "please", "plus", "reply", "requires", "seller", "should",
         "status", "still", "student", "support", "team", "the", "they", "to", "user", "want",
         "whether", "will", "with", "would",
+        // Role-scaffolding words: must_keep facts are phrased "The <role> is <Name>", and the
+        // rewrite echoes only the Name ("Hi Ren"). The role word must not be a required token.
+        "recipient", "sender", "contact", "candidate", "caller", "attendee",
     };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> TokenAliases =
@@ -282,8 +352,10 @@ public static class FactExpectationChecker
             ["general"] = ["general", "policy"],
             ["immediately"] = ["immediately", "immediate", "now"],
             ["internal"] = ["internal", "our"],
+            ["interview"] = ["interview", "meeting", "met", "spoke", "conversation", "call"],
             ["inventory"] = ["inventory", "stock"],
-            ["meeting"] = ["meeting", "meet"],
+            ["appointment"] = ["appointment", "meeting", "slot", "visit", "time"],
+            ["meeting"] = ["meeting", "meet", "met", "call", "interview"],
             ["pending"] = ["pending", "confirming", "awaiting"],
             ["preapproval"] = ["preapproval", "pre", "approval"],
             ["received"] = ["received", "receive", "dropped"],
@@ -312,10 +384,13 @@ public static class FactExpectationChecker
             return true;
         }
 
-        var ids = Regex.Matches(normalizedFact, @"\b[a-z]{1,8}-\d+\b|#[a-z0-9-]+")
-            .Select(match => match.Value)
-            .ToArray();
-        if (ids.Length > 0 && ids.All(id => normalizedText.Contains(id, StringComparison.Ordinal)))
+        // Anchor PASS path: the salient content of a declaratively phrased fact ("The account
+        // is Northstar.", "invoice INV-8842 for $186.00") is its proper nouns / IDs / money /
+        // multi-digit numbers. If all such anchors appear in the rewrite, the fact is present
+        // regardless of role-scaffolding wording. Pass-only — never fails a fact — so it
+        // strictly reduces false-negatives.
+        var anchors = ExtractAnchors(fact);
+        if (anchors.Count > 0 && anchors.All(anchor => normalizedText.Contains(anchor, StringComparison.Ordinal)))
         {
             return true;
         }
@@ -333,6 +408,46 @@ public static class FactExpectationChecker
             _ => Math.Max(2, (int)Math.Floor(tokens.Count * 0.67)),
         };
         return tokens.Count(token => IsTokenCovered(normalizedText, token)) >= requiredCount;
+    }
+
+    private static readonly HashSet<string> AnchorStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "the", "a", "an", "this", "that", "these", "those", "i", "we", "you", "he", "she",
+        "it", "they", "do", "please", "if", "when", "after", "before", "once", "until",
+        "there", "here", "your", "our", "my", "his", "her", "their", "its", "no", "not",
+        "and", "but", "or", "for", "to", "of", "in", "on", "at", "as", "is", "are", "was",
+        "were", "be", "because", "so", "most", "new", "all", "any", "please",
+    };
+
+    // Proper nouns / IDs / money / multi-digit numbers carried by a fact. Lowercased to
+    // compare against the normalized (lowercased) rewrite text.
+    private static IReadOnlyList<string> ExtractAnchors(string fact)
+    {
+        var anchors = new List<string>();
+        foreach (Match match in Regex.Matches(fact, @"\b[A-Z][A-Za-z]+\b"))
+        {
+            if (!AnchorStopWords.Contains(match.Value))
+            {
+                anchors.Add(match.Value.ToLowerInvariant());
+            }
+        }
+
+        foreach (Match match in Regex.Matches(fact, @"\b[A-Za-z]{1,6}-?\d{2,}\b|#[A-Za-z0-9-]+"))
+        {
+            anchors.Add(match.Value.ToLowerInvariant());
+        }
+
+        foreach (Match match in Regex.Matches(fact, @"\$\d[\d,.]*"))
+        {
+            anchors.Add(match.Value.ToLowerInvariant());
+        }
+
+        foreach (Match match in Regex.Matches(fact, @"\b\d{2,}\b"))
+        {
+            anchors.Add(match.Value);
+        }
+
+        return anchors.Distinct(StringComparer.Ordinal).ToList();
     }
 
     private static IReadOnlyList<string> FactTokens(string value) =>

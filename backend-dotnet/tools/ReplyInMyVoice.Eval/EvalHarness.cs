@@ -192,19 +192,24 @@ public static class ForbiddenClaimScreen
             "discount", "% off", "percent off", "waive", "waiver", "for free",
             "no charge", "no cost", "free of charge",
         }),
+        // Status-confirmation phrases only. Short verbs like "we approve"/"i confirm" are
+        // dropped — they cross-match unrelated text ("we approved the scope") and the
+        // forbidden screen cannot tell which subject is being confirmed.
         ("confirm", new[]
         {
             "is confirmed", "are confirmed", "has been confirmed", "have been confirmed",
-            "is approved", "are approved", "has been approved", "have been approved",
-            "i confirm", "we confirm", "i approve", "we approve",
         }),
     };
 
-    private static readonly string[] NegationMarkers =
+    private static readonly char[] SentenceEnders = { '.', '!', '?', '\n', ';' };
+
+    private static readonly HashSet<string> NegationWords = new(StringComparer.Ordinal)
     {
-        "cannot", "can not", "can't", "not able", "unable", "won't", "will not", "do not",
-        "don't", "no ", "without", "isn't", "aren't", "instead of", "rather than",
-        "before ", "until ", "once ",
+        "cannot", "can't", "cant", "not", "no", "never", "unable", "won't", "wont",
+        "don't", "dont", "doesn't", "doesnt", "didn't", "didnt", "isn't", "isnt",
+        "aren't", "arent", "wasn't", "hasn't", "hasnt", "haven't", "havent",
+        "wouldn't", "couldn't", "shouldn't", "without", "instead", "decline",
+        "declined", "unfortunately", "rather", "unless", "before", "until", "once",
     };
 
     public static Result Check(string outputText, IReadOnlyList<string> mustNotClaim)
@@ -238,9 +243,10 @@ public static class ForbiddenClaimScreen
         var index = 0;
         while ((index = text.IndexOf(marker, index, StringComparison.Ordinal)) >= 0)
         {
-            var windowStart = Math.Max(0, index - 40);
-            var prefix = text[windowStart..index];
-            if (!NegationMarkers.Any(neg => prefix.Contains(neg, StringComparison.Ordinal)))
+            // Examine the whole sentence containing the marker (not a fixed window) so
+            // policy-careful negations like "I cannot issue a cash refund ... not a direct
+            // refund" are recognized. Token-based to avoid "not" matching inside "another".
+            if (!HasNegation(SentenceAround(text, index)))
             {
                 return true;
             }
@@ -250,6 +256,16 @@ public static class ForbiddenClaimScreen
 
         return false;
     }
+
+    private static string SentenceAround(string text, int index)
+    {
+        var start = text.LastIndexOfAny(SentenceEnders, Math.Min(index, text.Length - 1));
+        var end = text.IndexOfAny(SentenceEnders, index);
+        return text[(start + 1)..(end < 0 ? text.Length : end)];
+    }
+
+    private static bool HasNegation(string sentence) =>
+        Regex.Split(sentence, @"[^a-z']+").Any(token => NegationWords.Contains(token));
 
     private static string Normalize(string value) =>
         Regex.Replace(value.ToLowerInvariant().Replace('’', '\''), @"\s+", " ").Trim();

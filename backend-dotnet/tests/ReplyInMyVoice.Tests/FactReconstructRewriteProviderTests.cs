@@ -195,6 +195,28 @@ public sealed class FactReconstructRewriteProviderTests
         model.CallCount.Should().Be(2);
     }
 
+    [Fact]
+    public async Task RewriteAsync_accepts_rewrite_at_threshold_when_draft_is_already_clean()
+    {
+        // Draft already human (10%), rewrite 30% — above the draft but at/under the 40
+        // threshold. The old rewrite<=draft rule failed this; the relaxed rule accepts it
+        // (the case-078 class of recoverable naturalness failures from the 2026-05-26 eval).
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult("Hi Jordan,\n\nThe NZD $200 invoice preview is from the three contractor seats added on May 3. I will not change the account unless you confirm, and I can review it before Friday.", true, null));
+        var signal = new QueueWritingSignalClient(
+            new WritingSignalResult(true, 10, null),
+            new WritingSignalResult(true, 30, null));
+        var provider = new FactReconstructRewriteProvider(
+            model,
+            signal,
+            new FactReconstructRewriteOptions(RequestedMaxAttempts: 1));
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), ValidRequest(), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.ErrorCode.Should().BeNull();
+    }
+
     private static RewriteRequest ValidRequest() =>
         new(
             "Jordan asked whether the NZD $200 invoice preview can be changed by Friday.",
