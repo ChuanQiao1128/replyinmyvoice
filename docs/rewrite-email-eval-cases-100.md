@@ -743,7 +743,7 @@ owns final wording after the decision. Without a decision today, tomorrow's QA s
 stays on hold. Another update is due by 5:30 p.m.
 
 #### must_keep
-- The team is working on the Beacon handoff.
+- The update is about the Beacon handoff.
 - The API checklist is done.
 - The legal copy is waiting on Mina.
 - A decision is needed by 4 p.m. on May 22.

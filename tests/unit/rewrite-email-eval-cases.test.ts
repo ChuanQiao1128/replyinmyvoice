@@ -94,6 +94,18 @@ describe("rewrite email eval corpus parser", () => {
     }
   });
 
+  it("treats Beacon handoff as a context anchor, not an invented work-state claim", () => {
+    const cases = parseRewriteEmailEvalCases(markdown);
+    const beaconCase = cases.find((sample) => sample.id === "rewrite-draft-013");
+
+    expect(beaconCase?.mustKeep).toContain(
+      "The update is about the Beacon handoff.",
+    );
+    expect(beaconCase?.mustKeep).not.toContain(
+      "The team is working on the Beacon handoff.",
+    );
+  });
+
   it("validates corpus plan and materialized draft cases", () => {
     expect(validateRewriteEmailEvalCorpus(markdown)).toEqual({
       planRows: 100,

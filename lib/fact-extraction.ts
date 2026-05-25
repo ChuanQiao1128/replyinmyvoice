@@ -582,9 +582,30 @@ function constraintPolarityPreserved(factText: string, rewritten: string) {
   return true;
 }
 
+function optionalBringFactPresent(factText: string, rewritten: string) {
+  const match = factText.match(
+    /\b(?:participants|families|students|parents|attendees|you)?\s*(?:may|can)\s+still\s+bring\s+(.+?)(?:\s+if\b|\s+for\b|$)/,
+  );
+  const broughtItem = match?.[1]?.trim();
+
+  if (!broughtItem || !rewritten.includes(broughtItem)) {
+    return false;
+  }
+
+  return (
+    /\bstill\s+(?:welcome|allowed)\b/.test(rewritten) ||
+    /\b(?:may|can)\s+still\s+bring\b/.test(rewritten) ||
+    /\bwelcome\s+to\s+bring\b/.test(rewritten)
+  );
+}
+
 function constraintFactPresent(factText: string, rewritten: string) {
   if (!constraintPolarityPreserved(factText, rewritten)) {
     return false;
+  }
+
+  if (optionalBringFactPresent(factText, rewritten)) {
+    return true;
   }
 
   const atoms = concreteConstraintAtoms(factText);

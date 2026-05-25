@@ -128,6 +128,21 @@ describe("extractRequiredFacts", () => {
     expect(personFacts).not.toContain("room");
   });
 
+  it("accepts still-welcome wording for optional bring facts", () => {
+    const input = draftOnly(
+      "Participants may still bring printed scholarship drafts if they want feedback during the session.",
+    );
+
+    const missing = missingRequiredFacts(
+      input,
+      "Printed scholarship drafts are still welcome.",
+    ).map((fact) => fact.normalizedText);
+
+    expect(missing).not.toContain(
+      "participants may still bring printed scholarship drafts if they want feedback during the session",
+    );
+  });
+
   it("extracts package-delay facts without treating There or generic support signoffs as hard facts", () => {
     const facts = extractRequiredFacts(
       draftOnly(

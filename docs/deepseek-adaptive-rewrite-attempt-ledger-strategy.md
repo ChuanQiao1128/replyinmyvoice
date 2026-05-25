@@ -250,6 +250,82 @@ Use staged evaluation:
 | focused | 40 | Targeted quality checks after strategy or gate changes. |
 | full | 100 | Required before push/deploy after major rewrite strategy changes. |
 
+Development reruns must use a classified three-layer strategy:
+
+1. Classify each failure before changing code or rerunning providers.
+2. Unit-test the new rule, gate, or restoration behavior first.
+3. Run a provider partial over the current failed case ids plus a small sentinel set
+   of 3-6 high-risk cases.
+4. If the partial passes, run one focused validation slice such as dev-20.
+5. If that full validation slice passes, stop and commit instead of starting another
+   full provider loop.
+6. If the full validation slice finds a new isolated failure, fix only a
+   generalizable issue, then return to a partial provider run before another full
+   validation slice.
+
+Do not run full dev-20 after every small patch. Full dev-20 is release validation
+for a patch set, not the default development loop. Use `--case-ids` to filter cases
+after mode selection while preserving `--limit` behavior:
+
+```bash
+EVAL_CORPUS=email-100 npx tsx scripts/eval-scenarios.ts \
+  --mode=focused \
+  --case-ids=rewrite-draft-006,rewrite-draft-017,rewrite-draft-002,rewrite-draft-005,rewrite-draft-008,rewrite-draft-009,rewrite-draft-012,rewrite-draft-013,rewrite-draft-020 \
+  --output=docs/eval-runs/single-input-dev-20-pipeline-fix-v5-partial.md \
+  --progress=docs/eval-runs/single-input-dev-20-pipeline-fix-v5-partial-progress.json \
+  --time-budget-ms=1800000
+```
+
+For the current dev-20 slice, the standing sentinel set is:
+
+```text
+rewrite-draft-002
+rewrite-draft-005
+rewrite-draft-008
+rewrite-draft-009
+rewrite-draft-012
+rewrite-draft-013
+rewrite-draft-020
+```
+
+Failure classification rules:
+
+| Class | Meaning | Required response |
+| --- | --- | --- |
+| Judge false positive | Final text preserves the fact, but the eval judge, deterministic checker, fragment gate, or forbidden-claim checker marks it wrong. | Add a judge/checker regression test, fix only the judge/checker, then run the failed case plus sentinels. Do not change rewrite prompts for this class. |
+| Rewrite fact drift | The source or reviewed ledger contains the fact, but the final rewrite drops, weakens, compresses, changes, or implies it instead of stating it. | Add a deterministic rewrite/finalizer/restoration unit regression before any provider rerun. Fix the generator, finalizer, restoration, or gate so the fact is explicit. Then run the failed case plus sentinels. |
+| Extraction or ledger miss | The source has the fact, but the extracted/reviewed ledger does not. | Add extraction/ledger tests and fix extraction or deterministic anchor merge before testing generation. |
+| Provider or infrastructure failure | Timeout, malformed JSON, rate limit, unavailable signal, or script crash. | Add resilience coverage for retry/fail-closed behavior and rerun only the interrupted case set after the unit test passes. |
+| Artifact ambiguity | The report does not show enough intermediate evidence to distinguish the classes above. | Improve eval logging before drawing conclusions. Do not keep rerunning providers to infer missing data. |
+
+For rewrite fact drift, prefer a small deterministic regression matrix over a
+single provider replay. Each newly observed phrasing should be captured in unit
+tests using the real source anchor and the compressed output shape. Current anchor
+examples include:
+
+```text
+product team -> Quick update on the Senior Support Lead role / panel enjoyed...
+Beacon handoff -> Quick update: The API checklist is done...
+photo shows damage -> damaged replacement item without explicit photo evidence
+sent release request at 10:15 a.m. -> Today's note is for 10:15 a.m.
+room unavailable -> scheduling option without the operational reason
+```
+
+Eval reports and progress checkpoints must include enough evidence for
+classification:
+
+1. Original source fields.
+2. Extracted facts.
+3. Reviewed or locked fact/constraint ledger.
+4. First candidate, repair/escalation candidates, and final selected rewrite.
+5. Missing facts, unsupported additions, forbidden-claim verdicts, fragment verdicts,
+   and quality notes.
+6. Attempt ledger entries with failure tags and selected next strategy.
+
+If extracted facts and reviewed ledger are not present in the artifact, record the
+failure as artifact ambiguity and add logging before using another full validation
+run as evidence.
+
 For each failed case, record:
 
 1. Case id and category.

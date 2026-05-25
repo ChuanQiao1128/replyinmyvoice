@@ -1,0 +1,1410 @@
+# Scenario Evaluation Results
+
+Date: 2026-05-25T12:27:42.239Z
+Eval mode: focused
+Strategy: adaptive_rewrite_orchestrator
+Naturalness threshold: 40%
+Cases evaluated: 4
+Selected case ids: rewrite-draft-008, rewrite-draft-009, rewrite-draft-017, rewrite-draft-013
+Draft-only cases: 4
+Measured cases: 4
+Long cases (300+ words): 0
+Long customer-support cases (300+ words): 0
+Average AI-like signal drop: 0 pts
+Rewrite below 50% AI-like signal: 4/4
+Final selected rewrites worse than draft: 0/4
+Quality-score measured cases: 4
+Quality-score improved cases: 4/4
+Quality regressions: 0/4
+Average quality-score delta: 1.5 pts
+Cases using targeted repair: 0/4
+Rejected candidate events: 0
+Fact preservation or unsupported-addition failures: 0
+Customer-usable pass count: 4/4
+Strict signal pass count: 4/4
+
+Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure or material quality regression is raised, and the selected rewrite is not worse than the draft when scores are available.
+Strict signal pass additionally requires scores available and: if the draft is above 40%, the final rewrite is at or below 40%; if the draft is already at or below 40%, the final rewrite does not raise the signal.
+
+## rewrite-draft-008
+
+Scenario: General reply
+Tone: Warm
+Input word count: 94
+Input character count: 505
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 0%
+First candidate AI-like signal: unavailable
+Repair candidate AI-like signal: unavailable
+Final selected AI-like signal: 0%
+Change: 0 pts
+Rejected candidate reasons: none
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Forbidden-claim violations: none
+Quality score before: 8
+Quality score after: 9
+Quality score delta: 1 pts
+Quality regression: no
+Quality notes: Original draft is clear and concise but lacks paragraph breaks, making it a dense block of text. | Rewrite adds line breaks and uses contractions ('I'm', 'can't'), improving structure and conversational tone without altering content or boundaries.
+Quality failure state: no
+Quality failure reason: none
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Fact diagnostics:
+
+Extracted facts:
+```json
+{
+  "recipient_name": "Nora",
+  "sender_name_or_role": "not stated",
+  "people_mentioned": [
+    "Eli",
+    "Dr. Chen"
+  ],
+  "main_purpose": "Update on lab report release status and next steps",
+  "key_facts": [
+    "Lab report from May 3 visit is marked received by the office",
+    "Report has not been released to the patient portal yet",
+    "Sender is not a clinician and cannot interpret results",
+    "Release request sent to Dr. Chen's queue today at 10:15 a.m.",
+    "Most release requests are reviewed within two business days",
+    "If Eli has new or worsening symptoms, call the clinic line instead of waiting for a portal reply"
+  ],
+  "required_actions": [
+    "Call clinic line if Eli has new or worsening symptoms"
+  ],
+  "deadlines": [],
+  "dates_times": [
+    "May 3 visit",
+    "today at 10:15 a.m."
+  ],
+  "positive_notes": [],
+  "concerns": [],
+  "policies_or_conditions": [
+    "Most release requests are reviewed within two business days"
+  ],
+  "available_support": [
+    "Clinic line for new or worsening symptoms"
+  ],
+  "clarifications": [],
+  "facts_that_must_not_change": [
+    "Report has not been released to the patient portal yet",
+    "Sender is not a clinician, so cannot interpret the results",
+    "If Eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply"
+  ],
+  "sensitive_points": [],
+  "original_tone": "informative and cautious"
+}
+```
+
+Reviewed facts:
+```json
+{
+  "recipient_name": "Nora",
+  "sender_name_or_role": "not stated",
+  "people_mentioned": [
+    "Eli",
+    "Dr. Chen",
+    "Nora"
+  ],
+  "main_purpose": "Update on lab report release status and next steps",
+  "key_facts": [
+    "Most release requests are reviewed within two business days",
+    "If Eli has new or worsening symptoms, call the clinic line instead of waiting for a portal reply",
+    "report is marked received",
+    "Dr. Chen's queue",
+    "clinic line"
+  ],
+  "required_actions": [
+    "Call clinic line if Eli has new or worsening symptoms"
+  ],
+  "deadlines": [
+    "10:15 a.m."
+  ],
+  "dates_times": [
+    "May 3 visit",
+    "today at 10:15 a.m.",
+    "May 3"
+  ],
+  "positive_notes": [],
+  "concerns": [],
+  "policies_or_conditions": [
+    "Most release requests are reviewed within two business days",
+    "not been released to the patient portal",
+    "not a clinician",
+    "cannot interpret",
+    "I can see that the report is marked received by our office, but it has not been released to the patient portal yet",
+    "I am not a clinician, so I cannot interpret the results in this message",
+    "If Eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply"
+  ],
+  "available_support": [
+    "Clinic line for new or worsening symptoms"
+  ],
+  "clarifications": [],
+  "facts_that_must_not_change": [
+    "If Eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply",
+    "Nora",
+    "report is marked received",
+    "not been released to the patient portal",
+    "not a clinician",
+    "cannot interpret",
+    "Dr. Chen's queue",
+    "clinic line",
+    "May 3",
+    "10:15 a.m.",
+    "Eli",
+    "Dr. Chen",
+    "I can see that the report is marked received by our office, but it has not been released to the patient portal yet",
+    "I am not a clinician, so I cannot interpret the results in this message"
+  ],
+  "sensitive_points": [],
+  "original_tone": "informative and cautious"
+}
+```
+
+Added anchors:
+```json
+[
+  {
+    "id": "person:nora",
+    "text": "Nora",
+    "normalizedText": "nora",
+    "category": "person",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "task:report is marked received",
+    "text": "report is marked received",
+    "normalizedText": "report is marked received",
+    "category": "task",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:not been released to the patient portal",
+    "text": "not been released to the patient portal",
+    "normalizedText": "not been released to the patient portal",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:not a clinician",
+    "text": "not a clinician",
+    "normalizedText": "not a clinician",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:cannot interpret",
+    "text": "cannot interpret",
+    "normalizedText": "cannot interpret",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "task:dr. chen's queue",
+    "text": "Dr. Chen's queue",
+    "normalizedText": "dr. chen's queue",
+    "category": "task",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "task:clinic line",
+    "text": "clinic line",
+    "normalizedText": "clinic line",
+    "category": "task",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "date:may 3",
+    "text": "May 3",
+    "normalizedText": "may 3",
+    "category": "date",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:10:15 a.m.",
+    "text": "10:15 a.m.",
+    "normalizedText": "10:15 a.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "person:eli",
+    "text": "Eli",
+    "normalizedText": "eli",
+    "category": "person",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "person:dr. chen",
+    "text": "Dr. Chen",
+    "normalizedText": "dr. chen",
+    "category": "person",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:i can see that the report is marked received by our office, but it has not been released to the patient portal yet",
+    "text": "I can see that the report is marked received by our office, but it has not been released to the patient portal yet",
+    "normalizedText": "i can see that the report is marked received by our office, but it has not been released to the patient portal yet",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:i am not a clinician, so i cannot interpret the results in this message",
+    "text": "I am not a clinician, so I cannot interpret the results in this message",
+    "normalizedText": "i am not a clinician, so i cannot interpret the results in this message",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:if eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply",
+    "text": "If Eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply",
+    "normalizedText": "if eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  }
+]
+```
+
+Rejected extracted facts:
+```json
+[
+  {
+    "text": "Lab report from May 3 visit is marked received by the office",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Report has not been released to the patient portal yet",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Sender is not a clinician and cannot interpret results",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Release request sent to Dr. Chen's queue today at 10:15 a.m.",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Report has not been released to the patient portal yet",
+    "field": "facts_that_must_not_change",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Sender is not a clinician, so cannot interpret the results",
+    "field": "facts_that_must_not_change",
+    "reason": "No source evidence for hard fact."
+  }
+]
+```
+
+Attempt ledger:
+```json
+[
+  {
+    "attemptNo": 1,
+    "strategy": "facts_first_reconstruct",
+    "modelRole": "mid_writer",
+    "modelName": "deepseek-v4-pro",
+    "thinkingMode": "non_thinking",
+    "candidateText": "Hi Nora,\n\nI can see that the report from Eli's May 3 visit is marked received by our office, but it has not been released to the patient portal yet. It's in Dr. Chen's queue, and most release requests are reviewed within two business days.\n\nI am not a clinician, so I cannot interpret the results in this message. If Eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply.\n\nThanks.",
+    "failureAnalysis": "Candidate preselection rejected model candidates: missing:report is marked received; missing:10:15 a.m.; unsupported:eli's may; missing_locked:10:15 a.m.",
+    "failureKinds": [
+      "fact_loss",
+      "unsupported_fact"
+    ],
+    "factGateResult": "failed",
+    "structureGateResult": "failed",
+    "policyIntentGateResult": "failed",
+    "saplingResult": "not_measured",
+    "nextStrategyDecision": "facts_first_reconstruct"
+  }
+]
+```
+
+Expected facts:
+- The recipient is Nora.
+- The patient is Eli.
+- The lab report is from the May 3 visit.
+- The office has received the report.
+- The report has not been released to the patient portal yet.
+- The sender is not a clinician.
+- The sender cannot interpret the results.
+- The release request was sent to Dr. Chen's queue.
+- The release request was sent today at 10:15 a.m.
+- Most release requests are reviewed within two business days.
+- New or worsening symptoms should go through the clinic line.
+
+Forbidden claims:
+- Do not interpret the lab results.
+- Do not say the results are normal.
+- Do not promise portal release within two business days.
+- Do not tell Eli to wait if symptoms are new or worsening.
+
+Before:
+
+```text
+Hi Nora, I checked the portal message about Eli's lab report from the May 3 visit. I can
+see that the report is marked received by our office, but it has not been released to
+the patient portal yet. I am not a clinician, so I cannot interpret the results in this
+message. I sent the release request to Dr. Chen's queue today at 10:15 a.m. Most release
+requests are reviewed within two business days. If Eli has new or worsening symptoms,
+please call the clinic line instead of waiting for a portal reply.
+```
+
+After:
+
+```text
+Hi Nora,
+
+I checked the portal message about Eli's lab report from the May 3 visit. I can see that the report is marked received by our office, but it has not been released to the patient portal yet.
+
+I'm not a clinician, so I can't interpret the results in this message. I sent the release request to Dr. Chen's queue today at 10:15 a.m. Most release requests are reviewed within two business days. If Eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply.
+```
+
+## rewrite-draft-009
+
+Scenario: General reply
+Tone: Warm
+Input word count: 128
+Input character count: 721
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 0%
+First candidate AI-like signal: unavailable
+Repair candidate AI-like signal: unavailable
+Final selected AI-like signal: 0%
+Change: 0 pts
+Rejected candidate reasons: none
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Forbidden-claim violations: none
+Quality score before: 6
+Quality score after: 8
+Quality score delta: 2 pts
+Quality regression: no
+Quality notes: The rewrite improves structure by adding paragraph breaks, making it easier to follow repair status, access request, photo request, and rent-credit boundary. | All facts and boundaries are preserved. | The human voice is slightly enhanced by the improved readability.
+Quality failure state: no
+Quality failure reason: none
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Fact diagnostics:
+
+Extracted facts:
+```json
+{
+  "recipient_name": "Cam",
+  "sender_name_or_role": "",
+  "people_mentioned": [
+    "plumber"
+  ],
+  "main_purpose": "Follow up about leak under kitchen sink in Unit 4B and coordinate plumber access.",
+  "key_facts": [
+    "Leak is under the kitchen sink in Unit 4B.",
+    "Plumber confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base can be dried out.",
+    "Earliest access window from vendor is Tuesday, May 28 between 9 a.m. and noon.",
+    "Sender cannot approve a rent credit from this maintenance thread.",
+    "Maintenance file needs access confirmation first, then sender can send vendor confirmation number."
+  ],
+  "required_actions": [
+    "Confirm whether someone can let the plumber in during Tuesday, May 28 between 9 a.m. and noon or whether to use the lockbox code already on file.",
+    "Send one photo of the cabinet floor today if the water has spread past the towel line."
+  ],
+  "deadlines": [
+    "Photo of cabinet floor requested today.",
+    "Access confirmation needed before vendor confirmation number can be sent."
+  ],
+  "dates_times": [
+    "Plumber confirmed yesterday.",
+    "Earliest access window: Tuesday, May 28 between 9 a.m. and noon."
+  ],
+  "positive_notes": [],
+  "concerns": [
+    "Water may have spread past the towel line."
+  ],
+  "policies_or_conditions": [
+    "Shutoff valve must be replaced before cabinet base can be dried out.",
+    "Rent credit cannot be approved from this maintenance thread.",
+    "Access confirmation required before vendor confirmation number can be sent."
+  ],
+  "available_support": [
+    "Lockbox code already on file as an option for access."
+  ],
+  "clarifications": [],
+  "facts_that_must_not_change": [
+    "Shutoff valve needs to be replaced before the cabinet base can be dried out.",
+    "Cannot approve a rent credit from this maintenance thread.",
+    "Maintenance file needs the access confirmation first, then I can send the vendor confirmation number."
+  ],
+  "sensitive_points": [],
+  "original_tone": "Professional and slightly urgent, with a polite acknowledgment of inconvenience."
+}
+```
+
+Reviewed facts:
+```json
+{
+  "recipient_name": "Cam",
+  "sender_name_or_role": "",
+  "people_mentioned": [
+    "plumber",
+    "Cam"
+  ],
+  "main_purpose": "Follow up about leak under kitchen sink in Unit 4B and coordinate plumber access.",
+  "key_facts": [
+    "Leak is under the kitchen sink in Unit 4B.",
+    "Plumber confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base can be dried out.",
+    "Maintenance file needs access confirmation first, then sender can send vendor confirmation number.",
+    "shutoff valve",
+    "lockbox code already on file"
+  ],
+  "required_actions": [
+    "Send one photo of the cabinet floor today if the water has spread past the towel line.",
+    "The maintenance file needs the access confirmation first, then I can send the vendor confirmation number"
+  ],
+  "deadlines": [
+    "Access confirmation needed before vendor confirmation number can be sent.",
+    "9 a.m."
+  ],
+  "dates_times": [
+    "May 28",
+    "Tuesday"
+  ],
+  "positive_notes": [],
+  "concerns": [],
+  "policies_or_conditions": [
+    "Shutoff valve must be replaced before cabinet base can be dried out.",
+    "cannot approve",
+    "before the cabinet base can be dried",
+    "cannot approve a rent credit",
+    "access confirmation first",
+    "The plumber confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base can be dried out",
+    "Please also send one photo of the cabinet floor today if the water has spread past the towel line",
+    "I know this has been inconvenient, but I cannot approve a rent credit from this maintenance thread",
+    "The maintenance file needs the access confirmation first, then I can send the vendor confirmation number"
+  ],
+  "available_support": [
+    "Lockbox code already on file as an option for access."
+  ],
+  "clarifications": [],
+  "facts_that_must_not_change": [
+    "Shutoff valve needs to be replaced before the cabinet base can be dried out.",
+    "Cannot approve a rent credit from this maintenance thread.",
+    "Maintenance file needs the access confirmation first, then I can send the vendor confirmation number.",
+    "Cam",
+    "cannot approve",
+    "shutoff valve",
+    "before the cabinet base can be dried",
+    "lockbox code already on file",
+    "cannot approve a rent credit",
+    "access confirmation first",
+    "May 28",
+    "Tuesday",
+    "9 a.m.",
+    "The plumber confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base can be dried out",
+    "Please also send one photo of the cabinet floor today if the water has spread past the towel line",
+    "I know this has been inconvenient, but I cannot approve a rent credit from this maintenance thread",
+    "The maintenance file needs the access confirmation first, then I can send the vendor confirmation number"
+  ],
+  "sensitive_points": [],
+  "original_tone": "Professional and slightly urgent, with a polite acknowledgment of inconvenience."
+}
+```
+
+Added anchors:
+```json
+[
+  {
+    "id": "person:cam",
+    "text": "Cam",
+    "normalizedText": "cam",
+    "category": "person",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:cannot approve",
+    "text": "cannot approve",
+    "normalizedText": "cannot approve",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "task:shutoff valve",
+    "text": "shutoff valve",
+    "normalizedText": "shutoff valve",
+    "category": "task",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:before the cabinet base can be dried",
+    "text": "before the cabinet base can be dried",
+    "normalizedText": "before the cabinet base can be dried",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "task:lockbox code already on file",
+    "text": "lockbox code already on file",
+    "normalizedText": "lockbox code already on file",
+    "category": "task",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:cannot approve a rent credit",
+    "text": "cannot approve a rent credit",
+    "normalizedText": "cannot approve a rent credit",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:access confirmation first",
+    "text": "access confirmation first",
+    "normalizedText": "access confirmation first",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "date:may 28",
+    "text": "May 28",
+    "normalizedText": "may 28",
+    "category": "date",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "date:tuesday",
+    "text": "Tuesday",
+    "normalizedText": "tuesday",
+    "category": "date",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:9 a.m.",
+    "text": "9 a.m.",
+    "normalizedText": "9 a.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:the plumber confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base can be dried out",
+    "text": "The plumber confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base can be dried out",
+    "normalizedText": "the plumber confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base can be dried out",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:please also send one photo of the cabinet floor today if the water has spread past the towel line",
+    "text": "Please also send one photo of the cabinet floor today if the water has spread past the towel line",
+    "normalizedText": "please also send one photo of the cabinet floor today if the water has spread past the towel line",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:i know this has been inconvenient, but i cannot approve a rent credit from this maintenance thread",
+    "text": "I know this has been inconvenient, but I cannot approve a rent credit from this maintenance thread",
+    "normalizedText": "i know this has been inconvenient, but i cannot approve a rent credit from this maintenance thread",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:the maintenance file needs the access confirmation first, then i can send the vendor confirmation number",
+    "text": "The maintenance file needs the access confirmation first, then I can send the vendor confirmation number",
+    "normalizedText": "the maintenance file needs the access confirmation first, then i can send the vendor confirmation number",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "ordered_step:the maintenance file needs the access confirmation first, then i can send the vendor confirmation number",
+    "text": "The maintenance file needs the access confirmation first, then I can send the vendor confirmation number",
+    "normalizedText": "the maintenance file needs the access confirmation first, then i can send the vendor confirmation number",
+    "category": "ordered_step",
+    "source": "draft",
+    "required": true
+  }
+]
+```
+
+Rejected extracted facts:
+```json
+[
+  {
+    "text": "Earliest access window from vendor is Tuesday, May 28 between 9 a.m. and noon.",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Sender cannot approve a rent credit from this maintenance thread.",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Confirm whether someone can let the plumber in during Tuesday, May 28 between 9 a.m. and noon or whether to use the lockbox code already on file.",
+    "field": "required_actions",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Photo of cabinet floor requested today.",
+    "field": "deadlines",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Plumber confirmed yesterday.",
+    "field": "dates_times",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Earliest access window: Tuesday, May 28 between 9 a.m. and noon.",
+    "field": "dates_times",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Water may have spread past the towel line.",
+    "field": "concerns",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Rent credit cannot be approved from this maintenance thread.",
+    "field": "policies_or_conditions",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Access confirmation required before vendor confirmation number can be sent.",
+    "field": "policies_or_conditions",
+    "reason": "No source evidence for hard fact."
+  }
+]
+```
+
+Attempt ledger:
+```json
+[
+  {
+    "attemptNo": 1,
+    "strategy": "support_policy_options_rewrite",
+    "modelRole": "mid_writer",
+    "modelName": "deepseek-v4-pro",
+    "thinkingMode": "non_thinking",
+    "candidateText": "Cam,\n\nFollowing up on the leak under the kitchen sink in Unit 4B. Yesterday the plumber confirmed that the shutoff valve needs to be replaced before the cabinet base can be dried out.\n\nIf the water has spread past the towel line, please send one photo of the cabinet floor today.\n\nI can send the vendor confirmation number once the maintenance file has the access confirmation. The lockbox code is already on file if you'd like to use that.\n\nI know this has been inconvenient, but I cannot approve a rent credit from this maintenance thread.\n\nThanks.",
+    "failureAnalysis": "Candidate preselection rejected model candidates: missing:lockbox code already on file; missing:access confirmation first; missing:may 28; missing:tuesday; missing:9 a.m.; missing:the maintenance file needs the access confirmation first, then i can send the vendor confirmation number; missing_locked:May 28; missing_locked:Tuesday; missing_locked:9 a.m.",
+    "failureKinds": [
+      "fact_loss"
+    ],
+    "factGateResult": "failed",
+    "structureGateResult": "failed",
+    "policyIntentGateResult": "failed",
+    "saplingResult": "not_measured",
+    "nextStrategyDecision": "facts_first_reconstruct"
+  }
+]
+```
+
+Expected facts:
+- The recipient is Cam.
+- The location is Unit 4B.
+- The issue is a leak under the kitchen sink.
+- The plumber confirmed yesterday that the shutoff valve needs replacement.
+- The cabinet base can be dried only after the shutoff valve is replaced.
+- The vendor window is Tuesday, May 28 between 9 a.m. and noon.
+- Cam must confirm whether someone can provide access.
+- The alternative is to use the lockbox code already on file.
+- Cam should send one photo today if water has spread past the towel line.
+- The sender cannot approve a rent credit from the maintenance thread.
+- Access confirmation is needed before the vendor confirmation number can be sent.
+
+Forbidden claims:
+- Do not approve a rent credit.
+- Do not promise the repair will be fully completed on May 28.
+- Do not say the lockbox will be used without confirmation.
+- Do not skip the photo request if water has spread.
+
+Before:
+
+```text
+Hi Cam, I am following up about the leak under the kitchen sink in Unit 4B. The plumber
+confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base
+can be dried out. The earliest access window the vendor gave us is Tuesday, May 28
+between 9 a.m. and noon. Please confirm whether someone can let the plumber in during
+that window or whether we should use the lockbox code already on file. Please also send
+one photo of the cabinet floor today if the water has spread past the towel line. I know
+this has been inconvenient, but I cannot approve a rent credit from this maintenance
+thread. The maintenance file needs the access confirmation first, then I can send the
+vendor confirmation number.
+```
+
+After:
+
+```text
+Hi Cam,
+
+I am following up about the leak under the kitchen sink in Unit 4B. The plumber confirmed yesterday that the shutoff valve needs to be replaced before the cabinet base can be dried out.
+
+The earliest access window the vendor gave us is Tuesday, May 28 between 9 a.m. and noon. Please confirm whether someone can let the plumber in during that window or whether we should use the lockbox code already on file.
+
+Please also send one photo of the cabinet floor today if the water has spread past the towel line. I know this has been inconvenient, but I can't approve a rent credit from this maintenance thread.
+
+The maintenance file needs the access confirmation first, then I can send the vendor confirmation number.
+```
+
+## rewrite-draft-017
+
+Scenario: General reply
+Tone: Warm
+Input word count: 100
+Input character count: 504
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 0%
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: unavailable
+Final selected AI-like signal: 0%
+Change: 0 pts
+Rejected candidate reasons: none
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Forbidden-claim violations: none
+Quality score before: 7
+Quality score after: 8
+Quality score delta: 1 pts
+Quality regression: no
+Quality notes: The rewritten text improves structure with paragraph breaks, enhancing scannability and readability. | 'Just following up' and 'Drew,' feel more human and conversational than 'Hi Drew, I am checking on'. | All facts, permissions, and deadlines are preserved without any weakening of boundaries. | The rewrite is slightly more concise and direct while maintaining a friendly tone.
+Quality failure state: no
+Quality failure reason: none
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Fact diagnostics:
+
+Extracted facts:
+```json
+{
+  "recipient_name": "Drew",
+  "sender_name_or_role": "",
+  "people_mentioned": [
+    "Drew",
+    "contractor"
+  ],
+  "main_purpose": "Checking on the loose stair rail at 18 Maple, Unit 2 and arranging inspection.",
+  "key_facts": [
+    "Loose stair rail at 18 Maple, Unit 2.",
+    "Contractor can inspect Monday, June 17 between 1 p.m. and 3 p.m.",
+    "No lockbox code on file for this unit.",
+    "Permission needed before anyone enters if Drew is not home.",
+    "Reply yes or no by Friday at 5 p.m.",
+    "If rail has gotten worse since last message, send one updated photo today.",
+    "Will not mark repair complete until contractor has inspected."
+  ],
+  "required_actions": [
+    "Reply yes or no by Friday at 5 p.m.",
+    "If rail has gotten worse, send one updated photo today."
+  ],
+  "deadlines": [
+    "Friday at 5 p.m."
+  ],
+  "dates_times": [
+    "Monday, June 17 between 1 p.m. and 3 p.m.",
+    "Friday at 5 p.m.",
+    "today"
+  ],
+  "positive_notes": [],
+  "concerns": [],
+  "policies_or_conditions": [],
+  "available_support": [],
+  "clarifications": [],
+  "facts_that_must_not_change": [
+    "I need your permission before anyone enters if you are not home, because there is no lockbox code on file for this unit.",
+    "I will not mark the repair complete until the contractor has inspected it."
+  ],
+  "sensitive_points": [],
+  "original_tone": "neutral"
+}
+```
+
+Reviewed facts:
+```json
+{
+  "recipient_name": "Drew",
+  "sender_name_or_role": "",
+  "people_mentioned": [
+    "Drew",
+    "contractor"
+  ],
+  "main_purpose": "Checking on the loose stair rail at 18 Maple, Unit 2 and arranging inspection.",
+  "key_facts": [
+    "Loose stair rail at 18 Maple, Unit 2.",
+    "No lockbox code on file for this unit.",
+    "Reply yes or no by Friday at 5 p.m.",
+    "Will not mark repair complete until contractor has inspected."
+  ],
+  "required_actions": [
+    "Reply yes or no by Friday at 5 p.m."
+  ],
+  "deadlines": [
+    "Friday at 5 p.m.",
+    "1 p.m.",
+    "3 p.m.",
+    "5 p.m.",
+    "by Friday"
+  ],
+  "dates_times": [
+    "Monday, June 17 between 1 p.m. and 3 p.m.",
+    "Friday at 5 p.m.",
+    "today",
+    "June 17",
+    "Monday",
+    "Friday"
+  ],
+  "positive_notes": [],
+  "concerns": [],
+  "policies_or_conditions": [
+    "I need your permission before anyone enters if you are not home, because there is no lockbox code on file for this unit",
+    "Please reply yes or no by Friday at 5 p.m",
+    "If the rail has gotten worse since your last message, please send one updated photo today so I can add it to the work order",
+    "I will not mark the repair complete until the contractor has inspected it"
+  ],
+  "available_support": [],
+  "clarifications": [],
+  "facts_that_must_not_change": [
+    "I need your permission before anyone enters if you are not home, because there is no lockbox code on file for this unit.",
+    "I will not mark the repair complete until the contractor has inspected it.",
+    "Drew",
+    "June 17",
+    "Monday",
+    "Friday",
+    "1 p.m.",
+    "3 p.m.",
+    "5 p.m.",
+    "by Friday",
+    "I need your permission before anyone enters if you are not home, because there is no lockbox code on file for this unit",
+    "Please reply yes or no by Friday at 5 p.m",
+    "If the rail has gotten worse since your last message, please send one updated photo today so I can add it to the work order",
+    "I will not mark the repair complete until the contractor has inspected it"
+  ],
+  "sensitive_points": [],
+  "original_tone": "neutral"
+}
+```
+
+Added anchors:
+```json
+[
+  {
+    "id": "person:drew",
+    "text": "Drew",
+    "normalizedText": "drew",
+    "category": "person",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "date:june 17",
+    "text": "June 17",
+    "normalizedText": "june 17",
+    "category": "date",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "date:monday",
+    "text": "Monday",
+    "normalizedText": "monday",
+    "category": "date",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "date:friday",
+    "text": "Friday",
+    "normalizedText": "friday",
+    "category": "date",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:1 p.m.",
+    "text": "1 p.m.",
+    "normalizedText": "1 p.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:3 p.m.",
+    "text": "3 p.m.",
+    "normalizedText": "3 p.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:5 p.m.",
+    "text": "5 p.m.",
+    "normalizedText": "5 p.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:by friday",
+    "text": "by Friday",
+    "normalizedText": "by friday",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:i need your permission before anyone enters if you are not home, because there is no lockbox code on file for this unit",
+    "text": "I need your permission before anyone enters if you are not home, because there is no lockbox code on file for this unit",
+    "normalizedText": "i need your permission before anyone enters if you are not home, because there is no lockbox code on file for this unit",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:please reply yes or no by friday at 5 p.m",
+    "text": "Please reply yes or no by Friday at 5 p.m",
+    "normalizedText": "please reply yes or no by friday at 5 p.m",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:if the rail has gotten worse since your last message, please send one updated photo today so i can add it to the work order",
+    "text": "If the rail has gotten worse since your last message, please send one updated photo today so I can add it to the work order",
+    "normalizedText": "if the rail has gotten worse since your last message, please send one updated photo today so i can add it to the work order",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:i will not mark the repair complete until the contractor has inspected it",
+    "text": "I will not mark the repair complete until the contractor has inspected it",
+    "normalizedText": "i will not mark the repair complete until the contractor has inspected it",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  }
+]
+```
+
+Rejected extracted facts:
+```json
+[
+  {
+    "text": "Contractor can inspect Monday, June 17 between 1 p.m. and 3 p.m.",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Permission needed before anyone enters if Drew is not home.",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "If rail has gotten worse since last message, send one updated photo today.",
+    "field": "key_facts",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "If rail has gotten worse, send one updated photo today.",
+    "field": "required_actions",
+    "reason": "No source evidence for hard fact."
+  }
+]
+```
+
+Attempt ledger:
+```json
+[]
+```
+
+Expected facts:
+- The tenant is Drew.
+- The address is 18 Maple, Unit 2.
+- The issue is a loose stair rail.
+- The contractor can inspect Monday, June 17.
+- The inspection window is between 1 p.m. and 3 p.m.
+- Entry permission is needed if Drew is not home.
+- There is no lockbox code on file for this unit.
+- Drew should reply yes or no by Friday at 5 p.m.
+- Drew should send one updated photo today if the rail has gotten worse.
+- The repair will not be marked complete until contractor inspection.
+
+Forbidden claims:
+- Do not enter the unit without permission.
+- Do not say a lockbox code is on file.
+- Do not blame Drew for the delay.
+- Do not say the repair is already complete.
+
+Before:
+
+```text
+Hi Drew, I am checking on the loose stair rail at 18 Maple, Unit 2. The contractor can
+inspect it Monday, June 17 between 1 p.m. and 3 p.m. I need your permission before
+anyone enters if you are not home, because there is no lockbox code on file for this
+unit. Please reply yes or no by Friday at 5 p.m. If the rail has gotten worse since your
+last message, please send one updated photo today so I can add it to the work order. I
+will not mark the repair complete until the contractor has inspected it.
+```
+
+After:
+
+```text
+Drew,
+
+Just following up on the loose stair rail at 18 Maple, Unit 2. The contractor can stop by Monday, June 17 between 1 p.m. and 3 p.m.
+
+I need your permission before anyone enters if you are not home, because there is no lockbox code on file for this unit. Please reply yes or no by Friday at 5 p.m.
+
+If the rail has gotten worse since your last message, please send one updated photo today so I can add it to the work order.
+
+I will not mark the repair complete until the contractor has inspected it.
+```
+
+## rewrite-draft-013
+
+Scenario: General reply
+Tone: Warm
+Input word count: 68
+Input character count: 363
+Diagnosis tags: none
+Rewrite plan: Make the draft more natural while preserving the user's facts.
+Draft AI-like signal: 0%
+First candidate AI-like signal: 0%
+Repair candidate AI-like signal: unavailable
+Final selected AI-like signal: 0%
+Change: 0 pts
+Rejected candidate reasons: none
+Facts preserved: yes
+Missing facts: none
+Unsupported facts introduced: none
+Forbidden-claim violations: none
+Quality score before: 7
+Quality score after: 9
+Quality score delta: 2 pts
+Quality regression: no
+Quality notes: The original draft is clear but slightly rushed and lacks paragraph breaks. The rewrite adds warmth with a full-sentence opening and improves structure, maintaining all key facts and dependencies without altering tone.
+Quality failure state: no
+Quality failure reason: none
+Customer-usable pass: yes
+Strict signal pass: yes
+
+Fact diagnostics:
+
+Extracted facts:
+```json
+{
+  "recipient_name": "Team",
+  "sender_name_or_role": "",
+  "people_mentioned": [
+    "Mina",
+    "Jordan"
+  ],
+  "main_purpose": "Beacon handoff update",
+  "key_facts": [
+    "API checklist is done",
+    "Legal copy is still waiting on Mina",
+    "Need a decision by 4 p.m. on May 22 about whether to launch without the Spanish FAQ",
+    "Jordan owns the final wording once that decision is made",
+    "If we do not decide today, tomorrow's QA signoff should stay on hold",
+    "I will send another update by 5:30 p.m."
+  ],
+  "required_actions": [
+    "Make a decision by 4 p.m. on May 22 about whether to launch without the Spanish FAQ"
+  ],
+  "deadlines": [
+    "4 p.m. on May 22",
+    "5:30 p.m."
+  ],
+  "dates_times": [
+    "May 22",
+    "4 p.m.",
+    "5:30 p.m."
+  ],
+  "positive_notes": [
+    "API checklist is done"
+  ],
+  "concerns": [
+    "Legal copy is still waiting on Mina"
+  ],
+  "policies_or_conditions": [],
+  "available_support": [],
+  "clarifications": [],
+  "facts_that_must_not_change": [
+    "If we do not decide today, tomorrow's QA signoff should stay on hold"
+  ],
+  "sensitive_points": [],
+  "original_tone": "informal, team update"
+}
+```
+
+Reviewed facts:
+```json
+{
+  "recipient_name": "",
+  "sender_name_or_role": "",
+  "people_mentioned": [
+    "Mina",
+    "Jordan",
+    "Spanish FAQ"
+  ],
+  "main_purpose": "Beacon handoff update",
+  "key_facts": [
+    "API checklist is done",
+    "Legal copy is still waiting on Mina",
+    "Need a decision by 4 p.m. on May 22 about whether to launch without the Spanish FAQ",
+    "Jordan owns the final wording once that decision is made",
+    "If we do not decide today, tomorrow's QA signoff should stay on hold",
+    "I will send another update by 5:30 p.m.",
+    "Beacon handoff"
+  ],
+  "required_actions": [
+    "Jordan owns the final wording once that decision is made"
+  ],
+  "deadlines": [
+    "4 p.m. on May 22",
+    "5:30 p.m.",
+    "4 p.m.",
+    "by 4 p.m.",
+    "by 5:30 p.m."
+  ],
+  "dates_times": [
+    "May 22",
+    "4 p.m.",
+    "5:30 p.m."
+  ],
+  "positive_notes": [
+    "API checklist is done"
+  ],
+  "concerns": [
+    "Legal copy is still waiting on Mina"
+  ],
+  "policies_or_conditions": [
+    "We need a decision by 4 p.m",
+    "on May 22 about whether to launch without the Spanish FAQ",
+    "If we do not decide today, tomorrow's QA signoff should stay on hold",
+    "I will send another update by 5:30 p.m."
+  ],
+  "available_support": [],
+  "clarifications": [],
+  "facts_that_must_not_change": [
+    "If we do not decide today, tomorrow's QA signoff should stay on hold",
+    "Beacon handoff",
+    "May 22",
+    "4 p.m.",
+    "5:30 p.m.",
+    "by 4 p.m.",
+    "by 5:30 p.m.",
+    "Spanish FAQ",
+    "Jordan",
+    "We need a decision by 4 p.m",
+    "on May 22 about whether to launch without the Spanish FAQ",
+    "Jordan owns the final wording once that decision is made",
+    "I will send another update by 5:30 p.m."
+  ],
+  "sensitive_points": [],
+  "original_tone": "informal, team update"
+}
+```
+
+Added anchors:
+```json
+[
+  {
+    "id": "quoted_phrase:beacon handoff",
+    "text": "Beacon handoff",
+    "normalizedText": "beacon handoff",
+    "category": "quoted_phrase",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "date:may 22",
+    "text": "May 22",
+    "normalizedText": "may 22",
+    "category": "date",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:4 p.m.",
+    "text": "4 p.m.",
+    "normalizedText": "4 p.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:5:30 p.m.",
+    "text": "5:30 p.m.",
+    "normalizedText": "5:30 p.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:by 4 p.m.",
+    "text": "by 4 p.m.",
+    "normalizedText": "by 4 p.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "deadline:by 5:30 p.m.",
+    "text": "by 5:30 p.m.",
+    "normalizedText": "by 5:30 p.m.",
+    "category": "deadline",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "person:spanish faq",
+    "text": "Spanish FAQ",
+    "normalizedText": "spanish faq",
+    "category": "person",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "person:jordan",
+    "text": "Jordan",
+    "normalizedText": "jordan",
+    "category": "person",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:we need a decision by 4 p.m",
+    "text": "We need a decision by 4 p.m",
+    "normalizedText": "we need a decision by 4 p.m",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:on may 22 about whether to launch without the spanish faq",
+    "text": "on May 22 about whether to launch without the Spanish FAQ",
+    "normalizedText": "on may 22 about whether to launch without the spanish faq",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "ordered_step:jordan owns the final wording once that decision is made",
+    "text": "Jordan owns the final wording once that decision is made",
+    "normalizedText": "jordan owns the final wording once that decision is made",
+    "category": "ordered_step",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:if we do not decide today, tomorrow's qa signoff should stay paused",
+    "text": "If we do not decide today, tomorrow's QA signoff should stay on hold",
+    "normalizedText": "if we do not decide today, tomorrow's qa signoff should stay paused",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  },
+  {
+    "id": "constraint:i will send another update by 5:30 p.m.",
+    "text": "I will send another update by 5:30 p.m.",
+    "normalizedText": "i will send another update by 5:30 p.m.",
+    "category": "constraint",
+    "source": "draft",
+    "required": true
+  }
+]
+```
+
+Rejected extracted facts:
+```json
+[
+  {
+    "text": "Make a decision by 4 p.m. on May 22 about whether to launch without the Spanish FAQ",
+    "field": "required_actions",
+    "reason": "No source evidence for hard fact."
+  },
+  {
+    "text": "Team",
+    "field": "recipient_name",
+    "reason": "No source evidence for extracted recipient."
+  }
+]
+```
+
+Attempt ledger:
+```json
+[]
+```
+
+Expected facts:
+- The update is about the Beacon handoff.
+- The API checklist is done.
+- The legal copy is waiting on Mina.
+- A decision is needed by 4 p.m. on May 22.
+- The decision is whether to launch without the Spanish FAQ.
+- Jordan owns the final wording after the decision.
+- Tomorrow's QA signoff stays on hold if there is no decision today.
+- Another update is due by 5:30 p.m.
+
+Forbidden claims:
+- Do not say the legal copy is complete.
+- Do not say the Spanish FAQ is ready.
+- Do not say launch is approved.
+- Do not blame Mina for the wait.
+
+Before:
+
+```text
+Team, quick Beacon handoff update: the API checklist is done, but the legal copy is
+still waiting on Mina. We need a decision by 4 p.m. on May 22 about whether to launch
+without the Spanish FAQ. Jordan owns the final wording once that decision is made. If
+we do not decide today, tomorrow's QA signoff should stay on hold. I will send another
+update by 5:30 p.m.
+```
+
+After:
+
+```text
+Team,
+
+Here's an update on the Beacon handoff. The API checklist is done. Legal copy is still waiting on Mina. We need a decision by 4 p.m. on May 22 about whether to launch without the Spanish FAQ. Jordan owns the final wording once that decision is made. If we do not decide today, tomorrow's QA signoff should stay on hold. I will send another update by 5:30 p.m.
+```

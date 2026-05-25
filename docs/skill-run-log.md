@@ -1851,3 +1851,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/skill-run-log.md`.
 - Verification evidence: Current admin metrics query `RewriteCostLog`/`RewriteProviderCall`; EF Core has unique/idempotency indexes and concurrency tokens for the lifecycle-critical tables; manual setup notes say runtime account/quota/rewrite data is now served from Azure SQL through Azure Functions.
 - Limitations: No new admin audit-log schema was added; direct SQL write prevention remains a design recommendation until implemented.
+
+### 2026-05-25 - resilience-test-generation - Semantic judge malformed JSON retry
+
+- Agent: Codex
+- Trigger: The single-input dev-20 provider validation hit a semantic judge malformed JSON failure, which changes provider-failure retry and fail-closed behavior.
+- Action: Opened and followed the skill; generated a resilience matrix for malformed semantic judge JSON, added a unit regression for retrying malformed judge responses, and updated the eval runner to retry semantic judge parsing before failing a case.
+- Output artifacts: `scripts/eval-scenarios.ts`; `tests/unit/eval-scenarios-corpus.test.ts`; `docs/deepseek-adaptive-rewrite-attempt-ledger-strategy.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: `npm test -- tests/unit/eval-scenarios-corpus.test.ts` passed after the retry regression was added; later focused unit verification passed with `npm test -- tests/unit/rewrite-pipeline.test.ts tests/unit/eval-scenarios-corpus.test.ts`.
+- Limitations: The later v6 provider partial was intentionally stopped after 6/8 cases per the corrected rerun strategy; no final dev-20 pass, merge, or deploy is claimed in this entry.
+
+### 2026-05-25 - cloud-architecture-cost-review - Cloudflare rewrite-quality validation deploy
+
+- Agent: Codex
+- Trigger: User requested merge and deploy after the rewrite-quality validation task.
+- Action: Opened and followed the skill; reviewed `docs/manual-setup.md`, `docs/business-qa-and-deploy-result.md`, `README.md`, and `docs/next-development-brief.md`; confirmed this deploy should keep the existing Cloudflare Worker/OpenNext frontend plus Azure Functions/Azure SQL backend path.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Ran `python3 agent-skills/cloud-architecture-cost-review/scripts/cost_review_template.py "Cloudflare rewrite-quality validation deploy"` and reviewed the current deployment docs. Selected option: deploy the existing Cloudflare Worker through the existing `npm run cf:deploy` path with `--keep-vars`. Rejected options: no new Cloudflare service, Azure App Service, queue, database, or always-on worker is needed for this code-only validation deploy.
+- Limitations: No exact provider pricing was quoted or checked because this task does not create, resize, or switch paid infrastructure; production smoke still needs to run after deploy.

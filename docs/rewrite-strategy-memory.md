@@ -1006,5 +1006,32 @@ Promoted lessons:
 - Upload-evidence facts such as `empty file attempt`, named project handoff phrases,
   and operational reasons such as `room is unavailable` need deterministic anchors
   because they are easy for warm rewrites to compress away.
+- Provider reruns should not full-run dev-20 after every small patch. The correct
+  loop is unit test first, then failed case ids plus a small sentinel set, then one
+  full dev-20 validation only after the partial passes.
+- The eval runner now supports `--case-ids` so focused mode can run the current
+  failures first while keeping `--limit` applied after filtering. Reports include
+  the selected case ids for auditability.
+- Provider failures must be classified before rerun: judge false positive, rewrite
+  fact drift, extraction/ledger miss, provider/infrastructure failure, or artifact
+  ambiguity. `rewrite-draft-007` and `rewrite-draft-013` showed true rewrite fact
+  drift: source anchors such as `product team` and `Beacon handoff` were compressed
+  into role/project context and omitted from the final text. These are not judge
+  bugs unless the final text explicitly preserves the anchor.
+- Rewrite fact drift needs deterministic unit coverage before another provider
+  replay. Add a small phrasing matrix for the observed compressed output shape,
+  then run only the failed case plus sentinels. Full dev-20 remains the final
+  validation step after partial passes.
+- Eval artifacts must expose extracted facts and reviewed/locked ledgers. Without
+  those intermediate records, a missing final fact cannot be reliably attributed to
+  extraction, ledger review, generation, finalization, restoration, or judge logic.
+- Property/logistics replies must keep the access choice explicit when the source
+  asks whether someone can provide access or whether a lockbox code should be used.
+  Saying only that the lockbox is an option plus `access confirmation first` is too
+  weak and can fail the actionability gate.
+- The same stabilizers must run on deterministic fallback candidates before fact
+  gates and signal measurement. Otherwise fallback can reintroduce formatting
+  regressions such as splitting `Dr. Chen's queue` into `Dr.` and `Chen's queue`
+  across separate paragraphs.
 - Next expansion should materialize cases 021-040 and run a controlled dev-40 pass.
   Full 100 should remain a release or major-strategy-change gate.

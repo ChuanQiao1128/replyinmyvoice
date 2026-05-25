@@ -54,6 +54,10 @@ type EvalResultRow = EvalCase & {
   candidateSignals: NonNullable<
     RewriteResponsePayload["optimization"]["candidateSignals"]
   >;
+  attemptLedger: NonNullable<
+    RewriteResponsePayload["optimization"]["attemptLedger"]
+  >;
+  factDiagnostics: RewriteResponsePayload["optimization"]["factDiagnostics"] | null;
   rejectedReasons: string[];
   factsPreserved: boolean;
   missingFacts: string[];
@@ -78,6 +82,16 @@ type SemanticJudgeResult = {
     rewriteScore: number | null;
     delta: number | null;
     notes: string[];
+  };
+};
+
+type SemanticJudgePayload = {
+  mustKeep?: Array<{ fact?: string; verdict?: string }>;
+  mustNotClaim?: Array<{ claim?: string; verdict?: string }>;
+  quality?: {
+    draftScore?: number;
+    rewriteScore?: number;
+    notes?: unknown;
   };
 };
 
@@ -1049,6 +1063,42 @@ function mergeSemanticJudgeWithDeterministicFactCheck(
   };
 }
 
+function mergeSemanticJudgeWithDeterministicForbiddenCheck(
+  rewrittenText: string,
+  semanticResult: SemanticJudgeResult,
+): SemanticJudgeResult {
+  if (!semanticResult.forbiddenViolations.length) {
+    return semanticResult;
+  }
+
+  const normalizedText = normalize(rewrittenText);
+  const forbiddenViolations = semanticResult.forbiddenViolations.filter((claim) => {
+    const verdict = deterministicForbiddenClaimVerdict(normalizedText, claim);
+
+    return verdict === null ? true : verdict;
+  });
+
+  return {
+    ...semanticResult,
+    forbiddenViolations,
+  };
+}
+
+function mergeSemanticJudgeWithDeterministicChecks(
+  rewrittenText: string,
+  mustKeep: string[],
+  semanticResult: SemanticJudgeResult,
+): SemanticJudgeResult {
+  return mergeSemanticJudgeWithDeterministicForbiddenCheck(
+    rewrittenText,
+    mergeSemanticJudgeWithDeterministicFactCheck(
+      rewrittenText,
+      mustKeep,
+      semanticResult,
+    ),
+  );
+}
+
 function emptyQualityJudgeResult() {
   return {
     draftScore: null,
@@ -1059,15 +1109,19 @@ function emptyQualityJudgeResult() {
 }
 
 export const __evalScenarioTestUtils = {
+  applyCaseIdFilter,
   customerUsablePassFromGates,
   factCheck,
   factTokens,
   forbiddenClaimViolations,
+  formatCaseBlock,
   detectEvalUnsupportedFacts,
   includesFact,
   isQualityRegression,
+  mergeSemanticJudgeWithDeterministicChecks,
   mergeSemanticJudgeWithDeterministicFactCheck,
   normalize,
+  parseEvalCliOptions,
   semanticFactJudge,
 };
 
@@ -1075,32 +1129,128 @@ function forbiddenClaimViolations(text: string, claims: string[]) {
   const normalizedText = normalize(text);
 
   return claims.filter((claim) => {
-    const normalizedClaim = normalize(claim);
+    const verdict = deterministicForbiddenClaimVerdict(normalizedText, claim);
 
-    if (/\brefund\b/.test(normalizedClaim)) {
-      return /\b(?:can|could|will|we'll|offer|process|approve|approved|available|issue)\b.{0,30}\brefund\b|\brefund\b.{0,30}\b(?:available|approved|processed|issued|offer)\b/.test(
-        normalizedText,
-      ) && !/\brefund\b.{0,24}\bnot approved\b|\brefund has not been approved\b/.test(
-        normalizedText,
-      );
-    }
-
-    if (/\bpromise|guarantee\b/.test(normalizedClaim)) {
-      return /\b(?:promise|guarantee|guaranteed|definitely|absolutely|will)\b.{0,50}\b(?:completion|access|approval|approved|eligible)\b/.test(
-        normalizedText,
-      ) && !/\b(?:cannot|can't|not)\b.{0,20}\b(?:promise|guarantee)\b/.test(
-        normalizedText,
-      );
-    }
-
-    if (/\bwrong|careless|blame\b/.test(normalizedClaim)) {
-      return /\b(?:wrong|careless|should have|failed to|blame)\b/.test(
-        normalizedText,
-      );
-    }
-
-    return false;
+    return verdict === true;
   });
+}
+
+function deterministicForbiddenClaimVerdict(
+  normalizedText: string,
+  claim: string,
+): boolean | null {
+  const normalizedClaim = normalize(claim);
+
+  if (/\brefund\b/.test(normalizedClaim)) {
+    return /\b(?:can|could|will|we'll|offer|process|approve|approved|available|issue)\b.{0,30}\brefund\b|\brefund\b.{0,30}\b(?:available|approved|processed|issued|offer)\b/.test(
+      normalizedText,
+    ) && !/\brefund\b.{0,24}\bnot approved\b|\brefund has not been approved\b/.test(
+      normalizedText,
+    );
+  }
+
+  if (/\bpromise|guarantee\b/.test(normalizedClaim)) {
+    return /\b(?:promise|guarantee|guaranteed|definitely|absolutely|will)\b.{0,50}\b(?:completion|access|approval|approved|eligible)\b/.test(
+      normalizedText,
+    ) && !/\b(?:cannot|can't|not)\b.{0,20}\b(?:promise|guarantee)\b/.test(
+      normalizedText,
+    );
+  }
+
+  if (/\bwrong|careless|blame\b/.test(normalizedClaim)) {
+    return /\b(?:wrong|careless|should have|failed to|blame)\b/.test(
+      normalizedText,
+    );
+  }
+
+  if (/\bdo not keep\b/.test(normalizedClaim) && /\bappointment\b/.test(normalizedClaim)) {
+    return violatesKeepAppointmentClaim(normalizedText, normalizedClaim);
+  }
+
+  if (/\bdo not offer any times other than\b/.test(normalizedClaim)) {
+    return violatesExtraOfferedTimesClaim(normalizedText, normalizedClaim);
+  }
+
+  if (/\bdo not hold both\b/.test(normalizedClaim)) {
+    return violatesHoldBothOptionsClaim(normalizedText);
+  }
+
+  return null;
+}
+
+function timeAnchorRegex(anchor: string) {
+  const match = anchor.match(/^(\d{1,2}):(\d{2})\s+([ap])m$/);
+  if (!match) {
+    return null;
+  }
+
+  const hour = Number(match[1]);
+  const minute = match[2];
+  const meridiem = match[3];
+  const minutePart = minute === "00" ? `(?::?${minute})?` : `:${minute}`;
+
+  return new RegExp(
+    String.raw`\b${hour}${minutePart}\s*(?:${meridiem}\.?m\.?|${meridiem}m)\b`,
+  );
+}
+
+function violatesKeepAppointmentClaim(
+  normalizedText: string,
+  normalizedClaim: string,
+) {
+  const timeAnchors = [...extractTimeAnchors(normalizedClaim)];
+  if (timeAnchors.length === 0) {
+    return null;
+  }
+
+  return timeAnchors.some((anchor) => {
+    const timePattern = timeAnchorRegex(anchor);
+    if (!timePattern || !timePattern.test(normalizedText)) {
+      return false;
+    }
+
+    const timeSource = timePattern.source;
+    return (
+      new RegExp(
+        String.raw`\b(?:keep|kept|hold|retain|remains?|stay|stays|still works?|still on)\b.{0,40}${timeSource}`,
+      ).test(normalizedText) ||
+      new RegExp(
+        String.raw`${timeSource}.{0,40}\b(?:still works?|still on|remains?|stay|stays)\b`,
+      ).test(normalizedText)
+    );
+  });
+}
+
+function violatesExtraOfferedTimesClaim(
+  normalizedText: string,
+  normalizedClaim: string,
+) {
+  const allowedTimes = new Set(extractTimeAnchors(normalizedClaim));
+  const offerSentences = normalizedText
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) =>
+      /\b(?:offer|available|option|options|can do|could do|meet|reschedule)\b/.test(
+        sentence,
+      ),
+    );
+
+  return offerSentences.some((sentence) =>
+    [...extractTimeAnchors(sentence)].some((time) => !allowedTimes.has(time)),
+  );
+}
+
+function violatesHoldBothOptionsClaim(normalizedText: string) {
+  if (
+    /\b(?:cannot|can not|will not|not)\b.{0,40}\bhold\b.{0,20}\bboth\b/.test(
+      normalizedText,
+    )
+  ) {
+    return false;
+  }
+
+  return /\b(?:can|could|will|we'll|able to)\b.{0,40}\bhold\b.{0,20}\bboth\b|\bhold\b.{0,20}\bboth\b.{0,40}\bafter\b/.test(
+    normalizedText,
+  );
 }
 
 const DEFAULT_SEMANTIC_JUDGE_MAX_ATTEMPTS = 3;
@@ -1226,7 +1376,6 @@ function customerUsablePassFromGates({
   factsPassed: boolean;
   unsupportedFactsCount: number;
   forbiddenViolationsCount: number;
-  qualityRegression: boolean;
   qualityFailure: boolean;
   signalNotWorse: boolean;
   qualityRegression: boolean;
@@ -1286,21 +1435,44 @@ async function semanticFactJudge(
     `{"mustKeep":[{"fact":"...","verdict":"PASS","reason":"..."}],"mustNotClaim":[{"claim":"...","verdict":"PASS","reason":"..."}],"quality":{"draftScore":1,"rewriteScore":1,"notes":["..."]}}`,
   ].join("\n");
 
-  const response = await fetchSemanticJudgeResponse(prompt);
+  const maxAttempts = parsePositiveIntegerEnv(
+    "EVAL_SEMANTIC_JUDGE_MAX_ATTEMPTS",
+    DEFAULT_SEMANTIC_JUDGE_MAX_ATTEMPTS,
+  );
+  const baseDelayMs = parsePositiveIntegerEnv(
+    "EVAL_SEMANTIC_JUDGE_RETRY_DELAY_MS",
+    DEFAULT_SEMANTIC_JUDGE_RETRY_DELAY_MS,
+    { allowZero: true },
+  );
+  let parsed: SemanticJudgePayload | null = null;
+  let lastParseError: unknown = null;
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content ?? "{}";
-  const parsed = JSON.parse(content) as {
-    mustKeep?: Array<{ fact?: string; verdict?: string }>;
-    mustNotClaim?: Array<{ claim?: string; verdict?: string }>;
-    quality?: {
-      draftScore?: number;
-      rewriteScore?: number;
-      notes?: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetchSemanticJudgeResponse(prompt);
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
     };
-  };
+    const content = data.choices?.[0]?.message?.content ?? "{}";
+
+    try {
+      parsed = JSON.parse(content) as SemanticJudgePayload;
+      break;
+    } catch (error) {
+      lastParseError = error;
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+      if (baseDelayMs > 0) {
+        await sleep(baseDelayMs * attempt);
+      }
+    }
+  }
+
+  if (!parsed) {
+    throw lastParseError instanceof Error
+      ? lastParseError
+      : new Error("Semantic judge returned malformed JSON.");
+  }
 
   const missing = (parsed.mustKeep ?? [])
     .filter((item) => item.verdict === "FAIL")
@@ -2035,6 +2207,7 @@ type EvalCliOptions = {
   outputPath: string;
   progressPath: string;
   limit: number;
+  caseIds: string[] | null;
   resume: boolean;
   timeBudgetMs: number;
 };
@@ -2049,6 +2222,7 @@ type CompletedCorpusCase = {
   factsPreserved: boolean;
   unsupportedFactsCount: number;
   forbiddenViolationsCount: number;
+  qualityRegression: boolean;
   qualityFailure: boolean;
   customerUsablePass: boolean;
   strictSignalPass: boolean;
@@ -2058,6 +2232,7 @@ type CompletedCorpusCase = {
 type CorpusProgress = {
   corpusPath: string;
   outputPath: string;
+  selectedCaseIds: string[] | null;
   startedAt: string;
   lastUpdatedAt: string;
   strategyVersion: string;
@@ -2068,6 +2243,7 @@ type CorpusProgress = {
 type LegacyEvalProgress = {
   mode: EvalMode;
   outputPath: string;
+  selectedCaseIds: string[] | null;
   startedAt: string;
   lastUpdatedAt: string;
   strategyVersion: string;
@@ -2097,6 +2273,50 @@ function parseNonNegativeInteger(value: string, flagName: string) {
   return parsed;
 }
 
+function parseCaseIds(value: string | undefined) {
+  if (value === undefined) {
+    return null;
+  }
+
+  const seen = new Set<string>();
+  const caseIds = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item) => {
+      if (seen.has(item)) {
+        return false;
+      }
+      seen.add(item);
+      return true;
+    });
+
+  if (caseIds.length === 0) {
+    throw new Error("--case-ids must include at least one case id");
+  }
+
+  return caseIds;
+}
+
+function applyCaseIdFilter<T extends { id: string }>(
+  cases: T[],
+  caseIds: string[] | null,
+) {
+  if (!caseIds) {
+    return cases;
+  }
+
+  const byId = new Map(cases.map((sample) => [sample.id, sample]));
+  const missing = caseIds.filter((id) => !byId.has(id));
+  if (missing.length) {
+    throw new Error(
+      `--case-ids includes ids not selected by --mode: ${missing.join(", ")}`,
+    );
+  }
+
+  return caseIds.map((id) => byId.get(id)!);
+}
+
 function parseEvalMode(
   args: string[] = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env,
@@ -2119,6 +2339,7 @@ function parseEvalCliOptions(
 ): EvalCliOptions {
   const limitArg = cliValue(args, "limit");
   const timeBudgetArg = cliValue(args, "time-budget-ms");
+  const caseIds = parseCaseIds(cliValue(args, "case-ids"));
 
   return {
     mode: parseEvalMode(args, env),
@@ -2133,6 +2354,7 @@ function parseEvalCliOptions(
       limitArg === undefined
         ? Number.POSITIVE_INFINITY
         : parseNonNegativeInteger(limitArg, "limit"),
+    caseIds,
     resume: args.includes("--resume"),
     timeBudgetMs:
       timeBudgetArg === undefined
@@ -2318,9 +2540,9 @@ function shouldUseEmailMarkdownCorpus() {
   );
 }
 
-async function loadSelectedEvalCases(mode: EvalMode) {
+async function loadSelectedEvalCases(mode: EvalMode, caseIds: string[] | null) {
   if (!shouldUseEmailMarkdownCorpus()) {
-    return selectEvalCases(allEvalCases, mode);
+    return applyCaseIdFilter(selectEvalCases(allEvalCases, mode), caseIds);
   }
 
   const corpusPath =
@@ -2328,8 +2550,11 @@ async function loadSelectedEvalCases(mode: EvalMode) {
     path.join(process.cwd(), "docs", "rewrite-email-eval-cases-100.md");
   const markdown = await readFile(corpusPath, "utf8");
   const emailCases = parseRewriteEmailEvalCases(markdown);
+  const selected = selectRewriteEmailEvalCases(emailCases, mode).map(
+    emailEvalCaseToEvalCase,
+  );
 
-  return selectRewriteEmailEvalCases(emailCases, mode).map(emailEvalCaseToEvalCase);
+  return applyCaseIdFilter(selected, caseIds);
 }
 
 async function evaluateSample(
@@ -2363,7 +2588,7 @@ async function evaluateSample(
 
   const rewrittenText = result?.rewrittenText ?? "";
   const { facts, forbiddenViolations, quality } = rewrittenText
-    ? mergeSemanticJudgeWithDeterministicFactCheck(
+    ? mergeSemanticJudgeWithDeterministicChecks(
         rewrittenText,
         sample.expectedFacts,
         await semanticFactJudge(
@@ -2388,6 +2613,10 @@ async function evaluateSample(
   const change = naturalness?.changePoints ?? null;
   const candidateSignals =
     result?.optimization.candidateSignals ?? qualityFailure?.candidateSignals ?? [];
+  const attemptLedger =
+    result?.optimization.attemptLedger ?? qualityFailure?.attemptLedger ?? [];
+  const factDiagnostics =
+    result?.optimization.factDiagnostics ?? qualityFailure?.factDiagnostics ?? null;
   const firstCandidate = candidateSignals.find((item) => item.stage === "initial");
   const repairCandidate = candidateSignals.find((item) => item.stage === "repair");
   const rejectedReasons = candidateSignals
@@ -2427,6 +2656,8 @@ async function evaluateSample(
     rewrite,
     change,
     candidateSignals,
+    attemptLedger,
+    factDiagnostics,
     rejectedReasons,
     factsPreserved: facts.passed,
     missingFacts: facts.missing,
@@ -2522,6 +2753,7 @@ function formatSummaryHeader(
   rows: EvalResultRow[],
   evalMode: string,
   rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
+  selectedCaseIds: string[] | null = null,
 ) {
   const summary = summarizeRows(rows);
 
@@ -2533,6 +2765,9 @@ function formatSummaryHeader(
     `Strategy: ${rewriteConfig.strategyVersion}`,
     `Naturalness threshold: ${rewriteConfig.naturalnessThreshold}%`,
     `Cases evaluated: ${rows.length}`,
+    selectedCaseIds?.length
+      ? `Selected case ids: ${selectedCaseIds.join(", ")}`
+      : null,
     `Draft-only cases: ${summary.draftOnlyCasesEvaluated}`,
     `Measured cases: ${summary.measured.length}`,
     `Long cases (300+ words): ${summary.longCases}`,
@@ -2555,7 +2790,39 @@ function formatSummaryHeader(
     `Fact preservation or unsupported-addition failures: ${summary.factFailures}`,
     `Customer-usable pass count: ${summary.customerUsablePassed}/${rows.length}`,
     `Strict signal pass count: ${summary.strictSignalPassed}/${rows.length}`,
-  ];
+  ].filter((line): line is string => line !== null);
+}
+
+function formatJsonBlock(value: unknown) {
+  return ["```json", JSON.stringify(value, null, 2), "```"].join("\n");
+}
+
+function formatFactDiagnostics(row: EvalResultRow) {
+  const diagnostics = row.factDiagnostics;
+  const attemptLedger = row.attemptLedger ?? [];
+
+  if (!diagnostics && attemptLedger.length === 0) {
+    return "Fact diagnostics: unavailable";
+  }
+
+  return [
+    "Fact diagnostics:",
+    "",
+    "Extracted facts:",
+    formatJsonBlock(diagnostics?.extractedFacts ?? null),
+    "",
+    "Reviewed facts:",
+    formatJsonBlock(diagnostics?.reviewedFacts ?? null),
+    "",
+    "Added anchors:",
+    formatJsonBlock(diagnostics?.addedAnchors ?? []),
+    "",
+    "Rejected extracted facts:",
+    formatJsonBlock(diagnostics?.rejectedFacts ?? []),
+    "",
+    "Attempt ledger:",
+    formatJsonBlock(attemptLedger),
+  ].join("\n");
 }
 
 function formatCaseBlock(row: EvalResultRow) {
@@ -2588,6 +2855,8 @@ function formatCaseBlock(row: EvalResultRow) {
     `Customer-usable pass: ${row.customerUsablePass ? "yes" : "no"}`,
     `Strict signal pass: ${row.strictSignalPass ? "yes" : "no"}`,
     "",
+    formatFactDiagnostics(row),
+    "",
     "Expected facts:",
     row.expectedFacts.map((fact) => `- ${fact}`).join("\n"),
     row.forbiddenClaims?.length
@@ -2617,9 +2886,10 @@ function formatLegacyOutput(
   rows: EvalResultRow[],
   evalMode: EvalMode,
   rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
+  selectedCaseIds: string[] | null = null,
 ) {
   return [
-    ...formatSummaryHeader(rows, evalMode, rewriteConfig),
+    ...formatSummaryHeader(rows, evalMode, rewriteConfig, selectedCaseIds),
     "",
     "Customer-usable pass requires: rewritten output exists, all expected facts are preserved, no unsupported names/dates/amounts/counts are added, no quality failure or material quality regression is raised, and the selected rewrite is not worse than the draft when scores are available.",
     `Strict signal pass additionally requires scores available and: if the draft is above ${rewriteConfig.naturalnessThreshold}%, the final rewrite is at or below ${rewriteConfig.naturalnessThreshold}%; if the draft is already at or below ${rewriteConfig.naturalnessThreshold}%, the final rewrite does not raise the signal.`,
@@ -2653,6 +2923,7 @@ async function loadLegacyEvalProgress(
         ...existing,
         mode: options.mode,
         outputPath: options.outputPath,
+        selectedCaseIds: options.caseIds,
         strategyVersion: rewriteConfig.strategyVersion,
         naturalnessThreshold: rewriteConfig.naturalnessThreshold,
         completedRows: existing.completedRows ?? [],
@@ -2667,6 +2938,7 @@ async function loadLegacyEvalProgress(
   return {
     mode: options.mode,
     outputPath: options.outputPath,
+    selectedCaseIds: options.caseIds,
     startedAt: now,
     lastUpdatedAt: now,
     strategyVersion: rewriteConfig.strategyVersion,
@@ -2713,6 +2985,8 @@ function legacyScriptErrorRow(sample: EvalCase, reason: string): EvalResultRow {
     rewrite: null,
     change: null,
     candidateSignals: [],
+    attemptLedger: [],
+    factDiagnostics: null,
     rejectedReasons: [],
     factsPreserved: false,
     missingFacts: sample.expectedFacts,
@@ -2735,14 +3009,20 @@ async function runLegacyEval(
   rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
 ) {
   const startTime = Date.now();
-  const evalCases = await loadSelectedEvalCases(options.mode);
+  const evalCases = await loadSelectedEvalCases(options.mode, options.caseIds);
   const progress = await loadLegacyEvalProgress(options, rewriteConfig);
-  const rows: EvalResultRow[] = [...progress.completedRows];
+  const selectedIds = new Set(evalCases.map((sample) => sample.id));
+  const rows: EvalResultRow[] = options.caseIds
+    ? progress.completedRows.filter((row) => selectedIds.has(row.id))
+    : [...progress.completedRows];
   const completedIds = new Set(rows.map((row) => row.id));
   let processedThisRun = 0;
+  progress.completedRows = rows;
+  progress.selectedCaseIds = options.caseIds;
 
   console.log(
-    `[eval] mode=${options.mode} strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold} completed=${rows.length}/${evalCases.length}`,
+    `[eval] mode=${options.mode} strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold} completed=${rows.length}/${evalCases.length}` +
+      (options.caseIds ? ` caseIds=${options.caseIds.join(",")}` : ""),
   );
 
   for (const sample of evalCases) {
@@ -2781,14 +3061,14 @@ async function runLegacyEval(
     await writeLegacyEvalProgress(options.progressPath, progress);
     await writeFileEnsuringDirectory(
       resolveFromCwd(options.outputPath),
-      formatLegacyOutput(rows, options.mode, rewriteConfig),
+      formatLegacyOutput(rows, options.mode, rewriteConfig, options.caseIds),
     );
   }
 
   const outputPath = resolveFromCwd(options.outputPath);
   await writeFileEnsuringDirectory(
     outputPath,
-    formatLegacyOutput(rows, options.mode, rewriteConfig),
+    formatLegacyOutput(rows, options.mode, rewriteConfig, options.caseIds),
   );
   console.log(`Wrote ${outputPath}`);
 }
@@ -2815,6 +3095,7 @@ async function loadCorpusProgress(
         ...existing,
         corpusPath: options.corpusPath,
         outputPath: options.outputPath,
+        selectedCaseIds: options.caseIds,
         strategyVersion: rewriteConfig.strategyVersion,
         naturalnessThreshold: rewriteConfig.naturalnessThreshold,
       };
@@ -2828,6 +3109,7 @@ async function loadCorpusProgress(
   return {
     corpusPath: options.corpusPath,
     outputPath: options.outputPath,
+    selectedCaseIds: options.caseIds,
     startedAt: now,
     lastUpdatedAt: now,
     strategyVersion: rewriteConfig.strategyVersion,
@@ -2925,8 +3207,13 @@ function formatCorpusHeader(progress: CorpusProgress, corpusLength: number) {
     `Strategy: ${progress.strategyVersion}`,
     `Naturalness threshold: ${progress.naturalnessThreshold}%`,
     `Cases in corpus: ${corpusLength}`,
+    progress.selectedCaseIds?.length
+      ? `Selected case ids: ${progress.selectedCaseIds.join(", ")}`
+      : null,
     "",
-  ].join("\n");
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
 function formatProgressSummaryBlock(progress: CorpusProgress, corpusLength: number) {
@@ -3020,8 +3307,16 @@ async function runCorpusEval(
   rewriteConfig: ReturnType<typeof getFactReconstructConfig>,
 ) {
   const startTime = Date.now();
-  const corpus = await loadLearningBaselineCorpus(options.corpusPath);
+  const corpus = applyCaseIdFilter(
+    await loadLearningBaselineCorpus(options.corpusPath),
+    options.caseIds,
+  );
   const progress = await loadCorpusProgress(options, rewriteConfig);
+  const selectedIds = new Set(corpus.map((sample) => sample.id));
+  progress.completedCases = options.caseIds
+    ? progress.completedCases.filter((item) => selectedIds.has(item.id))
+    : progress.completedCases;
+  progress.selectedCaseIds = options.caseIds;
   const completedIds = new Set(progress.completedCases.map((item) => item.id));
   let processedThisRun = 0;
 
@@ -3033,7 +3328,8 @@ async function runCorpusEval(
   }
 
   console.log(
-    `[eval] corpus=${options.corpusPath} strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold} completed=${progress.completedCases.length}/${corpus.length}`,
+    `[eval] corpus=${options.corpusPath} strategy=${rewriteConfig.strategyVersion} threshold=${rewriteConfig.naturalnessThreshold} completed=${progress.completedCases.length}/${corpus.length}` +
+      (options.caseIds ? ` caseIds=${options.caseIds.join(",")}` : ""),
   );
 
   for (const sample of corpus) {

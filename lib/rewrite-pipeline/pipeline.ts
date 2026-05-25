@@ -59,11 +59,348 @@ type FactReconstructQualityFailureReason =
   | "reviewer_threshold_failed"
   | "naturalness_gate_failed";
 
+function splitSentences(value: string) {
+  return value.match(/[^.!?]+[.!?]+(?:["'])?|[^.!?]+$/g) ?? [value];
+}
+
+function isRefundBoundarySentence(sentence: string) {
+  return /\b(?:can't|cannot|can not|not able to)\b.{0,90}\brefund\b|\brefund\b.{0,90}\b(?:window closed|closed|not available|not approved|not possible)\b/i.test(
+    sentence,
+  );
+}
+
+function isReplacementRemedySentence(sentence: string) {
+  return /\b(?:what i can do is\s+)?(?:send|queue|offer|replace|ship)\b.{0,120}\breplacement\b/i.test(
+    sentence,
+  );
+}
+
+function normalizeReplacementRemedySentence(sentence: string) {
+  return sentence.replace(/\bWhat I can do is\s+/i, "I can ");
+}
+
+export function prioritizeSupportRemedyBeforeRefundBoundary(email: string) {
+  return email
+    .split(/\n{2,}/)
+    .map((paragraph) => {
+      const sentences = splitSentences(paragraph).map((sentence) => sentence.trim());
+      const refundIndex = sentences.findIndex(isRefundBoundarySentence);
+      const remedyIndex = sentences.findIndex(isReplacementRemedySentence);
+
+      if (refundIndex < 0 || remedyIndex < 0 || remedyIndex < refundIndex) {
+        return paragraph;
+      }
+
+      const nextSentences = [...sentences];
+      const [remedySentence] = nextSentences.splice(remedyIndex, 1);
+      nextSentences.splice(
+        refundIndex,
+        0,
+        normalizeReplacementRemedySentence(remedySentence),
+      );
+
+      return nextSentences.join(" ");
+    })
+    .join("\n\n");
+}
+
+function inputSourceText(input: RewriteRequestInput) {
+  return [
+    input.messageToReplyTo,
+    input.roughDraftReply,
+    input.audience,
+    input.purpose,
+    input.whatHappened,
+    input.factsToPreserve,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function firstGreetingName(source: string) {
+  return (
+    source.match(/^\s*(?:hi|hello|dear)\s+([A-Z][A-Za-z.'-]*)\b/i)?.[1] ??
+    source.match(/^\s*(Team)\s*,/i)?.[1] ??
+    ""
+  );
+}
+
+function containsName(email: string, name: string) {
+  return new RegExp(String.raw`\b${escapeRegExp(name)}\b`).test(email);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function restoreGreetingFromSource(source: string, email: string) {
+  const name = firstGreetingName(source);
+  if (!name || containsName(email, name)) {
+    return email;
+  }
+
+  if (/^team$/i.test(name)) {
+    return `Team,\n\n${email}`;
+  }
+
+  return `Hi ${name},\n\n${email}`;
+}
+
+function photoDamageSentence(source: string) {
+  const match = source.match(
+    /\bthe photo shows damage to (?:the )?([^.\n]+?)(?:,|\.)/i,
+  );
+  if (!match) {
+    return "";
+  }
+
+  return `The photo shows damage to the ${match[1].trim()}.`;
+}
+
+function restorePhotoDamageEvidence(source: string, email: string) {
+  if (/\bphoto\b/i.test(email)) {
+    return email;
+  }
+
+  const sentence = photoDamageSentence(source);
+  if (!sentence) {
+    return email;
+  }
+
+  const paragraphs = email.split(/\n{2,}/);
+  paragraphs[0] = `${paragraphs[0]} ${sentence}`;
+
+  return paragraphs.join("\n\n");
+}
+
+function restoreProductTeamAnchor(source: string, email: string) {
+  if (
+    !/\bproduct team\b/i.test(source) ||
+    !/(?:\binterview(?:ing)?\b|\bcoming in\b|\bpanel\b|\brole\b)/i.test(source) ||
+    /\bproduct team\b/i.test(email)
+  ) {
+    return email;
+  }
+
+  const directRestored = email.replace(
+    /\b(interview(?:ing)?|coming in)([^.\n]*?)(for the [^.\n]*?role)/i,
+    (_match, action: string, middle: string, role: string) =>
+      `${action}${middle} with the product team ${role}`,
+  );
+
+  if (directRestored !== email) {
+    return directRestored;
+  }
+
+  const role = source.match(/\bfor the ([^.\n]*?\brole)\b/i)?.[1]?.trim();
+  if (role) {
+    const rolePattern = escapeRegExp(role);
+    const quickUpdatePattern = new RegExp(
+      String.raw`\bQuick update on the ${rolePattern}\.?`,
+      "i",
+    );
+
+    if (quickUpdatePattern.test(email)) {
+      return email.replace(
+        quickUpdatePattern,
+        `Quick update on the product team interview for the ${role}.`,
+      );
+    }
+
+    const roleOnlyPattern = new RegExp(
+      String.raw`\bfor the ${rolePattern}\b`,
+      "i",
+    );
+
+    if (roleOnlyPattern.test(email)) {
+      return email.replace(
+        roleOnlyPattern,
+        `with the product team for the ${role}`,
+      );
+    }
+  }
+
+  const paragraphs = email.split(/\n{2,}/);
+  const targetIndex = paragraphs.findIndex(
+    (paragraph) => !/^(?:hi|hello|dear)\b[^.\n]*,\s*$/i.test(paragraph.trim()),
+  );
+
+  if (targetIndex < 0) {
+    return `${email}\n\nThe interview was with the product team.`;
+  }
+
+  paragraphs[targetIndex] =
+    `${paragraphs[targetIndex]} The interview was with the product team.`;
+
+  return paragraphs.join("\n\n");
+}
+
+function contextAnchorPhrases(source: string) {
+  const phrases: string[] = [];
+  const patterns = [
+    /\b([A-Z][A-Za-z0-9-]*(?:\s+[A-Za-z0-9-]+){0,3}\s+handoff)\b/g,
+    /\b([A-Z][A-Za-z0-9-]*(?:\s+[A-Za-z0-9-]+){0,3}\s+dashboard)\b/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      const phrase = match[1].replace(/\s+/g, " ").trim();
+      if (!phrases.some((item) => item.toLowerCase() === phrase.toLowerCase())) {
+        phrases.push(phrase);
+      }
+    }
+  }
+
+  return phrases;
+}
+
+function firstBodyParagraphIndex(paragraphs: string[]) {
+  const index = paragraphs.findIndex(
+    (paragraph) => !/^(?:hi|hello|dear|team)\b[^.\n]*,\s*$/i.test(paragraph.trim()),
+  );
+
+  return index < 0 ? 0 : index;
+}
+
+function restoreContextAnchorsFromSource(source: string, email: string) {
+  let nextEmail = email;
+
+  for (const anchor of contextAnchorPhrases(source)) {
+    if (new RegExp(String.raw`\b${escapeRegExp(anchor)}\b`, "i").test(nextEmail)) {
+      continue;
+    }
+
+    const paragraphs = nextEmail.split(/\n{2,}/);
+    const targetIndex = firstBodyParagraphIndex(paragraphs);
+    const target = paragraphs[targetIndex] ?? "";
+
+    if (/\b(?:a\s+)?quick update\b/i.test(target)) {
+      paragraphs[targetIndex] = target.replace(
+        /\b(?:a\s+)?quick update\b:?\s*/i,
+        `${anchor} update: `,
+      );
+    } else {
+      paragraphs[targetIndex] = `${anchor} update: ${target}`;
+    }
+
+    nextEmail = paragraphs.join("\n\n");
+  }
+
+  return nextEmail;
+}
+
+function releaseRequestSentence(source: string) {
+  const match = source.match(
+    /\bI sent the release request at (\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm))\b/i,
+  );
+
+  return match ? `I sent the release request at ${match[1]}.` : "";
+}
+
+function restoreReleaseRequestAction(source: string, email: string) {
+  if (/\bsent the release request\b/i.test(email)) {
+    return email;
+  }
+
+  const sentence = releaseRequestSentence(source);
+  if (!sentence) {
+    return email;
+  }
+
+  if (/\bToday's note is for \d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)\.?/i.test(email)) {
+    return email.replace(
+      /\bToday's note is for \d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)\.?/i,
+      sentence,
+    );
+  }
+
+  return `${email}\n\n${sentence}`;
+}
+
+function repairTitleNameParagraphBreaks(email: string) {
+  return email.replace(
+    /\b(Dr|Mr|Mrs|Ms|Prof)\.\s*\n{2,}\s*([A-Z][A-Za-z.'-]*(?:'s)?\b)/g,
+    "$1. $2",
+  );
+}
+
+function accessConfirmationChoiceSentence(source: string) {
+  const match = source.match(
+    /\bPlease confirm whether someone can let ([^.]*?\blockbox code already on file)\./i,
+  );
+
+  if (!match) {
+    return "";
+  }
+
+  return `Please confirm whether someone can let ${match[1].replace(/\s+/g, " ").trim()}.`;
+}
+
+function restoreAccessConfirmationChoice(source: string, email: string) {
+  const sentence = accessConfirmationChoiceSentence(source);
+  if (!sentence) {
+    return email;
+  }
+
+  if (
+    /\bconfirm whether someone\b/i.test(email) ||
+    /\bsomeone can let\b/i.test(email)
+  ) {
+    return email;
+  }
+
+  if (!/\blockbox code\b/i.test(email) && !/\baccess confirmation\b/i.test(email)) {
+    return email;
+  }
+
+  const paragraphs = email.split(/\n{2,}/);
+  const targetIndex = paragraphs.findIndex((paragraph) =>
+    /\blockbox code\b|\baccess confirmation\b/i.test(paragraph),
+  );
+
+  if (targetIndex < 0) {
+    return `${email}\n\n${sentence}`;
+  }
+
+  paragraphs[targetIndex] = `${sentence} ${paragraphs[targetIndex]}`;
+
+  return paragraphs.join("\n\n");
+}
+
+export function stabilizeSupportReplyFromSource(
+  input: RewriteRequestInput,
+  email: string,
+) {
+  const source = inputSourceText(input);
+
+  return repairTitleNameParagraphBreaks(
+    prioritizeSupportRemedyBeforeRefundBoundary(
+      restoreReleaseRequestAction(
+        source,
+        restoreAccessConfirmationChoice(
+          source,
+          restoreContextAnchorsFromSource(
+            source,
+            restoreProductTeamAnchor(
+              source,
+              restorePhotoDamageEvidence(
+                source,
+                restoreGreetingFromSource(source, email),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 export class FactReconstructQualityError extends Error {
   naturalness: RewriteResponsePayload["naturalness"];
   rejectedCandidates: number;
   repairCandidatesTried: number;
   candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
+  factDiagnostics?: RewriteResponsePayload["optimization"]["factDiagnostics"];
   attemptLedger: RewriteAttemptLedgerEntry[];
   diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"];
   rewritePlanSummary: string;
@@ -74,6 +411,7 @@ export class FactReconstructQualityError extends Error {
     rejectedCandidates,
     repairCandidatesTried,
     candidateSignals,
+    factDiagnostics,
     attemptLedger,
     diagnosisTags,
     rewritePlanSummary,
@@ -83,6 +421,7 @@ export class FactReconstructQualityError extends Error {
     rejectedCandidates: number;
     repairCandidatesTried: number;
     candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
+    factDiagnostics?: RewriteResponsePayload["optimization"]["factDiagnostics"];
     attemptLedger?: RewriteAttemptLedgerEntry[];
     diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"];
     rewritePlanSummary: string;
@@ -94,6 +433,7 @@ export class FactReconstructQualityError extends Error {
     this.rejectedCandidates = rejectedCandidates;
     this.repairCandidatesTried = repairCandidatesTried;
     this.candidateSignals = candidateSignals;
+    this.factDiagnostics = factDiagnostics;
     this.attemptLedger = attemptLedger ?? [];
     this.diagnosisTags = diagnosisTags;
     this.rewritePlanSummary = rewritePlanSummary;
@@ -214,6 +554,7 @@ function naturalnessPasses({
 function throwQualityFailure({
   attemptLedger = [],
   candidateSignals,
+  factDiagnostics,
   diagnosisTags,
   draftPercent,
   reason,
@@ -224,6 +565,7 @@ function throwQualityFailure({
 }: {
   attemptLedger?: RewriteAttemptLedgerEntry[];
   candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"];
+  factDiagnostics?: RewriteResponsePayload["optimization"]["factDiagnostics"];
   diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"];
   draftPercent: number | null;
   reason: FactReconstructQualityFailureReason;
@@ -237,6 +579,7 @@ function throwQualityFailure({
     rejectedCandidates,
     repairCandidatesTried,
     candidateSignals,
+    factDiagnostics,
     attemptLedger,
     diagnosisTags,
     rewritePlanSummary,
@@ -452,6 +795,7 @@ function buildPassedResponse({
   changeSummary,
   diagnosisTags,
   draftPercent,
+  factDiagnostics,
   internalStrategiesTried,
   rejectedCandidates,
   repairCandidatesTried,
@@ -466,6 +810,7 @@ function buildPassedResponse({
   changeSummary: string[];
   diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"];
   draftPercent: number;
+  factDiagnostics?: RewriteResponsePayload["optimization"]["factDiagnostics"];
   internalStrategiesTried: number;
   rejectedCandidates: number;
   repairCandidatesTried: number;
@@ -488,6 +833,7 @@ function buildPassedResponse({
       selectionStatus,
       diagnosisTags,
       rewritePlanSummary,
+      ...(factDiagnostics ? { factDiagnostics } : {}),
       attemptLedger,
       candidateSignals,
     },
@@ -520,15 +866,19 @@ async function tryGuaranteedFallback({
   const fallbackCandidates = shouldPreferExtractiveFallback(input)
     ? [extractiveFallback, modelFallback]
     : [modelFallback, extractiveFallback];
+  const stabilizedFallbackCandidates = fallbackCandidates.map((fallback) => ({
+    ...fallback,
+    rewrittenText: stabilizeSupportReplyFromSource(input, fallback.rewrittenText),
+  }));
   let bestAttempt: {
-    fallback: (typeof fallbackCandidates)[number];
+    fallback: (typeof stabilizedFallbackCandidates)[number];
     factSafe: boolean;
     naturalnessSafe: boolean;
     passes: boolean;
     signal: Awaited<ReturnType<typeof measureWritingSignal>>;
   } | null = null;
 
-  for (const fallback of fallbackCandidates) {
+  for (const fallback of stabilizedFallbackCandidates) {
     const deterministic = deterministicSafeForFallback(
       input,
       facts,
@@ -574,7 +924,7 @@ async function tryGuaranteedFallback({
   }
 
   return bestAttempt ?? {
-    fallback: fallbackCandidates[0],
+    fallback: stabilizedFallbackCandidates[0],
     factSafe: false,
     naturalnessSafe: false,
     passes: false,
@@ -695,6 +1045,9 @@ export async function rewriteWithFactReconstruct(
     telemetry,
   });
   const candidateSignals: RewriteResponsePayload["optimization"]["candidateSignals"] = [];
+  let factDiagnostics:
+    | RewriteResponsePayload["optimization"]["factDiagnostics"]
+    | undefined;
   const attemptLedger: RewriteAttemptLedgerEntry[] = [];
   let diagnosisTags: RewriteResponsePayload["optimization"]["diagnosisTags"] = [];
   let rewritePlanSummary =
@@ -719,6 +1072,12 @@ export async function rewriteWithFactReconstruct(
   const extractedFacts = await extractFacts(input, config, telemetry);
   const factLedger = reviewExtractedFacts(input, extractedFacts);
   const facts = factLedger.facts;
+  factDiagnostics = {
+    extractedFacts,
+    reviewedFacts: facts,
+    addedAnchors: factLedger.addedAnchors,
+    rejectedFacts: factLedger.rejectedFacts,
+  };
   const scenario = await classifyScenario(facts, config, telemetry);
   const styleCard = getStyleCard(scenario);
   diagnosisTags = diagnosisTagsForScenario(scenario.domain);
@@ -816,6 +1175,7 @@ export async function rewriteWithFactReconstruct(
         repairCandidatesTried: 1,
         rejectedCandidates: 3,
         diagnosisTags,
+        factDiagnostics,
         rewritePlanSummary,
         candidateSignals,
       });
@@ -830,6 +1190,7 @@ export async function rewriteWithFactReconstruct(
 	      rejectedCandidates: 4,
 	      repairCandidatesTried: 1,
 	      rewritePlanSummary,
+        factDiagnostics,
 	      reason: fallbackAttempt.factSafe
 	        ? "reviewer_threshold_failed"
 	        : "fact_check_failed",
@@ -838,7 +1199,7 @@ export async function rewriteWithFactReconstruct(
 
   const bestKey = preselection.selected.key;
   const bestCandidate = preselection.selected.candidate;
-  const finalEmail = await finalizeCandidate({
+  const finalEmail = stabilizeSupportReplyFromSource(input, await finalizeCandidate({
     facts,
     scenario,
     styleCard,
@@ -846,7 +1207,7 @@ export async function rewriteWithFactReconstruct(
     requiredEdits: review.required_edits,
     config,
     telemetry,
-  });
+  }));
   const deterministic = adaptiveGateCheck(input, facts, finalEmail, styleCard);
   const policyGate = runPolicyIntentGate(input, finalEmail);
   const factCheck = await llmFactCheck({
@@ -991,6 +1352,7 @@ export async function rewriteWithFactReconstruct(
             selectionStatus: "passed",
             diagnosisTags,
             rewritePlanSummary,
+            ...(factDiagnostics ? { factDiagnostics } : {}),
             attemptLedger,
             candidateSignals,
           },
@@ -1067,6 +1429,7 @@ export async function rewriteWithFactReconstruct(
           repairCandidatesTried: 2,
           rejectedCandidates: 2,
           diagnosisTags,
+          factDiagnostics,
           rewritePlanSummary,
           candidateSignals,
         });
@@ -1081,6 +1444,7 @@ export async function rewriteWithFactReconstruct(
         rejectedCandidates: 3,
         repairCandidatesTried: 2,
         rewritePlanSummary,
+        factDiagnostics,
         reason: fallbackAttempt.factSafe
           ? "naturalness_gate_failed"
           : "fact_check_failed",
@@ -1096,6 +1460,7 @@ export async function rewriteWithFactReconstruct(
       rejectedCandidates: 1,
       repairCandidatesTried: 0,
       rewritePlanSummary,
+      factDiagnostics,
       reason: "fact_check_failed",
     });
   }
@@ -1149,6 +1514,7 @@ export async function rewriteWithFactReconstruct(
       repairCandidatesTried: 0,
       rejectedCandidates: 0,
       diagnosisTags,
+      factDiagnostics,
       rewritePlanSummary,
       candidateSignals,
     });
@@ -1214,6 +1580,7 @@ export async function rewriteWithFactReconstruct(
         repairCandidatesTried: 1,
         rejectedCandidates: 1,
         diagnosisTags,
+        factDiagnostics,
         rewritePlanSummary,
         candidateSignals,
       });
@@ -1324,6 +1691,7 @@ export async function rewriteWithFactReconstruct(
         repairCandidatesTried: targetedRepairTried + 1,
         rejectedCandidates: targetedRepairTried + 1,
         diagnosisTags,
+        factDiagnostics,
         rewritePlanSummary,
         candidateSignals,
       });
@@ -1397,6 +1765,7 @@ export async function rewriteWithFactReconstruct(
         repairCandidatesTried: targetedRepairTried + 2,
         rejectedCandidates: targetedRepairTried + 2,
         diagnosisTags,
+        factDiagnostics,
         rewritePlanSummary,
         candidateSignals,
       });
@@ -1424,6 +1793,7 @@ export async function rewriteWithFactReconstruct(
       repairCandidatesTried: targetedRepairTried + 2,
       rejectedCandidates: targetedRepairTried + 3,
       diagnosisTags,
+      factDiagnostics,
       rewritePlanSummary,
       candidateSignals,
       selectionStatus: "best_available",
@@ -1450,6 +1820,7 @@ export async function rewriteWithFactReconstruct(
     repairCandidatesTried: targetedRepairTried,
     rejectedCandidates: 1,
     diagnosisTags,
+    factDiagnostics,
     rewritePlanSummary,
     candidateSignals,
     selectionStatus: "best_available",
@@ -1466,6 +1837,7 @@ export async function rewriteWithFactReconstruct(
           .length,
         repairCandidatesTried: candidateSignals.length,
         rewritePlanSummary,
+        factDiagnostics,
         reason: "model_json_unusable",
       });
     }

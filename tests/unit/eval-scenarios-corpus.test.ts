@@ -78,6 +78,41 @@ describe("scenario eval fact matcher", () => {
     delete process.env.EVAL_SEMANTIC_JUDGE_RETRY_DELAY_MS;
   });
 
+  describe("case id filtering", () => {
+    it("parses comma-separated case ids from CLI options", () => {
+      const options = __evalScenarioTestUtils.parseEvalCliOptions([
+        "--mode=focused",
+        "--case-ids=rewrite-draft-006, rewrite-draft-017,rewrite-draft-006",
+        "--limit=1",
+      ]);
+
+      expect(options.caseIds).toEqual([
+        "rewrite-draft-006",
+        "rewrite-draft-017",
+      ]);
+      expect(options.limit).toBe(1);
+    });
+
+    it("filters focused mode selections to explicit case ids before limit is applied", () => {
+      const cases = Array.from({ length: 20 }, (_, index) => ({
+        id: `rewrite-draft-${String(index + 1).padStart(3, "0")}`,
+      }));
+
+      const selected = __evalScenarioTestUtils.applyCaseIdFilter(
+        cases,
+        ["rewrite-draft-006", "rewrite-draft-017"],
+      );
+
+      expect(selected.map((sample) => sample.id)).toEqual([
+        "rewrite-draft-006",
+        "rewrite-draft-017",
+      ]);
+      expect(selected.slice(0, 1).map((sample) => sample.id)).toEqual([
+        "rewrite-draft-006",
+      ]);
+    });
+  });
+
   describe("semantic anchor matching", () => {
     const matchingPairs = [
       {
@@ -357,6 +392,40 @@ describe("scenario eval fact matcher", () => {
     });
   });
 
+  it("drops semantic-judge forbidden false positives for preserved scheduling boundaries", () => {
+    const text = [
+      "Hi Ren, I need to move our Thursday, May 16 appointment from 11 a.m.",
+      "The room is unavailable.",
+      "I can offer Thursday at 2:30 p.m. or Friday at 9 a.m.",
+      "Please choose one by Wednesday at noon.",
+      "I cannot hold both times after noon, but I will confirm the selected slot as soon as you reply.",
+    ].join(" ");
+    const semanticResult = {
+      facts: { passed: true, missing: [] },
+      forbiddenViolations: [
+        "Do not keep the 11 a.m. appointment.",
+        "Do not offer any times other than Thursday at 2:30 p.m. or Friday at 9 a.m.",
+        "Do not hold both options after Wednesday at noon.",
+      ],
+      quality: {
+        draftScore: 7,
+        rewriteScore: 8,
+        delta: 1,
+        notes: [],
+      },
+    };
+
+    expect(
+      __evalScenarioTestUtils.mergeSemanticJudgeWithDeterministicChecks(
+        text,
+        [],
+        semanticResult,
+      ),
+    ).toMatchObject({
+      forbiddenViolations: [],
+    });
+  });
+
   it("retries transient semantic judge provider failures before failing a case", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.EVAL_SEMANTIC_JUDGE_RETRY_DELAY_MS = "0";
@@ -398,6 +467,51 @@ describe("scenario eval fact matcher", () => {
     expect(result.quality.delta).toBe(1);
   });
 
+  it("retries malformed semantic judge JSON before failing a case", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.EVAL_SEMANTIC_JUDGE_RETRY_DELAY_MS = "0";
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          choices: [{ message: { content: "{\"mustKeep\":" } }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  mustKeep: [{ fact: "Invoice INV-8842.", verdict: "PASS" }],
+                  mustNotClaim: [],
+                  quality: {
+                    draftScore: 7,
+                    rewriteScore: 8,
+                    notes: ["Clearer while preserving invoice ID."],
+                  },
+                }),
+              },
+            },
+          ],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await __evalScenarioTestUtils.semanticFactJudge(
+      "Invoice INV-8842 needs a clearer explanation.",
+      "Invoice INV-8842 covers the May billing period.",
+      ["Invoice INV-8842."],
+      [],
+      "Keep invoice ID clear.",
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.facts).toEqual({ passed: true, missing: [] });
+    expect(result.quality.delta).toBe(1);
+  });
+
   it("marks material quality regression separately from hard fact gates", () => {
     expect(__evalScenarioTestUtils.isQualityRegression(7, 5)).toBe(true);
     expect(__evalScenarioTestUtils.isQualityRegression(8, 5)).toBe(true);
@@ -418,6 +532,86 @@ describe("scenario eval fact matcher", () => {
         qualityRegression: true,
       }),
     ).toBe(false);
+  });
+
+  it("formats fact diagnostics in legacy eval case blocks", () => {
+    const diagnosticFacts = {
+      recipient_name: "",
+      sender_name_or_role: "",
+      people_mentioned: [],
+      main_purpose: "Beacon handoff update.",
+      key_facts: ["The Beacon handoff API checklist is done."],
+      required_actions: [],
+      deadlines: [],
+      dates_times: [],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [],
+      available_support: [],
+      clarifications: [],
+      facts_that_must_not_change: ["Beacon handoff"],
+      sensitive_points: [],
+      original_tone: "",
+    };
+    const row: Parameters<typeof __evalScenarioTestUtils.formatCaseBlock>[0] = {
+      id: "rewrite-draft-013",
+      scenario: "General reply",
+      tonePreset: "Warm",
+      messageToReplyTo: "",
+      roughDraftReply:
+        "Team, quick Beacon handoff update: the API checklist is done.",
+      expectedFacts: ["The update is about the Beacon handoff."],
+      forbiddenClaims: [],
+      diagnosisTags: [],
+      rewritePlan: "test plan",
+      rewrittenText: "Team,\n\nQuick update: The API checklist is done.",
+      wordCount: 9,
+      charCount: 62,
+      draft: 90,
+      firstCandidate: null,
+      repairCandidate: null,
+      rewrite: 12,
+      change: 78,
+      candidateSignals: [],
+      attemptLedger: [],
+      rejectedReasons: [],
+      factDiagnostics: {
+        extractedFacts: diagnosticFacts,
+        reviewedFacts: diagnosticFacts,
+        addedAnchors: [
+          {
+            id: "quoted_phrase:beacon-handoff",
+            text: "Beacon handoff",
+            normalizedText: "beacon handoff",
+            category: "quoted_phrase",
+            source: "draft",
+            required: true,
+          },
+        ],
+        rejectedFacts: [],
+      },
+      factsPreserved: false,
+      missingFacts: ["The update is about the Beacon handoff."],
+      unsupportedFactsIntroduced: [],
+      forbiddenClaimViolations: [],
+      qualityDraftScore: null,
+      qualityRewriteScore: null,
+      qualityDelta: null,
+      qualityNotes: [],
+      qualityRegression: false,
+      qualityFailure: false,
+      qualityFailureReason: null,
+      customerUsablePass: false,
+      strictSignalPass: false,
+    };
+
+    const block = __evalScenarioTestUtils.formatCaseBlock(row);
+
+    expect(block).toContain("Fact diagnostics:");
+    expect(block).toContain("Extracted facts:");
+    expect(block).toContain("Reviewed facts:");
+    expect(block).toContain("Added anchors:");
+    expect(block).toContain("Beacon handoff");
   });
 
   it("flags saved smoke case 006 invented scheduling options in eval reporting", () => {

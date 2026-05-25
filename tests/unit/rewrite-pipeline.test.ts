@@ -228,6 +228,181 @@ describe("rewriteWithFactReconstruct", () => {
     expect(mocks.escalateCandidate).not.toHaveBeenCalled();
   });
 
+  it("keeps the support replacement path before the refund boundary", async () => {
+    const { prioritizeSupportRemedyBeforeRefundBoundary } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const negativeFirst =
+      "Hi Lena,\n\nThanks for the photo of the cracked replacement mug from order R4821. I checked the order notes this morning and saw the replacement was marked delivered on May 6. The photo shows damage to the mug, but the matching saucer looks fine.\n\nI can't refund the full order from this ticket because the original refund window closed on April 30. What I can do is send one no-cost replacement for the mug after I confirm the delivery address, per our support policy.\n\nPlease reply with your current delivery address by Friday at 3 p.m., and I'll queue the replacement mug.";
+
+    const reordered = prioritizeSupportRemedyBeforeRefundBoundary(negativeFirst);
+
+    expect(reordered.indexOf("send one no-cost replacement")).toBeLessThan(
+      reordered.indexOf("can't refund"),
+    );
+  });
+
+  it("restores short support greeting and photo-damage evidence from the source draft", async () => {
+    const { stabilizeSupportReplyFromSource } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const source: RewriteRequestInput = {
+      scenario: "Customer support",
+      messageToReplyTo: "",
+      roughDraftReply:
+        "Hi Lena, thanks for sending the photo of the cracked replacement mug from order R4821. The photo shows damage to the replacement mug, but the matching saucer looks fine. Our support policy lets me send one no-cost replacement for the mug after I confirm the delivery address.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    };
+    const compressed =
+      "Thanks for getting in touch about the damaged replacement mug from order R4821. The matching saucer is undamaged. Our support policy lets me send one no-cost replacement for the mug after I confirm the delivery address.";
+
+    const stabilized = stabilizeSupportReplyFromSource(source, compressed);
+
+    expect(stabilized).toMatch(/^Hi Lena,/);
+    expect(stabilized).toContain("The photo shows damage to the replacement mug.");
+  });
+
+  it("restores compact source anchors that models commonly compress away", async () => {
+    const { stabilizeSupportReplyFromSource } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const baseInput: RewriteRequestInput = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: "",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    };
+
+    expect(
+      stabilizeSupportReplyFromSource(
+        {
+          ...baseInput,
+          roughDraftReply:
+            "Hi Alina, thanks for interviewing with the product team for the Senior Support Lead role.",
+        },
+        "Hi Alina,\n\nThanks again for coming in for the Senior Support Lead role.",
+      ),
+    ).toContain("product team");
+
+    expect(
+      stabilizeSupportReplyFromSource(
+        {
+          ...baseInput,
+          roughDraftReply:
+            "Team, quick Beacon handoff update: the API checklist is done.",
+        },
+        "Team,\n\nQuick update: The API checklist is done. Legal copy is still waiting on Mina.",
+      ),
+    ).toContain("Beacon handoff");
+
+    expect(
+      stabilizeSupportReplyFromSource(
+        {
+          ...baseInput,
+          roughDraftReply:
+            "I sent the release request at 10:15 a.m. and most requests are reviewed within two business days.",
+        },
+        "Most release requests are reviewed within two business days.\n\nToday's note is for 10:15 a.m.",
+      ),
+    ).toContain("I sent the release request at 10:15 a.m.");
+  });
+
+  it("restores product-team anchors when the model summarizes the role and panel", async () => {
+    const { stabilizeSupportReplyFromSource } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const source: RewriteRequestInput = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply:
+        "Hi Alina, thanks for interviewing with the product team for the Senior Support Lead role on May 10.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    };
+    const compressed = [
+      "Hi Alina,",
+      "Quick update on the Senior Support Lead role. The panel enjoyed learning about your experience with queue operations and onboarding on May 10.",
+      "We have not made a final hiring decision yet.",
+    ].join("\n\n");
+
+    const stabilized = stabilizeSupportReplyFromSource(source, compressed);
+
+    expect(stabilized).toContain("product team");
+    expect(stabilized).toContain("Senior Support Lead role");
+  });
+
+  it("removes paragraph breaks inside title and name anchors", async () => {
+    const { stabilizeSupportReplyFromSource } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const source: RewriteRequestInput = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply:
+        "I sent the release request to Dr. Chen's queue today at 10:15 a.m.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    };
+    const broken =
+      "I sent the release request to Dr.\n\nChen's queue today at 10:15 a.m.";
+
+    const stabilized = stabilizeSupportReplyFromSource(source, broken);
+
+    expect(stabilized).toContain("Dr. Chen's queue");
+    expect(stabilized).not.toContain("Dr.\n\nChen");
+  });
+
+  it("restores property access confirmation choices before lockbox access", async () => {
+    const { stabilizeSupportReplyFromSource } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const source: RewriteRequestInput = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply: [
+        "Hi Cam, I am following up about the leak under the kitchen sink in Unit 4B.",
+        "The earliest access window the vendor gave us is Tuesday, May 28 between 9 a.m. and noon.",
+        "Please confirm whether someone can let the plumber in during that window or whether we should use the lockbox code already on file.",
+        "The maintenance file needs the access confirmation first, then I can send the vendor confirmation number.",
+      ].join(" "),
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    };
+    const softened = [
+      "Cam, just following up on the leak under the kitchen sink in Unit 4B.",
+      "We have your lockbox code already on file, so that's an option for access on Tuesday, May 28 between 9 a.m. and noon.",
+      "The maintenance file needs the access confirmation first, then I can send the vendor confirmation number.",
+    ].join("\n\n");
+
+    const stabilized = stabilizeSupportReplyFromSource(source, softened);
+
+    expect(stabilized).toContain(
+      "Please confirm whether someone can let the plumber in during that window or whether we should use the lockbox code already on file.",
+    );
+  });
+
   it("reviews extracted facts before scenario routing and candidate generation", async () => {
     const { rewriteWithFactReconstruct } = await import(
       "../../lib/rewrite-pipeline/pipeline"
@@ -283,6 +458,20 @@ describe("rewriteWithFactReconstruct", () => {
       "full refund available",
     );
     expect(result.optimization.rewritePlanSummary).toContain("Fact ledger added");
+    expect(result.optimization.factDiagnostics).toMatchObject({
+      extractedFacts: expect.objectContaining({
+        recipient_name: "Priya",
+      }),
+      reviewedFacts: expect.objectContaining({
+        recipient_name: "Priya",
+      }),
+      addedAnchors: expect.arrayContaining([
+        expect.objectContaining({ text: "NZD $126" }),
+      ]),
+      rejectedFacts: expect.arrayContaining([
+        expect.objectContaining({ text: "There" }),
+      ]),
+    });
   });
 
   it("uses strong escalation once when the first final stays above the threshold", async () => {
@@ -674,6 +863,87 @@ describe("rewriteWithFactReconstruct", () => {
     expect(result.optimization.repairCandidatesTried).toBe(1);
     expect(result.optimization.candidateSignals.at(-1)?.stage).toBe("fallback");
     expect(mocks.finalizeCandidate).not.toHaveBeenCalled();
+  });
+
+  it("stabilizes deterministic fallback output before returning it", async () => {
+    const { rewriteWithFactReconstruct } = await import(
+      "../../lib/rewrite-pipeline/pipeline"
+    );
+    const medicalInput: RewriteRequestInput = {
+      scenario: "General reply",
+      messageToReplyTo: "",
+      roughDraftReply:
+        "Hi Nora, I checked the portal message about Eli's lab report from the May 3 visit. I can see that the report is marked received by our office, but it has not been released to the patient portal yet. I am not a clinician, so I cannot interpret the results in this message. I sent the release request to Dr. Chen's queue today at 10:15 a.m. Most release requests are reviewed within two business days. If Eli has new or worsening symptoms, please call the clinic line instead of waiting for a portal reply.",
+      audience: "",
+      purpose: "",
+      whatHappened: "",
+      factsToPreserve: "",
+      tone: "warm",
+      tonePreset: "Warm",
+    };
+
+    mocks.extractFacts.mockResolvedValue({
+      recipient_name: "Nora",
+      sender_name_or_role: "",
+      people_mentioned: ["Nora", "Eli", "Dr. Chen"],
+      main_purpose: "Explain lab report release status.",
+      key_facts: [
+        "The report is marked received by the office.",
+        "The report has not been released to the patient portal yet.",
+        "The release request was sent to Dr. Chen's queue today at 10:15 a.m.",
+      ],
+      required_actions: [],
+      deadlines: [],
+      dates_times: ["May 3", "10:15 a.m."],
+      positive_notes: [],
+      concerns: [],
+      policies_or_conditions: [
+        "The sender is not a clinician.",
+        "The sender cannot interpret the results.",
+        "Most release requests are reviewed within two business days.",
+        "New or worsening symptoms should go through the clinic line.",
+      ],
+      available_support: ["clinic line"],
+      clarifications: [],
+      facts_that_must_not_change: [
+        "Nora",
+        "Eli",
+        "Dr. Chen's queue",
+        "10:15 a.m.",
+        "not been released to the patient portal",
+        "not a clinician",
+        "cannot interpret",
+        "clinic line",
+      ],
+      sensitive_points: [],
+      original_tone: "",
+    });
+    mocks.reviewCandidates.mockResolvedValue({
+      ...review,
+      scores: {
+        candidate_a_concise: {
+          ...review.scores.candidate_a_concise,
+          factual_accuracy: 8,
+        },
+        candidate_b_warm: {
+          ...review.scores.candidate_b_warm,
+          factual_accuracy: 8,
+        },
+        candidate_c_natural: {
+          ...review.scores.candidate_c_natural,
+          factual_accuracy: 8,
+        },
+      },
+    });
+    mocks.measureWritingSignal
+      .mockResolvedValue({ aiLikePercent: 0 })
+      .mockResolvedValueOnce({ aiLikePercent: 0 });
+
+    const result = await rewriteWithFactReconstruct(medicalInput);
+
+    expect(result.optimization.candidateSignals.at(-1)?.stage).toBe("fallback");
+    expect(result.rewrittenText).toContain("Dr. Chen's queue");
+    expect(result.rewrittenText).not.toContain("Dr.\n\nChen");
   });
 
   it("reports reviewer_threshold_failed when rejected model candidates cannot be rescued", async () => {
