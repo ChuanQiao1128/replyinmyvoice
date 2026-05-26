@@ -75,9 +75,21 @@ public static class ServiceCollectionExtensions
             ?? "gpt-4o-mini";
         var openAiTimeoutSeconds = int.TryParse(configuration["OPENAI_TIMEOUT_SEC"], out var parsedOpenAiTimeout)
             ? parsedOpenAiTimeout
-            : 35;
+            : 60;
         var signalTimeoutSeconds = int.TryParse(configuration["WRITING_SIGNAL_TIMEOUT_SEC"], out var parsedSignalTimeout)
             ? parsedSignalTimeout
+            : 10;
+
+        // Adaptive refinement loop: refine until a send-ready candidate reaches the AI-signal
+        // target, then return it (or the lowest-scoring one once the attempt budget is spent —
+        // soft target, never fail-closed). Validated 2026-05-26: target 20 / max 10 loops drove
+        // all 100 eval cases under 25 with zero fact loss, ~1.7 model calls/case. Both tunable
+        // via app settings without a redeploy.
+        var aiSignalTarget = int.TryParse(configuration["AI_SIGNAL_TARGET"], out var parsedTarget)
+            ? parsedTarget
+            : 20;
+        var rewriteMaxAttempts = int.TryParse(configuration["REWRITE_MAX_ATTEMPTS"], out var parsedMaxAttempts)
+            ? parsedMaxAttempts
             : 10;
 
         if (string.IsNullOrWhiteSpace(modelApiKey) && string.IsNullOrWhiteSpace(saplingApiKey))
@@ -114,7 +126,12 @@ public static class ServiceCollectionExtensions
                     saplingApiKey,
                     TimeSpan.FromSeconds(signalTimeoutSeconds));
             });
-            services.AddScoped<IRewriteProvider, FactReconstructRewriteProvider>();
+            services.AddScoped<IRewriteProvider>(sp => new FactReconstructRewriteProvider(
+                sp.GetRequiredService<IRewriteModelClient>(),
+                sp.GetRequiredService<IWritingSignalClient>(),
+                new FactReconstructRewriteOptions(
+                    RequestedMaxAttempts: rewriteMaxAttempts,
+                    TargetAiLikePercent: aiSignalTarget)));
         }
 
         return services;

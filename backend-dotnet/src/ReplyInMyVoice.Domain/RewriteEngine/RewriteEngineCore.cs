@@ -538,8 +538,14 @@ public static class RewriteBudgetManager
             ? 10
             : 6;
 
+        // Honor the caller's requested attempt budget up to the hard cap of 10. The adaptive
+        // refinement loop wants the full budget for every risk level, not just the high-risk
+        // ones that previously defaulted to 10; defaultAttempts is only used when the caller
+        // does not request a budget. On the happy path this changes nothing (a candidate at or
+        // below the target returns immediately) — it only raises the retry ceiling for
+        // low-risk cases that keep failing, which is strictly safer.
         var maxAttempts = Math.Clamp(
-            requestedMaxAttempts <= 0 ? defaultAttempts : Math.Min(defaultAttempts, requestedMaxAttempts),
+            requestedMaxAttempts <= 0 ? defaultAttempts : requestedMaxAttempts,
             1,
             10);
 
