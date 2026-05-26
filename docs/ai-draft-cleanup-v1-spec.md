@@ -75,6 +75,22 @@ Keep the existing hard fact rules (preserve names/dates/money/counts/IDs/negativ
 uncertainty — no may→is drift; no invented promises/discounts/timelines/policies/people; no
 professional-advice redirects unless the facts provide them; no unsupported judgment labels).
 
+## 2a. Short-reply skeleton trimming (drafted 2026-05-27; NOT implemented)
+
+Baseline finding: the main residual AI tell is email scaffolding on short content — even a
+one-line fact gets wrapped in `Hi, … Best,`. Proposed prompt rule (draft only):
+
+> If the rewritten message is one or two short sentences, do not add a greeting or sign-off
+> unless the draft clearly requires one. For short replies, prefer a direct 1–2 sentence
+> answer over a full email skeleton.
+
+Example:
+- Over-structured: `Hi Alex,` / `Tuesday at 3 works for me.` / `Best,`
+- Better: `Tuesday at 3 works for me.`
+
+Low-risk; likely helps both naturalness and AI-detection risk. Validate via the offline eval
+(after the scorer fix + an offline AI-detection snapshot), not wired into the engine yet.
+
 ## 3. Compression target
 
 ```text
