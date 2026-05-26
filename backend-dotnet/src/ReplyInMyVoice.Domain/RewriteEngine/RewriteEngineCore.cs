@@ -95,6 +95,7 @@ public enum RewriteFactCategory
     DateOrDeadline,
     Amount,
     Count,
+    Identifier,
     Policy,
     Condition,
     NegativeConstraint,
@@ -306,6 +307,17 @@ public static class FactLedgerExtractor
         @"\b[A-Z][a-z]{2,}\b",
         RegexOptions.Compiled);
 
+    // Reference codes / identifiers: a letter-led token that contains digits, hyphenated or
+    // not — ORD-29447, INV-8842, R4821, WS-8841, DON-2024-1107, P-311, CX-77401. Only those
+    // carrying a >=3-digit run are extracted; the fact gate enforces that digit run verbatim,
+    // catching single-digit corruption (e.g. ORD-294[4]7 -> ORD-294[2]7) the other category
+    // regexes miss (the digits sit behind a hyphen, so CountRegex's lookbehind excludes them).
+    private static readonly Regex IdentifierRegex = new(
+        @"\b[A-Za-z][A-Za-z]*-?\d[\dA-Za-z-]*\b",
+        RegexOptions.Compiled);
+
+    private static readonly Regex ThreeDigitRunRegex = new(@"\d{3,}", RegexOptions.Compiled);
+
     private static readonly HashSet<string> NonNameCapitalizedWords = new(StringComparer.Ordinal)
     {
         "Hi",
@@ -398,6 +410,15 @@ public static class FactLedgerExtractor
                 facts.Add(CreateFact(source, value, RewriteFactCategory.Person));
             }
         }
+
+        foreach (Match match in IdentifierRegex.Matches(text))
+        {
+            var value = match.Value.Trim();
+            if (ThreeDigitRunRegex.IsMatch(value))
+            {
+                facts.Add(CreateFact(source, value, RewriteFactCategory.Identifier));
+            }
+        }
     }
 
     private static void AddMatches(
@@ -419,6 +440,7 @@ public static class FactLedgerExtractor
             or RewriteFactCategory.DateOrDeadline
             or RewriteFactCategory.Amount
             or RewriteFactCategory.Count
+            or RewriteFactCategory.Identifier
             or RewriteFactCategory.Policy
             or RewriteFactCategory.Condition
             or RewriteFactCategory.NegativeConstraint
@@ -622,6 +644,9 @@ public static class RewriteFactGate
         @"\b[\p{L}\p{N}'-]+\b",
         RegexOptions.Compiled);
 
+    // A reference code's digit run(s) of length >= 3 must survive verbatim in the candidate.
+    private static readonly Regex CriticalDigitRunRegex = new(@"\d{3,}", RegexOptions.Compiled);
+
     private static readonly HashSet<string> CertaintyStopWords = new(StringComparer.OrdinalIgnoreCase)
     {
         "a",
@@ -669,8 +694,10 @@ public static class RewriteFactGate
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var certaintyDrifts = FindCertaintyDrifts(candidateText, factLedger);
+        var corruptedIdentifiers = FindCorruptedIdentifiers(candidateText, factLedger);
 
-        if (missingFacts.Length == 0 && unsupportedJudgments.Length == 0 && certaintyDrifts.Length == 0)
+        if (missingFacts.Length == 0 && unsupportedJudgments.Length == 0 && certaintyDrifts.Length == 0 &&
+            corruptedIdentifiers.Length == 0)
         {
             return new RewriteGateResult(true, [], []);
         }
@@ -681,6 +708,16 @@ public static class RewriteFactGate
         {
             failureKinds.Add(RewriteFailureKind.FactLoss);
             reasons.AddRange(missingFacts.Select(fact => $"Candidate is missing critical {fact.Category} fact: {fact.Text}."));
+        }
+
+        if (corruptedIdentifiers.Length > 0)
+        {
+            if (!failureKinds.Contains(RewriteFailureKind.FactLoss))
+            {
+                failureKinds.Add(RewriteFailureKind.FactLoss);
+            }
+
+            reasons.AddRange(corruptedIdentifiers.Select(id => $"Candidate altered or dropped identifier: {id}."));
         }
 
         if (unsupportedJudgments.Length > 0)
@@ -715,6 +752,29 @@ public static class RewriteFactGate
     private static bool LedgerContains(RewriteFactLedger factLedger, string value) =>
         factLedger.Facts.Any(fact =>
             NormalizeForFactCheck(fact.Text).Contains(NormalizeForFactCheck(value), StringComparison.Ordinal));
+
+    // Flags an Identifier fact whose >= 3-digit core is not present verbatim in the candidate —
+    // an order/invoice/reference number that was dropped or had a digit changed. FP-free on the
+    // pass path: a faithfully preserved code keeps its digit run even when reformatted
+    // ("INV-8842" -> "invoice 8842"), so a correct rewrite is never flagged; it fires only on a
+    // real alteration like ORD-29447 -> ORD-29427. Cores < 3 digits are not enforced so short
+    // codes cannot collide with unrelated numbers.
+    private static string[] FindCorruptedIdentifiers(string candidateText, RewriteFactLedger factLedger) =>
+        factLedger.Facts
+            .Where(fact => fact.Category == RewriteFactCategory.Identifier)
+            .Where(fact =>
+            {
+                var cores = CriticalDigitRunRegex.Matches(fact.Text).Select(match => match.Value).ToArray();
+                return cores.Length > 0 && cores.Any(core => !ContainsDigitRun(candidateText, core));
+            })
+            .Select(fact => fact.Text)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    // True when `core` appears in the candidate bounded by non-digits, so "29447" is not
+    // satisfied by "294470" or "129447".
+    private static bool ContainsDigitRun(string candidateText, string core) =>
+        Regex.IsMatch(candidateText, $@"(?<!\d){Regex.Escape(core)}(?!\d)");
 
     private static string[] FindCertaintyDrifts(string candidateText, RewriteFactLedger factLedger)
     {

@@ -244,13 +244,45 @@ public static class ForbiddenClaimScreen
                 continue;
             }
 
-            if (category.AssertionMarkers.Any(marker => ContainsUnhedgedAssertion(text, marker)))
+            var isFullRefundClaim = category.ClaimKeyword == "refund" && MentionsFullRefund(normalizedClaim);
+            var violated = isFullRefundClaim
+                ? ContainsUnhedgedFullRefund(text)
+                : category.AssertionMarkers.Any(marker => ContainsUnhedgedAssertion(text, marker));
+            if (violated)
             {
                 violations.Add(claim);
             }
         }
 
         return new Result(violations, abstained);
+    }
+
+    // A "full refund" must_not_claim is only violated by an UN-HEDGED full-refund promise. A
+    // qualified partial refund ("a partial refund of $29.40"), or a later bare "the refund will
+    // go back to the card" that refers to it, is allowed — so we require a refund sentence that
+    // also carries a fullness word (full/entire/complete/whole) and is not hedged. This clears
+    // the case-041 false positive while still catching "I will issue a full $94.00 refund".
+    private static readonly string[] FullnessTerms = { "full", "entire", "complete", "whole" };
+
+    private static bool MentionsFullRefund(string normalizedClaim) =>
+        FullnessTerms.Any(term => normalizedClaim.Contains(term, StringComparison.Ordinal))
+        || normalizedClaim.Contains("in full", StringComparison.Ordinal);
+
+    private static bool ContainsUnhedgedFullRefund(string text)
+    {
+        var index = 0;
+        while ((index = text.IndexOf("refund", index, StringComparison.Ordinal)) >= 0)
+        {
+            var sentence = SentenceAround(text, index);
+            if (FullnessTerms.Any(term => sentence.Contains(term, StringComparison.Ordinal)) && !IsHedged(sentence))
+            {
+                return true;
+            }
+
+            index += "refund".Length;
+        }
+
+        return false;
     }
 
     private static bool ContainsUnhedgedAssertion(string text, string marker)

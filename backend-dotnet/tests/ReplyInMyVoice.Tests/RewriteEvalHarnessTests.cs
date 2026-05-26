@@ -209,6 +209,28 @@ public class RewriteEvalHarnessTests
     }
 
     [Fact]
+    public void ForbiddenScreen_allows_partial_refund_under_a_full_refund_claim()
+    {
+        // The bare "the refund will go back to the card" refers to the partial refund stated
+        // earlier; a full-refund claim must not be tripped by an allowed partial refund (case 041).
+        var result = ForbiddenClaimScreen.Check(
+            "I can process a partial refund of $29.40 for the mixing bowl set only. The refund will go back to the card on file.",
+            new[] { "Do not promise a full refund for either order." });
+
+        result.Violations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ForbiddenScreen_still_flags_an_unhedged_full_refund_promise()
+    {
+        var result = ForbiddenClaimScreen.Check(
+            "Thanks for your patience. I will issue a full $94.00 refund back to your card today.",
+            new[] { "Do not promise a full refund." });
+
+        result.Violations.Should().ContainSingle();
+    }
+
+    [Fact]
     public void ForbiddenScreen_still_flags_unconditional_promise_with_decimal_amount()
     {
         // Guard: the decimal-aware sentence split must not blind the screen to a genuine,

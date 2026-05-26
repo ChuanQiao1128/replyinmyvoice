@@ -47,7 +47,7 @@ public sealed class SaplingWritingSignalClient(
 
             var rawAiLikePercent = ScoreToPercent(rawScore);
             var sentenceScores = ExtractSentenceScores(doc.RootElement);
-            var aiLikePercent = RobustAiLikePercent(rawAiLikePercent, sentenceScores);
+            var aiLikePercent = MeanAiLikePercent(rawAiLikePercent, sentenceScores);
 
             return new WritingSignalResult(true, aiLikePercent, null);
         }
@@ -101,23 +101,27 @@ public sealed class SaplingWritingSignalClient(
         return (int)Math.Round(Math.Clamp(score, 0, 1) * 100, MidpointRounding.AwayFromZero);
     }
 
-    private static int RobustAiLikePercent(int rawAiLikePercent, IReadOnlyList<SentenceSignal> sentenceScores)
+    // Displayed/gated AI-like score = MEAN of scorable per-sentence scores (was the median).
+    // Sapling's per-sentence scores are near-binary (a sentence reads ~0% or ~100%), so for
+    // the short emails this product handles the MEDIAN collapsed to the floor (0%) almost
+    // regardless of content: on the 2026-05-26 100-case corpus the median moved in only
+    // 15/100 draft->rewrite pairs and pinned 99/100 rewrites to 0%, making the before/after
+    // meaningless and the naturalness gate a no-op. Sapling's document score is the opposite
+    // failure (saturates to 100% on any formal email — 84/100 rewrites, 100/100 drafts), so it
+    // is unusable as a gate. The MEAN keeps a live gradient (moved in 85/100 pairs, net drop
+    // 14.7->7.4) and, unlike the old raw-overall score, one boilerplate sentence cannot pin a
+    // multi-sentence email to 100% (it contributes only 100/n). List markers and sub-two-word
+    // fragments stay excluded so segmentation artifacts do not skew the mean.
+    private static int MeanAiLikePercent(int rawAiLikePercent, IReadOnlyList<SentenceSignal> sentenceScores)
     {
         var scorable = sentenceScores
             .Where(sentence => IsScorableSentence(sentence.Sentence))
             .Select(sentence => sentence.AiLikePercent)
-            .Order()
             .ToArray();
 
-        if (scorable.Length == 0)
-        {
-            return rawAiLikePercent;
-        }
-
-        var mid = scorable.Length / 2;
-        return scorable.Length % 2 == 1
-            ? scorable[mid]
-            : (int)Math.Round((scorable[mid - 1] + scorable[mid]) / 2.0, MidpointRounding.AwayFromZero);
+        return scorable.Length == 0
+            ? rawAiLikePercent
+            : (int)Math.Round(scorable.Average(), MidpointRounding.AwayFromZero);
     }
 
     private static bool IsScorableSentence(string sentence)

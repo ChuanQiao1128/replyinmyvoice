@@ -465,6 +465,12 @@ export function RewriteWorkspace({
   const rewriteSignal = visibleNaturalness?.rewriteAiLikePercent ?? null;
   const hasSignal = draftSignal !== null && rewriteSignal !== null;
   const signalDelta = hasSignal ? draftSignal - rewriteSignal : null;
+  // Only flag a regression when the OUTPUT itself still reads AI-ish. A warmer rewrite of an
+  // already-natural draft can nudge the signal up (the reference signal scores short
+  // pleasantries high) — that is the product doing its job, not a failure, so we never punish it.
+  const outputReadsNatural = rewriteSignal !== null && rewriteSignal <= 40;
+  const signalRegressed =
+    signalDelta !== null && signalDelta < 0 && !outputReadsNatural;
   const showCopyNudge = !paid && showPostCopyNudge && result !== null;
 
   return (
@@ -703,16 +709,16 @@ export function RewriteWorkspace({
                     className={`rounded-lg px-3 py-2 font-mono text-sm font-semibold ${
                       signalDelta > 0
                         ? "bg-mint text-sage"
-                        : signalDelta < 0
+                        : signalRegressed
                           ? "bg-rust/10 text-rust"
                           : "bg-paper-deep text-ink/60"
                     }`}
                   >
                     {signalDelta > 0
                       ? `−${signalDelta} pts more natural`
-                      : signalDelta < 0
+                      : signalRegressed
                         ? `+${Math.abs(signalDelta)} pts`
-                        : "No change"}
+                        : "Reads natural"}
                   </span>
                 ) : null}
               </div>
