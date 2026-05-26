@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using ReplyInMyVoice.Domain.Contracts;
+using ReplyInMyVoice.Domain.RewriteEngine;
 using ReplyInMyVoice.Infrastructure.Providers;
 
 var startedAt = DateTimeOffset.UtcNow;
@@ -77,6 +78,12 @@ if (usePangram ? string.IsNullOrWhiteSpace(pangramApiKey) : string.IsNullOrWhite
 
 Directory.CreateDirectory(config.OutputDirectory);
 
+// Eval-only A/B variant (EVAL_VARIANT=v0..v4). Maps to optional engine levers that default to
+// current production behavior; the production composition root never sets them.
+var variant = (Environment.GetEnvironmentVariable("EVAL_VARIANT") ?? "v0").Trim().ToLowerInvariant();
+var (variantExtraInstruction, variantForceStrategy) = ResolveVariant(variant);
+Console.WriteLine($"Variant: {variant}");
+
 using var modelHttpClient = new HttpClient();
 using var signalHttpClient = new HttpClient();
 var modelClient = new OpenAiCompatibleRewriteModelClient(
@@ -84,7 +91,8 @@ var modelClient = new OpenAiCompatibleRewriteModelClient(
     apiKey,
     config.Model,
     config.OpenAiBaseUrl,
-    TimeSpan.FromSeconds(config.ModelTimeoutSeconds));
+    TimeSpan.FromSeconds(config.ModelTimeoutSeconds),
+    variantExtraInstruction);
 IWritingSignalClient baseSignalClient = usePangram
     ? new PangramWritingSignalClient(signalHttpClient, pangramApiKey!, TimeSpan.FromSeconds(config.SaplingTimeoutSeconds))
     : new SaplingWritingSignalClient(signalHttpClient, saplingApiKey!, TimeSpan.FromSeconds(config.SaplingTimeoutSeconds));
@@ -103,7 +111,8 @@ var provider = new FactReconstructRewriteProvider(
         TotalTimeBudget: TimeSpan.FromSeconds(
             int.TryParse(Environment.GetEnvironmentVariable("TOTAL_REWRITE_BUDGET_SEC"), out var budgetSec) && budgetSec > 0
                 ? budgetSec
-                : 0)));
+                : 0),
+        ForceInitialStrategy: variantForceStrategy));
 
 var rows = new List<EvalResultRow>();
 foreach (var sample in selectedCases)
@@ -161,8 +170,8 @@ var summary = EvalSummary.Create(
     signalClient.CallCount);
 
 var stamp = startedAt.ToString("yyyyMMdd-HHmmss");
-var jsonPath = Path.Combine(config.OutputDirectory, $"{stamp}-csharp-rewrite-{config.Mode}.json");
-var mdPath = Path.Combine(config.OutputDirectory, $"{stamp}-csharp-rewrite-{config.Mode}.md");
+var jsonPath = Path.Combine(config.OutputDirectory, $"{stamp}-csharp-rewrite-{config.Mode}-{variant}.json");
+var mdPath = Path.Combine(config.OutputDirectory, $"{stamp}-csharp-rewrite-{config.Mode}-{variant}.md");
 var jsonOptions = new JsonSerializerOptions
 {
     WriteIndented = true,
@@ -177,6 +186,17 @@ Console.WriteLine($"Summary: customerUsable={summary.CustomerUsableCount}/{summa
 return summary.ProviderFailureCount == 0 ? 0 : 1;
 
 static bool IsTruthy(string? value) => value is "1" or "true" or "yes" or "on";
+
+// Eval-only A/B levers (default v0 = current engine). v1/v2 append a system instruction;
+// v3 forces facts-first routing; v4 combines v2 + v3. None of these touch production.
+static (string? Extra, RewriteStrategy? Force) ResolveVariant(string variant) => variant switch
+{
+    "v1" => ("If the final reply is one or two short sentences, do not add a greeting or sign-off unless the source clearly requires one.", null),
+    "v2" => ("Do not preserve or add a greeting or sign-off by default; include them only when the context clearly requires it.", null),
+    "v3" => (null, RewriteStrategy.FactsFirstReconstruct),
+    "v4" => ("Do not preserve or add a greeting or sign-off by default; include them only when the context clearly requires it.", RewriteStrategy.FactsFirstReconstruct),
+    _ => (null, null),
+};
 
 static void RescoreSavedRun(string dir, IReadOnlyList<EvalCase> cases, int naturalnessThreshold)
 {

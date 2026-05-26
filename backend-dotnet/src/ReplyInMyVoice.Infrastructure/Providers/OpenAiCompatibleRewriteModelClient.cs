@@ -10,7 +10,8 @@ public sealed class OpenAiCompatibleRewriteModelClient(
     string apiKey,
     string model,
     string baseUrl,
-    TimeSpan timeout) : IRewriteModelClient
+    TimeSpan timeout,
+    string? extraSystemInstruction = null) : IRewriteModelClient
 {
     public async Task<RewriteModelResult> GenerateCandidateAsync(
         RewriteModelRequest request,
@@ -93,7 +94,7 @@ public sealed class OpenAiCompatibleRewriteModelClient(
                     Do not add unsupported judgment labels such as dismissive, careless, rude, negligent, or unprofessional.
                     Do not invent promises, discounts, timelines, policies, people, or outcomes.
                     Do not mention quality gates, scores, external scoring tools, or internal strategy names.
-                    """,
+                    """ + (string.IsNullOrWhiteSpace(extraSystemInstruction) ? string.Empty : "\n" + extraSystemInstruction.Trim()),
                 },
                 new
                 {

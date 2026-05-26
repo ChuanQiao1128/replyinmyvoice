@@ -65,7 +65,10 @@ public sealed record FactReconstructRewriteOptions(
     // Wall-clock budget for the whole rewrite (all loops combined). Zero = unlimited. When set,
     // a linked token cancels in-flight model/signal calls past the budget and the loop returns
     // the best candidate found so far, bounding worst-case latency regardless of loop count.
-    TimeSpan TotalTimeBudget = default);
+    TimeSpan TotalTimeBudget = default,
+    // Eval-only experiment lever: force the initial routing strategy (e.g. FactsFirstReconstruct)
+    // regardless of the length/policy router. Default null = current production routing.
+    RewriteStrategy? ForceInitialStrategy = null);
 
 public sealed class FactReconstructRewriteProvider(
     IRewriteModelClient modelClient,
@@ -107,6 +110,10 @@ public sealed class FactReconstructRewriteProvider(
         var ledger = FactLedgerExtractor.Extract(request);
         var budget = RewriteBudgetManager.Create(analysis, _options.RequestedMaxAttempts);
         var decision = RewriteStrategyRouter.ChooseInitial(analysis);
+        if (_options.ForceInitialStrategy is { } forcedStrategy)
+        {
+            decision = decision with { Strategy = forcedStrategy };
+        }
         var history = new List<RewriteAttemptHistoryItem>();
 
         // Adaptive sentence-targeted refinement loop. Each candidate must clear the same
