@@ -210,6 +210,42 @@ public sealed class RewriteEngineCoreTests
     }
 
     [Fact]
+    public void FactGate_flags_a_corrupted_identifier_digit_but_allows_a_faithful_one()
+    {
+        // The order id lives in the draft (the only source the single-input product sends),
+        // so the identifier check must work without whatHappened/factsToPreserve populated.
+        var request = new RewriteRequest(
+            null,
+            "Hi Vivienne, I reviewed order ORD-29447 against the return you started on June 2.",
+            "Customer",
+            "Explain return status.",
+            null,
+            null,
+            "warm");
+        var ledger = FactLedgerExtractor.Extract(request);
+
+        ledger.Facts.Should().Contain(fact =>
+            fact.Category == RewriteFactCategory.Identifier && fact.Text == "ORD-29447");
+
+        // One digit changed (29447 -> 29427) — a corrupted order id must fail the gate.
+        var corrupted = RewriteFactGate.Check(
+            "Hi Vivienne, I reviewed order ORD-29427 against the return you started on June 2.",
+            ledger);
+        corrupted.Passed.Should().BeFalse();
+        corrupted.Reasons.Should().Contain(reason => reason.Contains("ORD-29447", StringComparison.Ordinal));
+
+        // Verbatim id passes.
+        RewriteFactGate.Check(
+            "Hi Vivienne, I reviewed order ORD-29447 against the return you started on June 2.",
+            ledger).Passed.Should().BeTrue();
+
+        // Reformatted but digit-faithful id passes too (FP-free): hyphen dropped, digits intact.
+        RewriteFactGate.Check(
+            "Hi Vivienne, I reviewed order ORD 29447 against the return you started on June 2.",
+            ledger).Passed.Should().BeTrue();
+    }
+
+    [Fact]
     public void FactGate_accepts_number_words_as_equivalent_to_digit_count_facts()
     {
         var request = new RewriteRequest(
