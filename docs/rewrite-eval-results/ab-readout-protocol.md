@@ -32,6 +32,21 @@ Any material fact loss or new unsupported claim → `decision = kill` (do **not*
 Record median, p75, p90, %≥90, %≥95, and per-case delta vs V0. **mean is reference only.**
 Do **not** draw a conclusion from a single case scoring 4 or 99 — per-output Pangram is erratic.
 
+## Step 2b — paired case-level delta (per surviving variant vs V0)
+With n=22 + erratic per-output Pangram, the aggregate can be moved by a few cases. So for each
+gate survivor, compare to V0 on the **same case**:
+
+`case_id · V0 Pangram · variant Pangram · delta · V0 high-risk? · variant high-risk? · facts same? · notes`
+
+Summary per variant:
+- Pangram improved cases (delta meaningfully < 0) · worsened cases · unchanged cases
+- high-risk (≥90) → non-high-risk count
+- non-high-risk → high-risk count
+
+**A variant is directionally good only if it improves on the MAJORITY of cases (paired)** — not if
+a couple of large drops pull the mean/median down while most cases are unchanged or worse. Paired
+delta is more reliable than the aggregate at this n.
+
 ## Step 3 — main comparison table
 `variant · description · facts pass · new material fact losses · forbidden · meaning changed ·
 send-ready · avg output words · compression · generic opener count · closer/signoff count ·
