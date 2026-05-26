@@ -217,6 +217,129 @@ public sealed class FactReconstructRewriteProviderTests
         result.ErrorCode.Should().BeNull();
     }
 
+    [Fact]
+    public async Task RewriteAsync_refines_past_soft_target_and_carries_sentence_feedback()
+    {
+        // Adaptive loop: attempt 1 is send-ready (35%) but above the 25% soft target, so the
+        // loop refines and attempt 2 (18%) clears the target and is returned. The offending
+        // sentence is fed back into attempt 2 as targeted repair feedback.
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult(
+                "Hi Jordan,\n\nI wanted to reach out regarding the NZD $200 invoice preview. It comes from the three contractor seats added on May 3. I will not change the account unless you confirm, and I can review it before Friday.",
+                true,
+                null),
+            new RewriteModelResult(
+                "Hi Jordan,\n\nThe NZD $200 preview is the three contractor seats added on May 3. I won't touch the account unless you confirm, and I'm happy to review it with you before Friday.",
+                true,
+                null));
+        var signal = new QueueWritingSignalClient(
+            new WritingSignalResult(true, 88, null),
+            new WritingSignalResult(
+                true,
+                35,
+                null,
+                [
+                    new SentenceSignalScore("I wanted to reach out regarding the NZD $200 invoice preview.", 100),
+                    new SentenceSignalScore("It comes from the three contractor seats added on May 3.", 0),
+                ]),
+            new WritingSignalResult(true, 18, null));
+        var provider = new FactReconstructRewriteProvider(
+            model,
+            signal,
+            new FactReconstructRewriteOptions(RequestedMaxAttempts: 3, TargetAiLikePercent: 25));
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), ValidRequest(), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        model.CallCount.Should().Be(2);
+        using var doc = JsonDocument.Parse(result.ResultJson!);
+        doc.RootElement.GetProperty("naturalness").GetProperty("rewriteAiLikePercent").GetInt32().Should().Be(18);
+        // Attempt 2 was driven by the score plus the named offending sentence, not a blind retry.
+        model.Requests[1].AttemptHistory.Should().ContainSingle();
+        model.Requests[1].AttemptHistory[0].FailureKinds.Should().Contain(RewriteFailureKind.SignalNotImproved);
+        model.Requests[1].AttemptHistory[0].FailureAnalysis.Should().Contain("I wanted to reach out regarding the NZD $200 invoice preview.");
+    }
+
+    [Fact]
+    public async Task RewriteAsync_returns_lowest_send_ready_candidate_when_soft_target_never_reached()
+    {
+        // Soft target: no attempt reaches 25%, but all three are send-ready (<= 40). The loop
+        // must return the lowest-scoring candidate (30%), not fail-closed.
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult(
+                "Hi Jordan,\n\nThe NZD $200 invoice preview reflects the three contractor seats added on May 3. I will not change the account unless you confirm, and I can review it before Friday.",
+                true,
+                null),
+            new RewriteModelResult(
+                "Hi Jordan,\n\nThe NZD $200 preview is the three contractor seats added on May 3. I won't change the account unless you confirm; I can review it with you before Friday.",
+                true,
+                null),
+            new RewriteModelResult(
+                "Hi Jordan,\n\nThat NZD $200 preview comes from the three contractor seats added on May 3. No account change unless you confirm, and I can go through it before Friday.",
+                true,
+                null));
+        var signal = new QueueWritingSignalClient(
+            new WritingSignalResult(true, 88, null),
+            new WritingSignalResult(true, 38, null),
+            new WritingSignalResult(true, 30, null),
+            new WritingSignalResult(true, 33, null));
+        var provider = new FactReconstructRewriteProvider(
+            model,
+            signal,
+            new FactReconstructRewriteOptions(RequestedMaxAttempts: 3, TargetAiLikePercent: 25));
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), ValidRequest(), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.ErrorCode.Should().BeNull();
+        model.CallCount.Should().Be(3);
+        using var doc = JsonDocument.Parse(result.ResultJson!);
+        doc.RootElement.GetProperty("naturalness").GetProperty("rewriteAiLikePercent").GetInt32().Should().Be(30);
+    }
+
+    [Fact]
+    public async Task RewriteAsync_retries_transient_model_failure_before_first_candidate()
+    {
+        // Two transient model failures then a success on the first loop: the request recovers
+        // (retry while no candidate exists) instead of fail-closing on the first timeout.
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult(null, false, "model_timeout"),
+            new RewriteModelResult(null, false, "model_timeout"),
+            new RewriteModelResult(
+                "Hi Jordan,\n\nThe NZD $200 preview is the three contractor seats added on May 3. I won't change the account unless you confirm, and I can review it before Friday.",
+                true,
+                null));
+        var signal = new QueueWritingSignalClient(
+            new WritingSignalResult(true, 88, null),
+            new WritingSignalResult(true, 18, null));
+        var provider = new FactReconstructRewriteProvider(model, signal);
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), ValidRequest(), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        model.CallCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task RewriteAsync_bounds_model_retries_when_failure_is_persistent()
+    {
+        // A persistent model failure with no candidate yet fails after the bounded retry count,
+        // not after burning the whole attempt budget (so a dead API fails fast).
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult(null, false, "model_timeout"),
+            new RewriteModelResult(null, false, "model_timeout"),
+            new RewriteModelResult(null, false, "model_timeout"));
+        var signal = new QueueWritingSignalClient(
+            new WritingSignalResult(true, 88, null));
+        var provider = new FactReconstructRewriteProvider(model, signal);
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), ValidRequest(), CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be("model_timeout");
+        model.CallCount.Should().Be(3);
+    }
+
     private static RewriteRequest ValidRequest() =>
         new(
             "Jordan asked whether the NZD $200 invoice preview can be changed by Friday.",

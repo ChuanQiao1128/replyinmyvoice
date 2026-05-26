@@ -68,7 +68,8 @@ var provider = new FactReconstructRewriteProvider(
     signalClient,
     new FactReconstructRewriteOptions(
         NaturalnessThreshold: config.NaturalnessThreshold,
-        RequestedMaxAttempts: config.MaxAttempts));
+        RequestedMaxAttempts: config.MaxAttempts,
+        TargetAiLikePercent: config.TargetAiLikePercent));
 
 var rows = new List<EvalResultRow>();
 foreach (var sample in selectedCases)
@@ -108,7 +109,9 @@ foreach (var sample in selectedCases)
         customerUsable,
         wouldPassRelaxedGate,
         rewrittenText,
-        attemptHistory));
+        attemptHistory,
+        payload?.AttemptsUsed,
+        payload?.FailedAttempts));
 
     Console.WriteLine(
         $"{sample.Id}: usable={customerUsable} success={result.Success} facts={factCheck.Passed} "
@@ -284,7 +287,8 @@ sealed record EvalConfig(
     string Model,
     int NaturalnessThreshold,
     int ModelTimeoutSeconds,
-    int SaplingTimeoutSeconds)
+    int SaplingTimeoutSeconds,
+    int TargetAiLikePercent)
 {
     public static EvalConfig FromEnvironment()
     {
@@ -302,7 +306,11 @@ sealed record EvalConfig(
             Env("OPENAI_MODEL_MID_WRITER", Env("OPENAI_MODEL", "deepseek-v4-pro")),
             Int("NATURALNESS_THRESHOLD", 40),
             Int("REWRITE_MODEL_TIMEOUT_SEC", 60),
-            Int("WRITING_SIGNAL_TIMEOUT_SEC", 20));
+            Int("WRITING_SIGNAL_TIMEOUT_SEC", 20),
+            // Adaptive refinement: default target = naturalness floor, so a plain run reproduces
+            // the baseline "return first passing candidate" behavior. Set EVAL_TARGET_AI_LIKE
+            // (e.g. 25) to drive the loop, and EVAL_MAX_ATTEMPTS (default 10) for the loop cap.
+            Int("EVAL_TARGET_AI_LIKE", Int("NATURALNESS_THRESHOLD", 40)));
     }
 
     private static string Env(string name, string fallback) =>
@@ -510,7 +518,12 @@ public sealed record FactCheckResult(bool Passed, IReadOnlyList<string> MissingF
 
 sealed record RewritePayload(
     string RewrittenText,
-    NaturalnessPayload? Naturalness)
+    NaturalnessPayload? Naturalness,
+    // From the success payload's optimization block: which loop produced the returned candidate
+    // (attemptsUsed) and how many prior refine/fail iterations ran (failedAttempts). Lets the
+    // eval report loops-to-success per case.
+    int? AttemptsUsed,
+    int? FailedAttempts)
 {
     public static RewritePayload? TryParse(string? json)
     {
@@ -535,7 +548,15 @@ sealed record RewritePayload(
                     ReadInt(naturalnessElement, "changePoints"));
             }
 
-            return new RewritePayload(text, naturalness);
+            int? attemptsUsed = null;
+            int? failedAttempts = null;
+            if (root.TryGetProperty("optimization", out var optimizationElement))
+            {
+                attemptsUsed = ReadInt(optimizationElement, "attemptsUsed");
+                failedAttempts = ReadInt(optimizationElement, "failedAttempts");
+            }
+
+            return new RewritePayload(text, naturalness, attemptsUsed, failedAttempts);
         }
         catch (JsonException)
         {
@@ -599,7 +620,9 @@ sealed record EvalResultRow(
     bool CustomerUsable,
     bool WouldPassRelaxedGate,
     string RewrittenText,
-    IReadOnlyList<RewriteAttemptHistoryItem> AttemptHistory);
+    IReadOnlyList<RewriteAttemptHistoryItem> AttemptHistory,
+    int? AttemptsUsed,
+    int? FailedAttempts);
 
 sealed record EvalSummary(
     DateTimeOffset StartedAt,
