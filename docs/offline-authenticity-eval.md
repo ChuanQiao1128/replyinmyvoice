@@ -7,12 +7,34 @@ AI-detection service — is used in this project.
 
 Pangram is an **offline diagnostic thermometer, not an online steering wheel.**
 
-- Do **not** make the rewrite agent chase a low Pangram score.
+- Do **not** make the rewrite agent chase a low Pangram score **on any single email** (no per-email loop).
 - **Do** use Pangram to discover where the agent's outputs are getting too templated,
   too smooth, too over-polished — i.e. drifting away from the user's own voice.
 
-One line: **don't optimize per-email for the detection score; use the detection score to
-find systemic AI-ishness drift across agent versions.**
+One line: **lower AI-detection risk by making the agent write more like the user (the
+cause), and *measure* the drop with Pangram (the thermometer) — never by chasing the score
+on a single email.**
+
+## Scope — AI-detection risk is a release KPI, not a per-email loop
+
+Reducing AI-detection risk **is** a legitimate product outcome metric — customers do run
+rewritten emails through AI-detection services, so "less likely to be judged AI" is
+something we track and want to improve. The discipline is about *how* we lower it:
+
+- AI-detection risk reduction is a product **outcome metric**, but **not** a per-email
+  production optimization loop.
+- We may use Pangram and similar AI-detection services to compare rewrite-agent versions
+  **offline**.
+- We do **not** feed Pangram scores or flagged sentences back into the same email's rewrite
+  loop.
+- We do **not** guarantee that any individual email will pass an AI-detection service.
+- We optimize the underlying **causes**: user-voice preservation, minimal rewrite, reduced
+  template phrasing, naturalness, and fact preservation.
+
+So AI-detection risk is a **release-level eval KPI** (does v(n+1) read less AI-ish than
+v(n) across the fixed eval set?), never a per-email steering wheel. We lower it by fixing
+the cause (write more like the user) and confirm the drop with Pangram — not by chasing the
+score on any one email.
 
 **Why (empirical, 2026-05-26).** Using Pangram as a per-email optimization target was
 tested and is unstable: with the quality gate on (send-ready ≤ 40) and a 5-round cap,
@@ -142,12 +164,19 @@ sometimes go low — far more useful than an average.)
 
 A new rewrite-agent version can be promoted only if:
 
-1. facts pass rate ≥ baseline
-2. send-ready rate ≥ baseline
-3. voice match ≥ baseline
-4. user edit distance ≤ baseline
-5. cost and latency acceptable
-6. Pangram distribution does not materially regress
+1. facts pass rate ≥ baseline (target ≥ 99%)
+2. unsupported new facts ≤ ~1%
+3. send-ready rate ≥ baseline
+4. voice match ≥ baseline
+5. naturalness ≥ baseline
+6. user edit distance ≤ baseline
+7. cost and latency acceptable
+8. **AI-detection high-risk rate trends down vs baseline** — a release KPI (e.g. % over 90 and p90 lower), achieved via the causes above, **never** per-email chasing
+9. long / structured emails show no material regression
+
+Example of valid progress: Pangram % over 90 drops 72% → 45%, p90 drops 99 → 88, **while**
+facts pass ≥ 99%, send-ready holds, and voice match improves — that's the AI-detection-risk
+KPI moving the right way for the right reason (better writing, not score-chasing).
 
 Pangram is a **guardrail, not a gate**:
 
@@ -265,6 +294,15 @@ Pangram mostly on list-type emails? does user edit distance correlate with Pangr
 - Look only at the overall distribution and failure patterns.
 - Treat Pangram as an agent-improvement signal **only** when high Pangram co-occurs with
   low voice / low naturalness / template phrasing.
+
+## What to tell customers
+
+Do **not** promise "guaranteed to pass AI detection" — AI-detection services are unstable
+and disagree with each other, so it's a promise we can't keep. Frame the value around
+authenticity instead:
+
+> Our rewrite focuses on preserving your own voice, wording, and intent, so the final
+> message reads less like generic AI copy and more like something you would actually send.
 
 ## Naming
 

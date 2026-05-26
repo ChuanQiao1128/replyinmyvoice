@@ -2040,8 +2040,9 @@ Hard rules (validated 2026-05-26: a gate-on test gave only 2/8 usable outputs, p
 
 - Never a production gate, a per-email optimization target, or user-facing. Pangram never touches single-email production.
 - In eval, one Pangram score per output per agent version. Never best-of-N, never keep the lowest, never feed Pangram back into a per-email rewrite loop.
+- Reducing AI-detection risk is a legitimate **release-level eval KPI** (does a new agent version read less AI-ish across the fixed eval set?), achieved only via the causes — voice fidelity, minimal rewrite, less template phrasing, naturalness, facts — never via a per-email Pangram loop or a single-email score target.
 - Never drive a single email toward a Pangram threshold (e.g. "below 40"). That is detection-gaming and is prohibited (see the banned-terms rule).
-- The final judges of a rewrite are facts-preserved, send-ready, voice-match, naturalness, and edit-distance. Pangram is a last, advisory drift guardrail (its median / p90 must not materially regress), never the objective.
+- The final judges of a rewrite are facts-preserved, send-ready, voice-match, naturalness, and edit-distance. Pangram is a last, advisory signal whose release-level distribution (median / p90 / % high-risk) is the KPI — it must not materially regress and ideally trends down via the causes.
 - Act on Pangram only when a high score co-occurs with low voice / low naturalness / templated phrasing — use it to find systemic AI-ishness drift across versions, then fix the agent prompt / rubric / voice profile, not the score.
 
 Positioning stays "reply in my voice," never AI-detection-circumvention. Production naturalness continues to use the Sapling / internal rubric; Pangram does not ship to production.
