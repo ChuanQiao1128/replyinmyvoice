@@ -1,0 +1,76 @@
+{
+  "summary": {
+    "StartedAt": "2026-05-26T17:10:31.455245+00:00",
+    "FinishedAt": "2026-05-26T17:10:44.028555+00:00",
+    "Mode": "focused",
+    "CasesEvaluated": 2,
+    "SuccessCount": 2,
+    "ProviderFailureCount": 0,
+    "FactPassCount": 0,
+    "MeasuredCount": 2,
+    "RewritesBelow50Count": 2,
+    "BaselineAboveThresholdCount": 2,
+    "BaselineAboveThresholdAverageDropPoints": 59,
+    "AverageDropPoints": 59,
+    "ModelCalls": 5,
+    "SaplingCalls": 7,
+    "MaxAttempts": 10,
+    "Model": "deepseek-v4-pro",
+    "NaturalnessThreshold": 40,
+    "CustomerUsableCount": 0,
+    "ForbiddenViolationCaseCount": 0,
+    "RelaxedGateRecoverableCount": 0
+  },
+  "rows": [
+    {
+      "Id": "aidc-207",
+      "CaseNumber": 207,
+      "Category": "scheduling",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 71,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -71,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "The sender asks what works for the recipient."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not commit to a specific clock time.",
+        "Do not invent a meeting topic or location."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi there, Friday won\u0027t work for me, but Tuesday afternoon is open. Would that suit you?",
+      "AttemptHistory": [],
+      "AttemptsUsed": 3,
+      "FailedAttempts": 2
+    },
+    {
+      "Id": "aidc-208",
+      "CaseNumber": 208,
+      "Category": "workplace_update",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 46,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -46,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "The slides are finished."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not invent the slides\u0027 topic or content.",
+        "Do not add a deadline or next step not in the draft."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "I wrapped up the slides and sent them over this morning. Feel free to take a look whenever!",
+      "AttemptHistory": [],
+      "AttemptsUsed": 2,
+      "FailedAttempts": 1
+    }
+  ]
+}

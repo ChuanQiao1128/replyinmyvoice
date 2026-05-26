@@ -1,0 +1,165 @@
+{
+  "summary": {
+    "StartedAt": "2026-05-26T17:07:33.21918+00:00",
+    "FinishedAt": "2026-05-26T17:08:56.793431+00:00",
+    "Mode": "focused",
+    "CasesEvaluated": 6,
+    "SuccessCount": 6,
+    "ProviderFailureCount": 0,
+    "FactPassCount": 3,
+    "MeasuredCount": 6,
+    "RewritesBelow50Count": 6,
+    "BaselineAboveThresholdCount": 6,
+    "BaselineAboveThresholdAverageDropPoints": 67,
+    "AverageDropPoints": 67,
+    "ModelCalls": 33,
+    "SaplingCalls": 37,
+    "MaxAttempts": 10,
+    "Model": "deepseek-v4-pro",
+    "NaturalnessThreshold": 40,
+    "CustomerUsableCount": 2,
+    "ForbiddenViolationCaseCount": 1,
+    "RelaxedGateRecoverableCount": 0
+  },
+  "rows": [
+    {
+      "Id": "aidc-201",
+      "CaseNumber": 201,
+      "Category": "scheduling",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 93,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -93,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "The appointment is confirmed."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not invent a location or address.",
+        "Do not add services or details not in the draft."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Thanks\u2014your appointment is set for Tuesday, June 3 at 3 PM. Reach out if anything shifts.",
+      "AttemptHistory": [],
+      "AttemptsUsed": 6,
+      "FailedAttempts": 5
+    },
+    {
+      "Id": "aidc-202",
+      "CaseNumber": 202,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 74,
+      "RewriteAiLikePercent": 25,
+      "ChangePoints": -49,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [
+        "Do not promise an instant or same-day refund.",
+        "Do not change the refund amount."
+      ],
+      "ForbiddenAbstained": [],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi there! I\u0027ve processed your $40.00 refund. You should see it in your account within 3-5 business days. Reach out if anything seems off.",
+      "AttemptHistory": [],
+      "AttemptsUsed": 5,
+      "FailedAttempts": 10
+    },
+    {
+      "Id": "aidc-203",
+      "CaseNumber": 203,
+      "Category": "billing_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 66,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -66,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "The amount is $120.00."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not waive or change the amount.",
+        "Do not change the due date."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi,\n\nInvoice #INV-204 for $120.00 is due June 10.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 4,
+      "FailedAttempts": 3
+    },
+    {
+      "Id": "aidc-204",
+      "CaseNumber": 204,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 82,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -82,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi,\n\nYour replacement for order #R-5582 shipped May 20 and should arrive by May 27.\n\nQuestions? Just reply here.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 4,
+      "FailedAttempts": 3
+    },
+    {
+      "Id": "aidc-205",
+      "CaseNumber": 205,
+      "Category": "sales_followup",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 57,
+      "RewriteAiLikePercent": 7,
+      "ChangePoints": -50,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not promise more than 10 seats."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi,\n\nFollowing up on our chat about the Growth plan\u2014happy to go over the details with you.\n\nIt\u0027s $49/month and covers up to 10 users. The quote is good through June 15.\n\nIf anything comes to mind, just ask.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 5,
+      "FailedAttempts": 4
+    },
+    {
+      "Id": "aidc-206",
+      "CaseNumber": 206,
+      "Category": "customer_success",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 62,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -62,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "Changes can be discussed if the customer wants."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not change the price."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi,\n\nYour Pro plan renews June 30 at $290 for the year, covering up to 8 seats.\n\nWant to adjust anything? We can walk through the options whenever you\u0027re ready.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 4,
+      "FailedAttempts": 3
+    }
+  ]
+}
