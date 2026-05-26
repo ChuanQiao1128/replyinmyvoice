@@ -2032,6 +2032,20 @@ Add a usage/cost estimate section with:
 
 Unavailable Sapling scores must not count as target-met results. If Sapling returns 429 again, stop repeated evaluation calls, keep the best documented results, and continue product work.
 
+### AI-Detection Signal Policy (Pangram) — Offline Eval Only
+
+Pangram (and any third-party AI-detection service) is an **offline evaluation / QA signal only** — the thermometer, not the steering wheel. Full framework and pipeline: `docs/offline-authenticity-eval.md`.
+
+Hard rules (validated 2026-05-26: a gate-on test gave only 2/8 usable outputs, per-round scores bounce non-monotonically, and long / structured emails stayed stuck near 99%):
+
+- Never a production gate, a per-email optimization target, or user-facing. Pangram never touches single-email production.
+- In eval, one Pangram score per output per agent version. Never best-of-N, never keep the lowest, never feed Pangram back into a per-email rewrite loop.
+- Never drive a single email toward a Pangram threshold (e.g. "below 40"). That is detection-gaming and is prohibited (see the banned-terms rule).
+- The final judges of a rewrite are facts-preserved, send-ready, voice-match, naturalness, and edit-distance. Pangram is a last, advisory drift guardrail (its median / p90 must not materially regress), never the objective.
+- Act on Pangram only when a high score co-occurs with low voice / low naturalness / templated phrasing — use it to find systemic AI-ishness drift across versions, then fix the agent prompt / rubric / voice profile, not the score.
+
+Positioning stays "reply in my voice," never AI-detection-circumvention. Production naturalness continues to use the Sapling / internal rubric; Pangram does not ship to production.
+
 ### FAQ Layout
 
 Change the FAQ from a two-column card grid to a familiar single-column list or accordion:

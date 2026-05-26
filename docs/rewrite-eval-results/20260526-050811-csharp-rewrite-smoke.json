@@ -1,0 +1,96 @@
+{
+  "summary": {
+    "StartedAt": "2026-05-26T05:08:11.740463+00:00",
+    "FinishedAt": "2026-05-26T05:10:38.575606+00:00",
+    "Mode": "smoke",
+    "CasesEvaluated": 3,
+    "SuccessCount": 3,
+    "ProviderFailureCount": 0,
+    "FactPassCount": 3,
+    "MeasuredCount": 3,
+    "RewritesBelow50Count": 2,
+    "BaselineAboveThresholdCount": 0,
+    "AverageDropPoints": 66,
+    "ModelCalls": 30,
+    "SaplingCalls": 33,
+    "MaxAttempts": 10,
+    "Model": "deepseek-v4-pro",
+    "NaturalnessThreshold": 100,
+    "CustomerUsableCount": 3,
+    "ForbiddenViolationCaseCount": 0,
+    "RelaxedGateRecoverableCount": 0
+  },
+  "rows": [
+    {
+      "Id": "rewrite-draft-001",
+      "CaseNumber": 1,
+      "Category": "teacher_parent",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 98,
+      "RewriteAiLikePercent": 23,
+      "ChangePoints": -75,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not blame Jamie for losing the original form.",
+        "Do not say Maya is already approved for the trip.",
+        "Do not extend the April 2 deadline.",
+        "Do not reduce or waive the $12 fee."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Jamie,\n\nI went through Maya\u0027s folder, the payment envelope, and my teacher log on March 28 for the April 9 science museum field trip (FieldTrip-4A-09). I don\u0027t have her signed permission slip or the $12 payment yet.\n\nThe front office has spare blank forms, so I can send one home today. I need both the slip and $12 by April 2\u2014after that I can\u0027t add her to the attendance list.\n\nI know it\u0027s frustrating since you remember signing the form, but I need the record complete before the trip. Please send a new signed slip with the $12, and I\u0027ll add her once they arrive.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 10,
+      "FailedAttempts": 10
+    },
+    {
+      "Id": "rewrite-draft-002",
+      "CaseNumber": 2,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 99,
+      "RewriteAiLikePercent": 51,
+      "ChangePoints": -48,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not replace the saucer.",
+        "Do not say the damage was the carrier\u0027s fault."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Lena,\n\nI saw the photo of the cracked mug from order R4821. The replacement was delivered May 6, and the saucer looks okay.\n\nI can send one free replacement mug once I confirm your address. A full refund isn\u0027t possible\u2014the window closed April 30.\n\nPlease send your current delivery address by Friday at 3 p.m. If it\u0027s changed, I\u0027ll need the new one in writing before I ship.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 3,
+      "FailedAttempts": 10
+    },
+    {
+      "Id": "rewrite-draft-003",
+      "CaseNumber": 3,
+      "Category": "billing_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 99,
+      "RewriteAiLikePercent": 25,
+      "ChangePoints": -74,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not say the account was canceled.",
+        "Do not change the $31.50 credit amount."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Marco,\n\nI checked invoice INV-8842 for the Pro Workspace plan\u2014issued May 2 for $186.00, covering May 1 to May 31. Your team removed three seats on May 14.\n\nBecause the seats changed mid-cycle, a $31.50 credit will show on your next invoice. A full $186.00 refund isn\u0027t possible since the workspace stayed active and the plan wasn\u0027t canceled during the refund window.\n\nTo have the $31.50 credit applied to the June invoice, please confirm by May 29. Sorry the earlier note was unclear\u2014I don\u0027t want to promise a refund the billing policy doesn\u0027t allow.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 4,
+      "FailedAttempts": 10
+    }
+  ]
+}
