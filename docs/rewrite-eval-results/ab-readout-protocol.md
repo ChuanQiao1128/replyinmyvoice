@@ -73,3 +73,23 @@ forced-skeleton count · avg Sapling calls · final Sapling median · Pangram me
 No merge, no deploy, no prod-default change, no shipping a winning variant, no expanding the eval
 set until the 22-case gate + Pangram summary are in, and never feed Pangram back into a per-email
 rewrite loop.
+
+## Merge policy (locked 2026-05-27)
+The 22-case smoke decides ONLY whether a lever is worth a 50–100 eval — it is NOT a merge decision.
+
+1. **22-case A/B smoke → merges NOTHING** (no agent change merges from n=22).
+2. **`exp/ai-draft-cleanup-ab` → stays an experiment branch** — no merge/deploy; the optional
+   default-current params do NOT go to `main` unless a specific variant is chosen to productize.
+3. **PR #252 (`feat/pangram-signal`) → may merge after review**, only if confirmed it is
+   docs/policy/eval-tooling + the eval-tool semantic verifier, with **no prod rewrite-engine
+   behavior change, no external AI-detection service in the production path, and no change to the
+   live `/api/rewrite` default.** Pre-merge checks: (a) CI/tests green; (b) diff shows the Functions
+   prod path has no behavior change; (c) no API key / `.env` / local output leaked. Because
+   merge→`main` auto-deploys, do a prod smoke after (key pages 200, `/api/health/db`, one real rewrite).
+4. **`fix/developers-api-coming-soon` → separate low-risk merge** (frontend copy only; not mixed
+   with #252 or the A/B).
+5. **Agent / prompt / router behavior changes** (skeleton-trim, no-greeting, facts-first routing,
+   combined, removing the Sapling loop, any prompt/router default change) → **NO merge** until a
+   50–100 eval passes the semantic hard gate (facts/send-ready hold, no new material loss,
+   forbidden 0) **and** the paired Pangram high-risk distribution shows a stable improvement —
+   then a production PR + review + prod smoke.
