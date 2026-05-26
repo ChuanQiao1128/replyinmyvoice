@@ -61,7 +61,11 @@ public sealed record FactReconstructRewriteOptions(
     // composition root (which builds this provider with no options) unaffected until this is
     // wired up explicitly. The hard naturalness floor (NaturalnessThreshold) is unchanged;
     // refinement never returns anything above it.
-    int TargetAiLikePercent = 40);
+    int TargetAiLikePercent = 40,
+    // Wall-clock budget for the whole rewrite (all loops combined). Zero = unlimited. When set,
+    // a linked token cancels in-flight model/signal calls past the budget and the loop returns
+    // the best candidate found so far, bounding worst-case latency regardless of loop count.
+    TimeSpan TotalTimeBudget = default);
 
 public sealed class FactReconstructRewriteProvider(
     IRewriteModelClient modelClient,
@@ -84,7 +88,16 @@ public sealed class FactReconstructRewriteProvider(
         RewriteRequest request,
         CancellationToken cancellationToken)
     {
-        var draftSignal = await MeasureWritingSignalWithRetryAsync(request.RoughDraftReply, cancellationToken);
+        // Optional wall-clock budget across all loops: a linked token cancels in-flight model
+        // and signal calls once the budget is spent, so the loop stops and returns the best
+        // candidate found so far instead of running the full attempt count.
+        using var budgetCts = _options.TotalTimeBudget > TimeSpan.Zero
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        budgetCts?.CancelAfter(_options.TotalTimeBudget);
+        var token = budgetCts?.Token ?? cancellationToken;
+
+        var draftSignal = await MeasureWritingSignalWithRetryAsync(request.RoughDraftReply, token);
         if (!HasSignal(draftSignal))
         {
             return new RewriteProviderResult(null, false, "quality_signal_unavailable");
@@ -116,6 +129,12 @@ public sealed class FactReconstructRewriteProvider(
                 break;
             }
 
+            // Time budget spent: stop and return the best candidate found so far.
+            if (token.IsCancellationRequested)
+            {
+                break;
+            }
+
             // While we still have no usable candidate, retry a transient model failure (e.g. a
             // timeout) a few times instead of fail-closing the whole request on one slow call.
             // Once a candidate exists, a later model failure simply stops with the best found.
@@ -128,7 +147,7 @@ public sealed class FactReconstructRewriteProvider(
                     decision.Strategy,
                     history),
                 retryWhileEmpty: bestCandidate is null,
-                cancellationToken);
+                token);
 
             if (!modelResult.Success || string.IsNullOrWhiteSpace(modelResult.CandidateText))
             {
@@ -172,7 +191,7 @@ public sealed class FactReconstructRewriteProvider(
                 continue;
             }
 
-            var rewriteSignal = await MeasureWritingSignalWithRetryAsync(candidate, cancellationToken);
+            var rewriteSignal = await MeasureWritingSignalWithRetryAsync(candidate, token);
             if (!HasSignal(rewriteSignal))
             {
                 if (bestCandidate is not null)

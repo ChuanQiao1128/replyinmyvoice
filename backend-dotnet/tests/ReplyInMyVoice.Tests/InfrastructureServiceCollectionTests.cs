@@ -40,6 +40,27 @@ public sealed class InfrastructureServiceCollectionTests
             .BeOfType<SaplingWritingSignalClient>();
     }
 
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_keeps_sapling_signal_even_when_pangram_is_requested()
+    {
+        // Guard: production stays on Sapling regardless of WRITING_SIGNAL_PROVIDER. Pangram is a
+        // detection-first signal that fail-closes most send-ready rewrites, so it is an eval-only
+        // comparison tool and must never become the live signal via an app-setting flip.
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OPENAI_BASE_URL"] = "https://api.deepseek.com",
+            ["DEEPSEEK_API_KEY"] = "deepseek-test-key",
+            ["OPENAI_MODEL_MID_WRITER"] = "deepseek-v4-pro",
+            ["SAPLING_API_KEY"] = "sapling-test-key",
+            ["WRITING_SIGNAL_PROVIDER"] = "pangram",
+            ["PANGRAM_API_KEY"] = "pangram-test-key",
+        });
+
+        provider.GetRequiredService<IWritingSignalClient>()
+            .Should()
+            .BeOfType<SaplingWritingSignalClient>();
+    }
+
     private static ServiceProvider BuildProvider(Dictionary<string, string?> values)
     {
         var configuration = new ConfigurationBuilder()

@@ -91,6 +91,12 @@ public static class ServiceCollectionExtensions
         var rewriteMaxAttempts = int.TryParse(configuration["REWRITE_MAX_ATTEMPTS"], out var parsedMaxAttempts)
             ? parsedMaxAttempts
             : 10;
+        // Optional wall-clock cap for the whole rewrite (all loops combined). TOTAL_REWRITE_BUDGET_SEC=0
+        // (default) leaves it unlimited — current behavior; set e.g. 120 to bound worst-case latency by
+        // returning the best candidate found so far. Tunable via app settings without a redeploy.
+        var totalRewriteBudgetSeconds = int.TryParse(configuration["TOTAL_REWRITE_BUDGET_SEC"], out var parsedBudget) && parsedBudget > 0
+            ? parsedBudget
+            : 0;
 
         if (string.IsNullOrWhiteSpace(modelApiKey) && string.IsNullOrWhiteSpace(saplingApiKey))
         {
@@ -131,7 +137,8 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IWritingSignalClient>(),
                 new FactReconstructRewriteOptions(
                     RequestedMaxAttempts: rewriteMaxAttempts,
-                    TargetAiLikePercent: aiSignalTarget)));
+                    TargetAiLikePercent: aiSignalTarget,
+                    TotalTimeBudget: TimeSpan.FromSeconds(totalRewriteBudgetSeconds))));
         }
 
         return services;

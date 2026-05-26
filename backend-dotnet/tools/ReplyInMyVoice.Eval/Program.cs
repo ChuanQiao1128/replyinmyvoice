@@ -40,10 +40,24 @@ if (!string.IsNullOrWhiteSpace(rescoreDir))
 }
 
 var apiKey = ResolveApiKey(config);
-var saplingApiKey = Environment.GetEnvironmentVariable("SAPLING_API_KEY");
-if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(saplingApiKey))
+if (string.IsNullOrWhiteSpace(apiKey))
 {
-    Console.Error.WriteLine("Missing real provider configuration. Set DEEPSEEK_API_KEY or OPENAI_API_KEY, plus SAPLING_API_KEY.");
+    Console.Error.WriteLine("Missing model configuration. Set DEEPSEEK_API_KEY or OPENAI_API_KEY.");
+    return 2;
+}
+
+// Writing-signal provider is selectable via WRITING_SIGNAL_PROVIDER (default sapling). Pangram
+// is a stricter detection-first alternative; it needs PANGRAM_API_KEY instead of SAPLING_API_KEY.
+var signalProvider = (Environment.GetEnvironmentVariable("WRITING_SIGNAL_PROVIDER") ?? "sapling")
+    .Trim().ToLowerInvariant();
+var saplingApiKey = Environment.GetEnvironmentVariable("SAPLING_API_KEY");
+var pangramApiKey = Environment.GetEnvironmentVariable("PANGRAM_API_KEY");
+var usePangram = signalProvider == "pangram";
+if (usePangram ? string.IsNullOrWhiteSpace(pangramApiKey) : string.IsNullOrWhiteSpace(saplingApiKey))
+{
+    Console.Error.WriteLine(
+        $"Missing writing-signal key for provider '{signalProvider}'. Set "
+        + (usePangram ? "PANGRAM_API_KEY." : "SAPLING_API_KEY."));
     return 2;
 }
 
@@ -57,11 +71,11 @@ var modelClient = new OpenAiCompatibleRewriteModelClient(
     config.Model,
     config.OpenAiBaseUrl,
     TimeSpan.FromSeconds(config.ModelTimeoutSeconds));
-var signalClient = new CountingWritingSignalClient(
-    new SaplingWritingSignalClient(
-        signalHttpClient,
-        saplingApiKey,
-        TimeSpan.FromSeconds(config.SaplingTimeoutSeconds)));
+IWritingSignalClient baseSignalClient = usePangram
+    ? new PangramWritingSignalClient(signalHttpClient, pangramApiKey!, TimeSpan.FromSeconds(config.SaplingTimeoutSeconds))
+    : new SaplingWritingSignalClient(signalHttpClient, saplingApiKey!, TimeSpan.FromSeconds(config.SaplingTimeoutSeconds));
+var signalClient = new CountingWritingSignalClient(baseSignalClient);
+Console.WriteLine($"Writing-signal provider: {signalProvider}");
 var countingModelClient = new CountingRewriteModelClient(modelClient);
 var provider = new FactReconstructRewriteProvider(
     countingModelClient,
@@ -69,7 +83,13 @@ var provider = new FactReconstructRewriteProvider(
     new FactReconstructRewriteOptions(
         NaturalnessThreshold: config.NaturalnessThreshold,
         RequestedMaxAttempts: config.MaxAttempts,
-        TargetAiLikePercent: config.TargetAiLikePercent));
+        TargetAiLikePercent: config.TargetAiLikePercent,
+        // Total wall-clock budget per rewrite (all loops). TOTAL_REWRITE_BUDGET_SEC=0 (default)
+        // means unlimited; set e.g. 120 to cap each rewrite at 120s.
+        TotalTimeBudget: TimeSpan.FromSeconds(
+            int.TryParse(Environment.GetEnvironmentVariable("TOTAL_REWRITE_BUDGET_SEC"), out var budgetSec) && budgetSec > 0
+                ? budgetSec
+                : 0)));
 
 var rows = new List<EvalResultRow>();
 foreach (var sample in selectedCases)
