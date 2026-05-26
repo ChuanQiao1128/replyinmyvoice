@@ -1,0 +1,1002 @@
+[
+  {
+    "id": "rewrite-draft-001",
+    "category": "teacher_parent",
+    "sapling": 0,
+    "pangram_meanwin": 93,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-002",
+    "category": "customer_support",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-003",
+    "category": "billing_support",
+    "sapling": 0,
+    "pangram_meanwin": 86,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-004",
+    "category": "workplace_update",
+    "sapling": 17,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-005",
+    "category": "sales_followup",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-006",
+    "category": "scheduling",
+    "sapling": 20,
+    "pangram_meanwin": 59,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 100,
+    "prediction": "Mixed",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-007",
+    "category": "hr_recruiting",
+    "sapling": 14,
+    "pangram_meanwin": 5,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "Human",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-008",
+    "category": "medical_admin",
+    "sapling": 13,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-009",
+    "category": "property_logistics",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-010",
+    "category": "nonprofit_community",
+    "sapling": 9,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-011",
+    "category": "customer_support",
+    "sapling": 0,
+    "pangram_meanwin": 98,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-012",
+    "category": "teacher_parent",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-013",
+    "category": "workplace_update",
+    "sapling": 14,
+    "pangram_meanwin": 85,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-014",
+    "category": "billing_support",
+    "sapling": 0,
+    "pangram_meanwin": 98,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-015",
+    "category": "sales_followup",
+    "sapling": 0,
+    "pangram_meanwin": 98,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-016",
+    "category": "medical_admin",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-017",
+    "category": "property_logistics",
+    "sapling": 18,
+    "pangram_meanwin": 98,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-018",
+    "category": "hr_recruiting",
+    "sapling": 14,
+    "pangram_meanwin": 91,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-019",
+    "category": "nonprofit_community",
+    "sapling": 0,
+    "pangram_meanwin": 82,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-020",
+    "category": "school_admin",
+    "sapling": 7,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-021",
+    "category": "customer_support",
+    "sapling": 0,
+    "pangram_meanwin": 82,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-022",
+    "category": "billing_support",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-023",
+    "category": "workplace_update",
+    "sapling": 1,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-024",
+    "category": "sales_followup",
+    "sapling": 14,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-025",
+    "category": "teacher_parent",
+    "sapling": 13,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-026",
+    "category": "medical_admin",
+    "sapling": 7,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-027",
+    "category": "property_logistics",
+    "sapling": 13,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-028",
+    "category": "customer_success",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-029",
+    "category": "hr_recruiting",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-030",
+    "category": "nonprofit_community",
+    "sapling": 8,
+    "pangram_meanwin": 97,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-031",
+    "category": "customer_support",
+    "sapling": 0,
+    "pangram_meanwin": 23,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "Human",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-032",
+    "category": "billing_support",
+    "sapling": 5,
+    "pangram_meanwin": 88,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-033",
+    "category": "workplace_update",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-034",
+    "category": "teacher_parent",
+    "sapling": 0,
+    "pangram_meanwin": 24,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "Human",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-035",
+    "category": "sales_followup",
+    "sapling": 6,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-036",
+    "category": "medical_admin",
+    "sapling": 24,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-037",
+    "category": "property_logistics",
+    "sapling": 1,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-038",
+    "category": "school_admin",
+    "sapling": 7,
+    "pangram_meanwin": 18,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "Human",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-039",
+    "category": "customer_success",
+    "sapling": 14,
+    "pangram_meanwin": 12,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "Human",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-040",
+    "category": "nonprofit_community",
+    "sapling": 4,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-041",
+    "category": "customer_support",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-042",
+    "category": "billing_support",
+    "sapling": 0,
+    "pangram_meanwin": 83,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-043",
+    "category": "workplace_update",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-044",
+    "category": "teacher_parent",
+    "sapling": 8,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-045",
+    "category": "sales_followup",
+    "sapling": 9,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-046",
+    "category": "medical_admin",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-047",
+    "category": "property_logistics",
+    "sapling": 8,
+    "pangram_meanwin": 96,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-048",
+    "category": "hr_recruiting",
+    "sapling": 13,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-049",
+    "category": "school_admin",
+    "sapling": 8,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-050",
+    "category": "customer_success",
+    "sapling": 16,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-051",
+    "category": "customer_support",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-052",
+    "category": "billing_support",
+    "sapling": 5,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-053",
+    "category": "workplace_update",
+    "sapling": 4,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-054",
+    "category": "teacher_parent",
+    "sapling": 5,
+    "pangram_meanwin": 93,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-055",
+    "category": "sales_followup",
+    "sapling": 13,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-056",
+    "category": "medical_admin",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-057",
+    "category": "property_logistics",
+    "sapling": 12,
+    "pangram_meanwin": 96,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-058",
+    "category": "hr_recruiting",
+    "sapling": 0,
+    "pangram_meanwin": 84,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-059",
+    "category": "nonprofit_community",
+    "sapling": 15,
+    "pangram_meanwin": 88,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-060",
+    "category": "customer_success",
+    "sapling": 15,
+    "pangram_meanwin": 98,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-061",
+    "category": "customer_support",
+    "sapling": 18,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-062",
+    "category": "billing_support",
+    "sapling": 1,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-063",
+    "category": "workplace_update",
+    "sapling": 6,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-064",
+    "category": "teacher_parent",
+    "sapling": 20,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-065",
+    "category": "sales_followup",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-066",
+    "category": "medical_admin",
+    "sapling": 1,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-067",
+    "category": "property_logistics",
+    "sapling": 0,
+    "pangram_meanwin": 73,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 100,
+    "prediction": "Mixed",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-068",
+    "category": "hr_recruiting",
+    "sapling": 22,
+    "pangram_meanwin": 92,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-069",
+    "category": "nonprofit_community",
+    "sapling": 15,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-070",
+    "category": "customer_success",
+    "sapling": 15,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-071",
+    "category": "customer_support",
+    "sapling": 0,
+    "pangram_meanwin": 91,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-072",
+    "category": "billing_support",
+    "sapling": 0,
+    "pangram_meanwin": 96,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-073",
+    "category": "workplace_update",
+    "sapling": 11,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-074",
+    "category": "teacher_parent",
+    "sapling": 0,
+    "pangram_meanwin": 98,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-075",
+    "category": "sales_followup",
+    "sapling": 13,
+    "pangram_meanwin": 19,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "Human",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-076",
+    "category": "medical_admin",
+    "sapling": 15,
+    "pangram_meanwin": 98,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-077",
+    "category": "property_logistics",
+    "sapling": 8,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-078",
+    "category": "hr_recruiting",
+    "sapling": 11,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-079",
+    "category": "nonprofit_community",
+    "sapling": 12,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-080",
+    "category": "customer_success",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-081",
+    "category": "customer_support",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-082",
+    "category": "billing_support",
+    "sapling": 1,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-083",
+    "category": "workplace_update",
+    "sapling": 9,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-084",
+    "category": "teacher_parent",
+    "sapling": 17,
+    "pangram_meanwin": 97,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-085",
+    "category": "sales_followup",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-086",
+    "category": "medical_admin",
+    "sapling": 13,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-087",
+    "category": "property_logistics",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-088",
+    "category": "hr_recruiting",
+    "sapling": 15,
+    "pangram_meanwin": 23,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "Human",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-089",
+    "category": "nonprofit_community",
+    "sapling": 16,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-090",
+    "category": "customer_success",
+    "sapling": 8,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-091",
+    "category": "customer_support",
+    "sapling": 10,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-092",
+    "category": "billing_support",
+    "sapling": 1,
+    "pangram_meanwin": 21,
+    "pangram_fraction_ai": 0,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "Human",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-093",
+    "category": "workplace_update",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-094",
+    "category": "teacher_parent",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-095",
+    "category": "sales_followup",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-096",
+    "category": "medical_admin",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-097",
+    "category": "property_logistics",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-098",
+    "category": "hr_recruiting",
+    "sapling": 0,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-099",
+    "category": "nonprofit_community",
+    "sapling": 0,
+    "pangram_meanwin": 89,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  },
+  {
+    "id": "rewrite-draft-100",
+    "category": "customer_success",
+    "sapling": 1,
+    "pangram_meanwin": 99,
+    "pangram_fraction_ai": 100,
+    "pangram_fraction_ai_assisted": 0,
+    "prediction": "AI",
+    "err": null
+  }
+]
