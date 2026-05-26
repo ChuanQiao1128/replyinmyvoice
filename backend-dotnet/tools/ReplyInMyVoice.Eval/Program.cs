@@ -8,7 +8,10 @@ var startedAt = DateTimeOffset.UtcNow;
 var config = EvalConfig.FromEnvironment();
 LoadEnvFileIfPresent(Path.Combine(config.RepoRoot, ".env.local"));
 
-var cases = EvalCaseParser.Parse(await File.ReadAllTextAsync(config.CasesPath));
+var casePaths = config.CasesPath.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+var cases = (await Task.WhenAll(casePaths.Select(async p => EvalCaseParser.Parse(await File.ReadAllTextAsync(p)))))
+    .SelectMany(parsed => parsed)
+    .ToList();
 var selectedCases = SelectCases(cases, config);
 
 // EVAL_DRY_RUN validates parsing + selection with zero provider calls (no secrets needed).
@@ -44,6 +47,17 @@ if (string.IsNullOrWhiteSpace(apiKey))
 {
     Console.Error.WriteLine("Missing model configuration. Set DEEPSEEK_API_KEY or OPENAI_API_KEY.");
     return 2;
+}
+
+// EVAL_SEMANTIC_RESCORE_FILES (comma-separated saved run JSONs) re-scores those outputs with the
+// LLM-judge semantic verifier (semantic fact + forbidden checks) instead of the over-literal
+// deterministic graders. No engine re-run — only judge model calls. Set EVAL_CASES_PATH to a
+// comma list to load every cases file the saved rows reference.
+var semanticFiles = Environment.GetEnvironmentVariable("EVAL_SEMANTIC_RESCORE_FILES");
+if (!string.IsNullOrWhiteSpace(semanticFiles))
+{
+    await SemanticRescore(semanticFiles, cases, apiKey, config);
+    return 0;
 }
 
 // Writing-signal provider is selectable via WRITING_SIGNAL_PROVIDER (default sapling). Pangram
@@ -219,6 +233,90 @@ static void RescoreSavedRun(string dir, IReadOnlyList<EvalCase> cases, int natur
     var outPath = Path.Combine(dir, "_rescored-summary.md");
     File.WriteAllText(outPath, $"# Re-scored summary ({total} cases)\n\n{summaryLine}\n\n{sb}");
     Console.WriteLine($"RESCORE: {summaryLine}");
+    Console.WriteLine($"wrote {outPath}");
+}
+
+static async Task SemanticRescore(string files, IReadOnlyList<EvalCase> cases, string apiKey, EvalConfig config)
+{
+    var byId = cases.ToDictionary(c => c.Id, c => c, StringComparer.OrdinalIgnoreCase);
+    using var http = new HttpClient();
+    var judge = new SemanticEvalJudge(http, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(90));
+    var paths = files.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    var rows = new List<(string Id, string Text, bool DetFacts, int DetForbid)>();
+    foreach (var path in paths)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        if (!doc.RootElement.TryGetProperty("rows", out var rs) || rs.ValueKind != JsonValueKind.Array)
+        {
+            continue;
+        }
+
+        foreach (var r in rs.EnumerateArray())
+        {
+            var id = r.TryGetProperty("Id", out var idEl) ? idEl.GetString() ?? "" : "";
+            var text = r.TryGetProperty("RewrittenText", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() ?? "" : "";
+            var detFacts = r.TryGetProperty("FactsPreserved", out var fp) && fp.ValueKind == JsonValueKind.True;
+            var detForbid = r.TryGetProperty("ForbiddenViolations", out var fv) && fv.ValueKind == JsonValueKind.Array ? fv.GetArrayLength() : 0;
+            rows.Add((id, text, detFacts, detForbid));
+        }
+    }
+
+    int judged = 0, semFactsPass = 0, detFactsPass = 0, semForbidCases = 0, detForbidCases = 0;
+    var factFN = new List<string>();
+    var factFP = new List<string>();
+    var forbidFP = new List<string>();
+    var forbidFN = new List<string>();
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine($"# Semantic re-score (C# eval tool; judge {judge.Model}; prompt {SemanticEvalJudge.PromptVersion})\n");
+    sb.AppendLine("| id | det_facts | sem_facts | det_forbid | sem_forbid | really-lost |");
+    sb.AppendLine("| --- | --- | --- | ---: | ---: | --- |");
+
+    foreach (var row in rows)
+    {
+        if (!byId.TryGetValue(row.Id, out var c))
+        {
+            continue;
+        }
+
+        var v = await judge.VerifyAsync(row.Text, c.MustKeep, c.MustNotClaim, CancellationToken.None);
+        if (v.Error is not null)
+        {
+            Console.WriteLine($"  {row.Id}: judge error {v.Error}");
+            continue;
+        }
+
+        judged++;
+        var semPass = v.FactsReallyPass;
+        var semForbid = v.RealForbidden;
+        if (semPass) semFactsPass++;
+        if (row.DetFacts) detFactsPass++;
+        if (semForbid > 0) semForbidCases++;
+        if (row.DetForbid > 0) detForbidCases++;
+        if (semPass && !row.DetFacts) factFN.Add(row.Id);
+        if (!semPass && row.DetFacts) factFP.Add(row.Id);
+        if (row.DetForbid > 0 && semForbid == 0) forbidFP.Add(row.Id);
+        if (row.DetForbid == 0 && semForbid > 0) forbidFN.Add(row.Id);
+        var lost = string.Join("; ", v.Facts
+            .Where(f => f.Status is "missing" or "contradicted")
+            .Select(f => $"{f.Status}:{f.Fact}"));
+        sb.AppendLine($"| {row.Id} | {row.DetFacts} | {semPass} | {row.DetForbid} | {semForbid} | {lost.Replace("|", "/", StringComparison.Ordinal)} |");
+        Console.WriteLine($"  {row.Id}: sem_facts={(semPass ? "pass" : "FAIL")} sem_forbid={semForbid} (det_facts={row.DetFacts} det_forbid={row.DetForbid})");
+    }
+
+    var summary = $"SEMANTIC (C#): facts {semFactsPass}/{judged} (det {detFactsPass}/{judged}); forbidden {semForbidCases}/{judged} (det {detForbidCases})";
+    sb.AppendLine($"\n{summary}\n");
+    sb.AppendLine($"- fact false-negatives (det fail, really pass): {string.Join(", ", factFN)}");
+    sb.AppendLine($"- fact false-positives (det pass, really lost): {string.Join(", ", factFP)}");
+    sb.AppendLine($"- forbidden false-positives (det flagged, really clean): {string.Join(", ", forbidFP)}");
+    sb.AppendLine($"- forbidden false-negatives (det missed a real one): {string.Join(", ", forbidFN)}");
+
+    Directory.CreateDirectory(config.OutputDirectory);
+    var outPath = Path.Combine(config.OutputDirectory, $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-semantic-rescore-csharp.md");
+    await File.WriteAllTextAsync(outPath, sb.ToString());
+
+    Console.WriteLine($"\n{summary}");
+    Console.WriteLine($"fact FN: {string.Join(",", factFN)} | fact FP: {string.Join(",", factFP)} | forbid FP: {string.Join(",", forbidFP)} | forbid FN: {string.Join(",", forbidFN)}");
     Console.WriteLine($"wrote {outPath}");
 }
 
