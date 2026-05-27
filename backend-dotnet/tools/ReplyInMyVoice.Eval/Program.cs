@@ -43,6 +43,19 @@ if (!string.IsNullOrWhiteSpace(rescoreDir))
     return 0;
 }
 
+// PANGRAM_RESCORE_FILE: re-score one fixed text on Pangram (reproducibility check). Needs only PANGRAM_API_KEY.
+var pangramRescoreFile = Environment.GetEnvironmentVariable("PANGRAM_RESCORE_FILE");
+if (!string.IsNullOrWhiteSpace(pangramRescoreFile))
+{
+    return await PangramRescore.RunAsync(pangramRescoreFile);
+}
+
+// GPTZERO_PROBE: cross-detector check on fixed texts via GPTZero. Needs only GPTZero_API_KEY.
+if (IsTruthy(Environment.GetEnvironmentVariable("GPTZERO_PROBE")))
+{
+    return await GptzeroProbe.RunAsync();
+}
+
 var apiKey = ResolveApiKey(config);
 if (string.IsNullOrWhiteSpace(apiKey))
 {
@@ -113,6 +126,113 @@ var provider = new FactReconstructRewriteProvider(
                 ? budgetSec
                 : 0),
         ForceInitialStrategy: variantForceStrategy));
+
+// TA translation round-trip RESEARCH pilot (eval-only; plans/translation-roundtrip-pilot.md).
+// Emits T0 (this provider's baseline) vs TA (mask -> Youdao en<->zh-CHS -> unmask -> gate on final
+// text -> fall back to T0 on drift), reading Pangram once per gate survivor. The engine keeps using
+// its configured signal provider (set WRITING_SIGNAL_PROVIDER=sapling) for the internal naturalness
+// gate; Pangram is a separate client built inside the runner so it never enters the rewrite loop.
+if (IsTruthy(Environment.GetEnvironmentVariable("TA_PILOT")))
+{
+    return await TranslationPilotRunner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// Round-2 T3 native-repair pilot: TA_raw is only a perturbation draft; DeepSeek re-authors native
+// English anchored to the original facts + a ProtectedTermLedger, then a SendabilityGate runs.
+if (IsTruthy(Environment.GetEnvironmentVariable("T3_PILOT")))
+{
+    return await TranslationPilotV2Runner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// Round-3 T4 selective-patch pilot: keep TA_raw's MT surface, apply only budgeted span patches
+// (DeepSeek proposes find/replace; the program applies them). 3-tier sendability gate.
+if (IsTruthy(Environment.GetEnvironmentVariable("T4_PILOT")))
+{
+    return await TranslationPilotV3Runner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// Round-4 gating diagnostic: original draft vs T0 Pangram (does T0 over-rewrite?). Gates whether the
+// T5/T6 "preserve original surface" sweep is worth building.
+if (IsTruthy(Environment.GetEnvironmentVariable("ORIGINAL_PANGRAM")))
+{
+    return await OriginalPangramDiagnostic.RunAsync(provider, selectedCases, config);
+}
+
+// Probe: Youdao LLM (large-model) translation round-trip vs T0. Pangram = offline observation only.
+if (IsTruthy(Environment.GetEnvironmentVariable("YOUDAO_LLM_PROBE")))
+{
+    return await YoudaoLlmProbeRunner.RunAsync(provider, selectedCases, config, apiKey);
+}
+
+// Round-5 fact-only-repair pilot: keep TA_raw's MT surface, patch only fact/boundary drift, relaxed
+// gate (Q1 fact-safe + Q2 understandable required; Q3 native-send-ready recorded only).
+if (IsTruthy(Environment.GetEnvironmentVariable("R5_FACT_REPAIR_PILOT")))
+{
+    return await TranslationPilotV4Runner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// Round-6 external rewrite-engine A/B: T0 vs a pluggable external provider (Manus API / generic HTTP).
+// Quality-first A/B; same gates; Pangram observation only.
+if (IsTruthy(Environment.GetEnvironmentVariable("EXTERNAL_REWRITE_AB_PILOT")))
+{
+    return await ExternalRewriteAbRunner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// Round-7 Chinese-intermediate-polish pilot: LLM polishes the Chinese middle state, Youdao stays the
+// final English author; English end gets only a tight entity patch. R7C (plain round-trip) is the control.
+if (IsTruthy(Environment.GetEnvironmentVariable("R7_CN_INTERMEDIATE_PILOT")))
+{
+    return await TranslationPilotV6Runner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// Round-8 layered pilot, branch A: DeepSeek generates "controlled international English" directly (no
+// translation, no native polish), gated by a ProfessionalInternationalEnglishGate. Tests whether the
+// register change alone lowers Pangram. (R8B/R8C added only if R8A shows signal.)
+if (IsTruthy(Environment.GetEnvironmentVariable("R8_LAYERED_PILOT")))
+{
+    return await R8LayeredRunner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// Round-10 dual-channel: keep fact/boundary sentences as native T0, route only low-risk
+// context/warmth/closing sentences through a Youdao round-trip (texture channel), splice back.
+// Tests whether perturbing only safe sentences lowers the windowed Pangram mean while keeping facts.
+if (IsTruthy(Environment.GetEnvironmentVariable("DUAL_CHANNEL_TRANSLATION_PILOT")))
+{
+    return await R10DualChannelRunner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// Quality A/B harness (Voice+Fidelity track): runs T0 over the corpus and audits each output through
+// the deterministic QualityGateChain + LLM FidelityJudge v2 + SendabilityTierJudge. DeepSeek + Sapling
+// only, no detector. Also a false-positive audit of the new gates against the trusted T0 engine.
+if (IsTruthy(Environment.GetEnvironmentVariable("QUALITY_AB")))
+{
+    return await QualityAbRunner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
+// U2 Chinese-fact-note pilot: DeepSeek extracts facts + writes a terse un-polished Chinese note,
+// Youdao translates it ZH->EN (Youdao = final English author), semantic-gated, GPTZero only on
+// survivors. Same 2 simple cases as U3. Self-contained (ignores selectedCases).
+if (IsTruthy(Environment.GetEnvironmentVariable("U2_FACT_NOTE_PILOT")))
+{
+    return await U2FactNotePilot.RunAsync(config, apiKey, startedAt);
+}
+
+// U3 deterministic-template pilot (last-shot AI-detection test): final English from hardcoded
+// human-written templates + DeepSeek-extracted fact slots (no LLM authoring, no translation), 2 simple
+// hardcoded cases, semantic-gated, GPTZero only on survivors. Self-contained (ignores selectedCases).
+if (IsTruthy(Environment.GetEnvironmentVariable("U3_TEMPLATE_PILOT")))
+{
+    return await U3TemplatePilot.RunAsync(config, apiKey, startedAt);
+}
 
 var rows = new List<EvalResultRow>();
 foreach (var sample in selectedCases)

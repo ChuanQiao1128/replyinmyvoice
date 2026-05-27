@@ -36,7 +36,10 @@ public sealed class SemanticEvalJudge(
     TimeSpan timeout)
 {
     // Bump when the judge prompt changes so re-scores across agent versions stay comparable.
-    public const string PromptVersion = "semverify-v1-2026-05-27";
+    // v2 (2026-05-27): added object/term-substitution + subject/role-assignment checks (FidelityJudge
+    // hardening) — catches seat credit->letter of credit, planter->flowerpot, Mark<->Dana role swaps,
+    // process->apply-for authority drift, which v1 passed.
+    public const string PromptVersion = "semverify-v2-2026-05-27";
 
     public string Model => model;
 
@@ -45,12 +48,24 @@ public sealed class SemanticEvalJudge(
         + "preserved each required fact from the source and whether it made any forbidden claim. Rules: "
         + "(1) For amounts/money/dates/deadlines/invoice numbers/IDs/codes/proper names: require EXACT "
         + "preservation - a changed or dropped number, date, or name = missing or contradicted. "
-        + "(2) For statuses/actions/intent/requests: accept semantic equivalence - e.g. 'set' preserves "
+        + "(2) For statuses/actions/intent/requests: accept genuine semantic equivalence - e.g. 'set' preserves "
         + "'confirmed'; 'wrapped up' preserves 'finished'; 'Would that suit you?' preserves 'asks what works'; "
-        + "'we can walk through the options' preserves 'changes can be discussed'. "
+        + "'we can walk through the options' preserves 'changes can be discussed'. This equivalence allowance does "
+        + "NOT extend to rules (4) or (5) below. "
         + "(3) A must_not_claim is violated ONLY if the rewrite actually asserts the forbidden thing, changes "
         + "an amount/time/liability, or turns uncertainty into certainty. 'refund in 3-5 business days' does "
-        + "NOT violate 'no instant refund'. Do not flag a word just because it appears. Return JSON only.";
+        + "NOT violate 'no instant refund'. Do not flag a word just because it appears. "
+        + "(4) OBJECT/TERM SUBSTITUTION: if a concrete business object or thing is replaced by a DIFFERENT "
+        + "object - even a plausible-sounding one - that fact is 'contradicted', not a paraphrase. Examples that "
+        + "MUST fail: 'seat credit' -> 'letter of credit', 'planter' -> 'flowerpot', 'saucer' -> 'tea tray', "
+        + "'dish rack' -> 'draining rack', 'Celestine' -> 'Celeste'. A different noun naming a different thing is a drift. "
+        + "(5) SUBJECT/ROLE ASSIGNMENT: who performs or receives each action must match the source. If the sender "
+        + "and recipient are swapped (e.g. the source says the SENDER cannot attend but the rewrite says the other "
+        + "person cannot, or 'I will refund you' becomes 'you will refund'), or who holds authority/responsibility "
+        + "changes (e.g. 'I can process a refund' -> 'I can apply for a refund' or '-> you should request a refund'), "
+        + "mark the affected fact 'contradicted' AND set meaning_changed=true. A reply written in the wrong person "
+        + "(third-person narration instead of the sender's first-person reply) that misassigns who does what is contradicted. "
+        + "Return JSON only.";
 
     public async Task<SemVerdict> VerifyAsync(
         string rewrite,
