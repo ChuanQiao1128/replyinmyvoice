@@ -1,0 +1,653 @@
+{
+  "summary": {
+    "StartedAt": "2026-05-26T23:09:23.39418+00:00",
+    "FinishedAt": "2026-05-26T23:12:34.730279+00:00",
+    "Mode": "focused",
+    "CasesEvaluated": 22,
+    "SuccessCount": 21,
+    "ProviderFailureCount": 1,
+    "FactPassCount": 17,
+    "MeasuredCount": 21,
+    "RewritesBelow50Count": 21,
+    "BaselineAboveThresholdCount": 7,
+    "BaselineAboveThresholdAverageDropPoints": 65,
+    "AverageDropPoints": 26,
+    "ModelCalls": 57,
+    "SaplingCalls": 78,
+    "MaxAttempts": 10,
+    "Model": "deepseek-v4-pro",
+    "NaturalnessThreshold": 40,
+    "CustomerUsableCount": 16,
+    "ForbiddenViolationCaseCount": 1,
+    "RelaxedGateRecoverableCount": 0
+  },
+  "rows": [
+    {
+      "Id": "rewrite-draft-002",
+      "CaseNumber": 2,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 0,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": 0,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not replace the saucer.",
+        "Do not say the damage was the carrier\u0027s fault."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Lena,\n\nI checked the order notes this morning, and the replacement for order R4821 was marked delivered on May 6. The photo shows damage to the replacement mug, but the matching saucer looks fine.\n\nOur support policy lets me send one no-cost replacement for the mug after I confirm the delivery address. I cannot refund the full order from this ticket because the original refund window closed on April 30.\n\nPlease reply with the current delivery address by Friday at 3 p.m., and I will queue the replacement mug. If the address has changed, I need the new address in writing before I create the shipment.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-003",
+      "CaseNumber": 3,
+      "Category": "billing_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 0,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": 0,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not say the account was canceled.",
+        "Do not change the $31.50 credit amount."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Marco,\n\nI reviewed invoice INV-8842 for the Pro Workspace plan. It was issued on May 2 for $186.00, covering May 1 to May 31. Your team removed three seats on May 14.\n\nSince the seat change happened during the active billing month, I can apply a $31.50 credit to the next invoice. I cannot refund the full $186.00 because the workspace stayed active and the plan wasn\u0027t canceled during the refund window.\n\nIf you\u0027d like me to apply the $31.50 credit, please confirm by May 29 so I can attach it to the June invoice. I\u0027m sorry the earlier note didn\u0027t explain this well\u2014I don\u0027t want to promise a refund the billing policy doesn\u0027t allow.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-005",
+      "CaseNumber": 5,
+      "Category": "sales_followup",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 0,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": 0,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not include advanced SSO in the current quote.",
+        "Do not extend the June 7 expiry date.",
+        "Do not say the order form has already been sent."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Dev,\n\nThanks again for the call about the Northstar rollout. I\u0027ve attached quote Q-7719 for 18 seats at $42 per seat per month, which includes onboarding, the admin workspace, and the standard email support package. The quote expires on June 7.\n\nI can answer scope questions this week, but I cannot add the advanced SSO setup or a discount to this quote without a new approval cycle.\n\nIf the current quote still matches what you need, please reply by June 7 and I\u0027ll send the order form. If the SSO setup is required, I can start a revised quote instead.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-006",
+      "CaseNumber": 6,
+      "Category": "scheduling",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 17,
+      "RewriteAiLikePercent": 20,
+      "ChangePoints": 3,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not keep the 11 a.m. appointment.",
+        "Do not offer any times other than Thursday at 2:30 p.m. or Friday at 9 a.m.",
+        "Do not hold both options after Wednesday at noon."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Ren,\n\nI need to move our Thursday, May 16 appointment from 11 a.m. because the room is unavailable. I can offer Thursday at 2:30 p.m. or Friday at 9 a.m.\n\nPlease choose one by Wednesday at noon. I cannot hold both times after noon, but I will confirm the selected slot as soon as you reply.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-028",
+      "CaseNumber": 28,
+      "Category": "customer_success",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 0,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": 0,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not say the renewal has already been processed.",
+        "Do not say the 9-seat option is automatically the better choice."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Kwame,\n\nYour Orbit Pro account is up for renewal on June 15. The current plan is Orbit Pro at $480 per month for 12 seats. I noticed your team used an average of 9 active seats over the last 90 days.\n\nI want to flag this before we process the renewal because your contract auto-renews at the current 12-seat count and price unless you tell me otherwise by June 8. If you want to move to 9 seats, the adjusted price would be $360 per month. I cannot apply any change to the renewal without written confirmation from you.\n\nIf you are happy to keep 12 seats at $480 per month, you do not need to reply \u2014 the renewal will process automatically on June 15. If you want to adjust to 9 seats at $360 per month, please reply to confirm before June 8 and I will update the renewal before it processes.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-041",
+      "CaseNumber": 41,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 6,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -6,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not replace the silicone tray set or dish rack from R-8801.",
+        "Do not promise the $29.40 will post in fewer than five business days."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Celestine,\n\nI know this has been a frustrating few weeks, and I really appreciate you sending all those photos and forwarding both order confirmations.\n\nFor order R-8801, the mixing bowl set arrived cracked. The order was delivered on April 18 and you reported the damage on April 22, which is within the 5-day damage window. I can process a partial refund of $29.40 for the mixing bowl set only. It is not a refund for the full order because the rest of the items in R-8801 \u2014 the silicone tray set and the dish rack \u2014 arrived undamaged per your own photos, so those are not covered.\n\nFor order R-8854, the blender jar arrived with a cracked lid, and you reported it on May 3. The delivery scan shows May 1. Since it was reported outside the 5-day window, I cannot process a cash refund for the lid. What I can do is send one replacement blender lid at no cost as a goodwill gesture.\n\nTo move forward, please send me your current shipping address by May 14 so I can queue the replacement lid. I also need you to confirm in this thread that you are okay with the $29.40 partial refund for R-8801. Once I have both, I will queue the refund and the replacement shipment at the same time. If the $29.40 does not show up within five business days after I process it, please reach back out to me directly.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-042",
+      "CaseNumber": 42,
+      "Category": "billing_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 0,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": 0,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not change the $59.00 credit amount or the $30.00 post-credit balance."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Bertrand,\n\nI\u0027ve reviewed your billing dispute and want to give you a clear picture of the three invoices involved.\n\nInvoice INV-2210 for $148.00 covers March 1 through March 31, when your team was on the Standard plan for the full month. Since you downgraded on April 1 and the service was used for the entire billing period without mid-month changes, I cannot issue a refund for this invoice.\n\nInvoice INV-2291 for $148.00 covers April 1 through April 30. Your downgrade was processed on April 1, but the system charged the Standard rate instead of the Basic rate of $89.00 because the plan switch didn\u0027t propagate before the invoice ran. This is a billing error, so I can issue a $59.00 credit\u2014the difference between the Standard and Basic charges. If you confirm by June 5, I\u0027ll apply that credit to your next invoice, INV-2361.\n\nInvoice INV-2361 is the current open invoice for $89.00, covering May 1 through May 31, and it\u0027s correct. After the $59.00 credit is applied, the balance on INV-2361 would be $30.00.\n\nPlease confirm by June 5 so I can process the credit. If I don\u0027t hear back by then, the credit window for INV-2291 closes and the full $89.00 on INV-2361 remains due.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-045",
+      "CaseNumber": 45,
+      "Category": "sales_followup",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 8,
+      "RewriteAiLikePercent": 9,
+      "ChangePoints": 1,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not include custom dashboard integration in any of the three options.",
+        "Do not change the seat price, the API flat fee, or the dedicated onboarding fee.",
+        "Do not extend the June 20 expiry date.",
+        "Do not offer additional work or scope that is not listed in the three options."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Ingrid,\n\nThank you for the time on Friday and for the detailed notes your team sent over the weekend. I want to make sure quote Q-5544 is easy to compare against the two add-on options I mentioned, so I am laying everything out in one email.\n\nThe base quote Q-5544 is 20 seats at $55 per seat per month, which includes the core platform, onboarding, and standard email support. This quote expires on June 20. The total at this tier is $1,100 per month.\n\nAdd-on A is the API access package. If your team adds API access, the seat price stays the same at $55 per seat per month but there is an additional flat fee of $300 per month for API access. That brings the monthly total to $1,400.\n\nAdd-on B is the dedicated onboarding program, which is a one-time fee of $1,800 and covers four structured onboarding sessions. The dedicated onboarding is not included in the base quote or Add-on A. If you add both API access and dedicated onboarding, the monthly recurring cost is $1,400 plus the one-time $1,800.\n\nOne thing I want to be clear about: the custom dashboard integration your team mentioned on Friday is not in any of these three options. That would require a separate scoping conversation and a separate quote. I cannot include it in Q-5544 or the add-ons without a new approval.\n\nAll three options expire on June 20. If you would like to go with one of the options as described, please reply by June 20 and I can send the order form the same day. If you need an extension or want to add the custom dashboard scope, let me know and I can start that process separately.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-049",
+      "CaseNumber": 49,
+      "Category": "school_admin",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 27,
+      "RewriteAiLikePercent": 15,
+      "ChangePoints": -12,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not say students entering grade 3 in the fall are eligible.",
+        "Do not say partial payment is accepted or that a spot can be held without full payment.",
+        "Do not extend or soften the June 13 deadline."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hello Ridgemont families,\n\nWe\u0027re excited to share details about the Summer Enrichment Program for the 2026 summer session. The program runs July 7 through July 25 on the Ridgemont East campus, Room 104. It is open to students currently enrolled in grades 3 through 6 at Ridgemont. Students who will be entering grade 3 in the fall are not eligible for this session \u2014 enrollment is for current grade 3 through grade 6 students only.\n\nEnrollment is capped at 24 students this session. If we receive more than 24 completed applications, we\u0027ll start a waitlist in the order applications come in. Being on the interest list from last year does not guarantee a spot \u2014 all families must submit a new application this year. The program fee is $185 per student, due with the application. Applications and payment must reach the main office by Friday, June 13 at 4 p.m. The application form is Form SEP-2026, available at the main office window or on the school website. We cannot accept partial payment, and we cannot hold a spot without payment.\n\nIf a student ends up on the waitlist, we\u0027ll hold the $185 until a spot opens or the deadline passes \u2014 then we\u0027ll return it if no spot opens. Questions? Email enrichment@example.com or stop by the main office Tuesday through Thursday between 8 a.m. and 3 p.m.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 4,
+      "FailedAttempts": 3
+    },
+    {
+      "Id": "rewrite-draft-061",
+      "CaseNumber": 61,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 37,
+      "RewriteAiLikePercent": 1,
+      "ChangePoints": -36,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [
+        "Do not issue a refund for CPV-11 before the warehouse receives the item.",
+        "Do not change the refund amounts of $34.00 or $22.50."
+      ],
+      "ForbiddenAbstained": [
+        "Do not send the replacement lid before the photo arrives.",
+        "Do not say all three items have been fully resolved."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Vivienne,\n\nI reviewed order ORD-29447 against the return you started on June 2. Since the items are at different stages, I\u2019ll walk through each one.\n\nCeramic pour-over carafe (SKU CPV-11): The return label was emailed on June 3. We haven\u2019t received the package yet. As soon as it reaches our warehouse, I\u2019ll refund $34.00 to your card\u2014you\u2019ll see it within 3\u20135 business days.\n\nStainless travel cup (SKU STC-07): It arrived on June 5, undamaged and unused. The $22.50 refund was issued on June 6 and should appear on your statement within 2 business days.\n\nReplacement lid (SKU LID-04): You mentioned the lid arrived cracked. I need one photo of the crack before I can send a replacement. Please send the photo by noon on June 10, or the replacement request will close automatically.\n\nI can\u2019t refund the carafe until it\u2019s physically here, and I can\u2019t ship the lid without the photo. The travel cup refund is already on its way.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 3,
+      "FailedAttempts": 2
+    },
+    {
+      "Id": "rewrite-draft-066",
+      "CaseNumber": 66,
+      "Category": "medical_admin",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 0,
+      "RewriteAiLikePercent": 10,
+      "ChangePoints": 10,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not interpret or describe the contents of the imaging records.",
+        "Do not say the release has already been processed or is in progress.",
+        "Do not accept a paper form photo as an alternative to the portal submission."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Gwendolyn,\n\nI\u0027m following up on your request to send your imaging records from your April 18 appointment to Dr. Okafor\u0027s office. We can\u0027t release records without your signed authorization, so here\u0027s what you need to do.\n\nLog in to the patient portal at portal.example.org, go to \u0022My Records\u0022 and select \u0022Release Authorization.\u0022 Complete the Release of Medical Records form, choosing Dr. Okafor\u0027s practice as the recipient and checking \u0022Diagnostic Imaging\u0022 under record type. Sign and submit the form in the portal\u2014only the portal version is accepted, so please don\u0027t email a photo of a paper form.\n\nOnce we receive the signed form, our records team usually processes release requests within 5 business days. If you haven\u0027t heard anything after 7 business days, call the records office at ext. 3114.\n\nI can\u0027t give you a status or contact Dr. Okafor\u0027s office until the signed authorization is in our system. If this is urgent, please ask Dr. Okafor\u0027s office to mark the incoming request as urgent and fax a priority cover sheet to 555-0192.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-071",
+      "CaseNumber": 71,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 22,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -22,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not promise the replacement has already shipped.",
+        "Do not extend the May 2 response deadline."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi,\n\nI understand your frustration. You placed order ORD-58291 on April 14 for a $94.00 blender, and it arrived on April 22 with a cracked base. When you called on April 23, Felix promised a replacement within three business days. As of April 30, no replacement has arrived and ticket CX-77401 has no updates.\n\nI want to give you a straight answer: a replacement is shipping. I\u2019ve prioritized your case and you\u2019ll receive tracking details by May 2. If that doesn\u2019t work, I\u2019ll process a full refund of $94.00 to your original card.\n\nI\u2019ll personally monitor this to make sure it\u2019s resolved without you needing to follow up again.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "rewrite-draft-074",
+      "CaseNumber": 74,
+      "Category": "teacher_parent",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 36,
+      "RewriteAiLikePercent": 20,
+      "ChangePoints": -16,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not diagnose or label Soren behaviorally.",
+        "Do not say the check-in with Ms. Vega is disciplinary.",
+        "Do not blame Ingrid or suggest parenting issues."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Dear Ingrid,\n\nI\u0027m writing to share something I observed in the classroom on May 15. During independent reading time, Soren pushed another student\u0027s book off the desk, and when I asked him to return to his seat, he said he didn\u0027t care and turned away.\n\nI\u0027m not labeling Soren or suggesting anything is wrong with him. I\u0027m telling you what I observed so we can figure out together what support looks like going forward. Since May 15, I\u0027ve checked in with Soren each morning during arrival, and he\u0027s been calm and engaged. I\u0027ve also added his name to Ms. Vega\u0027s list for a voluntary check-in\u2014she\u0027s our school counselor who works with students in these situations, and this is not a disciplinary step.\n\nI\u0027d like to meet with you to talk through this. I\u0027m available on May 22 after 3:30 p.m. or May 24 between 9 and 10 a.m. Please let me know which works, and we can confirm by end of day May 21.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 2,
+      "FailedAttempts": 1
+    },
+    {
+      "Id": "rewrite-draft-080",
+      "CaseNumber": 80,
+      "Category": "customer_success",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 15,
+      "RewriteAiLikePercent": 9,
+      "ChangePoints": -6,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not promise either feature will be delivered before the September 1 renewal.",
+        "Do not say custom development will close the feature gap.",
+        "Do not promise a specific roadmap date for either feature."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi Octavia,\n\nThanks for the call on May 16 and for sending over the detailed feature request summary for Kessler Group. I want to be upfront so we stay aligned.\n\nThe two features your team outlined \u2014 bulk role assignment via CSV and a dedicated audit log export API \u2014 are on the product roadmap, but they are not committed to a specific release date. I cannot tell you they will be ready by your contract renewal on September 1 because our product team has not confirmed a timeline yet. If either feature lands before renewal, I will notify you immediately.\n\nKessler Group\u0027s contract (account ID KG-00412) runs through August 31, and the renewal at the current rate is $3,400 per month for the 40-seat Enterprise plan. I submitted a formal feature priority request on your behalf on May 17 (reference FPR-2241) so your use case is documented in the product backlog.\n\nI can also connect you with our enterprise support team for a more detailed roadmap conversation. If you\u0027d like that, just reply and I\u0027ll set up an intro by the end of this week. I just cannot make a commitment that custom development or a discounted renewal will happen to close this gap.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 1,
+      "FailedAttempts": 0
+    },
+    {
+      "Id": "aidc-201",
+      "CaseNumber": 201,
+      "Category": "scheduling",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 93,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -93,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not invent a location or address.",
+        "Do not add services or details not in the draft."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Your appointment is confirmed for Tuesday, June 3 at 3 PM. Need anything else, just say.",
+      "AttemptHistory": [],
+      "AttemptsUsed": 4,
+      "FailedAttempts": 3
+    },
+    {
+      "Id": "aidc-202",
+      "CaseNumber": 202,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": false,
+      "ErrorCode": "naturalness_gate_failed",
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "A refund was processed.",
+        "The refund amount is $40.00.",
+        "It should appear within 3-5 business days."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "",
+      "AttemptHistory": [
+        {
+          "AttemptNo": 1,
+          "Strategy": 2,
+          "CandidateText": "Hi there!\n\nI\u0027ve processed your refund of $40.00. It should appear in your account within 3-5 business days.\n\nLet me know if you have any questions!",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 49% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if you have any questions!\u0022\n- (96%) \u0022It should appear in your account within 3-5 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 49
+        },
+        {
+          "AttemptNo": 2,
+          "Strategy": 1,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. It\u0027ll show up in your account in 3\u20135 business days.\n\nLet me know if you have any questions!",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 50% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if you have any questions!\u0022\n- (99%) \u0022It\u0027ll show up in your account in 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 50
+        },
+        {
+          "AttemptNo": 3,
+          "Strategy": 1,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. You should see it in your account within 3\u20135 business days.\n\nLet me know if you have any questions!",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 49% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if you have any questions!\u0022\n- (96%) \u0022You should see it in your account within 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 49
+        },
+        {
+          "AttemptNo": 4,
+          "Strategy": 1,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. It should appear in your account within 3\u20135 business days.\n\nLet me know if anything looks off.",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 43% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if anything looks off.\u0022\n- (72%) \u0022It should appear in your account within 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 43
+        },
+        {
+          "AttemptNo": 5,
+          "Strategy": 1,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. It should appear in your account within 3\u20135 business days.\n\nLet me know if anything looks off.",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 43% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if anything looks off.\u0022\n- (72%) \u0022It should appear in your account within 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 43
+        },
+        {
+          "AttemptNo": 6,
+          "Strategy": 1,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. It should appear in your account within 3\u20135 business days.\n\nLet me know if anything looks off.",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 43% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if anything looks off.\u0022\n- (72%) \u0022It should appear in your account within 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 43
+        },
+        {
+          "AttemptNo": 7,
+          "Strategy": 1,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. It should appear in your account within 3\u20135 business days.\n\nLet me know if anything looks off.",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 43% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if anything looks off.\u0022\n- (72%) \u0022It should appear in your account within 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 43
+        },
+        {
+          "AttemptNo": 8,
+          "Strategy": 1,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. You should see it in your account within 3\u20135 business days.\n\nLet me know if anything looks off.",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 49% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if anything looks off.\u0022\n- (96%) \u0022You should see it in your account within 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 49
+        },
+        {
+          "AttemptNo": 9,
+          "Strategy": 7,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. It should appear in your account within 3\u20135 business days.\n\nLet me know if anything looks off.",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 43% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if anything looks off.\u0022\n- (72%) \u0022It should appear in your account within 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 43
+        },
+        {
+          "AttemptNo": 10,
+          "Strategy": 7,
+          "CandidateText": "Hi there!\n\nYour $40.00 refund is processed. It should appear in your account within 3\u20135 business days.\n\nLet me know if anything looks off.",
+          "FailureKinds": [
+            9
+          ],
+          "FailureAnalysis": "The previous reply scored 43% AI-like overall; the target is 20% or lower. These specific sentences read as machine-generated and are driving the score up:\n- (100%) \u0022Let me know if anything looks off.\u0022\n- (72%) \u0022It should appear in your account within 3\u20135 business days.\u0022\nRewrite specifically these sentences so they sound natural and human \u2014 you may merge, shorten, cut, or rephrase them and lightly adjust neighboring wording for flow. Keep all other sentences and every name, date, amount, count, identifier, condition, and negative constraint exactly as written. Do not add new claims, pleasantries, or template lines.",
+          "DraftAiLikePercent": 74,
+          "RewriteAiLikePercent": 43
+        }
+      ]
+    },
+    {
+      "Id": "aidc-203",
+      "CaseNumber": 203,
+      "Category": "billing_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 66,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -66,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "The amount is $120.00."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not waive or change the amount.",
+        "Do not change the due date."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Just a quick note to confirm that invoice #INV-204 for $120.00 is due on June 10. If something doesn\u2019t seem right, just reply here.",
+      "AttemptHistory": [],
+      "AttemptsUsed": 5,
+      "FailedAttempts": 4
+    },
+    {
+      "Id": "aidc-204",
+      "CaseNumber": 204,
+      "Category": "customer_support",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 82,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -82,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi,\n\nYour replacement for order #R-5582 shipped on May 20 and should arrive by May 27.\n\nIf anything comes up, just reply here.",
+      "AttemptHistory": [],
+      "AttemptsUsed": 4,
+      "FailedAttempts": 3
+    },
+    {
+      "Id": "aidc-205",
+      "CaseNumber": 205,
+      "Category": "sales_followup",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 57,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -57,
+      "FactsPreserved": true,
+      "MissingFacts": [],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not promise more than 10 seats."
+      ],
+      "CustomerUsable": true,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi,\n\nFollowing up on our chat about the Growth plan\u2014happy to go over the details with you. It\u2019s $49/month, covers up to 10 users, and the quote holds through June 15.\n\nIf anything\u2019s unclear, just give me a shout.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 4,
+      "FailedAttempts": 3
+    },
+    {
+      "Id": "aidc-206",
+      "CaseNumber": 206,
+      "Category": "customer_success",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 62,
+      "RewriteAiLikePercent": 19,
+      "ChangePoints": -43,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "Changes can be discussed if the customer wants."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not change the price."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi,\n\nYour Pro plan renews on June 30 at $290 for the year, covering up to 8 seats. You currently have 30 seats.\n\nIf you\u0027d like to adjust your plan, just reply here.\n\nBest,",
+      "AttemptHistory": [],
+      "AttemptsUsed": 2,
+      "FailedAttempts": 1
+    },
+    {
+      "Id": "aidc-207",
+      "CaseNumber": 207,
+      "Category": "scheduling",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 71,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -71,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "The sender asks what works for the recipient."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not commit to a specific clock time.",
+        "Do not invent a meeting topic or location."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Hi! Friday won\u0027t work for me, but I\u0027d be happy to meet Tuesday afternoon instead. Would Tuesday work?",
+      "AttemptHistory": [],
+      "AttemptsUsed": 3,
+      "FailedAttempts": 2
+    },
+    {
+      "Id": "aidc-208",
+      "CaseNumber": 208,
+      "Category": "workplace_update",
+      "Tone": "warm",
+      "Success": true,
+      "DraftAiLikePercent": 46,
+      "RewriteAiLikePercent": 0,
+      "ChangePoints": -46,
+      "FactsPreserved": false,
+      "MissingFacts": [
+        "The slides are finished."
+      ],
+      "ForbiddenViolations": [],
+      "ForbiddenAbstained": [
+        "Do not invent the slides\u0027 topic or content.",
+        "Do not add a deadline or next step not in the draft."
+      ],
+      "CustomerUsable": false,
+      "WouldPassRelaxedGate": false,
+      "RewrittenText": "Slides are done and sent your way this morning. Feel free to take a look whenever!",
+      "AttemptHistory": [],
+      "AttemptsUsed": 5,
+      "FailedAttempts": 4
+    }
+  ]
+}
