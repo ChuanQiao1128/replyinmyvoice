@@ -7,11 +7,14 @@ using ReplyInMyVoice.Domain.RewriteEngine;
 using ReplyInMyVoice.Infrastructure.Providers;
 
 // GPTZero feedback-loop pilot (GPTZERO_LOOP_PILOT=1). EVAL-ONLY. Owner's refined design: NO Sapling —
-// start from the raw draft, then LOOP. Each iteration: DeepSeek naturalizes the text (history + the prior
-// version's drift feedback + GPTZero per-sentence offenders; strict: keep every fact + meaning, no
-// placeholders); then the discrete facts (amounts/dates/numbers/IDs/names) are masked and a Youdao
-// EN->zh->EN round-trip translates the PROSE while the facts ride through as sentinels (so translation
-// can't drift them); a broken sentinel skips translation that round. Score on real GPTZero + verify facts
+// start from the raw draft, then LOOP. Each iteration is MASK-FIRST (architectural fix per Kimi review):
+// (1) mask ledger anchors + load-bearing phrases as bracket-free QZAN sentinels BEFORE any LLM rewrite,
+// so DeepSeek cannot drift them; (2) DeepSeek naturalize the masked text (sentinels ride verbatim);
+// (3) Youdao EN→ZH; (4) DeepSeek Chinese-mid minimal repair vs original; (5) Youdao ZH→EN; (6) unmask.
+// A broken sentinel at any stage = REJECT the whole transform (no fallback to unverified naturalize) so
+// the loop never silently ships a drifted candidate. Post-unmask MinimalRepair restores any non-masked
+// drift (proposer business nouns). AiTellStripper final pass reverts introduced em-dashes / contractions.
+// Score on real GPTZero + verify facts
 // with the FidelityJudge each round; the judge's drift findings are fed into the NEXT loop so it repairs
 // the specific problems. Stop at GPTZero <= target with facts intact, or the iter/budget cap.
 //
@@ -88,7 +91,11 @@ internal static class GptzeroLoopRunner
                 loadBearingSpans: loadBearing,
                 proposedSpansHard: true);
             // Translation-time mask also covers proposer spans, so they ride through Youdao verbatim.
-            var maskExtraSpans = loadBearing.Concat(proposerSpans).Distinct(StringComparer.Ordinal).ToList();
+            // LEAN mask set (Kimi's "exact spans only"): ledger anchors + load-bearing phrases ONLY.
+            // Proposer multi-word spans are NOT masked — they were brittle through translation (stitched
+            // grammar around many sentinels). The gate still hard-enforces them; if they drift, post-unmask
+            // MinimalRepair restores them surgically.
+            var maskExtraSpans = loadBearing.Distinct(StringComparer.Ordinal).ToList();
             string current;
             if (fromDraft)
             {
@@ -159,45 +166,61 @@ internal static class GptzeroLoopRunner
                     break;
                 }
 
-                // DeepSeek naturalizes the current text (with history + the prior version's drift feedback),
-                // keeping every fact verbatim and the meaning intact (no placeholders / sign-offs / new info).
+                // === Mask-FIRST transform (Kimi's architectural fix) ===
+                // 1. Mask BEFORE any generative rewrite, so DeepSeek can't drift facts before protection.
+                //    Lean mask = ledger anchors + load-bearing phrases (no proposer multi-word — too brittle).
+                var masked = AnchorMasker.Mask(current, ledger, sample.MustKeep, sample.MustNotClaim, maskExtraSpans, bracketFree: true);
+
+                // 2. DeepSeek naturalize the MASKED text (must keep every QZAN sentinel verbatim).
                 var ds = await deepseek.CompleteAsync(
                     LoopSystemPrompt,
-                    BuildLoopUserPrompt(sample.InputDraft, current, history, sentences, sample.MustKeep, target, driftFeedback),
-                    1400, 0.8, CancellationToken.None);
-                var candidate = ExtractField(ds, "rewrittenText") ?? current;
+                    BuildLoopUserPrompt(sample.InputDraft, masked.MaskedText, history, sentences, sample.MustKeep, target, driftFeedback),
+                    1400, 0.7, CancellationToken.None);
+                var workingMasked = ExtractField(ds, "rewrittenText") ?? masked.MaskedText;
 
-                // Then protect ONLY the discrete facts (amounts/dates/numbers/IDs/names) as sentinels and run a
-                // Youdao round-trip, so the TRANSLATION cannot drift them — prose is translated, facts ride
-                // through. A broken sentinel -> skip translation this round (keep the DeepSeek text), so the
-                // loop never no-ops on over-masking.
+                // Sentinel integrity after DeepSeek — REJECT transform if broken (no fallback to unverified).
+                var dsCheck = AnchorMasker.Unmask(workingMasked, masked.Map);
+                if (!dsCheck.IntegrityOk)
+                {
+                    Console.WriteLine("    [protect] DeepSeek broke a QZAN sentinel — REJECT transform, keep previous verified current.");
+                    continue;
+                }
+
+                string candidate;
                 if (youdao is not null)
                 {
-                    var masked = AnchorMasker.Mask(candidate, ledger, sample.MustKeep, sample.MustNotClaim, maskExtraSpans, bracketFree: true);
-                    var toZh = await youdao.TranslateAsync(masked.MaskedText, "en", "zh-CHS", CancellationToken.None);
-                    if (toZh.Success)
+                    // 3. Youdao EN→ZH on the masked text (sentinels ride through).
+                    var toZh = await youdao.TranslateAsync(workingMasked, "en", "zh-CHS", CancellationToken.None);
+                    if (!toZh.Success)
                     {
-                        // Owner's "在第一次翻译之后做修复" — Chinese-intermediate MINIMAL REPAIR (NOT polish).
-                        // DeepSeek compares the Chinese to the English original and surgically inserts/fixes
-                        // anything that drifted in the EN->ZH step, keeping sentinels and the translationese
-                        // surface intact, so the ZH->EN back-translation carries CORRECT meaning forward.
-                        var repairedZh = await ChineseRepairAsync(deepseek, sample.InputDraft, toZh.Text, CancellationToken.None);
-                        var chineseForBack = string.IsNullOrWhiteSpace(repairedZh) ? toZh.Text : repairedZh!;
-
-                        var backEn = await youdao.TranslateAsync(chineseForBack, "zh-CHS", "en", CancellationToken.None);
-                        if (backEn.Success)
-                        {
-                            var unmask = AnchorMasker.Unmask(backEn.Text, masked.Map);
-                            if (unmask.IntegrityOk)
-                            {
-                                candidate = unmask.Restored;
-                            }
-                            else
-                            {
-                                Console.WriteLine("    [protect] translation broke a fact sentinel — kept the pre-translation text this round.");
-                            }
-                        }
+                        Console.WriteLine($"    [protect] Youdao EN→ZH failed ({toZh.ErrorCode}) — REJECT transform.");
+                        continue;
                     }
+
+                    // 4. Chinese-intermediate MINIMAL REPAIR (compare to English original, surgical fix in ZH).
+                    var repairedZh = await ChineseRepairAsync(deepseek, sample.InputDraft, toZh.Text, CancellationToken.None);
+                    var chineseForBack = string.IsNullOrWhiteSpace(repairedZh) ? toZh.Text : repairedZh!;
+
+                    // 5. Youdao ZH→EN.
+                    var backEn = await youdao.TranslateAsync(chineseForBack, "zh-CHS", "en", CancellationToken.None);
+                    if (!backEn.Success)
+                    {
+                        Console.WriteLine($"    [protect] Youdao ZH→EN failed ({backEn.ErrorCode}) — REJECT transform.");
+                        continue;
+                    }
+
+                    // 6. Unmask. If translation broke a sentinel → REJECT (no fallback).
+                    var unmask = AnchorMasker.Unmask(backEn.Text, masked.Map);
+                    if (!unmask.IntegrityOk)
+                    {
+                        Console.WriteLine("    [protect] translation broke a QZAN sentinel — REJECT transform, keep previous verified current.");
+                        continue;
+                    }
+                    candidate = unmask.Restored.Trim();
+                }
+                else
+                {
+                    candidate = dsCheck.Restored.Trim();
                 }
 
                 // Post-translation MINIMAL repair (owner's "deepseek 回来之后做最小修复"):
@@ -218,7 +241,9 @@ internal static class GptzeroLoopRunner
                     }
                 }
 
-                current = candidate.Trim();
+                // Final deterministic AI-tell strip: revert any em-dashes / contractions the LLM layer
+                // introduced that the original draft didn't use. Pure post-process, no LLM, no API.
+                current = AiTellStripper.Strip(candidate.Trim(), sample.InputDraft);
             }
 
             var verdict = bestFaithfulAi is null
@@ -245,14 +270,14 @@ internal static class GptzeroLoopRunner
     }
 
     private const string LoopSystemPrompt =
-        "You rewrite an email so it reads as if a real person wrote it, to LOWER an AI-text classifier's score. "
-        + "ABSOLUTE rules: (1) keep EVERY fact verbatim — names, numbers, dates, amounts, IDs/references; (2) keep "
-        + "the exact MEANING and relationships — e.g. if the quote 'expires' on a date it still EXPIRES (never "
-        + "soften/flip it); keep commitments and uncertainty (cannot stays cannot, may stays may); (3) do NOT add "
-        + "greetings, sign-offs, names, placeholders like '(Your name)', or any new information; (4) it must stay a "
-        + "sendable, professional reply. Vary sentence rhythm for a natural human feel. You are given the ORIGINAL "
-        + "(truth), the CURRENT version, the PROBLEMS to fix, and prior attempts with their scores. Return JSON: "
-        + "{\"rewrittenText\":\"...\"}.";
+        "You lightly rewrite the EMAIL below so it reads more like a real person wrote it, to LOWER an "
+        + "AI-text classifier's score. The text contains PROTECTED TOKENS of the form QZAN###QZ — these "
+        + "stand in for facts and meaning-critical phrases that must NOT be touched. ABSOLUTE rules: "
+        + "(1) copy EVERY QZAN###QZ token EXACTLY where it appears — never alter, drop, split, lowercase, "
+        + "add internal spaces, paraphrase, translate, or duplicate one; (2) do NOT add greetings, sign-offs, "
+        + "names, placeholders like '(Your name)', or any new information; (3) only revise the PROSE around "
+        + "the tokens — vary sentence rhythm, prefer plain phrasing; (4) result must be a sendable, professional "
+        + "reply. Return JSON: {\"rewrittenText\":\"...\"}.";
 
     private static string BuildLoopUserPrompt(
         string draft, string current, IReadOnlyList<(int Ai, string Text)> history,
@@ -263,7 +288,7 @@ internal static class GptzeroLoopRunner
         var hist = history.Select((h, i) => $"attempt {i}: scored {h.Ai}% AI").ToList();
         return "ORIGINAL (source of truth — preserve every fact, name, number, date):\n" + draft
             + "\n\nMUST KEEP:\n- " + string.Join("\n- ", mustKeep)
-            + "\n\nCURRENT VERSION (rewrite this; keep every fact and the meaning):\n" + current
+            + "\n\nCURRENT MASKED VERSION (rewrite the prose around the QZAN tokens; copy every token verbatim):\n" + current
             + (prevProblems is not null
                 ? "\n\nPROBLEMS IN THE CURRENT VERSION TO FIX NOW (repair the MEANING; the source above is the truth):\n" + prevProblems
                 : string.Empty)
