@@ -46,6 +46,48 @@ public class LoadBearingPhraseExtractorTests
         LoadBearingPhraseExtractor.Extract("anything", new RewriteFactLedger(Array.Empty<RewriteFact>())).Should().BeEmpty();
     }
 
+    private static RewriteFactLedger AmountLedger(params string[] amounts) =>
+        new(amounts.Select((a, i) => new RewriteFact(
+            $"id_a{i}", a, "roughDraftReply", RewriteFactImportance.Critical,
+            RewriteFactCategory.Amount, false, a)).ToArray());
+
+    private static RewriteFactLedger CountLedger(params string[] counts) =>
+        new(counts.Select((c, i) => new RewriteFact(
+            $"id_c{i}", c, "roughDraftReply", RewriteFactImportance.Critical,
+            RewriteFactCategory.Count, false, c)).ToArray());
+
+    [Theory]
+    [InlineData("We'll process a refund of $40 to your card.", "$40", "refund of $40")]
+    [InlineData("You owe $1,250.00 as of today.", "$1,250.00", "owe $1,250.00")]
+    [InlineData("The invoice is due — invoice for $1,250.00 was sent on May 28.", "$1,250.00", "invoice for $1,250.00")]
+    [InlineData("You were charged $40 monthly until now.", "$40", "charged $40 monthly")]
+    [InlineData("The plan is at $42 per seat per month, including support.", "$42", "$42 per seat per month")]
+    [InlineData("It's $42 per user.", "$42", "$42 per user")]
+    public void Extracts_amount_load_bearing_phrase(string draft, string amount, string expectedPhrase)
+    {
+        var phrases = LoadBearingPhraseExtractor.Extract(draft, AmountLedger(amount));
+        phrases.Should().Contain(p => string.Equals(p, expectedPhrase, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("The quote is for 18 seats at $42 per seat per month.", "18", "18 seats")]
+    [InlineData("Send 5 copies to the office.", "5", "5 copies")]
+    [InlineData("It expires in 3 days.", "3", "3 days")]
+    [InlineData("We have 12 attendees confirmed.", "12", "12 attendees")]
+    public void Extracts_count_unit_load_bearing_phrase(string draft, string count, string expectedPhrase)
+    {
+        var phrases = LoadBearingPhraseExtractor.Extract(draft, CountLedger(count));
+        phrases.Should().Contain(p => string.Equals(p, expectedPhrase, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Count_without_unit_noun_yields_nothing()
+    {
+        // "Let's meet at 18" — no unit noun next to 18, so no load-bearing phrase.
+        LoadBearingPhraseExtractor.Extract("Let's meet at 18 for dinner.", CountLedger("18"))
+            .Should().BeEmpty();
+    }
+
     [Fact]
     public void Hard_terms_wired_into_ProtectedTermLedger_catch_expires_drift()
     {

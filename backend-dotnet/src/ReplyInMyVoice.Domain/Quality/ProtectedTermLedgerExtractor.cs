@@ -60,7 +60,8 @@ public static class ProtectedTermLedgerExtractor
         string draft,
         RewriteFactLedger factLedger,
         IReadOnlyList<string> proposedSpans,
-        IReadOnlyList<string>? loadBearingSpans = null)
+        IReadOnlyList<string>? loadBearingSpans = null,
+        bool proposedSpansHard = false)
     {
         var result = new List<ProtectedTerm>(FromFactLedger(factLedger));
         var seen = new HashSet<string>(result.Select(t => t.Text), StringComparer.OrdinalIgnoreCase);
@@ -102,12 +103,16 @@ public static class ProtectedTermLedgerExtractor
 
             if (seen.Add(span))
             {
-                // Soft (ExactRequired: false): the deterministic gate does NOT verbatim-enforce a
-                // fuzzy LLM-proposed multi-word span (T0 legitimately reorders/drops a possessive/rephrases
-                // — that caused false positives in the T0 audit). Object substitution on these is the
-                // hardened FidelityJudge's job (rule 4). The deterministic gate verbatim-enforces only the
-                // high-precision fact-ledger anchors (IDs / amounts / dates / names).
-                result.Add(new ProtectedTerm(span, ProtectedTermKind.BusinessObject, ExactRequired: false));
+                // Soft by default (ExactRequired: false) — verbatim-enforcing fuzzy multi-word proposer spans
+                // caused FPs on T0's legitimate rephrasing (the T0 audit). Object substitution on these is
+                // normally the hardened FidelityJudge's job (rule 4).
+                //
+                // proposedSpansHard=true switches to HARD enforcement — for the translation-protection
+                // pipeline where the strategy is "preserve everything verbatim, perturb only the connective
+                // prose"; multi-word business-object drift like "admin workspace" -> "workspace management"
+                // becomes a deterministic fail. Owner-chosen tradeoff: tighter for the loop, FP risk
+                // acceptable because the loop's whole point is to keep these spans intact.
+                result.Add(new ProtectedTerm(span, ProtectedTermKind.BusinessObject, ExactRequired: proposedSpansHard));
             }
         }
 

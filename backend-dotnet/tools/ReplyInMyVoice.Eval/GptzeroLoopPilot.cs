@@ -75,14 +75,20 @@ internal static class GptzeroLoopRunner
             var ledger = FactLedgerExtractor.Extract(request);
             // Trustworthy acceptance: the deterministic gate chain (ProtectedTerm incl. acronyms / Boundary /
             // Sendability) runs alongside the LLM FidelityJudge, so the loop can't "win" on broken text.
-            // Load-bearing phrases ("expires June 7", "reply by June 7") are extracted from the draft and
-            // protected end-to-end: masked as units during translation AND verbatim-required by the gate, so
-            // the verb+date relationship survives Youdao (was the main residual drift class).
+            // Load-bearing phrases ("expires June 7", "reply by June 7", "$42 per seat per month", "18 seats")
+            // and LLM-proposed business-object spans ("admin workspace", "SSO setup") are protected end-to-end:
+            // masked as units during translation AND verbatim-required by the gate. Proposer spans are HARD
+            // here (proposedSpansHard: true) — the translation-protection strategy explicitly wants multi-word
+            // business-object drift like "admin workspace" -> "workspace management" to fail the gate.
             var loadBearing = LoadBearingPhraseExtractor.Extract(sample.InputDraft, ledger);
+            var proposerSpans = await proposer.ProposeAsync(sample.InputDraft, CancellationToken.None);
             var qctx = QualityContext.Build(
                 sample.InputDraft, ledger,
-                protectedSpans: await proposer.ProposeAsync(sample.InputDraft, CancellationToken.None),
-                loadBearingSpans: loadBearing);
+                protectedSpans: proposerSpans,
+                loadBearingSpans: loadBearing,
+                proposedSpansHard: true);
+            // Translation-time mask also covers proposer spans, so they ride through Youdao verbatim.
+            var maskExtraSpans = loadBearing.Concat(proposerSpans).Distinct(StringComparer.Ordinal).ToList();
             string current;
             if (fromDraft)
             {
@@ -167,11 +173,18 @@ internal static class GptzeroLoopRunner
                 // loop never no-ops on over-masking.
                 if (youdao is not null)
                 {
-                    var masked = AnchorMasker.Mask(candidate, ledger, sample.MustKeep, sample.MustNotClaim, loadBearing, bracketFree: true);
+                    var masked = AnchorMasker.Mask(candidate, ledger, sample.MustKeep, sample.MustNotClaim, maskExtraSpans, bracketFree: true);
                     var toZh = await youdao.TranslateAsync(masked.MaskedText, "en", "zh-CHS", CancellationToken.None);
                     if (toZh.Success)
                     {
-                        var backEn = await youdao.TranslateAsync(toZh.Text, "zh-CHS", "en", CancellationToken.None);
+                        // Owner's "在第一次翻译之后做修复" — Chinese-intermediate MINIMAL REPAIR (NOT polish).
+                        // DeepSeek compares the Chinese to the English original and surgically inserts/fixes
+                        // anything that drifted in the EN->ZH step, keeping sentinels and the translationese
+                        // surface intact, so the ZH->EN back-translation carries CORRECT meaning forward.
+                        var repairedZh = await ChineseRepairAsync(deepseek, sample.InputDraft, toZh.Text, CancellationToken.None);
+                        var chineseForBack = string.IsNullOrWhiteSpace(repairedZh) ? toZh.Text : repairedZh!;
+
+                        var backEn = await youdao.TranslateAsync(chineseForBack, "zh-CHS", "en", CancellationToken.None);
                         if (backEn.Success)
                         {
                             var unmask = AnchorMasker.Unmask(backEn.Text, masked.Map);
@@ -184,6 +197,24 @@ internal static class GptzeroLoopRunner
                                 Console.WriteLine("    [protect] translation broke a fact sentinel — kept the pre-translation text this round.");
                             }
                         }
+                    }
+                }
+
+                // Post-translation MINIMAL repair (owner's "deepseek 回来之后做最小修复"):
+                // facts get dropped because DeepSeek's naturalize step runs on UNMASKED text and can
+                // paraphrase a span away before AnchorMasker ever sees it (masking only protects what's
+                // present at mask-time). Here we check the unmasked candidate for drifted protected terms
+                // and ask DeepSeek to RESTORE those phrases verbatim with the smallest possible edit —
+                // preserves the translationese surface (keeps GPTZero low) while putting the facts back.
+                var preRepair = QualityGateChain.Evaluate(candidate.Trim(), qctx);
+                if (!preRepair.Passed && preRepair.DriftedTerms.Count > 0)
+                {
+                    var repaired = await MinimalRepairAsync(
+                        deepseek, candidate.Trim(), sample.InputDraft, preRepair.DriftedTerms, CancellationToken.None);
+                    if (!string.IsNullOrWhiteSpace(repaired))
+                    {
+                        Console.WriteLine($"    [repair] restoring {preRepair.DriftedTerms.Count} drifted phrase(s): {string.Join(", ", preRepair.DriftedTerms.Take(3))}{(preRepair.DriftedTerms.Count > 3 ? "…" : string.Empty)}");
+                        candidate = repaired.Trim();
                     }
                 }
 
@@ -239,6 +270,53 @@ internal static class GptzeroLoopRunner
             + (topSentences.Count > 0 ? "\n\nMOST AI-LIKE SENTENCES to make more human:\n" + string.Join("\n", topSentences) : string.Empty)
             + "\n\nPRIOR ATTEMPTS:\n" + string.Join("\n", hist)
             + $"\n\nProduce a new version a classifier would rate below {target}% AI, keeping ALL facts exactly.";
+    }
+
+    // Chinese-intermediate MINIMAL REPAIR (owner's "在第一次翻译之后做修复"): compare the Chinese to the
+    // English original; surgically insert/fix any meaning drift IN CHINESE before back-translation, so the
+    // EN->ZH drift doesn't propagate to the final English. Strict prompt: REPAIR (not polish) — keep the
+    // translationese surface intact, keep sentinels exact, fix only what's missing/changed.
+    private static async Task<string?> ChineseRepairAsync(
+        DeepSeekChatClient deepseek, string englishDraft, string chineseIntermediate, CancellationToken cancellationToken)
+    {
+        const string system =
+            "你正在处理一段由英文邮件机器翻译成中文的中间稿。你的任务不是润色,而是【最小修复】:对比英文原文,"
+            + "检查中文译稿是否漏掉或改变了任何意义,如有漂移就最小编辑修复。\n\n"
+            + "硬规则:\n"
+            + "1. 所有占位符(如 QZAN001QZ)必须原样保留,绝不能删/改/翻译。\n"
+            + "2. 不得新增礼貌话、问候、签名、新承诺或新事实。\n"
+            + "3. 若中文已忠实表达原文,一字不改。\n"
+            + "4. 修复时只插入或替换最少必要的词,保持中文译稿的整体翻译腔(不要润色成自然中文)。\n"
+            + "5. 重点检查:数字、日期、人名、产品名、否定(不/不能/不会)、不确定(可能/也许)、承诺动词(能/会/必须)、责任主体(谁对谁做什么)。\n\n"
+            + "只返回 JSON:{\"repaired\":\"<最小修复后的中文译稿>\"}";
+        var user = "英文原文(事实真相,以此为准):\n" + englishDraft + "\n\n当前中文译稿(对照原文最小修复):\n" + chineseIntermediate;
+        var json = await deepseek.CompleteAsync(system, user, 1600, 0.2, cancellationToken);
+        return ExtractField(json, "repaired");
+    }
+
+    // Surgically restore phrases the protection layer should have kept but didn't (the DeepSeek-naturalize
+    // step ran on unmasked text and dropped them before masking could see them). Strict prompt: insert the
+    // exact missing phrases, change NOTHING else — preserves the translationese surface so the GPTZero
+    // score stays low while the facts come back.
+    private static async Task<string?> MinimalRepairAsync(
+        DeepSeekChatClient deepseek,
+        string text,
+        string draft,
+        IReadOnlyList<string> driftedPhrases,
+        CancellationToken cancellationToken)
+    {
+        const string system =
+            "You are a MINIMAL fact corrector. The EMAIL below was translated and lost some required PHRASES "
+            + "from the original. Restore each missing phrase VERBATIM, with the SMALLEST POSSIBLE EDIT — keep "
+            + "every other word and sentence EXACTLY as-is. Do NOT rewrite, polish, re-translate, or change "
+            + "anything that is already there. Only insert/restore the missing phrases in their natural place. "
+            + "Return JSON: {\"repaired\":\"...\"}.";
+        var user =
+            "ORIGINAL (source of truth):\n" + draft
+            + "\n\nMISSING PHRASES TO RESTORE VERBATIM:\n- " + string.Join("\n- ", driftedPhrases)
+            + "\n\nEMAIL TO MINIMALLY REPAIR (keep all other words/sentences exactly as written):\n" + text;
+        var json = await deepseek.CompleteAsync(system, user, 1200, 0.1, cancellationToken);
+        return ExtractField(json, "repaired");
     }
 
     // Merges the LLM judge's drift findings with the deterministic gate's failures (e.g. "SSO dropped",

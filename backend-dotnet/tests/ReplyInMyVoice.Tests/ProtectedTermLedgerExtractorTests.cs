@@ -110,6 +110,32 @@ public class ProtectedTermLedgerExtractorTests
     }
 
     [Fact]
+    public void Proposed_spans_hard_mode_catches_business_noun_drift()
+    {
+        const string draft = "The quote includes the admin workspace and the advanced SSO setup.";
+        var emptyLedger = new RewriteFactLedger(Array.Empty<RewriteFact>());
+
+        // Default (soft): drift is NOT caught deterministically (deferred to FidelityJudge).
+        var soft = ProtectedTermLedgerExtractor.Build(
+            draft, emptyLedger,
+            proposedSpans: new[] { "admin workspace", "SSO setup" });
+        ProtectedTermGate.Check("It includes workspace management and SSO Settings.", soft)
+            .Passed.Should().BeTrue();
+
+        // Hard (translation-protection strategy): the same drift IS caught deterministically.
+        var hard = ProtectedTermLedgerExtractor.Build(
+            draft, emptyLedger,
+            proposedSpans: new[] { "admin workspace", "SSO setup" },
+            proposedSpansHard: true);
+        hard.Terms.Should().Contain(t => t.Text == "admin workspace" && t.ExactRequired);
+        hard.Terms.Should().Contain(t => t.Text == "SSO setup" && t.ExactRequired);
+
+        var result = ProtectedTermGate.Check("It includes workspace management and SSO Settings.", hard);
+        result.Passed.Should().BeFalse();
+        result.DriftedTerms.Should().Contain(new[] { "admin workspace", "SSO setup" });
+    }
+
+    [Fact]
     public void Acronyms_are_exact_required_and_catch_object_drift()
     {
         // "advanced SSO setup" -> "advanced Settings" (the loop's real drift the LLM judge missed).
