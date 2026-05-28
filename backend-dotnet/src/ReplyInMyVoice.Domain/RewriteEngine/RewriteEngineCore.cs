@@ -115,6 +115,26 @@ public sealed record RewriteInputAnalysis(
     RewriteStrategy RecommendedInitialStrategy,
     IReadOnlyList<string> Reasons);
 
+// How a fact's surface form must survive a rewrite or a translation round-trip.
+// Phase-1 ClaimLedger-aware verification uses this to decide what counts as a match.
+public enum RewriteFactPreserveMode
+{
+    // Default — must appear verbatim. Identifiers, names, codes the reader will copy/paste,
+    // unhedged prohibitions. Existing behavior; safe default for all pre-Phase-1 facts.
+    Exact,
+    // Numeric / date / amount: a canonical normalized form is also acceptable.
+    // E.g. "$1,250.00" ↔ "USD 1,250"; "June 7" ↔ "2026-06-07". The `Normalized` field
+    // carries the canonical form the post-check looks for if the surface didn't survive.
+    Normalized,
+    // The fact has an acceptable translated equivalent in the target language.
+    // The post-translation check looks for the translated form (carried in `Normalized`)
+    // rather than the source-English surface. Used for ZH intermediates in Phase 1.
+    Translated,
+    // Only the semantic claim survives; any phrasing carrying the same fact passes.
+    // Used for descriptive context phrases the gate should not bind verbatim.
+    Semantic,
+}
+
 public sealed record RewriteFact(
     string Id,
     string Text,
@@ -122,9 +142,68 @@ public sealed record RewriteFact(
     RewriteFactImportance Importance,
     RewriteFactCategory Category,
     bool CanBeRephrased,
-    string? SourceSpan = null);
+    string? SourceSpan = null,
+    RewriteFactPreserveMode PreserveMode = RewriteFactPreserveMode.Exact,
+    string? Normalized = null);
 
 public sealed record RewriteFactLedger(IReadOnlyList<RewriteFact> Facts);
+
+// === ClaimLedger (Phase 1, 2026-05-28) ===
+// A structured atomic claim extracted from the source email by an LLM (frozen prompt:
+// claim-ledger-v1). Used by the EN→ZH safe-intermediate pipeline to verify that a
+// translation round-trip preserved subject/modality/polarity/time/condition — fidelity
+// invariants that FactLedger's regex anchors cannot express on their own.
+//
+// Validated 2026-05-28 across 10 corpus cases (95 claims, 0 hallucinations, 0 source_span
+// violations, 0 missed critical anchors). See /tmp/claim_ledger_validation_v2/.
+
+public enum RewriteClaimModality
+{
+    // "X is/was Y", "I will do Y" — unhedged assertion or definite future action.
+    Certainty,
+    // "expect / hope / think / believe / probably / likely" — hedged confidence.
+    Uncertainty,
+    // "must / need to / please / required" — obligation on a party.
+    Requirement,
+    // "may / can / allowed to / eligible to" — explicit permission granted.
+    Permission,
+    // "I can / we can" — speaker capability or offer to act.
+    Capability,
+    // "cannot / will not / refuses to / does not allow" — explicit blocking.
+    Prohibition,
+    // "I can offer / we could give you" — proposed exchange / discretionary action.
+    Offer,
+}
+
+public enum RewriteClaimPolarity
+{
+    Positive,
+    Negative,
+}
+
+public sealed record RewriteClaim(
+    // Stable id from the extractor (e.g. "C001"). Used for diffs across re-extractions.
+    string Id,
+    // Exact verbatim substring of the source draft. The extractor enforces this; downstream
+    // code may do a whitespace-normalized substring check before trusting it.
+    string SourceSpan,
+    // Resolved subject (pronouns may be expanded — e.g. "it" → "the downgrade request").
+    string Subject,
+    // Verb or state predicate ("checked", "is", "cannot apply", "will send").
+    string Action,
+    // What is acted on / stated about. Null for intransitive.
+    string? Object,
+    RewriteClaimModality Modality,
+    RewriteClaimPolarity Polarity,
+    // Date / duration / deadline / temporal qualifier (verbatim from source). Null if none.
+    string? TimeScope,
+    // Any IF / UNLESS / ONCE / UNTIL / BEFORE clause this claim depends on. Null if none.
+    string? Condition,
+    // Short list of phrases / properties that must survive any rewrite or translation.
+    // Used by the post-translation check as an OR-ed soft-anchor set.
+    IReadOnlyList<string> MustPreserve);
+
+public sealed record RewriteClaimLedger(IReadOnlyList<RewriteClaim> Claims);
 
 public sealed record RewriteStrategyDecision(
     RewriteStrategy Strategy,

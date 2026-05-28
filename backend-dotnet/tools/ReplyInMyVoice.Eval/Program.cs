@@ -56,6 +56,14 @@ if (IsTruthy(Environment.GetEnvironmentVariable("GPTZERO_PROBE")))
     return await GptzeroProbe.RunAsync();
 }
 
+// PHASE1_CLAIM_LEDGER_VALIDATE: Sub-Phase 1.0 smoke — runs the C# ClaimLedger extractor
+// end-to-end against the same 10 corpus cases the Python v2 validator covered.
+// Needs DEEPSEEK_API_KEY (already in .env.local). No other side effects.
+if (IsTruthy(Environment.GetEnvironmentVariable("PHASE1_CLAIM_LEDGER_VALIDATE")))
+{
+    return await ReplyInMyVoice.Eval.Phase1ClaimLedgerSmoke.RunAsync(cases);
+}
+
 var apiKey = ResolveApiKey(config);
 if (string.IsNullOrWhiteSpace(apiKey))
 {
