@@ -14,10 +14,11 @@ public sealed record QualityContext(
         string draft,
         RewriteFactLedger factLedger,
         IReadOnlyList<string>? protectedSpans = null,
-        IReadOnlyList<string>? boundarySpans = null) =>
+        IReadOnlyList<string>? boundarySpans = null,
+        IReadOnlyList<string>? loadBearingSpans = null) =>
         new(
             factLedger,
-            ProtectedTermLedgerExtractor.Build(draft, factLedger, protectedSpans ?? Array.Empty<string>()),
+            ProtectedTermLedgerExtractor.Build(draft, factLedger, protectedSpans ?? Array.Empty<string>(), loadBearingSpans),
             BoundaryLedgerExtractor.Build(draft, factLedger, boundarySpans));
 }
 

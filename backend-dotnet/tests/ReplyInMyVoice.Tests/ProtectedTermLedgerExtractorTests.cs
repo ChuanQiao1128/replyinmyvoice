@@ -109,6 +109,30 @@ public class ProtectedTermLedgerExtractorTests
         nameDropped.DriftedTerms.Should().Contain("Mark");
     }
 
+    [Fact]
+    public void Acronyms_are_exact_required_and_catch_object_drift()
+    {
+        // "advanced SSO setup" -> "advanced Settings" (the loop's real drift the LLM judge missed).
+        const string draft = "I can't add the advanced SSO setup without a new approval cycle.";
+        var ledger = ProtectedTermLedgerExtractor.Build(draft, new RewriteFactLedger(Array.Empty<RewriteFact>()), Array.Empty<string>());
+
+        ledger.Terms.Should().Contain(t => t.Text == "SSO" && t.ExactRequired);
+
+        ProtectedTermGate.Check("If you need advanced Settings or a discount, that needs approval.", ledger)
+            .Passed.Should().BeFalse();
+        ProtectedTermGate.Check("I can't add the advanced SSO setup without approval.", ledger)
+            .Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Common_all_caps_words_are_not_treated_as_acronyms()
+    {
+        var ledger = ProtectedTermLedgerExtractor.Build(
+            "OK, I'll send the FAQ ASAP.", new RewriteFactLedger(Array.Empty<RewriteFact>()), Array.Empty<string>());
+
+        ledger.Terms.Should().NotContain(t => t.Text == "OK" || t.Text == "FAQ" || t.Text == "ASAP");
+    }
+
     private sealed class FakeProposer(IReadOnlyList<string> spans) : IProtectedTermProposer
     {
         public Task<IReadOnlyList<string>> ProposeAsync(string draft, CancellationToken cancellationToken) =>

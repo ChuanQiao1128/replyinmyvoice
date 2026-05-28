@@ -209,6 +209,15 @@ if (IsTruthy(Environment.GetEnvironmentVariable("DUAL_CHANNEL_TRANSLATION_PILOT"
         provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
 }
 
+// GPTZero feedback-loop pilot (owner's design): loop T0 -> GPTZero per-sentence feedback -> DeepSeek
+// rewrite w/ history (+ optional Youdao round-trip) -> FidelityJudge verify -> repeat. Tests whether a
+// feedback loop can drive a FAITHFUL email below GPTZero's threshold.
+if (IsTruthy(Environment.GetEnvironmentVariable("GPTZERO_LOOP_PILOT")))
+{
+    return await GptzeroLoopRunner.RunAsync(
+        provider, countingModelClient, signalClient, selectedCases, config, apiKey, startedAt);
+}
+
 // Quality A/B harness (Voice+Fidelity track): runs T0 over the corpus and audits each output through
 // the deterministic QualityGateChain + LLM FidelityJudge v2 + SendabilityTierJudge. DeepSeek + Sapling
 // only, no detector. Also a false-positive audit of the new gates against the trusted T0 engine.

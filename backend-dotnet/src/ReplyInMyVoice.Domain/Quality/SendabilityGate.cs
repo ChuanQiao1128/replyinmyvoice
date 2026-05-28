@@ -39,9 +39,10 @@ public interface ISendabilityJudge
 // Sendable. Subtle awkwardness, agent-action errors, and the Minor tier are the ISendabilityJudge's job.
 public static class SendabilityGate
 {
-    // [[A0]] / [A0] masking sentinels and bracket-free QZAN000QZ sentinels (tolerant of inserted spaces).
+    // [[A0]] / [A0] / (A0) masking sentinels (Youdao mangles [[A0]] -> (A0)) and bracket-free QZAN000QZ
+    // sentinels (tolerant of inserted spaces).
     private static readonly Regex SentinelResidueRegex = new(
-        @"\[\[\s*[A-Za-z]?\s*\d+\s*\]\]|\[\s*[A-Za-z]\s*\d+\s*\]|Q\s*Z\s*A\s*N\s*\d+\s*Q\s*Z",
+        @"\[\[\s*[A-Za-z]?\s*\d+\s*\]\]|\[\s*[A-Za-z]\s*\d+\s*\]|\(\s*[A-Za-z]\s*\d+\s*\)|Q\s*Z\s*A\s*N\s*\d+\s*Q\s*Z",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Unfilled template slots: {date1}, {invoice_id}, {name}.

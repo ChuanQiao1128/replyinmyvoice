@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ReplyInMyVoice.Domain.RewriteEngine;
 
 namespace ReplyInMyVoice.Domain.Quality;
@@ -58,10 +59,32 @@ public static class ProtectedTermLedgerExtractor
     public static ProtectedTermLedger Build(
         string draft,
         RewriteFactLedger factLedger,
-        IReadOnlyList<string> proposedSpans)
+        IReadOnlyList<string> proposedSpans,
+        IReadOnlyList<string>? loadBearingSpans = null)
     {
         var result = new List<ProtectedTerm>(FromFactLedger(factLedger));
         var seen = new HashSet<string>(result.Select(t => t.Text), StringComparer.OrdinalIgnoreCase);
+
+        // HARD load-bearing phrases (e.g. "expires June 7", "reply by June 7") — verbatim required, so the
+        // deterministic gate catches translation drift like "expires June 7" -> "is very good through June 7".
+        foreach (var raw in loadBearingSpans ?? Array.Empty<string>())
+        {
+            var span = (raw ?? string.Empty).Trim();
+            if (span.Length < 3 || string.IsNullOrEmpty(draft))
+            {
+                continue;
+            }
+
+            if (!draft.Contains(span, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (seen.Add(span))
+            {
+                result.Add(new ProtectedTerm(span, ProtectedTermKind.StatusPhrase));
+            }
+        }
 
         foreach (var raw in proposedSpans ?? Array.Empty<string>())
         {
@@ -88,8 +111,29 @@ public static class ProtectedTermLedgerExtractor
             }
         }
 
+        // Acronyms (SSO, API, SLA, EST, ...) are specific terms a rewrite must NOT paraphrase or drop —
+        // ExactRequired. This catches the object/term drift the LLM judge kept missing, e.g. the loop's
+        // "advanced SSO setup" -> "advanced Settings" (SSO dropped).
+        foreach (Match match in AcronymRegex.Matches(draft ?? string.Empty))
+        {
+            var acronym = match.Value;
+            if (!NonAcronyms.Contains(acronym) && seen.Add(acronym))
+            {
+                result.Add(new ProtectedTerm(acronym, ProtectedTermKind.ProperName));
+            }
+        }
+
         return new ProtectedTermLedger(result);
     }
+
+    // All-caps tokens of 2–6 letters: acronyms/initialisms (SSO, API, SLA, NDA, CEO, EST). Common
+    // non-fact all-caps words are excluded to avoid false positives.
+    private static readonly Regex AcronymRegex = new(@"\b[A-Z]{2,6}\b", RegexOptions.Compiled);
+
+    private static readonly HashSet<string> NonAcronyms = new(StringComparer.Ordinal)
+    {
+        "OK", "AM", "PM", "OKAY", "FYI", "ASAP", "FAQ", "RE", "FW", "PS",
+    };
 
     public static async Task<ProtectedTermLedger> BuildAsync(
         string draft,

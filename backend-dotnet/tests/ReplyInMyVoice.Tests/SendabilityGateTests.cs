@@ -19,6 +19,15 @@ public class SendabilityGateTests
     }
 
     [Fact]
+    public void Unsendable_on_paren_mangled_sentinel()
+    {
+        // Youdao mangles [[A5]] into (A5); that residue must still be caught.
+        var result = SendabilityGate.Check("Hi Dev, the quote (A5) is attached. Please reply by Friday. Thanks, Dana");
+        result.Tier.Should().Be(SendabilityTier.Unsendable);
+        result.Issues.Should().Contain(i => i.Kind == "sentinel_residue");
+    }
+
+    [Fact]
     public void Unsendable_on_unfilled_template_slot()
     {
         var result = SendabilityGate.Check("Hi, I can't make {date1}, but {date2} works. Thanks, Dana");
