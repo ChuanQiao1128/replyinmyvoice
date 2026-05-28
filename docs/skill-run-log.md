@@ -1869,3 +1869,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/skill-run-log.md`.
 - Verification evidence: Ran `python3 agent-skills/cloud-architecture-cost-review/scripts/cost_review_template.py "Cloudflare rewrite-quality validation deploy"` and reviewed the current deployment docs. Selected option: deploy the existing Cloudflare Worker through the existing `npm run cf:deploy` path with `--keep-vars`. Rejected options: no new Cloudflare service, Azure App Service, queue, database, or always-on worker is needed for this code-only validation deploy.
 - Limitations: No exact provider pricing was quoted or checked because this task does not create, resize, or switch paid infrastructure; production smoke still needs to run after deploy.
+
+### 2026-05-27 - system-spec-synthesis - Voice + Fidelity quality-track pivot spec
+
+- Agent: Claude Code
+- Trigger: Owner decided (2026-05-27) to stop the AI-detection track and formally pivot to a Voice + Fidelity quality track, and asked to turn the module list into next steps (converting loose product notes into an executable engineering plan).
+- Action: Opened and followed the skill (workflow + Output Contract headings); re-read AGENTS.md and the C# rewrite engine; produced an implementation-ready spec converting the owner's 6-module notes (ProtectedTermLedger, BoundaryGate, VoiceProfile, MinimalHumanEdit, SendabilityGate, Quality A/B) into contracts, data model, gate chain, rollout, and verification, reusing the eval-only byproducts from the 10-round investigation and demoting Pangram to offline observation only.
+- Output artifacts: `plans/voice-fidelity-quality-track-spec.md` (+ this log entry). Detection-track findings recorded in `plans/translation-roundtrip-pilot.md`.
+- Verification evidence: Spec includes a Verification Plan (xUnit + Quality A/B + banned-term grep) and Phase-1 acceptance criteria — notably the hardened FidelityJudge must FAIL the three known object/term-drift misses (seat credit→letter of credit, planter→flowerpot, saucer→tea tray). No code shipped; eval-only until reviewed.
+- Limitations: Spec leaves explicit Open Questions (voice-sample intake UI/consent/retention, mode exposure, "user preference" metric, Manus prod cost/latency, VoiceProfile EF schema + migration) as product/architecture decisions, not silent assumptions. `data-module-review` and `cloud-architecture-cost-review` flagged before Phase 3 / any paid prod dependency.

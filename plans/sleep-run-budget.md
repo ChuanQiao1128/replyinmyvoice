@@ -46,3 +46,10 @@ Running total: NZ$~12–23 (est). OVER the NZ$20 soft cap (user authorized "略�
 2026-05-26T10:00:00+1200 | gate-fix-confirm-3case | DeepSeek+Sapling | USD ~$0.03 | NZ$~0.05 | 061/082/078 at attempts=10 confirming the certainty-drift "appear" fix: 082 dead→usable, 061 dead→engine-success+facts-true (residual forbidden = eval FP), 078 no regression. 3 model + 6 Sapling calls.
 2026-05-26T10:05:00+1200 | gate-fix-full100 | launch | USD $0 | NZ$0 | full 100, C# engine WITH certainty-drift fix, 10x10 / 2 waves of 5, EVAL_MAX_ATTEMPTS=10 (prod fidelity, stricter no-regression check); est NZ$3-7.
 Running total (2026-05-26 window): NZ$~3-9 est (pre-full100). Under NZ$20 cap; full-100 will add ~NZ$3-7.
+
+---
+
+## Fresh window 2026-05-27 (interactive; owner: v3 faithfulness eval + Youdao pilot prep). Cap NZ$20. Pangram PAUSED (default-off).
+
+2026-05-27T01:15:00+1200 | v3-faithfulness-108 | DeepSeek+Sapling | USD ~$2-4 est | NZ$~3-7 est | 108-case v0-vs-v3 engine (413 model + 636 Sapling) + 216 semantic-judge calls + 1-case live smoke + dry run. Pangram OFF = $0 detector. Verdict: v3 KILLS gate (new material loss on 021: dropped SKU SEED-GRW-04).
+Running total (2026-05-27 window): NZ$~3-7 est. Pangram balance untouched (~US$10). Under NZ$20 cap.
