@@ -943,7 +943,7 @@ internal static class TranslationDirectPilot
         }
 
         var zh0 = zh0r.Text;
-        var empty = new List<(string Zh, string En, int? Score)>();
+        var priorDrifts = new List<DriftSpan>();
         Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
         string? accepted = null;
         int? acceptedScore = null;
@@ -951,12 +951,15 @@ internal static class TranslationDirectPilot
         for (var round = 0; round <= iters; round++)
         {
             Console.WriteLine($"================ round {round} ================");
-            var zhRough = await EssayRoundAsync(deepseek, zh0, empty) ?? zh0;
-            Console.WriteLine("ZH (essay polish):\n" + zhRough + "\n");
+            // (7) feed prior rounds' drifts back so the polish avoids known FACT drifts but keeps the rough style.
+            var feedback = BuildPolishFeedback(priorDrifts);
+            var zhRough = await EssayPolishFeedbackAsync(deepseek, zh0, feedback) ?? zh0;
+            Console.WriteLine("ZH (essay polish" + (feedback.Length > 0 ? ", fed prior-round drifts" : string.Empty) + "):\n" + zhRough + "\n");
 
             var (drifts, _) = await gate.EvaluateCrossLingualAsync(source, zhRough, CancellationToken.None);
-            var (zhFixed, _) = ApplySurgicalRepair(zhRough, drifts);
-            Console.WriteLine($"ZH (surgical repair — {drifts.Count} Chinese drift(s) replaced):\n" + zhFixed + "\n");
+            // (3) LLM-precise surgical edit, guarded so it can't rewrite non-flagged sentences (else deterministic).
+            var (zhFixed, usedLlm) = await LlmSurgicalEditWithGuard(deepseek, zhRough, drifts);
+            Console.WriteLine($"ZH (surgical repair — {drifts.Count} drift(s), {(usedLlm ? "LLM-precise + guard" : "deterministic")}):\n" + zhFixed + "\n");
 
             var back = await youdao.TranslateAsync(zhFixed, "zh-CHS", "en", CancellationToken.None);
             if (!back.Success)
@@ -979,6 +982,8 @@ internal static class TranslationDirectPilot
             }
 
             Console.WriteLine();
+            priorDrifts.AddRange(drifts);
+            priorDrifts.AddRange(frEn.Drifts);
             if (ok)
             {
                 accepted = final;
@@ -1026,6 +1031,127 @@ internal static class TranslationDirectPilot
         {
             return null;
         }
+    }
+
+    // (7) Build polish feedback from prior rounds' drifts: tell the NEXT polish to avoid these FACT drifts at the
+    // source, while explicitly KEEPING the rough/colloquial style (else avoiding drifts = faithful = clean = score up).
+    private static string BuildPolishFeedback(IReadOnlyList<DriftSpan> priorDrifts)
+    {
+        if (priorDrifts.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var facts = priorDrifts
+            .Select(d => d.SourceValue)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(12)
+            .ToList();
+        if (facts.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return "【上一轮(们)出现过下面这些事实漂移,这一轮务必从源头照英文原文保住,但继续保持口语、粗糙、不工整的风格】:\n- "
+            + string.Join("\n- ", facts)
+            + "\n硬要求:人名/产品名/ID/功能套餐术语在中文里保留英文原样(如 Dev、Northstar、onboarding、admin workspace、SSO、email support);数字/金额/日期/时间照原文(如 this week 别写成\"马上\");"
+            + "否定与边界——尤其 \"I cannot add X without a new approval cycle\" 这类——必须照原文的【主体】(是\"我不能\",不是\"你不能\")和【否定】保留,别改写成\"我没权限/做不到/你不能改\";"
+            + "不要凭空加理由、情绪或方向。其余照旧口语粗糙——不要为了忠实把全文写规整。";
+    }
+
+    private static async Task<string?> EssayPolishFeedbackAsync(DeepSeekChatClient ds, string zh0, string feedback)
+    {
+        var sys = EssayPolish.OwnerPrompt
+            + (feedback.Length > 0 ? "\n\n" + feedback : string.Empty)
+            + "\n\n注意:把第二遍完成后的终稿全文放进 JSON 返回,不要任何额外文字:{\"final\":\"<终稿全文>\"}";
+        var raw = await ds.CompleteAsync(sys, "原文如下：\n" + zh0, 3000, 0.9, CancellationToken.None);
+        return ParseJsonStringField(raw, "final");
+    }
+
+    // Robustly pull a JSON string field even when the model emitted UNESCAPED newlines inside the value
+    // (which breaks strict JsonDocument.Parse). Never returns the raw {"field":...} wrapper (the old bug).
+    private static string? ParseJsonStringField(string? raw, string field)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String)
+            {
+                return v.GetString()?.Trim();
+            }
+        }
+        catch (JsonException)
+        {
+            // fall through to lenient extraction
+        }
+
+        var m = Regex.Match(raw, "\"" + Regex.Escape(field) + "\"\\s*:\\s*\"(.*)\"\\s*\\}?\\s*$", RegexOptions.Singleline);
+        if (!m.Success)
+        {
+            return null;
+        }
+
+        var val = m.Groups[1].Value
+            .Replace("\\\"", "\"", StringComparison.Ordinal)
+            .Replace("\\n", "\n", StringComparison.Ordinal)
+            .Replace("\\t", "\t", StringComparison.Ordinal);
+        return val.Trim();
+    }
+
+    // (3) LLM applies ONLY the flagged span->fix edits; a deterministic guard verifies it didn't touch any
+    // NON-flagged sentence (else it over-edited / cleaned -> fall back to deterministic ApplySurgicalRepair).
+    private static async Task<(string Result, bool UsedLlm)> LlmSurgicalEditWithGuard(DeepSeekChatClient ds, string zh, IReadOnlyList<DriftSpan> drifts)
+    {
+        var (det, _) = ApplySurgicalRepair(zh, drifts);
+        if (drifts.Count == 0)
+        {
+            return (det, false);
+        }
+
+        var edits = string.Join("\n", drifts.Select(d => string.IsNullOrEmpty(d.ExpectedFix)
+            ? $"- 删除「{d.CandidateSpan}」"
+            : $"- 把「{d.CandidateSpan}」替换为「{d.ExpectedFix}」"));
+        const string sys =
+            "你是精确文本编辑器。下面给你一段中文和一份【改动清单】。请输出这段中文,【只】做清单里列出的替换/删除,"
+            + "其余每一个字都原样保留——绝不改写、润色、调整语序、增删任何其它内容。只返回 JSON:{\"text\":\"<只做了指定改动的全文>\"}";
+        var raw = await ds.CompleteAsync(sys, "中文:\n" + zh + "\n\n改动清单:\n" + edits, 2400, 0, CancellationToken.None);
+        string? llm = null;
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(raw);
+                llm = doc.RootElement.TryGetProperty("text", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()?.Trim() : null;
+            }
+            catch (JsonException)
+            {
+                llm = null;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(llm))
+        {
+            return (det, false);
+        }
+
+        // Guard: every NON-flagged sentence of the original must survive verbatim in the LLM output.
+        var spans = drifts.Where(d => !string.IsNullOrEmpty(d.CandidateSpan)).Select(d => d.CandidateSpan!).ToList();
+        foreach (var sentence in Regex.Split(zh, @"(?<=[。！？\n])").Select(s => s.Trim()).Where(s => s.Length > 0))
+        {
+            var flagged = spans.Any(sp => sentence.Contains(sp, StringComparison.Ordinal));
+            if (!flagged && !llm.Contains(sentence, StringComparison.Ordinal))
+            {
+                return (det, false); // LLM changed a non-flagged sentence -> over-edited -> deterministic fallback
+            }
+        }
+
+        return (llm, true);
     }
 
     private static string Oneline(string s, int max)
