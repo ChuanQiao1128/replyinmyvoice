@@ -982,6 +982,7 @@ internal static class TranslationDirectPilot
         var source = (await File.ReadAllTextAsync(enFile)).Trim();
         var iters = int.TryParse(Environment.GetEnvironmentVariable("EL_ITERS"), out var it) && it > 0 ? it : 3;
         var target = int.TryParse(Environment.GetEnvironmentVariable("EL_TARGET"), out var tg) && tg > 0 ? tg : 30;
+        var reReads = int.TryParse(Environment.GetEnvironmentVariable("EL_RESCORE"), out var rr) && rr > 0 ? rr : 3;
 
         using var http = new HttpClient();
         using var youdaoHttp = new HttpClient();
@@ -1000,8 +1001,9 @@ internal static class TranslationDirectPilot
         var zh0 = zh0r.Text;
         var priorDrifts = new List<DriftSpan>();
         Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
-        string? accepted = null;
-        int? acceptedScore = null;
+        // best-of-N: collect every JUDGE-FAITHFUL candidate across all rounds (no early break), so the accept
+        // is the best of N independent tries, not whichever round happened to read low first.
+        var faithfulCandidates = new List<(string Text, int Score, int Round)>();
 
         for (var round = 0; round <= iters; round++)
         {
@@ -1033,8 +1035,8 @@ internal static class TranslationDirectPilot
             var (ai, _, _, _, serr) = await ScoreAsync(gptHttp, gptKey!, final, CancellationToken.None);
             var frEn = await gate.EvaluateAsync(source, final, CancellationToken.None);
             var faithful = frEn.Error is null && frEn.Passed;
-            var ok = serr is null && ai is not null && ai <= target && faithful;
-            Console.WriteLine($"GPTZero = {(ai?.ToString() ?? "err")}%  ·  final-EN: {(faithful ? "FAITHFUL" : $"{frEn.Drifts.Count} drift(s)")}  ->  {(ok ? "ACCEPT" : "reroll")}");
+            Console.WriteLine($"GPTZero = {(ai?.ToString() ?? "err")}%  ·  final-EN: {(faithful ? "FAITHFUL" : $"{frEn.Drifts.Count} drift(s)")}"
+                + $"  ->  {(faithful && serr is null && ai is not null ? "faithful candidate" : "reject")}");
             foreach (var d in frEn.Drifts.Take(8))
             {
                 Console.WriteLine($"    [EN {d.Kind}] \"{d.SourceValue}\" -> \"{d.CandidateSpan ?? "(missing)"}\"");
@@ -1043,17 +1045,47 @@ internal static class TranslationDirectPilot
             Console.WriteLine();
             priorDrifts.AddRange(drifts);
             priorDrifts.AddRange(frEn.Drifts);
-            if (ok)
+            if (faithful && serr is null && ai is not null)
             {
-                accepted = final;
-                acceptedScore = ai;
-                break;
+                faithfulCandidates.Add((final, ai.Value, round));
             }
         }
 
-        Console.WriteLine(accepted is null
-            ? $"VERDICT: no low+faithful candidate within {iters + 1} rounds"
-            : $"VERDICT: ACCEPTED at {acceptedScore}% AI + faithful");
+        // Robust acceptance: among the judge-faithful candidates take the lowest-scoring one, then re-score it
+        // EL_RESCORE times and require the MEDIAN ≤ target — so the accept survives GPTZero's per-call noise
+        // (±large on identical text) instead of riding a single lucky low read.
+        Console.WriteLine($"================ best-of-N ({faithfulCandidates.Count} faithful / {iters + 1} rounds) ================");
+        if (faithfulCandidates.Count == 0)
+        {
+            Console.WriteLine($"VERDICT: no faithful candidate within {iters + 1} rounds");
+            Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
+            return 0;
+        }
+
+        foreach (var c in faithfulCandidates.OrderBy(c => c.Score))
+        {
+            Console.WriteLine($"  round {c.Round}: {c.Score}% (faithful)");
+        }
+
+        var best = faithfulCandidates.OrderBy(c => c.Score).First();
+        var reads = new List<int> { best.Score };
+        for (var k = 1; k < reReads; k++)
+        {
+            var (re, _, _, _, reErr) = await ScoreAsync(gptHttp, gptKey!, best.Text, CancellationToken.None);
+            if (reErr is null && re is not null)
+            {
+                reads.Add(re.Value);
+            }
+        }
+
+        var sortedReads = reads.OrderBy(x => x).ToList();
+        var median = sortedReads[sortedReads.Count / 2];
+        var stable = median <= target;
+        Console.WriteLine($"\nbest = round {best.Round}; GPTZero re-reads = [{string.Join(", ", reads)}]  median={median}%  (target ≤{target})");
+        Console.WriteLine("\n================ EN (stable accept) ================\n" + best.Text + "\n");
+        Console.WriteLine(stable
+            ? $"VERDICT: STABLE ACCEPT — median {median}% ≤ {target}, judge-faithful (best of {faithfulCandidates.Count})"
+            : $"VERDICT: faithful but NOT stable-low — median {median}% > {target} (best single {best.Score}%)");
         Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
         return 0;
     }
