@@ -116,6 +116,13 @@ if (IsTruthy(Environment.GetEnvironmentVariable("MASK_ESSAY_LOOP")))
     return await TranslationDirectPilot.RunMaskedEssayLoopAsync(apiKey, config);
 }
 
+// SURGICAL_REPAIR_LOOP: Phase 2 — rough translate → gate finds drifts → auto surgical-repair → re-score +
+// re-gate → accept on low+faithful, else reroll (EL_FILE source / EL_ITERS / EL_TARGET).
+if (IsTruthy(Environment.GetEnvironmentVariable("SURGICAL_REPAIR_LOOP")))
+{
+    return await TranslationDirectPilot.RunSurgicalRepairLoopAsync(apiKey, config);
+}
+
 // FAITHFULNESS_GATE: run the reliable faithfulness gate on (FG_SOURCE, FG_CANDIDATE); print drift spans.
 if (IsTruthy(Environment.GetEnvironmentVariable("FAITHFULNESS_GATE")))
 {

@@ -690,6 +690,150 @@ internal static class TranslationDirectPilot
         return text;
     }
 
+    // PHASE 2 (SURGICAL_REPAIR_LOOP=1): full auto pipeline. Rough essay translation → if GPTZero is low,
+    // run FaithfulnessGate to FIND drifts → AUTO surgical-repair (replace each CandidateSpan with ExpectedFix)
+    // → re-score + re-gate → ACCEPT on low + faithful (0 drifts, 0 unrepairable), else reroll. EL_FILE (source
+    // English), EL_ITERS, EL_TARGET. This automates what was done by hand (Jamie 1->1%, Celestine 32->29%).
+    public static async Task<int> RunSurgicalRepairLoopAsync(string apiKey, EvalConfig config)
+    {
+        var gptKey = Environment.GetEnvironmentVariable("GPTZero_API_KEY") ?? Environment.GetEnvironmentVariable("GPTZERO_API_KEY");
+        var youdaoKey = Environment.GetEnvironmentVariable("YOUDAO_APP_KEY") ?? Environment.GetEnvironmentVariable("AppID") ?? Environment.GetEnvironmentVariable("YouDao_API_KEY");
+        var youdaoSecret = Environment.GetEnvironmentVariable("YOUDAO_APP_SECRET") ?? Environment.GetEnvironmentVariable("AppSecret");
+        var youdaoUrl = Environment.GetEnvironmentVariable("YOUDAO_API_URL") ?? "https://openapi.youdao.com/api";
+        var enFile = Environment.GetEnvironmentVariable("EL_FILE");
+        if (string.IsNullOrWhiteSpace(gptKey) || string.IsNullOrWhiteSpace(youdaoKey) || string.IsNullOrWhiteSpace(youdaoSecret) || string.IsNullOrWhiteSpace(enFile) || !File.Exists(enFile))
+        {
+            Console.Error.WriteLine("SURGICAL_REPAIR_LOOP: need GPTZero + Youdao keys and EL_FILE.");
+            return 2;
+        }
+
+        var source = (await File.ReadAllTextAsync(enFile)).Trim();
+        var iters = int.TryParse(Environment.GetEnvironmentVariable("EL_ITERS"), out var it) && it > 0 ? it : 4;
+        var target = int.TryParse(Environment.GetEnvironmentVariable("EL_TARGET"), out var tg) && tg > 0 ? tg : 30;
+
+        using var http = new HttpClient();
+        using var youdaoHttp = new HttpClient();
+        using var gptHttp = new HttpClient();
+        var deepseek = new DeepSeekChatClient(http, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(120));
+        var youdao = new YoudaoTranslationClient(youdaoHttp, youdaoKey!, youdaoSecret!, youdaoUrl, TimeSpan.FromSeconds(30));
+        var gate = new FaithfulnessGate((s, u, gct) => deepseek.CompleteAsync(s, u, 2000, 0, gct));
+
+        var zh0r = await youdao.TranslateAsync(source, "en", "zh-CHS", CancellationToken.None);
+        if (!zh0r.Success)
+        {
+            Console.Error.WriteLine($"Youdao EN->ZH fail: {zh0r.ErrorCode}");
+            return 1;
+        }
+
+        var zh0 = zh0r.Text;
+        var empty = new List<(string Zh, string En, int? Score)>();
+        Console.WriteLine($"=== Surgical-repair loop · iters={iters} target<={target}% ===\n");
+        string? accepted = null;
+        int? acceptedScore = null;
+        var report = new StringBuilder();
+
+        for (var round = 0; round <= iters; round++)
+        {
+            var zhRough = await EssayRoundAsync(deepseek, zh0, empty) ?? zh0;
+            var back = await youdao.TranslateAsync(zhRough, "zh-CHS", "en", CancellationToken.None);
+            if (!back.Success)
+            {
+                Console.WriteLine($"--- round {round}: Youdao ZH->EN fail ({back.ErrorCode}) ---");
+                continue;
+            }
+
+            var cand = back.Text.Trim();
+            var (ai, _, _, _, err) = await ScoreAsync(gptHttp, gptKey!, cand, CancellationToken.None);
+            if (err is not null || ai is null)
+            {
+                Console.WriteLine($"--- round {round}: GPTZero error ({err}) ---");
+                continue;
+            }
+
+            if (ai > target)
+            {
+                Console.WriteLine($"--- round {round}: GPTZero={ai}% (> {target}, reroll) ---");
+                continue;
+            }
+
+            var fr = await gate.EvaluateAsync(source, cand, CancellationToken.None);
+            if (fr.Passed)
+            {
+                Console.WriteLine($"--- round {round}: GPTZero={ai}% + faithful (no repair needed) -> ACCEPT ---");
+                accepted = cand;
+                acceptedScore = ai;
+                report.AppendLine($"## round {round}: {ai}% + faithful (no repair)\n{cand}\n");
+                break;
+            }
+
+            var (repaired, unrep) = ApplySurgicalRepair(cand, fr.Drifts);
+            var (ai2, _, _, _, err2) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
+            var fr2 = await gate.EvaluateAsync(source, repaired, CancellationToken.None);
+            var ok = err2 is null && ai2 is not null && ai2 <= target && fr2.Passed && unrep.Count == 0;
+            Console.WriteLine(
+                $"--- round {round}: GPTZero {ai}%->{(ai2?.ToString() ?? "err")}% · drifts {fr.Drifts.Count}->{fr2.Drifts.Count} · "
+                + $"unrepairable={unrep.Count} · {(ok ? "ACCEPT (low + faithful after repair)" : "reroll")} ---");
+            report.AppendLine($"## round {round}: {ai}%->{ai2}% drifts {fr.Drifts.Count}->{fr2.Drifts.Count} unrep {unrep.Count} {(ok ? "ACCEPT" : "reroll")}");
+            report.AppendLine("repaired: " + repaired + "\n");
+            if (ok)
+            {
+                accepted = repaired;
+                acceptedScore = ai2;
+                break;
+            }
+        }
+
+        Console.WriteLine(accepted is null
+            ? $"\nVERDICT: no low+faithful candidate within {iters + 1} rounds"
+            : $"\nVERDICT: ACCEPTED at {acceptedScore}% AI + faithful (auto surgical-repair)");
+        if (accepted is not null)
+        {
+            Console.WriteLine("\nFINAL:\n" + accepted);
+        }
+
+        Console.WriteLine($"\nCALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
+        await File.WriteAllTextAsync("/tmp/surgical-loop-report.md", report.ToString());
+        return 0;
+    }
+
+    // Apply each drift's CandidateSpan -> ExpectedFix (minimal string replace; empty fix = deletion for
+    // unsupported additions). Drifts with no CandidateSpan (pure omissions) can't be replaced -> unrepairable.
+    private static (string Repaired, List<DriftSpan> Unrepairable) ApplySurgicalRepair(string candidate, IReadOnlyList<DriftSpan> drifts)
+    {
+        var text = candidate;
+        var unrep = new List<DriftSpan>();
+        foreach (var d in drifts)
+        {
+            if (string.IsNullOrEmpty(d.CandidateSpan))
+            {
+                unrep.Add(d);
+                continue;
+            }
+
+            if (text.Contains(d.CandidateSpan, StringComparison.Ordinal))
+            {
+                text = text.Replace(d.CandidateSpan, d.ExpectedFix, StringComparison.Ordinal);
+            }
+            else
+            {
+                var idx = text.IndexOf(d.CandidateSpan, StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0)
+                {
+                    text = text[..idx] + d.ExpectedFix + text[(idx + d.CandidateSpan.Length)..];
+                }
+                else
+                {
+                    unrep.Add(d);
+                }
+            }
+        }
+
+        // Tidy whitespace/punctuation left by deletions.
+        text = Regex.Replace(text, @"[ \t]{2,}", " ");
+        text = Regex.Replace(text, @"\s+([.,;!?])", "$1");
+        return (text.Trim(), unrep);
+    }
+
     private static string Oneline(string s, int max)
     {
         var t = s.Replace("\n", " ", StringComparison.Ordinal).Trim();
