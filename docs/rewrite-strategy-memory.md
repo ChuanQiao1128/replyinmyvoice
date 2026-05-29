@@ -6,6 +6,135 @@ This document is the long-term memory for the rewrite and repair strategy behind
 
 The goal is not to store user content. The goal is to preserve reusable product learning: what made a draft score high, what repair was tried, what worked, what failed, and which rule should be promoted into the production rewrite engine.
 
+## 2026-05-28 Phase 1 EN->ZH ClaimLedger Pilot
+
+Sub-Phase 1.1 added the eval-only Youdao EN->ZH post-check. On the locked 10-case ClaimLedger set, the valid run wrote:
+
+```text
+docs/rewrite-eval-results/20260528-101348-stage1-en-zh-pilot.md
+```
+
+Reusable findings:
+
+- The ClaimLedger extraction prompt should stay on the validated `deepseek-chat` model by default. A first stage run using the broader eval model setting (`deepseek-v4-pro`) produced an empty ledger for case 041, while the Phase 1.0 smoke and the corrected Stage 1.1 run returned the expected 20 claims. The stage tool now defaults `STAGE1_CLAIM_MODEL` to `deepseek-chat`; override only after revalidation.
+- Youdao preserved 89 of 93 structured claims across the 10-case set, so the Phase 1.2 Chinese repair step remains viable.
+- Literal `RewriteFactLedger` survival was much lower, 66 of 148 anchors, mostly because 1.1 intentionally does naive digit/verbatim checks and does not yet count Chinese equivalents for names, weekdays, or sentence-level negative constraints. Use the structured claim ledger as the primary 1.2 repair input; use deterministic fact drift rows mainly as hard numeric/identifier warnings and as evidence for translated-anchor work.
+
+Sub-Phase 1.2 then added one bounded Chinese minimal repair pass plus a second post-check:
+
+```text
+docs/rewrite-eval-results/20260528-103956-stage1-en-zh-pilot.md
+```
+
+Reusable findings:
+
+- One Chinese repair pass lifted the measured structured claim preservation to 92/92 on this run. Keep the repair prompt constrained: it is a fact repairer, not a Chinese polishing pass.
+- A repair candidate must not be accepted if it lowers ClaimLedger survival. Case 007 showed that adding a missing literal anchor can degrade a semantic claim; the stage loop now rejects claim-regressing repairs and keeps the previous Chinese text.
+- Literal fact survival improved only from 66/148 to 71/148. This confirms the next improvement should be preserve-mode-aware hard fact extraction/checking (`exact`, `normalized_equivalent`, `translated_equivalent`, `semantic_equivalent`) rather than more aggressive Chinese rewriting.
+
+Sub-Phase 1.3 added the first preserve-mode-aware hard fact layer for Stage 1 only:
+
+```text
+docs/rewrite-eval-results/20260528-105841-stage1-en-zh-pilot.md
+```
+
+Reusable findings:
+
+- Hard fact narrowing reduced the 10-case measured hard-fact set from 148 to 111 by removing sentence-level condition/negative-constraint facts and obvious non-hard count/name noise from the Stage 1 checker. The production rewrite provider's fact gate was not changed.
+- Preserve-mode-aware matching lifted final hard-fact preservation from 71/148 to 80/111. The final summary was 25 exact matches, 55 normalized matches, 30 missing, and 1 changed.
+- Remaining failures are now more explainable. A common remaining class is exact person/name preservation where Youdao transliterates names (`Jamie` -> `杰米`, `Maya` -> `玛雅`). The next useful improvement is approved alias generation/classification for person, organization, product, and system names, not stronger Chinese repair.
+
+Sub-Phase 1.4 added failure classification, approved-vs-proposed alias boundaries, repair-row routing, weekday normalization, and hard-fact demotion for obvious capitalized non-name noise:
+
+```text
+docs/rewrite-eval-results/20260528-114558-stage1-en-zh-pilot.md
+```
+
+Reusable findings:
+
+- The measured hard-fact set narrowed from 111 to 88 after demoting capitalized non-name words that the legacy extractor had labeled as `Person` (`What`, `There`, `Because`, `Team`, etc.). These are not hard facts; they belong in ClaimLedger context or should be dropped from the Stage 1 hard-fact report.
+- Final structured claim preservation stayed complete on the run: 94/94 claims preserved after the bounded repair pass. The varying total claim count versus prior 92/92 runs is model-output variability in extraction, not a new failure pattern.
+- Final hard-fact preservation was 76/88. The remaining 12 hard-fact failures are all classified as `alias_not_approved` with `recommended_next_action=approve_alias`; no final `missing`, `value_changed`, or normalizer-gap failures remained.
+- The repair loop should continue to ignore `AliasNotApproved`, `NormalizerGap`, and over-extraction classes. The next useful Sub-Phase 1.5 target is an approved alias catalog / domain glossary for person, organization, product, and system names. Do not strengthen the Chinese repair prompt to force English anchors back into otherwise acceptable Chinese.
+
+Sub-Phase 1.5 added a small eval-only approved alias catalog for the known 10-case alias failures:
+
+```text
+docs/rewrite-eval-results/20260528-123932-stage1-en-zh-pilot.md
+```
+
+Reusable findings:
+
+- Approved aliases removed the 12 `alias_not_approved` failures from Sub-Phase 1.4. The report now shows 12 `present / alias` hard-fact matches and zero final alias failures.
+- The 10-case pass count improved from 3/10 in 1.4 to 9/10 in 1.5. Final ClaimLedger preservation stayed complete on the run: 93/93 claims preserved after bounded repair where needed.
+- Final hard-fact preservation improved to 87/88. The lone remaining failure is `fact_count_5: 30` in case 013, extracted from `5:30 p.m.` as a standalone count and translated by Youdao as `下午五点半`. This is a time/count normalizer or extractor-tightening issue, not an alias issue and not a reason to strengthen Chinese repair.
+- Keep proposed aliases review-only. The approved alias catalog proves the boundary works: explicitly approved transliterations pass, while unapproved proposed aliases still require review.
+
+Sub-Phase 1.6 tightened the Stage 1 count extraction so clock-minute fragments are not treated as standalone hard facts:
+
+```text
+docs/rewrite-eval-results/20260528-124707-stage1-en-zh-pilot.md
+```
+
+Reusable findings:
+
+- The previous lone failure (`30` from `5:30 p.m.` in case 013) was an extractor artifact. Stage 1 now drops count facts whose only source occurrence is the minute component of a clock time while still keeping ordinary quantities such as `18 seats`.
+- The locked 10-case run reached 10/10 pass. Final fact preservation was 86/86 and final ClaimLedger preservation was complete across the run.
+- Keep this as eval-only count tightening for now. Do not change the production `FactLedgerExtractor` without a separate production rewrite-gate review, because count extraction affects broader fact gates.
+
+## 2026-05-29 Public-Sample Style-Card Probe
+
+An eval-only GPTZero probe tested whether an abstract style card derived from public seller/community forum replies could improve a long customer-support refund/replacement reply while preserving facts. Public sources were used only to extract high-level style traits; no forum wording was copied into the candidate text.
+
+Reusable findings:
+
+- The style card helped preserve a plainer, less corporate voice, but it did not improve the GPTZero reference signal on this long policy/support sample. The original scored `100% / AI_ONLY / 17 of 17 sentences highlighted`; all three fact-safe style-card candidates also scored `100% / AI_ONLY`, with every sentence highlighted.
+- The fact gate passed all three candidates, so the failure was not fact drift. The likely issue is that generated customer-support policy explanations remain highly regular even when the prompt asks for direct, low-polish, public-sample-inspired wording.
+- Do not promote public-style-card prompting alone as a Naturalness Check strategy. It may still be useful as a voice-quality ingredient, but it is not enough to change the measured writing signal for long, complete support-policy replies.
+- Next useful experiment, if continuing this path, is a genuine user-owned style corpus or a mixed strategy that changes information ordering and author-specific habits from real permitted samples. Do not copy public forum text, and do not position this as detector bypass.
+
+## 2026-05-29 Highlight-Driven Block Rewrite Probe
+
+An eval-only probe used GPTZero sentence highlights as a diagnostic input, then asked DeepSeek to diagnose over-regular sentence/block patterns and rewrite by paragraph blocks rather than sentence-by-sentence. The candidates were fact-gated before rescoring.
+
+Reusable findings:
+
+- GPTZero highlighted all original sentences: `100% / AI_ONLY / 17 of 17 sentences highlighted`.
+- The diagnostic correctly identified support-macro regularity: complete grammatical statements, uniform subject-verb-object sentences, formulaic transitions, symmetrical order-by-order paragraphs, and definitive policy wording.
+- Block-level rewrites preserved facts across all three candidates, but did not improve the reference signal. Each candidate scored `100% / AI_ONLY`, with every sentence highlighted (`12/12` on the tested candidates).
+- Highlight diagnostics are useful for explaining what feels mechanical, but the highlighted-sentence repair route is not sufficient when the whole document is highlighted. If every sentence is highlighted, treat the issue as a global genre/structure problem rather than a local sentence repair problem.
+- Do not route long support-policy emails through sentence-level polishing or highlight-only rewrites as a promoted strategy. The next useful direction is a genuinely user-owned style corpus or a different content-construction strategy, not more local paraphrase.
+
+## 2026-05-29 Facts-First Personal Construction Probe
+
+An eval-only probe stopped paraphrasing the original sentence order and generated replies directly from the fact ledger using personal-support construction plans: decision-first note, working-notes style, and personal operator style. A second pass required a fuller 12-16 sentence reply to rule out over-compression as the only failure mode.
+
+Reusable findings:
+
+- The compressed facts-first candidates all passed the fact gate, but they scored `100% / AI_ONLY` with every sentence highlighted (`5/5`, `5/5`, and `6/6`). Compression removed some explanatory texture and did not improve the reference signal.
+- The fuller facts-first candidates also passed the fact gate, but they again scored `100% / AI_ONLY` with every sentence highlighted (`13/13` and `14/14` on the generated candidates).
+- Reordering from facts is better for avoiding literal paraphrase and can preserve facts, but by itself DeepSeek still falls back to regular support-policy constructions: clear remedy sentence, reason sentence, limitation sentence, action sentence.
+- Do not promote facts-first personal construction alone as a working Naturalness Check strategy for long support-policy replies. It should remain part of the fact-preserving architecture, but the measured naturalness problem likely needs either a real user-owned style corpus or a different model/provider strategy rather than more prompt-only reshuffling.
+
+## 2026-05-29 Enron Aggregate Style-Retrieval Probe
+
+An eval-only probe treated the locally downloaded Enron corpus as a style retrieval source. It scanned only sent-like folders, stripped obvious quoted/forwarded chains, and used keyword scoring for related communication actions: order/refund/replacement/damage/delivery, cannot/unable/covered/window, confirmation/address/please-send, and deadline/process/date language. Raw Enron email text was not sent to the model or printed; only aggregate numeric/style features were used.
+
+Retrieval summary:
+
+- Sent-like files: 126,326.
+- Matching after-sales/order candidates: 1,049.
+- Strong candidates: 19.
+- Top-200 aggregate style: about 21 sentences, 10 paragraphs, 22.5 words per sentence, low contractions, practical request language, and low emotional warmth.
+
+Reusable findings:
+
+- The aggregate Enron style profile produced more business-operational candidates, and all four candidates passed the fact gate.
+- It did not improve the GPTZero reference signal. All four candidates scored `100% / AI_ONLY`; highlighted sentence counts were `16/16`, `14/14`, `14/14`, and `13/13`.
+- One terse operational candidate showed a tiny sentence-level loosening (`99.1-100` range), but classification and document-level score did not change.
+- Enron aggregate style is useful for discovering broad human business-email metrics, but it is not specific enough for damaged-item customer support replies and should not be promoted alone as a Naturalness Check strategy.
+- If external corpus retrieval continues, the next useful step is either a domain-specific customer-support corpus with clear usage rights or a user-owned/team-owned style corpus. Aggregate Enron statistics alone mostly move the surface voice, not the measured writing signal.
+
 ## Why This Exists
 
 A simple prompt such as "make this sound more natural" is not enough. Generic LLM rewrites often become more polished, balanced, and corporate. That can make the output feel less personal and can increase the AI-like signal.
@@ -1035,3 +1164,90 @@ Promoted lessons:
   across separate paragraphs.
 - Next expansion should materialize cases 021-040 and run a controlled dev-40 pass.
   Full 100 should remain a release or major-strategy-change gate.
+
+## 2026-05-29 Stage 1 EN->ZH 30-Case Generalization Lessons
+
+- The fixed 10-case Stage 1 result did not generalize cleanly to the first 30 corpus
+  cases: the 30-case baseline preserved final ClaimLedger facts across the set, but
+  hard-fact failures were still dominated by extractor/checker boundaries rather than
+  true translation loss.
+- Count/time tightening does generalize. Filtering clock-time components now drops
+  standalone Count facts whose only source occurrence is a clock hour or minute, such
+  as `2` from `2:30 p.m.`, `9` from `9 a.m.`, and `30` from `5:30 p.m.`, while still
+  preserving real quantities such as seats, fees, tools, and packages.
+- Hard-fact extraction still needs a placement layer before a production glossary.
+  The 30-case run showed many capitalized words such as `Our`, `Your`, `After`,
+  `Weekend`, `Meals`, `Room`, `They`, `Could`, `Both`, `Questions`, and `Email` were
+  not hard facts and should be demoted or dropped instead of being routed to alias
+  approval.
+- The eval-only tightening reduced the 30-case final hard-fact total from 305 to 258,
+  removed all final `value_changed` failures, and reduced final hard-fact failures
+  from 53 to 35. Final ClaimLedger preservation stayed at 100% for all 30 cases.
+- Remaining 30-case failures are all `alias_not_approved`. They split into two next
+  buckets: real person/place/entity aliases such as `Lena`, `Priya`, `Ren`, `Mateo`,
+  `Felix`, `Riverside Park`, and `Elm Street`; and over-extracted single tokens such
+  as `Quick`, `Package`, `Let`, `Park`, `Pantry`, `Hall`, `Volunteer`, `Parking`, and
+  `Street` that should usually become TermLedger candidates or be merged into a
+  multi-token entity before alias review.
+- Next Stage 1 work should not strengthen Chinese repair. The next high-value branch
+  is either a human-approved alias catalog for real entities or a hard-fact placement
+  pass that merges/demotes capitalized token runs before checking.
+
+## 2026-05-29 Stage 1 Hard-Fact Placement / Merge Lessons
+
+- A hard-fact placement pass is useful before expanding the approved alias catalog.
+  Merging title-case fragments turns split failures such as `Riverside` + `Park`,
+  `Elm` + `Street`, `Park` + `Pantry`, `Hall` + `B`, `Mercer` + `Terrace`, and
+  `Priya` + `Shah` into single reviewable facts.
+- After placement tightening, the 30-case Stage 1 run produced 243 hard facts instead
+  of 258, with final hard-fact failures reduced from 35 to 26. All remaining final
+  failures were `alias_not_approved` routed to `approve_alias`; no `value_changed`,
+  `missing`, `normalizer_gap`, or `entity_generalized` failures remained.
+- Exact-or-approved-alias entities without a configured alias should route to alias
+  review, not Chinese repair. Sending `Riverside Park`, `Park Pantry`, or `Hall B`
+  to the repair loop would encourage the repairer to force English anchors into the
+  Chinese intermediate draft.
+- Merged person names such as `Priya Shah` must remain `Person` facts. Otherwise
+  unrelated generic words in the same Chinese text, such as `门户`, can be mistaken
+  for entity generalization evidence.
+- The remaining 30-case review queue is now clean enough for a controlled alias
+  catalog pass. It includes person names (`Lena`, `Priya`, `Ren`, `Cam`, `Felix`,
+  `Petra`, etc.) and true multi-token entities (`Park Pantry`, `Hall B`, `Riverside
+  Park`, `Elm Street`, `Mercer Terrace`). Role-like phrases such as `Senior Support
+  Lead` should probably be demoted to TermLedger/translated-equivalent rather than
+  approved as a hard fact alias.
+
+## 2026-05-29 Stage 1 Controlled Alias Catalog Lessons
+
+- A controlled, eval-only alias catalog is the right next layer once remaining failures
+  are all `alias_not_approved`. It should approve only observed, context-clear aliases
+  and should not use an LLM to auto-approve broad aliases.
+- The first 30-case alias pass approved observed person/place/entity aliases such as
+  `Lena` -> `莉娜`, `Priya Shah` -> `普丽娅·沙阿`, `Park Pantry` -> `公园食品储藏室`,
+  `Hall B` -> `B大厅`, `Riverside Park` -> `河滨公园`, and `Elm Street` -> `榆树街`.
+- Role/title fragments are not hard facts. `Senior Support Lead` and `Coordinator`
+  are better handled by TermLedger or translated-equivalent checks, not by approved
+  hard-fact aliases.
+- The 30-case Stage 1 run after controlled aliases reached 30/30 pass. Final hard-fact
+  failures were zero, final ClaimLedger preservation was 100% for all cases, and the
+  final fact summary was 241/241 preserved: 51 exact, 153 normalized, and 37 alias
+  matches.
+- This is still not a production glossary. Before moving beyond eval, aliases need
+  provenance, review/approval state, and domain scoping so a generic alias in one
+  dataset does not silently approve a different entity in another customer context.
+
+## 2026-05-29 Stage 1 Structured Alias Glossary Lessons
+
+- The eval-only alias catalog now uses structured entries with `source_text`,
+  `alias_text`, `alias_language`, `source`, `approved`, and `domain_scope`.
+  This preserves the important boundary from the 1.4 design: proposed aliases can be
+  reported for review without automatically passing the checker.
+- Domain scope is necessary even in eval. An alias approved for one fixture/domain
+  should not silently pass a different source context unless the entry is explicitly
+  wildcard-scoped.
+- The structured glossary refactor preserved the 30-case result: 30/30 pass, 241/241
+  final hard facts preserved, 37 alias matches, and no final failure breakdown.
+- This is still intentionally local to the Stage 1 eval tool. A production glossary
+  should not be a static dictionary; it needs durable provenance, approval workflow,
+  tenant/domain scoping, stale-alias review, and safeguards against generic aliases
+  such as `portal`, `system`, or broad role titles becoming universal passes.

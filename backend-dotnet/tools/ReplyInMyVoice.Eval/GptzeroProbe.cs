@@ -2,9 +2,9 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
-// Minimal GPTZero cross-detector probe (GPTZERO_PROBE=1, GPTZERO_FILES="label:path,label:path").
+// Minimal GPTZero cross-signal probe (GPTZERO_PROBE=1, GPTZERO_FILES="label:path,label:path").
 // EVAL-ONLY. Scores a few fixed texts on GPTZero to check whether the Pangram findings are
-// detector-general (clean rewrite = AI, broken machine-translation = human) and whether the case-001
+// tool-general (clean rewrite = AI, broken machine-translation = human) and whether the case-001
 // low reading was Pangram-specific. Budget-frugal: one GPTZero call per file.
 internal static class GptzeroProbe
 {

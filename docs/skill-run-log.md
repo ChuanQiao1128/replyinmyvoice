@@ -1878,3 +1878,138 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/voice-fidelity-quality-track-spec.md` (+ this log entry). Detection-track findings recorded in `plans/translation-roundtrip-pilot.md`.
 - Verification evidence: Spec includes a Verification Plan (xUnit + Quality A/B + banned-term grep) and Phase-1 acceptance criteria — notably the hardened FidelityJudge must FAIL the three known object/term-drift misses (seat credit→letter of credit, planter→flowerpot, saucer→tea tray). No code shipped; eval-only until reviewed.
 - Limitations: Spec leaves explicit Open Questions (voice-sample intake UI/consent/retention, mode exposure, "user preference" metric, Manus prod cost/latency, VoiceProfile EF schema + migration) as product/architecture decisions, not silent assumptions. `data-module-review` and `cloud-architecture-cost-review` flagged before Phase 3 / any paid prod dependency.
+
+### 2026-05-28 - dotnet-backend-testing - Stage 1 EN->ZH ClaimLedger pilot
+
+- Agent: Codex
+- Trigger: Owner asked Codex to start Sub-Phase 1.1 from `plans/phase1-claim-ledger-handoff.md`, adding C# eval-tool behavior and tests for Youdao EN->ZH post-checking and drift reporting.
+- Action: Opened and followed the skill; added xUnit coverage for deterministic ZH fact survival checks, batched ClaimLedger verdict parsing, empty ClaimLedger warning behavior, model selection, and markdown drift report rendering before implementing the eval-only pilot.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tools/ReplyInMyVoice.Eval/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-101348-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused TDD tests failed before implementation, then passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter StageOneEnToZhSafePilotTests` (6 tests). Full suite later passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` after adding the new tests. Real provider verification ran the locked 10-case set with `STAGE1_EN_TO_ZH_PILOT=1` and wrote the report above: Youdao calls 10, DeepSeek calls 20, structured claims 89/93 preserved.
+- Limitations: No production rewrite path, Stripe, Azure, DNS, or deployment code was changed. Literal fact-anchor survival remains intentionally naive in 1.1 and does not yet count Chinese equivalents for names, weekdays, or sentence-level constraints; those rows are input for the 1.2 repair step.
+
+### 2026-05-28 - system-spec-synthesis - Stage 1 v1 simplification next-step ordering
+
+- Agent: Codex
+- Trigger: Owner clarified the Phase 1 v1 shape: no placeholders and no Chinese GPTZero; focus on FactLedger, ClaimLedger, Youdao EN->ZH, ZH fact coverage, minimal Chinese repair, re-check, and safe Chinese intermediate output.
+- Action: Opened and followed the skill to translate the clarified requirements into a concrete next-step implementation order for Sub-Phase 1.2 without reopening the architecture.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Reviewed current Sub-Phase 1.1 implementation and report artifact `docs/rewrite-eval-results/20260528-101348-stage1-en-zh-pilot.md`; no code or tests were changed in this planning response.
+- Limitations: This entry records planning only. Phase 1.2 minimal Chinese repair implementation, tests, and provider run remain to be done.
+
+### 2026-05-28 - dotnet-backend-testing - Stage 1.2 Chinese minimal repair loop
+
+- Agent: Codex
+- Trigger: Owner approved the v1 simplification and asked what to do next; Codex proceeded with Sub-Phase 1.2 implementation in C# eval-tool code.
+- Action: Opened and followed the skill; added xUnit coverage for the repair loop, no-op pass path, safe-intermediate report rendering, and claim-regression rejection. Implemented bounded Chinese minimal repair, second post-check, raw/final ZH report output, and a guard that rejects repairs that reduce ClaimLedger survival.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-103956-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused tests passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter StageOneEnToZhSafePilotTests` (10 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (281 tests). Real provider 10-case Stage 1.2 run used Youdao calls 10 and DeepSeek calls 40; final structured claim preservation was 92/92 after one bounded repair pass.
+- Limitations: All 10 cases still fail the literal fact-anchor criterion because the current deterministic FactLedger check is intentionally naive and still requires English verbatim anchors for translated names, weekdays, and sentence fragments. Next work should add preserve-mode-aware hard fact extraction/checking before treating fact failures as final Phase 1 failure.
+
+### 2026-05-28 - system-spec-synthesis - Stage 1.3 preserve-mode-aware hard facts
+
+- Agent: Codex
+- Trigger: Owner specified Sub-Phase 1.3 requirements: do not strengthen repair, do not add placeholders/GPTZero/back-translation, and instead make hard fact extraction/checking preserve-mode-aware.
+- Action: Opened and followed the skill to scope 1.3 as eval-only hard-fact narrowing plus deterministic exact/normalized/alias checking, leaving production rewrite behavior unchanged.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Converted owner requirements into implementation checkpoints: normalized date/money/percent/count/duration matching, exact acronym matching, alias matching, structured fact check rows, repair-row filtering, and rerun of the same 10 cases.
+- Limitations: This log entry records planning for 1.3; implementation evidence is in the following dotnet-backend-testing entry.
+
+### 2026-05-28 - dotnet-backend-testing - Stage 1.3 preserve-mode-aware hard fact checker
+
+- Agent: Codex
+- Trigger: Sub-Phase 1.3 implementation adds C# eval-tool behavior and tests for normalized hard-fact matching and repair-row filtering.
+- Action: Opened and followed the skill; added xUnit tests for Chinese date equivalence, dropped-day failure, money equivalence/wrong amount, percent and duration equivalence, acronym exact preservation, alias matching, generic product-name failure, normalized-pass repair filtering, and Stage 1 hard-fact ledger narrowing. Implemented `StageOneHardFactLedgerBuilder`, `StageOneHardFactChecker`, structured `ZhFactCheckItem`, match-kind summaries, and additive Domain fields `ExactOrTranslatedAlias` / `AllowedAliases`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/RewriteEngine/RewriteEngineCore.cs`; `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-105841-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused tests passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter StageOneEnToZhSafePilotTests` (18 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (289 tests). Real provider 10-case Stage 1.3 run used Youdao calls 10 and DeepSeek calls 40; hard facts narrowed to 111, final hard-fact preservation was 80/111, and final structured claim preservation stayed 92/92.
+- Limitations: Alias generation/classification for person, organization, product, and system names is not implemented. Remaining failures are more explainable but not all resolved; the next likely target is approved alias handling rather than stronger repair prompts.
+
+### 2026-05-28 - system-spec-synthesis - Stage 1.4 approved alias and failure classification
+
+- Agent: Codex
+- Trigger: Owner scoped Sub-Phase 1.4 as failure attribution plus approved alias boundaries, with explicit non-goals: no placeholders, GPTZero, English back-translation, production rewrite-path edits, or stronger Chinese repair prompt.
+- Action: Opened and followed the skill to turn the requirements into implementation checkpoints: `FactFailureKind`, approved/proposed alias separation, failure breakdown reporting, repair-row routing, hard-fact demotion, and rerun of the locked 10-case set.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Converted the owner requirements into a bounded eval-only plan before implementation; implementation and provider evidence are recorded in the following dotnet-backend-testing entry.
+- Limitations: This entry records planning only. It did not create a production alias catalog or real TermLedger.
+
+### 2026-05-28 - dotnet-backend-testing - Stage 1.4 approved alias and failure classification
+
+- Agent: Codex
+- Trigger: Sub-Phase 1.4 implementation adds C# eval-tool behavior and xUnit coverage for failure classification, approved alias boundaries, and repair filtering.
+- Action: Opened and followed the skill; added focused tests for approved alias pass, proposed/unapproved alias review, generic entity failure, acronym exact translation failure, person-name alias review, Chinese numeral duration normalizer gaps, weekday equivalents, over-extracted phrase handling, capitalized non-name demotion, failure breakdown rendering, and non-actionable repair filtering. Implemented `ZhFactFailureKind`, `RecommendedNextAction`, `ProposedAliases`, failure breakdown report output, repair report filtering, weekday normalization, and Stage 1 hard-fact demotion for obvious capitalized non-name noise.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/RewriteEngine/RewriteEngineCore.cs`; `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-114558-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused TDD tests failed before implementation, then passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter StageOneEnToZhSafePilotTests` (27 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (298 tests). Real provider 10-case Stage 1.4 run used Youdao calls 10 and DeepSeek calls 30; hard facts narrowed to 88, final hard-fact preservation was 76/88, final structured claim preservation was 94/94, and all remaining fact failures were `alias_not_approved`.
+- Limitations: The approved alias catalog itself is not implemented; `ProposedAliases` are review-only and do not auto-pass. Next work should build a controlled alias catalog / glossary rather than strengthening Chinese repair.
+
+### 2026-05-29 - system-spec-synthesis - Stage 1.5 approved alias catalog effect check
+
+- Agent: Codex
+- Trigger: Owner asked to continue to the next step and see the effect after Sub-Phase 1.4 showed all remaining hard-fact failures were `alias_not_approved`.
+- Action: Opened and followed the skill to scope 1.5 as an eval-only approved alias catalog, with explicit non-goals: no LLM auto-approval, no placeholders, no GPTZero, no English back-translation, no production rewrite-path changes, and no stronger Chinese repair prompt.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Converted the next step into implementation checkpoints: approved aliases may pass, proposed/unapproved aliases remain review-only, and the same locked 10-case set must be rerun to compare failure breakdown against 1.4.
+- Limitations: This entry records planning only. It does not introduce a persistent production glossary or user-managed alias approval UI.
+
+### 2026-05-29 - dotnet-backend-testing - Stage 1.5 approved alias catalog effect check
+
+- Agent: Codex
+- Trigger: Sub-Phase 1.5 implementation adds C# eval-tool behavior and tests for an approved alias catalog.
+- Action: Opened and followed the skill; added xUnit tests proving a known approved alias (`Jamie` -> `杰米`) becomes an allowed alias and that an unapproved proposed alias still does not auto-pass. Implemented `StageOneApprovedAliasCatalog` and wired it after Stage 1 hard-fact ledger building.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-123932-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused TDD tests failed before implementation, then passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter StageOneEnToZhSafePilotTests` (29 tests). Real provider 10-case Stage 1.5 run used Youdao calls 10 and DeepSeek calls 28; final hard-fact preservation improved to 87/88, final structured claim preservation was 93/93, and pass count improved to 9/10.
+- Limitations: The catalog is eval-only and seeded only with aliases observed in the locked 10-case run. The remaining failure is a standalone count `30` extracted from `5:30 p.m.` and translated as `下午五点半`; that should be handled by time normalizer / count extractor tightening, not by alias approval or stronger Chinese repair.
+
+### 2026-05-29 - system-spec-synthesis - Stage 1.6 time normalizer and count extractor tightening
+
+- Agent: Codex
+- Trigger: Owner asked to do the next step: time normalizer / count extractor tightening after Sub-Phase 1.5 left only `30` from `5:30 p.m.` as a hard-fact failure.
+- Action: Opened and followed the skill to scope 1.6 narrowly: fix the eval-only Stage 1 hard-fact builder so clock-minute fragments are not treated as standalone Count facts, without changing repair prompts, placeholders, GPTZero, English back-translation, or the production rewrite path.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Converted the next step into implementation checkpoints: add a RED test for filtering clock-minute count fragments while preserving real quantities, implement Stage 1-only filtering, rerun focused tests, and rerun the locked 10-case provider set.
+- Limitations: This entry records planning only. It does not redesign the production `FactLedgerExtractor` or add a full time entity model.
+
+### 2026-05-29 - dotnet-backend-testing - Stage 1.6 time normalizer and count extractor tightening
+
+- Agent: Codex
+- Trigger: Sub-Phase 1.6 implementation changes C# eval-tool hard-fact filtering and tests for clock-minute count artifacts.
+- Action: Opened and followed the skill; added a focused xUnit test proving `30` in `5:30 p.m.` is filtered while ordinary quantities such as `18 seats` are preserved. Implemented Stage 1-only clock-minute detection in `StageOneHardFactLedgerBuilder`.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-124707-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused TDD test failed before implementation, then passed. Focused Stage 1 suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter StageOneEnToZhSafePilotTests` (30 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (301 tests). Real provider 10-case Stage 1.6 run used Youdao calls 10 and DeepSeek calls 26; final hard-fact preservation was 86/86, final failure breakdown was `none`, and all 10 cases passed.
+- Limitations: The tightening is eval-only. It filters count facts whose only source occurrence is the minute component of a clock time; it does not add a full `Time` fact type or a production glossary.
+
+### 2026-05-29 - dotnet-backend-testing - Stage 1.7 30-case generalization check
+
+- Agent: Codex
+- Trigger: Owner asked to expand from the fixed 10-case set to about 30 wider samples to validate whether the approved alias catalog and count/time tightening generalize.
+- Action: Opened and followed the skill; ran a 30-case Stage 1 provider baseline, added focused xUnit coverage for filtering clock-hour count fragments and wider capitalized non-entity words, implemented eval-only hard-fact builder tightening, and updated report rendering so unrepaired failing cases show final drift details.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-130115-stage1-en-zh-pilot.md`; `docs/rewrite-eval-results/20260528-131237-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused TDD tests failed before implementation, then passed. Focused Stage 1 suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter "FullyQualifiedName~StageOneEnToZhSafePilotTests"` (33 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (304 tests). `git diff --check` passed. Source banned-term scan found no matches. Real provider 30-case rerun used Youdao calls 30 and DeepSeek calls 80; final hard-fact failures dropped from 53 to 35, final `value_changed` failures dropped from 2 to 0, and final ClaimLedger preservation was 100% for all 30 cases.
+- Limitations: The approved alias catalog remains eval-only and seeded from the locked 10-case set. The 30-case remainder is all `alias_not_approved`, split between real entity aliases and over-extracted single-token entity fragments; no production glossary, placeholders, GPTZero, English back-translation, or stronger Chinese repair prompt was added.
+
+### 2026-05-29 - dotnet-backend-testing - Stage 1.8 hard-fact placement and entity merge
+
+- Agent: Codex
+- Trigger: Owner approved the next step after the 30-case expansion showed remaining failures were alias/placement problems rather than Chinese repair problems.
+- Action: Opened and followed the skill; added focused xUnit coverage for merging title-case entity fragments, preserving salutation person names, demoting non-entity capitalized words, routing unmatched exact-or-alias entities to alias review, and keeping merged person names as person facts. Implemented eval-only title-case fragment merge and refined exact-or-alias failure classification.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-133028-stage1-en-zh-pilot.md`; `docs/rewrite-eval-results/20260528-133915-stage1-en-zh-pilot.md`; `docs/rewrite-eval-results/20260528-135002-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused TDD tests failed before implementation, then passed. Focused Stage 1 suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter "FullyQualifiedName~StageOneEnToZhSafePilotTests"` (37 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (308 tests). `git diff --check` passed. Source banned-term scan found no matches. Real provider 30-case final rerun used Youdao calls 30 and DeepSeek calls 82; hard facts narrowed to 243, final hard-fact failures dropped to 26, and every remaining final failure was `alias_not_approved` routed to `approve_alias`.
+- Limitations: This remains eval-only. It does not create a production glossary, does not auto-approve aliases, and does not introduce placeholders, GPTZero, English back-translation, or stronger Chinese repair prompts. Role-like phrases such as `Senior Support Lead` still need a later TermLedger/translated-equivalent decision.
+
+### 2026-05-29 - dotnet-backend-testing - Stage 1.9 controlled alias catalog
+
+- Agent: Codex
+- Trigger: Owner said to continue after Stage 1.8 left only approved-alias review failures on the 30-case set.
+- Action: Opened and followed the skill; added focused xUnit coverage proving observed wide-sample person/place aliases pass only after explicit catalog approval, and role/title fragments are demoted from hard FactLedger. Expanded the eval-only alias catalog with reviewed 30-case aliases and kept role-like phrases out of hard facts.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-141031-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused TDD tests failed before implementation, then passed. Focused Stage 1 suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter "FullyQualifiedName~StageOneEnToZhSafePilotTests"` (39 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (310 tests). `git diff --check` passed. Source banned-term scan found no matches. Real provider 30-case run used Youdao calls 30 and DeepSeek calls 84; all 30 cases passed, final hard-fact failures were zero, and final ClaimLedger preservation was 100% for all cases.
+- Limitations: Alias approval is still eval-only and case-derived. It does not create a production glossary, alias provenance model, domain scoping, user review UI, placeholders, GPTZero, English back-translation, or stronger Chinese repair prompt.
+
+### 2026-05-29 - dotnet-backend-testing - Stage 1.10 structured alias glossary
+
+- Agent: Codex
+- Trigger: Owner asked to continue after Stage 1.9 proved the controlled alias catalog can make the 30-case set pass.
+- Action: Opened and followed the skill; added focused xUnit coverage for structured alias entries, unapproved/proposed alias routing, and domain-scope isolation. Replaced the eval-only flat alias dictionary with `StageOneAliasEntry` records carrying alias language, provenance source, approval state, and domain scope while preserving the existing 30-case aliases.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-142745-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
+- Verification evidence: Focused TDD tests failed before implementation, then passed. Focused Stage 1 suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter "FullyQualifiedName~StageOneEnToZhSafePilotTests"` (41 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (312 tests). `git diff --check` passed. Source banned-term scan found no matches. Real provider 30-case run used Youdao calls 30 and DeepSeek calls 82; all 30 cases passed, final fact summary remained 241/241 preserved, and final failure breakdown was none.
+- Limitations: The structured glossary remains eval-only and in-memory. It does not add a persistent production glossary store, tenant/domain management UI, migration, placeholders, GPTZero, English back-translation, or stronger Chinese repair prompt.

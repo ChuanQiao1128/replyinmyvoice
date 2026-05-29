@@ -130,6 +130,9 @@ public enum RewriteFactPreserveMode
     // The post-translation check looks for the translated form (carried in `Normalized`)
     // rather than the source-English surface. Used for ZH intermediates in Phase 1.
     Translated,
+    // The fact may survive either as the exact source text or as an explicitly approved alias.
+    // Used for product/system names where a stable Chinese alias is acceptable.
+    ExactOrTranslatedAlias,
     // Only the semantic claim survives; any phrasing carrying the same fact passes.
     // Used for descriptive context phrases the gate should not bind verbatim.
     Semantic,
@@ -144,7 +147,9 @@ public sealed record RewriteFact(
     bool CanBeRephrased,
     string? SourceSpan = null,
     RewriteFactPreserveMode PreserveMode = RewriteFactPreserveMode.Exact,
-    string? Normalized = null);
+    string? Normalized = null,
+    IReadOnlyList<string>? AllowedAliases = null,
+    IReadOnlyList<string>? ProposedAliases = null);
 
 public sealed record RewriteFactLedger(IReadOnlyList<RewriteFact> Facts);
 

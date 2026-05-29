@@ -50,7 +50,7 @@ if (!string.IsNullOrWhiteSpace(pangramRescoreFile))
     return await PangramRescore.RunAsync(pangramRescoreFile);
 }
 
-// GPTZERO_PROBE: cross-detector check on fixed texts via GPTZero. Needs only GPTZero_API_KEY.
+// GPTZERO_PROBE: cross-signal check on fixed texts via GPTZero. Needs only GPTZero_API_KEY.
 if (IsTruthy(Environment.GetEnvironmentVariable("GPTZERO_PROBE")))
 {
     return await GptzeroProbe.RunAsync();
@@ -62,6 +62,13 @@ if (IsTruthy(Environment.GetEnvironmentVariable("GPTZERO_PROBE")))
 if (IsTruthy(Environment.GetEnvironmentVariable("PHASE1_CLAIM_LEDGER_VALIDATE")))
 {
     return await ReplyInMyVoice.Eval.Phase1ClaimLedgerSmoke.RunAsync(cases);
+}
+
+// STAGE1_EN_TO_ZH_PILOT: Sub-Phase 1.1 - Youdao EN->ZH, deterministic fact post-check,
+// batched ClaimLedger post-check, and a markdown drift report. Eval-only; no production engine path.
+if (IsTruthy(Environment.GetEnvironmentVariable("STAGE1_EN_TO_ZH_PILOT")))
+{
+    return await ReplyInMyVoice.Eval.StageOneEnToZhSafePilot.RunAsync(selectedCases, config, startedAt);
 }
 
 var apiKey = ResolveApiKey(config);
@@ -228,7 +235,7 @@ if (IsTruthy(Environment.GetEnvironmentVariable("GPTZERO_LOOP_PILOT")))
 
 // Quality A/B harness (Voice+Fidelity track): runs T0 over the corpus and audits each output through
 // the deterministic QualityGateChain + LLM FidelityJudge v2 + SendabilityTierJudge. DeepSeek + Sapling
-// only, no detector. Also a false-positive audit of the new gates against the trusted T0 engine.
+// only, no score-provider calls. Also a false-positive audit of the new gates against the trusted T0 engine.
 if (IsTruthy(Environment.GetEnvironmentVariable("QUALITY_AB")))
 {
     return await QualityAbRunner.RunAsync(
