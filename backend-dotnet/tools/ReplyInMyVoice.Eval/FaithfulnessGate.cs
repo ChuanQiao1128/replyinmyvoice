@@ -18,6 +18,7 @@ public enum DriftKind
     PolarityFlipped,
     SubjectRoleSwapped,
     ObjectSubstituted,
+    RelationshipChanged,
     UnsupportedAddition,
 }
 
@@ -188,8 +189,13 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
             + "subject_role_swapped (who does/receives the action changed — 'you reported'→'I reported', 'I will refund'→'you refund'); "
             + "object_substituted (a concrete thing replaced by a DIFFERENT thing — 'permission slip'→'receipt', 'delivered'→'shipped', "
             + "'admin workspace'→'back-end'); "
-            + "unsupported_addition (CANDIDATE asserts a fact/obligation/opinion about the recipient or deal that is NOT in SOURCE — "
-            + "e.g. an added jab like 'why are you so obsessed with this?'; IGNORE harmless pleasantries like 'thanks for your patience'). "
+            + "relationship_changed (two distinct facts merged/conflated, or a fact attached to the WRONG thing — e.g. a check/review "
+            + "date and an event date merged into one ('checked on March 28 FOR the April 9 trip' → 'the trip on March 28 and April 9'), "
+            + "a date attached to the wrong event, or two separate items combined into one); "
+            + "unsupported_addition (CANDIDATE adds material the SOURCE never states — an invented fact, obligation, opinion, jab, "
+            + "dramatized feeling, or narrative, e.g. 'why are you so obsessed with this?', 'this has been weighing on my heart', "
+            + "'I searched over and over'. ONLY a brief courtesy like 'thanks for your patience' / 'hope this helps' is allowed — "
+            + "flag invented feelings, drama, and narrative). "
             + "These specific pairs are the SAME thing and must NOT be flagged: 'set'≈'confirmed', 'wrapped up'≈'finished', "
             + "'quote'≈'quotation sheet'≈'quotation', 'onboarding'≈'help getting started'≈'someone to guide you at the start', "
             + "'email support'≈'standard email support'. object_substituted means the candidate names a genuinely DIFFERENT "
@@ -274,6 +280,7 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
         "polarity_flipped" => DriftKind.PolarityFlipped,
         "subject_role_swapped" => DriftKind.SubjectRoleSwapped,
         "object_substituted" => DriftKind.ObjectSubstituted,
+        "relationship_changed" => DriftKind.RelationshipChanged,
         "unsupported_addition" => DriftKind.UnsupportedAddition,
         _ => null,
     };
