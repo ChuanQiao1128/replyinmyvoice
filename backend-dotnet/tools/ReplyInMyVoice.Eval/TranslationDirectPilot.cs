@@ -1323,20 +1323,19 @@ internal static class TranslationDirectPilot
         }
 
         var zh0 = zh0r.Text;
-        var maxDrifts = int.TryParse(Environment.GetEnvironmentVariable("EL_MAX_DRIFTS"), out var md) && md >= 0 ? md : 3;
         Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
 
-        // Stage 1: loop to a candidate that is BOTH low (median GPTZero < target, noise-confirmed) AND clean
-        // enough to repair surgically (≤ EL_MAX_DRIFTS real drifts). Data (Kwame/005/006): fixing ≤3 real drifts
-        // HOLDS the low score; fixing ~7 RESTORES enough source that the score climbs back (c005: 7 fixes → 100%).
-        // So a low-but-heavily-drifted candidate is the WRONG one to repair — keep looking; if none clears the
-        // bar, fall back to the fewest-drift low candidate (and warn the score may rise).
-        string? lowCandidate = null;
-        var lowMedian = 0;
-        FaithfulnessReport? lowReport = null;
-        (string Text, int Median, FaithfulnessReport Report, int Unfixable)? fewestDrift = null;
+        // Owner's goal restated: NOT "an especially low score" — just FACTS INTACT and the score LOW(er). So
+        // rather than GUESS repairability from a drift-count bar (which made dense emails burn rounds skipping
+        // 4–6-drift candidates that actually repair fine), REPAIR-THEN-VERIFY: for each low candidate, run the
+        // LLM-guarded surgical fix and ACCEPT iff the REPAIRED text is faithful (0 residual) AND still ≤ target.
+        // The repaired OUTCOME is the real test — it accepts a 4–6-drift candidate that repairs clean and rejects
+        // a 7-drift one (score rose past target) or a missing-anchor one (residual), with no arbitrary pre-gate.
+        string? accepted = null;
+        var acceptedMedian = 0;
+        (string Text, int Median, int Residual)? best = null;
 
-        for (var round = 0; round <= iters && lowCandidate is null; round++)
+        for (var round = 0; round <= iters && accepted is null; round++)
         {
             var zhRough = await EssayPolishFeedbackAsync(deepseek, zh0, string.Empty) ?? zh0;
             var back = await youdao.TranslateAsync(zhRough, "zh-CHS", "en", CancellationToken.None);
@@ -1371,93 +1370,61 @@ internal static class TranslationDirectPilot
                 continue;
             }
 
-            // Low + noise-confirmed: gate it now. STOP only if it is cleanly repairable — ≤ maxDrifts real
-            // drifts AND none is a MISSING anchor. A dropped fact (null candidate_span) has no span to replace,
-            // so surgical can't restore it (only insertion would) — it would leave a residual. Keep looking.
-            var rpt = await gate.EvaluateAsync(source, cand, CancellationToken.None);
-            var unfixable = rpt.Drifts.Count(d => string.IsNullOrEmpty(d.CandidateSpan));
-            Console.WriteLine($"   CONFIRMED low (median {med}%) · {rpt.Drifts.Count} real drift(s)"
-                + (unfixable > 0 ? $", {unfixable} unfixable (missing anchor)" : string.Empty)
-                + $" [bar ≤{maxDrifts}, 0 missing]"
-                + (rpt.Error is null ? string.Empty : $" (gate err {rpt.Error})"));
+            // Low + noise-confirmed → REPAIR-THEN-VERIFY: fix its real drifts, then judge the REPAIRED text.
+            var pre = await gate.EvaluateAsync(source, cand, CancellationToken.None);
+            var (repaired, usedLlm) = await LlmSurgicalEnFixWithGuard(deepseek, cand, pre.Drifts);
+            var post = await gate.EvaluateAsync(source, repaired, CancellationToken.None);
 
-            // Fallback ranking: fewest unfixable (residual-causing) first, then fewest total drifts.
-            if (fewestDrift is null
-                || unfixable < fewestDrift.Value.Unfixable
-                || (unfixable == fewestDrift.Value.Unfixable && rpt.Drifts.Count < fewestDrift.Value.Report.Drifts.Count))
+            var afterReads = new List<int>();
+            for (var k = 0; k < reReads; k++)
             {
-                fewestDrift = (cand, med, rpt, unfixable);
+                var (re, _, _, _, reErr) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
+                if (reErr is null && re is not null)
+                {
+                    afterReads.Add(re.Value);
+                }
             }
 
-            if (rpt.Error is null && unfixable == 0 && rpt.Drifts.Count <= maxDrifts)
+            var afterMed = afterReads.Count > 0 ? afterReads.OrderBy(x => x).ToList()[afterReads.Count / 2] : 999;
+            var faithful = post.Error is null && post.Drifts.Count == 0;
+            var ok = faithful && afterMed <= target;
+            Console.WriteLine($"   low (median {med}%) · {pre.Drifts.Count} drift(s) → {(usedLlm ? "LLM-guarded" : "deterministic")} repair → "
+                + $"{afterMed}% · {(faithful ? "FAITHFUL" : $"{post.Drifts.Count} residual")}  ->  {(ok ? "ACCEPT" : "reject")}");
+            foreach (var d in post.Drifts.Take(6))
             {
-                lowCandidate = cand;
-                lowMedian = med;
-                lowReport = rpt;
+                Console.WriteLine($"      [residual {d.Kind}] \"{d.SourceValue}\" -> \"{d.CandidateSpan ?? "(missing)"}\"");
             }
-            else
+
+            if (ok)
             {
-                var why = unfixable > 0
-                    ? $"{unfixable} missing-anchor drift(s) can't be surgically restored"
-                    : $"too drifted (> {maxDrifts})";
-                Console.WriteLine($"   not cleanly repairable ({why}) — keep looping");
+                accepted = repaired;
+                acceptedMedian = afterMed;
+                Console.WriteLine("\n================ ACCEPTED (faithful + low) ================\n" + repaired + "\n");
+                break;
             }
-        }
 
-        if (lowCandidate is null && fewestDrift is not null)
-        {
-            Console.WriteLine($"\n(no cleanly-repairable low candidate in {iters + 1} rounds — repairing the best available: "
-                + $"{fewestDrift.Value.Report.Drifts.Count} drifts, {fewestDrift.Value.Unfixable} unfixable; "
-                + $"expect ~{fewestDrift.Value.Unfixable} residual and the score may rise)");
-            lowCandidate = fewestDrift.Value.Text;
-            lowMedian = fewestDrift.Value.Median;
-            lowReport = fewestDrift.Value.Report;
-        }
-
-        if (lowCandidate is null || lowReport is null)
-        {
-            Console.WriteLine($"\nVERDICT: no candidate with median < {target} in {iters + 1} rounds");
-            Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
-            return 0;
-        }
-
-        Console.WriteLine($"\n================ LOW CANDIDATE (median {lowMedian}%, {lowReport.Drifts.Count} real drift(s)) ================\n" + lowCandidate + "\n");
-
-        // Stage 2: the calibrated gate report for the chosen candidate (already computed in the loop).
-        var report = lowReport!;
-        Console.WriteLine($"================ calibrated gate: {report.Drifts.Count} real drift(s){(report.Error is null ? string.Empty : $" (err {report.Error})")} ================");
-        foreach (var d in report.Drifts)
-        {
-            Console.WriteLine($"  [{d.Kind}] \"{d.CandidateSpan ?? "(missing)"}\" -> \"{d.ExpectedFix}\"  ({d.Why})");
-        }
-
-        // Stage 3: LLM-guarded English surgical repair of ONLY those spans (NOT a rewrite).
-        var (repaired, usedLlm) = await LlmSurgicalEnFixWithGuard(deepseek, lowCandidate, report.Drifts);
-        Console.WriteLine($"\n================ EN (after {(usedLlm ? "LLM-guarded" : "deterministic")} surgical, only flagged spans) ================\n" + repaired + "\n");
-
-        // Stage 4: re-score the repaired candidate (median) + residual faithfulness check.
-        var afterReads = new List<int>();
-        for (var k = 0; k < reReads; k++)
-        {
-            var (re, _, _, _, reErr) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
-            if (reErr is null && re is not null)
+            // Fallback: keep the best near-miss — fewest residual, then lowest repaired score.
+            if (best is null || post.Drifts.Count < best.Value.Residual
+                || (post.Drifts.Count == best.Value.Residual && afterMed < best.Value.Median))
             {
-                afterReads.Add(re.Value);
+                best = (repaired, afterMed, post.Drifts.Count);
             }
         }
 
-        var afterMedian = afterReads.Count > 0 ? afterReads.OrderBy(x => x).ToList()[afterReads.Count / 2] : -1;
-        var residual = await gate.EvaluateAsync(source, repaired, CancellationToken.None);
-        Console.WriteLine($"GPTZero after = [{string.Join(", ", afterReads)}] median={afterMedian}%  (was {lowMedian}%)  ·  residual drifts = {residual.Drifts.Count}");
-        foreach (var d in residual.Drifts.Take(8))
+        if (accepted is not null)
         {
-            Console.WriteLine($"  [residual {d.Kind}] \"{d.SourceValue}\" -> \"{d.CandidateSpan ?? "(missing)"}\"");
+            Console.WriteLine($"VERDICT: ACCEPTED — faithful (0 residual) + {acceptedMedian}% ≤ {target} (repair-then-verify)");
+        }
+        else if (best is not null)
+        {
+            Console.WriteLine($"\n================ BEST EFFORT (no faithful+low candidate in {iters + 1} rounds) ================\n" + best.Value.Text + "\n");
+            Console.WriteLine($"VERDICT: best effort — {best.Value.Median}% · {best.Value.Residual} residual (not fully faithful)");
+        }
+        else
+        {
+            Console.WriteLine($"VERDICT: no candidate with median ≤ {target} in {iters + 1} rounds");
         }
 
-        var rose = afterMedian > lowMedian;
-        Console.WriteLine($"\nVERDICT: fixed {report.Drifts.Count} real drift(s) → {lowMedian}% → {afterMedian}% "
-            + $"({(rose ? $"ROSE +{afterMedian - lowMedian}" : "held/fell")}); "
-            + $"{(residual.Drifts.Count == 0 ? "now FAITHFUL" : $"{residual.Drifts.Count} residual")}");
         Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
         return 0;
     }
