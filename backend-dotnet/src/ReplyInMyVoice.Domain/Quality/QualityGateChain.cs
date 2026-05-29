@@ -72,4 +72,57 @@ public static class QualityGateChain
             boundaryResult.FlippedBoundaries,
             reasons);
     }
+
+    // Async: run the deterministic chain, then layer the semantic FidelityJudge on top. The judge can only
+    // ADD failures (object/term substitution, truth-value flips a regex misses) — it never upgrades a
+    // deterministic fail to a pass. A judge ERROR fails closed (Passed=false): an unavailable/garbled judge
+    // is a quality failure, never a silent ship. Source text is needed because the judge compares against it.
+    public static async Task<QualityGateReport> EvaluateWithFidelityAsync(
+        string candidateText,
+        string sourceText,
+        QualityContext context,
+        IFidelityJudge fidelityJudge,
+        CancellationToken ct)
+    {
+        var deterministic = Evaluate(candidateText, context);
+
+        var protectedTerms = context.ProtectedTerms.Terms
+            .Select(t => t.Text)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var fidelity = await fidelityJudge.EvaluateAsync(sourceText, candidateText, protectedTerms, ct);
+
+        if (fidelity.Passed && fidelity.Error is null)
+        {
+            return deterministic; // judge adds nothing
+        }
+
+        var reasons = new List<string>(deterministic.Reasons);
+        var driftedTerms = new List<string>(deterministic.DriftedTerms);
+
+        if (fidelity.Error is not null)
+        {
+            reasons.Add($"FidelityJudge unavailable ({fidelity.Error}) — failing closed.");
+        }
+
+        foreach (var d in fidelity.Drifts)
+        {
+            reasons.Add(
+                $"FidelityJudge {d.Kind}: \"{d.SourceValue}\""
+                + (d.CandidateSpan is null ? string.Empty : $" → \"{d.CandidateSpan}\"")
+                + (string.IsNullOrWhiteSpace(d.Why) ? string.Empty : $" ({d.Why})"));
+            if (d.Kind is FidelityDriftKind.ObjectSubstituted or FidelityDriftKind.HardAnchorChanged)
+            {
+                driftedTerms.Add(d.SourceValue);
+            }
+        }
+
+        return deterministic with
+        {
+            Passed = false,
+            DriftedTerms = driftedTerms.Distinct(StringComparer.Ordinal).ToList(),
+            Reasons = reasons,
+        };
+    }
 }

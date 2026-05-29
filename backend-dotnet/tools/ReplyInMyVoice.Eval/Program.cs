@@ -172,6 +172,39 @@ if (IsTruthy(Environment.GetEnvironmentVariable("FAITHFULNESS_GATE")))
     return 0;
 }
 
+// FIDELITY_JUDGE: run the PROMOTED Domain semantic judge (ReplyInMyVoice.Domain.Quality.FidelityJudge) — the
+// calibrated judge as it runs inside the Voice+Fidelity quality track, decoupled from detection — on
+// (FG_SOURCE, FG_CANDIDATE), with optional FG_TERMS="term1,term2" protected terms for object-substitution.
+if (IsTruthy(Environment.GetEnvironmentVariable("FIDELITY_JUDGE")))
+{
+    var fjSrc = Environment.GetEnvironmentVariable("FG_SOURCE");
+    var fjCand = Environment.GetEnvironmentVariable("FG_CANDIDATE");
+    if (string.IsNullOrWhiteSpace(fjSrc) || !File.Exists(fjSrc) || string.IsNullOrWhiteSpace(fjCand) || !File.Exists(fjCand))
+    {
+        Console.Error.WriteLine("FIDELITY_JUDGE: set FG_SOURCE and FG_CANDIDATE to existing files (optional FG_TERMS=\"a,b\").");
+        return 2;
+    }
+
+    var fjSource = (await File.ReadAllTextAsync(fjSrc)).Trim();
+    var fjCandidate = (await File.ReadAllTextAsync(fjCand)).Trim();
+    var fjTerms = (Environment.GetEnvironmentVariable("FG_TERMS") ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    using var fjHttp = new HttpClient();
+    var fjDeepseek = new DeepSeekChatClient(fjHttp, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(90));
+    var fjJudge = new ReplyInMyVoice.Domain.Quality.FidelityJudge((s, u, fjct) => fjDeepseek.CompleteAsync(s, u, 2000, 0, fjct));
+    var fjResult = await fjJudge.EvaluateAsync(fjSource, fjCandidate, fjTerms, CancellationToken.None);
+    Console.WriteLine($"FidelityJudge: Passed={fjResult.Passed}  drifts={fjResult.Drifts.Count}  error={fjResult.Error ?? "none"}"
+        + (fjTerms.Length > 0 ? $"  (protected: {string.Join(", ", fjTerms)})" : string.Empty));
+    foreach (var d in fjResult.Drifts)
+    {
+        Console.WriteLine($"  [{d.Kind}] source=\"{d.SourceValue}\""
+            + (d.CandidateSpan is null ? " (missing)" : $"  candidate=\"{d.CandidateSpan}\"")
+            + $"  -> fix=\"{d.ExpectedFix}\"  ({d.Why})");
+    }
+
+    return 0;
+}
+
 // TRANSLATION_DIRECT_BATCH: same chain over a batch of corpus cases (generality test) — GPTZero
 // before/after + semantic facts verdict per case. Select cases with EVAL_CASE_IDS / EVAL_MODE.
 if (IsTruthy(Environment.GetEnvironmentVariable("TRANSLATION_DIRECT_BATCH")))

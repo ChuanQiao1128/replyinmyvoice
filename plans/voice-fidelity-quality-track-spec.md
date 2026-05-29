@@ -6,6 +6,16 @@
 and Pangram is too noisy (±50 on identical text) to optimize against. **Pangram is hereby demoted to offline observation
 only — never an optimization target or a gate.**
 
+**Phase-1 progress (2026-05-30):** the hardened `FidelityJudge` landed in `ReplyInMyVoice.Domain.Quality.FidelityJudge`
+(+ `IFidelityJudge`, `FidelityDrift`/`FidelityJudgeResult`) — promoted from the eval FaithfulnessGate with its calibrated
+fact-ledger prompt (FACT + truth-condition + materiality tests; PASS faithful paraphrase, FLAG only real fact/truth/object
+changes). **Decision:** placed in Domain (not Infrastructure as originally sketched) with the LLM injected as a
+`Func<…,Task<string?>>`, keeping Domain provider-free and the judge unit-testable; the DeepSeek wiring lives in the caller.
+`QualityGateChain.EvaluateWithFidelityAsync` layers it onto the deterministic chain (adds failures only; judge error →
+fail-closed). Acceptance met: the 3 known object-substitution misses (seat credit→letter of credit, planter→flowerpot,
+saucer→tea tray) now FAIL; faithful paraphrase PASSES; 339 xUnit green. Eval entry `FIDELITY_JUDGE=1`; regression fixtures
+in `backend-dotnet/tools/ReplyInMyVoice.Eval/fixtures/gate-regression/`. NOT yet wired into prod `RewriteAsync` (Phase 2).
+
 ## Context
 
 Source-of-truth inputs (paths, not secrets):
