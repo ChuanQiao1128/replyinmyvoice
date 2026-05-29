@@ -54,6 +54,7 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
             + "If the Chinese TRANSLITERATED or TRANSLATED one (e.g. 'Dev'→'戴夫', 'Northstar'→'北极星', 'admin workspace'→'管理工作区'/'工作区管理', 'onboarding'→'上线服务'/'入职'/'引导', 'SSO'→'单点登录', 'email support'→'邮件支持'), "
             + "that IS a drift: flag it with candidate_span = the Chinese rendering and expected_fix = the exact English token, so it "
             + "survives the back-translation as the original English. "
+            + "But if a name/product/ID/feature term ALREADY appears VERBATIM IN ENGLISH in the CANDIDATE, it is CORRECT — do NOT flag it, and never emit a no-op fix (candidate_span equal to expected_fix). "
             + "Find ONLY the spans in the CHINESE CANDIDATE that DRIFTED from SOURCE: a changed number/amount/currency ($ vs 元/yuan)/"
             + "date/name/id; a flipped negation or modality (能↔不能, 可能↔一定); a swapped subject/role (谁对谁做什么); a substituted "
             + "object (一个东西换成了另一个不同的东西); two facts conflated or attached to the wrong thing; or invented content not in "
@@ -98,7 +99,34 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
             }
         }
 
-        return parsed is null ? (new List<DriftSpan>(), "xl_json_parse_failed") : (parsed, null);
+        return parsed is null ? (new List<DriftSpan>(), "xl_json_parse_failed") : (PruneNoOpDrifts(parsed, zhCandidate), null);
+    }
+
+    // Precision guard for the cross-lingual gate: the heavy "keep terms in English" rule makes the LLM
+    // sometimes emit drifts that are already satisfied — candidate_span == expected_fix (a literal no-op), or
+    // it claims a Chinese rendering that isn't actually in the candidate while the corrected token already is
+    // (a phantom). Applying either is a no-op, so they only inflate the drift count. Drop them. Recall-neutral:
+    // a genuinely-needed fix never has its corrected value already present verbatim with the bad span absent.
+    public static IReadOnlyList<DriftSpan> PruneNoOpDrifts(IReadOnlyList<DriftSpan> drifts, string candidate)
+    {
+        var kept = new List<DriftSpan>();
+        foreach (var d in drifts)
+        {
+            if (d.CandidateSpan is not null && string.Equals(d.CandidateSpan, d.ExpectedFix, StringComparison.Ordinal))
+            {
+                continue; // literal no-op: replace X with the same X
+            }
+
+            var spanAbsent = d.CandidateSpan is null || !candidate.Contains(d.CandidateSpan, StringComparison.Ordinal);
+            if (spanAbsent && !string.IsNullOrEmpty(d.ExpectedFix) && candidate.Contains(d.ExpectedFix, StringComparison.Ordinal))
+            {
+                continue; // phantom: nothing to replace and the corrected value is already present
+            }
+
+            kept.Add(d);
+        }
+
+        return kept;
     }
 
     // ----------------------------- Layer 1 (deterministic, unit-testable) -----------------------------

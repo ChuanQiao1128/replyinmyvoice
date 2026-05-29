@@ -960,6 +960,10 @@ internal static class TranslationDirectPilot
             // (3) LLM-precise surgical edit, guarded so it can't rewrite non-flagged sentences (else deterministic).
             var (zhFixed, usedLlm) = await LlmSurgicalEditWithGuard(deepseek, zhRough, drifts);
             Console.WriteLine($"ZH (surgical repair — {drifts.Count} drift(s), {(usedLlm ? "LLM-precise + guard" : "deterministic")}):\n" + zhFixed + "\n");
+            foreach (var d in drifts.Take(8))
+            {
+                Console.WriteLine($"    [ZH {d.Kind}] \"{d.CandidateSpan}\" -> \"{d.ExpectedFix}\"");
+            }
 
             var back = await youdao.TranslateAsync(zhFixed, "zh-CHS", "en", CancellationToken.None);
             if (!back.Success)

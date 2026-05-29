@@ -123,4 +123,37 @@ public class FaithfulnessGateTests
         report.Drifts.Should().BeEmpty();
         report.Passed.Should().BeTrue();
     }
+
+    // ---------------- PruneNoOpDrifts — cross-lingual precision guard ----------------
+
+    [Fact]
+    public void Prune_drops_literal_no_op_span_equals_fix()
+    {
+        var drifts = new[] { new DriftSpan(DriftKind.HardAnchorChanged, "onboarding", "onboarding", "onboarding", "noop") };
+        FaithfulnessGate.PruneNoOpDrifts(drifts, "报价含 onboarding、admin workspace。").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Prune_drops_phantom_when_corrected_token_already_present()
+    {
+        // Gate claims a Chinese rendering "入职" that isn't in the candidate; the English "onboarding" already is.
+        var drifts = new[] { new DriftSpan(DriftKind.HardAnchorChanged, "onboarding", "入职", "onboarding", "phantom") };
+        FaithfulnessGate.PruneNoOpDrifts(drifts, "报价含 onboarding 和支持。").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Prune_keeps_genuine_term_drift()
+    {
+        // Candidate really translated the term; the English token is absent → a real fix to apply.
+        var drifts = new[] { new DriftSpan(DriftKind.HardAnchorChanged, "onboarding", "入职", "onboarding", "real") };
+        FaithfulnessGate.PruneNoOpDrifts(drifts, "报价含入职和支持。").Should().ContainSingle(d => d.CandidateSpan == "入职");
+    }
+
+    [Fact]
+    public void Prune_keeps_deletion_of_unsupported_addition()
+    {
+        // expected_fix empty = delete an addition; span is present in the candidate → genuine, must be kept.
+        var drifts = new[] { new DriftSpan(DriftKind.UnsupportedAddition, "(none)", "正好可以往前赶", "", "addition") };
+        FaithfulnessGate.PruneNoOpDrifts(drifts, "那个房间空出来了，正好可以往前赶。").Should().ContainSingle(d => d.ExpectedFix == "");
+    }
 }
