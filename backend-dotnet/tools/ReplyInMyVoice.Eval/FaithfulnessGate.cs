@@ -50,6 +50,10 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
     {
         const string sys =
             "You are a strict faithfulness checker. SOURCE is the TRUTH (English). CANDIDATE is a rough Chinese translation. "
+            + "CRITICAL — PROPER NAMES, PRODUCT/BRAND NAMES, and IDs from SOURCE must stay VERBATIM IN ENGLISH inside the Chinese. "
+            + "If the Chinese TRANSLITERATED or TRANSLATED one (e.g. 'Dev'→'戴夫', 'Northstar'→'北极星', 'admin workspace'→'管理工作区'/'工作区管理'), "
+            + "that IS a drift: flag it with candidate_span = the Chinese rendering and expected_fix = the exact English token, so it "
+            + "survives the back-translation as the original English. "
             + "Find ONLY the spans in the CHINESE CANDIDATE that DRIFTED from SOURCE: a changed number/amount/currency ($ vs 元/yuan)/"
             + "date/name/id; a flipped negation or modality (能↔不能, 可能↔一定); a swapped subject/role (谁对谁做什么); a substituted "
             + "object (一个东西换成了另一个不同的东西); two facts conflated or attached to the wrong thing; or invented content not in "
