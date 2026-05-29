@@ -1334,7 +1334,7 @@ internal static class TranslationDirectPilot
         string? lowCandidate = null;
         var lowMedian = 0;
         FaithfulnessReport? lowReport = null;
-        (string Text, int Median, FaithfulnessReport Report)? fewestDrift = null;
+        (string Text, int Median, FaithfulnessReport Report, int Unfixable)? fewestDrift = null;
 
         for (var round = 0; round <= iters && lowCandidate is null; round++)
         {
@@ -1371,16 +1371,25 @@ internal static class TranslationDirectPilot
                 continue;
             }
 
-            // Low + noise-confirmed: gate it now and only STOP if it is clean enough to repair (≤ maxDrifts).
+            // Low + noise-confirmed: gate it now. STOP only if it is cleanly repairable — ≤ maxDrifts real
+            // drifts AND none is a MISSING anchor. A dropped fact (null candidate_span) has no span to replace,
+            // so surgical can't restore it (only insertion would) — it would leave a residual. Keep looking.
             var rpt = await gate.EvaluateAsync(source, cand, CancellationToken.None);
-            Console.WriteLine($"   CONFIRMED low (median {med}%) · {rpt.Drifts.Count} real drift(s) [bar ≤{maxDrifts}]"
+            var unfixable = rpt.Drifts.Count(d => string.IsNullOrEmpty(d.CandidateSpan));
+            Console.WriteLine($"   CONFIRMED low (median {med}%) · {rpt.Drifts.Count} real drift(s)"
+                + (unfixable > 0 ? $", {unfixable} unfixable (missing anchor)" : string.Empty)
+                + $" [bar ≤{maxDrifts}, 0 missing]"
                 + (rpt.Error is null ? string.Empty : $" (gate err {rpt.Error})"));
-            if (fewestDrift is null || rpt.Drifts.Count < fewestDrift.Value.Report.Drifts.Count)
+
+            // Fallback ranking: fewest unfixable (residual-causing) first, then fewest total drifts.
+            if (fewestDrift is null
+                || unfixable < fewestDrift.Value.Unfixable
+                || (unfixable == fewestDrift.Value.Unfixable && rpt.Drifts.Count < fewestDrift.Value.Report.Drifts.Count))
             {
-                fewestDrift = (cand, med, rpt);
+                fewestDrift = (cand, med, rpt, unfixable);
             }
 
-            if (rpt.Error is null && rpt.Drifts.Count <= maxDrifts)
+            if (rpt.Error is null && unfixable == 0 && rpt.Drifts.Count <= maxDrifts)
             {
                 lowCandidate = cand;
                 lowMedian = med;
@@ -1388,13 +1397,18 @@ internal static class TranslationDirectPilot
             }
             else
             {
-                Console.WriteLine($"   too drifted to repair cleanly (> {maxDrifts}) — keep looping for a cleaner low candidate");
+                var why = unfixable > 0
+                    ? $"{unfixable} missing-anchor drift(s) can't be surgically restored"
+                    : $"too drifted (> {maxDrifts})";
+                Console.WriteLine($"   not cleanly repairable ({why}) — keep looping");
             }
         }
 
         if (lowCandidate is null && fewestDrift is not null)
         {
-            Console.WriteLine($"\n(no low candidate with ≤{maxDrifts} drifts in {iters + 1} rounds — repairing the fewest-drift one: {fewestDrift.Value.Report.Drifts.Count} drifts; the score may rise)");
+            Console.WriteLine($"\n(no cleanly-repairable low candidate in {iters + 1} rounds — repairing the best available: "
+                + $"{fewestDrift.Value.Report.Drifts.Count} drifts, {fewestDrift.Value.Unfixable} unfixable; "
+                + $"expect ~{fewestDrift.Value.Unfixable} residual and the score may rise)");
             lowCandidate = fewestDrift.Value.Text;
             lowMedian = fewestDrift.Value.Median;
             lowReport = fewestDrift.Value.Report;
