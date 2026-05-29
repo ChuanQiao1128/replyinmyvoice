@@ -15,9 +15,12 @@ expected outcome by hand (or in review). Layer 1 (hard anchors) IS covered by xU
 |---|---|---|
 | `kwame-faithful-paraphrase.txt` | `kwame-source.txt` | **PASS, 0 drifts.** All 11 hard facts preserved; the differences are faithful paraphrase (incl. boundary active→passive "I cannot apply any change" → "nothing can be changed on my side", "up for renewal" → "will be renewed"). These 4 were the FALSE POSITIVES the reframe fixes. |
 | `kwame-corrupted.txt` | `kwame-source.txt` | **FAIL, flags the 3 injected real drifts:** `$360`→`$340` (money), `I cannot apply any change` → `I can apply any change` (polarity_flipped — same boundary sentence as above, but here the truth value really flips), `June 8` → `June 18` (date). Recall must stay intact. |
+| `kwame-corrupted-semantic.txt` | `kwame-source-features.txt` | **FAIL, flags 3 semantic drifts (recall across kinds):** `I noticed` → `You reported` (subject_role_swapped), `admin workspace` → `billing dashboard` (object_substituted), `I will update` → `I have already updated` (polarity_flipped, future-conditional→done). The `-features` source adds the "onboarding, the admin workspace, …" line so object-substitution is testable. |
 
 The boundary sentence is the key proof point: faithful passive rephrasing PASSES (paraphrase),
-a real cannot→can flip is FLAGGED (recall) — precision and recall cleanly separated.
+a real cannot→can flip is FLAGGED (recall) — precision and recall cleanly separated. Together the
+two corrupted fixtures cover all six drift kinds (hard-anchor, polarity, subject/role, object,
+relationship, tense future→done) so the reframe can't silently trade recall for precision.
 
 ## Run
 
