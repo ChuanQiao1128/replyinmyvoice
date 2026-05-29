@@ -123,6 +123,19 @@ if (IsTruthy(Environment.GetEnvironmentVariable("SURGICAL_REPAIR_LOOP")))
     return await TranslationDirectPilot.RunSurgicalRepairLoopAsync(apiKey, config);
 }
 
+// ZH_SURGICAL_LOOP: owner's corrected idea — SURGICAL repair in the Chinese (cross-lingual gate -> exact span
+// replace) -> one back-translation -> measure EN. Verbose (prints every stage). EL_FILE / EL_ITERS / EL_TARGET.
+if (IsTruthy(Environment.GetEnvironmentVariable("ZH_SURGICAL_LOOP")))
+{
+    return await TranslationDirectPilot.RunZhSurgicalLoopAsync(apiKey, config);
+}
+
+// ZH_SURGICAL_ONCE: one-shot cross-lingual gate + surgical repair on a GIVEN Chinese (ZS_ZH) vs EL_FILE source.
+if (IsTruthy(Environment.GetEnvironmentVariable("ZH_SURGICAL_ONCE")))
+{
+    return await TranslationDirectPilot.RunZhSurgicalOnceAsync(apiKey, config);
+}
+
 // FAITHFULNESS_GATE: run the reliable faithfulness gate on (FG_SOURCE, FG_CANDIDATE); print drift spans.
 if (IsTruthy(Environment.GetEnvironmentVariable("FAITHFULNESS_GATE")))
 {

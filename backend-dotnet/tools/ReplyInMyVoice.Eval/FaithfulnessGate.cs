@@ -43,6 +43,60 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
         return new FaithfulnessReport(passed, deduped, null, error);
     }
 
+    // Cross-lingual: compare the English SOURCE to a Chinese CANDIDATE; return drifts whose CandidateSpan /
+    // ExpectedFix are CHINESE, so they can be SURGICALLY string-replaced in the Chinese before one back-
+    // translation (owner's "repair in Chinese, surgically" idea). Drifts-only, repair-parse, fail-closed.
+    public async Task<(IReadOnlyList<DriftSpan> Drifts, string? Error)> EvaluateCrossLingualAsync(string sourceEn, string zhCandidate, CancellationToken ct)
+    {
+        const string sys =
+            "You are a strict faithfulness checker. SOURCE is the TRUTH (English). CANDIDATE is a rough Chinese translation. "
+            + "Find ONLY the spans in the CHINESE CANDIDATE that DRIFTED from SOURCE: a changed number/amount/currency ($ vs 元/yuan)/"
+            + "date/name/id; a flipped negation or modality (能↔不能, 可能↔一定); a swapped subject/role (谁对谁做什么); a substituted "
+            + "object (一个东西换成了另一个不同的东西); two facts conflated or attached to the wrong thing; or invented content not in "
+            + "SOURCE (凭空的事实/情绪/叙事). BE STRICT ON ADDITIONS AND WRONG DIRECTION: flag ANY Chinese phrase that adds a "
+            + "reason, direction, conclusion, or feeling the SOURCE lacks — e.g. an added '正好可以往前赶'/'这下好了'/'正好提前' "
+            + "when SOURCE only states a plain fact. For such an addition: if the span is PURELY the unsupported addition, set "
+            + "expected_fix to an empty string to delete it; but if the span MIXES a real fact with an addition (e.g. "
+            + "'那个房间空出来了，正好可以往前赶' mixes the room reason with an added 'move earlier'), set expected_fix to the "
+            + "CORRECTED minimal Chinese that KEEPS the real fact and drops ONLY the added part (here: '那个房间用不了。') — never "
+            + "delete the real fact. Also flag a phrase that "
+            + "implies the WRONG direction vs SOURCE (e.g. implying 'move it earlier' when SOURCE's offered options are actually "
+            + "later). When unsure whether something is an addition, FLAG it. Do NOT flag genuine paraphrase that keeps the meaning. For each drift output "
+            + "{\"kind\":\"hard_anchor|currency_changed|polarity_flipped|subject_role_swapped|object_substituted|relationship_changed|unsupported_addition\","
+            + "\"source_value\":\"<the English truth>\",\"candidate_span\":\"<EXACT Chinese substring to replace, copied verbatim from CANDIDATE>\","
+            + "\"expected_fix\":\"<corrected Chinese; use empty string to DELETE an invented addition>\",\"why\":\"...\"}. "
+            + "candidate_span MUST be an exact substring of the CHINESE so it can be string-replaced. Return JSON ONLY: {\"drifts\":[...]}.";
+        var user = "SOURCE (English, truth):\n" + sourceEn + "\n\nCANDIDATE (Chinese):\n" + zhCandidate;
+
+        string? raw;
+        try
+        {
+            raw = await complete(sys, user, ct);
+        }
+        catch (Exception e) when (e is OperationCanceledException or HttpRequestException)
+        {
+            return (new List<DriftSpan>(), "xl_call_failed");
+        }
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return (new List<DriftSpan>(), "xl_empty");
+        }
+
+        var parsed = TryParseDrifts(raw);
+        if (parsed is null)
+        {
+            var first = raw.IndexOf('{');
+            var last = raw.LastIndexOf('}');
+            if (first >= 0 && last > first)
+            {
+                parsed = TryParseDrifts(raw.Substring(first, last - first + 1));
+            }
+        }
+
+        return parsed is null ? (new List<DriftSpan>(), "xl_json_parse_failed") : (parsed, null);
+    }
+
     // ----------------------------- Layer 1 (deterministic, unit-testable) -----------------------------
     public static IReadOnlyList<DriftSpan> Layer1HardAnchors(string source, string candidate)
     {
@@ -277,6 +331,8 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
 
     private static DriftKind? MapKind(string k) => k.Trim().ToLowerInvariant() switch
     {
+        "hard_anchor" => DriftKind.HardAnchorChanged,
+        "currency_changed" => DriftKind.CurrencyChanged,
         "polarity_flipped" => DriftKind.PolarityFlipped,
         "subject_role_swapped" => DriftKind.SubjectRoleSwapped,
         "object_substituted" => DriftKind.ObjectSubstituted,

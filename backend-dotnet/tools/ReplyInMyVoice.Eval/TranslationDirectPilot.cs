@@ -710,6 +710,9 @@ internal static class TranslationDirectPilot
         var source = (await File.ReadAllTextAsync(enFile)).Trim();
         var iters = int.TryParse(Environment.GetEnvironmentVariable("EL_ITERS"), out var it) && it > 0 ? it : 4;
         var target = int.TryParse(Environment.GetEnvironmentVariable("EL_TARGET"), out var tg) && tg > 0 ? tg : 30;
+        // EL_ZH_REPAIR=1 (owner's idea): repair drifts in the CHINESE and re-back-translate, never edit the
+        // English (so the back-translation surface — the low-score property — is preserved).
+        var zhRepairMode = (Environment.GetEnvironmentVariable("EL_ZH_REPAIR") ?? string.Empty).Trim() is "1" or "true";
 
         using var http = new HttpClient();
         using var youdaoHttp = new HttpClient();
@@ -766,14 +769,29 @@ internal static class TranslationDirectPilot
                 break;
             }
 
-            var (repaired, unrep) = ApplySurgicalRepair(cand, fr.Drifts);
+            string repaired;
+            var unrepCount = 0;
+            if (zhRepairMode)
+            {
+                // Fix the drifts in the Chinese, then re-back-translate — English is never span-edited.
+                var zhFixed = await RepairChineseForDrifts(deepseek, source, zhRough, fr.Drifts) ?? zhRough;
+                var back2 = await youdao.TranslateAsync(zhFixed, "zh-CHS", "en", CancellationToken.None);
+                repaired = back2.Success ? back2.Text.Trim() : cand;
+            }
+            else
+            {
+                var (rep, unrep) = ApplySurgicalRepair(cand, fr.Drifts);
+                repaired = rep;
+                unrepCount = unrep.Count;
+            }
+
             var (ai2, _, _, _, err2) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
             var fr2 = await gate.EvaluateAsync(source, repaired, CancellationToken.None);
-            var ok = err2 is null && ai2 is not null && ai2 <= target && fr2.Passed && unrep.Count == 0;
+            var ok = err2 is null && ai2 is not null && ai2 <= target && fr2.Passed && unrepCount == 0;
             Console.WriteLine(
                 $"--- round {round}: GPTZero {ai}%->{(ai2?.ToString() ?? "err")}% · drifts {fr.Drifts.Count}->{fr2.Drifts.Count} · "
-                + $"unrepairable={unrep.Count} · {(ok ? "ACCEPT (low + faithful after repair)" : "reroll")} ---");
-            report.AppendLine($"## round {round}: {ai}%->{ai2}% drifts {fr.Drifts.Count}->{fr2.Drifts.Count} unrep {unrep.Count} {(ok ? "ACCEPT" : "reroll")}");
+                + $"{(zhRepairMode ? "zh-repair" : $"unrepairable={unrepCount}")} · {(ok ? "ACCEPT (low + faithful)" : "reroll")} ---");
+            report.AppendLine($"## round {round}: {ai}%->{ai2}% drifts {fr.Drifts.Count}->{fr2.Drifts.Count} {(zhRepairMode ? "zh-repair" : $"unrep {unrepCount}")} {(ok ? "ACCEPT" : "reroll")}");
             report.AppendLine("repaired: " + repaired + "\n");
             if (ok)
             {
@@ -832,6 +850,182 @@ internal static class TranslationDirectPilot
         text = Regex.Replace(text, @"[ \t]{2,}", " ");
         text = Regex.Replace(text, @"\s+([.,;!?])", "$1");
         return (text.Trim(), unrep);
+    }
+
+    // One-shot (ZH_SURGICAL_ONCE=1): run the cross-lingual gate + surgical repair on a GIVEN Chinese candidate
+    // (ZS_ZH file) against EL_FILE source, then back-translate + score. Shows whether the gate now finds a
+    // specific drift (e.g. an added '正好可以往前赶') and whether surgical replace excises it without rewriting.
+    public static async Task<int> RunZhSurgicalOnceAsync(string apiKey, EvalConfig config)
+    {
+        var gptKey = Environment.GetEnvironmentVariable("GPTZero_API_KEY") ?? Environment.GetEnvironmentVariable("GPTZERO_API_KEY");
+        var youdaoKey = Environment.GetEnvironmentVariable("YOUDAO_APP_KEY") ?? Environment.GetEnvironmentVariable("AppID") ?? Environment.GetEnvironmentVariable("YouDao_API_KEY");
+        var youdaoSecret = Environment.GetEnvironmentVariable("YOUDAO_APP_SECRET") ?? Environment.GetEnvironmentVariable("AppSecret");
+        var youdaoUrl = Environment.GetEnvironmentVariable("YOUDAO_API_URL") ?? "https://openapi.youdao.com/api";
+        var enFile = Environment.GetEnvironmentVariable("EL_FILE");
+        var zhFile = Environment.GetEnvironmentVariable("ZS_ZH");
+        if (string.IsNullOrWhiteSpace(gptKey) || string.IsNullOrWhiteSpace(youdaoKey) || string.IsNullOrWhiteSpace(youdaoSecret)
+            || string.IsNullOrWhiteSpace(enFile) || !File.Exists(enFile) || string.IsNullOrWhiteSpace(zhFile) || !File.Exists(zhFile))
+        {
+            Console.Error.WriteLine("ZH_SURGICAL_ONCE: need GPTZero + Youdao keys, EL_FILE (English source), ZS_ZH (Chinese candidate).");
+            return 2;
+        }
+
+        var source = (await File.ReadAllTextAsync(enFile)).Trim();
+        var zh = (await File.ReadAllTextAsync(zhFile)).Trim();
+        using var http = new HttpClient();
+        using var youdaoHttp = new HttpClient();
+        using var gptHttp = new HttpClient();
+        var deepseek = new DeepSeekChatClient(http, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(120));
+        var youdao = new YoudaoTranslationClient(youdaoHttp, youdaoKey!, youdaoSecret!, youdaoUrl, TimeSpan.FromSeconds(30));
+        var gate = new FaithfulnessGate((s, u, gct) => deepseek.CompleteAsync(s, u, 2000, 0, gct));
+
+        Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
+        Console.WriteLine("================ ZH (input, pre-surgery) ================\n" + zh + "\n");
+
+        var (drifts, xerr) = await gate.EvaluateCrossLingualAsync(source, zh, CancellationToken.None);
+        Console.WriteLine($"================ cross-lingual gate: {drifts.Count} Chinese drift(s){(xerr is null ? string.Empty : $" (err {xerr})")} ================");
+        foreach (var d in drifts)
+        {
+            Console.WriteLine($"  [{d.Kind}] \"{d.CandidateSpan}\" -> \"{d.ExpectedFix}\"  ({d.Why})");
+        }
+
+        var (zhFixed, _) = ApplySurgicalRepair(zh, drifts);
+        Console.WriteLine("\n================ ZH (after surgical repair) ================\n" + zhFixed + "\n");
+
+        var back = await youdao.TranslateAsync(zhFixed, "zh-CHS", "en", CancellationToken.None);
+        var final = back.Success ? back.Text.Trim() : $"(youdao fail: {back.ErrorCode})";
+        Console.WriteLine("================ EN (back-translated, NOT edited) ================\n" + final + "\n");
+
+        var (ai, _, _, _, serr) = await ScoreAsync(gptHttp, gptKey!, final, CancellationToken.None);
+        var frEn = await gate.EvaluateAsync(source, final, CancellationToken.None);
+        Console.WriteLine($"GPTZero = {(ai?.ToString() ?? "err")}%{(serr is null ? string.Empty : $" ({serr})")}  ·  final-EN residual drifts = {frEn.Drifts.Count}");
+        foreach (var d in frEn.Drifts.Take(8))
+        {
+            Console.WriteLine($"  [EN {d.Kind}] \"{d.SourceValue}\" -> \"{d.CandidateSpan ?? "(missing)"}\"");
+        }
+
+        return 0;
+    }
+
+    // Owner's CORRECTED idea (verbose): SURGICAL repair in the CHINESE — cross-lingual gate finds Chinese drift
+    // spans, ApplySurgicalRepair replaces ONLY those (not an LLM rewrite) → one back-translation → measure the
+    // English with the EN gate. Prints English source + each round's polished ZH, surgically-repaired ZH,
+    // back-translated EN, and score. ZH_SURGICAL_LOOP=1, EL_FILE, EL_ITERS, EL_TARGET.
+    public static async Task<int> RunZhSurgicalLoopAsync(string apiKey, EvalConfig config)
+    {
+        var gptKey = Environment.GetEnvironmentVariable("GPTZero_API_KEY") ?? Environment.GetEnvironmentVariable("GPTZERO_API_KEY");
+        var youdaoKey = Environment.GetEnvironmentVariable("YOUDAO_APP_KEY") ?? Environment.GetEnvironmentVariable("AppID") ?? Environment.GetEnvironmentVariable("YouDao_API_KEY");
+        var youdaoSecret = Environment.GetEnvironmentVariable("YOUDAO_APP_SECRET") ?? Environment.GetEnvironmentVariable("AppSecret");
+        var youdaoUrl = Environment.GetEnvironmentVariable("YOUDAO_API_URL") ?? "https://openapi.youdao.com/api";
+        var enFile = Environment.GetEnvironmentVariable("EL_FILE");
+        if (string.IsNullOrWhiteSpace(gptKey) || string.IsNullOrWhiteSpace(youdaoKey) || string.IsNullOrWhiteSpace(youdaoSecret) || string.IsNullOrWhiteSpace(enFile) || !File.Exists(enFile))
+        {
+            Console.Error.WriteLine("ZH_SURGICAL_LOOP: need GPTZero + Youdao keys and EL_FILE.");
+            return 2;
+        }
+
+        var source = (await File.ReadAllTextAsync(enFile)).Trim();
+        var iters = int.TryParse(Environment.GetEnvironmentVariable("EL_ITERS"), out var it) && it > 0 ? it : 3;
+        var target = int.TryParse(Environment.GetEnvironmentVariable("EL_TARGET"), out var tg) && tg > 0 ? tg : 30;
+
+        using var http = new HttpClient();
+        using var youdaoHttp = new HttpClient();
+        using var gptHttp = new HttpClient();
+        var deepseek = new DeepSeekChatClient(http, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(120));
+        var youdao = new YoudaoTranslationClient(youdaoHttp, youdaoKey!, youdaoSecret!, youdaoUrl, TimeSpan.FromSeconds(30));
+        var gate = new FaithfulnessGate((s, u, gct) => deepseek.CompleteAsync(s, u, 2000, 0, gct));
+
+        var zh0r = await youdao.TranslateAsync(source, "en", "zh-CHS", CancellationToken.None);
+        if (!zh0r.Success)
+        {
+            Console.Error.WriteLine($"Youdao EN->ZH fail: {zh0r.ErrorCode}");
+            return 1;
+        }
+
+        var zh0 = zh0r.Text;
+        var empty = new List<(string Zh, string En, int? Score)>();
+        Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
+        string? accepted = null;
+        int? acceptedScore = null;
+
+        for (var round = 0; round <= iters; round++)
+        {
+            Console.WriteLine($"================ round {round} ================");
+            var zhRough = await EssayRoundAsync(deepseek, zh0, empty) ?? zh0;
+            Console.WriteLine("ZH (essay polish):\n" + zhRough + "\n");
+
+            var (drifts, _) = await gate.EvaluateCrossLingualAsync(source, zhRough, CancellationToken.None);
+            var (zhFixed, _) = ApplySurgicalRepair(zhRough, drifts);
+            Console.WriteLine($"ZH (surgical repair — {drifts.Count} Chinese drift(s) replaced):\n" + zhFixed + "\n");
+
+            var back = await youdao.TranslateAsync(zhFixed, "zh-CHS", "en", CancellationToken.None);
+            if (!back.Success)
+            {
+                Console.WriteLine($"Youdao ZH->EN fail ({back.ErrorCode})\n");
+                continue;
+            }
+
+            var final = back.Text.Trim();
+            Console.WriteLine("EN (back-translated, NOT edited):\n" + final + "\n");
+
+            var (ai, _, _, _, serr) = await ScoreAsync(gptHttp, gptKey!, final, CancellationToken.None);
+            var frEn = await gate.EvaluateAsync(source, final, CancellationToken.None);
+            var faithful = frEn.Error is null && frEn.Passed;
+            var ok = serr is null && ai is not null && ai <= target && faithful;
+            Console.WriteLine($"GPTZero = {(ai?.ToString() ?? "err")}%  ·  final-EN: {(faithful ? "FAITHFUL" : $"{frEn.Drifts.Count} drift(s)")}  ->  {(ok ? "ACCEPT" : "reroll")}");
+            foreach (var d in frEn.Drifts.Take(8))
+            {
+                Console.WriteLine($"    [EN {d.Kind}] \"{d.SourceValue}\" -> \"{d.CandidateSpan ?? "(missing)"}\"");
+            }
+
+            Console.WriteLine();
+            if (ok)
+            {
+                accepted = final;
+                acceptedScore = ai;
+                break;
+            }
+        }
+
+        Console.WriteLine(accepted is null
+            ? $"VERDICT: no low+faithful candidate within {iters + 1} rounds"
+            : $"VERDICT: ACCEPTED at {acceptedScore}% AI + faithful");
+        Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
+        return 0;
+    }
+
+    // Owner's idea: fix the gate's drifts IN THE CHINESE (against the English source), preserving the rough
+    // translationese style, so a fresh back-translation keeps the low-score surface while the facts come right.
+    private static async Task<string?> RepairChineseForDrifts(DeepSeekChatClient ds, string sourceEn, string zh, IReadOnlyList<DriftSpan> drifts)
+    {
+        if (drifts.Count == 0)
+        {
+            return zh;
+        }
+
+        var list = string.Join("\n", drifts.Select(d =>
+            $"- 原文「{d.SourceValue}」" + (d.CandidateSpan is null ? "(中文里漏了)" : $",回译成了「{d.CandidateSpan}」") + $",应为「{d.ExpectedFix}」"));
+        const string sys =
+            "你在修一段【英译中的粗糙中文稿】。下面给你英文原文、当前中文、以及把中文回译成英文后发现的漂移清单。"
+            + "请【只在中文里】按英文原文修正这些漂移:数字/币种/日期/人名/单号与原文一致;否定、主体、对象、关系、时态不得变;"
+            + "删掉原文没有的杜撰内容、情绪、叙事。其余部分【保持原中文的口语、粗糙、翻译腔,一字不要润色】。"
+            + "只返回 JSON:{\"zh\":\"<修好的中文>\"}";
+        var user = "英文原文(事实真相):\n" + sourceEn + "\n\n当前中文:\n" + zh + "\n\n回译后发现的漂移:\n" + list;
+        var raw = await ds.CompleteAsync(sys, user, 2200, 0.2, CancellationToken.None);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            return doc.RootElement.TryGetProperty("zh", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()?.Trim() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static string Oneline(string s, int max)
