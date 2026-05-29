@@ -136,6 +136,14 @@ if (IsTruthy(Environment.GetEnvironmentVariable("ZH_SURGICAL_ONCE")))
     return await TranslationDirectPilot.RunZhSurgicalOnceAsync(apiKey, config);
 }
 
+// EN_SURGICAL_ONCE: STOP at a rough back-translated English (ES_EN) vs EL_FILE source, score it, run the EN
+// gate, surgically span->fix ONLY the drifted spans (no rewrite), then re-score + re-check. Answers "fix the
+// round-1 drifts in place and re-detect — what score?".
+if (IsTruthy(Environment.GetEnvironmentVariable("EN_SURGICAL_ONCE")))
+{
+    return await TranslationDirectPilot.RunEnSurgicalOnceAsync(apiKey, config);
+}
+
 // FAITHFULNESS_GATE: run the reliable faithfulness gate on (FG_SOURCE, FG_CANDIDATE); print drift spans.
 if (IsTruthy(Environment.GetEnvironmentVariable("FAITHFULNESS_GATE")))
 {

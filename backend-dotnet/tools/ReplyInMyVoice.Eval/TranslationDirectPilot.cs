@@ -907,6 +907,61 @@ internal static class TranslationDirectPilot
         return 0;
     }
 
+    // EN_SURGICAL_ONCE: take a rough back-translated English candidate (ES_EN) for EL_FILE source, score it, run
+    // the EN faithfulness gate, surgically replace ONLY the drifted spans (span -> expected_fix, no rewrite), then
+    // re-score + re-check residual drifts. Deterministic apply (reproducible). Answers: if we STOP at a
+    // low-but-drifted round and precisely fix its drifts in place, what does the score become?
+    public static async Task<int> RunEnSurgicalOnceAsync(string apiKey, EvalConfig config)
+    {
+        var gptKey = Environment.GetEnvironmentVariable("GPTZero_API_KEY") ?? Environment.GetEnvironmentVariable("GPTZERO_API_KEY");
+        var enFile = Environment.GetEnvironmentVariable("EL_FILE");
+        var candFile = Environment.GetEnvironmentVariable("ES_EN");
+        if (string.IsNullOrWhiteSpace(gptKey) || string.IsNullOrWhiteSpace(enFile) || !File.Exists(enFile)
+            || string.IsNullOrWhiteSpace(candFile) || !File.Exists(candFile))
+        {
+            Console.Error.WriteLine("EN_SURGICAL_ONCE: need GPTZero key, EL_FILE (English source), ES_EN (rough English candidate).");
+            return 2;
+        }
+
+        var source = (await File.ReadAllTextAsync(enFile)).Trim();
+        var cand = (await File.ReadAllTextAsync(candFile)).Trim();
+        using var http = new HttpClient();
+        using var gptHttp = new HttpClient();
+        var deepseek = new DeepSeekChatClient(http, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(120));
+        var gate = new FaithfulnessGate((s, u, gct) => deepseek.CompleteAsync(s, u, 2000, 0, gct));
+
+        Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
+        Console.WriteLine("================ EN (candidate, pre-surgery) ================\n" + cand + "\n");
+
+        var (aiBefore, _, _, _, errBefore) = await ScoreAsync(gptHttp, gptKey!, cand, CancellationToken.None);
+        Console.WriteLine($"GPTZero (before) = {(aiBefore?.ToString() ?? "err")}%{(errBefore is null ? string.Empty : $" ({errBefore})")}\n");
+
+        var report = await gate.EvaluateAsync(source, cand, CancellationToken.None);
+        Console.WriteLine($"================ EN gate: {report.Drifts.Count} drift(s){(report.Error is null ? string.Empty : $" (err {report.Error})")} ================");
+        foreach (var d in report.Drifts)
+        {
+            Console.WriteLine($"  [{d.Kind}] \"{d.CandidateSpan ?? "(missing)"}\" -> \"{d.ExpectedFix}\"  ({d.Why})");
+        }
+
+        var (repaired, unrep) = ApplySurgicalRepair(cand, report.Drifts);
+        Console.WriteLine("\n================ EN (after surgical span->fix) ================\n" + repaired + "\n");
+        if (unrep.Count > 0)
+        {
+            Console.WriteLine($"({unrep.Count} drift(s) had no exact span to replace — left as-is)\n");
+        }
+
+        var (aiAfter, _, _, _, errAfter) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
+        var residual = await gate.EvaluateAsync(source, repaired, CancellationToken.None);
+        Console.WriteLine($"GPTZero (after) = {(aiAfter?.ToString() ?? "err")}%{(errAfter is null ? string.Empty : $" ({errAfter})")}  ·  residual drifts = {residual.Drifts.Count}");
+        foreach (var d in residual.Drifts.Take(8))
+        {
+            Console.WriteLine($"  [residual {d.Kind}] \"{d.SourceValue}\" -> \"{d.CandidateSpan ?? "(missing)"}\"");
+        }
+
+        Console.WriteLine($"\nCALLS: DeepSeek={deepseek.CallCount}");
+        return 0;
+    }
+
     // Owner's CORRECTED idea (verbose): SURGICAL repair in the CHINESE — cross-lingual gate finds Chinese drift
     // spans, ApplySurgicalRepair replaces ONLY those (not an LLM rewrite) → one back-translation → measure the
     // English with the EN gate. Prints English source + each round's polished ZH, surgically-repaired ZH,
