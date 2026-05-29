@@ -1323,11 +1323,19 @@ internal static class TranslationDirectPilot
         }
 
         var zh0 = zh0r.Text;
+        var maxDrifts = int.TryParse(Environment.GetEnvironmentVariable("EL_MAX_DRIFTS"), out var md) && md >= 0 ? md : 3;
         Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
 
-        // Stage 1: find the FIRST candidate whose MEDIAN GPTZero < target (noise-confirmed).
+        // Stage 1: loop to a candidate that is BOTH low (median GPTZero < target, noise-confirmed) AND clean
+        // enough to repair surgically (≤ EL_MAX_DRIFTS real drifts). Data (Kwame/005/006): fixing ≤3 real drifts
+        // HOLDS the low score; fixing ~7 RESTORES enough source that the score climbs back (c005: 7 fixes → 100%).
+        // So a low-but-heavily-drifted candidate is the WRONG one to repair — keep looking; if none clears the
+        // bar, fall back to the fewest-drift low candidate (and warn the score may rise).
         string? lowCandidate = null;
         var lowMedian = 0;
+        FaithfulnessReport? lowReport = null;
+        (string Text, int Median, FaithfulnessReport Report)? fewestDrift = null;
+
         for (var round = 0; round <= iters && lowCandidate is null; round++)
         {
             var zhRough = await EssayPolishFeedbackAsync(deepseek, zh0, string.Empty) ?? zh0;
@@ -1357,25 +1365,52 @@ internal static class TranslationDirectPilot
             }
 
             var med = reads.OrderBy(x => x).ToList()[reads.Count / 2];
-            Console.WriteLine($"   < target — re-reads [{string.Join(", ", reads)}] median={med}%  {(med <= target ? "CONFIRMED low" : "noise, keep looping")}");
-            if (med <= target)
+            if (med > target)
+            {
+                Console.WriteLine($"   re-reads [{string.Join(", ", reads)}] median={med}% — noise, keep looping");
+                continue;
+            }
+
+            // Low + noise-confirmed: gate it now and only STOP if it is clean enough to repair (≤ maxDrifts).
+            var rpt = await gate.EvaluateAsync(source, cand, CancellationToken.None);
+            Console.WriteLine($"   CONFIRMED low (median {med}%) · {rpt.Drifts.Count} real drift(s) [bar ≤{maxDrifts}]"
+                + (rpt.Error is null ? string.Empty : $" (gate err {rpt.Error})"));
+            if (fewestDrift is null || rpt.Drifts.Count < fewestDrift.Value.Report.Drifts.Count)
+            {
+                fewestDrift = (cand, med, rpt);
+            }
+
+            if (rpt.Error is null && rpt.Drifts.Count <= maxDrifts)
             {
                 lowCandidate = cand;
                 lowMedian = med;
+                lowReport = rpt;
+            }
+            else
+            {
+                Console.WriteLine($"   too drifted to repair cleanly (> {maxDrifts}) — keep looping for a cleaner low candidate");
             }
         }
 
-        if (lowCandidate is null)
+        if (lowCandidate is null && fewestDrift is not null)
+        {
+            Console.WriteLine($"\n(no low candidate with ≤{maxDrifts} drifts in {iters + 1} rounds — repairing the fewest-drift one: {fewestDrift.Value.Report.Drifts.Count} drifts; the score may rise)");
+            lowCandidate = fewestDrift.Value.Text;
+            lowMedian = fewestDrift.Value.Median;
+            lowReport = fewestDrift.Value.Report;
+        }
+
+        if (lowCandidate is null || lowReport is null)
         {
             Console.WriteLine($"\nVERDICT: no candidate with median < {target} in {iters + 1} rounds");
             Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
             return 0;
         }
 
-        Console.WriteLine($"\n================ LOW CANDIDATE (median {lowMedian}%) ================\n" + lowCandidate + "\n");
+        Console.WriteLine($"\n================ LOW CANDIDATE (median {lowMedian}%, {lowReport.Drifts.Count} real drift(s)) ================\n" + lowCandidate + "\n");
 
-        // Stage 2: calibrated gate → REAL drifts only.
-        var report = await gate.EvaluateAsync(source, lowCandidate, CancellationToken.None);
+        // Stage 2: the calibrated gate report for the chosen candidate (already computed in the loop).
+        var report = lowReport!;
         Console.WriteLine($"================ calibrated gate: {report.Drifts.Count} real drift(s){(report.Error is null ? string.Empty : $" (err {report.Error})")} ================");
         foreach (var d in report.Drifts)
         {
