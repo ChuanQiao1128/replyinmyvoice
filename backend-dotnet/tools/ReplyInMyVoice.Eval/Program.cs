@@ -56,6 +56,12 @@ if (IsTruthy(Environment.GetEnvironmentVariable("GPTZERO_PROBE")))
     return await GptzeroProbe.RunAsync();
 }
 
+// YOUDAO_TX: single Youdao hop on a file (YT_FILE/YT_FROM/YT_TO/YT_OUT). Human-in-the-middle translation.
+if (IsTruthy(Environment.GetEnvironmentVariable("YOUDAO_TX")))
+{
+    return await YoudaoTx.RunAsync();
+}
+
 // PHASE1_CLAIM_LEDGER_VALIDATE: Sub-Phase 1.0 smoke — runs the C# ClaimLedger extractor
 // end-to-end against the same 10 corpus cases the Python v2 validator covered.
 // Needs DEEPSEEK_API_KEY (already in .env.local). No other side effects.
@@ -76,6 +82,80 @@ if (string.IsNullOrWhiteSpace(apiKey))
 {
     Console.Error.WriteLine("Missing model configuration. Set DEEPSEEK_API_KEY or OPENAI_API_KEY.");
     return 2;
+}
+
+// TRANSLATION_DIRECT: owner's exact chain — EN -> Youdao ZH -> DeepSeek polish ZH -> DeepSeek minimal
+// fact-repair ZH -> Youdao ZH->EN -> score on GPTZero. No masking, no English-side repair. Eval-only.
+if (IsTruthy(Environment.GetEnvironmentVariable("TRANSLATION_DIRECT")))
+{
+    return await TranslationDirectPilot.RunAsync(apiKey, config.Model, config.OpenAiBaseUrl);
+}
+
+// ESSAY_POLISH: owner's rough-voice Chinese polish prompt (EP_FILE/EP_OUT). DeepSeek-only, no translate.
+if (IsTruthy(Environment.GetEnvironmentVariable("ESSAY_POLISH")))
+{
+    return await EssayPolish.RunAsync(apiKey, config.Model, config.OpenAiBaseUrl);
+}
+
+// JUDGE_FILE: re-judge an arbitrary text file against fact lists (JF_TEXT/JF_KEEP/JF_FORBID).
+if (IsTruthy(Environment.GetEnvironmentVariable("JUDGE_FILE")))
+{
+    return await JudgeFile.RunAsync(apiKey, config.Model, config.OpenAiBaseUrl);
+}
+
+// ESSAY_LOOP: essay prompt as per-round polish inside a fact-gated best-of-N loop (EL_FILE/EL_KEEP/etc).
+if (IsTruthy(Environment.GetEnvironmentVariable("ESSAY_LOOP")))
+{
+    return await TranslationDirectPilot.RunEssayLoopAsync(apiKey, config);
+}
+
+// MASK_ESSAY_LOOP: full version — hard-fact masking + semantic checklist + per-relationship judge +
+// drift-feedback + reroll (EL_FILE/EL_KEEP/EL_FORBID/EL_SEM/EL_ITERS/EL_TARGET).
+if (IsTruthy(Environment.GetEnvironmentVariable("MASK_ESSAY_LOOP")))
+{
+    return await TranslationDirectPilot.RunMaskedEssayLoopAsync(apiKey, config);
+}
+
+// FAITHFULNESS_GATE: run the reliable faithfulness gate on (FG_SOURCE, FG_CANDIDATE); print drift spans.
+if (IsTruthy(Environment.GetEnvironmentVariable("FAITHFULNESS_GATE")))
+{
+    var fgSrc = Environment.GetEnvironmentVariable("FG_SOURCE");
+    var fgCand = Environment.GetEnvironmentVariable("FG_CANDIDATE");
+    if (string.IsNullOrWhiteSpace(fgSrc) || !File.Exists(fgSrc) || string.IsNullOrWhiteSpace(fgCand) || !File.Exists(fgCand))
+    {
+        Console.Error.WriteLine("FAITHFULNESS_GATE: set FG_SOURCE and FG_CANDIDATE to existing files.");
+        return 2;
+    }
+
+    var fgSource = (await File.ReadAllTextAsync(fgSrc)).Trim();
+    var fgCandidate = (await File.ReadAllTextAsync(fgCand)).Trim();
+    using var fgHttp = new HttpClient();
+    var fgDeepseek = new DeepSeekChatClient(fgHttp, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(90));
+    var fgGate = new FaithfulnessGate((s, u, fgct) => fgDeepseek.CompleteAsync(s, u, 2000, 0, fgct));
+    var fgReport = await fgGate.EvaluateAsync(fgSource, fgCandidate, CancellationToken.None);
+    Console.WriteLine($"FaithfulnessGate: Passed={fgReport.Passed}  drifts={fgReport.Drifts.Count}  error={fgReport.Error ?? "none"}");
+    foreach (var d in fgReport.Drifts)
+    {
+        Console.WriteLine($"  [{d.Kind}] source=\"{d.SourceValue}\""
+            + (d.CandidateSpan is null ? " (missing)" : $"  candidate=\"{d.CandidateSpan}\"")
+            + $"  -> fix=\"{d.ExpectedFix}\"  ({d.Why})");
+    }
+
+    return 0;
+}
+
+// TRANSLATION_DIRECT_BATCH: same chain over a batch of corpus cases (generality test) — GPTZero
+// before/after + semantic facts verdict per case. Select cases with EVAL_CASE_IDS / EVAL_MODE.
+if (IsTruthy(Environment.GetEnvironmentVariable("TRANSLATION_DIRECT_BATCH")))
+{
+    return await TranslationDirectPilot.RunBatchAsync(selectedCases, apiKey, config, startedAt);
+}
+
+// TRANSLATION_DIRECT_LOOP: owner's iterative re-polish loop on ONE case (EVAL_CASE_IDS). Each round feeds
+// the full prior state (original + polished/repaired ZH + back-EN + score) back for a fresh Chinese rewrite.
+if (IsTruthy(Environment.GetEnvironmentVariable("TRANSLATION_DIRECT_LOOP")))
+{
+    return await TranslationDirectPilot.RunLoopAsync(selectedCases, apiKey, config, startedAt);
 }
 
 // EVAL_SEMANTIC_RESCORE_FILES (comma-separated saved run JSONs) re-scores those outputs with the
