@@ -1245,6 +1245,174 @@ internal static class TranslationDirectPilot
         return (llm, true);
     }
 
+    // English-side LLM-guarded surgical repair: apply ONLY the flagged span->fix edits to the English
+    // candidate, keep every other character verbatim (NOT a rewrite), and guard that no non-flagged sentence
+    // changed (else fall back to deterministic span-replace). Cleaner than blind string-replace — avoids the
+    // "$$360" / "$480 seats" collisions a raw replace produces when a flagged token overlaps surrounding garble.
+    private static async Task<(string Result, bool UsedLlm)> LlmSurgicalEnFixWithGuard(DeepSeekChatClient ds, string en, IReadOnlyList<DriftSpan> drifts)
+    {
+        var (det, _) = ApplySurgicalRepair(en, drifts);
+        if (drifts.Count == 0)
+        {
+            return (det, false);
+        }
+
+        var edits = string.Join("\n", drifts.Select(d => string.IsNullOrEmpty(d.ExpectedFix)
+            ? $"- delete \"{d.CandidateSpan}\""
+            : $"- replace \"{d.CandidateSpan}\" with \"{d.ExpectedFix}\""));
+        const string sys =
+            "You are a precise text editor. Below is an English passage and an EDIT LIST. Output the passage with "
+            + "ONLY the listed replacements/deletions applied. Keep every other character exactly as-is — do NOT "
+            + "rewrite, rephrase, reorder, fix grammar, or add/remove anything else. Return JSON ONLY: "
+            + "{\"text\":\"<the passage with only the listed edits applied>\"}";
+        var raw = await ds.CompleteAsync(sys, "Passage:\n" + en + "\n\nEDIT LIST:\n" + edits, 2400, 0, CancellationToken.None);
+        var llm = ParseJsonStringField(raw, "text");
+        if (string.IsNullOrWhiteSpace(llm))
+        {
+            return (det, false);
+        }
+
+        var spans = drifts.Where(d => !string.IsNullOrEmpty(d.CandidateSpan)).Select(d => d.CandidateSpan!).ToList();
+        foreach (var sentence in Regex.Split(en, @"(?<=[.!?\n])").Select(s => s.Trim()).Where(s => s.Length > 0))
+        {
+            var flagged = spans.Any(sp => sentence.Contains(sp, StringComparison.Ordinal));
+            if (!flagged && !llm.Contains(sentence, StringComparison.Ordinal))
+            {
+                return (det, false); // LLM touched a non-flagged sentence -> over-edited -> deterministic fallback
+            }
+        }
+
+        return (llm, true);
+    }
+
+    // FIRST_LOW_REPAIR (owner's flow): generate translationese candidates (essay-polish → Youdao ZH→EN, NO
+    // pre-repair, NO feedback — we want a low/rough one, not a faithful one) until ONE scores < target; re-score
+    // it EL_RESCORE× and require the MEDIAN < target (not a noise read); then the CALIBRATED gate finds its REAL
+    // drifts and a LLM-GUARDED English surgical pass fixes ONLY those spans (not a rewrite); re-score → did
+    // fixing the facts push the score back up?
+    public static async Task<int> RunFirstLowThenRepairAsync(string apiKey, EvalConfig config)
+    {
+        var gptKey = Environment.GetEnvironmentVariable("GPTZero_API_KEY") ?? Environment.GetEnvironmentVariable("GPTZERO_API_KEY");
+        var youdaoKey = Environment.GetEnvironmentVariable("YOUDAO_APP_KEY") ?? Environment.GetEnvironmentVariable("AppID") ?? Environment.GetEnvironmentVariable("YouDao_API_KEY");
+        var youdaoSecret = Environment.GetEnvironmentVariable("YOUDAO_APP_SECRET") ?? Environment.GetEnvironmentVariable("AppSecret");
+        var youdaoUrl = Environment.GetEnvironmentVariable("YOUDAO_API_URL") ?? "https://openapi.youdao.com/api";
+        var enFile = Environment.GetEnvironmentVariable("EL_FILE");
+        if (string.IsNullOrWhiteSpace(gptKey) || string.IsNullOrWhiteSpace(youdaoKey) || string.IsNullOrWhiteSpace(youdaoSecret) || string.IsNullOrWhiteSpace(enFile) || !File.Exists(enFile))
+        {
+            Console.Error.WriteLine("FIRST_LOW_REPAIR: need GPTZero + Youdao keys and EL_FILE.");
+            return 2;
+        }
+
+        var source = (await File.ReadAllTextAsync(enFile)).Trim();
+        var iters = int.TryParse(Environment.GetEnvironmentVariable("EL_ITERS"), out var it) && it > 0 ? it : 6;
+        var target = int.TryParse(Environment.GetEnvironmentVariable("EL_TARGET"), out var tg) && tg > 0 ? tg : 30;
+        var reReads = int.TryParse(Environment.GetEnvironmentVariable("EL_RESCORE"), out var rr) && rr > 0 ? rr : 3;
+
+        using var http = new HttpClient();
+        using var youdaoHttp = new HttpClient();
+        using var gptHttp = new HttpClient();
+        var deepseek = new DeepSeekChatClient(http, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(120));
+        var youdao = new YoudaoTranslationClient(youdaoHttp, youdaoKey!, youdaoSecret!, youdaoUrl, TimeSpan.FromSeconds(30));
+        var gate = new FaithfulnessGate((s, u, gct) => deepseek.CompleteAsync(s, u, 2000, 0, gct));
+
+        var zh0r = await youdao.TranslateAsync(source, "en", "zh-CHS", CancellationToken.None);
+        if (!zh0r.Success)
+        {
+            Console.Error.WriteLine($"Youdao EN->ZH fail: {zh0r.ErrorCode}");
+            return 1;
+        }
+
+        var zh0 = zh0r.Text;
+        Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
+
+        // Stage 1: find the FIRST candidate whose MEDIAN GPTZero < target (noise-confirmed).
+        string? lowCandidate = null;
+        var lowMedian = 0;
+        for (var round = 0; round <= iters && lowCandidate is null; round++)
+        {
+            var zhRough = await EssayPolishFeedbackAsync(deepseek, zh0, string.Empty) ?? zh0;
+            var back = await youdao.TranslateAsync(zhRough, "zh-CHS", "en", CancellationToken.None);
+            if (!back.Success)
+            {
+                Console.WriteLine($"round {round}: Youdao ZH->EN fail ({back.ErrorCode})");
+                continue;
+            }
+
+            var cand = back.Text.Trim();
+            var (ai, _, _, _, serr) = await ScoreAsync(gptHttp, gptKey!, cand, CancellationToken.None);
+            Console.WriteLine($"round {round}: GPTZero = {(ai?.ToString() ?? "err")}%" + (serr is null ? string.Empty : $" ({serr})"));
+            if (serr is not null || ai is null || ai > target)
+            {
+                continue;
+            }
+
+            var reads = new List<int> { ai.Value };
+            for (var k = 1; k < reReads; k++)
+            {
+                var (re, _, _, _, reErr) = await ScoreAsync(gptHttp, gptKey!, cand, CancellationToken.None);
+                if (reErr is null && re is not null)
+                {
+                    reads.Add(re.Value);
+                }
+            }
+
+            var med = reads.OrderBy(x => x).ToList()[reads.Count / 2];
+            Console.WriteLine($"   < target — re-reads [{string.Join(", ", reads)}] median={med}%  {(med <= target ? "CONFIRMED low" : "noise, keep looping")}");
+            if (med <= target)
+            {
+                lowCandidate = cand;
+                lowMedian = med;
+            }
+        }
+
+        if (lowCandidate is null)
+        {
+            Console.WriteLine($"\nVERDICT: no candidate with median < {target} in {iters + 1} rounds");
+            Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
+            return 0;
+        }
+
+        Console.WriteLine($"\n================ LOW CANDIDATE (median {lowMedian}%) ================\n" + lowCandidate + "\n");
+
+        // Stage 2: calibrated gate → REAL drifts only.
+        var report = await gate.EvaluateAsync(source, lowCandidate, CancellationToken.None);
+        Console.WriteLine($"================ calibrated gate: {report.Drifts.Count} real drift(s){(report.Error is null ? string.Empty : $" (err {report.Error})")} ================");
+        foreach (var d in report.Drifts)
+        {
+            Console.WriteLine($"  [{d.Kind}] \"{d.CandidateSpan ?? "(missing)"}\" -> \"{d.ExpectedFix}\"  ({d.Why})");
+        }
+
+        // Stage 3: LLM-guarded English surgical repair of ONLY those spans (NOT a rewrite).
+        var (repaired, usedLlm) = await LlmSurgicalEnFixWithGuard(deepseek, lowCandidate, report.Drifts);
+        Console.WriteLine($"\n================ EN (after {(usedLlm ? "LLM-guarded" : "deterministic")} surgical, only flagged spans) ================\n" + repaired + "\n");
+
+        // Stage 4: re-score the repaired candidate (median) + residual faithfulness check.
+        var afterReads = new List<int>();
+        for (var k = 0; k < reReads; k++)
+        {
+            var (re, _, _, _, reErr) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
+            if (reErr is null && re is not null)
+            {
+                afterReads.Add(re.Value);
+            }
+        }
+
+        var afterMedian = afterReads.Count > 0 ? afterReads.OrderBy(x => x).ToList()[afterReads.Count / 2] : -1;
+        var residual = await gate.EvaluateAsync(source, repaired, CancellationToken.None);
+        Console.WriteLine($"GPTZero after = [{string.Join(", ", afterReads)}] median={afterMedian}%  (was {lowMedian}%)  ·  residual drifts = {residual.Drifts.Count}");
+        foreach (var d in residual.Drifts.Take(8))
+        {
+            Console.WriteLine($"  [residual {d.Kind}] \"{d.SourceValue}\" -> \"{d.CandidateSpan ?? "(missing)"}\"");
+        }
+
+        var rose = afterMedian > lowMedian;
+        Console.WriteLine($"\nVERDICT: fixed {report.Drifts.Count} real drift(s) → {lowMedian}% → {afterMedian}% "
+            + $"({(rose ? $"ROSE +{afterMedian - lowMedian}" : "held/fell")}); "
+            + $"{(residual.Drifts.Count == 0 ? "now FAITHFUL" : $"{residual.Drifts.Count} residual")}");
+        Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
+        return 0;
+    }
+
     private static string Oneline(string s, int max)
     {
         var t = s.Replace("\n", " ", StringComparison.Ordinal).Trim();

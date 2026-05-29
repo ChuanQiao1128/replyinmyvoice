@@ -144,6 +144,14 @@ if (IsTruthy(Environment.GetEnvironmentVariable("EN_SURGICAL_ONCE")))
     return await TranslationDirectPilot.RunEnSurgicalOnceAsync(apiKey, config);
 }
 
+// FIRST_LOW_REPAIR: owner's flow — loop EL_FILE to the FIRST candidate with median GPTZero < EL_TARGET (noise-
+// confirmed via EL_RESCORE), then calibrated gate → real drifts → LLM-guarded English surgical (only flagged
+// spans, not a rewrite) → re-score. Tests whether fixing the real drifts pushes the low score back up.
+if (IsTruthy(Environment.GetEnvironmentVariable("FIRST_LOW_REPAIR")))
+{
+    return await TranslationDirectPilot.RunFirstLowThenRepairAsync(apiKey, config);
+}
+
 // FAITHFULNESS_GATE: run the reliable faithfulness gate on (FG_SOURCE, FG_CANDIDATE); print drift spans.
 if (IsTruthy(Environment.GetEnvironmentVariable("FAITHFULNESS_GATE")))
 {
