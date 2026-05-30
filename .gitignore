@@ -43,3 +43,6 @@ yarn-error.log*
 # plans/overnight-supervisor.sh revert logic.
 plans/STOP-OVERNIGHT.txt
 plans/MONEY-MADE.txt
+
+# delivery-pipeline local state
+.delivery/
