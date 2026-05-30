@@ -17,6 +17,14 @@ const appPageSource = readFileSync(
   new URL("../../app/app/page.tsx", import.meta.url),
   "utf8",
 );
+const privacySource = readFileSync(
+  new URL("../../app/privacy/page.tsx", import.meta.url),
+  "utf8",
+);
+const termsSource = readFileSync(
+  new URL("../../app/terms/page.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("rewrite workspace surface copy", () => {
   it("is a single-input workspace without the old wizard scaffolding", () => {
@@ -51,12 +59,19 @@ describe("rewrite workspace surface copy", () => {
     expect(workspaceSource).toContain("rewriteAiLikePercent");
   });
 
-  it("keeps local rewrite history without persisting drafts to the database", () => {
+  it("describes rewrite history and retention accurately", () => {
     expect(workspaceSource).toContain("rimv.rewrite.history.v1");
     expect(workspaceSource).toContain("Recent rewrites");
-    expect(workspaceSource).toContain(
-      "Rewrites stay in this browser only and are not saved to the",
-    );
+    expect(workspaceSource).toContain("By choosing Rewrite");
+    expect(workspaceSource).toContain("pasted messages and rewrites");
+    expect(workspaceSource).toContain("processed for this request and retained");
+    expect(workspaceSource).toContain("up to 90 days");
+    expect(workspaceSource).toContain("default. Raw content is then removed");
+    expect(workspaceSource).toContain("delete history");
+    expect(workspaceSource).toContain("items from the workspace");
+    expect(privacySource).toContain("up to the configured retention window");
+    expect(privacySource).toContain("default 90 days");
+    expect(termsSource).toContain("default 90 days");
   });
 
   it("keeps the slim quota bar and the paywall aligned with the rewrite-packs model", () => {
