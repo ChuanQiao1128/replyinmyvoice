@@ -22,6 +22,47 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.AdminAuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("AdminEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("AdminExternalAuthUserId")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("TargetUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Action", "CreatedAt");
+
+                    b.HasIndex("AdminExternalAuthUserId", "CreatedAt");
+
+                    b.HasIndex("TargetUserId", "CreatedAt");
+
+                    b.ToTable("AdminAuditLogs");
+                });
+
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.ApiKey", b =>
                 {
                     b.Property<Guid>("Id")
@@ -146,6 +187,9 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTimeOffset?>("ConsentAcceptedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -177,6 +221,9 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset?>("SuspendedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
@@ -449,6 +496,9 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("ErrorCode")
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
@@ -471,7 +521,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasColumnType("nvarchar(128)");
 
                     b.Property<string>("RequestJson")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ResultJson")
@@ -491,10 +540,14 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAt");
+
                     b.HasIndex("Status", "ExpiresAt");
 
                     b.HasIndex("UserId", "IdempotencyKey")
                         .IsUnique();
+
+                    b.HasIndex("UserId", "DeletedAt", "CreatedAt");
 
                     b.ToTable("RewriteAttempts");
                 });
@@ -762,16 +815,36 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("nvarchar(60)");
 
+                    b.Property<long?>("StripeAmountTotal")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StripeCurrency")
+                        .HasMaxLength(12)
+                        .HasColumnType("nvarchar(12)");
+
                     b.Property<string>("StripeEventId")
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("StripeSku")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("StripeEventId");
+                    b.HasIndex("StripeEventId")
+                        .IsUnique()
+                        .HasFilter("[StripeEventId] IS NOT NULL");
+
+                    b.HasIndex("StripePaymentIntentId")
+                        .HasFilter("[StripePaymentIntentId] IS NOT NULL");
 
                     b.HasIndex("UserId", "ExpiresAt");
 

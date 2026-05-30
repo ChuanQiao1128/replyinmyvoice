@@ -14,6 +14,10 @@ const sections = [
     text: "Reply In My Voice helps rewrite practical replies for everyday communication. You are responsible for reviewing any output before sending it.",
   },
   {
+    title: "Workspace content and retention",
+    text: "By submitting content for a rewrite, you agree that pasted messages, rough drafts, rewritten replies, and related quality metadata are processed to provide the request and retained for up to the configured retention window (default 90 days). After that window, raw content is removed. You can delete items from your history in the workspace.",
+  },
+  {
     title: "No guaranteed writing score",
     text: "Tone check percentages are reference signals for comparison. They are not a promise that a message will be judged a certain way by any person or system.",
   },

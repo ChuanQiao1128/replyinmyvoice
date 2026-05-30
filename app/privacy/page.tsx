@@ -11,11 +11,15 @@ export const metadata: Metadata = {
 const sections = [
   {
     title: "What the workspace processes",
-    text: "When you use the rewrite workspace, the app processes the message context, rough draft, tone preference, and facts you provide so it can produce a revised reply and writing signal.",
+    text: "When you use the rewrite workspace, the app processes the pasted messages, rough drafts, tone preference, and facts you provide so it can produce a revised reply and writing signal.",
   },
   {
-    title: "Reply content and quality improvement",
-    text: "The app may store submitted message context, rough drafts, rewritten replies, writing-signal results, and rewrite metadata for internal quality improvement, debugging, and strategy evaluation. This helps us improve the rewrite and repair system over time. We do not sell this content or publish it publicly.",
+    title: "Reply content retention and deletion",
+    text: "Submitted message content, rough drafts, rewritten replies, writing-signal results, and rewrite metadata are retained for up to the configured retention window (default 90 days). After that window, raw content is removed. You can delete items from your history in the app workspace.",
+  },
+  {
+    title: "Quality improvement",
+    text: "During the retention window, stored content may be used for internal quality improvement, debugging, and strategy evaluation. This helps us improve the rewrite and repair system over time. We do not sell this content or publish it publicly.",
   },
   {
     title: "Not used for ad targeting or model training",

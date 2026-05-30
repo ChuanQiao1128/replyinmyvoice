@@ -541,6 +541,12 @@ export function RewriteWorkspace({
                   Rewrite
                 </Button>
               </div>
+              <p className="mt-3 text-xs leading-5 text-ink/45">
+                By choosing Rewrite, you agree that pasted messages and rewrites
+                are processed for this request and retained for up to 90 days by
+                default. Raw content is then removed, and you can delete history
+                items from the workspace.
+              </p>
             </form>
 
             {/* Result */}
@@ -755,7 +761,7 @@ export function RewriteWorkspace({
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
             <Eyebrow>Recent rewrites</Eyebrow>
             <span className="font-mono text-[11px] text-ink/40">
-              {history.length ? `${history.length} saved locally` : "Empty"}
+              {history.length ? `${history.length} in history` : "Empty"}
             </span>
           </summary>
           {history.length ? (
@@ -800,8 +806,8 @@ export function RewriteWorkspace({
             </>
           ) : (
             <p className="mt-3 text-sm text-ink/50">
-              Rewrites stay in this browser only and are not saved to the
-              database.
+              Recent rewrites will appear here after a successful request. Raw
+              content is removed after the retention window.
             </p>
           )}
         </details>

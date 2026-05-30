@@ -1,7 +1,5 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -10,7 +8,6 @@ using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
 using Stripe;
 using System.Security.Claims;
-using System.Text;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,25 +15,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddApplicationInsightsTelemetry();
-
-var clerkIssuer = ResolveClerkIssuer(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(clerkIssuer))
-{
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
-        {
-            options.Authority = clerkIssuer;
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidIssuer = clerkIssuer,
-                ValidateAudience = !string.IsNullOrWhiteSpace(builder.Configuration["CLERK_JWT_AUDIENCE"]),
-                ValidAudience = builder.Configuration["CLERK_JWT_AUDIENCE"],
-                ValidateLifetime = true,
-            };
-        });
-    builder.Services.AddAuthorization();
-}
 
 builder.Services.AddReplyInMyVoiceInfrastructure(builder.Configuration);
 
@@ -46,12 +24,6 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-}
-
-if (!string.IsNullOrWhiteSpace(clerkIssuer))
-{
-    app.UseAuthentication();
-    app.UseAuthorization();
 }
 
 app.MapGet("/health", () => Results.Ok(new { ok = true, service = "replyinmyvoice-api" }));
@@ -404,9 +376,10 @@ static string? ResolveExternalUserId(
     IConfiguration configuration)
 {
     var headerUserId = request.Headers["X-External-User-Id"].ToString();
-    var allowHeaderAuth = environment.IsDevelopment() ||
-        environment.IsEnvironment("Testing") ||
-        string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase);
+    var allowHeaderAuth = !IsProductionEnvironment(environment, configuration) &&
+        (environment.IsDevelopment() ||
+            environment.IsEnvironment("Testing") ||
+            string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase));
 
     if (allowHeaderAuth && !string.IsNullOrWhiteSpace(headerUserId))
     {
@@ -432,9 +405,10 @@ static string? ResolveRequestEmail(
     IWebHostEnvironment environment,
     IConfiguration configuration)
 {
-    var allowHeaderAuth = environment.IsDevelopment() ||
-        environment.IsEnvironment("Testing") ||
-        string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase);
+    var allowHeaderAuth = !IsProductionEnvironment(environment, configuration) &&
+        (environment.IsDevelopment() ||
+            environment.IsEnvironment("Testing") ||
+            string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase));
 
     if (allowHeaderAuth)
     {
@@ -451,54 +425,15 @@ static string? ResolveRequestEmail(
         request.HttpContext.User.FindFirstValue("preferred_username");
 }
 
-static string? ResolveClerkIssuer(IConfiguration configuration)
-{
-    var explicitIssuer = configuration["CLERK_JWT_ISSUER"] ?? configuration["CLERK_ISSUER"];
-    if (!string.IsNullOrWhiteSpace(explicitIssuer))
-    {
-        return explicitIssuer.TrimEnd('/');
-    }
+static bool IsProductionEnvironment(
+    IWebHostEnvironment environment,
+    IConfiguration configuration) =>
+    environment.IsProduction() ||
+    IsProductionEnvironmentName(configuration["ASPNETCORE_ENVIRONMENT"]) ||
+    IsProductionEnvironmentName(configuration["AZURE_FUNCTIONS_ENVIRONMENT"]);
 
-    var publishableKey = configuration["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"];
-    if (string.IsNullOrWhiteSpace(publishableKey))
-    {
-        return null;
-    }
-
-    var encoded = publishableKey.Split('_').LastOrDefault();
-    if (string.IsNullOrWhiteSpace(encoded))
-    {
-        return null;
-    }
-
-    try
-    {
-        var base64 = encoded.Replace('-', '+').Replace('_', '/');
-        switch (base64.Length % 4)
-        {
-            case 2:
-                base64 += "==";
-                break;
-            case 3:
-                base64 += "=";
-                break;
-        }
-
-        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(base64)).TrimEnd('$');
-        if (string.IsNullOrWhiteSpace(decoded))
-        {
-            return null;
-        }
-
-        return decoded.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
-            ? decoded.TrimEnd('/')
-            : $"https://{decoded.TrimEnd('/')}";
-    }
-    catch (FormatException)
-    {
-        return null;
-    }
-}
+static bool IsProductionEnvironmentName(string? environmentName) =>
+    string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
 
 public sealed record RewriteAttemptResponse(
     Guid AttemptId,

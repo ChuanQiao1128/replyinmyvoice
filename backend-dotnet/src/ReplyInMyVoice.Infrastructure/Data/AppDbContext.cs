@@ -22,6 +22,21 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RewriteProviderCall> RewriteProviderCalls => Set<RewriteProviderCall>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsage> ApiKeyUsages => Set<ApiKeyUsage>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        StampConsentForAddedRewriteAttempts();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override async Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        await StampConsentForAddedRewriteAttemptsAsync(cancellationToken);
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +50,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.StripeCustomerId).HasMaxLength(160);
             entity.Property(x => x.StripeSubscriptionId).HasMaxLength(160);
             entity.Property(x => x.SubscriptionStatus).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.SuspendedAt).IsRequired(false);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
         });
 
@@ -54,9 +70,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
+            entity.HasIndex(x => x.CreatedAt);
+            entity.HasIndex(x => new { x.UserId, x.DeletedAt, x.CreatedAt });
             entity.HasIndex(x => new { x.Status, x.ExpiresAt });
             entity.Property(x => x.IdempotencyKey).HasMaxLength(120);
             entity.Property(x => x.RequestHash).HasMaxLength(128);
+            entity.Property(x => x.RequestJson).IsRequired(false);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(x => x.ErrorCode).HasMaxLength(120);
             entity.Property(x => x.ErrorMessage).HasMaxLength(512);
@@ -127,9 +146,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.UserId, x.ExpiresAt });
-            entity.HasIndex(x => x.StripeEventId);
+            entity.HasIndex(x => x.StripeEventId).IsUnique().HasFilter("[StripeEventId] IS NOT NULL");
+            entity.HasIndex(x => x.StripePaymentIntentId).HasFilter("[StripePaymentIntentId] IS NOT NULL");
             entity.Property(x => x.Source).HasMaxLength(60);
             entity.Property(x => x.StripeEventId).HasMaxLength(160);
+            entity.Property(x => x.StripePaymentIntentId).HasMaxLength(160);
+            entity.Property(x => x.StripeSku).HasMaxLength(120);
+            entity.Property(x => x.StripeCurrency).HasMaxLength(12);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
             entity.HasOne(x => x.User)
                 .WithMany()
@@ -327,5 +350,102 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .HasForeignKey(x => x.ApiKeyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<AdminAuditLog>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.AdminExternalAuthUserId, x.CreatedAt });
+            entity.HasIndex(x => new { x.TargetUserId, x.CreatedAt });
+            entity.HasIndex(x => new { x.Action, x.CreatedAt });
+            entity.Property(x => x.AdminExternalAuthUserId).HasMaxLength(160);
+            entity.Property(x => x.AdminEmail).HasMaxLength(320);
+            entity.Property(x => x.Action).HasMaxLength(120);
+        });
+    }
+
+    private void StampConsentForAddedRewriteAttempts()
+    {
+        var firstAttemptByUser = GetFirstAddedRewriteAttemptByUser();
+        if (firstAttemptByUser.Count == 0)
+        {
+            return;
+        }
+
+        var trackedUserIds = new HashSet<Guid>();
+        foreach (var userEntry in ChangeTracker.Entries<AppUser>()
+            .Where(x => firstAttemptByUser.ContainsKey(x.Entity.Id)))
+        {
+            trackedUserIds.Add(userEntry.Entity.Id);
+            if (userEntry.Entity.ConsentAcceptedAt is null)
+            {
+                StampConsent(userEntry.Entity, firstAttemptByUser[userEntry.Entity.Id]);
+            }
+        }
+
+        var missingUserIds = firstAttemptByUser.Keys
+            .Where(x => !trackedUserIds.Contains(x))
+            .ToArray();
+
+        if (missingUserIds.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var user in AppUsers.Where(x => missingUserIds.Contains(x.Id) && x.ConsentAcceptedAt == null).ToList())
+        {
+            StampConsent(user, firstAttemptByUser[user.Id]);
+        }
+    }
+
+    private async Task StampConsentForAddedRewriteAttemptsAsync(CancellationToken cancellationToken)
+    {
+        var firstAttemptByUser = GetFirstAddedRewriteAttemptByUser();
+        if (firstAttemptByUser.Count == 0)
+        {
+            return;
+        }
+
+        var trackedUserIds = new HashSet<Guid>();
+        foreach (var userEntry in ChangeTracker.Entries<AppUser>()
+            .Where(x => firstAttemptByUser.ContainsKey(x.Entity.Id)))
+        {
+            trackedUserIds.Add(userEntry.Entity.Id);
+            if (userEntry.Entity.ConsentAcceptedAt is null)
+            {
+                StampConsent(userEntry.Entity, firstAttemptByUser[userEntry.Entity.Id]);
+            }
+        }
+
+        var missingUserIds = firstAttemptByUser.Keys
+            .Where(x => !trackedUserIds.Contains(x))
+            .ToArray();
+
+        if (missingUserIds.Length == 0)
+        {
+            return;
+        }
+
+        var users = await AppUsers
+            .Where(x => missingUserIds.Contains(x.Id) && x.ConsentAcceptedAt == null)
+            .ToListAsync(cancellationToken);
+        foreach (var user in users)
+        {
+            StampConsent(user, firstAttemptByUser[user.Id]);
+        }
+    }
+
+    private Dictionary<Guid, DateTimeOffset> GetFirstAddedRewriteAttemptByUser() =>
+        ChangeTracker.Entries<RewriteAttempt>()
+            .Where(x => x.State == EntityState.Added)
+            .GroupBy(x => x.Entity.UserId)
+            .ToDictionary(
+                x => x.Key,
+                x => x.Min(entry => entry.Entity.CreatedAt));
+
+    private static void StampConsent(AppUser user, DateTimeOffset consentAcceptedAt)
+    {
+        user.ConsentAcceptedAt = consentAcceptedAt;
+        user.UpdatedAt = consentAcceptedAt;
+        user.RowVersion = Guid.NewGuid();
     }
 }

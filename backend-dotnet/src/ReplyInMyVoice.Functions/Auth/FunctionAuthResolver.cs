@@ -94,7 +94,15 @@ public static class FunctionAuthResolver
     }
 
     private static bool AllowHeaderAuth(IConfiguration configuration) =>
+        !IsProductionEnvironment(configuration) &&
         string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsProductionEnvironment(IConfiguration configuration) =>
+        IsProductionEnvironmentName(configuration["ASPNETCORE_ENVIRONMENT"]) ||
+        IsProductionEnvironmentName(configuration["AZURE_FUNCTIONS_ENVIRONMENT"]);
+
+    private static bool IsProductionEnvironmentName(string? environmentName) =>
+        string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
 
     private static string? ResolveBearerToken(HttpRequest request)
     {

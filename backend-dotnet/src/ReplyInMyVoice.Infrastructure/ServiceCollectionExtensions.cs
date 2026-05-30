@@ -1,7 +1,9 @@
+using System.Net;
 using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
@@ -11,10 +13,20 @@ namespace ReplyInMyVoice.Infrastructure;
 
 public static class ServiceCollectionExtensions
 {
+    private const int DefaultTotalRewriteBudgetSeconds = 180;
+
     public static IServiceCollection AddReplyInMyVoiceInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        string? environmentName = null,
+        bool requireServiceBusConsumer = false)
     {
+        configuration.ValidateReplyInMyVoiceRuntimeConfiguration(
+            environmentName,
+            requireServiceBusConsumer);
+
+        services.AddLogging();
+
         services.AddDbContext<AppDbContext>(options =>
         {
             var connectionString = configuration.GetConnectionString("DefaultConnection")
@@ -22,7 +34,12 @@ public static class ServiceCollectionExtensions
 
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
-                options.UseSqlServer(connectionString);
+                options.UseSqlServer(
+                    connectionString,
+                    sqlOptions => sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 5,
+                        maxRetryDelay: TimeSpan.FromSeconds(10),
+                        errorNumbersToAdd: null));
             }
             else
             {
@@ -45,6 +62,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<StripeEventService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddHttpClient();
+        services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleRewriteModelClient));
+        services.AddResilientProviderHttpClient(nameof(SaplingWritingSignalClient));
 
         var serviceBusConnection = configuration.GetConnectionString("ServiceBus")
             ?? configuration["ServiceBus"]
@@ -91,12 +110,15 @@ public static class ServiceCollectionExtensions
         var rewriteMaxAttempts = int.TryParse(configuration["REWRITE_MAX_ATTEMPTS"], out var parsedMaxAttempts)
             ? parsedMaxAttempts
             : 10;
-        // Optional wall-clock cap for the whole rewrite (all loops combined). TOTAL_REWRITE_BUDGET_SEC=0
-        // (default) leaves it unlimited — current behavior; set e.g. 120 to bound worst-case latency by
-        // returning the best candidate found so far. Tunable via app settings without a redeploy.
-        var totalRewriteBudgetSeconds = int.TryParse(configuration["TOTAL_REWRITE_BUDGET_SEC"], out var parsedBudget) && parsedBudget > 0
-            ? parsedBudget
-            : 0;
+        // Production wall-clock cap for the whole rewrite (all loops combined). An explicit
+        // TOTAL_REWRITE_BUDGET_SEC=0 still leaves it unlimited for controlled non-production runs.
+        var totalRewriteBudgetSeconds = DefaultTotalRewriteBudgetSeconds;
+        if (configuration["TOTAL_REWRITE_BUDGET_SEC"] is { } configuredBudget &&
+            int.TryParse(configuredBudget, out var parsedBudget) &&
+            parsedBudget >= 0)
+        {
+            totalRewriteBudgetSeconds = parsedBudget;
+        }
 
         if (string.IsNullOrWhiteSpace(modelApiKey) && string.IsNullOrWhiteSpace(saplingApiKey))
         {
@@ -144,6 +166,90 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    private static IServiceCollection AddResilientProviderHttpClient(
+        this IServiceCollection services,
+        string name)
+    {
+        services
+            .AddHttpClient(name)
+            .AddResilienceHandler();
+
+        return services;
+    }
+
+    private static IHttpClientBuilder AddResilienceHandler(this IHttpClientBuilder builder) =>
+        builder.AddHttpMessageHandler(() => new ProviderHttpResilienceHandler());
+
+    public static void ValidateReplyInMyVoiceRuntimeConfiguration(
+        this IConfiguration configuration,
+        string? environmentName,
+        bool requireServiceBusConsumer = false)
+    {
+        var runtimeEnvironmentName = ResolveRuntimeEnvironmentName(configuration, environmentName);
+        if (string.IsNullOrWhiteSpace(runtimeEnvironmentName) ||
+            IsDevelopmentOrTesting(runtimeEnvironmentName))
+        {
+            return;
+        }
+
+        var missing = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("DefaultConnection")) &&
+            string.IsNullOrWhiteSpace(configuration["DATABASE_URL"]))
+        {
+            missing.Add("ConnectionStrings:DefaultConnection or DATABASE_URL");
+        }
+
+        if (requireServiceBusConsumer &&
+            string.IsNullOrWhiteSpace(configuration.GetConnectionString("ServiceBus")) &&
+            string.IsNullOrWhiteSpace(configuration["ServiceBus"]) &&
+            string.IsNullOrWhiteSpace(configuration["SERVICEBUS_CONNECTION_STRING"]) &&
+            string.IsNullOrWhiteSpace(configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"]))
+        {
+            missing.Add("ConnectionStrings:ServiceBus or ServiceBus or SERVICEBUS_CONNECTION_STRING or AZURE_SERVICE_BUS_CONNECTION_STRING");
+        }
+
+        if (string.IsNullOrWhiteSpace(configuration["STRIPE_SECRET_KEY"]))
+        {
+            missing.Add("STRIPE_SECRET_KEY");
+        }
+
+        if (string.IsNullOrWhiteSpace(configuration["STRIPE_WEBHOOK_SECRET"]))
+        {
+            missing.Add("STRIPE_WEBHOOK_SECRET");
+        }
+
+        var openAiBaseUrl = configuration["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1";
+        if (string.IsNullOrWhiteSpace(ResolveOpenAiCompatibleApiKey(configuration, openAiBaseUrl)))
+        {
+            missing.Add(IsDeepSeekBaseUrl(openAiBaseUrl)
+                ? "DEEPSEEK_API_KEY or OPENAI_API_KEY"
+                : "OPENAI_API_KEY or DEEPSEEK_API_KEY");
+        }
+
+        if (string.IsNullOrWhiteSpace(configuration["SAPLING_API_KEY"]))
+        {
+            missing.Add("SAPLING_API_KEY");
+        }
+
+        if (missing.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"ReplyInMyVoice startup configuration is missing required setting(s) for {runtimeEnvironmentName}: {string.Join(", ", missing)}.");
+        }
+    }
+
+    private static string? ResolveRuntimeEnvironmentName(IConfiguration configuration, string? environmentName) =>
+        !string.IsNullOrWhiteSpace(environmentName)
+            ? environmentName
+            : configuration["DOTNET_ENVIRONMENT"]
+                ?? configuration["ASPNETCORE_ENVIRONMENT"]
+                ?? configuration["AZURE_FUNCTIONS_ENVIRONMENT"];
+
+    private static bool IsDevelopmentOrTesting(string environmentName) =>
+        string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
+
     private static string? ResolveOpenAiCompatibleApiKey(IConfiguration configuration, string baseUrl)
     {
         if (IsDeepSeekBaseUrl(baseUrl))
@@ -164,6 +270,206 @@ public static class ServiceCollectionExtensions
         catch (UriFormatException)
         {
             return false;
+        }
+    }
+
+    private sealed class ProviderHttpResilienceHandler : DelegatingHandler
+    {
+        private static readonly TimeSpan BaseRetryDelay = TimeSpan.FromMilliseconds(250);
+        private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan CircuitSamplingDuration = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan CircuitBreakDuration = TimeSpan.FromSeconds(30);
+        private const int MaxRetryAttempts = 3;
+        private const int CircuitMinimumThroughput = 8;
+        private const double CircuitFailureRatio = 0.5;
+
+        private readonly object _circuitLock = new();
+        private readonly Queue<CircuitSample> _circuitSamples = new();
+        private DateTimeOffset? _circuitOpenUntil;
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var snapshot = await BufferedHttpRequestSnapshot.CreateAsync(request, cancellationToken);
+
+            for (var attempt = 0; attempt <= MaxRetryAttempts; attempt++)
+            {
+                ThrowIfCircuitOpen();
+
+                try
+                {
+                    using var attemptRequest = snapshot.CreateRequest();
+                    var response = await base.SendAsync(attemptRequest, cancellationToken);
+                    if (!IsTransientStatusCode(response.StatusCode))
+                    {
+                        RecordCircuitResult(success: true);
+                        return response;
+                    }
+
+                    if (attempt == MaxRetryAttempts)
+                    {
+                        RecordCircuitResult(success: false);
+                        return response;
+                    }
+
+                    var delay = RetryDelay(attempt, response);
+                    response.Dispose();
+                    await Task.Delay(delay, cancellationToken);
+                }
+                catch (Exception exception) when (IsTransientException(exception, cancellationToken))
+                {
+                    if (attempt == MaxRetryAttempts)
+                    {
+                        RecordCircuitResult(success: false);
+                        throw;
+                    }
+
+                    await Task.Delay(RetryDelay(attempt, response: null), cancellationToken);
+                }
+            }
+
+            throw new InvalidOperationException("Provider HTTP retry loop exited unexpectedly.");
+        }
+
+        private void ThrowIfCircuitOpen()
+        {
+            var now = DateTimeOffset.UtcNow;
+            lock (_circuitLock)
+            {
+                if (_circuitOpenUntil is null)
+                {
+                    return;
+                }
+
+                if (now < _circuitOpenUntil.Value)
+                {
+                    throw new HttpRequestException("Provider HTTP circuit is open.");
+                }
+
+                _circuitOpenUntil = null;
+                _circuitSamples.Clear();
+            }
+        }
+
+        private void RecordCircuitResult(bool success)
+        {
+            var now = DateTimeOffset.UtcNow;
+            lock (_circuitLock)
+            {
+                while (_circuitSamples.Count > 0 &&
+                       now - _circuitSamples.Peek().ObservedAt > CircuitSamplingDuration)
+                {
+                    _circuitSamples.Dequeue();
+                }
+
+                _circuitSamples.Enqueue(new CircuitSample(now, success));
+                if (_circuitSamples.Count < CircuitMinimumThroughput)
+                {
+                    return;
+                }
+
+                var failures = _circuitSamples.Count(sample => !sample.Success);
+                if ((double)failures / _circuitSamples.Count >= CircuitFailureRatio)
+                {
+                    _circuitOpenUntil = now + CircuitBreakDuration;
+                }
+            }
+        }
+
+        private static TimeSpan RetryDelay(int attempt, HttpResponseMessage? response)
+        {
+            if (response?.Headers.RetryAfter?.Delta is { } retryAfterDelta &&
+                retryAfterDelta > TimeSpan.Zero)
+            {
+                return retryAfterDelta + Jitter();
+            }
+
+            if (response?.Headers.RetryAfter?.Date is { } retryAfterDate)
+            {
+                var retryAfter = retryAfterDate - DateTimeOffset.UtcNow;
+                if (retryAfter > TimeSpan.Zero)
+                {
+                    return retryAfter + Jitter();
+                }
+            }
+
+            var backoffMs = BaseRetryDelay.TotalMilliseconds * Math.Pow(2, attempt);
+            var backoff = TimeSpan.FromMilliseconds(Math.Min(backoffMs, MaxRetryDelay.TotalMilliseconds));
+            return backoff + Jitter();
+        }
+
+        private static TimeSpan Jitter() =>
+            TimeSpan.FromMilliseconds(Random.Shared.Next(0, 100));
+
+        private static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
+            statusCode == HttpStatusCode.TooManyRequests ||
+            (int)statusCode >= 500;
+
+        private static bool IsTransientException(Exception exception, CancellationToken cancellationToken) =>
+            exception is HttpRequestException ||
+            exception is TimeoutException ||
+            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
+    }
+
+    private sealed record CircuitSample(DateTimeOffset ObservedAt, bool Success);
+
+    private sealed record BufferedHttpRequestSnapshot(
+        HttpMethod Method,
+        Uri? RequestUri,
+        Version Version,
+        HttpVersionPolicy VersionPolicy,
+        IReadOnlyList<KeyValuePair<string, IEnumerable<string>>> Headers,
+        byte[]? Content,
+        IReadOnlyList<KeyValuePair<string, IEnumerable<string>>> ContentHeaders)
+    {
+        public static async Task<BufferedHttpRequestSnapshot> CreateAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            byte[]? content = null;
+            var contentHeaders = Array.Empty<KeyValuePair<string, IEnumerable<string>>>();
+            if (request.Content is not null)
+            {
+                content = await request.Content.ReadAsByteArrayAsync(cancellationToken);
+                contentHeaders = request.Content.Headers.ToArray();
+            }
+
+            return new BufferedHttpRequestSnapshot(
+                request.Method,
+                request.RequestUri,
+                request.Version,
+                request.VersionPolicy,
+                request.Headers.ToArray(),
+                content,
+                contentHeaders);
+        }
+
+        public HttpRequestMessage CreateRequest()
+        {
+            var request = new HttpRequestMessage(Method, RequestUri)
+            {
+                Version = Version,
+                VersionPolicy = VersionPolicy,
+            };
+
+            foreach (var header in Headers)
+            {
+                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+
+            if (Content is null)
+            {
+                return request;
+            }
+
+            request.Content = new ByteArrayContent(Content);
+            foreach (var header in ContentHeaders)
+            {
+                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+
+            return request;
         }
     }
 }

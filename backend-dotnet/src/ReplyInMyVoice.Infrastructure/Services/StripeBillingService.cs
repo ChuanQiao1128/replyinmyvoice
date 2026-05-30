@@ -11,9 +11,10 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class StripeBillingService(
     Func<AppDbContext> dbContextFactory,
-    IConfiguration configuration) : IStripeBillingService
+    IConfiguration configuration) : IStripeBillingService, IStripeRefundClient
 {
     private const string LegacyPriceEnvVar = "STRIPE_PRICE_ID";
+    internal const string PinnedStripeApiVersion = "2025-08-27.basil";
 
     private static readonly IReadOnlyDictionary<string, CheckoutSkuDefinition> SkuDefinitions =
         new Dictionary<string, CheckoutSkuDefinition>(StringComparer.Ordinal)
@@ -98,6 +99,60 @@ public sealed class StripeBillingService(
         return session.Url ?? throw new InvalidOperationException("stripe_portal_url_missing");
     }
 
+    public async Task CancelSubscriptionAsync(
+        string stripeSubscriptionId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSubscriptionId = stripeSubscriptionId.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSubscriptionId))
+        {
+            return;
+        }
+
+        var subscriptionService = new SubscriptionService(CreateStripeClient());
+        await subscriptionService.CancelAsync(
+            normalizedSubscriptionId,
+            new SubscriptionCancelOptions
+            {
+                InvoiceNow = false,
+                Prorate = false,
+            },
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task<StripeRefundResult> RefundPaymentAsync(
+        StripeRefundRequest request,
+        CancellationToken cancellationToken)
+    {
+        var refundService = new RefundService(CreateStripeClient());
+        var options = new RefundCreateOptions
+        {
+            PaymentIntent = request.PaymentIntentId,
+            Amount = request.Amount,
+            Currency = request.Currency,
+            Metadata = new Dictionary<string, string>
+            {
+                ["source"] = "admin",
+                ["targetUserId"] = request.TargetUserId.ToString("D"),
+            },
+        };
+
+        var refund = await refundService.CreateAsync(
+            options,
+            new RequestOptions
+            {
+                IdempotencyKey = request.IdempotencyKey,
+            },
+            cancellationToken: cancellationToken);
+
+        return new StripeRefundResult(
+            refund.Id,
+            refund.PaymentIntentId ?? request.PaymentIntentId,
+            refund.Amount,
+            refund.Currency ?? request.Currency,
+            refund.Status);
+    }
+
     private async Task<AppUser> GetOrCreateUserAsync(
         string externalAuthUserId,
         string? email,
@@ -166,8 +221,19 @@ public sealed class StripeBillingService(
         return customer.Id;
     }
 
-    private StripeClient CreateStripeClient() =>
-        new(GetRequiredConfiguration("STRIPE_SECRET_KEY"));
+    internal static void EnsureStripeApiVersionPinned()
+    {
+        if (!string.Equals(StripeConfiguration.ApiVersion, PinnedStripeApiVersion, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("stripe_api_version_mismatch");
+        }
+    }
+
+    private StripeClient CreateStripeClient()
+    {
+        EnsureStripeApiVersionPinned();
+        return new StripeClient(GetRequiredConfiguration("STRIPE_SECRET_KEY"));
+    }
 
     private string GetRequiredConfiguration(string key) =>
         configuration[key] ?? throw new InvalidOperationException($"{key}_missing");
@@ -210,3 +276,24 @@ public sealed class StripeBillingService(
 }
 
 public sealed record CheckoutSkuDefinition(string Sku, string PriceEnvVar, string Mode, int Rewrites);
+
+public interface IStripeRefundClient
+{
+    Task<StripeRefundResult> RefundPaymentAsync(
+        StripeRefundRequest request,
+        CancellationToken cancellationToken);
+}
+
+public sealed record StripeRefundRequest(
+    string PaymentIntentId,
+    long Amount,
+    string? Currency,
+    string IdempotencyKey,
+    Guid TargetUserId);
+
+public sealed record StripeRefundResult(
+    string RefundId,
+    string PaymentIntentId,
+    long Amount,
+    string? Currency,
+    string? Status);

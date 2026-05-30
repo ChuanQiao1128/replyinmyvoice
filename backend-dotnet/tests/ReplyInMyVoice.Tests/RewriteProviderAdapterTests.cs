@@ -1,9 +1,13 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.RewriteEngine;
+using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Providers;
 
 namespace ReplyInMyVoice.Tests;
@@ -50,6 +54,62 @@ public sealed class RewriteProviderAdapterTests
         body.RootElement.GetProperty("model").GetString().Should().Be("deepseek-v4-pro");
         body.RootElement.GetProperty("response_format").GetProperty("type").GetString().Should().Be("json_object");
         body.RootElement.GetProperty("thinking").GetProperty("type").GetString().Should().Be("disabled");
+    }
+
+    [Fact]
+    public async Task OpenAiCompatibleRewriteModelClient_retries_429_response_through_registered_named_http_client()
+    {
+        var attemptCount = 0;
+        var attemptTimes = new List<DateTimeOffset>();
+        var handler = new RecordingHttpHandler(_ =>
+        {
+            attemptCount++;
+            attemptTimes.Add(DateTimeOffset.UtcNow);
+
+            if (attemptCount == 1)
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+                response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(1));
+                return Task.FromResult(response);
+            }
+
+            return Task.FromResult(JsonResponse(
+                """
+                {
+                  "choices": [
+                    {
+                      "message": {
+                        "content": "{\"rewrittenText\":\"Hi Jordan, I can send this today.\"}"
+                      }
+                    }
+                  ]
+                }
+                """));
+        });
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OPENAI_BASE_URL"] = "https://api.deepseek.com",
+                ["DEEPSEEK_API_KEY"] = "deepseek-test-key",
+                ["OPENAI_MODEL_MID_WRITER"] = "deepseek-v4-pro",
+                ["SAPLING_API_KEY"] = "sapling-test-key",
+            })
+            .Build();
+
+        services.AddReplyInMyVoiceInfrastructure(configuration, "Testing");
+        services
+            .AddHttpClient(nameof(OpenAiCompatibleRewriteModelClient))
+            .ConfigurePrimaryHttpMessageHandler(() => handler);
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IRewriteModelClient>()
+            .GenerateCandidateAsync(ModelRequest(), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.CandidateText.Should().Be("Hi Jordan, I can send this today.");
+        attemptCount.Should().Be(2);
+        attemptTimes[1].Should().BeOnOrAfter(attemptTimes[0].AddMilliseconds(500));
     }
 
     [Fact]

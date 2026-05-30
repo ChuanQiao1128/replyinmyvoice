@@ -141,7 +141,7 @@ describe("Entra auth helpers", () => {
     expect(url.searchParams.get("code_challenge")).toBeTruthy();
   });
 
-  it("passes a user email as login_hint for Entra email code sign-in", async () => {
+  it("passes a user email as login_hint for the Entra OAuth redirect", async () => {
     const url = await buildEntraAuthorizeUrl({
       authority: "https://replyinmyvoicecustomers.ciamlogin.com/tenant/v2.0",
       clientId: "frontend-client",
