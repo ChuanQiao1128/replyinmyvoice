@@ -71,53 +71,70 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        await using var db = dbContextFactory();
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-
-        var stripeEvent = await db.StripeEvents
-            .AsTracking()
-            .SingleOrDefaultAsync(x => x.EventId == eventId, cancellationToken);
-
-        if (stripeEvent is null)
+        return await ExecuteInTransactionAsync(async db =>
         {
-            db.StripeEvents.Add(new StripeEvent
+            var stripeEvent = await db.StripeEvents
+                .AsTracking()
+                .SingleOrDefaultAsync(x => x.EventId == eventId, cancellationToken);
+
+            if (stripeEvent is null)
             {
-                EventId = eventId,
-                Type = type,
-                Status = StripeEventStatus.Processing,
-                AttemptCount = 1,
-                CreatedAt = now,
-                LastAttemptAt = now,
-                LockedUntil = now.AddMinutes(2),
-            });
+                db.StripeEvents.Add(new StripeEvent
+                {
+                    EventId = eventId,
+                    Type = type,
+                    Status = StripeEventStatus.Processing,
+                    AttemptCount = 1,
+                    CreatedAt = now,
+                    LastAttemptAt = now,
+                    LockedUntil = now.AddMinutes(2),
+                });
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+
+            if (stripeEvent.Status == StripeEventStatus.Processed)
+            {
+                return false;
+            }
+
+            if (stripeEvent.Status == StripeEventStatus.Processing && stripeEvent.LockedUntil > now)
+            {
+                return false;
+            }
+
+            stripeEvent.Type = type;
+            stripeEvent.Status = StripeEventStatus.Processing;
+            stripeEvent.AttemptCount += 1;
+            stripeEvent.LastAttemptAt = now;
+            stripeEvent.LockedUntil = now.AddMinutes(2);
+            stripeEvent.LastError = null;
+            stripeEvent.RowVersion = Guid.NewGuid();
+
             await db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
             return true;
-        }
+        }, cancellationToken);
+    }
 
-        if (stripeEvent.Status == StripeEventStatus.Processed)
+    private async Task<TResult> ExecuteInTransactionAsync<TResult>(
+        Func<AppDbContext, Task<TResult>> operation,
+        CancellationToken cancellationToken)
+    {
+        await using var strategyDb = dbContextFactory();
+        var strategy = strategyDb.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await using var db = dbContextFactory();
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+
+            var result = await operation(db);
+
             await transaction.CommitAsync(cancellationToken);
-            return false;
-        }
-
-        if (stripeEvent.Status == StripeEventStatus.Processing && stripeEvent.LockedUntil > now)
-        {
-            await transaction.CommitAsync(cancellationToken);
-            return false;
-        }
-
-        stripeEvent.Type = type;
-        stripeEvent.Status = StripeEventStatus.Processing;
-        stripeEvent.AttemptCount += 1;
-        stripeEvent.LastAttemptAt = now;
-        stripeEvent.LockedUntil = now.AddMinutes(2);
-        stripeEvent.LastError = null;
-        stripeEvent.RowVersion = Guid.NewGuid();
-
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return true;
+            return result;
+        });
     }
 
     private async Task MarkProcessedAsync(

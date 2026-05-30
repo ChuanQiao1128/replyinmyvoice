@@ -49,47 +49,67 @@ public sealed class OutboxDispatcherService(
         int batchSize,
         CancellationToken cancellationToken)
     {
-        await using var db = dbContextFactory();
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-
-        List<OutboxMessage> messages;
-        if (db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true)
+        return await ExecuteInTransactionAsync(async db =>
         {
-            var candidates = await db.OutboxMessages
-                .AsTracking()
-                .Where(x => x.Status == OutboxMessageStatus.Pending || x.Status == OutboxMessageStatus.Processing)
-                .ToListAsync(cancellationToken);
+            List<OutboxMessage> messages;
+            if (db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var candidates = await db.OutboxMessages
+                    .AsTracking()
+                    .Where(x => x.Status == OutboxMessageStatus.Pending || x.Status == OutboxMessageStatus.Processing)
+                    .ToListAsync(cancellationToken);
 
-            messages = candidates
-                .Where(x => x.NextAttemptAt <= now && (x.LockedUntil is null || x.LockedUntil <= now))
-                .OrderBy(x => x.CreatedAt)
-                .Take(batchSize)
-                .ToList();
-        }
-        else
+                messages = candidates
+                    .Where(x => x.NextAttemptAt <= now && (x.LockedUntil is null || x.LockedUntil <= now))
+                    .OrderBy(x => x.CreatedAt)
+                    .Take(batchSize)
+                    .ToList();
+            }
+            else
+            {
+                messages = await db.OutboxMessages
+                    .AsTracking()
+                    .Where(x => x.NextAttemptAt <= now)
+                    .Where(x => x.LockedUntil == null || x.LockedUntil.Value <= now)
+                    .Where(x => x.Status == OutboxMessageStatus.Pending || x.Status == OutboxMessageStatus.Processing)
+                    .OrderBy(x => x.CreatedAt)
+                    .Take(batchSize)
+                    .ToListAsync(cancellationToken);
+            }
+
+            foreach (var message in messages)
+            {
+                message.Status = OutboxMessageStatus.Processing;
+                message.LockedBy = lockedBy;
+                message.LockedUntil = now.AddSeconds(30);
+                message.LastAttemptAt = now;
+                message.RowVersion = Guid.NewGuid();
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            return messages;
+        }, cancellationToken);
+    }
+
+    private async Task<TResult> ExecuteInTransactionAsync<TResult>(
+        Func<AppDbContext, Task<TResult>> operation,
+        CancellationToken cancellationToken)
+    {
+        await using var strategyDb = dbContextFactory();
+        var strategy = strategyDb.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
         {
-            messages = await db.OutboxMessages
-                .AsTracking()
-                .Where(x => x.NextAttemptAt <= now)
-                .Where(x => x.LockedUntil == null || x.LockedUntil.Value <= now)
-                .Where(x => x.Status == OutboxMessageStatus.Pending || x.Status == OutboxMessageStatus.Processing)
-                .OrderBy(x => x.CreatedAt)
-                .Take(batchSize)
-                .ToListAsync(cancellationToken);
-        }
+            cancellationToken.ThrowIfCancellationRequested();
 
-        foreach (var message in messages)
-        {
-            message.Status = OutboxMessageStatus.Processing;
-            message.LockedBy = lockedBy;
-            message.LockedUntil = now.AddSeconds(30);
-            message.LastAttemptAt = now;
-            message.RowVersion = Guid.NewGuid();
-        }
+            await using var db = dbContextFactory();
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return messages;
+            var result = await operation(db);
+
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        });
     }
 
     private async Task MarkSentAsync(
