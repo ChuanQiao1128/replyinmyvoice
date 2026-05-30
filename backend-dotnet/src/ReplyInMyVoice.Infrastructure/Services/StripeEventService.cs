@@ -180,6 +180,18 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         if (type == "checkout.session.completed")
         {
             await SyncCheckoutSessionAsync(eventId, stripeObject, now, cancellationToken);
+            return;
+        }
+
+        if (type == "charge.refunded")
+        {
+            await RevokeRefundedChargeCreditsAsync(stripeObject, cancellationToken);
+            return;
+        }
+
+        if (type is "charge.dispute.created" or "charge.dispute.closed")
+        {
+            await RevokeDisputedChargeCreditsAsync(stripeObject, cancellationToken);
         }
     }
 
@@ -272,9 +284,112 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task RevokeRefundedChargeCreditsAsync(
+        JsonElement stripeObject,
+        CancellationToken cancellationToken)
+    {
+        var paymentIntentId = GetString(stripeObject, "payment_intent");
+        if (string.IsNullOrWhiteSpace(paymentIntentId))
+        {
+            return;
+        }
+
+        await using var db = dbContextFactory();
+        var credits = await db.RewriteCredits
+            .AsTracking()
+            .Where(x => x.StripePaymentIntentId == paymentIntentId)
+            .ToListAsync(cancellationToken);
+
+        var changed = false;
+        foreach (var credit in credits)
+        {
+            var previousGranted = credit.AmountGranted;
+            if (IsFullRefund(stripeObject))
+            {
+                credit.AmountGranted = credit.AmountConsumed;
+            }
+            else if (ResolveRefundedCreditCount(stripeObject, credit) is { } refundedCredits && refundedCredits > 0)
+            {
+                credit.AmountGranted = Math.Max(credit.AmountConsumed, credit.AmountGranted - refundedCredits);
+            }
+
+            if (credit.AmountGranted != previousGranted)
+            {
+                credit.RowVersion = Guid.NewGuid();
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private async Task RevokeDisputedChargeCreditsAsync(
+        JsonElement stripeObject,
+        CancellationToken cancellationToken)
+    {
+        var paymentIntentId = GetString(stripeObject, "payment_intent");
+        if (string.IsNullOrWhiteSpace(paymentIntentId))
+        {
+            return;
+        }
+
+        await using var db = dbContextFactory();
+        var credits = await db.RewriteCredits
+            .AsTracking()
+            .Where(x => x.StripePaymentIntentId == paymentIntentId)
+            .ToListAsync(cancellationToken);
+
+        var changed = false;
+        foreach (var credit in credits)
+        {
+            if (credit.AmountGranted == credit.AmountConsumed)
+            {
+                continue;
+            }
+
+            credit.AmountGranted = credit.AmountConsumed;
+            credit.RowVersion = Guid.NewGuid();
+            changed = true;
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     private static bool IsPaidPaymentSession(JsonElement stripeObject) =>
         GetString(stripeObject, "mode") == "payment" &&
         GetString(stripeObject, "payment_status") == "paid";
+
+    private static bool IsFullRefund(JsonElement stripeObject)
+    {
+        if (GetBool(stripeObject, "refunded") == true)
+        {
+            return true;
+        }
+
+        var amount = GetLong(stripeObject, "amount");
+        var amountRefunded = GetLong(stripeObject, "amount_refunded");
+        return amount is > 0 && amountRefunded >= amount;
+    }
+
+    private static int? ResolveRefundedCreditCount(JsonElement stripeObject, RewriteCredit credit)
+    {
+        var amount = GetLong(stripeObject, "amount") ?? credit.StripeAmountTotal;
+        var amountRefunded = GetLong(stripeObject, "amount_refunded");
+        if (amount is not > 0 || amountRefunded is not > 0)
+        {
+            return null;
+        }
+
+        var boundedRefundedAmount = Math.Min(amountRefunded.Value, amount.Value);
+        var proportionalCredits = (decimal)credit.AmountGranted * boundedRefundedAmount / amount.Value;
+        return (int)Math.Ceiling(proportionalCredits);
+    }
 
     private static int? ResolveGrantedRewrites(JsonElement stripeObject)
     {
@@ -335,6 +450,22 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         {
             JsonValueKind.Number when value.TryGetInt64(out var parsed) => parsed,
             JsonValueKind.String when long.TryParse(value.GetString(), out var parsed) => parsed,
+            _ => null,
+        };
+    }
+
+    private static bool? GetBool(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String when bool.TryParse(value.GetString(), out var parsed) => parsed,
             _ => null,
         };
     }
