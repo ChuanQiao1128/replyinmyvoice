@@ -22,6 +22,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RewriteProviderCall> RewriteProviderCalls => Set<RewriteProviderCall>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsage> ApiKeyUsages => Set<ApiKeyUsage>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -331,6 +332,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany(x => x.ApiKeyUsages)
                 .HasForeignKey(x => x.ApiKeyId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AdminAuditLog>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.AdminExternalAuthUserId, x.CreatedAt });
+            entity.HasIndex(x => new { x.TargetUserId, x.CreatedAt });
+            entity.HasIndex(x => new { x.Action, x.CreatedAt });
+            entity.Property(x => x.AdminExternalAuthUserId).HasMaxLength(160);
+            entity.Property(x => x.AdminEmail).HasMaxLength(320);
+            entity.Property(x => x.Action).HasMaxLength(120);
         });
     }
 }
