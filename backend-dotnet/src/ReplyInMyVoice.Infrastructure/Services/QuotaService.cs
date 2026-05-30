@@ -12,6 +12,8 @@ public sealed class QuotaService(
     Func<AppDbContext> dbContextFactory,
     ILogger<QuotaService>? logger = null)
 {
+    private const int ExpiredReservationSweepBatchSize = 500;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -288,79 +290,119 @@ public sealed class QuotaService(
 
     public async Task<int> ReleaseExpiredReservationsAsync(
         DateTimeOffset now,
+        CancellationToken cancellationToken = default) =>
+        await ReleaseExpiredReservationsAsync(now, ExpiredReservationSweepBatchSize, cancellationToken);
+
+    public async Task<int> ReleaseExpiredReservationsAsync(
+        DateTimeOffset now,
+        int batchSize,
         CancellationToken cancellationToken = default)
     {
-        var releaseLogs = await ExecuteInTransactionAsync(async db =>
+        if (batchSize <= 0)
         {
-            var expiredCandidates = await db.UsageReservations
-                .AsTracking()
+            throw new ArgumentOutOfRangeException(nameof(batchSize), "Batch size must be greater than zero.");
+        }
+
+        var releasedCount = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var releaseLogs = await ExecuteInTransactionAsync(async db =>
+            {
+                var expiredReservations = await LoadExpiredReservationBatchAsync(db, now, batchSize, cancellationToken);
+                var batchReleaseLogs = new List<ReservationReleaseLogEntry>(expiredReservations.Count);
+
+                foreach (var reservation in expiredReservations)
+                {
+                    var reservationSource = reservation.RewriteCreditId is null ? "period" : "credit";
+                    var reason = reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Processing
+                        ? "processing_timed_out"
+                        : "reservation_expired";
+
+                    reservation.Status = UsageReservationStatus.Expired;
+                    reservation.ReleasedAt = now;
+                    reservation.RowVersion = Guid.NewGuid();
+                    if (reservation.RewriteCredit is not null)
+                    {
+                        reservation.RewriteCredit.AmountConsumed = Math.Max(0, reservation.RewriteCredit.AmountConsumed - 1);
+                        reservation.RewriteCredit.RowVersion = Guid.NewGuid();
+                    }
+                    else
+                    {
+                        reservation.UsagePeriod!.ReservedCount = Math.Max(0, reservation.UsagePeriod.ReservedCount - 1);
+                        reservation.UsagePeriod.UpdatedAt = now;
+                        reservation.UsagePeriod.RowVersion = Guid.NewGuid();
+                    }
+
+                    reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
+                    reservation.RewriteAttempt.ErrorCode = reason;
+                    reservation.RewriteAttempt.CompletedAt = now;
+                    reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
+
+                    batchReleaseLogs.Add(new ReservationReleaseLogEntry(
+                        reservation.RewriteAttempt.Id,
+                        reason,
+                        ReservationReleased: true,
+                        AttemptTransitioned: true,
+                        reservationSource));
+                }
+
+                await db.SaveChangesAsync(cancellationToken);
+                return batchReleaseLogs;
+            }, cancellationToken);
+
+            foreach (var releaseLog in releaseLogs)
+            {
+                LogReservationRelease(releaseLog);
+            }
+
+            releasedCount += releaseLogs.Count;
+            if (releaseLogs.Count < batchSize)
+            {
+                return releasedCount;
+            }
+        }
+    }
+
+    private static async Task<List<UsageReservation>> LoadExpiredReservationBatchAsync(
+        AppDbContext db,
+        DateTimeOffset now,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        var query = db.UsageReservations
+            .AsTracking()
+            .Include(x => x.RewriteAttempt)
+            .Include(x => x.UsagePeriod)
+            .Include(x => x.RewriteCredit);
+
+        if (db.Database.IsSqlite())
+        {
+            var expiredCandidates = await query
                 .Where(x => x.Status == UsageReservationStatus.Pending)
-                .Include(x => x.RewriteAttempt)
-                .Include(x => x.UsagePeriod)
-                .Include(x => x.RewriteCredit)
                 .ToListAsync(cancellationToken);
-            var expiredReservations = expiredCandidates
+
+            return expiredCandidates
                 .Where(x =>
                     x.ExpiresAt <= now &&
                     x.RewriteAttempt!.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
+                .OrderBy(x => x.ExpiresAt)
+                .ThenBy(x => x.Id)
+                .Take(batchSize)
                 .ToList();
-            var releaseLogs = new List<ReservationReleaseLogEntry>();
-
-            foreach (var reservation in expiredReservations)
-            {
-                var reservationSource = reservation.RewriteCreditId is null ? "period" : "credit";
-                var reason = reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Processing
-                    ? "processing_timed_out"
-                    : "reservation_expired";
-
-                reservation.Status = UsageReservationStatus.Expired;
-                reservation.ReleasedAt = now;
-                reservation.RowVersion = Guid.NewGuid();
-                if (reservation.RewriteCredit is not null)
-                {
-                    reservation.RewriteCredit.AmountConsumed = Math.Max(0, reservation.RewriteCredit.AmountConsumed - 1);
-                    reservation.RewriteCredit.RowVersion = Guid.NewGuid();
-                }
-                else
-                {
-                    reservation.UsagePeriod!.ReservedCount = Math.Max(0, reservation.UsagePeriod.ReservedCount - 1);
-                    reservation.UsagePeriod.UpdatedAt = now;
-                    reservation.UsagePeriod.RowVersion = Guid.NewGuid();
-                }
-
-                if (reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Pending)
-                {
-                    reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
-                    reservation.RewriteAttempt.ErrorCode = reason;
-                    reservation.RewriteAttempt.CompletedAt = now;
-                    reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
-                }
-                else if (reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Processing)
-                {
-                    reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
-                    reservation.RewriteAttempt.ErrorCode = reason;
-                    reservation.RewriteAttempt.CompletedAt = now;
-                    reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
-                }
-
-                releaseLogs.Add(new ReservationReleaseLogEntry(
-                    reservation.RewriteAttempt.Id,
-                    reason,
-                    ReservationReleased: true,
-                    AttemptTransitioned: true,
-                    reservationSource));
-            }
-
-            await db.SaveChangesAsync(cancellationToken);
-            return releaseLogs;
-        }, cancellationToken);
-
-        foreach (var releaseLog in releaseLogs)
-        {
-            LogReservationRelease(releaseLog);
         }
 
-        return releaseLogs.Count;
+        return await query
+            .Where(x =>
+                x.Status == UsageReservationStatus.Pending &&
+                x.ExpiresAt <= now &&
+                (x.RewriteAttempt!.Status == RewriteAttemptStatus.Pending ||
+                    x.RewriteAttempt.Status == RewriteAttemptStatus.Processing))
+            .OrderBy(x => x.ExpiresAt)
+            .ThenBy(x => x.Id)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
     }
 
     private void LogReservationRelease(ReservationReleaseLogEntry releaseLog)
