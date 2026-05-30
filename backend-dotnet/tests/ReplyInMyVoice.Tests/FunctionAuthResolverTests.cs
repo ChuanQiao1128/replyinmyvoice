@@ -159,6 +159,49 @@ public sealed class FunctionAuthResolverTests
         user.Email.Should().Be("local@example.com");
     }
 
+    [Theory]
+    [InlineData("ASPNETCORE_ENVIRONMENT")]
+    [InlineData("AZURE_FUNCTIONS_ENVIRONMENT")]
+    public async Task ResolveUserAsync_HeaderAuthIgnoredInProduction(string environmentKey)
+    {
+        var request = CreateRequest();
+        request.Headers["X-Test-User-Id"] = "test-user";
+        request.Headers["X-External-User-Id"] = "external-user";
+        request.Headers["X-User-Email"] = "local@example.com";
+
+        var user = await FunctionAuthResolver.ResolveUserAsync(
+            request,
+            BuildConfiguration(new Dictionary<string, string?>
+            {
+                ["ALLOW_HEADER_AUTH"] = "true",
+                [environmentKey] = "Production",
+            }));
+
+        user.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Testing")]
+    public async Task ResolveUserAsync_allows_header_identity_outside_production(string environmentName)
+    {
+        var request = CreateRequest();
+        request.Headers["X-External-User-Id"] = "local-user";
+        request.Headers["X-User-Email"] = "local@example.com";
+
+        var user = await FunctionAuthResolver.ResolveUserAsync(
+            request,
+            BuildConfiguration(new Dictionary<string, string?>
+            {
+                ["ALLOW_HEADER_AUTH"] = "true",
+                ["AZURE_FUNCTIONS_ENVIRONMENT"] = environmentName,
+            }));
+
+        user.Should().NotBeNull();
+        user!.ExternalAuthUserId.Should().Be("local-user");
+        user.Email.Should().Be("local@example.com");
+    }
+
     private static HttpRequest CreateRequest(ClaimsPrincipal? user = null)
     {
         var context = new DefaultHttpContext();

@@ -404,9 +404,10 @@ static string? ResolveExternalUserId(
     IConfiguration configuration)
 {
     var headerUserId = request.Headers["X-External-User-Id"].ToString();
-    var allowHeaderAuth = environment.IsDevelopment() ||
-        environment.IsEnvironment("Testing") ||
-        string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase);
+    var allowHeaderAuth = !IsProductionEnvironment(environment, configuration) &&
+        (environment.IsDevelopment() ||
+            environment.IsEnvironment("Testing") ||
+            string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase));
 
     if (allowHeaderAuth && !string.IsNullOrWhiteSpace(headerUserId))
     {
@@ -432,9 +433,10 @@ static string? ResolveRequestEmail(
     IWebHostEnvironment environment,
     IConfiguration configuration)
 {
-    var allowHeaderAuth = environment.IsDevelopment() ||
-        environment.IsEnvironment("Testing") ||
-        string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase);
+    var allowHeaderAuth = !IsProductionEnvironment(environment, configuration) &&
+        (environment.IsDevelopment() ||
+            environment.IsEnvironment("Testing") ||
+            string.Equals(configuration["ALLOW_HEADER_AUTH"], "true", StringComparison.OrdinalIgnoreCase));
 
     if (allowHeaderAuth)
     {
@@ -450,6 +452,16 @@ static string? ResolveRequestEmail(
         request.HttpContext.User.FindFirstValue("emails") ??
         request.HttpContext.User.FindFirstValue("preferred_username");
 }
+
+static bool IsProductionEnvironment(
+    IWebHostEnvironment environment,
+    IConfiguration configuration) =>
+    environment.IsProduction() ||
+    IsProductionEnvironmentName(configuration["ASPNETCORE_ENVIRONMENT"]) ||
+    IsProductionEnvironmentName(configuration["AZURE_FUNCTIONS_ENVIRONMENT"]);
+
+static bool IsProductionEnvironmentName(string? environmentName) =>
+    string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
 
 static string? ResolveClerkIssuer(IConfiguration configuration)
 {
