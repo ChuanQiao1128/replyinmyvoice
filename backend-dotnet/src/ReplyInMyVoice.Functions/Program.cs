@@ -12,6 +12,9 @@ builder.Services
     .AddApplicationInsightsTelemetryWorkerService()
     .ConfigureFunctionsApplicationInsights();
 
-builder.Services.AddReplyInMyVoiceInfrastructure(builder.Configuration);
+builder.Services.AddReplyInMyVoiceInfrastructure(
+    builder.Configuration,
+    builder.Environment.EnvironmentName,
+    requireServiceBusConsumer: true);
 
 builder.Build().Run();
