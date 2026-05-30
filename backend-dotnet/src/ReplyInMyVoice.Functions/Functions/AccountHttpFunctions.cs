@@ -34,4 +34,23 @@ public sealed class AccountHttpFunctions(
 
         return new OkObjectResult(account);
     }
+
+    [Function("DeleteAccount")]
+    public async Task<IActionResult> DeleteAccount(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "me")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Authentication required",
+                "A valid authenticated user is required.",
+                StatusCodes.Status401Unauthorized);
+        }
+
+        await accountService.DeleteAccountAsync(authUser.ExternalAuthUserId, cancellationToken);
+        return new NoContentResult();
+    }
 }

@@ -1,11 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
-public sealed class AccountService(Func<AppDbContext> dbContextFactory)
+public sealed class AccountService(
+    Func<AppDbContext> dbContextFactory,
+    IConfiguration? configuration = null,
+    Func<string, CancellationToken, Task>? cancelSubscriptionAsync = null)
 {
     public async Task<AppUser> GetOrCreateUserAsync(
         string externalAuthUserId,
@@ -88,6 +92,121 @@ public sealed class AccountService(Func<AppDbContext> dbContextFactory)
                 remaining <= 0));
     }
 
+    public async Task DeleteAccountAsync(
+        string externalAuthUserId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedExternalId = NormalizeExternalAuthUserId(externalAuthUserId);
+
+        string? stripeSubscriptionId;
+        await using (var lookupDb = dbContextFactory())
+        {
+            var account = await lookupDb.AppUsers
+                .AsNoTracking()
+                .Where(x => x.ExternalAuthUserId == normalizedExternalId)
+                .Select(x => new DeleteAccountLookup(x.StripeSubscriptionId))
+                .SingleOrDefaultAsync(cancellationToken);
+            if (account is null)
+            {
+                return;
+            }
+
+            stripeSubscriptionId = account.StripeSubscriptionId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(stripeSubscriptionId))
+        {
+            await CancelStripeSubscriptionAsync(stripeSubscriptionId, cancellationToken);
+        }
+
+        await using var db = dbContextFactory();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var user = await db.AppUsers
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.ExternalAuthUserId == normalizedExternalId, cancellationToken);
+        if (user is null || IsErasedExternalAuthUserId(user.ExternalAuthUserId))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var attempts = await db.RewriteAttempts
+            .AsTracking()
+            .Where(x => x.UserId == user.Id)
+            .ToListAsync(cancellationToken);
+        var usagePeriods = await db.UsagePeriods
+            .AsTracking()
+            .Where(x => x.UserId == user.Id)
+            .ToListAsync(cancellationToken);
+        var reservations = await db.UsageReservations
+            .AsTracking()
+            .Where(x => x.UserId == user.Id)
+            .ToListAsync(cancellationToken);
+        var credits = await db.RewriteCredits
+            .AsTracking()
+            .Where(x => x.UserId == user.Id)
+            .ToListAsync(cancellationToken);
+
+        user.ExternalAuthUserId = CreateErasedExternalAuthUserId(user.Id);
+        user.Email = null;
+        user.SubscriptionStatus = SubscriptionStatus.Canceled;
+        user.CurrentPeriodEnd = null;
+        user.UpdatedAt = now;
+        user.RowVersion = Guid.NewGuid();
+
+        foreach (var attempt in attempts)
+        {
+            attempt.IdempotencyKey = CreateErasedChildToken(attempt.Id);
+            attempt.RequestHash = "erased";
+            attempt.RequestJson = "{}";
+            attempt.ResultJson = null;
+            attempt.ErrorMessage = null;
+            attempt.ExpiresAt = now;
+            if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
+            {
+                attempt.Status = RewriteAttemptStatus.Failed;
+                attempt.ErrorCode = "account_erased";
+                attempt.CompletedAt = now;
+            }
+
+            attempt.RowVersion = Guid.NewGuid();
+        }
+
+        foreach (var period in usagePeriods)
+        {
+            period.PeriodKey = CreateErasedChildToken(period.Id);
+            period.QuotaLimit = 0;
+            period.UsedCount = 0;
+            period.ReservedCount = 0;
+            period.PeriodStart = null;
+            period.PeriodEnd = null;
+            period.UpdatedAt = now;
+            period.RowVersion = Guid.NewGuid();
+        }
+
+        foreach (var reservation in reservations)
+        {
+            reservation.Status = UsageReservationStatus.Released;
+            reservation.FinalizedAt = null;
+            reservation.ReleasedAt = now;
+            reservation.ExpiresAt = now;
+            reservation.RowVersion = Guid.NewGuid();
+        }
+
+        foreach (var credit in credits)
+        {
+            credit.Source = "ERASED";
+            credit.AmountGranted = 0;
+            credit.AmountConsumed = 0;
+            credit.ExpiresAt = now;
+            credit.RowVersion = Guid.NewGuid();
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public static AccountUsagePlan GetUsagePlan(AppUser user)
     {
         if (user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing)
@@ -99,6 +218,25 @@ public sealed class AccountService(Func<AppDbContext> dbContextFactory)
         }
 
         return new AccountUsagePlan("free", "free:lifetime", 3);
+    }
+
+    private async Task CancelStripeSubscriptionAsync(
+        string stripeSubscriptionId,
+        CancellationToken cancellationToken)
+    {
+        if (cancelSubscriptionAsync is not null)
+        {
+            await cancelSubscriptionAsync(stripeSubscriptionId, cancellationToken);
+            return;
+        }
+
+        if (configuration is null)
+        {
+            throw new InvalidOperationException("STRIPE_SECRET_KEY_missing");
+        }
+
+        var billingService = new StripeBillingService(dbContextFactory, configuration);
+        await billingService.CancelSubscriptionAsync(stripeSubscriptionId, cancellationToken);
     }
 
     private static string NormalizeExternalAuthUserId(string externalAuthUserId)
@@ -122,7 +260,18 @@ public sealed class AccountService(Func<AppDbContext> dbContextFactory)
 
         return normalized.Length <= 320 ? normalized : normalized[..320];
     }
+
+    private static bool IsErasedExternalAuthUserId(string externalAuthUserId) =>
+        externalAuthUserId.StartsWith("erased:", StringComparison.Ordinal);
+
+    private static string CreateErasedExternalAuthUserId(Guid userId) =>
+        $"erased:{userId:N}";
+
+    private static string CreateErasedChildToken(Guid id) =>
+        $"erased:{id:N}";
 }
+
+internal sealed record DeleteAccountLookup(string? StripeSubscriptionId);
 
 public sealed record AccountSummary(
     Guid Id,
