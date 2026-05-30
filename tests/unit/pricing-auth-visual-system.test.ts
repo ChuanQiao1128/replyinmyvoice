@@ -50,6 +50,9 @@ describe("pricing and auth visual system", () => {
     expect(authCard).toContain("var(--card)");
     expect(authCard).toContain("var(--rule)");
     expect(authCard).toContain("boxShadow");
+    expect(authCard).toContain("Entra OAuth sign-in");
+    expect(authCard).toContain("Continue with email");
+    expect(authCard).toContain("Continue with Google");
   });
 
   it("keeps shared button controls visibly focusable", () => {
