@@ -290,6 +290,56 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
+    public async Task ProcessWebhookEventAsync_SubscriptionItemsLevelCurrentPeriodEndSyncsUserPeriod()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
+            storedUser.StripeCustomerId = "cus_subscription_items_period";
+            await seedDb.SaveChangesAsync();
+        }
+
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-26T00:06:00Z");
+
+        var processed = await service.ProcessWebhookEventAsync(
+            "evt_subscription_items_period",
+            "customer.subscription.updated",
+            """
+            {
+              "id": "evt_subscription_items_period",
+              "type": "customer.subscription.updated",
+              "data": {
+                "object": {
+                  "id": "sub_items_period",
+                  "customer": "cus_subscription_items_period",
+                  "status": "active",
+                  "items": {
+                    "data": [
+                      {
+                        "id": "si_items_period",
+                        "current_period_end": 1780000200
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+            """,
+            now);
+
+        processed.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
+        updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Active);
+        updatedUser.StripeSubscriptionId.Should().Be("sub_items_period");
+        updatedUser.CurrentPeriodEnd.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1780000200));
+    }
+
+    [Fact]
     public async Task DuplicateEventGrantRejected()
     {
         await using var fixture = await DbFixture.CreateAsync();

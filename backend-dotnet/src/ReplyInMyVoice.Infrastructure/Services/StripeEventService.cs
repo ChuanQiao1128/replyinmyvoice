@@ -8,10 +8,20 @@ using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
-public sealed class StripeEventService(
-    Func<AppDbContext> dbContextFactory,
-    ILogger<StripeEventService>? logger = null)
+public sealed class StripeEventService
 {
+    private readonly Func<AppDbContext> dbContextFactory;
+    private readonly ILogger<StripeEventService>? logger;
+
+    public StripeEventService(
+        Func<AppDbContext> dbContextFactory,
+        ILogger<StripeEventService>? logger = null)
+    {
+        StripeBillingService.EnsureStripeApiVersionPinned();
+        this.dbContextFactory = dbContextFactory;
+        this.logger = logger;
+    }
+
     public async Task<bool> TryMarkProcessedAsync(
         string eventId,
         string type,
@@ -305,7 +315,7 @@ public sealed class StripeEventService(
 
         user.StripeSubscriptionId = GetString(stripeObject, "id") ?? user.StripeSubscriptionId;
         user.SubscriptionStatus = status;
-        user.CurrentPeriodEnd = GetUnixDateTime(stripeObject, "current_period_end");
+        user.CurrentPeriodEnd = GetSubscriptionPeriodEnd(stripeObject);
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
     }
@@ -558,6 +568,53 @@ public sealed class StripeEventService(
         };
 
         return seconds is null ? null : DateTimeOffset.FromUnixTimeSeconds(seconds.Value);
+    }
+
+    private static DateTimeOffset? GetSubscriptionPeriodEnd(JsonElement stripeObject)
+    {
+        var topLevelPeriodEnd = GetUnixDateTime(stripeObject, "current_period_end");
+        if (topLevelPeriodEnd is not null)
+        {
+            return topLevelPeriodEnd;
+        }
+
+        if (!stripeObject.TryGetProperty("items", out var items))
+        {
+            return null;
+        }
+
+        if (items.ValueKind == JsonValueKind.Array)
+        {
+            return GetFirstItemPeriodEnd(items);
+        }
+
+        if (items.ValueKind == JsonValueKind.Object &&
+            items.TryGetProperty("data", out var data) &&
+            data.ValueKind == JsonValueKind.Array)
+        {
+            return GetFirstItemPeriodEnd(data);
+        }
+
+        return null;
+    }
+
+    private static DateTimeOffset? GetFirstItemPeriodEnd(JsonElement items)
+    {
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var periodEnd = GetUnixDateTime(item, "current_period_end");
+            if (periodEnd is not null)
+            {
+                return periodEnd;
+            }
+        }
+
+        return null;
     }
 
     private sealed record StripeFailureLogInfo(int AttemptCount, StripeEventStatus Status);
