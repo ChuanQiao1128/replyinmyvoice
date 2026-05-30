@@ -16,6 +16,7 @@ public sealed class RewriteAttempt
     public string? ErrorMessage { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CompletedAt { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public Guid RowVersion { get; set; } = Guid.NewGuid();
 
