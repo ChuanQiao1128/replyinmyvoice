@@ -1,7 +1,9 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ReplyInMyVoice.Infrastructure;
+using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
 
 namespace ReplyInMyVoice.Tests;
@@ -59,6 +61,24 @@ public sealed class InfrastructureServiceCollectionTests
         provider.GetRequiredService<IWritingSignalClient>()
             .Should()
             .BeOfType<SaplingWritingSignalClient>();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_enables_sql_server_retry_strategy_for_default_connection()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:DefaultConnection"] = "Server=localhost;Database=ReplyInMyVoiceTest;User Id=test;Password=test;TrustServerCertificate=True",
+        });
+
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>();
+        using var db = new AppDbContext(options);
+
+        var strategy = db.Database.CreateExecutionStrategy();
+
+        strategy.RetriesOnFailure.Should().BeTrue();
+        strategy.GetType().Name.Should().Be("SqlServerRetryingExecutionStrategy");
     }
 
     private static ServiceProvider BuildProvider(Dictionary<string, string?> values)

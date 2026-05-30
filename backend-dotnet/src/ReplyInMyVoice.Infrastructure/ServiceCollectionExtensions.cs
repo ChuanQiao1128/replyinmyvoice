@@ -22,7 +22,12 @@ public static class ServiceCollectionExtensions
 
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
-                options.UseSqlServer(connectionString);
+                options.UseSqlServer(
+                    connectionString,
+                    sqlOptions => sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 5,
+                        maxRetryDelay: TimeSpan.FromSeconds(10),
+                        errorNumbersToAdd: null));
             }
             else
             {
