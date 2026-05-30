@@ -103,6 +103,16 @@ public sealed class StripeEventService
 
             return processed;
         }
+        catch (DbUpdateException ex)
+            when (type == "checkout.session.completed" && IsStripeEventCreditUniqueConstraintViolation(ex))
+        {
+            await MarkProcessedAfterCheckoutGrantConflictAsync(eventId, type, now, cancellationToken);
+            logger?.LogInformation(
+                ex,
+                "Stripe checkout credit grant already exists for event {EventId}; treating webhook as an idempotent success.",
+                eventId);
+            return false;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var failure = await MarkFailedAsync(eventId, type, ex.Message, now, cancellationToken);
@@ -246,6 +256,45 @@ public sealed class StripeEventService
 
             await db.SaveChangesAsync(cancellationToken);
             return new StripeFailureLogInfo(stripeEvent.AttemptCount, stripeEvent.Status);
+        }, cancellationToken);
+    }
+
+    private async Task MarkProcessedAfterCheckoutGrantConflictAsync(
+        string eventId,
+        string type,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteInTransactionAsync(async db =>
+        {
+            var stripeEvent = await db.StripeEvents
+                .AsTracking()
+                .SingleOrDefaultAsync(x => x.EventId == eventId, cancellationToken);
+
+            if (stripeEvent is null)
+            {
+                stripeEvent = new StripeEvent
+                {
+                    EventId = eventId,
+                    Type = type,
+                    Status = StripeEventStatus.Processed,
+                    AttemptCount = 1,
+                    CreatedAt = now,
+                    LastAttemptAt = now,
+                    ProcessedAt = now,
+                };
+                db.StripeEvents.Add(stripeEvent);
+            }
+            else if (stripeEvent.Status != StripeEventStatus.Processed)
+            {
+                stripeEvent.Type = type;
+                stripeEvent.AttemptCount += 1;
+                stripeEvent.LastAttemptAt = now;
+                MarkProcessed(stripeEvent, now);
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
         }, cancellationToken);
     }
 
@@ -486,6 +535,13 @@ public sealed class StripeEventService
         return StripeBillingService.TryGetSkuDefinition(sku, out var definition)
             ? definition!.Rewrites
             : null;
+    }
+
+    private static bool IsStripeEventCreditUniqueConstraintViolation(DbUpdateException exception)
+    {
+        var message = exception.ToString();
+        return message.Contains("IX_RewriteCredits_StripeEventId", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("RewriteCredits.StripeEventId", StringComparison.OrdinalIgnoreCase);
     }
 
     private static SubscriptionStatus MapSubscriptionStatus(string? status) =>
