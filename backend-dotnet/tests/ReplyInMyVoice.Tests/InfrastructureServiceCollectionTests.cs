@@ -22,6 +22,66 @@ public sealed class InfrastructureServiceCollectionTests
     }
 
     [Fact]
+    public void AddReplyInMyVoiceInfrastructure_fails_fast_in_non_development_environments_when_critical_config_is_missing()
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["OPENAI_BASE_URL"] = "https://api.deepseek.com",
+        };
+
+        var act = () => BuildProvider(
+            values,
+            environmentName: "Production",
+            requireServiceBusConsumer: true);
+
+        var exception = act.Should().Throw<InvalidOperationException>().Which;
+        exception.Message.Should().Contain("ConnectionStrings:DefaultConnection");
+        exception.Message.Should().Contain("DATABASE_URL");
+        exception.Message.Should().Contain("ConnectionStrings:ServiceBus");
+        exception.Message.Should().Contain("SERVICEBUS_CONNECTION_STRING");
+        exception.Message.Should().Contain("AZURE_SERVICE_BUS_CONNECTION_STRING");
+        exception.Message.Should().Contain("STRIPE_SECRET_KEY");
+        exception.Message.Should().Contain("STRIPE_WEBHOOK_SECRET");
+        exception.Message.Should().Contain("DEEPSEEK_API_KEY");
+        exception.Message.Should().Contain("OPENAI_API_KEY");
+        exception.Message.Should().Contain("SAPLING_API_KEY");
+        exception.Message.Should().NotContain("https://api.deepseek.com");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_requires_service_bus_connection_only_when_consumer_is_enabled()
+    {
+        var values = CompleteProductionConfiguration();
+
+        using var provider = BuildProvider(values, environmentName: "Production");
+
+        var act = () => BuildProvider(
+            values,
+            environmentName: "Production",
+            requireServiceBusConsumer: true);
+
+        var exception = act.Should().Throw<InvalidOperationException>().Which;
+        exception.Message.Should().Contain("ConnectionStrings:ServiceBus");
+        exception.Message.Should().Contain("SERVICEBUS_CONNECTION_STRING");
+        exception.Message.Should().Contain("AZURE_SERVICE_BUS_CONNECTION_STRING");
+        exception.Message.Should().NotContain("DATABASE_URL");
+        exception.Message.Should().NotContain("STRIPE_SECRET_KEY");
+        exception.Message.Should().NotContain("SAPLING_API_KEY");
+    }
+
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Testing")]
+    public void AddReplyInMyVoiceInfrastructure_keeps_local_fallbacks_for_development_and_testing(string environmentName)
+    {
+        var provider = BuildProvider([], environmentName);
+
+        provider.GetRequiredService<IRewriteProvider>()
+            .Should()
+            .BeOfType<DeterministicRewriteProvider>();
+    }
+
+    [Fact]
     public void AddReplyInMyVoiceInfrastructure_uses_fact_reconstruct_provider_when_model_and_signal_keys_are_configured()
     {
         var provider = BuildProvider(new Dictionary<string, string?>
@@ -130,15 +190,31 @@ public sealed class InfrastructureServiceCollectionTests
         program[flagIndex..].Should().Contain("AddHostedService<ServiceBusRewriteWorker>()");
     }
 
-    private static ServiceProvider BuildProvider(Dictionary<string, string?> values)
+    private static ServiceProvider BuildProvider(
+        Dictionary<string, string?> values,
+        string environmentName = "Testing",
+        bool requireServiceBusConsumer = false)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(values)
             .Build();
         var services = new ServiceCollection();
-        services.AddReplyInMyVoiceInfrastructure(configuration);
+        services.AddReplyInMyVoiceInfrastructure(
+            configuration,
+            environmentName,
+            requireServiceBusConsumer);
         return services.BuildServiceProvider();
     }
+
+    private static Dictionary<string, string?> CompleteProductionConfiguration() => new()
+    {
+        ["DATABASE_URL"] = "Server=localhost;Database=ReplyInMyVoiceTest;User Id=test;Password=test;TrustServerCertificate=True",
+        ["STRIPE_SECRET_KEY"] = "stripe-test-key",
+        ["STRIPE_WEBHOOK_SECRET"] = "stripe-webhook-test-key",
+        ["OPENAI_BASE_URL"] = "https://api.deepseek.com",
+        ["DEEPSEEK_API_KEY"] = "deepseek-test-key",
+        ["SAPLING_API_KEY"] = "sapling-test-key",
+    };
 
     private static FactReconstructRewriteOptions ReadFactReconstructOptions(IRewriteProvider provider)
     {

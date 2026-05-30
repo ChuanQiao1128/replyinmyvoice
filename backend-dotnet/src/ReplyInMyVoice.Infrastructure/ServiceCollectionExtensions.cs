@@ -15,8 +15,14 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddReplyInMyVoiceInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        string? environmentName = null,
+        bool requireServiceBusConsumer = false)
     {
+        configuration.ValidateReplyInMyVoiceRuntimeConfiguration(
+            environmentName,
+            requireServiceBusConsumer);
+
         services.AddDbContext<AppDbContext>(options =>
         {
             var connectionString = configuration.GetConnectionString("DefaultConnection")
@@ -153,6 +159,76 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    public static void ValidateReplyInMyVoiceRuntimeConfiguration(
+        this IConfiguration configuration,
+        string? environmentName,
+        bool requireServiceBusConsumer = false)
+    {
+        var runtimeEnvironmentName = ResolveRuntimeEnvironmentName(configuration, environmentName);
+        if (string.IsNullOrWhiteSpace(runtimeEnvironmentName) ||
+            IsDevelopmentOrTesting(runtimeEnvironmentName))
+        {
+            return;
+        }
+
+        var missing = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("DefaultConnection")) &&
+            string.IsNullOrWhiteSpace(configuration["DATABASE_URL"]))
+        {
+            missing.Add("ConnectionStrings:DefaultConnection or DATABASE_URL");
+        }
+
+        if (requireServiceBusConsumer &&
+            string.IsNullOrWhiteSpace(configuration.GetConnectionString("ServiceBus")) &&
+            string.IsNullOrWhiteSpace(configuration["ServiceBus"]) &&
+            string.IsNullOrWhiteSpace(configuration["SERVICEBUS_CONNECTION_STRING"]) &&
+            string.IsNullOrWhiteSpace(configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"]))
+        {
+            missing.Add("ConnectionStrings:ServiceBus or ServiceBus or SERVICEBUS_CONNECTION_STRING or AZURE_SERVICE_BUS_CONNECTION_STRING");
+        }
+
+        if (string.IsNullOrWhiteSpace(configuration["STRIPE_SECRET_KEY"]))
+        {
+            missing.Add("STRIPE_SECRET_KEY");
+        }
+
+        if (string.IsNullOrWhiteSpace(configuration["STRIPE_WEBHOOK_SECRET"]))
+        {
+            missing.Add("STRIPE_WEBHOOK_SECRET");
+        }
+
+        var openAiBaseUrl = configuration["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1";
+        if (string.IsNullOrWhiteSpace(ResolveOpenAiCompatibleApiKey(configuration, openAiBaseUrl)))
+        {
+            missing.Add(IsDeepSeekBaseUrl(openAiBaseUrl)
+                ? "DEEPSEEK_API_KEY or OPENAI_API_KEY"
+                : "OPENAI_API_KEY or DEEPSEEK_API_KEY");
+        }
+
+        if (string.IsNullOrWhiteSpace(configuration["SAPLING_API_KEY"]))
+        {
+            missing.Add("SAPLING_API_KEY");
+        }
+
+        if (missing.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"ReplyInMyVoice startup configuration is missing required setting(s) for {runtimeEnvironmentName}: {string.Join(", ", missing)}.");
+        }
+    }
+
+    private static string? ResolveRuntimeEnvironmentName(IConfiguration configuration, string? environmentName) =>
+        !string.IsNullOrWhiteSpace(environmentName)
+            ? environmentName
+            : configuration["DOTNET_ENVIRONMENT"]
+                ?? configuration["ASPNETCORE_ENVIRONMENT"]
+                ?? configuration["AZURE_FUNCTIONS_ENVIRONMENT"];
+
+    private static bool IsDevelopmentOrTesting(string environmentName) =>
+        string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
 
     private static string? ResolveOpenAiCompatibleApiKey(IConfiguration configuration, string baseUrl)
     {
