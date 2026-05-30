@@ -287,15 +287,15 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
 
         var expiredCandidates = await db.UsageReservations
             .AsTracking()
+            .Where(x => x.Status == UsageReservationStatus.Pending)
             .Include(x => x.RewriteAttempt)
             .Include(x => x.UsagePeriod)
             .Include(x => x.RewriteCredit)
             .ToListAsync(cancellationToken);
         var expiredReservations = expiredCandidates
             .Where(x =>
-                x.Status == UsageReservationStatus.Pending &&
                 x.ExpiresAt <= now &&
-                x.RewriteAttempt!.Status == RewriteAttemptStatus.Pending)
+                x.RewriteAttempt!.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
             .ToList();
 
         foreach (var reservation in expiredReservations)
@@ -315,10 +315,17 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
                 reservation.UsagePeriod.RowVersion = Guid.NewGuid();
             }
 
-            if (reservation.RewriteAttempt!.Status is not RewriteAttemptStatus.Succeeded)
+            if (reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Pending)
             {
                 reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
                 reservation.RewriteAttempt.ErrorCode = "reservation_expired";
+                reservation.RewriteAttempt.CompletedAt = now;
+                reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
+            }
+            else if (reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Processing)
+            {
+                reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
+                reservation.RewriteAttempt.ErrorCode = "processing_timed_out";
                 reservation.RewriteAttempt.CompletedAt = now;
                 reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
             }
