@@ -6,9 +6,9 @@ const authCopy = {
   "sign-in": {
     eyebrow: "Welcome back",
     heading: "Sign in to your reply workspace.",
-    body: "Use your email verification code or Google to open your drafts, remaining usage, and billing state.",
+    body: "Use your email address or Google to start the secure Entra OAuth sign-in flow, then open your drafts, remaining usage, and billing state.",
     cardTitle: "Continue securely",
-    cardBody: "Email code sign-in sends a one-time verification code before returning you to the app.",
+    cardBody: "Enter your email to start the Entra redirect with that address prefilled, or continue with Google.",
     alternateText: "Need an account?",
     alternateHref: "/sign-up",
     alternateLabel: "Start here",
@@ -16,9 +16,9 @@ const authCopy = {
   "sign-up": {
     eyebrow: "Create your account",
     heading: "Start with three free reply rewrites.",
-    body: "Create an account with an email verification code or Google, then try the workspace before choosing a rewrite pack or Pro/API.",
+    body: "Create an account with your email address or Google, then try the workspace before choosing a rewrite pack or Pro/API.",
     cardTitle: "Create your account",
-    cardBody: "Email code sign-in verifies your address before sending you back to the workspace.",
+    cardBody: "Both options start the same secure Entra OAuth redirect before sending you back to the workspace.",
     alternateText: "Already signed up?",
     alternateHref: "/sign-in",
     alternateLabel: "Sign in",
@@ -130,7 +130,7 @@ export function GoogleOAuthCard({ mode = "sign-in" }: { mode?: AuthMode }) {
             }}
           >
             <div className="eyebrow" style={{ color: "var(--muted)" }}>
-              Email code sign-in
+              Entra OAuth sign-in
             </div>
             <h2 id="auth-card-title" style={{ fontSize: 24, marginTop: 8 }}>
               {copy.cardTitle}
@@ -188,7 +188,7 @@ export function GoogleOAuthCard({ mode = "sign-in" }: { mode?: AuthMode }) {
                 className="btn btn-primary btn-lg"
                 style={{ width: "100%", justifyContent: "center", marginTop: 12 }}
               >
-                Continue with email code
+                Continue with email
               </button>
             </form>
 
