@@ -342,9 +342,9 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
             {
                 credit.AmountGranted = credit.AmountConsumed;
             }
-            else if (ResolveRefundedCreditCount(stripeObject, credit) is { } refundedCredits && refundedCredits > 0)
+            else if (ResolveRemainingGrantedAfterRefund(stripeObject, credit) is { } targetGranted)
             {
-                credit.AmountGranted = Math.Max(credit.AmountConsumed, credit.AmountGranted - refundedCredits);
+                credit.AmountGranted = targetGranted;
             }
 
             if (credit.AmountGranted != previousGranted)
@@ -398,18 +398,26 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         return amount is > 0 && amountRefunded >= amount;
     }
 
-    private static int? ResolveRefundedCreditCount(JsonElement stripeObject, RewriteCredit credit)
+    private static int? ResolveRemainingGrantedAfterRefund(JsonElement stripeObject, RewriteCredit credit)
     {
         var amount = GetLong(stripeObject, "amount") ?? credit.StripeAmountTotal;
         var amountRefunded = GetLong(stripeObject, "amount_refunded");
-        if (amount is not > 0 || amountRefunded is not > 0)
+        var originalGranted = ResolveOriginalGrantedRewrites(credit);
+        if (amount is not > 0 || amountRefunded is not > 0 || originalGranted is not > 0)
         {
             return null;
         }
 
         var boundedRefundedAmount = Math.Min(amountRefunded.Value, amount.Value);
-        var proportionalCredits = (decimal)credit.AmountGranted * boundedRefundedAmount / amount.Value;
-        return (int)Math.Ceiling(proportionalCredits);
+        var refundedCredits = (int)Math.Ceiling((decimal)originalGranted.Value * boundedRefundedAmount / amount.Value);
+        return Math.Max(credit.AmountConsumed, originalGranted.Value - refundedCredits);
+    }
+
+    private static int? ResolveOriginalGrantedRewrites(RewriteCredit credit)
+    {
+        return StripeBillingService.TryGetSkuDefinition(credit.StripeSku, out var definition)
+            ? definition!.Rewrites
+            : null;
     }
 
     private static int? ResolveGrantedRewrites(JsonElement stripeObject)

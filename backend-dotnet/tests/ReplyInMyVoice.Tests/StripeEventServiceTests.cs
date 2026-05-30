@@ -367,6 +367,7 @@ public sealed class StripeEventServiceTests
                 AmountConsumed = 2,
                 GrantedAt = now.AddDays(-1),
                 StripePaymentIntentId = "pi_refund",
+                StripeSku = "quick_pack",
                 StripeAmountTotal = 1200,
                 StripeCurrency = "nzd",
             });
@@ -410,6 +411,79 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
+    public async Task ProcessWebhookEventAsync_SequentialPartialRefundsUseCumulativeOriginalGrant()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-30T00:05:00Z");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 10,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-1),
+                StripePaymentIntentId = "pi_sequential_refund",
+                StripeSku = "quick_pack",
+                StripeAmountTotal = 1000,
+                StripeCurrency = "nzd",
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var firstRefund = await service.ProcessWebhookEventAsync(
+            "evt_refund_partial_first",
+            "charge.refunded",
+            """
+            {
+              "id": "evt_refund_partial_first",
+              "type": "charge.refunded",
+              "data": {
+                "object": {
+                  "id": "ch_sequential_refund",
+                  "payment_intent": "pi_sequential_refund",
+                  "amount": 1000,
+                  "amount_refunded": 300,
+                  "refunded": false
+                }
+              }
+            }
+            """,
+            now);
+        var secondRefund = await service.ProcessWebhookEventAsync(
+            "evt_refund_partial_second",
+            "charge.refunded",
+            """
+            {
+              "id": "evt_refund_partial_second",
+              "type": "charge.refunded",
+              "data": {
+                "object": {
+                  "id": "ch_sequential_refund",
+                  "payment_intent": "pi_sequential_refund",
+                  "amount": 1000,
+                  "amount_refunded": 600,
+                  "refunded": false
+                }
+              }
+            }
+            """,
+            now.AddSeconds(1));
+
+        firstRefund.Should().BeTrue();
+        secondRefund.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var credit = await db.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_sequential_refund");
+        credit.AmountGranted.Should().Be(4);
+        credit.AmountConsumed.Should().Be(0);
+    }
+
+    [Fact]
     public async Task ProcessWebhookEventAsync_RefundClampsAndDispute()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -428,6 +502,7 @@ public sealed class StripeEventServiceTests
                     AmountConsumed = 8,
                     GrantedAt = now.AddDays(-1),
                     StripePaymentIntentId = "pi_clamp",
+                    StripeSku = "quick_pack",
                     StripeAmountTotal = 1200,
                     StripeCurrency = "nzd",
                 },
