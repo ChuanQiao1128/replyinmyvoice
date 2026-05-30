@@ -11,6 +11,8 @@ namespace ReplyInMyVoice.Infrastructure;
 
 public static class ServiceCollectionExtensions
 {
+    private const int DefaultTotalRewriteBudgetSeconds = 180;
+
     public static IServiceCollection AddReplyInMyVoiceInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -96,12 +98,15 @@ public static class ServiceCollectionExtensions
         var rewriteMaxAttempts = int.TryParse(configuration["REWRITE_MAX_ATTEMPTS"], out var parsedMaxAttempts)
             ? parsedMaxAttempts
             : 10;
-        // Optional wall-clock cap for the whole rewrite (all loops combined). TOTAL_REWRITE_BUDGET_SEC=0
-        // (default) leaves it unlimited — current behavior; set e.g. 120 to bound worst-case latency by
-        // returning the best candidate found so far. Tunable via app settings without a redeploy.
-        var totalRewriteBudgetSeconds = int.TryParse(configuration["TOTAL_REWRITE_BUDGET_SEC"], out var parsedBudget) && parsedBudget > 0
-            ? parsedBudget
-            : 0;
+        // Production wall-clock cap for the whole rewrite (all loops combined). An explicit
+        // TOTAL_REWRITE_BUDGET_SEC=0 still leaves it unlimited for controlled non-production runs.
+        var totalRewriteBudgetSeconds = DefaultTotalRewriteBudgetSeconds;
+        if (configuration["TOTAL_REWRITE_BUDGET_SEC"] is { } configuredBudget &&
+            int.TryParse(configuredBudget, out var parsedBudget) &&
+            parsedBudget >= 0)
+        {
+            totalRewriteBudgetSeconds = parsedBudget;
+        }
 
         if (string.IsNullOrWhiteSpace(modelApiKey) && string.IsNullOrWhiteSpace(saplingApiKey))
         {

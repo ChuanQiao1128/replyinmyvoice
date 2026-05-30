@@ -1,3 +1,4 @@
+using System.Reflection;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -40,6 +41,39 @@ public sealed class InfrastructureServiceCollectionTests
         provider.GetRequiredService<IWritingSignalClient>()
             .Should()
             .BeOfType<SaplingWritingSignalClient>();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_bounds_fact_reconstruct_provider_by_default()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OPENAI_BASE_URL"] = "https://api.deepseek.com",
+            ["DEEPSEEK_API_KEY"] = "deepseek-test-key",
+            ["OPENAI_MODEL_MID_WRITER"] = "deepseek-v4-pro",
+            ["SAPLING_API_KEY"] = "sapling-test-key",
+        });
+
+        var options = ReadFactReconstructOptions(provider.GetRequiredService<IRewriteProvider>());
+
+        options.TotalTimeBudget.Should().Be(TimeSpan.FromSeconds(180));
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_allows_explicit_unbounded_fact_reconstruct_budget()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OPENAI_BASE_URL"] = "https://api.deepseek.com",
+            ["DEEPSEEK_API_KEY"] = "deepseek-test-key",
+            ["OPENAI_MODEL_MID_WRITER"] = "deepseek-v4-pro",
+            ["SAPLING_API_KEY"] = "sapling-test-key",
+            ["TOTAL_REWRITE_BUDGET_SEC"] = "0",
+        });
+
+        var options = ReadFactReconstructOptions(provider.GetRequiredService<IRewriteProvider>());
+
+        options.TotalTimeBudget.Should().Be(TimeSpan.Zero);
     }
 
     [Fact]
@@ -89,5 +123,15 @@ public sealed class InfrastructureServiceCollectionTests
         var services = new ServiceCollection();
         services.AddReplyInMyVoiceInfrastructure(configuration);
         return services.BuildServiceProvider();
+    }
+
+    private static FactReconstructRewriteOptions ReadFactReconstructOptions(IRewriteProvider provider)
+    {
+        var optionsField = typeof(FactReconstructRewriteProvider).GetField(
+            "_options",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        optionsField.Should().NotBeNull();
+        return (FactReconstructRewriteOptions)optionsField!.GetValue(provider)!;
     }
 }

@@ -33,6 +33,7 @@ public sealed class ServiceBusRewriteWorker(
         {
             MaxConcurrentCalls = 4,
             AutoCompleteMessages = false,
+            MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(10),
         });
 
         processor.ProcessMessageAsync += ProcessMessageAsync;
