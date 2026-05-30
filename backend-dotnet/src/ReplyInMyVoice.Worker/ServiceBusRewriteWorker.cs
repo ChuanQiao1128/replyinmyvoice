@@ -70,6 +70,12 @@ public sealed class ServiceBusRewriteWorker(
                 await args.DeadLetterMessageAsync(args.Message, "invalid_job", "Message body did not contain a rewrite job.");
                 return;
             }
+
+            if (job.AttemptId == Guid.Empty)
+            {
+                await args.DeadLetterMessageAsync(args.Message, "invalid_job", "Message body did not contain a valid attempt id.");
+                return;
+            }
         }
         catch (JsonException ex)
         {
@@ -84,6 +90,11 @@ public sealed class ServiceBusRewriteWorker(
         {
             await processor.ProcessAsync(job, args.CancellationToken);
             await args.CompleteMessageAsync(args.Message);
+        }
+        catch (RewriteAttemptNotFoundException ex)
+        {
+            logger.LogWarning(ex, "Dead-lettering rewrite job for missing attempt {AttemptId}", job.AttemptId);
+            await args.DeadLetterMessageAsync(args.Message, "attempt_not_found", ex.Message);
         }
         catch (Exception ex)
         {

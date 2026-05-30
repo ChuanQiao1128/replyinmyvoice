@@ -10,6 +10,23 @@ using ReplyInMyVoice.Infrastructure.Providers;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
+public sealed class RewriteAttemptNotFoundException : InvalidOperationException
+{
+    public RewriteAttemptNotFoundException(Guid attemptId)
+        : base($"Rewrite attempt {attemptId} was not found.")
+    {
+        AttemptId = attemptId;
+    }
+
+    public RewriteAttemptNotFoundException(Guid attemptId, Exception innerException)
+        : base($"Rewrite attempt {attemptId} was not found.", innerException)
+    {
+        AttemptId = attemptId;
+    }
+
+    public Guid AttemptId { get; }
+}
+
 public sealed class RewriteJobProcessor(
     Func<AppDbContext> dbContextFactory,
     IRewriteProvider rewriteProvider,
@@ -27,15 +44,22 @@ public sealed class RewriteJobProcessor(
                 .AsNoTracking()
                 .SingleOrDefaultAsync(x => x.Id == job.AttemptId, cancellationToken);
 
-            if (attempt is null ||
-                attempt.Status is RewriteAttemptStatus.Succeeded or RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired)
+            if (attempt is null)
+            {
+                throw new RewriteAttemptNotFoundException(job.AttemptId);
+            }
+
+            if (attempt.Status is RewriteAttemptStatus.Succeeded or RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired)
             {
                 return;
             }
 
             if (attempt.ExpiresAt <= now)
             {
-                await quotaService.ReleaseAsync(job.AttemptId, "reservation_expired", now, cancellationToken);
+                await ExecuteAttemptMutationAsync(
+                    job.AttemptId,
+                    () => quotaService.ReleaseAsync(job.AttemptId, "reservation_expired", now, cancellationToken),
+                    cancellationToken);
                 return;
             }
 
@@ -47,12 +71,18 @@ public sealed class RewriteJobProcessor(
             }
             catch (JsonException)
             {
-                await quotaService.ReleaseAsync(job.AttemptId, "request_json_parse_failed", now, cancellationToken);
+                await ExecuteAttemptMutationAsync(
+                    job.AttemptId,
+                    () => quotaService.ReleaseAsync(job.AttemptId, "request_json_parse_failed", now, cancellationToken),
+                    cancellationToken);
                 return;
             }
         }
 
-        var claimed = await quotaService.MarkProcessingAsync(job.AttemptId, now, cancellationToken);
+        var claimed = await ExecuteAttemptMutationAsync(
+            job.AttemptId,
+            () => quotaService.MarkProcessingAsync(job.AttemptId, now, cancellationToken),
+            cancellationToken);
         if (!claimed)
         {
             return;
@@ -66,7 +96,10 @@ public sealed class RewriteJobProcessor(
 
         if (result.Success && IsValidResultJson(result.ResultJson))
         {
-            await quotaService.FinalizeSuccessAsync(job.AttemptId, result.ResultJson!, rewriteFinishedAt, cancellationToken);
+            await ExecuteAttemptMutationAsync(
+                job.AttemptId,
+                () => quotaService.FinalizeSuccessAsync(job.AttemptId, result.ResultJson!, rewriteFinishedAt, cancellationToken),
+                cancellationToken);
             await WriteCostLogAsync(
                 job.AttemptId,
                 request,
@@ -91,11 +124,61 @@ public sealed class RewriteJobProcessor(
             rewriteStartedAt,
             rewriteFinishedAt,
             cancellationToken);
-        await quotaService.ReleaseAsync(
+        await ExecuteAttemptMutationAsync(
             job.AttemptId,
-            errorCode,
-            rewriteFinishedAt,
+            () => quotaService.ReleaseAsync(
+                job.AttemptId,
+                errorCode,
+                rewriteFinishedAt,
+                cancellationToken),
             cancellationToken);
+    }
+
+    private async Task ExecuteAttemptMutationAsync(
+        Guid attemptId,
+        Func<Task> action,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            await ThrowIfAttemptIsMissingAsync(attemptId, ex, cancellationToken);
+            throw;
+        }
+    }
+
+    private async Task<T> ExecuteAttemptMutationAsync<T>(
+        Guid attemptId,
+        Func<Task<T>> action,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            await ThrowIfAttemptIsMissingAsync(attemptId, ex, cancellationToken);
+            throw;
+        }
+    }
+
+    private async Task ThrowIfAttemptIsMissingAsync(
+        Guid attemptId,
+        InvalidOperationException innerException,
+        CancellationToken cancellationToken)
+    {
+        await using var db = dbContextFactory();
+        var attemptExists = await db.RewriteAttempts
+            .AsNoTracking()
+            .AnyAsync(x => x.Id == attemptId, cancellationToken);
+        if (!attemptExists)
+        {
+            throw new RewriteAttemptNotFoundException(attemptId, innerException);
+        }
     }
 
     private async Task WriteCostLogAsync(
@@ -129,7 +212,7 @@ public sealed class RewriteJobProcessor(
                 "Rewrite cost log already exists for request {RequestId}; skipping duplicate cost log.",
                 attemptId);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException and not RewriteAttemptNotFoundException)
         {
             logger?.LogWarning(
                 ex,
@@ -166,7 +249,12 @@ public sealed class RewriteJobProcessor(
 
         var attempt = await db.RewriteAttempts
             .AsNoTracking()
-            .SingleAsync(x => x.Id == attemptId, cancellationToken);
+            .SingleOrDefaultAsync(x => x.Id == attemptId, cancellationToken);
+        if (attempt is null)
+        {
+            throw new RewriteAttemptNotFoundException(attemptId);
+        }
+
         var rates = RewriteCostRates.FromEnvironment();
         var costedCalls = providerCalls
             .Select(call => new CostedProviderCall(call, CalculateCost(call, rates)))
