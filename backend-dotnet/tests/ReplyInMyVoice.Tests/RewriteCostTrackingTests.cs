@@ -1,8 +1,16 @@
+using System.Data.Common;
+using System.Globalization;
 using System.Net;
 using System.Text;
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using ReplyInMyVoice.Domain.Contracts;
+using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Services;
 
@@ -19,7 +27,7 @@ public sealed class RewriteCostTrackingTests
         ConfigureRates();
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var reservedAttempt = await ReserveAttemptAsync(fixture, user.Id, "idem-cost-log");
+        var reservedAttempt = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-log");
         var processor = new RewriteJobProcessor(
             fixture.CreateContext,
             CreateOpenAiBackedProvider(promptTokens: 150, completionTokens: 50));
@@ -49,7 +57,7 @@ public sealed class RewriteCostTrackingTests
         ConfigureRates();
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var reservedAttempt = await ReserveAttemptAsync(fixture, user.Id, "idem-cost-rates");
+        var reservedAttempt = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-rates");
         var processor = new RewriteJobProcessor(
             fixture.CreateContext,
             CreateOpenAiBackedProvider(promptTokens: 250, completionTokens: 125));
@@ -66,6 +74,32 @@ public sealed class RewriteCostTrackingTests
         providerCall.EstimatedCostUsd.Should().Be(expectedCost);
     }
 
+    [Fact]
+    public async Task ReprocessingSucceededAttemptDoesNotThrowOrDuplicateCostLogWhenRequestIdRaceOccurs()
+    {
+        ConfigureRates();
+        await using var fixture = await CostLogRaceFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var reservedAttempt = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-race");
+        var provider = CreateOpenAiBackedProvider(promptTokens: 150, completionTokens: 50);
+        var processor = new RewriteJobProcessor(fixture.CreateContext, provider);
+        var job = new RewriteJob(reservedAttempt.AttemptId);
+
+        var act = async () =>
+        {
+            await processor.ProcessAsync(job, CancellationToken.None);
+            await processor.ProcessAsync(job, CancellationToken.None);
+        };
+
+        await act.Should().NotThrowAsync();
+
+        await using var db = fixture.CreateContext();
+        var requestId = reservedAttempt.AttemptId.ToString();
+        var logCount = await db.RewriteCostLogs.CountAsync(x => x.RequestId == requestId);
+        logCount.Should().Be(1);
+        (await db.RewriteCostLogs.CountAsync()).Should().Be(1);
+    }
+
     private static void ConfigureRates()
     {
         Environment.SetEnvironmentVariable("REWRITE_COST_INPUT_PER_1K", InputRatePer1K.ToString("0.0000"));
@@ -73,11 +107,11 @@ public sealed class RewriteCostTrackingTests
     }
 
     private static async Task<ReserveRewriteResult> ReserveAttemptAsync(
-        DbFixture fixture,
+        Func<AppDbContext> dbContextFactory,
         Guid userId,
         string idempotencyKey)
     {
-        var quota = new QuotaService(fixture.CreateContext);
+        var quota = new QuotaService(dbContextFactory);
         return await quota.ReserveAsync(
             userId,
             idempotencyKey,
@@ -153,6 +187,172 @@ public sealed class RewriteCostTrackingTests
                     true,
                     null)
                 : new RewriteProviderResult(null, false, result.ErrorCode);
+        }
+    }
+
+    private sealed class CostLogRaceFixture : IAsyncDisposable
+    {
+        private readonly SqliteConnection _connection;
+        private readonly DuplicateCostLogSaveInterceptor _duplicateCostLogSaveInterceptor = new();
+
+        private CostLogRaceFixture(SqliteConnection connection)
+        {
+            _connection = connection;
+        }
+
+        public static async Task<CostLogRaceFixture> CreateAsync()
+        {
+            var connection = new SqliteConnection("DataSource=:memory:");
+            await connection.OpenAsync();
+            var fixture = new CostLogRaceFixture(connection);
+            await using var db = fixture.CreateContext();
+            await db.Database.EnsureCreatedAsync();
+            return fixture;
+        }
+
+        public AppDbContext CreateContext()
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite(_connection)
+                .AddInterceptors(_duplicateCostLogSaveInterceptor)
+                .EnableSensitiveDataLogging()
+                .Options;
+            return new AppDbContext(options);
+        }
+
+        public async Task<AppUser> CreateUserAsync()
+        {
+            await using var db = CreateContext();
+            var user = new AppUser
+            {
+                ExternalAuthUserId = $"clerk_{Guid.NewGuid():N}",
+                Email = "test@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            db.AppUsers.Add(user);
+            await db.SaveChangesAsync();
+            return user;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _connection.DisposeAsync();
+        }
+    }
+
+    private sealed class DuplicateCostLogSaveInterceptor : SaveChangesInterceptor
+    {
+        private bool _insertedDuplicate;
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            var context = eventData.Context;
+            var costLog = context?.ChangeTracker
+                .Entries<RewriteCostLog>()
+                .Where(x => x.State == EntityState.Added)
+                .Select(x => x.Entity)
+                .SingleOrDefault();
+
+            if (!_insertedDuplicate && context is not null && costLog is not null)
+            {
+                _insertedDuplicate = true;
+                await InsertDuplicateCostLogAsync(context, costLog.RequestId, cancellationToken);
+            }
+
+            return await base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+
+        private static async Task InsertDuplicateCostLogAsync(
+            DbContext context,
+            string requestId,
+            CancellationToken cancellationToken)
+        {
+            var command = context.Database.GetDbConnection().CreateCommand();
+            await using (command.ConfigureAwait(false))
+            {
+                command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
+                command.CommandText =
+                    """
+                    INSERT INTO RewriteCostLogs (
+                        Id,
+                        RequestId,
+                        StrategyVersion,
+                        Scenario,
+                        TonePreset,
+                        Status,
+                        StartedAt,
+                        FinishedAt,
+                        DurationMs,
+                        InputCharCount,
+                        DraftWordCount,
+                        InternalStrategies,
+                        RepairCandidates,
+                        RejectedCandidates,
+                        UsedEscalation,
+                        OpenAiInputTokens,
+                        OpenAiOutputTokens,
+                        OpenAiCostUsd,
+                        SaplingCallCount,
+                        SaplingCharacters,
+                        SaplingCostUsd,
+                        TotalEstimatedCostUsd,
+                        ModelsUsedJson,
+                        ProviderCallsJson,
+                        CreatedAt,
+                        UpdatedAt,
+                        RowVersion
+                    )
+                    VALUES (
+                        $id,
+                        $requestId,
+                        'race',
+                        'race',
+                        'warm',
+                        'succeeded',
+                        $now,
+                        $now,
+                        1,
+                        1,
+                        1,
+                        0,
+                        0,
+                        0,
+                        0,
+                        1,
+                        1,
+                        0.000001,
+                        0,
+                        0,
+                        0,
+                        0.000001,
+                        '[]',
+                        '[]',
+                        $now,
+                        $now,
+                        $rowVersion
+                    );
+                    """;
+
+                AddParameter(command, "$id", Guid.NewGuid().ToString());
+                AddParameter(command, "$requestId", requestId);
+                AddParameter(command, "$now", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+                AddParameter(command, "$rowVersion", Guid.NewGuid().ToString());
+
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+
+        private static void AddParameter(DbCommand command, string name, object value)
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = value;
+            command.Parameters.Add(parameter);
         }
     }
 }

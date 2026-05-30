@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -11,7 +12,8 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class RewriteJobProcessor(
     Func<AppDbContext> dbContextFactory,
-    IRewriteProvider rewriteProvider)
+    IRewriteProvider rewriteProvider,
+    ILogger<RewriteJobProcessor>? logger = null)
 {
     public async Task ProcessAsync(RewriteJob job, CancellationToken cancellationToken)
     {
@@ -97,6 +99,46 @@ public sealed class RewriteJobProcessor(
     }
 
     private async Task WriteCostLogAsync(
+        Guid attemptId,
+        RewriteRequest request,
+        string? resultJson,
+        IReadOnlyList<RewriteProviderCallMetric> providerCalls,
+        string status,
+        string? errorCode,
+        DateTimeOffset startedAt,
+        DateTimeOffset finishedAt,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await WriteCostLogCoreAsync(
+                attemptId,
+                request,
+                resultJson,
+                providerCalls,
+                status,
+                errorCode,
+                startedAt,
+                finishedAt,
+                cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsRequestIdUniqueConstraintViolation(ex))
+        {
+            logger?.LogInformation(
+                ex,
+                "Rewrite cost log already exists for request {RequestId}; skipping duplicate cost log.",
+                attemptId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogWarning(
+                ex,
+                "Rewrite cost log write failed for request {RequestId}; continuing rewrite processing.",
+                attemptId);
+        }
+    }
+
+    private async Task WriteCostLogCoreAsync(
         Guid attemptId,
         RewriteRequest request,
         string? resultJson,
@@ -207,6 +249,13 @@ public sealed class RewriteJobProcessor(
 
         db.RewriteCostLogs.Add(log);
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool IsRequestIdUniqueConstraintViolation(DbUpdateException exception)
+    {
+        var message = exception.ToString();
+        return message.Contains("IX_RewriteCostLogs_RequestId", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("RewriteCostLogs.RequestId", StringComparison.OrdinalIgnoreCase);
     }
 
     private static decimal CalculateCost(RewriteProviderCallMetric call, RewriteCostRates rates)
