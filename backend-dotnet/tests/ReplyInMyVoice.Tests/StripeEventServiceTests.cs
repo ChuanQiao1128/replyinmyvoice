@@ -1,7 +1,10 @@
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -118,6 +121,58 @@ public sealed class StripeEventServiceTests
 
         var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
         updatedUser.StripeCustomerId.Should().Be("cus_pack");
+    }
+
+    [Fact]
+    public async Task ProcessWebhookEventAsync_ConcurrentPaidCheckoutSessionDuplicatesGrantOnceAndDoNotFail()
+    {
+        const string eventId = "evt_paid_pack_parallel";
+        await using var fixture = await CheckoutGrantRaceFixture.CreateAsync(eventId);
+        var user = await fixture.CreateUserAsync();
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-25T00:10:00Z");
+        var rawBody = $$"""
+        {
+          "id": "{{eventId}}",
+          "type": "checkout.session.completed",
+          "data": {
+            "object": {
+              "client_reference_id": "{{user.ExternalAuthUserId}}",
+              "customer": "cus_pack_parallel",
+              "mode": "payment",
+              "payment_status": "paid",
+              "payment_intent": "pi_pack_parallel",
+              "metadata": {
+                "sku": "value_pack",
+                "rewrites": "30",
+                "externalAuthUserId": "{{user.ExternalAuthUserId}}"
+              }
+            }
+          }
+        }
+        """;
+
+        var tasks = new[]
+        {
+            service.ProcessWebhookEventAsync(eventId, "checkout.session.completed", rawBody, now),
+            service.ProcessWebhookEventAsync(eventId, "checkout.session.completed", rawBody, now.AddMilliseconds(1)),
+        };
+
+        bool[] results = [];
+        var act = async () => results = await Task.WhenAll(tasks);
+        await act.Should().NotThrowAsync();
+        await fixture.WaitForConcurrentCreditAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        results.Should().HaveCount(2);
+
+        await using var db = fixture.CreateContext();
+        var storedEvent = await db.StripeEvents.SingleAsync(x => x.EventId == eventId);
+        storedEvent.Status.Should().Be(StripeEventStatus.Processed);
+        (await db.StripeEvents.CountAsync(x => x.Status == StripeEventStatus.Failed)).Should().Be(0);
+
+        var credit = await db.RewriteCredits.SingleAsync(x => x.StripeEventId == eventId);
+        credit.UserId.Should().Be(user.Id);
+        credit.AmountGranted.Should().Be(30);
+        credit.AmountConsumed.Should().Be(0);
     }
 
     [Fact]
@@ -619,5 +674,187 @@ public sealed class StripeEventServiceTests
         var disputed = await db.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_dispute");
         disputed.AmountGranted.Should().Be(1);
         disputed.AmountConsumed.Should().Be(1);
+    }
+
+    private sealed class CheckoutGrantRaceFixture : IAsyncDisposable
+    {
+        private readonly string _databasePath;
+        private readonly ConcurrentCheckoutGrantSaveInterceptor _saveInterceptor;
+
+        private CheckoutGrantRaceFixture(string databasePath, string eventId)
+        {
+            _databasePath = databasePath;
+            _saveInterceptor = new ConcurrentCheckoutGrantSaveInterceptor(eventId, CreateContextWithoutInterceptor);
+        }
+
+        public static async Task<CheckoutGrantRaceFixture> CreateAsync(string eventId)
+        {
+            var databasePath = Path.Combine(Path.GetTempPath(), $"replyinmyvoice-checkout-race-{Guid.NewGuid():N}.db");
+            var fixture = new CheckoutGrantRaceFixture(databasePath, eventId);
+            await using var db = fixture.CreateContextWithoutInterceptor();
+            await db.Database.EnsureCreatedAsync();
+            await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+            return fixture;
+        }
+
+        public AppDbContext CreateContext()
+        {
+            var options = CreateOptionsBuilder()
+                .AddInterceptors(_saveInterceptor)
+                .Options;
+            return new AppDbContext(options);
+        }
+
+        public AppDbContext CreateContextWithoutInterceptor()
+        {
+            var options = CreateOptionsBuilder().Options;
+            return new AppDbContext(options);
+        }
+
+        public Task WaitForConcurrentCreditAsync() =>
+            _saveInterceptor.WaitForConcurrentCreditAsync();
+
+        public async Task<AppUser> CreateUserAsync()
+        {
+            await using var db = CreateContextWithoutInterceptor();
+            var user = new AppUser
+            {
+                ExternalAuthUserId = $"clerk_{Guid.NewGuid():N}",
+                Email = "test@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            db.AppUsers.Add(user);
+            await db.SaveChangesAsync();
+            return user;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(_databasePath);
+            TryDelete($"{_databasePath}-wal");
+            TryDelete($"{_databasePath}-shm");
+            return ValueTask.CompletedTask;
+        }
+
+        private DbContextOptionsBuilder<AppDbContext> CreateOptionsBuilder() =>
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite($"Data Source={_databasePath}")
+                .EnableSensitiveDataLogging();
+
+        private static void TryDelete(string path)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private sealed class ConcurrentCheckoutGrantSaveInterceptor : SaveChangesInterceptor
+    {
+        private readonly string _eventId;
+        private readonly Func<AppDbContext> _createContext;
+        private readonly TaskCompletionSource _concurrentCreditInserted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _duplicateInserted;
+
+        public ConcurrentCheckoutGrantSaveInterceptor(string eventId, Func<AppDbContext> createContext)
+        {
+            _eventId = eventId;
+            _createContext = createContext;
+        }
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            var credit = eventData.Context?.ChangeTracker
+                .Entries<RewriteCredit>()
+                .Where(x => x.State == EntityState.Added)
+                .Select(x => x.Entity)
+                .SingleOrDefault(x => x.StripeEventId == _eventId);
+
+            if (credit is not null && Interlocked.Exchange(ref _duplicateInserted, 1) == 0)
+            {
+                _ = InsertConcurrentCreditAfterCurrentSaveFailsAsync(CloneCredit(credit));
+                throw new DbUpdateException(
+                    "SQLite Error 19: 'UNIQUE constraint failed: RewriteCredits.StripeEventId'. IX_RewriteCredits_StripeEventId");
+            }
+
+            return await base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+
+        public Task WaitForConcurrentCreditAsync() =>
+            _concurrentCreditInserted.Task;
+
+        private async Task InsertConcurrentCreditAfterCurrentSaveFailsAsync(RewriteCredit credit)
+        {
+            const int maxAttempts = 40;
+
+            try
+            {
+                for (var attempt = 1; attempt <= maxAttempts; attempt++)
+                {
+                    try
+                    {
+                        await Task.Delay(25);
+                        await InsertConcurrentCreditAsync(credit);
+                        _concurrentCreditInserted.SetResult();
+                        return;
+                    }
+                    catch (DbUpdateException ex) when (IsDatabaseLocked(ex) && attempt < maxAttempts)
+                    {
+                    }
+                    catch (DbUpdateException ex) when (IsStripeEventCreditUniqueConstraintViolation(ex))
+                    {
+                        _concurrentCreditInserted.SetResult();
+                        return;
+                    }
+                }
+
+                _concurrentCreditInserted.SetException(new TimeoutException("Concurrent checkout credit insert did not complete."));
+            }
+            catch (Exception ex)
+            {
+                _concurrentCreditInserted.SetException(ex);
+            }
+        }
+
+        private async Task InsertConcurrentCreditAsync(
+            RewriteCredit credit)
+        {
+            await using var db = _createContext();
+            db.RewriteCredits.Add(credit);
+            await db.SaveChangesAsync();
+        }
+
+        private static RewriteCredit CloneCredit(RewriteCredit credit) =>
+            new()
+            {
+                UserId = credit.UserId,
+                Source = credit.Source,
+                AmountGranted = credit.AmountGranted,
+                AmountConsumed = credit.AmountConsumed,
+                GrantedAt = credit.GrantedAt,
+                ExpiresAt = credit.ExpiresAt,
+                StripeEventId = credit.StripeEventId,
+                StripePaymentIntentId = credit.StripePaymentIntentId,
+                StripeSku = credit.StripeSku,
+                StripeAmountTotal = credit.StripeAmountTotal,
+                StripeCurrency = credit.StripeCurrency,
+            };
+
+        private static bool IsDatabaseLocked(DbUpdateException exception) =>
+            exception.ToString().Contains("database is locked", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsStripeEventCreditUniqueConstraintViolation(DbUpdateException exception)
+        {
+            var message = exception.ToString();
+            return message.Contains("IX_RewriteCredits_StripeEventId", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("RewriteCredits.StripeEventId", StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
