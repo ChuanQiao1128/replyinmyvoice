@@ -80,6 +80,13 @@ HAS a clean candidate (an earlier manual run held it at 1%), so its failure here
 The earlier "dense = pick-two wall" framing was too absolute (Kwame/c005 are dense and pass); the real picture is
 a probabilistic per-email hit-rate.
 
+**More budget does NOT rescue the failures (16-round re-run):** Celestine produced **0/16** low rounds (only a
+71% near-miss) — the densest email essentially never back-translates below target, so it never even reaches the
+repair step; Jamie produced **1/16** low (down from 2/9 the prior run — the generation lottery has huge run-to-run
+variance), and that one repaired to 100% + residuals. So the ~3/5 coverage is ROBUST to round budget, not a
+"didn't try enough" artifact: an email either reliably yields {low + repairable} candidates or it effectively
+doesn't, and more rounds won't change which.
+
 ## What was tried and rejected (so we don't repeat it)
 
 - **Drift-count stop gate (≤3 drifts)** — too strict and NON-MONOTONIC (Kwame's 6-drift candidate repaired to
