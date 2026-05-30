@@ -1,13 +1,16 @@
 using System.Data;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
-public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
+public sealed class QuotaService(
+    Func<AppDbContext> dbContextFactory,
+    ILogger<QuotaService>? logger = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -223,7 +226,7 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        await ExecuteInTransactionAsync(async db =>
+        var releaseLog = await ExecuteInTransactionAsync(async db =>
         {
             var attempt = await db.RewriteAttempts
                 .AsTracking()
@@ -231,6 +234,9 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
             var reservation = await db.UsageReservations
                 .AsTracking()
                 .SingleAsync(x => x.RewriteAttemptId == attemptId, cancellationToken);
+            var reservationSource = reservation.RewriteCreditId is null ? "period" : "credit";
+            var reservationReleased = false;
+            var attemptTransitioned = false;
 
             if (reservation.Status == UsageReservationStatus.Pending)
             {
@@ -255,6 +261,7 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
                 reservation.Status = UsageReservationStatus.Released;
                 reservation.ReleasedAt = now;
                 reservation.RowVersion = Guid.NewGuid();
+                reservationReleased = true;
             }
 
             if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
@@ -263,17 +270,27 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
                 attempt.ErrorCode = errorCode;
                 attempt.CompletedAt = now;
                 attempt.RowVersion = Guid.NewGuid();
+                attemptTransitioned = true;
             }
 
             await db.SaveChangesAsync(cancellationToken);
+
+            return new ReservationReleaseLogEntry(
+                attemptId,
+                errorCode,
+                reservationReleased,
+                attemptTransitioned,
+                reservationSource);
         }, cancellationToken);
+
+        LogReservationRelease(releaseLog);
     }
 
     public async Task<int> ReleaseExpiredReservationsAsync(
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteInTransactionAsync(async db =>
+        var releaseLogs = await ExecuteInTransactionAsync(async db =>
         {
             var expiredCandidates = await db.UsageReservations
                 .AsTracking()
@@ -287,9 +304,15 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
                     x.ExpiresAt <= now &&
                     x.RewriteAttempt!.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
                 .ToList();
+            var releaseLogs = new List<ReservationReleaseLogEntry>();
 
             foreach (var reservation in expiredReservations)
             {
+                var reservationSource = reservation.RewriteCreditId is null ? "period" : "credit";
+                var reason = reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Processing
+                    ? "processing_timed_out"
+                    : "reservation_expired";
+
                 reservation.Status = UsageReservationStatus.Expired;
                 reservation.ReleasedAt = now;
                 reservation.RowVersion = Guid.NewGuid();
@@ -308,22 +331,52 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
                 if (reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Pending)
                 {
                     reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
-                    reservation.RewriteAttempt.ErrorCode = "reservation_expired";
+                    reservation.RewriteAttempt.ErrorCode = reason;
                     reservation.RewriteAttempt.CompletedAt = now;
                     reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
                 }
                 else if (reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Processing)
                 {
                     reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
-                    reservation.RewriteAttempt.ErrorCode = "processing_timed_out";
+                    reservation.RewriteAttempt.ErrorCode = reason;
                     reservation.RewriteAttempt.CompletedAt = now;
                     reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
                 }
+
+                releaseLogs.Add(new ReservationReleaseLogEntry(
+                    reservation.RewriteAttempt.Id,
+                    reason,
+                    ReservationReleased: true,
+                    AttemptTransitioned: true,
+                    reservationSource));
             }
 
             await db.SaveChangesAsync(cancellationToken);
-            return expiredReservations.Count;
+            return releaseLogs;
         }, cancellationToken);
+
+        foreach (var releaseLog in releaseLogs)
+        {
+            LogReservationRelease(releaseLog);
+        }
+
+        return releaseLogs.Count;
+    }
+
+    private void LogReservationRelease(ReservationReleaseLogEntry releaseLog)
+    {
+        using var scope = logger?.BeginScope(new Dictionary<string, object>
+        {
+            ["attemptId"] = releaseLog.AttemptId,
+        });
+
+        logger?.LogInformation(
+            "Rewrite reservation released for attempt {AttemptId} with reason {ReleaseReason}. ReservationReleased: {ReservationReleased}. AttemptTransitioned: {AttemptTransitioned}. ReservationSource: {ReservationSource}.",
+            releaseLog.AttemptId,
+            releaseLog.Reason,
+            releaseLog.ReservationReleased,
+            releaseLog.AttemptTransitioned,
+            releaseLog.ReservationSource);
     }
 
     private async Task<TResult> ExecuteInTransactionAsync<TResult>(
@@ -399,4 +452,11 @@ public sealed class QuotaService(Func<AppDbContext> dbContextFactory)
     }
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);
+
+    private sealed record ReservationReleaseLogEntry(
+        Guid AttemptId,
+        string Reason,
+        bool ReservationReleased,
+        bool AttemptTransitioned,
+        string ReservationSource);
 }

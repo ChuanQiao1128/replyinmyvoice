@@ -2,6 +2,7 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
@@ -22,6 +23,8 @@ public static class ServiceCollectionExtensions
         configuration.ValidateReplyInMyVoiceRuntimeConfiguration(
             environmentName,
             requireServiceBusConsumer);
+
+        services.AddLogging();
 
         services.AddDbContext<AppDbContext>(options =>
         {

@@ -1,13 +1,16 @@
 using System.Text.Json;
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
-public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
+public sealed class StripeEventService(
+    Func<AppDbContext> dbContextFactory,
+    ILogger<StripeEventService>? logger = null)
 {
     public async Task<bool> TryMarkProcessedAsync(
         string eventId,
@@ -15,6 +18,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
+        using var scope = BeginEventScope(eventId);
         await using var db = dbContextFactory();
 
         db.StripeEvents.Add(new StripeEvent
@@ -31,10 +35,19 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            logger?.LogInformation(
+                "Stripe webhook event marked processed for event {EventId} of type {EventType}.",
+                eventId,
+                type);
             return true;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
+            logger?.LogInformation(
+                ex,
+                "Stripe webhook event already exists for event {EventId} of type {EventType}; skipping duplicate processed mark.",
+                eventId,
+                type);
             return false;
         }
     }
@@ -46,9 +59,10 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
+        using var scope = BeginEventScope(eventId);
         try
         {
-            return await ExecuteInTransactionAsync(async db =>
+            var processed = await ExecuteInTransactionAsync(async db =>
             {
                 var stripeEvent = await TryBeginProcessingAsync(db, eventId, type, now, cancellationToken);
                 if (stripeEvent is null)
@@ -61,13 +75,42 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
                 await db.SaveChangesAsync(cancellationToken);
                 return true;
             }, cancellationToken);
+
+            if (processed)
+            {
+                logger?.LogInformation(
+                    "Stripe webhook processed for event {EventId} of type {EventType}.",
+                    eventId,
+                    type);
+            }
+            else
+            {
+                logger?.LogInformation(
+                    "Stripe webhook skipped for event {EventId} of type {EventType} because it is already processed or locked.",
+                    eventId,
+                    type);
+            }
+
+            return processed;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await MarkFailedAsync(eventId, type, ex.Message, now, cancellationToken);
+            var failure = await MarkFailedAsync(eventId, type, ex.Message, now, cancellationToken);
+            logger?.LogError(
+                ex,
+                "Stripe webhook failed for event {EventId} of type {EventType} after {AttemptCount} attempt(s).",
+                eventId,
+                type,
+                failure?.AttemptCount ?? 0);
             throw;
         }
     }
+
+    private IDisposable? BeginEventScope(string eventId) =>
+        logger?.BeginScope(new Dictionary<string, object>
+        {
+            ["eventId"] = eventId,
+        });
 
     private async Task<StripeEvent?> TryBeginProcessingAsync(
         AppDbContext db,
@@ -147,14 +190,14 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         stripeEvent.RowVersion = Guid.NewGuid();
     }
 
-    private async Task MarkFailedAsync(
+    private async Task<StripeFailureLogInfo?> MarkFailedAsync(
         string eventId,
         string type,
         string error,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        await ExecuteInTransactionAsync(async db =>
+        return await ExecuteInTransactionAsync(async db =>
         {
             var stripeEvent = await db.StripeEvents
                 .AsTracking()
@@ -162,13 +205,13 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
 
             if (stripeEvent?.Status == StripeEventStatus.Processed)
             {
-                return true;
+                return new StripeFailureLogInfo(stripeEvent.AttemptCount, stripeEvent.Status);
             }
 
             var truncatedError = error.Length > 1000 ? error[..1000] : error;
             if (stripeEvent is null)
             {
-                db.StripeEvents.Add(new StripeEvent
+                stripeEvent = new StripeEvent
                 {
                     EventId = eventId,
                     Type = type,
@@ -177,7 +220,8 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
                     CreatedAt = now,
                     LastAttemptAt = now,
                     LastError = truncatedError,
-                });
+                };
+                db.StripeEvents.Add(stripeEvent);
             }
             else
             {
@@ -191,7 +235,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
             }
 
             await db.SaveChangesAsync(cancellationToken);
-            return true;
+            return new StripeFailureLogInfo(stripeEvent.AttemptCount, stripeEvent.Status);
         }, cancellationToken);
     }
 
@@ -515,4 +559,6 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
 
         return seconds is null ? null : DateTimeOffset.FromUnixTimeSeconds(seconds.Value);
     }
+
+    private sealed record StripeFailureLogInfo(int AttemptCount, StripeEventStatus Status);
 }
