@@ -160,6 +160,77 @@ public sealed class AccountServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AccountSummaryReturnsQuotaSources()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var validExpiry = now.AddDays(30);
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-source",
+                Email = "source@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = userId,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 1,
+                ReservedCount = 1,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RewriteCredits.AddRange(
+                new RewriteCredit
+                {
+                    UserId = userId,
+                    Source = "quick-pack",
+                    AmountGranted = 10,
+                    AmountConsumed = 4,
+                    GrantedAt = now.AddDays(-2),
+                    ExpiresAt = validExpiry,
+                },
+                new RewriteCredit
+                {
+                    UserId = userId,
+                    Source = "expired-pack",
+                    AmountGranted = 10,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddDays(-40),
+                    ExpiresAt = now.AddDays(-1),
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var summary = await service.GetOrCreateAccountSummaryAsync(
+            "entra-source",
+            "source@example.com",
+            CancellationToken.None);
+
+        summary.Usage.Sources.Should().HaveCount(2);
+        summary.Usage.Sources[0].Source.Should().Be("free");
+        summary.Usage.Sources[0].Used.Should().Be(1);
+        summary.Usage.Sources[0].Limit.Should().Be(3);
+        summary.Usage.Sources[0].Remaining.Should().Be(1);
+        summary.Usage.Sources[0].ExpiresAt.Should().BeNull();
+
+        summary.Usage.Sources[1].Source.Should().Be("quick-pack");
+        summary.Usage.Sources[1].Used.Should().Be(4);
+        summary.Usage.Sources[1].Limit.Should().Be(10);
+        summary.Usage.Sources[1].Remaining.Should().Be(6);
+        summary.Usage.Sources[1].ExpiresAt.Should().Be(validExpiry);
+    }
+
+    [Fact]
     public async Task DeleteAccountErasesUserAndChildren()
     {
         var userId = Guid.NewGuid();
