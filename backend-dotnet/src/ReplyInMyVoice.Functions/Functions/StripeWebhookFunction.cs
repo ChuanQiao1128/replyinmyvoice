@@ -24,12 +24,20 @@ public sealed class StripeWebhookFunction(
         using var reader = new StreamReader(request.Body);
         var rawBody = await reader.ReadToEndAsync(cancellationToken);
         var webhookSecret = configuration["STRIPE_WEBHOOK_SECRET"];
+        var allowUnsignedWebhook = string.Equals(environment.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase);
 
         string eventId;
         string eventType;
 
-        if (!string.IsNullOrWhiteSpace(webhookSecret) &&
-            !string.Equals(environment.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase))
+        if (!allowUnsignedWebhook && string.IsNullOrWhiteSpace(webhookSecret))
+        {
+            return FunctionHttpResults.Problem(
+                "Stripe webhook is not configured",
+                null,
+                StatusCodes.Status500InternalServerError);
+        }
+
+        if (!allowUnsignedWebhook)
         {
             var signature = request.Headers["Stripe-Signature"].ToString();
             if (string.IsNullOrWhiteSpace(signature))
