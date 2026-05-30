@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -17,6 +18,7 @@ public sealed class OpenAiCompatibleRewriteModelClient(
         RewriteModelRequest request,
         CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
 
@@ -32,11 +34,12 @@ public sealed class OpenAiCompatibleRewriteModelClient(
             using var response = await httpClient.SendAsync(httpRequest, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
             {
-                return new RewriteModelResult(null, false, $"model_http_{(int)response.StatusCode}");
+                return Fail($"model_http_{(int)response.StatusCode}", stopwatch);
             }
 
             var json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
             using var doc = JsonDocument.Parse(json);
+            var usage = ReadUsage(doc.RootElement);
             var rawContent = doc.RootElement
                 .GetProperty("choices")[0]
                 .GetProperty("message")
@@ -45,26 +48,39 @@ public sealed class OpenAiCompatibleRewriteModelClient(
 
             if (string.IsNullOrWhiteSpace(rawContent))
             {
-                return new RewriteModelResult(null, false, "model_empty");
+                return Fail("model_empty", stopwatch, usage);
             }
 
             var candidate = ExtractCandidateText(rawContent);
-            return string.IsNullOrWhiteSpace(candidate)
-                ? new RewriteModelResult(null, false, "model_candidate_missing")
-                : new RewriteModelResult(candidate.Trim(), true, null);
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return Fail("model_candidate_missing", stopwatch, usage);
+            }
+
+            RecordProviderCall(stopwatch, usage, success: true, errorCode: null);
+            return new RewriteModelResult(candidate.Trim(), true, null);
         }
         catch (OperationCanceledException)
         {
-            return new RewriteModelResult(null, false, "model_timeout");
+            return Fail("model_timeout", stopwatch);
         }
         catch (JsonException)
         {
-            return new RewriteModelResult(null, false, "model_json_parse_failed");
+            return Fail("model_json_parse_failed", stopwatch);
         }
         catch (HttpRequestException)
         {
-            return new RewriteModelResult(null, false, "model_network_failed");
+            return Fail("model_network_failed", stopwatch);
         }
+    }
+
+    private RewriteModelResult Fail(
+        string errorCode,
+        Stopwatch stopwatch,
+        ModelUsage? usage = null)
+    {
+        RecordProviderCall(stopwatch, usage, success: false, errorCode);
+        return new RewriteModelResult(null, false, errorCode);
     }
 
     private object BuildPayload(RewriteModelRequest request)
@@ -224,6 +240,49 @@ public sealed class OpenAiCompatibleRewriteModelClient(
         return null;
     }
 
+    private static ModelUsage? ReadUsage(JsonElement root)
+    {
+        if (!root.TryGetProperty("usage", out var usage) ||
+            usage.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return new ModelUsage(
+            ReadInt(usage, "prompt_tokens"),
+            ReadInt(usage, "completion_tokens"));
+    }
+
+    private static int? ReadInt(JsonElement value, string propertyName) =>
+        value.TryGetProperty(propertyName, out var property) &&
+        property.ValueKind == JsonValueKind.Number &&
+        property.TryGetInt32(out var intValue)
+            ? intValue
+            : null;
+
+    private void RecordProviderCall(
+        Stopwatch stopwatch,
+        ModelUsage? usage,
+        bool success,
+        string? errorCode)
+    {
+        RewriteProviderCallCapture.Record(new RewriteProviderCallMetric(
+            "openai-compatible",
+            "rewrite_model",
+            model,
+            usage?.InputTokens,
+            usage?.OutputTokens,
+            null,
+            ToLatencyMs(stopwatch.Elapsed),
+            success,
+            errorCode));
+    }
+
+    private static int ToLatencyMs(TimeSpan elapsed) =>
+        elapsed.TotalMilliseconds >= int.MaxValue
+            ? int.MaxValue
+            : Math.Max(0, (int)elapsed.TotalMilliseconds);
+
     private static Uri BuildChatCompletionsUri(string configuredBaseUrl)
     {
         var normalized = string.IsNullOrWhiteSpace(configuredBaseUrl)
@@ -253,6 +312,63 @@ public sealed class OpenAiCompatibleRewriteModelClient(
         catch (UriFormatException)
         {
             return false;
+        }
+    }
+
+    private sealed record ModelUsage(int? InputTokens, int? OutputTokens);
+}
+
+internal sealed record RewriteProviderCallMetric(
+    string Provider,
+    string Role,
+    string? Model,
+    int? InputTokens,
+    int? OutputTokens,
+    int? Characters,
+    int? LatencyMs,
+    bool Success,
+    string? ErrorCode);
+
+internal static class RewriteProviderCallCapture
+{
+    private static readonly AsyncLocal<Collector?> Current = new();
+
+    public static Collector Begin()
+    {
+        var collector = new Collector(Current.Value);
+        Current.Value = collector;
+        return collector;
+    }
+
+    public static void Record(RewriteProviderCallMetric metric)
+    {
+        Current.Value?.Add(metric);
+    }
+
+    internal sealed class Collector(Collector? previous) : IDisposable
+    {
+        private readonly List<RewriteProviderCallMetric> _calls = [];
+        private bool _disposed;
+
+        public IReadOnlyList<RewriteProviderCallMetric> Calls => _calls.ToArray();
+
+        public void Add(RewriteProviderCallMetric metric)
+        {
+            if (!_disposed)
+            {
+                _calls.Add(metric);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            Current.Value = previous;
+            _disposed = true;
         }
     }
 }
