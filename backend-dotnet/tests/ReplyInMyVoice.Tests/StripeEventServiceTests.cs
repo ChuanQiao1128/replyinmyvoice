@@ -124,6 +124,98 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
+    public async Task ProcessWebhookEventAsync_PaidCheckoutWithoutUserCanBeReplayedAfterUserCreated()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var service = new StripeEventService(fixture.CreateContext);
+        var externalAuthUserId = $"clerk_{Guid.NewGuid():N}";
+        var now = DateTimeOffset.Parse("2026-05-25T00:05:00Z");
+        var rawBody = $$"""
+        {
+          "id": "evt_orphan_paid_pack",
+          "type": "checkout.session.completed",
+          "data": {
+            "object": {
+              "client_reference_id": "{{externalAuthUserId}}",
+              "customer": "cus_orphan_pack",
+              "mode": "payment",
+              "payment_status": "paid",
+              "payment_intent": "pi_orphan_pack",
+              "amount_total": 1200,
+              "currency": "nzd",
+              "metadata": {
+                "sku": "quick_pack",
+                "rewrites": "10",
+                "externalAuthUserId": "{{externalAuthUserId}}"
+              }
+            }
+          }
+        }
+        """;
+
+        var orphanResult = await service.ProcessWebhookEventAsync(
+            "evt_orphan_paid_pack",
+            "checkout.session.completed",
+            rawBody,
+            now);
+
+        orphanResult.Should().BeFalse();
+        await using (var orphanDb = fixture.CreateContext())
+        {
+            var storedEvent = await orphanDb.StripeEvents.SingleAsync(x => x.EventId == "evt_orphan_paid_pack");
+            storedEvent.Status.Should().Be(StripeEventStatus.Failed);
+            storedEvent.ProcessedAt.Should().BeNull();
+            storedEvent.AttemptCount.Should().Be(1);
+            storedEvent.LastError.Should().Contain("No matching user");
+            (await orphanDb.RewriteCredits.CountAsync()).Should().Be(0);
+        }
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.AppUsers.Add(new AppUser
+            {
+                ExternalAuthUserId = externalAuthUserId,
+                Email = "orphan-replay@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now.AddSeconds(30),
+                UpdatedAt = now.AddSeconds(30),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var replayResult = await service.ProcessWebhookEventAsync(
+            "evt_orphan_paid_pack",
+            "checkout.session.completed",
+            rawBody,
+            now.AddMinutes(1));
+        var duplicateResult = await service.ProcessWebhookEventAsync(
+            "evt_orphan_paid_pack",
+            "checkout.session.completed",
+            rawBody,
+            now.AddMinutes(2));
+
+        replayResult.Should().BeTrue();
+        duplicateResult.Should().BeFalse();
+
+        await using var db = fixture.CreateContext();
+        var processedEvent = await db.StripeEvents.SingleAsync(x => x.EventId == "evt_orphan_paid_pack");
+        processedEvent.Status.Should().Be(StripeEventStatus.Processed);
+        processedEvent.AttemptCount.Should().Be(2);
+        processedEvent.ProcessedAt.Should().Be(now.AddMinutes(1));
+        processedEvent.LastError.Should().BeNull();
+
+        var credit = await db.RewriteCredits.SingleAsync(x => x.StripeEventId == "evt_orphan_paid_pack");
+        credit.AmountGranted.Should().Be(10);
+        credit.AmountConsumed.Should().Be(0);
+        credit.StripePaymentIntentId.Should().Be("pi_orphan_pack");
+        credit.StripeSku.Should().Be("quick_pack");
+
+        var updatedUser = await db.AppUsers.SingleAsync(x => x.ExternalAuthUserId == externalAuthUserId);
+        credit.UserId.Should().Be(updatedUser.Id);
+        updatedUser.StripeCustomerId.Should().Be("cus_orphan_pack");
+    }
+
+    [Fact]
     public async Task ProcessWebhookEventAsync_ConcurrentPaidCheckoutSessionDuplicatesGrantOnceAndDoNotFail()
     {
         const string eventId = "evt_paid_pack_parallel";
