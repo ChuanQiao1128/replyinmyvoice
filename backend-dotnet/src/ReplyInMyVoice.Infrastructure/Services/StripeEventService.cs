@@ -46,74 +46,75 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        var acquired = await TryBeginProcessingAsync(eventId, type, now, cancellationToken);
-        if (!acquired)
-        {
-            return false;
-        }
-
         try
         {
-            await SyncEntitlementAsync(eventId, type, rawBody, now, cancellationToken);
-            await MarkProcessedAsync(eventId, now, cancellationToken);
-            return true;
+            return await ExecuteInTransactionAsync(async db =>
+            {
+                var stripeEvent = await TryBeginProcessingAsync(db, eventId, type, now, cancellationToken);
+                if (stripeEvent is null)
+                {
+                    return false;
+                }
+
+                await SyncEntitlementAsync(db, eventId, type, rawBody, now, cancellationToken);
+                MarkProcessed(stripeEvent, now);
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await MarkFailedAsync(eventId, ex.Message, now, cancellationToken);
+            await MarkFailedAsync(eventId, type, ex.Message, now, cancellationToken);
             throw;
         }
     }
 
-    private async Task<bool> TryBeginProcessingAsync(
+    private async Task<StripeEvent?> TryBeginProcessingAsync(
+        AppDbContext db,
         string eventId,
         string type,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        return await ExecuteInTransactionAsync(async db =>
+        var stripeEvent = await db.StripeEvents
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.EventId == eventId, cancellationToken);
+
+        if (stripeEvent is null)
         {
-            var stripeEvent = await db.StripeEvents
-                .AsTracking()
-                .SingleOrDefaultAsync(x => x.EventId == eventId, cancellationToken);
-
-            if (stripeEvent is null)
+            stripeEvent = new StripeEvent
             {
-                db.StripeEvents.Add(new StripeEvent
-                {
-                    EventId = eventId,
-                    Type = type,
-                    Status = StripeEventStatus.Processing,
-                    AttemptCount = 1,
-                    CreatedAt = now,
-                    LastAttemptAt = now,
-                    LockedUntil = now.AddMinutes(2),
-                });
-                await db.SaveChangesAsync(cancellationToken);
-                return true;
-            }
+                EventId = eventId,
+                Type = type,
+                Status = StripeEventStatus.Processing,
+                AttemptCount = 1,
+                CreatedAt = now,
+                LastAttemptAt = now,
+                LockedUntil = now.AddMinutes(2),
+            };
+            db.StripeEvents.Add(stripeEvent);
+            return stripeEvent;
+        }
 
-            if (stripeEvent.Status == StripeEventStatus.Processed)
-            {
-                return false;
-            }
+        if (stripeEvent.Status == StripeEventStatus.Processed)
+        {
+            return null;
+        }
 
-            if (stripeEvent.Status == StripeEventStatus.Processing && stripeEvent.LockedUntil > now)
-            {
-                return false;
-            }
+        if (stripeEvent.Status == StripeEventStatus.Processing && stripeEvent.LockedUntil > now)
+        {
+            return null;
+        }
 
-            stripeEvent.Type = type;
-            stripeEvent.Status = StripeEventStatus.Processing;
-            stripeEvent.AttemptCount += 1;
-            stripeEvent.LastAttemptAt = now;
-            stripeEvent.LockedUntil = now.AddMinutes(2);
-            stripeEvent.LastError = null;
-            stripeEvent.RowVersion = Guid.NewGuid();
+        stripeEvent.Type = type;
+        stripeEvent.Status = StripeEventStatus.Processing;
+        stripeEvent.AttemptCount += 1;
+        stripeEvent.LastAttemptAt = now;
+        stripeEvent.LockedUntil = now.AddMinutes(2);
+        stripeEvent.LastError = null;
+        stripeEvent.RowVersion = Guid.NewGuid();
 
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
-        }, cancellationToken);
+        return stripeEvent;
     }
 
     private async Task<TResult> ExecuteInTransactionAsync<TResult>(
@@ -137,44 +138,65 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         });
     }
 
-    private async Task MarkProcessedAsync(
-        string eventId,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
+    private static void MarkProcessed(StripeEvent stripeEvent, DateTimeOffset now)
     {
-        await using var db = dbContextFactory();
-        var stripeEvent = await db.StripeEvents
-            .AsTracking()
-            .SingleAsync(x => x.EventId == eventId, cancellationToken);
-
         stripeEvent.Status = StripeEventStatus.Processed;
         stripeEvent.ProcessedAt = now;
         stripeEvent.LockedUntil = null;
         stripeEvent.LastError = null;
         stripeEvent.RowVersion = Guid.NewGuid();
-        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task MarkFailedAsync(
         string eventId,
+        string type,
         string error,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        await using var db = dbContextFactory();
-        var stripeEvent = await db.StripeEvents
-            .AsTracking()
-            .SingleAsync(x => x.EventId == eventId, cancellationToken);
+        await ExecuteInTransactionAsync(async db =>
+        {
+            var stripeEvent = await db.StripeEvents
+                .AsTracking()
+                .SingleOrDefaultAsync(x => x.EventId == eventId, cancellationToken);
 
-        stripeEvent.Status = StripeEventStatus.Failed;
-        stripeEvent.LastAttemptAt = now;
-        stripeEvent.LockedUntil = null;
-        stripeEvent.LastError = error.Length > 1000 ? error[..1000] : error;
-        stripeEvent.RowVersion = Guid.NewGuid();
-        await db.SaveChangesAsync(cancellationToken);
+            if (stripeEvent?.Status == StripeEventStatus.Processed)
+            {
+                return true;
+            }
+
+            var truncatedError = error.Length > 1000 ? error[..1000] : error;
+            if (stripeEvent is null)
+            {
+                db.StripeEvents.Add(new StripeEvent
+                {
+                    EventId = eventId,
+                    Type = type,
+                    Status = StripeEventStatus.Failed,
+                    AttemptCount = 1,
+                    CreatedAt = now,
+                    LastAttemptAt = now,
+                    LastError = truncatedError,
+                });
+            }
+            else
+            {
+                stripeEvent.Type = type;
+                stripeEvent.Status = StripeEventStatus.Failed;
+                stripeEvent.AttemptCount += 1;
+                stripeEvent.LastAttemptAt = now;
+                stripeEvent.LockedUntil = null;
+                stripeEvent.LastError = truncatedError;
+                stripeEvent.RowVersion = Guid.NewGuid();
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }, cancellationToken);
     }
 
     private async Task SyncEntitlementAsync(
+        AppDbContext db,
         string eventId,
         string type,
         string rawBody,
@@ -190,29 +212,30 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
 
         if (type.StartsWith("customer.subscription.", StringComparison.Ordinal))
         {
-            await SyncSubscriptionObjectAsync(type, stripeObject, now, cancellationToken);
+            await SyncSubscriptionObjectAsync(db, type, stripeObject, now, cancellationToken);
             return;
         }
 
         if (type == "checkout.session.completed")
         {
-            await SyncCheckoutSessionAsync(eventId, stripeObject, now, cancellationToken);
+            await SyncCheckoutSessionAsync(db, eventId, stripeObject, now, cancellationToken);
             return;
         }
 
         if (type == "charge.refunded")
         {
-            await RevokeRefundedChargeCreditsAsync(stripeObject, cancellationToken);
+            await RevokeRefundedChargeCreditsAsync(db, stripeObject, cancellationToken);
             return;
         }
 
         if (type is "charge.dispute.created" or "charge.dispute.closed")
         {
-            await RevokeDisputedChargeCreditsAsync(stripeObject, cancellationToken);
+            await RevokeDisputedChargeCreditsAsync(db, stripeObject, cancellationToken);
         }
     }
 
     private async Task SyncSubscriptionObjectAsync(
+        AppDbContext db,
         string type,
         JsonElement stripeObject,
         DateTimeOffset now,
@@ -224,7 +247,6 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
             return;
         }
 
-        await using var db = dbContextFactory();
         var user = await db.AppUsers
             .AsTracking()
             .SingleOrDefaultAsync(x => x.StripeCustomerId == customerId, cancellationToken);
@@ -242,11 +264,10 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         user.CurrentPeriodEnd = GetUnixDateTime(stripeObject, "current_period_end");
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
-
-        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task SyncCheckoutSessionAsync(
+        AppDbContext db,
         string eventId,
         JsonElement stripeObject,
         DateTimeOffset now,
@@ -262,7 +283,6 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
             return;
         }
 
-        await using var db = dbContextFactory();
         var user = await db.AppUsers.AsTracking().SingleOrDefaultAsync(
             x => (!string.IsNullOrWhiteSpace(externalAuthUserId) && x.ExternalAuthUserId == externalAuthUserId) ||
                  (!string.IsNullOrWhiteSpace(customerId) && x.StripeCustomerId == customerId),
@@ -297,11 +317,10 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
                 StripeCurrency = GetString(stripeObject, "currency"),
             });
         }
-
-        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task RevokeRefundedChargeCreditsAsync(
+        AppDbContext db,
         JsonElement stripeObject,
         CancellationToken cancellationToken)
     {
@@ -311,13 +330,11 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
             return;
         }
 
-        await using var db = dbContextFactory();
         var credits = await db.RewriteCredits
             .AsTracking()
             .Where(x => x.StripePaymentIntentId == paymentIntentId)
             .ToListAsync(cancellationToken);
 
-        var changed = false;
         foreach (var credit in credits)
         {
             var previousGranted = credit.AmountGranted;
@@ -333,17 +350,12 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
             if (credit.AmountGranted != previousGranted)
             {
                 credit.RowVersion = Guid.NewGuid();
-                changed = true;
             }
-        }
-
-        if (changed)
-        {
-            await db.SaveChangesAsync(cancellationToken);
         }
     }
 
     private async Task RevokeDisputedChargeCreditsAsync(
+        AppDbContext db,
         JsonElement stripeObject,
         CancellationToken cancellationToken)
     {
@@ -353,13 +365,11 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
             return;
         }
 
-        await using var db = dbContextFactory();
         var credits = await db.RewriteCredits
             .AsTracking()
             .Where(x => x.StripePaymentIntentId == paymentIntentId)
             .ToListAsync(cancellationToken);
 
-        var changed = false;
         foreach (var credit in credits)
         {
             if (credit.AmountGranted == credit.AmountConsumed)
@@ -369,12 +379,6 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
 
             credit.AmountGranted = credit.AmountConsumed;
             credit.RowVersion = Guid.NewGuid();
-            changed = true;
-        }
-
-        if (changed)
-        {
-            await db.SaveChangesAsync(cancellationToken);
         }
     }
 
