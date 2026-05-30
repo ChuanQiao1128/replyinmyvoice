@@ -61,16 +61,24 @@ EN_SURGICAL_ONCE=1 EL_FILE=src.txt ES_EN=candidate.txt dotnet run --project ...E
 
 xUnit: `FaithfulnessGateTests` + `FidelityJudgeTests` + `QualityGateChainTests` (339 green).
 
-## Results (the three test emails, repair-then-verify)
+## Results (five test emails, repair-then-verify) — ~3/5, lottery-gated
 
-| email | genre | accepted at | candidate | repaired | residual |
-|---|---|---|---|---|---|
-| **Kwame** | dense renewal/billing | round 0 | 8%, 6 drifts | **1%** | 0 — FAITHFUL |
-| **c005** (Dev/Northstar quote) | dense quote | round 4 | 0%, 4 drifts | **0%** | 0 — FAITHFUL |
-| **c006** (Ren reschedule) | light scheduling | round 1 | 8%, 1 drift | **12%** | 0 — FAITHFUL |
+| email | genre | result | detail |
+|---|---|---|---|
+| **Kwame** | dense renewal | ✅ accept | round0, 6-drift cand → **1%** faithful, 0 residual |
+| **c005** (Dev/Northstar) | dense quote | ✅ accept | round4, 4-drift → **0%** faithful, 0 residual |
+| **c006** (Ren reschedule) | light scheduling | ✅ accept | round1, 1-drift → **12%** faithful, 0 residual |
+| **Jamie** (field-trip) | light teacher↔parent | ❌ best-effort (9 rounds) | the low cands (7%, 20%) repaired to **100%** — their drifts were load-bearing — and left residuals ($12 missing, slip→voucher) |
+| **Celestine** (2 orders/refund) | densest billing (331w) | ❌ best-effort (9 rounds) | only **1/9** rounds was low (20%), and it dropped an anchor (April 22) → can't repair clean |
 
-All land {facts intact + low}. The earlier "dense = pick-two wall" was an artifact of an over-strict gate;
-with the calibrated gate + repair-then-verify, dense emails thread it too.
+**Generalization is PARTIAL (~3/5 here) and lottery-gated.** A success needs the loop to hit, within the round
+budget, a candidate that is BOTH low AND repairs-to-faithful-while-staying-low. The two failures are exactly the
+intrinsic limits: (a) too dense → rarely produces a low candidate at all (Celestine 1/9); (b) the low candidate's
+drifts are LOAD-BEARING → repairing them restores the source and the score climbs to ~100% (Jamie). NOTE Jamie
+HAS a clean candidate (an earlier manual run held it at 1%), so its failure here is "9 rounds didn't hit it", not
+"impossible" — the per-email outcome is gated by the generation lottery + the round budget, not just genre.
+The earlier "dense = pick-two wall" framing was too absolute (Kwame/c005 are dense and pass); the real picture is
+a probabilistic per-email hit-rate.
 
 ## What was tried and rejected (so we don't repeat it)
 
