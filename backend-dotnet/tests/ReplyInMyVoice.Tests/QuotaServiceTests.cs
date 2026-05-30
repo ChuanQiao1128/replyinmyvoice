@@ -419,6 +419,39 @@ public sealed class QuotaServiceTests
     }
 
     [Fact]
+    public async Task ReleaseExpiredReservationsAsync_drains_stale_reservations_across_multiple_batches()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-19T00:00:00Z");
+
+        for (var index = 0; index < 5; index++)
+        {
+            var suffix = index.ToString();
+            await service.ReserveAsync(
+                user.Id,
+                $"idem-expired-batch-{suffix}",
+                $"hash-expired-batch-{suffix}",
+                "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+                "free:lifetime",
+                5,
+                now,
+                TimeSpan.FromMinutes(1));
+        }
+
+        var released = await service.ReleaseExpiredReservationsAsync(now.AddMinutes(2), batchSize: 2);
+
+        released.Should().Be(5);
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(0);
+        (await db.UsageReservations.CountAsync(x => x.Status == UsageReservationStatus.Expired)).Should().Be(5);
+        (await db.RewriteAttempts.CountAsync(x => x.Status == RewriteAttemptStatus.Expired)).Should().Be(5);
+    }
+
+    [Fact]
     public async Task ReleaseExpiredReservationsAsync_refunds_credit_backed_stale_processing_reservations()
     {
         await using var fixture = await DbFixture.CreateAsync();
