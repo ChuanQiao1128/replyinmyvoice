@@ -1,3 +1,4 @@
+using System.Net;
 using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -61,6 +62,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<StripeEventService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddHttpClient();
+        services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleRewriteModelClient));
+        services.AddResilientProviderHttpClient(nameof(SaplingWritingSignalClient));
 
         var serviceBusConnection = configuration.GetConnectionString("ServiceBus")
             ?? configuration["ServiceBus"]
@@ -163,6 +166,20 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    private static IServiceCollection AddResilientProviderHttpClient(
+        this IServiceCollection services,
+        string name)
+    {
+        services
+            .AddHttpClient(name)
+            .AddResilienceHandler();
+
+        return services;
+    }
+
+    private static IHttpClientBuilder AddResilienceHandler(this IHttpClientBuilder builder) =>
+        builder.AddHttpMessageHandler(() => new ProviderHttpResilienceHandler());
+
     public static void ValidateReplyInMyVoiceRuntimeConfiguration(
         this IConfiguration configuration,
         string? environmentName,
@@ -253,6 +270,206 @@ public static class ServiceCollectionExtensions
         catch (UriFormatException)
         {
             return false;
+        }
+    }
+
+    private sealed class ProviderHttpResilienceHandler : DelegatingHandler
+    {
+        private static readonly TimeSpan BaseRetryDelay = TimeSpan.FromMilliseconds(250);
+        private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan CircuitSamplingDuration = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan CircuitBreakDuration = TimeSpan.FromSeconds(30);
+        private const int MaxRetryAttempts = 3;
+        private const int CircuitMinimumThroughput = 8;
+        private const double CircuitFailureRatio = 0.5;
+
+        private readonly object _circuitLock = new();
+        private readonly Queue<CircuitSample> _circuitSamples = new();
+        private DateTimeOffset? _circuitOpenUntil;
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var snapshot = await BufferedHttpRequestSnapshot.CreateAsync(request, cancellationToken);
+
+            for (var attempt = 0; attempt <= MaxRetryAttempts; attempt++)
+            {
+                ThrowIfCircuitOpen();
+
+                try
+                {
+                    using var attemptRequest = snapshot.CreateRequest();
+                    var response = await base.SendAsync(attemptRequest, cancellationToken);
+                    if (!IsTransientStatusCode(response.StatusCode))
+                    {
+                        RecordCircuitResult(success: true);
+                        return response;
+                    }
+
+                    if (attempt == MaxRetryAttempts)
+                    {
+                        RecordCircuitResult(success: false);
+                        return response;
+                    }
+
+                    var delay = RetryDelay(attempt, response);
+                    response.Dispose();
+                    await Task.Delay(delay, cancellationToken);
+                }
+                catch (Exception exception) when (IsTransientException(exception, cancellationToken))
+                {
+                    if (attempt == MaxRetryAttempts)
+                    {
+                        RecordCircuitResult(success: false);
+                        throw;
+                    }
+
+                    await Task.Delay(RetryDelay(attempt, response: null), cancellationToken);
+                }
+            }
+
+            throw new InvalidOperationException("Provider HTTP retry loop exited unexpectedly.");
+        }
+
+        private void ThrowIfCircuitOpen()
+        {
+            var now = DateTimeOffset.UtcNow;
+            lock (_circuitLock)
+            {
+                if (_circuitOpenUntil is null)
+                {
+                    return;
+                }
+
+                if (now < _circuitOpenUntil.Value)
+                {
+                    throw new HttpRequestException("Provider HTTP circuit is open.");
+                }
+
+                _circuitOpenUntil = null;
+                _circuitSamples.Clear();
+            }
+        }
+
+        private void RecordCircuitResult(bool success)
+        {
+            var now = DateTimeOffset.UtcNow;
+            lock (_circuitLock)
+            {
+                while (_circuitSamples.Count > 0 &&
+                       now - _circuitSamples.Peek().ObservedAt > CircuitSamplingDuration)
+                {
+                    _circuitSamples.Dequeue();
+                }
+
+                _circuitSamples.Enqueue(new CircuitSample(now, success));
+                if (_circuitSamples.Count < CircuitMinimumThroughput)
+                {
+                    return;
+                }
+
+                var failures = _circuitSamples.Count(sample => !sample.Success);
+                if ((double)failures / _circuitSamples.Count >= CircuitFailureRatio)
+                {
+                    _circuitOpenUntil = now + CircuitBreakDuration;
+                }
+            }
+        }
+
+        private static TimeSpan RetryDelay(int attempt, HttpResponseMessage? response)
+        {
+            if (response?.Headers.RetryAfter?.Delta is { } retryAfterDelta &&
+                retryAfterDelta > TimeSpan.Zero)
+            {
+                return retryAfterDelta + Jitter();
+            }
+
+            if (response?.Headers.RetryAfter?.Date is { } retryAfterDate)
+            {
+                var retryAfter = retryAfterDate - DateTimeOffset.UtcNow;
+                if (retryAfter > TimeSpan.Zero)
+                {
+                    return retryAfter + Jitter();
+                }
+            }
+
+            var backoffMs = BaseRetryDelay.TotalMilliseconds * Math.Pow(2, attempt);
+            var backoff = TimeSpan.FromMilliseconds(Math.Min(backoffMs, MaxRetryDelay.TotalMilliseconds));
+            return backoff + Jitter();
+        }
+
+        private static TimeSpan Jitter() =>
+            TimeSpan.FromMilliseconds(Random.Shared.Next(0, 100));
+
+        private static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
+            statusCode == HttpStatusCode.TooManyRequests ||
+            (int)statusCode >= 500;
+
+        private static bool IsTransientException(Exception exception, CancellationToken cancellationToken) =>
+            exception is HttpRequestException ||
+            exception is TimeoutException ||
+            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
+    }
+
+    private sealed record CircuitSample(DateTimeOffset ObservedAt, bool Success);
+
+    private sealed record BufferedHttpRequestSnapshot(
+        HttpMethod Method,
+        Uri? RequestUri,
+        Version Version,
+        HttpVersionPolicy VersionPolicy,
+        IReadOnlyList<KeyValuePair<string, IEnumerable<string>>> Headers,
+        byte[]? Content,
+        IReadOnlyList<KeyValuePair<string, IEnumerable<string>>> ContentHeaders)
+    {
+        public static async Task<BufferedHttpRequestSnapshot> CreateAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            byte[]? content = null;
+            var contentHeaders = Array.Empty<KeyValuePair<string, IEnumerable<string>>>();
+            if (request.Content is not null)
+            {
+                content = await request.Content.ReadAsByteArrayAsync(cancellationToken);
+                contentHeaders = request.Content.Headers.ToArray();
+            }
+
+            return new BufferedHttpRequestSnapshot(
+                request.Method,
+                request.RequestUri,
+                request.Version,
+                request.VersionPolicy,
+                request.Headers.ToArray(),
+                content,
+                contentHeaders);
+        }
+
+        public HttpRequestMessage CreateRequest()
+        {
+            var request = new HttpRequestMessage(Method, RequestUri)
+            {
+                Version = Version,
+                VersionPolicy = VersionPolicy,
+            };
+
+            foreach (var header in Headers)
+            {
+                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+
+            if (Content is null)
+            {
+                return request;
+            }
+
+            request.Content = new ByteArrayContent(Content);
+            foreach (var header in ContentHeaders)
+            {
+                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+
+            return request;
         }
     }
 }
