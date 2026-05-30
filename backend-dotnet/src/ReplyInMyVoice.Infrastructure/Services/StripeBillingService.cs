@@ -98,6 +98,27 @@ public sealed class StripeBillingService(
         return session.Url ?? throw new InvalidOperationException("stripe_portal_url_missing");
     }
 
+    public async Task CancelSubscriptionAsync(
+        string stripeSubscriptionId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSubscriptionId = stripeSubscriptionId.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSubscriptionId))
+        {
+            return;
+        }
+
+        var subscriptionService = new SubscriptionService(CreateStripeClient());
+        await subscriptionService.CancelAsync(
+            normalizedSubscriptionId,
+            new SubscriptionCancelOptions
+            {
+                InvoiceNow = false,
+                Prorate = false,
+            },
+            cancellationToken: cancellationToken);
+    }
+
     private async Task<AppUser> GetOrCreateUserAsync(
         string externalAuthUserId,
         string? email,

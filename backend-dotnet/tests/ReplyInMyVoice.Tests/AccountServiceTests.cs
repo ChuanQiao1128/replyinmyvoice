@@ -159,6 +159,186 @@ public sealed class AccountServiceTests : IAsyncLifetime
         summary.Usage.Exhausted.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task DeleteAccountErasesUserAndChildren()
+    {
+        var userId = Guid.NewGuid();
+        var attemptId = Guid.NewGuid();
+        var usagePeriodId = Guid.NewGuid();
+        var reservationId = Guid.NewGuid();
+        var creditId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-delete",
+                Email = "delete@example.com",
+                StripeCustomerId = "cus_delete",
+                StripeSubscriptionId = "sub_delete",
+                SubscriptionStatus = SubscriptionStatus.Active,
+                CurrentPeriodEnd = now.AddDays(20),
+                CreatedAt = now.AddDays(-20),
+                UpdatedAt = now.AddDays(-1),
+            });
+            db.RewriteAttempts.Add(new RewriteAttempt
+            {
+                Id = attemptId,
+                UserId = userId,
+                IdempotencyKey = "idem-delete",
+                RequestHash = "hash-delete",
+                RequestJson = "{\"roughDraftReply\":\"private draft\"}",
+                ResultJson = "{\"reply\":\"private result\"}",
+                Status = RewriteAttemptStatus.Succeeded,
+                ExpiresAt = now.AddDays(1),
+                CreatedAt = now.AddDays(-1),
+                CompletedAt = now,
+            });
+            db.UsagePeriods.Add(new UsagePeriod
+            {
+                Id = usagePeriodId,
+                UserId = userId,
+                PeriodKey = "paid:sub_delete:2026-06-30T00:00:00.0000000+00:00",
+                QuotaLimit = 90,
+                UsedCount = 4,
+                ReservedCount = 1,
+                PeriodStart = now.AddDays(-10),
+                PeriodEnd = now.AddDays(20),
+                CreatedAt = now.AddDays(-10),
+                UpdatedAt = now,
+            });
+            db.UsageReservations.Add(new UsageReservation
+            {
+                Id = reservationId,
+                UserId = userId,
+                UsagePeriodId = usagePeriodId,
+                RewriteAttemptId = attemptId,
+                RewriteCreditId = creditId,
+                Status = UsageReservationStatus.Pending,
+                ExpiresAt = now.AddMinutes(30),
+                CreatedAt = now.AddMinutes(-10),
+            });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                Id = creditId,
+                UserId = userId,
+                Source = "PURCHASE",
+                AmountGranted = 10,
+                AmountConsumed = 2,
+                GrantedAt = now.AddDays(-5),
+                ExpiresAt = now.AddDays(25),
+                StripeEventId = "evt_credit",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var canceledSubscriptions = new List<string>();
+        var service = new AccountService(
+            CreateContext,
+            cancelSubscriptionAsync: (subscriptionId, _) =>
+            {
+                canceledSubscriptions.Add(subscriptionId);
+                return Task.CompletedTask;
+            });
+
+        await service.DeleteAccountAsync("entra-delete", CancellationToken.None);
+
+        canceledSubscriptions.Should().Equal("sub_delete");
+
+        await using (var db = CreateContext())
+        {
+            var user = await db.AppUsers.SingleAsync(x => x.Id == userId);
+            user.ExternalAuthUserId.Should().StartWith("erased:");
+            user.ExternalAuthUserId.Should().NotBe("entra-delete");
+            user.Email.Should().BeNull();
+            user.StripeCustomerId.Should().Be("cus_delete");
+            user.StripeSubscriptionId.Should().Be("sub_delete");
+            user.SubscriptionStatus.Should().Be(SubscriptionStatus.Canceled);
+            user.CurrentPeriodEnd.Should().BeNull();
+
+            var attempt = await db.RewriteAttempts.SingleAsync(x => x.Id == attemptId);
+            attempt.IdempotencyKey.Should().StartWith("erased:");
+            attempt.RequestHash.Should().Be("erased");
+            attempt.RequestJson.Should().Be("{}");
+            attempt.ResultJson.Should().BeNull();
+            attempt.ErrorMessage.Should().BeNull();
+
+            var period = await db.UsagePeriods.SingleAsync(x => x.Id == usagePeriodId);
+            period.PeriodKey.Should().StartWith("erased:");
+            period.QuotaLimit.Should().Be(0);
+            period.UsedCount.Should().Be(0);
+            period.ReservedCount.Should().Be(0);
+            period.PeriodStart.Should().BeNull();
+            period.PeriodEnd.Should().BeNull();
+
+            var reservation = await db.UsageReservations.SingleAsync(x => x.Id == reservationId);
+            reservation.Status.Should().Be(UsageReservationStatus.Released);
+            reservation.ReleasedAt.Should().NotBeNull();
+
+            var credit = await db.RewriteCredits.SingleAsync(x => x.Id == creditId);
+            credit.Source.Should().Be("ERASED");
+            credit.AmountGranted.Should().Be(0);
+            credit.AmountConsumed.Should().Be(0);
+            credit.ExpiresAt.Should().NotBeNull();
+            credit.StripeEventId.Should().Be("evt_credit");
+        }
+
+        var freshUser = await service.GetOrCreateUserAsync(
+            "entra-delete",
+            "fresh@example.com",
+            CancellationToken.None);
+
+        freshUser.Id.Should().NotBe(userId);
+        freshUser.Email.Should().Be("fresh@example.com");
+    }
+
+    [Fact]
+    public async Task DeleteAccountIsIdempotent()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-idempotent-delete",
+                Email = "idempotent@example.com",
+                StripeCustomerId = "cus_idempotent",
+                StripeSubscriptionId = "sub_idempotent",
+                SubscriptionStatus = SubscriptionStatus.Active,
+                CurrentPeriodEnd = now.AddDays(10),
+                CreatedAt = now.AddDays(-5),
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var canceledSubscriptions = new List<string>();
+        var service = new AccountService(
+            CreateContext,
+            cancelSubscriptionAsync: (subscriptionId, _) =>
+            {
+                canceledSubscriptions.Add(subscriptionId);
+                return Task.CompletedTask;
+            });
+
+        await service.DeleteAccountAsync("entra-idempotent-delete", CancellationToken.None);
+        await service.DeleteAccountAsync("entra-idempotent-delete", CancellationToken.None);
+
+        canceledSubscriptions.Should().Equal("sub_idempotent");
+
+        await using var verifyDb = CreateContext();
+        var user = await verifyDb.AppUsers.SingleAsync(x => x.Id == userId);
+        user.ExternalAuthUserId.Should().StartWith("erased:");
+        user.Email.Should().BeNull();
+        user.SubscriptionStatus.Should().Be(SubscriptionStatus.Canceled);
+        (await verifyDb.AppUsers.CountAsync(x => x.ExternalAuthUserId == "entra-idempotent-delete")).Should().Be(0);
+    }
+
     private AppDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
