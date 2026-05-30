@@ -1,5 +1,9 @@
 # Consumer Auth → Entra External ID Native Authentication (Email OTP in-app) Specification
 
+> ⚠️ SUPERSEDED 2026-05-31 by `plans/auth-email-password-spec.md` — the owner changed the identity
+> model from passwordless email-OTP to **email + password + self-service reset**. Keep this doc for
+> history; build against the email+password spec.
+>
 > Status: PROPOSED (analysis turn — no code changed yet). Owner decision 2026-05-24: Option C
 > (Entra native authentication). Testing surface: production `replyinmyvoice.com`.
 > Source-of-truth inputs: `AGENTS.md`, `docs/manual-setup.md`, `lib/entra-auth.ts`,
