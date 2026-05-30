@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -11,7 +12,8 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class OutboxDispatcherService(
     Func<AppDbContext> dbContextFactory,
-    IRewriteJobPublisher jobPublisher)
+    IRewriteJobPublisher jobPublisher,
+    ILogger<OutboxDispatcherService>? logger = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -28,20 +30,46 @@ public sealed class OutboxDispatcherService(
         var messages = await ClaimDueMessagesAsync(now, lockedBy, batchSize, cancellationToken);
         foreach (var message in messages)
         {
+            using var scope = BeginOutboxScope(message);
+            var correlationId = ResolveCorrelationId(message);
             try
             {
                 var job = CreateRewriteJob(message);
                 await jobPublisher.PublishAsync(job, cancellationToken);
                 await MarkSentAsync(message.Id, now, cancellationToken);
+                logger?.LogInformation(
+                    "Outbox message dispatched for attempt {AttemptId}. MessageId: {OutboxMessageId}. MessageType: {MessageType}.",
+                    correlationId,
+                    message.Id,
+                    message.MessageType);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                await MarkFailedAttemptAsync(message.Id, now, ex.Message, cancellationToken);
+                var failure = await MarkFailedAttemptAsync(message.Id, now, ex.Message, cancellationToken);
+                logger?.LogWarning(
+                    ex,
+                    "Outbox message dispatch failed for attempt {AttemptId}. MessageId: {OutboxMessageId}. MessageType: {MessageType}. AttemptCount: {AttemptCount}. MaxAttempts: {MaxAttempts}. Status: {OutboxStatus}.",
+                    correlationId,
+                    message.Id,
+                    message.MessageType,
+                    failure.AttemptCount,
+                    failure.MaxAttempts,
+                    failure.Status);
             }
         }
 
         return messages.Count;
     }
+
+    private IDisposable? BeginOutboxScope(OutboxMessage message) =>
+        logger?.BeginScope(new Dictionary<string, object>
+        {
+            ["attemptId"] = ResolveCorrelationId(message),
+            ["outboxMessageId"] = message.Id,
+        });
+
+    private static string ResolveCorrelationId(OutboxMessage message) =>
+        message.CorrelationId ?? message.Id.ToString();
 
     private async Task<List<OutboxMessage>> ClaimDueMessagesAsync(
         DateTimeOffset now,
@@ -132,7 +160,7 @@ public sealed class OutboxDispatcherService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task MarkFailedAttemptAsync(
+    private async Task<OutboxFailureLogInfo> MarkFailedAttemptAsync(
         Guid messageId,
         DateTimeOffset now,
         string error,
@@ -162,6 +190,11 @@ public sealed class OutboxDispatcherService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        return new OutboxFailureLogInfo(
+            message.AttemptCount,
+            message.MaxAttempts,
+            message.Status,
+            message.NextAttemptAt);
     }
 
     private static RewriteJob CreateRewriteJob(OutboxMessage message)
@@ -183,4 +216,10 @@ public sealed class OutboxDispatcherService(
     }
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);
+
+    private sealed record OutboxFailureLogInfo(
+        int AttemptCount,
+        int MaxAttempts,
+        OutboxMessageStatus Status,
+        DateTimeOffset NextAttemptAt);
 }

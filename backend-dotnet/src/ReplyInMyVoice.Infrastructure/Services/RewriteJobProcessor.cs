@@ -30,11 +30,13 @@ public sealed class RewriteAttemptNotFoundException : InvalidOperationException
 public sealed class RewriteJobProcessor(
     Func<AppDbContext> dbContextFactory,
     IRewriteProvider rewriteProvider,
-    ILogger<RewriteJobProcessor>? logger = null)
+    ILogger<RewriteJobProcessor>? logger = null,
+    ILoggerFactory? loggerFactory = null)
 {
     public async Task ProcessAsync(RewriteJob job, CancellationToken cancellationToken)
     {
-        var quotaService = new QuotaService(dbContextFactory);
+        using var scope = BeginAttemptScope(job.AttemptId);
+        var quotaService = new QuotaService(dbContextFactory, loggerFactory?.CreateLogger<QuotaService>());
         var now = DateTimeOffset.UtcNow;
         RewriteRequest request;
 
@@ -90,7 +92,20 @@ public sealed class RewriteJobProcessor(
 
         var rewriteStartedAt = DateTimeOffset.UtcNow;
         using var providerCallCapture = RewriteProviderCallCapture.Begin();
-        var result = await rewriteProvider.RewriteAsync(job.AttemptId, request, cancellationToken);
+        RewriteProviderResult result;
+        try
+        {
+            result = await rewriteProvider.RewriteAsync(job.AttemptId, request, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogError(
+                ex,
+                "Rewrite provider threw for attempt {AttemptId}.",
+                job.AttemptId);
+            throw;
+        }
+
         var rewriteFinishedAt = DateTimeOffset.UtcNow;
         var providerCalls = providerCallCapture.Calls;
 
@@ -100,6 +115,9 @@ public sealed class RewriteJobProcessor(
                 job.AttemptId,
                 () => quotaService.FinalizeSuccessAsync(job.AttemptId, result.ResultJson!, rewriteFinishedAt, cancellationToken),
                 cancellationToken);
+            logger?.LogInformation(
+                "Rewrite attempt finalized successfully for attempt {AttemptId}.",
+                job.AttemptId);
             await WriteCostLogAsync(
                 job.AttemptId,
                 request,
@@ -114,6 +132,11 @@ public sealed class RewriteJobProcessor(
         }
 
         var errorCode = result.Success ? "provider_json_parse_failed" : result.ErrorCode ?? "provider_failed";
+        logger?.LogWarning(
+            "Rewrite provider failure for attempt {AttemptId} with error code {ErrorCode}. ProviderResultSuccess: {ProviderResultSuccess}.",
+            job.AttemptId,
+            errorCode,
+            result.Success);
         await WriteCostLogAsync(
             job.AttemptId,
             request,
@@ -133,6 +156,12 @@ public sealed class RewriteJobProcessor(
                 cancellationToken),
             cancellationToken);
     }
+
+    private IDisposable? BeginAttemptScope(Guid attemptId) =>
+        logger?.BeginScope(new Dictionary<string, object>
+        {
+            ["attemptId"] = attemptId,
+        });
 
     private async Task ExecuteAttemptMutationAsync(
         Guid attemptId,
