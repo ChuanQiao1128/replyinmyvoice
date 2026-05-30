@@ -115,6 +115,21 @@ public sealed class InfrastructureServiceCollectionTests
         strategy.GetType().Name.Should().Be("SqlServerRetryingExecutionStrategy");
     }
 
+    [Fact]
+    public void Worker_program_gates_in_process_service_bus_consumer_by_default()
+    {
+        var program = File.ReadAllText(WorkerProgramPath());
+        var flagIndex = program.IndexOf("ENABLE_INPROC_REWRITE_WORKER", StringComparison.Ordinal);
+
+        flagIndex.Should().BeGreaterThanOrEqualTo(0);
+        program.Should().Contain("bool.TryParse(builder.Configuration[\"ENABLE_INPROC_REWRITE_WORKER\"], out var enableInProcRewriteWorker)");
+        program.Should().Contain("&& enableInProcRewriteWorker");
+        program.Should().Contain("AddHostedService<OutboxDispatcherWorker>()");
+        program.Should().Contain("AddHostedService<ExpiredReservationCleanupWorker>()");
+        program[..flagIndex].Should().NotContain("AddHostedService<ServiceBusRewriteWorker>()");
+        program[flagIndex..].Should().Contain("AddHostedService<ServiceBusRewriteWorker>()");
+    }
+
     private static ServiceProvider BuildProvider(Dictionary<string, string?> values)
     {
         var configuration = new ConfigurationBuilder()
@@ -133,5 +148,27 @@ public sealed class InfrastructureServiceCollectionTests
 
         optionsField.Should().NotBeNull();
         return (FactReconstructRewriteOptions)optionsField!.GetValue(provider)!;
+    }
+
+    private static string WorkerProgramPath()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(
+                dir.FullName,
+                "backend-dotnet",
+                "src",
+                "ReplyInMyVoice.Worker",
+                "Program.cs");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new FileNotFoundException("Could not locate backend-dotnet/src/ReplyInMyVoice.Worker/Program.cs from the test base directory.");
     }
 }
