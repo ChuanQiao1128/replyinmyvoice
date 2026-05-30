@@ -225,4 +225,149 @@ public sealed class StripeEventServiceTests
         var duplicateInsert = async () => await db.SaveChangesAsync();
         await duplicateInsert.Should().ThrowAsync<DbUpdateException>();
     }
+
+    [Fact]
+    public async Task ProcessWebhookEventAsync_RefundRevokesUnconsumedCredits()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-30T00:00:00Z");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 10,
+                AmountConsumed = 2,
+                GrantedAt = now.AddDays(-1),
+                StripePaymentIntentId = "pi_refund",
+                StripeAmountTotal = 1200,
+                StripeCurrency = "nzd",
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var first = await service.ProcessWebhookEventAsync(
+            "evt_refund_partial",
+            "charge.refunded",
+            """
+            {
+              "id": "evt_refund_partial",
+              "type": "charge.refunded",
+              "data": {
+                "object": {
+                  "id": "ch_refund",
+                  "payment_intent": "pi_refund",
+                  "amount": 1200,
+                  "amount_refunded": 600,
+                  "refunded": false
+                }
+              }
+            }
+            """,
+            now);
+        var replay = await service.ProcessWebhookEventAsync(
+            "evt_refund_partial",
+            "charge.refunded",
+            "{}",
+            now.AddSeconds(1));
+
+        first.Should().BeTrue();
+        replay.Should().BeFalse();
+
+        await using var db = fixture.CreateContext();
+        var credit = await db.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_refund");
+        credit.AmountGranted.Should().Be(5);
+        credit.AmountConsumed.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ProcessWebhookEventAsync_RefundClampsAndDispute()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-30T00:10:00Z");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteCredits.AddRange(
+                new RewriteCredit
+                {
+                    UserId = user.Id,
+                    Source = "PURCHASE",
+                    AmountGranted = 10,
+                    AmountConsumed = 8,
+                    GrantedAt = now.AddDays(-1),
+                    StripePaymentIntentId = "pi_clamp",
+                    StripeAmountTotal = 1200,
+                    StripeCurrency = "nzd",
+                },
+                new RewriteCredit
+                {
+                    UserId = user.Id,
+                    Source = "PURCHASE",
+                    AmountGranted = 6,
+                    AmountConsumed = 1,
+                    GrantedAt = now.AddDays(-1),
+                    StripePaymentIntentId = "pi_dispute",
+                    StripeAmountTotal = 600,
+                    StripeCurrency = "nzd",
+                });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var refund = await service.ProcessWebhookEventAsync(
+            "evt_refund_clamp",
+            "charge.refunded",
+            """
+            {
+              "id": "evt_refund_clamp",
+              "type": "charge.refunded",
+              "data": {
+                "object": {
+                  "id": "ch_clamp",
+                  "payment_intent": "pi_clamp",
+                  "amount": 1200,
+                  "amount_refunded": 600,
+                  "refunded": false
+                }
+              }
+            }
+            """,
+            now);
+        var dispute = await service.ProcessWebhookEventAsync(
+            "evt_dispute_created",
+            "charge.dispute.created",
+            """
+            {
+              "id": "evt_dispute_created",
+              "type": "charge.dispute.created",
+              "data": {
+                "object": {
+                  "id": "dp_created",
+                  "payment_intent": "pi_dispute",
+                  "amount": 600,
+                  "status": "needs_response"
+                }
+              }
+            }
+            """,
+            now.AddSeconds(1));
+
+        refund.Should().BeTrue();
+        dispute.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var clamped = await db.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_clamp");
+        clamped.AmountGranted.Should().Be(8);
+        clamped.AmountConsumed.Should().Be(8);
+
+        var disputed = await db.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_dispute");
+        disputed.AmountGranted.Should().Be(1);
+        disputed.AmountConsumed.Should().Be(1);
+    }
 }
