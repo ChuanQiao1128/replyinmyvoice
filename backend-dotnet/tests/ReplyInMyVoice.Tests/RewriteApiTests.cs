@@ -1,14 +1,19 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Queueing;
 
@@ -17,6 +22,13 @@ namespace ReplyInMyVoice.Tests;
 public sealed class RewriteApiTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
+
+    static RewriteApiTests()
+    {
+        Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
+        Environment.SetEnvironmentVariable("DOTNET_hostBuilder__reloadConfigOnChange", "false");
+        Environment.SetEnvironmentVariable("ASPNETCORE_hostBuilder__reloadConfigOnChange", "false");
+    }
 
     public async Task InitializeAsync()
     {
@@ -34,7 +46,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task Rewrite_returns_bad_request_when_idempotency_key_is_missing()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_test");
 
         var response = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
@@ -46,7 +58,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task Rewrite_validation_error_does_not_create_usage_or_attempt()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_validation");
         client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-validation");
 
@@ -64,7 +76,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task Rewrite_authentication_error_does_not_create_usage_or_attempt()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-unauthenticated");
 
         var response = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
@@ -79,7 +91,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task Rewrite_rejects_header_only_user_identity_in_production()
     {
         await using var factory = CreateFactory("Production");
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_spoofed");
         client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-prod-header");
 
@@ -92,7 +104,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task Rewrite_creates_attempt_and_outbox_message()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_test");
         client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-1");
 
@@ -114,7 +126,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task Rewrite_same_idempotency_key_with_different_body_returns_conflict_without_new_outbox()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_conflict");
         client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-conflict");
 
@@ -142,7 +154,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task Attempt_lookup_returns_attempt_status_for_same_user()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_test");
         client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-lookup");
         var createResponse = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
@@ -160,7 +172,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task Rewrite_retry_after_success_returns_same_result_without_new_reservation()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_retry_success");
         client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-retry-success");
         var createResponse = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
@@ -203,7 +215,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
         }
 
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_paid_quota");
 
         for (var index = 0; index < 90; index += 1)
@@ -220,6 +232,86 @@ public sealed class RewriteApiTests : IAsyncLifetime
         period.QuotaLimit.Should().Be(90);
         period.ReservedCount.Should().Be(90);
         (await verifyDb.RewriteAttempts.CountAsync()).Should().Be(90);
+    }
+
+    [Fact]
+    public async Task Ready_health_returns_service_unavailable_when_dependency_or_backlog_check_fails()
+    {
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = CreateContext())
+        {
+            db.StripeEvents.Add(new StripeEvent
+            {
+                EventId = "evt_ready_failed",
+                Type = "checkout.session.completed",
+                Status = StripeEventStatus.Failed,
+                CreatedAt = now.AddMinutes(-5),
+                LastAttemptAt = now.AddMinutes(-5),
+                LastError = "temporary failure",
+            });
+            db.OutboxMessages.Add(new OutboxMessage
+            {
+                MessageType = "RewriteJobCreated",
+                PayloadJson = "{}",
+                Status = OutboxMessageStatus.Pending,
+                CreatedAt = now.AddMinutes(-11),
+                NextAttemptAt = now.AddMinutes(-11),
+            });
+
+            var user = new AppUser
+            {
+                ExternalAuthUserId = "clerk_ready_stuck",
+                Email = "ready@example.com",
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            var period = new UsagePeriod
+            {
+                User = user,
+                PeriodKey = "ready-test",
+                QuotaLimit = 3,
+                ReservedCount = 1,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            var attempt = new RewriteAttempt
+            {
+                User = user,
+                IdempotencyKey = "ready-idem",
+                RequestHash = "ready-hash",
+                RequestJson = "{}",
+                Status = RewriteAttemptStatus.Processing,
+                CreatedAt = now.AddMinutes(-20),
+                ExpiresAt = now.AddMinutes(-1),
+            };
+            db.UsageReservations.Add(new UsageReservation
+            {
+                User = user,
+                UsagePeriod = period,
+                RewriteAttempt = attempt,
+                Status = UsageReservationStatus.Pending,
+                CreatedAt = now.AddMinutes(-20),
+                ExpiresAt = now.AddMinutes(-1),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var healthDb = CreateContext();
+        var function = new HealthFunction(healthDb, BuildHealthConfiguration());
+
+        var result = await function.ReadinessHealth(
+            new DefaultHttpContext().Request,
+            CancellationToken.None);
+
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        var json = JsonSerializer.Serialize(objectResult.Value);
+        json.Should().Contain("\"database\"");
+        json.Should().Contain("\"serviceBus\"");
+        json.Should().Contain("\"failedStripeEvents\"");
+        json.Should().Contain("\"outboxBacklog\"");
+        json.Should().Contain("\"stuckReservations\"");
+        json.Should().Contain("\"ok\":false");
     }
 
     private WebApplicationFactory<Program> CreateFactory(string environment = "Testing")
@@ -250,6 +342,20 @@ public sealed class RewriteApiTests : IAsyncLifetime
             .Options;
         return new AppDbContext(options);
     }
+
+    private static HttpClient CreateClient(WebApplicationFactory<Program> factory) =>
+        factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = false,
+        });
+
+    private static IConfiguration BuildHealthConfiguration() =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Health:OutboxBacklogMinutes"] = "10",
+            })
+            .Build();
 
     private static Task<HttpResponseMessage> PostRewriteAsync(HttpClient client, string idempotencyKey)
     {

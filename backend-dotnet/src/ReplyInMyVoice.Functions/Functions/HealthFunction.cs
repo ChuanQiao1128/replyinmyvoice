@@ -1,13 +1,36 @@
+using Azure.Messaging.ServiceBus;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
+using System.Text.Json.Serialization;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
-public sealed class HealthFunction(AppDbContext db)
+public sealed class HealthFunction
 {
+    private const int DefaultOutboxBacklogMinutes = 10;
+    private const int DefaultFailedStripeEventsThreshold = 0;
+    private const int DefaultOutboxBacklogThreshold = 0;
+    private const int DefaultStuckReservationsThreshold = 0;
+
+    private readonly AppDbContext db;
+    private readonly IConfiguration configuration;
+    private readonly ServiceBusSender? serviceBusSender;
+
+    public HealthFunction(
+        AppDbContext db,
+        IConfiguration configuration,
+        ServiceBusSender? serviceBusSender = null)
+    {
+        this.db = db;
+        this.configuration = configuration;
+        this.serviceBusSender = serviceBusSender;
+    }
+
     [Function("Health")]
     public IActionResult Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")]
@@ -29,5 +52,282 @@ public sealed class HealthFunction(AppDbContext db)
             {
                 StatusCode = StatusCodes.Status500InternalServerError,
             };
+    }
+
+    [Function("ReadinessHealth")]
+    public async Task<IActionResult> ReadinessHealth(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health/ready")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var outboxBacklogMinutes = ReadPositiveInt("Health:OutboxBacklogMinutes", DefaultOutboxBacklogMinutes);
+        var failedStripeEventsThreshold = ReadNonNegativeInt(
+            "Health:FailedStripeEventsThreshold",
+            DefaultFailedStripeEventsThreshold);
+        var outboxBacklogThreshold = ReadNonNegativeInt(
+            "Health:OutboxBacklogThreshold",
+            DefaultOutboxBacklogThreshold);
+        var stuckReservationsThreshold = ReadNonNegativeInt(
+            "Health:StuckReservationsThreshold",
+            DefaultStuckReservationsThreshold);
+
+        var database = await CheckDatabaseAsync(cancellationToken);
+        var serviceBus = CheckServiceBus();
+        var failedStripeEvents = database.Ok
+            ? await CheckFailedStripeEventsAsync(now, failedStripeEventsThreshold, cancellationToken)
+            : CountReadinessCheck.Unavailable("database_unavailable", failedStripeEventsThreshold);
+        var outboxBacklog = database.Ok
+            ? await CheckOutboxBacklogAsync(now, outboxBacklogMinutes, outboxBacklogThreshold, cancellationToken)
+            : CountReadinessCheck.Unavailable("database_unavailable", outboxBacklogThreshold);
+        var stuckReservations = database.Ok
+            ? await CheckStuckReservationsAsync(now, stuckReservationsThreshold, cancellationToken)
+            : CountReadinessCheck.Unavailable("database_unavailable", stuckReservationsThreshold);
+
+        var checks = new ReadinessChecks(
+            database,
+            serviceBus,
+            failedStripeEvents,
+            outboxBacklog,
+            stuckReservations);
+        var ok = checks.Database.Ok &&
+            checks.ServiceBus.Ok &&
+            checks.FailedStripeEvents.Ok &&
+            checks.OutboxBacklog.Ok &&
+            checks.StuckReservations.Ok;
+        var response = new ReadinessResponse(
+            ok,
+            ok ? "ready" : "degraded",
+            now,
+            checks);
+
+        return ok
+            ? new OkObjectResult(response)
+            : new ObjectResult(response)
+            {
+                StatusCode = StatusCodes.Status503ServiceUnavailable,
+            };
+    }
+
+    private async Task<DatabaseReadinessCheck> CheckDatabaseAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var canConnect = await db.Database.CanConnectAsync(cancellationToken);
+            return new DatabaseReadinessCheck(canConnect, canConnect, canConnect ? null : "cannot_connect");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new DatabaseReadinessCheck(false, false, ex.GetType().Name);
+        }
+    }
+
+    private ServiceBusReadinessCheck CheckServiceBus()
+    {
+        var connectionString = configuration.GetConnectionString("ServiceBus")
+            ?? configuration["ServiceBus"]
+            ?? configuration["SERVICEBUS_CONNECTION_STRING"]
+            ?? configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"];
+        var queueName = configuration["ServiceBus:QueueName"]
+            ?? configuration["SERVICEBUS_QUEUE_NAME"]
+            ?? configuration["AZURE_SERVICE_BUS_QUEUE"]
+            ?? "rewrite-jobs";
+        var configured = !string.IsNullOrWhiteSpace(connectionString);
+        var senderResolved = serviceBusSender is not null;
+        var ok = configured && senderResolved;
+
+        return new ServiceBusReadinessCheck(
+            ok,
+            configured,
+            senderResolved,
+            queueName,
+            ok ? null : configured ? "sender_unavailable" : "not_configured");
+    }
+
+    private async Task<CountReadinessCheck> CheckFailedStripeEventsAsync(
+        DateTimeOffset now,
+        int threshold,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var cutoff = now.AddHours(-1);
+            var count = await CountFailedStripeEventsAsync(cutoff, cancellationToken);
+            return CountReadinessCheck.FromCount(count, threshold);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return CountReadinessCheck.Unavailable(ex.GetType().Name, threshold);
+        }
+    }
+
+    private async Task<CountReadinessCheck> CheckOutboxBacklogAsync(
+        DateTimeOffset now,
+        int olderThanMinutes,
+        int threshold,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var cutoff = now.AddMinutes(-olderThanMinutes);
+            var count = await CountOutboxBacklogAsync(cutoff, cancellationToken);
+            return CountReadinessCheck.FromCount(count, threshold, olderThanMinutes);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return CountReadinessCheck.Unavailable(ex.GetType().Name, threshold, olderThanMinutes);
+        }
+    }
+
+    private async Task<CountReadinessCheck> CheckStuckReservationsAsync(
+        DateTimeOffset now,
+        int threshold,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var count = await CountStuckReservationsAsync(now, cancellationToken);
+            return CountReadinessCheck.FromCount(count, threshold);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return CountReadinessCheck.Unavailable(ex.GetType().Name, threshold);
+        }
+    }
+
+    private async Task<int> CountFailedStripeEventsAsync(
+        DateTimeOffset cutoff,
+        CancellationToken cancellationToken)
+    {
+        if (IsSqlite())
+        {
+            var failedEvents = await db.StripeEvents
+                .AsNoTracking()
+                .Where(x => x.Status == StripeEventStatus.Failed)
+                .Select(x => new { x.CreatedAt, x.LastAttemptAt })
+                .ToListAsync(cancellationToken);
+
+            return failedEvents.Count(x => (x.LastAttemptAt ?? x.CreatedAt) >= cutoff);
+        }
+
+        return await db.StripeEvents
+            .AsNoTracking()
+            .CountAsync(
+                x => x.Status == StripeEventStatus.Failed &&
+                    ((x.LastAttemptAt != null && x.LastAttemptAt >= cutoff) ||
+                        (x.LastAttemptAt == null && x.CreatedAt >= cutoff)),
+                cancellationToken);
+    }
+
+    private async Task<int> CountOutboxBacklogAsync(
+        DateTimeOffset cutoff,
+        CancellationToken cancellationToken)
+    {
+        if (IsSqlite())
+        {
+            var messages = await db.OutboxMessages
+                .AsNoTracking()
+                .Select(x => new { x.Status, x.CreatedAt })
+                .ToListAsync(cancellationToken);
+
+            return messages.Count(x =>
+                x.Status == OutboxMessageStatus.Failed ||
+                ((x.Status == OutboxMessageStatus.Pending || x.Status == OutboxMessageStatus.Processing) &&
+                    x.CreatedAt <= cutoff));
+        }
+
+        return await db.OutboxMessages
+            .AsNoTracking()
+            .CountAsync(
+                x => x.Status == OutboxMessageStatus.Failed ||
+                    ((x.Status == OutboxMessageStatus.Pending || x.Status == OutboxMessageStatus.Processing) &&
+                        x.CreatedAt <= cutoff),
+                cancellationToken);
+    }
+
+    private async Task<int> CountStuckReservationsAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (IsSqlite())
+        {
+            var reservations = await db.UsageReservations
+                .AsNoTracking()
+                .Where(x => x.Status == UsageReservationStatus.Pending)
+                .Select(x => new { x.ExpiresAt })
+                .ToListAsync(cancellationToken);
+
+            return reservations.Count(x => x.ExpiresAt <= now);
+        }
+
+        return await db.UsageReservations
+            .AsNoTracking()
+            .CountAsync(
+                x => x.Status == UsageReservationStatus.Pending && x.ExpiresAt <= now,
+                cancellationToken);
+    }
+
+    private bool IsSqlite() =>
+        db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
+
+    private int ReadPositiveInt(string key, int fallback)
+    {
+        var value = configuration[key] ?? configuration[key.Replace(':', '_')];
+        return int.TryParse(value, out var parsed) && parsed > 0
+            ? parsed
+            : fallback;
+    }
+
+    private int ReadNonNegativeInt(string key, int fallback)
+    {
+        var value = configuration[key] ?? configuration[key.Replace(':', '_')];
+        return int.TryParse(value, out var parsed) && parsed >= 0
+            ? parsed
+            : fallback;
+    }
+
+    public sealed record ReadinessResponse(
+        [property: JsonPropertyName("ok")] bool Ok,
+        [property: JsonPropertyName("status")] string Status,
+        [property: JsonPropertyName("checkedAt")] DateTimeOffset CheckedAt,
+        [property: JsonPropertyName("checks")] ReadinessChecks Checks);
+
+    public sealed record ReadinessChecks(
+        [property: JsonPropertyName("database")] DatabaseReadinessCheck Database,
+        [property: JsonPropertyName("serviceBus")] ServiceBusReadinessCheck ServiceBus,
+        [property: JsonPropertyName("failedStripeEvents")] CountReadinessCheck FailedStripeEvents,
+        [property: JsonPropertyName("outboxBacklog")] CountReadinessCheck OutboxBacklog,
+        [property: JsonPropertyName("stuckReservations")] CountReadinessCheck StuckReservations);
+
+    public sealed record DatabaseReadinessCheck(
+        [property: JsonPropertyName("ok")] bool Ok,
+        [property: JsonPropertyName("canConnect")] bool CanConnect,
+        [property: JsonPropertyName("error")] string? Error);
+
+    public sealed record ServiceBusReadinessCheck(
+        [property: JsonPropertyName("ok")] bool Ok,
+        [property: JsonPropertyName("configured")] bool Configured,
+        [property: JsonPropertyName("senderResolved")] bool SenderResolved,
+        [property: JsonPropertyName("queueName")] string QueueName,
+        [property: JsonPropertyName("error")] string? Error);
+
+    public sealed record CountReadinessCheck(
+        [property: JsonPropertyName("ok")] bool Ok,
+        [property: JsonPropertyName("count")] int Count,
+        [property: JsonPropertyName("threshold")] int Threshold,
+        [property: JsonPropertyName("olderThanMinutes")] int? OlderThanMinutes,
+        [property: JsonPropertyName("error")] string? Error)
+    {
+        public static CountReadinessCheck FromCount(
+            int count,
+            int threshold,
+            int? olderThanMinutes = null) =>
+            new(count <= threshold, count, threshold, olderThanMinutes, null);
+
+        public static CountReadinessCheck Unavailable(
+            string error,
+            int threshold,
+            int? olderThanMinutes = null) =>
+            new(false, 0, threshold, olderThanMinutes, error);
     }
 }
