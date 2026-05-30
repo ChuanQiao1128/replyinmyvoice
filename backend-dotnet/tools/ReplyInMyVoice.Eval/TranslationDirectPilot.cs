@@ -1151,6 +1151,120 @@ internal static class TranslationDirectPilot
             + "不要凭空加理由、情绪或方向。其余照旧口语粗糙——不要为了忠实把全文写规整。";
     }
 
+    // Round-trip-purpose polish (FIRST_LOW_REPAIR). Unlike EssayPolish's "natural Chinese prose" goal, this tells
+    // DeepSeek the Chinese will be machine-translated BACK to English and SEPARATES the two axes: FREEZE every
+    // fact (number/amount/currency/date/name/id/negation) verbatim, DIVERGE only in STYLE toward colloquial,
+    // not-cleanly-back-translatable Chinese. Aim: the low score comes from awkward STYLE, not from fact drift.
+    internal const string RoundTripPolishPrompt =
+        "你在做一个【英文→机器译中文→中文改写→机器译回英文】流程的中间这步。下面这段中文，是把一封英文邮件用机器翻译成中文得到的，"
+        + "它接下来会被机器（有道）再翻译回英文。请改写这段中文，使它【再译回英文后】同时满足两条：\n"
+        + "① 读起来像非母语者写的、略生硬、不那么“地道标准英文”——带点中文味、翻译腔；\n"
+        + "② 但所有【事实】与这段中文完全一致：每个数字、金额、货币符号($/￥)、日期、时间、人名、产品名、单号，以及每一处否定/条件"
+        + "（不能、除非、必须、不予、只有……才）——一个都不能改、不能漏、不能加。\n"
+        + "做法：\n"
+        + "- 事实照抄：数字/日期/金额/人名/单号原样保留，连币种符号都别动；否定和条件照旧。\n"
+        + "- 风格发散：只在句式和说法上往口语、地道中文、中文特有的表达上靠——那些直译回英文会显得别扭、不像规范商务英文的说法"
+        + "（短句、口语连接、把书面语换成日常说法、调换语序）。\n"
+        + "- 不要为了“通顺地道的英文”去靠近规范英文句法；我们要的恰恰是回译后带点别扭。不要增删信息，只改“中文的说法”。\n"
+        + "只返回 JSON：{\"final\":\"<改写后的中文全文>\"}";
+
+    private static async Task<string?> RoundTripPolishAsync(DeepSeekChatClient ds, string zh0, string feedback)
+    {
+        var sys = RoundTripPolishPrompt + (feedback.Length > 0 ? "\n\n" + feedback : string.Empty);
+        var raw = await ds.CompleteAsync(sys, "原文如下：\n" + zh0, 3000, 0.9, CancellationToken.None);
+        return ParseJsonStringField(raw, "final");
+    }
+
+    // Carry the PREVIOUS round's outcome into the NEXT round's polish: the GPTZero-highlighted (most-AI)
+    // sentences → roughen those in the Chinese; the still-residual facts (surgical couldn't restore them — usually
+    // dropped or changed at the source) → preserve them verbatim this time. Facts stay frozen either way.
+    private static string BuildRoundFeedback(int median, int target, IReadOnlyList<(string Sentence, int Ai, bool Hl)> sentences, IReadOnlyList<DriftSpan> residual)
+    {
+        var sb = new StringBuilder();
+        sb.Append("【上一轮结果反馈——这一轮据此改进，但事实仍然一字冻结】\n");
+        sb.Append($"上一轮修补后的英文，GPTZero 检测中位分 {median}%（目标 ≤{target}）。\n");
+
+        var high = sentences.Where(s => s.Hl || s.Ai >= 50).OrderByDescending(s => s.Ai).Take(6).ToList();
+        if (high.Count > 0)
+        {
+            sb.Append("这些句子被判定为最像 AI（GPTZero 高亮/高分）。请在中文里把对应意思写得更口语、更翻译腔、更不好直译（说法变，事实别动）：\n");
+            foreach (var s in high)
+            {
+                sb.Append($"- [{s.Ai}%] {Oneline(s.Sentence, 120)}\n");
+            }
+        }
+
+        var lost = residual.Select(d => d.SourceValue).Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToList();
+        if (lost.Count > 0)
+        {
+            sb.Append("上一轮这些事实没能修回（多半被整段丢了或改了）。这一轮请在中文里从源头保住，一字别改别漏：\n");
+            foreach (var v in lost)
+            {
+                sb.Append($"- {v}\n");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    // ---- Part B: sentinel masking of hard anchors (amounts / dates / ids / times / phones) ----
+    // Youdao mangles amounts on the round trip ($480→"480 yuan", $360→"360 degrees"). Replace each hard anchor in
+    // the SOURCE with a letter-only sentinel (QZANA, QZANB, …) BEFORE the first translation; the sentinel rides
+    // through both Youdao hops + the polish untranslated, and we swap the EXACT source value back after the final
+    // ZH→EN. So amounts/dates/ids can't drift in translation (the residuals that killed Kwame's rounds).
+    private const string MaskNote =
+        "【重要】文中形如 QZANA、QZANB 这样的占位符是锁定的事实标记，必须原样保留——一个字符都不能改、不能翻译、不能加空格、不能删除。";
+
+    private static readonly (string Pattern, RegexOptions Opts)[] AnchorPatterns =
+    {
+        (@"\$\s?\d[\d,]*(?:\.\d+)?", RegexOptions.None),
+        (@"\b[A-Z][A-Za-z]*-[A-Z0-9][A-Z0-9-]*\b", RegexOptions.None), // IDs: uppercase-initial only (so 'auto-renews'/'back-and-forth' are NOT masked)
+        (@"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?\b", RegexOptions.IgnoreCase),
+        (@"\b\d{1,2}(?::\d{2})?\s?(?:a\.m\.|p\.m\.|am|pm)\b", RegexOptions.IgnoreCase),
+        (@"\b\d{3}-\d{4}\b", RegexOptions.None),
+    };
+
+    private static (string Masked, IReadOnlyDictionary<string, string> Map) MaskAnchors(string source)
+    {
+        var valueToSentinel = new Dictionary<string, string>(StringComparer.Ordinal);
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var next = 0;
+        var masked = source;
+        foreach (var pat in AnchorPatterns)
+        {
+            masked = Regex.Replace(masked, pat.Pattern, m =>
+            {
+                if (valueToSentinel.TryGetValue(m.Value, out var existing))
+                {
+                    return existing;
+                }
+
+                if (next >= 26)
+                {
+                    return m.Value; // out of single-letter sentinels — leave the rest unmasked
+                }
+
+                var sent = "QZAN" + (char)('A' + next);
+                next++;
+                valueToSentinel[m.Value] = sent;
+                map[sent] = m.Value;
+                return sent;
+            }, pat.Opts);
+        }
+
+        return (masked, map);
+    }
+
+    private static string Unmask(string text, IReadOnlyDictionary<string, string> map)
+    {
+        foreach (var kv in map)
+        {
+            text = text.Replace(kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return text;
+    }
+
     private static async Task<string?> EssayPolishFeedbackAsync(DeepSeekChatClient ds, string zh0, string feedback)
     {
         var sys = EssayPolish.OwnerPrompt
@@ -1307,6 +1421,17 @@ internal static class TranslationDirectPilot
         var iters = int.TryParse(Environment.GetEnvironmentVariable("EL_ITERS"), out var it) && it > 0 ? it : 6;
         var target = int.TryParse(Environment.GetEnvironmentVariable("EL_TARGET"), out var tg) && tg > 0 ? tg : 30;
         var reReads = int.TryParse(Environment.GetEnvironmentVariable("EL_RESCORE"), out var rr) && rr > 0 ? rr : 3;
+        // English-side surgical (stage 2) is DEFAULT OFF: it inserts source English and RAISES the score, and the
+        // original ZH_SURGICAL_LOOP that hit 005/006 = 0% never had it — it shipped the ZH-repaired
+        // back-translation directly. Set EL_EN_SURGICAL=1 to re-enable for comparison.
+        var enSurgical = (Environment.GetEnvironmentVariable("EL_EN_SURGICAL") ?? "0") == "1";
+        // Part B: sentinel-mask hard anchors (amounts/dates/ids/times) so Youdao can't mangle them on the round
+        // trip. The flow (translate/polish/ZH-surgical) runs on the MASKED source/Chinese; the back-translation is
+        // UNMASKED to the exact source values before scoring + the EN gate. EL_MASK=0 to disable.
+        var masking = (Environment.GetEnvironmentVariable("EL_MASK") ?? "1") == "1";
+        var (flowSource, anchorMap) = masking
+            ? MaskAnchors(source)
+            : (source, (IReadOnlyDictionary<string, string>)new Dictionary<string, string>());
 
         using var http = new HttpClient();
         using var youdaoHttp = new HttpClient();
@@ -1315,7 +1440,12 @@ internal static class TranslationDirectPilot
         var youdao = new YoudaoTranslationClient(youdaoHttp, youdaoKey!, youdaoSecret!, youdaoUrl, TimeSpan.FromSeconds(30));
         var gate = new FaithfulnessGate((s, u, gct) => deepseek.CompleteAsync(s, u, 2000, 0, gct));
 
-        var zh0r = await youdao.TranslateAsync(source, "en", "zh-CHS", CancellationToken.None);
+        if (masking && anchorMap.Count > 0)
+        {
+            Console.WriteLine($"[mask] {anchorMap.Count} anchor(s): " + string.Join(", ", anchorMap.Select(kv => $"{kv.Key}={kv.Value}")));
+        }
+
+        var zh0r = await youdao.TranslateAsync(flowSource, "en", "zh-CHS", CancellationToken.None);
         if (!zh0r.Success)
         {
             Console.Error.WriteLine($"Youdao EN->ZH fail: {zh0r.ErrorCode}");
@@ -1325,71 +1455,98 @@ internal static class TranslationDirectPilot
         var zh0 = zh0r.Text;
         Console.WriteLine("================ ENGLISH SOURCE ================\n" + source + "\n");
 
-        // Owner's goal restated: NOT "an especially low score" — just FACTS INTACT and the score LOW(er). So
-        // rather than GUESS repairability from a drift-count bar (which made dense emails burn rounds skipping
-        // 4–6-drift candidates that actually repair fine), REPAIR-THEN-VERIFY: for each low candidate, run the
-        // LLM-guarded surgical fix and ACCEPT iff the REPAIRED text is faithful (0 residual) AND still ≤ target.
-        // The repaired OUTCOME is the real test — it accepts a 4–6-drift candidate that repairs clean and rejects
-        // a 7-drift one (score rose past target) or a missing-anchor one (residual), with no arbitrary pre-gate.
+        // Owner's flow — EVERY round (from round 0) runs the full pipeline and we score WHAT WE'D SHIP:
+        //   polish → ① Chinese-side surgical → re-translate → ② English-side surgical → score the REPAIRED English.
+        // Repair is part of producing each candidate (NOT "score the raw back-translation, repair only if it's
+        // low"). ① fixes drifts in the Chinese and re-translates, so the correction comes back as translationese
+        // and the score stays low while the facts come right; ② only patches residual Youdao artifacts the
+        // re-translation introduced. Accept the first round whose repaired output is faithful (0 residual) AND low.
         string? accepted = null;
         var acceptedMedian = 0;
         (string Text, int Median, int Residual)? best = null;
+        var feedback = string.Empty; // carries the prior round's GPTZero highlights + residual facts into the next polish
+        var roundsRun = 0;
+        var gptCalls = 0;
 
         for (var round = 0; round <= iters && accepted is null; round++)
         {
-            var zhRough = await EssayPolishFeedbackAsync(deepseek, zh0, string.Empty) ?? zh0;
-            var back = await youdao.TranslateAsync(zhRough, "zh-CHS", "en", CancellationToken.None);
+            roundsRun++;
+            // Reverted to the essay-prose polish (OwnerPrompt) — it produces lower-scoring (drifted) candidates
+            // than the round-trip prompt, which froze facts and back-translated too clean (~100%). The two-stage
+            // surgical + feedback below repair the drift while the Chinese-side fix + re-translate keep it low.
+            // MaskNote (when masking) tells the polish to keep the QZANx anchor sentinels verbatim.
+            var zhRough = await EssayPolishFeedbackAsync(deepseek, zh0, (masking ? MaskNote + "\n\n" : string.Empty) + feedback) ?? zh0;
+
+            // ① Chinese-side surgical: fix the candidate's drifts IN THE CHINESE, then re-translate. RECALL-FIRST
+            // gate here — the surgical wants to catch & fix as much as possible (the precision gate is for judging).
+            var (zhDrifts, _) = await gate.EvaluateCrossLingualAsync(flowSource, zhRough, CancellationToken.None, recallFirst: true);
+            var (zhFixed, zhUsedLlm) = await LlmSurgicalEditWithGuard(deepseek, zhRough, zhDrifts);
+            var back = await youdao.TranslateAsync(zhFixed, "zh-CHS", "en", CancellationToken.None);
             if (!back.Success)
             {
                 Console.WriteLine($"round {round}: Youdao ZH->EN fail ({back.ErrorCode})");
                 continue;
             }
 
-            var cand = back.Text.Trim();
-            var (ai, _, _, _, serr) = await ScoreAsync(gptHttp, gptKey!, cand, CancellationToken.None);
-            Console.WriteLine($"round {round}: GPTZero = {(ai?.ToString() ?? "err")}%" + (serr is null ? string.Empty : $" ({serr})"));
-            if (serr is not null || ai is null || ai > target)
+            // Unmask: swap each surviving sentinel back to its EXACT source anchor, so the EN gate + score see the
+            // real $480/June 15/Q-7719 (any sentinel Youdao didn't preserve simply stays a miss the gate catches).
+            var enCand = masking ? Unmask(back.Text.Trim(), anchorMap) : back.Text.Trim();
+
+            // ② English-side surgical (optional — EL_EN_SURGICAL). It inserts source English, which can RAISE the
+            // score; the old working flow skipped it and shipped the ZH-repaired back-translation directly.
+            string repaired;
+            bool enUsedLlm;
+            int enDriftCount;
+            if (enSurgical)
             {
-                continue;
+                var enDrifts = await gate.EvaluateAsync(source, enCand, CancellationToken.None);
+                (repaired, enUsedLlm) = await LlmSurgicalEnFixWithGuard(deepseek, enCand, enDrifts.Drifts);
+                enDriftCount = enDrifts.Drifts.Count;
+            }
+            else
+            {
+                repaired = enCand;
+                enUsedLlm = false;
+                enDriftCount = -1; // skipped
             }
 
-            var reads = new List<int> { ai.Value };
-            for (var k = 1; k < reReads; k++)
-            {
-                var (re, _, _, _, reErr) = await ScoreAsync(gptHttp, gptKey!, cand, CancellationToken.None);
-                if (reErr is null && re is not null)
-                {
-                    reads.Add(re.Value);
-                }
-            }
-
-            var med = reads.OrderBy(x => x).ToList()[reads.Count / 2];
-            if (med > target)
-            {
-                Console.WriteLine($"   re-reads [{string.Join(", ", reads)}] median={med}% — noise, keep looping");
-                continue;
-            }
-
-            // Low + noise-confirmed → REPAIR-THEN-VERIFY: fix its real drifts, then judge the REPAIRED text.
-            var pre = await gate.EvaluateAsync(source, cand, CancellationToken.None);
-            var (repaired, usedLlm) = await LlmSurgicalEnFixWithGuard(deepseek, cand, pre.Drifts);
+            // Verify faithfulness, then SCREEN the score with ONE GPTZero call (also captures the per-sentence
+            // highlights for the next round's feedback). Only if it screens faithful + low do we spend up to
+            // EL_RESCORE-1 MORE calls to confirm the median (GPTZero is noisy ±large) before accepting — so a
+            // rejected round costs exactly 1 GPTZero call; only the would-be-accept round re-confirms.
             var post = await gate.EvaluateAsync(source, repaired, CancellationToken.None);
+            var faithful = post.Error is null && post.Drifts.Count == 0;
 
-            var afterReads = new List<int>();
-            for (var k = 0; k < reReads; k++)
+            gptCalls++;
+            var (screen, _, _, screenSents, screenErr) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
+            var sentences = screenErr is null && screenSents is not null
+                ? screenSents
+                : (IReadOnlyList<(string Sentence, int Ai, bool Hl)>)Array.Empty<(string Sentence, int Ai, bool Hl)>();
+            var med = screenErr is null && screen is not null ? screen.Value : 999;
+            var confirmed = false;
+            var ok = false;
+
+            if (faithful && screenErr is null && screen is not null && screen.Value <= target)
             {
-                var (re, _, _, _, reErr) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
-                if (reErr is null && re is not null)
+                var reads = new List<int> { screen.Value };
+                for (var k = 1; k < reReads; k++)
                 {
-                    afterReads.Add(re.Value);
+                    gptCalls++;
+                    var (re, _, _, _, reErr) = await ScoreAsync(gptHttp, gptKey!, repaired, CancellationToken.None);
+                    if (reErr is null && re is not null)
+                    {
+                        reads.Add(re.Value);
+                    }
                 }
+
+                med = reads.OrderBy(x => x).ToList()[reads.Count / 2];
+                confirmed = true;
+                ok = med <= target; // confirmed low (median over EL_RESCORE reads)
             }
 
-            var afterMed = afterReads.Count > 0 ? afterReads.OrderBy(x => x).ToList()[afterReads.Count / 2] : 999;
-            var faithful = post.Error is null && post.Drifts.Count == 0;
-            var ok = faithful && afterMed <= target;
-            Console.WriteLine($"   low (median {med}%) · {pre.Drifts.Count} drift(s) → {(usedLlm ? "LLM-guarded" : "deterministic")} repair → "
-                + $"{afterMed}% · {(faithful ? "FAITHFUL" : $"{post.Drifts.Count} residual")}  ->  {(ok ? "ACCEPT" : "reject")}");
+            Console.WriteLine($"round {round}: ZH-fix {zhDrifts.Count} ({(zhUsedLlm ? "guarded" : "det")}) → re-translate → "
+                + $"EN-fix {(enDriftCount < 0 ? "off" : $"{enDriftCount} ({(enUsedLlm ? "guarded" : "det")})")} → repaired {med}% ({(confirmed ? "median" : "screen")}) · "
+                + $"{(faithful ? "FAITHFUL" : $"{post.Drifts.Count} residual")}  ->  {(ok ? "ACCEPT" : "reject")}");
             foreach (var d in post.Drifts.Take(6))
             {
                 Console.WriteLine($"      [residual {d.Kind}] \"{d.SourceValue}\" -> \"{d.CandidateSpan ?? "(missing)"}\"");
@@ -1398,17 +1555,20 @@ internal static class TranslationDirectPilot
             if (ok)
             {
                 accepted = repaired;
-                acceptedMedian = afterMed;
+                acceptedMedian = med;
                 Console.WriteLine("\n================ ACCEPTED (faithful + low) ================\n" + repaired + "\n");
                 break;
             }
 
             // Fallback: keep the best near-miss — fewest residual, then lowest repaired score.
             if (best is null || post.Drifts.Count < best.Value.Residual
-                || (post.Drifts.Count == best.Value.Residual && afterMed < best.Value.Median))
+                || (post.Drifts.Count == best.Value.Residual && med < best.Value.Median))
             {
-                best = (repaired, afterMed, post.Drifts.Count);
+                best = (repaired, med, post.Drifts.Count);
             }
+
+            // Feed THIS round's GPTZero highlights + still-residual facts into the NEXT round's polish.
+            feedback = BuildRoundFeedback(med, target, sentences, post.Drifts);
         }
 
         if (accepted is not null)
@@ -1425,7 +1585,7 @@ internal static class TranslationDirectPilot
             Console.WriteLine($"VERDICT: no candidate with median ≤ {target} in {iters + 1} rounds");
         }
 
-        Console.WriteLine($"CALLS: Youdao={youdao.CallCount} · DeepSeek={deepseek.CallCount}");
+        Console.WriteLine($"CALLS: rounds={roundsRun} · DeepSeek={deepseek.CallCount} · Youdao={youdao.CallCount} · GPTZero={gptCalls}");
         return 0;
     }
 

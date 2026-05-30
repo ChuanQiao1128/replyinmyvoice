@@ -46,16 +46,21 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
     // Cross-lingual: compare the English SOURCE to a Chinese CANDIDATE; return drifts whose CandidateSpan /
     // ExpectedFix are CHINESE, so they can be SURGICALLY string-replaced in the Chinese before one back-
     // translation (owner's "repair in Chinese, surgically" idea). Drifts-only, repair-parse, fail-closed.
-    public async Task<(IReadOnlyList<DriftSpan> Drifts, string? Error)> EvaluateCrossLingualAsync(string sourceEn, string zhCandidate, CancellationToken ct)
+    // recallFirst: when this gate drives the SURGICAL repair (fix flagged spans in the Chinese, re-translate),
+    // over-flagging is fine and MISSING a drift is the only real error → use the aggressive middle. The
+    // precision middle (default) is for judging faithfulness, where false positives are the #1 error.
+    public async Task<(IReadOnlyList<DriftSpan> Drifts, string? Error)> EvaluateCrossLingualAsync(string sourceEn, string zhCandidate, CancellationToken ct, bool recallFirst = false)
     {
-        const string sys =
+        const string header =
             "You are a strict faithfulness checker. SOURCE is the TRUTH (English). CANDIDATE is a rough Chinese translation. "
             + "CRITICAL — PROPER NAMES, PRODUCT/BRAND NAMES, IDs, and FEATURE/PACKAGE terms from SOURCE must stay VERBATIM IN ENGLISH inside the Chinese. "
             + "If the Chinese TRANSLITERATED or TRANSLATED one (e.g. 'Dev'→'戴夫', 'Northstar'→'北极星', 'admin workspace'→'管理工作区'/'工作区管理', 'onboarding'→'上线服务'/'入职'/'引导', 'SSO'→'单点登录', 'email support'→'邮件支持'), "
             + "that IS a drift: flag it with candidate_span = the Chinese rendering and expected_fix = the exact English token, so it "
             + "survives the back-translation as the original English. "
-            + "But if a name/product/ID/feature term ALREADY appears VERBATIM IN ENGLISH in the CANDIDATE, it is CORRECT — do NOT flag it, and never emit a no-op fix (candidate_span equal to expected_fix). "
-            + "Find ONLY the spans in the CHINESE CANDIDATE that CHANGE, DROP, CONTRADICT, or INVENT a verifiable fact vs SOURCE: a "
+            + "But if a name/product/ID/feature term ALREADY appears VERBATIM IN ENGLISH in the CANDIDATE, it is CORRECT — do NOT flag it, and never emit a no-op fix (candidate_span equal to expected_fix). ";
+
+        const string precisionMiddle =
+            "Find ONLY the spans in the CHINESE CANDIDATE that CHANGE, DROP, CONTRADICT, or INVENT a verifiable fact vs SOURCE: a "
             + "changed number/amount/currency ($ vs 元/yuan)/date/name/id/count; a negation or modality whose TRUTH VALUE flipped "
             + "(能↔不能, 可能↔一定, 截止X前↔X后); a swapped subject/role (谁对谁做什么真的变了); a substituted object (一个东西换成了"
             + "另一个真正不同的东西); two facts conflated or attached to the wrong thing; or invented content not in SOURCE (凭空的事实/"
@@ -63,19 +68,29 @@ public sealed class FaithfulnessGate(Func<string, string, CancellationToken, Tas
             + "TWO TESTS before flagging — PASS whatever survives BOTH: (1) FACT 测试:每个 数字/金额/日期/单号/人名/数量、谁对谁、"
             + "是否、能/不能、条件、方向 都保住(即使措辞不同/更口语/更啰嗦)→ 放行; (2) 真值等价:主动↔被动、有主语↔无主语,只要"
             + "真值一样就等价(如「我不能加」≡「没你书面确认这边动不了」)→ 放行。只有真值真翻了才标 polarity/role。 "
-            + "INVENTED ADDITIONS still matter: flag a Chinese phrase that adds a NEW fact, emotion, narrative, or a WRONG DIRECTION the "
-            + "SOURCE lacks — e.g. an added '正好可以往前赶'/'这下好了'/'正好提前' when SOURCE only states a plain fact, or implying "
-            + "'move it earlier' when SOURCE's offered options are actually later. For such an addition: if the span is PURELY the "
-            + "unsupported addition, set expected_fix to an empty string to delete it; but if the span MIXES a real fact with an addition "
-            + "(e.g. '那个房间空出来了，正好可以往前赶' mixes the room reason with an added 'move earlier'), set expected_fix to the "
-            + "CORRECTED minimal Chinese that KEEPS the real fact and drops ONLY the added part (here: '那个房间用不了。') — never "
-            + "delete the real fact. Do NOT flag faithful Chinese paraphrase, reordering, casual/verbose wording, or active↔passive "
-            + "rephrasing that keeps the facts (that is the #1 error to avoid); but do NOT miss a real fact/truth change or an invented "
-            + "fact/emotion/wrong-direction. For each drift output "
+            + "Do NOT flag faithful Chinese paraphrase, reordering, casual/verbose wording, or active↔passive rephrasing that keeps the "
+            + "facts (that is the #1 error to avoid); but do NOT miss a real fact/truth change or an invented fact/emotion/wrong-direction. ";
+
+        const string recallMiddle =
+            "RECALL-FIRST — your output drives a SURGICAL repair that fixes the flagged spans in the Chinese before it is "
+            + "re-translated, so OVER-flagging is acceptable and MISSING a drift is the only real error. Flag ANY span in the CHINESE "
+            + "that changes, drops, reorders, softens, or adds vs SOURCE: a changed or dropped number/amount/currency ($ vs 元/yuan)/"
+            + "date/name/id/count; a negation/modality/condition that flipped OR softened (能↔不能, 必须↔可选, 截止X前↔X后); a swapped "
+            + "subject/role; a substituted object; two facts conflated; or ANY added reason/direction/conclusion/feeling/narrative the "
+            + "SOURCE lacks. ALSO flag a fact the Chinese softened into something VAGUER that loses it (e.g. 'an average of 9 active "
+            + "seats over the last 90 days' watered down to '用量挺稳定的'). When in ANY doubt, FLAG it. ";
+
+        const string additionAndOutput =
+            "For an addition: if the span is PURELY the unsupported addition, set expected_fix to an empty string to delete it; but if "
+            + "the span MIXES a real fact with an addition (e.g. '那个房间空出来了，正好可以往前赶' mixes the room reason with an added "
+            + "'move earlier'), set expected_fix to the CORRECTED minimal Chinese that KEEPS the real fact and drops ONLY the added part "
+            + "(here: '那个房间用不了。') — never delete the real fact. For each drift output "
             + "{\"kind\":\"hard_anchor|currency_changed|polarity_flipped|subject_role_swapped|object_substituted|relationship_changed|unsupported_addition\","
             + "\"source_value\":\"<the English truth>\",\"candidate_span\":\"<EXACT Chinese substring to replace, copied verbatim from CANDIDATE>\","
             + "\"expected_fix\":\"<corrected Chinese; use empty string to DELETE an invented addition>\",\"why\":\"...\"}. "
             + "candidate_span MUST be an exact substring of the CHINESE so it can be string-replaced. Return JSON ONLY: {\"drifts\":[...]}.";
+
+        var sys = header + (recallFirst ? recallMiddle : precisionMiddle) + additionAndOutput;
         var user = "SOURCE (English, truth):\n" + sourceEn + "\n\nCANDIDATE (Chinese):\n" + zhCandidate;
 
         string? raw;
