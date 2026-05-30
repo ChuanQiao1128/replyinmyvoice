@@ -231,6 +231,137 @@ public sealed class AccountServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PaymentsListsCallerPurchases()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.Parse("2026-05-30T01:02:03Z");
+        var expiry = now.AddDays(90);
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-buyer",
+                Email = "buyer@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RewriteCredits.AddRange(
+                new RewriteCredit
+                {
+                    UserId = userId,
+                    Source = "PURCHASE",
+                    AmountGranted = 10,
+                    AmountConsumed = 3,
+                    GrantedAt = now,
+                    ExpiresAt = expiry,
+                    StripeSku = "quick_pack",
+                    StripeAmountTotal = 900,
+                    StripeCurrency = "nzd",
+                },
+                new RewriteCredit
+                {
+                    UserId = userId,
+                    Source = "PROMO",
+                    AmountGranted = 5,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddMinutes(1),
+                    ExpiresAt = expiry,
+                    StripeSku = "promo_pack",
+                    StripeAmountTotal = 0,
+                    StripeCurrency = "nzd",
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var payments = await service.GetPurchaseHistoryAsync(
+            "entra-buyer",
+            "buyer@example.com",
+            CancellationToken.None);
+
+        payments.Should().ContainSingle();
+        var payment = payments.Single();
+        payment.Sku.Should().Be("quick_pack");
+        payment.Amount.Should().Be(900);
+        payment.Currency.Should().Be("nzd");
+        payment.Date.Should().Be(now);
+        payment.Expiry.Should().Be(expiry);
+        payment.Remaining.Should().Be(7);
+    }
+
+    [Fact]
+    public async Task PaymentsCrossUserDenied()
+    {
+        var callerUserId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        var now = DateTimeOffset.Parse("2026-05-30T02:03:04Z");
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.AddRange(
+                new AppUser
+                {
+                    Id = callerUserId,
+                    ExternalAuthUserId = "entra-caller",
+                    Email = "caller@example.com",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = otherUserId,
+                    ExternalAuthUserId = "entra-other",
+                    Email = "other@example.com",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            db.RewriteCredits.AddRange(
+                new RewriteCredit
+                {
+                    UserId = callerUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 10,
+                    AmountConsumed = 1,
+                    GrantedAt = now,
+                    ExpiresAt = now.AddDays(90),
+                    StripeSku = "quick_pack",
+                    StripeAmountTotal = 900,
+                    StripeCurrency = "nzd",
+                },
+                new RewriteCredit
+                {
+                    UserId = otherUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 30,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddMinutes(1),
+                    ExpiresAt = now.AddDays(90),
+                    StripeSku = "value_pack",
+                    StripeAmountTotal = 1900,
+                    StripeCurrency = "nzd",
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var payments = await service.GetPurchaseHistoryAsync(
+            "entra-caller",
+            "caller@example.com",
+            CancellationToken.None);
+
+        payments.Should().ContainSingle();
+        payments[0].Sku.Should().Be("quick_pack");
+        payments[0].Remaining.Should().Be(9);
+    }
+
+    [Fact]
     public async Task DeleteAccountErasesUserAndChildren()
     {
         var userId = Guid.NewGuid();

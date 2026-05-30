@@ -122,6 +122,40 @@ public sealed class AccountService(
             });
     }
 
+    public async Task<IReadOnlyList<AccountPayment>> GetPurchaseHistoryAsync(
+        string externalAuthUserId,
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        var user = await GetOrCreateUserAsync(externalAuthUserId, email, cancellationToken);
+        await using var db = dbContextFactory();
+        var purchases = await db.RewriteCredits
+            .AsNoTracking()
+            .Where(x => x.UserId == user.Id && x.Source == "PURCHASE")
+            .Select(x => new
+            {
+                x.StripeSku,
+                x.StripeAmountTotal,
+                x.StripeCurrency,
+                x.GrantedAt,
+                x.ExpiresAt,
+                x.AmountGranted,
+                x.AmountConsumed,
+            })
+            .ToListAsync(cancellationToken);
+
+        return purchases
+            .OrderByDescending(x => x.GrantedAt)
+            .Select(x => new AccountPayment(
+                x.StripeSku,
+                x.StripeAmountTotal,
+                x.StripeCurrency,
+                x.GrantedAt,
+                x.ExpiresAt,
+                Math.Max(x.AmountGranted - x.AmountConsumed, 0)))
+            .ToList();
+    }
+
     public async Task DeleteAccountAsync(
         string externalAuthUserId,
         CancellationToken cancellationToken)
@@ -341,5 +375,13 @@ public sealed record AccountUsageSource(
     int Remaining,
     DateTimeOffset? ExpiresAt,
     int? ExpiresInDays);
+
+public sealed record AccountPayment(
+    string? Sku,
+    long? Amount,
+    string? Currency,
+    DateTimeOffset Date,
+    DateTimeOffset? Expiry,
+    int Remaining);
 
 public sealed record AccountUsagePlan(string Scope, string PeriodKey, int QuotaLimit);

@@ -35,6 +35,29 @@ public sealed class AccountHttpFunctions(
         return new OkObjectResult(account);
     }
 
+    [Function("GetAccountPayments")]
+    public async Task<IActionResult> GetAccountPayments(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "me/payments")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Authentication required",
+                "A valid authenticated user is required.",
+                StatusCodes.Status401Unauthorized);
+        }
+
+        var payments = await accountService.GetPurchaseHistoryAsync(
+            authUser.ExternalAuthUserId,
+            authUser.Email,
+            cancellationToken);
+
+        return new OkObjectResult(payments);
+    }
+
     [Function("DeleteAccount")]
     public async Task<IActionResult> DeleteAccount(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "me")]
