@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Domain.Contracts;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
@@ -19,8 +21,23 @@ public sealed class RewriteRequestService(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        // Keep the factory dependency here so tests prove this service is wired to the same DB boundary.
-        _ = dbContextFactory;
+        await using (var db = dbContextFactory())
+        {
+            var suspended = await db.AppUsers
+                .AsNoTracking()
+                .Where(x => x.Id == userId)
+                .Select(x => x.SuspendedAt != null)
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (suspended)
+            {
+                return new ReserveRewriteResult(
+                    ReserveRewriteResultKind.QuotaExceeded,
+                    Guid.Empty,
+                    RewriteAttemptStatus.Failed,
+                    ErrorCode: "user_suspended");
+            }
+        }
 
         var result = await quotaService.ReserveAsync(
             userId,
