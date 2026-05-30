@@ -54,6 +54,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
+            entity.HasIndex(x => new { x.UserId, x.DeletedAt, x.CreatedAt });
             entity.HasIndex(x => new { x.Status, x.ExpiresAt });
             entity.Property(x => x.IdempotencyKey).HasMaxLength(120);
             entity.Property(x => x.RequestHash).HasMaxLength(128);

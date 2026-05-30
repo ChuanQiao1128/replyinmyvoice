@@ -163,6 +163,161 @@ public sealed class RewriteHttpFunctions(
             attempt.ErrorCode));
     }
 
+    [Function("ListMyRewriteAttempts")]
+    public async Task<IActionResult> ListMyRewriteAttempts(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "me/rewrites")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var page = ParsePositiveInt(request.Query["page"].ToString(), 1);
+        var pageSize = Math.Min(ParsePositiveInt(request.Query["pageSize"].ToString(), 20), 50);
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Authentication required",
+                null,
+                StatusCodes.Status401Unauthorized);
+        }
+
+        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        if (user is null)
+        {
+            return new OkObjectResult(new RewriteHistoryPageResponse(
+                page,
+                pageSize,
+                0,
+                []));
+        }
+
+        var baseQuery = db.RewriteAttempts
+            .AsNoTracking()
+            .Where(x => x.UserId == user.Id && x.DeletedAt == null);
+        var totalCount = await baseQuery.CountAsync(cancellationToken);
+        List<RewriteHistoryItemResponse> attempts;
+        if (db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var allAttempts = await baseQuery
+                .Select(x => new RewriteHistoryItemResponse(
+                    x.Id,
+                    x.Status.ToString(),
+                    x.ResultJson,
+                    x.ErrorCode,
+                    x.CreatedAt,
+                    x.CompletedAt))
+                .ToListAsync(cancellationToken);
+            attempts = allAttempts
+                .OrderByDescending(x => x.CreatedAt)
+                .ThenByDescending(x => x.AttemptId)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+        }
+        else
+        {
+            attempts = await baseQuery
+                .OrderByDescending(x => x.CreatedAt)
+                .ThenByDescending(x => x.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => new RewriteHistoryItemResponse(
+                    x.Id,
+                    x.Status.ToString(),
+                    x.ResultJson,
+                    x.ErrorCode,
+                    x.CreatedAt,
+                    x.CompletedAt))
+                .ToListAsync(cancellationToken);
+        }
+
+        return new OkObjectResult(new RewriteHistoryPageResponse(
+            page,
+            pageSize,
+            totalCount,
+            attempts));
+    }
+
+    [Function("GetMyRewriteAttempt")]
+    public async Task<IActionResult> GetMyRewriteAttempt(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "me/rewrites/{attemptId:guid}")]
+        HttpRequest request,
+        Guid attemptId,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Authentication required",
+                null,
+                StatusCodes.Status401Unauthorized);
+        }
+
+        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        if (user is null)
+        {
+            return new NotFoundResult();
+        }
+
+        var attempt = await db.RewriteAttempts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == attemptId && x.UserId == user.Id && x.DeletedAt == null,
+                cancellationToken);
+        if (attempt is null)
+        {
+            return new NotFoundResult();
+        }
+
+        return new OkObjectResult(new RewriteHistoryDetailResponse(
+            attempt.Id,
+            attempt.Status.ToString(),
+            attempt.RequestJson,
+            attempt.ResultJson,
+            attempt.ErrorCode,
+            attempt.ErrorMessage,
+            attempt.CreatedAt,
+            attempt.CompletedAt));
+    }
+
+    [Function("DeleteMyRewriteAttempt")]
+    public async Task<IActionResult> DeleteMyRewriteAttempt(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "me/rewrites/{attemptId:guid}")]
+        HttpRequest request,
+        Guid attemptId,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Authentication required",
+                null,
+                StatusCodes.Status401Unauthorized);
+        }
+
+        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        if (user is null)
+        {
+            return new NotFoundResult();
+        }
+
+        var attempt = await db.RewriteAttempts
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == attemptId && x.UserId == user.Id && x.DeletedAt == null,
+                cancellationToken);
+        if (attempt is null)
+        {
+            return new NotFoundResult();
+        }
+
+        attempt.DeletedAt = DateTimeOffset.UtcNow;
+        attempt.RowVersion = Guid.NewGuid();
+        await db.SaveChangesAsync(cancellationToken);
+        return new NoContentResult();
+    }
+
     private static string? ValidateRewriteRequest(RewriteRequest request)
     {
         if (request.RoughDraftReply.Trim().Length < 10)
@@ -187,6 +342,13 @@ public sealed class RewriteHttpFunctions(
 
         return null;
     }
+
+    private static int ParsePositiveInt(string? value, int fallback)
+    {
+        return int.TryParse(value, out var parsed) && parsed > 0
+            ? parsed
+            : fallback;
+    }
 }
 
 public sealed record RewriteAttemptResponse(
@@ -194,3 +356,27 @@ public sealed record RewriteAttemptResponse(
     string Status,
     string? ResultJson,
     string? ErrorCode);
+
+public sealed record RewriteHistoryPageResponse(
+    int Page,
+    int PageSize,
+    int TotalCount,
+    IReadOnlyList<RewriteHistoryItemResponse> Items);
+
+public sealed record RewriteHistoryItemResponse(
+    Guid AttemptId,
+    string Status,
+    string? ResultJson,
+    string? ErrorCode,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? CompletedAt);
+
+public sealed record RewriteHistoryDetailResponse(
+    Guid AttemptId,
+    string Status,
+    string RequestJson,
+    string? ResultJson,
+    string? ErrorCode,
+    string? ErrorMessage,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? CompletedAt);

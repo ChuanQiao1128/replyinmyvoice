@@ -50,6 +50,18 @@ public sealed class AccountService(
         return user;
     }
 
+    public async Task<AppUser?> FindUserAsync(
+        string externalAuthUserId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedExternalId = NormalizeExternalAuthUserId(externalAuthUserId);
+
+        await using var db = dbContextFactory();
+        return await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(
+            x => x.ExternalAuthUserId == normalizedExternalId,
+            cancellationToken);
+    }
+
     public async Task<AccountSummary> GetOrCreateAccountSummaryAsync(
         string externalAuthUserId,
         string? email,
