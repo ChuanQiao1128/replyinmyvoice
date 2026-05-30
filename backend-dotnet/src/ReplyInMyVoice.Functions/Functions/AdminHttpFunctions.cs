@@ -133,6 +133,74 @@ public sealed class AdminHttpFunctions
         return new OkObjectResult(stats);
     }
 
+    [Function("AdminSetUserSuspension")]
+    public async Task<IActionResult> SetUserSuspension(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/suspension")]
+        HttpRequest request,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Admin access required",
+                "The authenticated user is not allowed to access admin endpoints.",
+                StatusCodes.Status403Forbidden);
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(userId, out var parsedUserId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid user id",
+                "The admin suspension route requires a valid user id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        AdminSuspensionRequest? suspensionRequest;
+        try
+        {
+            suspensionRequest = await ReadSuspensionRequestAsync(request, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid suspension request",
+                "The suspension request body must be a JSON object.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (suspensionRequest?.Suspended is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid suspension request",
+                "The suspension request body must include suspended.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _adminService.SetUserSuspensionAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            parsedUserId,
+            suspensionRequest.Suspended.Value,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        return result.Kind switch
+        {
+            AdminSuspensionResultKind.Success => new OkObjectResult(result.Response),
+            _ => FunctionHttpResults.Problem(
+                "User not found",
+                result.Detail,
+                StatusCodes.Status404NotFound),
+        };
+    }
+
     [Function("AdminIssueRefund")]
     public async Task<IActionResult> IssueRefund(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/refund")]
@@ -262,5 +330,19 @@ public sealed class AdminHttpFunctions
         }
 
         return JsonSerializer.Deserialize<AdminRefundRequest>(body, JsonOptions);
+    }
+
+    private static async Task<AdminSuspensionRequest?> ReadSuspensionRequestAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(request.Body);
+        var body = await reader.ReadToEndAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<AdminSuspensionRequest>(body, JsonOptions);
     }
 }

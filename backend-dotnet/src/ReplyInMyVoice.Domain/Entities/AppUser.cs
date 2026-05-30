@@ -11,6 +11,7 @@ public sealed class AppUser
     public string? StripeSubscriptionId { get; set; }
     public SubscriptionStatus SubscriptionStatus { get; set; } = SubscriptionStatus.Inactive;
     public DateTimeOffset? CurrentPeriodEnd { get; set; }
+    public DateTimeOffset? SuspendedAt { get; set; }
     public DateTimeOffset? ConsentAcceptedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

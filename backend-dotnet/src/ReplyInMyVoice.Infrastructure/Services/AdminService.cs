@@ -326,6 +326,50 @@ public sealed class AdminService(
             costRows.Sum());
     }
 
+    public async Task<AdminSuspensionServiceResult> SetUserSuspensionAsync(
+        string adminExternalAuthUserId,
+        string? adminEmail,
+        Guid targetUserId,
+        bool suspended,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        await using var db = dbContextFactory();
+        var user = await db.AppUsers
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == targetUserId, cancellationToken);
+        if (user is null)
+        {
+            return AdminSuspensionServiceResult.UserNotFound("No user exists for the requested id.");
+        }
+
+        DateTimeOffset? suspendedAt = suspended
+            ? user.SuspendedAt ?? now
+            : null;
+
+        user.SuspendedAt = suspendedAt;
+        user.UpdatedAt = now;
+        user.RowVersion = Guid.NewGuid();
+
+        var details = new AdminSuspensionAuditDetails(suspended, suspendedAt);
+        db.AdminAuditLogs.Add(new AdminAuditLog
+        {
+            AdminExternalAuthUserId = adminExternalAuthUserId.Trim(),
+            AdminEmail = adminEmail?.Trim() ?? string.Empty,
+            Action = suspended ? "suspend_user" : "unsuspend_user",
+            TargetUserId = targetUserId,
+            DetailsJson = JsonSerializer.Serialize(details, JsonOptions),
+            CreatedAt = now,
+        });
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        return AdminSuspensionServiceResult.Success(new AdminSuspensionResponse(
+            targetUserId,
+            suspended,
+            suspendedAt));
+    }
+
     public async Task<AdminRefundServiceResult> IssueRefundAsync(
         string adminExternalAuthUserId,
         string? adminEmail,
@@ -616,6 +660,35 @@ public sealed record AdminStatsResponse(
     int PaymentCount,
     long PaymentAmountTotal,
     decimal CostToDateUsd);
+
+public sealed record AdminSuspensionRequest(bool? Suspended);
+
+public sealed record AdminSuspensionResponse(
+    Guid TargetUserId,
+    bool Suspended,
+    DateTimeOffset? SuspendedAt);
+
+public sealed record AdminSuspensionServiceResult(
+    AdminSuspensionResultKind Kind,
+    AdminSuspensionResponse? Response,
+    string? Detail)
+{
+    public static AdminSuspensionServiceResult Success(AdminSuspensionResponse response) =>
+        new(AdminSuspensionResultKind.Success, response, null);
+
+    public static AdminSuspensionServiceResult UserNotFound(string detail) =>
+        new(AdminSuspensionResultKind.UserNotFound, null, detail);
+}
+
+public enum AdminSuspensionResultKind
+{
+    Success,
+    UserNotFound,
+}
+
+public sealed record AdminSuspensionAuditDetails(
+    bool Suspended,
+    DateTimeOffset? SuspendedAt);
 
 public sealed record AdminRefundRequest(
     string? PaymentIntentId,
