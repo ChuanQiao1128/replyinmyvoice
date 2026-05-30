@@ -10,6 +10,21 @@ namespace ReplyInMyVoice.Tests;
 public sealed class RewriteJobProcessorTests
 {
     [Fact]
+    public async Task ProcessAsync_throws_permanent_signal_when_attempt_is_missing()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var provider = new FakeRewriteProvider(new RewriteProviderResult("{\"rewrittenText\":\"Should not run\",\"changeSummary\":[],\"riskNotes\":[]}", true, null));
+        var processor = new RewriteJobProcessor(fixture.CreateContext, provider);
+        var missingAttemptId = Guid.NewGuid();
+
+        var act = () => processor.ProcessAsync(new RewriteJob(missingAttemptId), CancellationToken.None);
+
+        var exception = await act.Should().ThrowAsync<RewriteAttemptNotFoundException>();
+        exception.Which.AttemptId.Should().Be(missingAttemptId);
+        provider.CallCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task ProcessAsync_finalizes_reservation_when_provider_returns_rewrite()
     {
         await using var fixture = await DbFixture.CreateAsync();
