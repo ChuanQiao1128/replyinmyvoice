@@ -1,12 +1,17 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
-public sealed class AdminService(Func<AppDbContext> dbContextFactory)
+public sealed class AdminService(
+    Func<AppDbContext> dbContextFactory,
+    IStripeRefundClient? stripeRefundClient = null)
 {
     private const int MaxPageSize = 100;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<AdminUsersListResponse> GetUsersAsync(
         int page,
@@ -321,6 +326,124 @@ public sealed class AdminService(Func<AppDbContext> dbContextFactory)
             costRows.Sum());
     }
 
+    public async Task<AdminRefundServiceResult> IssueRefundAsync(
+        string adminExternalAuthUserId,
+        string? adminEmail,
+        Guid targetUserId,
+        AdminRefundRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var paymentIntentId = request.PaymentIntentId?.Trim();
+        if (string.IsNullOrWhiteSpace(paymentIntentId))
+        {
+            return AdminRefundServiceResult.InvalidRequest("A payment intent id is required.");
+        }
+
+        if (request.Amount is <= 0)
+        {
+            return AdminRefundServiceResult.InvalidRequest("Refund amount must be greater than zero.");
+        }
+
+        var requestedCurrency = NormalizeCurrency(request.Currency);
+
+        await using var db = dbContextFactory();
+        var userExists = await db.AppUsers
+            .AsNoTracking()
+            .AnyAsync(x => x.Id == targetUserId, cancellationToken);
+        if (!userExists)
+        {
+            return AdminRefundServiceResult.UserNotFound("No user exists for the requested id.");
+        }
+
+        var payment = await db.RewriteCredits
+            .AsNoTracking()
+            .Where(x => x.UserId == targetUserId && x.StripePaymentIntentId == paymentIntentId)
+            .Select(x => new AdminRefundPaymentLookup(
+                x.StripePaymentIntentId,
+                x.StripeAmountTotal,
+                x.StripeCurrency))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (payment is null)
+        {
+            return AdminRefundServiceResult.PaymentNotFound("No payment exists for the requested user and payment intent.");
+        }
+
+        var amount = request.Amount ?? payment.AmountTotal;
+        if (amount is not > 0)
+        {
+            return AdminRefundServiceResult.InvalidRequest("Refund amount must be provided for payments without a stored amount.");
+        }
+
+        if (payment.AmountTotal is > 0 && amount > payment.AmountTotal.Value)
+        {
+            return AdminRefundServiceResult.InvalidRequest("Refund amount cannot exceed the stored payment amount.");
+        }
+
+        var currency = requestedCurrency ?? NormalizeCurrency(payment.Currency);
+        if (!string.IsNullOrWhiteSpace(requestedCurrency) &&
+            !string.IsNullOrWhiteSpace(payment.Currency) &&
+            !string.Equals(requestedCurrency, NormalizeCurrency(payment.Currency), StringComparison.OrdinalIgnoreCase))
+        {
+            return AdminRefundServiceResult.InvalidRequest("Refund currency must match the stored payment currency.");
+        }
+
+        var existingRefund = await FindExistingRefundAsync(
+            db,
+            targetUserId,
+            paymentIntentId,
+            amount.Value,
+            cancellationToken);
+        if (existingRefund is not null)
+        {
+            return AdminRefundServiceResult.Success(new AdminRefundResponse(
+                targetUserId,
+                paymentIntentId,
+                amount.Value,
+                existingRefund.Currency ?? currency,
+                existingRefund.RefundId,
+                AlreadyRefunded: true));
+        }
+
+        if (stripeRefundClient is null)
+        {
+            return AdminRefundServiceResult.RefundUnavailable("Stripe refund services are not configured.");
+        }
+
+        var refund = await stripeRefundClient.RefundPaymentAsync(
+            new StripeRefundRequest(
+                paymentIntentId,
+                amount.Value,
+                currency,
+                CreateRefundIdempotencyKey(targetUserId, paymentIntentId, amount.Value),
+                targetUserId),
+            cancellationToken);
+
+        var details = new AdminRefundAuditDetails(
+            paymentIntentId,
+            refund.RefundId,
+            amount.Value,
+            refund.Currency ?? currency,
+            refund.Status);
+        db.AdminAuditLogs.Add(new AdminAuditLog
+        {
+            AdminExternalAuthUserId = adminExternalAuthUserId.Trim(),
+            AdminEmail = adminEmail?.Trim() ?? string.Empty,
+            Action = "refund",
+            TargetUserId = targetUserId,
+            DetailsJson = JsonSerializer.Serialize(details, JsonOptions),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync(cancellationToken);
+
+        return AdminRefundServiceResult.Success(new AdminRefundResponse(
+            targetUserId,
+            paymentIntentId,
+            amount.Value,
+            refund.Currency ?? currency,
+            refund.RefundId,
+            AlreadyRefunded: false));
+    }
+
     private static bool IsPaymentCredit(
         string source,
         string? stripeEventId,
@@ -335,6 +458,64 @@ public sealed class AdminService(Func<AppDbContext> dbContextFactory)
         amountTotal is not null ||
         string.Equals(source, "PURCHASE", StringComparison.OrdinalIgnoreCase);
 
+    private static async Task<AdminRefundAuditDetails?> FindExistingRefundAsync(
+        AppDbContext db,
+        Guid targetUserId,
+        string paymentIntentId,
+        long amount,
+        CancellationToken cancellationToken)
+    {
+        var auditRows = await db.AdminAuditLogs
+            .AsNoTracking()
+            .Where(x => x.TargetUserId == targetUserId && x.Action == "refund")
+            .Select(x => x.DetailsJson)
+            .ToListAsync(cancellationToken);
+
+        foreach (var detailsJson in auditRows)
+        {
+            var details = TryParseRefundDetails(detailsJson);
+            if (details is not null &&
+                string.Equals(details.PaymentIntentId, paymentIntentId, StringComparison.Ordinal) &&
+                details.Amount == amount)
+            {
+                return details;
+            }
+        }
+
+        return null;
+    }
+
+    private static AdminRefundAuditDetails? TryParseRefundDetails(string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<AdminRefundAuditDetails>(detailsJson, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string CreateRefundIdempotencyKey(
+        Guid targetUserId,
+        string paymentIntentId,
+        long amount) =>
+        $"admin-refund:{targetUserId:N}:{paymentIntentId}:{amount}";
+
+    private static string? NormalizeCurrency(string? currency)
+    {
+        var normalized = currency?.Trim();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? null
+            : normalized.ToLowerInvariant();
+    }
+
     private sealed record AdminUserListRow(
         Guid Id,
         string ExternalAuthUserId,
@@ -342,6 +523,11 @@ public sealed class AdminService(Func<AppDbContext> dbContextFactory)
         SubscriptionStatus SubscriptionStatus,
         DateTimeOffset CreatedAt,
         DateTimeOffset UpdatedAt);
+
+    private sealed record AdminRefundPaymentLookup(
+        string? PaymentIntentId,
+        long? AmountTotal,
+        string? Currency);
 }
 
 public sealed record AdminUsersListResponse(
@@ -430,3 +616,53 @@ public sealed record AdminStatsResponse(
     int PaymentCount,
     long PaymentAmountTotal,
     decimal CostToDateUsd);
+
+public sealed record AdminRefundRequest(
+    string? PaymentIntentId,
+    long? Amount,
+    string? Currency);
+
+public sealed record AdminRefundResponse(
+    Guid TargetUserId,
+    string PaymentIntentId,
+    long Amount,
+    string? Currency,
+    string? RefundId,
+    bool AlreadyRefunded);
+
+public sealed record AdminRefundServiceResult(
+    AdminRefundResultKind Kind,
+    AdminRefundResponse? Response,
+    string? Detail)
+{
+    public static AdminRefundServiceResult Success(AdminRefundResponse response) =>
+        new(AdminRefundResultKind.Success, response, null);
+
+    public static AdminRefundServiceResult InvalidRequest(string detail) =>
+        new(AdminRefundResultKind.InvalidRequest, null, detail);
+
+    public static AdminRefundServiceResult UserNotFound(string detail) =>
+        new(AdminRefundResultKind.UserNotFound, null, detail);
+
+    public static AdminRefundServiceResult PaymentNotFound(string detail) =>
+        new(AdminRefundResultKind.PaymentNotFound, null, detail);
+
+    public static AdminRefundServiceResult RefundUnavailable(string detail) =>
+        new(AdminRefundResultKind.RefundUnavailable, null, detail);
+}
+
+public enum AdminRefundResultKind
+{
+    Success,
+    InvalidRequest,
+    UserNotFound,
+    PaymentNotFound,
+    RefundUnavailable,
+}
+
+public sealed record AdminRefundAuditDetails(
+    string PaymentIntentId,
+    string? RefundId,
+    long Amount,
+    string? Currency,
+    string? Status);

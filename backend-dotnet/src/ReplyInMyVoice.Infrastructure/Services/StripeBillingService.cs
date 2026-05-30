@@ -11,7 +11,7 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class StripeBillingService(
     Func<AppDbContext> dbContextFactory,
-    IConfiguration configuration) : IStripeBillingService
+    IConfiguration configuration) : IStripeBillingService, IStripeRefundClient
 {
     private const string LegacyPriceEnvVar = "STRIPE_PRICE_ID";
 
@@ -117,6 +117,39 @@ public sealed class StripeBillingService(
                 Prorate = false,
             },
             cancellationToken: cancellationToken);
+    }
+
+    public async Task<StripeRefundResult> RefundPaymentAsync(
+        StripeRefundRequest request,
+        CancellationToken cancellationToken)
+    {
+        var refundService = new RefundService(CreateStripeClient());
+        var options = new RefundCreateOptions
+        {
+            PaymentIntent = request.PaymentIntentId,
+            Amount = request.Amount,
+            Currency = request.Currency,
+            Metadata = new Dictionary<string, string>
+            {
+                ["source"] = "admin",
+                ["targetUserId"] = request.TargetUserId.ToString("D"),
+            },
+        };
+
+        var refund = await refundService.CreateAsync(
+            options,
+            new RequestOptions
+            {
+                IdempotencyKey = request.IdempotencyKey,
+            },
+            cancellationToken: cancellationToken);
+
+        return new StripeRefundResult(
+            refund.Id,
+            refund.PaymentIntentId ?? request.PaymentIntentId,
+            refund.Amount,
+            refund.Currency ?? request.Currency,
+            refund.Status);
     }
 
     private async Task<AppUser> GetOrCreateUserAsync(
@@ -231,3 +264,24 @@ public sealed class StripeBillingService(
 }
 
 public sealed record CheckoutSkuDefinition(string Sku, string PriceEnvVar, string Mode, int Rewrites);
+
+public interface IStripeRefundClient
+{
+    Task<StripeRefundResult> RefundPaymentAsync(
+        StripeRefundRequest request,
+        CancellationToken cancellationToken);
+}
+
+public sealed record StripeRefundRequest(
+    string PaymentIntentId,
+    long Amount,
+    string? Currency,
+    string IdempotencyKey,
+    Guid TargetUserId);
+
+public sealed record StripeRefundResult(
+    string RefundId,
+    string PaymentIntentId,
+    long Amount,
+    string? Currency,
+    string? Status);
