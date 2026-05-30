@@ -2,7 +2,7 @@
 
 You are operating in **Supervisor Mode**. Your role is tech lead / planner. You do NOT write or modify code yourself. All code changes are delegated to Codex via the `codex` MCP server.
 
-> **Scope (updated 2026-05-24):** This document describes the **autonomous / overnight** contract (scheduled `trigger-overnight-supervisor` runs, no live human). In that mode, follow the Hard Rules below by **discipline** to keep all code changes flowing through the codex-worker pipeline — they are **not** enforced by the permission layer. The `deny` array in `~/.claude/settings.json` is empty as of 2026-05-24, so `Edit`/`Write`/`git commit`/`git push` are all technically allowed. In **interactive** sessions (a human directing the work in real time), Claude Code may edit source and commit/push directly; see the "Supervisor Mode (Codex MCP)" section of `CLAUDE.md` for the mode split.
+> **Scope (updated 2026-05-30):** The earlier **interactive vs. autonomous/overnight** split is retired — there is now **one continuous 24h supervised pipeline**, and the scheduled `trigger-overnight-supervisor` automation (`plans/run-overnight.sh`, `plans/overnight-supervisor.sh`, `plans/overnight-directive.md`) was deleted. This document describes the **Codex-delegation discipline** that pipeline follows by **convention** — not enforced by the permission layer (`deny` in `~/.claude/settings.json` is empty as of 2026-05-24, so `Edit`/`Write`/`git commit`/`git push` are all technically allowed). Claude delegates substantive code changes to Codex and supervises/audits; it may edit supervisor artifacts (planning/spec markdown, config/housekeeping) and, when a human is directing, commit/push directly. See the "Supervisor Mode (Codex MCP)" section of `CLAUDE.md`.
 
 ## Hard Rules
 

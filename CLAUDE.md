@@ -177,20 +177,19 @@ Re-read `AGENTS.md` whenever:
 
 ## Supervisor Mode (Codex MCP)
 
-**Mode selection (updated 2026-05-24 by the project owner):**
+**Mode selection (updated 2026-05-30 by the project owner):**
 
-- **Interactive sessions** (a human is directing the work in real time): Claude Code **may edit source directly** (`Edit`/`Write`/`NotebookEdit`). The owner verified on 2026-05-24 that these are **not** denied at the permission layer and authorized direct editing for interactive work. Delegating to Codex is **optional** here — use it when real parallelism or a clean self-contained brief genuinely helps, not as a hard rule. The human still reviews diffs (see commit note).
-- **Autonomous / overnight runs** (started by the scheduled `trigger-overnight-supervisor` automation, no live human): **keep operating in Supervisor Mode** exactly as described below — delegate all code changes to Codex via `mcp__codex__*`. This preserves the existing overnight automation (codex-worker pipeline, issue board); do not change that behavior.
+There is now **one continuous mode** — the prior day/night (interactive vs. overnight) split is retired. The project runs as a **single 24h supervised delivery pipeline**: **Codex workers write the code** (delegated, consuming Codex quota) and **Claude is supervisor + auditor** — decompose, verify each diff against scope + machine-checkable acceptance criteria, open/merge one PR per issue, close the issue. Claude may edit non-code supervisor artifacts directly (planning/spec markdown under `docs/`/`plans/`/`codex-supervisor/`, config/housekeeping) when a human is directing; substantive source changes are delegated to Codex. The human still reviews diffs.
 
-If a human is conversing with you this turn, you are interactive.
+> **Retired 2026-05-30:** the scheduled `trigger-overnight-supervisor` automation and its scripts (`plans/run-overnight.sh`, `plans/overnight-supervisor.sh`, `plans/overnight-directive.md`) were deleted. There is no separate unattended overnight runner — the continuous supervised pipeline is the only mode. The "Hard Rules" and "Workflow Per Request" sections below describe the Codex-delegation discipline that mode follows (by convention — the permission layer is open).
 
 **Commit/push:** As of 2026-05-24 the `deny` array in `~/.claude/settings.json` is **empty** — `Bash(git commit)` / `Bash(git push)` are no longer blocked, and with `defaultMode: "auto"` + `skipAutoPermissionPrompt: true` they generally run without a prompt. The owner removed the old deny lines manually. In interactive sessions Claude Code may commit and push directly (commit only when the user asks; if on `main`, branch first). The human still reviews diffs.
 
 Full details live in `/Users/qc/Desktop/CloudFlare/codex-supervisor/SUPERVISOR.md`. The load-bearing rules are mirrored below so Claude Code cannot violate them on a first turn.
 
-### Hard Rules (autonomous / overnight path)
+### Hard Rules (Codex-delegation discipline)
 
-These bind autonomous runs (no live human) as a **workflow convention**, not a permission-layer block. As of 2026-05-24 the `deny` array in `~/.claude/settings.json` is empty — nothing below (`Edit`/`Write`/`NotebookEdit`, `git commit`/`git push`, or shell-rewrites like `sed`/`awk`/`tee`/`git apply`) is actually denied by the harness. In **interactive** sessions these rules are guidance only; in autonomous runs, follow them by discipline to keep every overnight code change flowing through the codex-worker pipeline.
+These are a **workflow convention** for the continuous supervised pipeline, not a permission-layer block. As of 2026-05-24 the `deny` array in `~/.claude/settings.json` is empty — nothing below (`Edit`/`Write`/`NotebookEdit`, `git commit`/`git push`, or shell-rewrites like `sed`/`awk`/`tee`/`git apply`) is actually denied by the harness. Follow them by discipline so substantive code changes flow through the codex-worker pipeline; Claude may still edit supervisor artifacts (planning/spec markdown, config/housekeeping) and, when a human is directing, commit/push directly. The human reviews diffs.
 
 1. **In autonomous runs, do not use `Edit`, `Write`, or `NotebookEdit` on source files.** The permission layer no longer blocks them — this is a convention to keep all overnight code changes flowing through the codex-worker pipeline. The only files Claude Code writes directly are planning / spec markdown under `docs/`, `plans/`, or `codex-supervisor/`, and throwaway scratch notes in the session outputs folder. Claude Code may freely **read** any file (Read, Grep, Glob) to understand the codebase before delegating.
 
