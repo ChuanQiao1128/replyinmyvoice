@@ -70,12 +70,39 @@ public sealed class AccountService(
         var userCredits = await db.RewriteCredits
             .AsNoTracking()
             .Where(x => x.UserId == user.Id)
-            .Select(x => new { x.AmountGranted, x.AmountConsumed, x.ExpiresAt })
+            .Select(x => new { x.Source, x.AmountGranted, x.AmountConsumed, x.ExpiresAt })
             .ToListAsync(cancellationToken);
-        var creditRemaining = userCredits
+        var activeCredits = userCredits
             .Where(x => x.ExpiresAt == null || x.ExpiresAt > now)
+            .ToList();
+        var creditRemaining = activeCredits
             .Sum(x => Math.Max(x.AmountGranted - x.AmountConsumed, 0));
         var remaining = periodRemaining + creditRemaining;
+        var sources = new List<AccountUsageSource>
+        {
+            new(
+                usagePlan.Scope,
+                usagePlan.Scope == "paid" ? "Included rewrites" : "Free rewrites",
+                used,
+                usagePlan.QuotaLimit,
+                reserved,
+                periodRemaining,
+                null,
+                null),
+        };
+        sources.AddRange(activeCredits.Select(x =>
+        {
+            var sourceRemaining = Math.Max(x.AmountGranted - x.AmountConsumed, 0);
+            return new AccountUsageSource(
+                x.Source,
+                x.Source,
+                x.AmountConsumed,
+                x.AmountGranted,
+                0,
+                sourceRemaining,
+                x.ExpiresAt,
+                CalculateExpiresInDays(x.ExpiresAt, now));
+        }));
 
         return new AccountSummary(
             user.Id,
@@ -89,7 +116,10 @@ public sealed class AccountService(
                 used,
                 reserved,
                 remaining,
-                remaining <= 0));
+                remaining <= 0)
+            {
+                Sources = sources,
+            });
     }
 
     public async Task DeleteAccountAsync(
@@ -269,6 +299,16 @@ public sealed class AccountService(
 
     private static string CreateErasedChildToken(Guid id) =>
         $"erased:{id:N}";
+
+    private static int? CalculateExpiresInDays(DateTimeOffset? expiresAt, DateTimeOffset now)
+    {
+        if (expiresAt is null)
+        {
+            return null;
+        }
+
+        return Math.Max(0, (int)Math.Ceiling((expiresAt.Value - now).TotalDays));
+    }
 }
 
 internal sealed record DeleteAccountLookup(string? StripeSubscriptionId);
@@ -287,6 +327,19 @@ public sealed record AccountUsageSummary(
     int Used,
     int Reserved,
     int Remaining,
-    bool Exhausted);
+    bool Exhausted)
+{
+    public IReadOnlyList<AccountUsageSource> Sources { get; init; } = Array.Empty<AccountUsageSource>();
+}
+
+public sealed record AccountUsageSource(
+    string Source,
+    string Label,
+    int Used,
+    int Limit,
+    int Reserved,
+    int Remaining,
+    DateTimeOffset? ExpiresAt,
+    int? ExpiresInDays);
 
 public sealed record AccountUsagePlan(string Scope, string PeriodKey, int QuotaLimit);
