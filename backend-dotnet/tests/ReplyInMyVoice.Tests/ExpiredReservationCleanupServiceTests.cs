@@ -35,4 +35,34 @@ public sealed class ExpiredReservationCleanupServiceTests
         (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
         (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Expired);
     }
+
+    [Fact]
+    public async Task RunOnceAsync_does_not_release_processing_reservations_before_expiry()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var quota = new QuotaService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        var reserved = await quota.ReserveAsync(
+            user.Id,
+            "idem-processing-not-expired",
+            "hash-processing-not-expired",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            1,
+            now,
+            TimeSpan.FromMinutes(10));
+        await quota.MarkProcessingAsync(reserved.AttemptId, now.AddMinutes(1));
+        var cleanup = new ExpiredReservationCleanupService(quota);
+
+        var released = await cleanup.RunOnceAsync(now.AddMinutes(2), CancellationToken.None);
+
+        released.Should().Be(0);
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(1);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Pending);
+        (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Processing);
+    }
 }

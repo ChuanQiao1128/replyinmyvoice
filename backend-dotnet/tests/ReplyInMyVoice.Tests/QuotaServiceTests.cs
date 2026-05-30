@@ -388,7 +388,7 @@ public sealed class QuotaServiceTests
     }
 
     [Fact]
-    public async Task ReleaseExpiredReservationsAsync_does_not_release_processing_attempts()
+    public async Task ReleaseExpiredReservationsAsync_releases_stale_processing_reservations_without_consuming_quota()
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
@@ -407,13 +407,71 @@ public sealed class QuotaServiceTests
 
         var released = await service.ReleaseExpiredReservationsAsync(now.AddMinutes(2));
 
-        released.Should().Be(0);
+        released.Should().Be(1);
         await using var db = fixture.CreateContext();
         var period = await db.UsagePeriods.SingleAsync();
         period.UsedCount.Should().Be(0);
-        period.ReservedCount.Should().Be(1);
-        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Pending);
-        (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Processing);
+        period.ReservedCount.Should().Be(0);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
+        var attempt = await db.RewriteAttempts.SingleAsync();
+        attempt.Status.Should().Be(RewriteAttemptStatus.Expired);
+        attempt.ErrorCode.Should().Be("processing_timed_out");
+    }
+
+    [Fact]
+    public async Task ReleaseExpiredReservationsAsync_refunds_credit_backed_stale_processing_reservations()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-19T00:00:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 1,
+                UsedCount = 1,
+                ReservedCount = 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 1,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var reserved = await service.ReserveAsync(
+            user.Id,
+            "idem-credit-processing-expired",
+            "hash-credit-processing-expired",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            1,
+            now,
+            TimeSpan.FromMinutes(1));
+        await service.MarkProcessingAsync(reserved.AttemptId, now.AddSeconds(10));
+
+        var released = await service.ReleaseExpiredReservationsAsync(now.AddMinutes(2));
+
+        released.Should().Be(1);
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(1);
+        period.ReservedCount.Should().Be(0);
+        (await db.RewriteCredits.SingleAsync()).AmountConsumed.Should().Be(0);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
+        var attempt = await db.RewriteAttempts.SingleAsync();
+        attempt.Status.Should().Be(RewriteAttemptStatus.Expired);
+        attempt.ErrorCode.Should().Be("processing_timed_out");
     }
 
     [Fact]
