@@ -14,6 +14,7 @@ public sealed class StripeBillingService(
     IConfiguration configuration) : IStripeBillingService, IStripeRefundClient
 {
     private const string LegacyPriceEnvVar = "STRIPE_PRICE_ID";
+    internal const string PinnedStripeApiVersion = "2025-08-27.basil";
 
     private static readonly IReadOnlyDictionary<string, CheckoutSkuDefinition> SkuDefinitions =
         new Dictionary<string, CheckoutSkuDefinition>(StringComparer.Ordinal)
@@ -220,8 +221,19 @@ public sealed class StripeBillingService(
         return customer.Id;
     }
 
-    private StripeClient CreateStripeClient() =>
-        new(GetRequiredConfiguration("STRIPE_SECRET_KEY"));
+    internal static void EnsureStripeApiVersionPinned()
+    {
+        if (!string.Equals(StripeConfiguration.ApiVersion, PinnedStripeApiVersion, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("stripe_api_version_mismatch");
+        }
+    }
+
+    private StripeClient CreateStripeClient()
+    {
+        EnsureStripeApiVersionPinned();
+        return new StripeClient(GetRequiredConfiguration("STRIPE_SECRET_KEY"));
+    }
 
     private string GetRequiredConfiguration(string key) =>
         configuration[key] ?? throw new InvalidOperationException($"{key}_missing");
