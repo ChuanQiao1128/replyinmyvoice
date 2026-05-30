@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -14,16 +15,22 @@ public sealed class AdminHttpFunctions
     private const int DefaultPage = 1;
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly AdminAccess _adminAccess;
     private readonly AdminService? _adminService;
 
     public AdminHttpFunctions(
         IConfiguration configuration,
-        Func<AppDbContext>? dbContextFactory = null)
+        Func<AppDbContext>? dbContextFactory = null,
+        IStripeRefundClient? refundClient = null)
     {
         _adminAccess = new AdminAccess(configuration);
-        _adminService = dbContextFactory is null ? null : new AdminService(dbContextFactory);
+        _adminService = dbContextFactory is null
+            ? null
+            : new AdminService(
+                dbContextFactory,
+                refundClient ?? new StripeBillingService(dbContextFactory, configuration));
     }
 
     [Function("AdminPing")]
@@ -126,6 +133,85 @@ public sealed class AdminHttpFunctions
         return new OkObjectResult(stats);
     }
 
+    [Function("AdminIssueRefund")]
+    public async Task<IActionResult> IssueRefund(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/refund")]
+        HttpRequest request,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Admin access required",
+                "The authenticated user is not allowed to access admin endpoints.",
+                StatusCodes.Status403Forbidden);
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(userId, out var parsedUserId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid user id",
+                "The admin refund route requires a valid user id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        AdminRefundRequest? refundRequest;
+        try
+        {
+            refundRequest = await ReadRefundRequestAsync(request, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid refund request",
+                "The refund request body must be a JSON object.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (refundRequest is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid refund request",
+                "The refund request body is required.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _adminService.IssueRefundAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            parsedUserId,
+            refundRequest,
+            cancellationToken);
+
+        return result.Kind switch
+        {
+            AdminRefundResultKind.Success => new OkObjectResult(result.Response),
+            AdminRefundResultKind.UserNotFound => FunctionHttpResults.Problem(
+                "User not found",
+                result.Detail,
+                StatusCodes.Status404NotFound),
+            AdminRefundResultKind.PaymentNotFound => FunctionHttpResults.Problem(
+                "Payment not found",
+                result.Detail,
+                StatusCodes.Status404NotFound),
+            AdminRefundResultKind.RefundUnavailable => FunctionHttpResults.Problem(
+                "Refund service unavailable",
+                result.Detail,
+                StatusCodes.Status500InternalServerError),
+            _ => FunctionHttpResults.Problem(
+                "Invalid refund request",
+                result.Detail,
+                StatusCodes.Status400BadRequest),
+        };
+    }
+
     private async Task<IActionResult?> RequireAdminResultAsync(
         HttpRequest request,
         CancellationToken cancellationToken)
@@ -162,5 +248,19 @@ public sealed class AdminHttpFunctions
         }
 
         return Math.Min(parsed, maxValue);
+    }
+
+    private static async Task<AdminRefundRequest?> ReadRefundRequestAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(request.Body);
+        var body = await reader.ReadToEndAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<AdminRefundRequest>(body, JsonOptions);
     }
 }
