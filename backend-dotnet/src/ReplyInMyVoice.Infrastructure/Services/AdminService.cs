@@ -11,6 +11,8 @@ public sealed class AdminService(
     IStripeRefundClient? stripeRefundClient = null)
 {
     private const int MaxPageSize = 100;
+    private const int AdminCreditExpiryDays = 90;
+    private const string AdminCreditSource = "ADMIN";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<AdminUsersListResponse> GetUsersAsync(
@@ -326,6 +328,76 @@ public sealed class AdminService(
             costRows.Sum());
     }
 
+    public async Task<AdminCreditGrantServiceResult> GrantCreditsAsync(
+        string adminExternalAuthUserId,
+        string? adminEmail,
+        Guid targetUserId,
+        AdminCreditGrantRequest request,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.Amount is null)
+        {
+            return AdminCreditGrantServiceResult.InvalidRequest("Credit amount is required.");
+        }
+
+        if (request.Amount <= 0)
+        {
+            return AdminCreditGrantServiceResult.InvalidRequest("Credit amount must be greater than zero.");
+        }
+
+        await using var db = dbContextFactory();
+        var userExists = await db.AppUsers
+            .AsNoTracking()
+            .AnyAsync(x => x.Id == targetUserId, cancellationToken);
+        if (!userExists)
+        {
+            return AdminCreditGrantServiceResult.UserNotFound("No user exists for the requested id.");
+        }
+
+        var expiresAt = now.AddDays(AdminCreditExpiryDays);
+        var credit = new RewriteCredit
+        {
+            UserId = targetUserId,
+            Source = AdminCreditSource,
+            AmountGranted = request.Amount.Value,
+            AmountConsumed = 0,
+            GrantedAt = now,
+            ExpiresAt = expiresAt,
+        };
+        db.RewriteCredits.Add(credit);
+
+        var reason = NormalizeReason(request.Reason);
+        var details = new AdminCreditGrantAuditDetails(
+            credit.Id,
+            AdminCreditSource,
+            request.Amount.Value,
+            now,
+            expiresAt,
+            reason);
+        db.AdminAuditLogs.Add(new AdminAuditLog
+        {
+            AdminExternalAuthUserId = adminExternalAuthUserId.Trim(),
+            AdminEmail = adminEmail?.Trim() ?? string.Empty,
+            Action = "grant_credits",
+            TargetUserId = targetUserId,
+            DetailsJson = JsonSerializer.Serialize(details, JsonOptions),
+            CreatedAt = now,
+        });
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        return AdminCreditGrantServiceResult.Success(new AdminCreditGrantResponse(
+            targetUserId,
+            credit.Id,
+            AdminCreditSource,
+            request.Amount.Value,
+            credit.AmountConsumed,
+            request.Amount.Value,
+            now,
+            expiresAt));
+    }
+
     public async Task<AdminSuspensionServiceResult> SetUserSuspensionAsync(
         string adminExternalAuthUserId,
         string? adminEmail,
@@ -560,6 +632,14 @@ public sealed class AdminService(
             : normalized.ToLowerInvariant();
     }
 
+    private static string? NormalizeReason(string? reason)
+    {
+        var normalized = reason?.Trim();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? null
+            : normalized;
+    }
+
     private sealed record AdminUserListRow(
         Guid Id,
         string ExternalAuthUserId,
@@ -660,6 +740,50 @@ public sealed record AdminStatsResponse(
     int PaymentCount,
     long PaymentAmountTotal,
     decimal CostToDateUsd);
+
+public sealed record AdminCreditGrantRequest(
+    int? Amount,
+    string? Reason);
+
+public sealed record AdminCreditGrantResponse(
+    Guid TargetUserId,
+    Guid CreditId,
+    string Source,
+    int AmountGranted,
+    int AmountConsumed,
+    int Remaining,
+    DateTimeOffset GrantedAt,
+    DateTimeOffset? ExpiresAt);
+
+public sealed record AdminCreditGrantServiceResult(
+    AdminCreditGrantResultKind Kind,
+    AdminCreditGrantResponse? Response,
+    string? Detail)
+{
+    public static AdminCreditGrantServiceResult Success(AdminCreditGrantResponse response) =>
+        new(AdminCreditGrantResultKind.Success, response, null);
+
+    public static AdminCreditGrantServiceResult InvalidRequest(string detail) =>
+        new(AdminCreditGrantResultKind.InvalidRequest, null, detail);
+
+    public static AdminCreditGrantServiceResult UserNotFound(string detail) =>
+        new(AdminCreditGrantResultKind.UserNotFound, null, detail);
+}
+
+public enum AdminCreditGrantResultKind
+{
+    Success,
+    InvalidRequest,
+    UserNotFound,
+}
+
+public sealed record AdminCreditGrantAuditDetails(
+    Guid CreditId,
+    string Source,
+    int AmountGranted,
+    DateTimeOffset GrantedAt,
+    DateTimeOffset? ExpiresAt,
+    string? Reason);
 
 public sealed record AdminSuspensionRequest(bool? Suspended);
 

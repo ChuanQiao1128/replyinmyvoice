@@ -133,6 +133,78 @@ public sealed class AdminHttpFunctions
         return new OkObjectResult(stats);
     }
 
+    [Function("AdminGrantCredits")]
+    public async Task<IActionResult> GrantCredits(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/credits")]
+        HttpRequest request,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Admin access required",
+                "The authenticated user is not allowed to access admin endpoints.",
+                StatusCodes.Status403Forbidden);
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(userId, out var parsedUserId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid user id",
+                "The admin credit route requires a valid user id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        AdminCreditGrantRequest? grantRequest;
+        try
+        {
+            grantRequest = await ReadCreditGrantRequestAsync(request, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid credit request",
+                "The credit request body must be a JSON object.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (grantRequest is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid credit request",
+                "The credit request body is required.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _adminService.GrantCreditsAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            parsedUserId,
+            grantRequest,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        return result.Kind switch
+        {
+            AdminCreditGrantResultKind.Success => new OkObjectResult(result.Response),
+            AdminCreditGrantResultKind.UserNotFound => FunctionHttpResults.Problem(
+                "User not found",
+                result.Detail,
+                StatusCodes.Status404NotFound),
+            _ => FunctionHttpResults.Problem(
+                "Invalid credit request",
+                result.Detail,
+                StatusCodes.Status400BadRequest),
+        };
+    }
+
     [Function("AdminSetUserSuspension")]
     public async Task<IActionResult> SetUserSuspension(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/suspension")]
@@ -330,6 +402,20 @@ public sealed class AdminHttpFunctions
         }
 
         return JsonSerializer.Deserialize<AdminRefundRequest>(body, JsonOptions);
+    }
+
+    private static async Task<AdminCreditGrantRequest?> ReadCreditGrantRequestAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(request.Body);
+        var body = await reader.ReadToEndAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<AdminCreditGrantRequest>(body, JsonOptions);
     }
 
     private static async Task<AdminSuspensionRequest?> ReadSuspensionRequestAsync(
