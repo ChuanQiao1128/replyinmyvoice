@@ -252,6 +252,7 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
             !await db.RewriteCredits.AnyAsync(x => x.StripeEventId == eventId, cancellationToken) &&
             ResolveGrantedRewrites(stripeObject) is { } rewrites)
         {
+            var sku = GetMetadataString(stripeObject, "sku");
             db.RewriteCredits.Add(new RewriteCredit
             {
                 UserId = user.Id,
@@ -261,6 +262,10 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
                 GrantedAt = now,
                 ExpiresAt = now.AddDays(90),
                 StripeEventId = eventId,
+                StripePaymentIntentId = GetString(stripeObject, "payment_intent"),
+                StripeSku = sku,
+                StripeAmountTotal = GetLong(stripeObject, "amount_total"),
+                StripeCurrency = GetString(stripeObject, "currency"),
             });
         }
 
@@ -317,6 +322,21 @@ public sealed class StripeEventService(Func<AppDbContext> dbContextFactory)
         }
 
         return value.GetString();
+    }
+
+    private static long? GetLong(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetInt64(out var parsed) => parsed,
+            JsonValueKind.String when long.TryParse(value.GetString(), out var parsed) => parsed,
+            _ => null,
+        };
     }
 
     private static DateTimeOffset? GetUnixDateTime(JsonElement element, string propertyName)
