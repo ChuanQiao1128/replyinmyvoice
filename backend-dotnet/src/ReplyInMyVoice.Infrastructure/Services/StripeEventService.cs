@@ -80,7 +80,14 @@ public sealed class StripeEventService
                     return false;
                 }
 
-                await SyncEntitlementAsync(db, eventId, type, rawBody, now, cancellationToken);
+                var syncFailure = await SyncEntitlementAsync(db, eventId, type, rawBody, now, cancellationToken);
+                if (syncFailure is not null)
+                {
+                    MarkFailed(stripeEvent, syncFailure, now);
+                    await db.SaveChangesAsync(cancellationToken);
+                    return false;
+                }
+
                 MarkProcessed(stripeEvent, now);
                 await db.SaveChangesAsync(cancellationToken);
                 return true;
@@ -96,7 +103,7 @@ public sealed class StripeEventService
             else
             {
                 logger?.LogInformation(
-                    "Stripe webhook skipped for event {EventId} of type {EventType} because it is already processed or locked.",
+                    "Stripe webhook skipped for event {EventId} of type {EventType} because it is already processed, locked, or awaiting retry.",
                     eventId,
                     type);
             }
@@ -210,6 +217,16 @@ public sealed class StripeEventService
         stripeEvent.RowVersion = Guid.NewGuid();
     }
 
+    private static void MarkFailed(StripeEvent stripeEvent, string error, DateTimeOffset now)
+    {
+        stripeEvent.Status = StripeEventStatus.Failed;
+        stripeEvent.ProcessedAt = null;
+        stripeEvent.LockedUntil = null;
+        stripeEvent.LastAttemptAt = now;
+        stripeEvent.LastError = TruncateStripeEventError(error);
+        stripeEvent.RowVersion = Guid.NewGuid();
+    }
+
     private async Task<StripeFailureLogInfo?> MarkFailedAsync(
         string eventId,
         string type,
@@ -246,12 +263,8 @@ public sealed class StripeEventService
             else
             {
                 stripeEvent.Type = type;
-                stripeEvent.Status = StripeEventStatus.Failed;
                 stripeEvent.AttemptCount += 1;
-                stripeEvent.LastAttemptAt = now;
-                stripeEvent.LockedUntil = null;
-                stripeEvent.LastError = truncatedError;
-                stripeEvent.RowVersion = Guid.NewGuid();
+                MarkFailed(stripeEvent, truncatedError, now);
             }
 
             await db.SaveChangesAsync(cancellationToken);
@@ -298,7 +311,7 @@ public sealed class StripeEventService
         }, cancellationToken);
     }
 
-    private async Task SyncEntitlementAsync(
+    private async Task<string?> SyncEntitlementAsync(
         AppDbContext db,
         string eventId,
         string type,
@@ -310,34 +323,34 @@ public sealed class StripeEventService
         if (!document.RootElement.TryGetProperty("data", out var data) ||
             !data.TryGetProperty("object", out var stripeObject))
         {
-            return;
+            return null;
         }
 
         if (type.StartsWith("customer.subscription.", StringComparison.Ordinal))
         {
-            await SyncSubscriptionObjectAsync(db, type, stripeObject, now, cancellationToken);
-            return;
+            return await SyncSubscriptionObjectAsync(db, type, stripeObject, now, cancellationToken);
         }
 
         if (type == "checkout.session.completed")
         {
-            await SyncCheckoutSessionAsync(db, eventId, stripeObject, now, cancellationToken);
-            return;
+            return await SyncCheckoutSessionAsync(db, eventId, stripeObject, now, cancellationToken);
         }
 
         if (type == "charge.refunded")
         {
             await RevokeRefundedChargeCreditsAsync(db, stripeObject, cancellationToken);
-            return;
+            return null;
         }
 
         if (type is "charge.dispute.created" or "charge.dispute.closed")
         {
             await RevokeDisputedChargeCreditsAsync(db, stripeObject, cancellationToken);
         }
+
+        return null;
     }
 
-    private async Task SyncSubscriptionObjectAsync(
+    private async Task<string?> SyncSubscriptionObjectAsync(
         AppDbContext db,
         string type,
         JsonElement stripeObject,
@@ -347,7 +360,7 @@ public sealed class StripeEventService
         var customerId = GetString(stripeObject, "customer");
         if (string.IsNullOrWhiteSpace(customerId))
         {
-            return;
+            return null;
         }
 
         var user = await db.AppUsers
@@ -355,7 +368,7 @@ public sealed class StripeEventService
             .SingleOrDefaultAsync(x => x.StripeCustomerId == customerId, cancellationToken);
         if (user is null)
         {
-            return;
+            return $"No matching user for Stripe subscription customer {customerId}.";
         }
 
         var status = type == "customer.subscription.deleted"
@@ -367,9 +380,10 @@ public sealed class StripeEventService
         user.CurrentPeriodEnd = GetSubscriptionPeriodEnd(stripeObject);
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
+        return null;
     }
 
-    private async Task SyncCheckoutSessionAsync(
+    private async Task<string?> SyncCheckoutSessionAsync(
         AppDbContext db,
         string eventId,
         JsonElement stripeObject,
@@ -383,7 +397,7 @@ public sealed class StripeEventService
 
         if (string.IsNullOrWhiteSpace(externalAuthUserId) && string.IsNullOrWhiteSpace(customerId))
         {
-            return;
+            return null;
         }
 
         var user = await db.AppUsers.AsTracking().SingleOrDefaultAsync(
@@ -392,7 +406,9 @@ public sealed class StripeEventService
             cancellationToken);
         if (user is null)
         {
-            return;
+            return RequiresCheckoutUser(stripeObject)
+                ? $"No matching user for Stripe checkout session customer {customerId ?? "unknown"}."
+                : null;
         }
 
         user.StripeCustomerId = customerId ?? user.StripeCustomerId;
@@ -420,6 +436,8 @@ public sealed class StripeEventService
                 StripeCurrency = GetString(stripeObject, "currency"),
             });
         }
+
+        return null;
     }
 
     private async Task RevokeRefundedChargeCreditsAsync(
@@ -489,6 +507,11 @@ public sealed class StripeEventService
         GetString(stripeObject, "mode") == "payment" &&
         GetString(stripeObject, "payment_status") == "paid";
 
+    private static bool RequiresCheckoutUser(JsonElement stripeObject) =>
+        IsPaidPaymentSession(stripeObject) ||
+        GetString(stripeObject, "mode") == "subscription" ||
+        !string.IsNullOrWhiteSpace(GetString(stripeObject, "subscription"));
+
     private static bool IsFullRefund(JsonElement stripeObject)
     {
         if (GetBool(stripeObject, "refunded") == true)
@@ -536,6 +559,9 @@ public sealed class StripeEventService
             ? definition!.Rewrites
             : null;
     }
+
+    private static string TruncateStripeEventError(string error) =>
+        error.Length > 1000 ? error[..1000] : error;
 
     private static bool IsStripeEventCreditUniqueConstraintViolation(DbUpdateException exception)
     {
