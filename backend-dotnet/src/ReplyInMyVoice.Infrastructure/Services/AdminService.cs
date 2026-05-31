@@ -361,6 +361,7 @@ public sealed class AdminService(
             UserId = targetUserId,
             Source = AdminCreditSource,
             AmountGranted = request.Amount.Value,
+            OriginalAmountGranted = request.Amount.Value,
             AmountConsumed = 0,
             GrantedAt = now,
             ExpiresAt = expiresAt,

@@ -7,6 +7,7 @@ public sealed class RewriteCredit
     public AppUser? User { get; set; }
     public required string Source { get; set; }
     public int AmountGranted { get; set; }
+    public int? OriginalAmountGranted { get; set; }
     public int AmountConsumed { get; set; }
     public DateTimeOffset GrantedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ExpiresAt { get; set; }

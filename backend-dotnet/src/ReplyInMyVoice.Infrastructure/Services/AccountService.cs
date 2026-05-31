@@ -279,6 +279,7 @@ public sealed class AccountService(
             {
                 credit.Source = "ERASED";
                 credit.AmountGranted = 0;
+                credit.OriginalAmountGranted = null;
                 credit.AmountConsumed = 0;
                 credit.ExpiresAt = now;
                 credit.RowVersion = Guid.NewGuid();
