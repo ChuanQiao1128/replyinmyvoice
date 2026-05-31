@@ -2166,3 +2166,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/admin/*`; `app/api/admin/*`; `components/admin/*`; `lib/admin-api-proxy.ts`; `lib/admin-auth.ts`; `lib/admin-types.ts`; `tests/unit/admin-api-routes.test.ts`; `tests/e2e/admin.spec.ts`; `playwright.config.ts`.
 - Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `git diff --check`, and banned-term grep over `app components public lib` passed. The admin route unit test passed 3/3. Dev-server HTTP checks returned 200 for an admin session and rendered the expected denied view for a non-admin session.
 - Limitations: Local Playwright Chromium could not launch in this macOS sandbox (`MachPortRendezvousServer` permission denied), so `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before executing page assertions. The Browser plugin was attempted but `iab` was unavailable in this session.
+
+### 2026-06-01 - cloud-architecture-cost-review - PAY-20 GST tax readiness
+
+- Agent: Codex
+- Trigger: PAY-20 explicitly requires cloud-architecture-cost-review for Stripe Tax readiness and GST threshold monitoring.
+- Action: Opened and followed the skill; selected the no-new-infrastructure option: keep Stripe Tax dashboard/legal setup owner-only, add a default-off checkout flag, compute turnover from the existing `RewriteCredit` ledger, and reuse PAY-19 notification infrastructure when configured.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeBillingService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeCheckoutSessionOptionsFactory.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/TaxTurnoverService.cs`; `docs/gst-tax-playbook.md`.
+- Verification evidence: Official IRD GST registration guidance confirmed the NZ$60,000 actual/expected 12-month threshold; official Stripe Checkout Tax docs confirmed `automatic_tax`, required billing address collection, `customer_update[address]=auto`, and tax ID collection for Checkout. Focused backend tests passed 7/7, and full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: No Stripe Dashboard setting, IRD registration, deploy command, paid cloud resource, or real charge was performed. Exact tax/accounting advice remains owner/accountant responsibility.
+
+### 2026-06-01 - data-module-review - PAY-20 turnover tracker
+
+- Agent: Codex
+- Trigger: PAY-20 computes rolling gross revenue from `RewriteCredit` payment fields and surfaces it in admin stats.
+- Action: Opened and followed the skill; reviewed `RewriteCredit` fields, `AppDbContext` mapping, `StripeEventService` purchase grant writes, and `AdminService.GetStatsAsync`. Kept the change read-side only with no migration because `Source`, `GrantedAt`, `StripeAmountTotal`, and `StripeCurrency` already support the report.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/TaxTurnoverService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TaxTurnoverServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`.
+- Verification evidence: The new xUnit test seeds in-window/out-of-window/admin/non-NZD credits and verifies only gross in-window NZD purchases count toward the configured warning threshold. Focused backend tests passed 7/7, and full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: The report follows PAY-20's specified `RewriteCredit` purchase source and does not convert non-NZD amounts or subtract refunds.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-20 checkout tax and turnover tests
+
+- Agent: Codex
+- Trigger: PAY-20 adds C# backend checkout option wiring, turnover computation, notification template wiring, and admin stats response coverage.
+- Action: Opened and followed the skill; wrote failing tests first for the missing checkout options factory, turnover service, and admin stats field, then implemented the minimal backend code to pass.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeCheckoutSessionOptionsFactoryTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TaxTurnoverServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; related production service files.
+- Verification evidence: Red run failed on missing `StripeCheckoutSessionOptionsFactory`, missing `TaxTurnoverService`, and missing `AdminStatsResponse.GstTurnover`. Focused green run `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter "FullyQualifiedName~StripeCheckoutSessionOptionsFactoryTests|FullyQualifiedName~TaxTurnoverServiceTests|FullyQualifiedName~AdminServiceTests"` passed 7/7. Full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - ui-browser-testing - PAY-20 admin stats routing check
+
+- Agent: Codex
+- Trigger: PAY-20 says to surface the GST turnover tracker in admin stats, which may affect browser-visible admin UI depending on implementation.
+- Action: Opened the skill as a routing check; kept this issue backend/API-scoped by adding `gstTurnover` to `AdminStatsResponse` without changing `app/`, `components/`, `lib/`, `public/`, or Playwright files.
+- Output artifacts: None in frontend/browser paths.
+- Verification evidence: `rg -n "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches. No browser-visible files were changed, so no Playwright/browser run was applicable for PAY-20.
+- Limitations: The admin frontend does not render a dedicated GST turnover tile in this issue; the machine-checkable surface is the backend admin stats response.

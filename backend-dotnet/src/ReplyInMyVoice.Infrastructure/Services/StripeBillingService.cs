@@ -42,31 +42,14 @@ public sealed class StripeBillingService(
         var metadata = CreateCheckoutMetadata(externalAuthUserId, skuDefinition);
 
         var sessionService = new Stripe.Checkout.SessionService(stripeClient);
-        var options = new Stripe.Checkout.SessionCreateOptions
-        {
-            Mode = mode,
-            Customer = customerId,
-            ClientReferenceId = externalAuthUserId,
-            SuccessUrl = $"{appUrl}/app?checkout=success",
-            CancelUrl = $"{appUrl}/app?checkout=cancelled",
-            LineItems =
-            [
-                new Stripe.Checkout.SessionLineItemOptions
-                {
-                    Price = priceId,
-                    Quantity = 1,
-                }
-            ],
-            Metadata = metadata,
-        };
-
-        if (mode == "subscription")
-        {
-            options.SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
-            {
-                Metadata = metadata,
-            };
-        }
+        var options = StripeCheckoutSessionOptionsFactory.Create(
+            mode,
+            customerId,
+            externalAuthUserId,
+            appUrl,
+            priceId,
+            metadata,
+            IsAutomaticTaxEnabled(configuration));
 
         var session = await sessionService.CreateAsync(options, cancellationToken: cancellationToken);
 
@@ -237,6 +220,16 @@ public sealed class StripeBillingService(
 
     private string GetRequiredConfiguration(string key) =>
         configuration[key] ?? throw new InvalidOperationException($"{key}_missing");
+
+    private static bool IsAutomaticTaxEnabled(IConfiguration configuration)
+    {
+        var value = configuration["STRIPE_AUTOMATIC_TAX_ENABLED"]?.Trim();
+        return value is not null &&
+            (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(value, "on", StringComparison.OrdinalIgnoreCase));
+    }
 
     public static bool IsKnownSku(string sku) => SkuDefinitions.ContainsKey(sku);
 
