@@ -31,7 +31,7 @@ Use:
 /Users/qc/Desktop/CloudFlare/local-env.md
 ```
 
-only for notes and explanations. Do not put s&#101;cret values in committed docs.
+only for notes and explanations. Do not put secret values in committed docs.
 
 Required values to prepare:
 
@@ -48,7 +48,7 @@ AZURE_APPLICATION_INSIGHTS_NAME=replyinmyvoice-ai-dev
 AZURE_SQL_SERVER_NAME=replyinmyvoice-sql-dev
 AZURE_SQL_DATABASE_NAME=replyinmyvoice-db-dev
 AZURE_SQL_ADMIN_USER=
-AZURE_SQL_ADMIN_pass&#119;ord=
+AZURE_SQL_ADMIN_password=
 AZURE_SQL_CONNECTION_STRING=
 
 AZURE_SERVICE_BUS_NAMESPACE=
@@ -66,7 +66,7 @@ AZURE_EXTERNAL_ID_WELL_KNOWN_URL=
 AZURE_EXTERNAL_ID_SIGN_IN_FLOW_NAME=
 
 GOOGLE_CLIENT_ID_FOR_ENTRA=
-GOOGLE_CLIENT_s&#101;cret_FOR_ENTRA=
+GOOGLE_CLIENT_secret_FOR_ENTRA=
 
 NEXT_PUBLIC_AZURE_API_BASE_URL=https://replyinmyvoice-func-dev.azurewebsites.net
 NEXT_PUBLIC_ENTRA_AUTHORITY=
@@ -84,8 +84,8 @@ Dashboard steps:
 6. In Google Cloud Console, create a Google OAuth web app for Entra federation.
 7. Add `replyinmyvoice.com` to Google OAuth consent screen authorized domains if required.
 8. Add the exact redirect URI shown by Entra External ID when configuring Google federation.
-9. Copy the Google client id/s&#101;cret into `.env.local`.
-10. Add the Google client id/s&#101;cret to Entra External ID identity providers.
+9. Copy the Google client id/secret into `.env.local`.
+10. Add the Google client id/secret to Entra External ID identity providers.
 11. Select Google in the Entra user flow.
 
 ### Entra External ID -- Native Email + Local Account
@@ -136,7 +136,7 @@ Important:
 
 ```text
 Do not reuse old Clerk redirect URLs.
-Do not paste s&#101;crets into chat.
+Do not paste secrets into chat.
 Do not block the first migration on Facebook/Apple login.
 Finish Google first, then add additional social providers later.
 ```
@@ -165,7 +165,7 @@ Finish Google first, then add additional social providers later.
 
 ## Cloudflare Variables
 
-Set production runtime variables/s&#101;crets for the Worker. Public app backend calls now require:
+Set production runtime variables/secrets for the Worker. Public app backend calls now require:
 
 - `NEXT_PUBLIC_APP_URL`
 - `NEXT_PUBLIC_AZURE_API_BASE_URL`
@@ -176,14 +176,14 @@ Set production runtime variables/s&#101;crets for the Worker. Public app backend
 Legacy Clerk/Neon variables may remain in the dashboard while old admin/library code is cleaned up, but public `/app`, rewrite, billing, webhook, and DB health routes should not depend on them after the 2026-05-23 cutover:
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_s&#101;cret_KEY`
+- `CLERK_secret_KEY`
 - `NEXT_PUBLIC_CLERK_SIGN_IN_URL`
 - `NEXT_PUBLIC_CLERK_SIGN_UP_URL`
 - `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`
 - `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL`
 - `DATABASE_URL`
 - `DIRECT_URL`
-- `OPENAI_api_k&#101;y`
+- `OPENAI_api_key`
 - `OPENAI_MODEL`
 - `OPENAI_MODEL_PRIMARY`
 - `OPENAI_MODEL_REPAIR`
@@ -200,12 +200,12 @@ Legacy Clerk/Neon variables may remain in the dashboard while old admin/library 
 - `OPENAI_PRICE_STRONG_INPUT_PER_1M`
 - `OPENAI_PRICE_STRONG_OUTPUT_PER_1M`
 - `OPENAI_TIMEOUT_SEC`
-- `STRIPE_s&#101;cret_KEY`
+- `STRIPE_secret_KEY`
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `STRIPE_PRICE_ID`
-- `STRIPE_WEBHOOK_s&#101;cret`
+- `STRIPE_WEBHOOK_secret`
 - `WRITING_SIGNAL_PROVIDER`
-- `SAPLING_api_k&#101;y`
+- `SAPLING_api_key`
 - `WRITING_SIGNAL_TIMEOUT_SEC`
 - `REWRITE_LEARNING_LOG_ENABLED`
 - `REWRITE_COST_LOG_ENABLED`
@@ -229,9 +229,9 @@ The deploy script uses `--keep-vars` so dashboard variables are preserved.
 
 Launch update on 2026-05-18:
 
-- Worker `replyinmyvoice-app` has the required runtime s&#101;cret names configured.
-- `NODE_ENV` was corrected to `production` in Worker s&#101;crets.
-- s&#101;cret values were not printed or committed.
+- Worker `replyinmyvoice-app` has the required runtime secret names configured.
+- `NODE_ENV` was corrected to `production` in Worker secrets.
+- secret values were not printed or committed.
 
 ## Internal Admin Dashboard
 
@@ -356,4 +356,4 @@ verified end to end.
 
 ## Clerk removal — rollback notes (M1-012)
 
-The legacy `CLERK_*` env variables (`ADMIN_CLERK_USER_IDS`, `CLERK_s&#101;cret_KEY` fallback) were removed in M1-012. The User model's `clerkUserId` field is still in the Prisma schema and will be renamed to `entra_user_id` in M1-007. If rollback is needed, restore the legacy env names from commit ba8127a.
+The legacy `CLERK_*` env variables (`ADMIN_CLERK_USER_IDS`, `CLERK_secret_KEY` fallback) were removed in M1-012. The User model's `clerkUserId` field is still in the Prisma schema and will be renamed to `entra_user_id` in M1-007. If rollback is needed, restore the legacy env names from commit ba8127a.
