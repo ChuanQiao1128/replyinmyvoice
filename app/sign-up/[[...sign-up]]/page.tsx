@@ -13,7 +13,7 @@ type SignUpPageProps = {
 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const params = await searchParams;
-  const redirectTo = firstParam(params?.redirectTo) ?? firstParam(params?.redirect_to) ?? "/app";
+  const redirectTo = firstParam(params?.redirectTo) ?? "/app";
 
   return (
     <SignUpAuthPage

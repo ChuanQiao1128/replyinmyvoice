@@ -159,7 +159,7 @@ describe("sign-in route handler", () => {
 
   it("maps wrong credentials to invalid_credentials", async () => {
     vi.mocked(signinWithCredential).mockRejectedValueOnce(
-      new nativeAuthMocks.NativeAuthError({ appCode: "invalid_credentials", status: 401 }),
+      new nativeAuthMocks.NativeAuthError({ appCode: "invalid_code", status: 401 }),
     );
 
     const response = await signIn(jsonRequest("/api/auth/signin", {

@@ -208,14 +208,14 @@
 
 .fieldError {
   margin: 0;
-  color: var(--warn);
+  color: color-mix(in oklab, var(--warn) 72%, var(--ink));
   font-size: 13px;
   line-height: 1.4;
 }
 
 .hint {
   margin: 0;
-  color: var(--muted);
+  color: var(--ink-2);
   font-size: 13px;
   line-height: 1.45;
 }

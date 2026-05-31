@@ -103,7 +103,7 @@ function nativeSigninError(error: unknown, email: string, redirectTo: string) {
   }
 
   const appCode = error.appCode as string;
-  if (appCode === "invalid_credentials" || appCode === "invalid_code") {
+  if (appCode === "invalid_code") {
     return signinJsonError("invalid_credentials", 401);
   }
 
