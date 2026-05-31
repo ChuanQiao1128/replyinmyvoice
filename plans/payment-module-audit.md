@@ -259,7 +259,26 @@ All under the `SO-*` site-overhaul wave + `SO-R*` resilience wave, merged 2026-0
 | PAY-10 | [#385](https://github.com/ChuanQiao1128/replyinmyvoice/issues/385) | P1 | remaining resilience + frontend tests |
 | PAY-11 | [#386](https://github.com/ChuanQiao1128/replyinmyvoice/issues/386) | P1 | **[OWNER]** real purchase + refund verification |
 
-**Deferred this wave** (not created — outside the "real-testable now" scope; kept as backlog in §5/§7): PAY-08 (reconciliation + GST tracker), PAY-09 (dunning + credit-expiry notices), PAY-12 (campaign codes), PAY-13 (async-payment events / explicit API-version set / ledger backfill).
+**Commercial-readiness wave — created 2026-06-01** (the §5 "must-haves", all `delivery-pipeline`+`ready`): 14 issues #387-400.
+
+| ID | GitHub | Pri | Note |
+|---|---|---|---|
+| PAY-19 | [#387](https://github.com/ChuanQiao1128/replyinmyvoice/issues/387) | P1 | notification infra (email + in-app) — enabler for PAY-23/24/27 |
+| PAY-20 | [#388](https://github.com/ChuanQiao1128/replyinmyvoice/issues/388) | P1 | GST/tax automatic_tax + NZ$60k turnover tracker |
+| PAY-21 | [#389](https://github.com/ChuanQiao1128/replyinmyvoice/issues/389) | P1 | user receipts / tax invoices |
+| PAY-22 | [#390](https://github.com/ChuanQiao1128/replyinmyvoice/issues/390) | P1 | financial reconciliation job (Stripe vs ledger) |
+| PAY-23 | [#391](https://github.com/ChuanQiao1128/replyinmyvoice/issues/391) | P1 | failed-payment dunning (needs PAY-01 + PAY-19) |
+| PAY-24 | [#392](https://github.com/ChuanQiao1128/replyinmyvoice/issues/392) | P1 | credit-expiry reminders (needs PAY-19) |
+| PAY-25 | [#393](https://github.com/ChuanQiao1128/replyinmyvoice/issues/393) | P2 | price change / versioning strategy |
+| PAY-26 | [#394](https://github.com/ChuanQiao1128/replyinmyvoice/issues/394) | P2 | dispute / chargeback runbook |
+| PAY-27 | [#395](https://github.com/ChuanQiao1128/replyinmyvoice/issues/395) | P2 | self-serve refund / support channel (needs PAY-07 + PAY-19) |
+| PAY-28 | [#396](https://github.com/ChuanQiao1128/replyinmyvoice/issues/396) | P2 | PCI / SAQ-A posture doc |
+| PAY-29 | [#397](https://github.com/ChuanQiao1128/replyinmyvoice/issues/397) | P2 | accounting / revenue CSV export |
+| PAY-30 | [#398](https://github.com/ChuanQiao1128/replyinmyvoice/issues/398) | P2 | multi-currency (design + optional first currency) |
+| PAY-31 | [#399](https://github.com/ChuanQiao1128/replyinmyvoice/issues/399) | P2 | purchase-side fraud / abuse controls |
+| PAY-32 | [#400](https://github.com/ChuanQiao1128/replyinmyvoice/issues/400) | P1 | webhook delivery monitoring + replay runbook |
+
+**Still deferred** (not commercial-must-have; backlog only): campaign codes (PAY-12), async-payment event handlers + explicit API-version set + ledger backfill (PAY-13).
 
 The full proposed set (incl. deferred) for reference:
 
