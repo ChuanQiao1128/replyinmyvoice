@@ -74,6 +74,23 @@ NEXT_PUBLIC_ENTRA_CLIENT_ID=
 NEXT_PUBLIC_ENTRA_API_SCOPE=
 ```
 
+Optional transactional notification values:
+
+```env
+NOTIFICATIONS_PROVIDER=disabled
+NOTIFICATIONS_FROM_EMAIL=Reply In My Voice <info@timeawake.co.nz>
+NOTIFICATIONS_REPLY_TO_EMAIL=info@timeawake.co.nz
+RESEND_API_KEY=
+```
+
+Notification behavior:
+
+```text
+The backend sends no transactional email unless NOTIFICATIONS_PROVIDER=resend and the Resend key/from address are configured at runtime.
+If notification config is missing, disabled, or unsupported, the backend logs a no-op and continues without throwing.
+Use info@timeawake.co.nz as the customer support reply address.
+```
+
 Dashboard steps:
 
 1. Create or confirm a Microsoft Entra External ID external tenant.

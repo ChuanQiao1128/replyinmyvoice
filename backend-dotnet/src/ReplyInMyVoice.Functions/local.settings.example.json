@@ -11,6 +11,10 @@
     "NEXT_PUBLIC_ENTRA_CLIENT_ID": "",
     "NEXT_PUBLIC_ENTRA_API_SCOPE": "",
     "ENTRA_API_AUDIENCE": "",
-    "OPENAI_BASE_URL": "https://api.deepseek.com"
+    "OPENAI_BASE_URL": "https://api.deepseek.com",
+    "NOTIFICATIONS_PROVIDER": "disabled",
+    "NOTIFICATIONS_FROM_EMAIL": "Reply In My Voice <info@timeawake.co.nz>",
+    "NOTIFICATIONS_REPLY_TO_EMAIL": "info@timeawake.co.nz",
+    "RESEND_API_KEY": ""
   }
 }
