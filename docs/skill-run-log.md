@@ -2166,3 +2166,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/admin/*`; `app/api/admin/*`; `components/admin/*`; `lib/admin-api-proxy.ts`; `lib/admin-auth.ts`; `lib/admin-types.ts`; `tests/unit/admin-api-routes.test.ts`; `tests/e2e/admin.spec.ts`; `playwright.config.ts`.
 - Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `git diff --check`, and banned-term grep over `app components public lib` passed. The admin route unit test passed 3/3. Dev-server HTTP checks returned 200 for an admin session and rendered the expected denied view for a non-admin session.
 - Limitations: Local Playwright Chromium could not launch in this macOS sandbox (`MachPortRendezvousServer` permission denied), so `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before executing page assertions. The Browser plugin was attempted but `iab` was unavailable in this session.
+
+### 2026-06-01 - resilience-test-generation - PAY-22 Stripe reconciliation failure coverage
+
+- Agent: Codex
+- Trigger: GitHub issue #390/PAY-22 requires detecting missed webhooks and payment/ledger drift without Stripe writes.
+- Action: Opened and followed the skill; modeled the critical payment-provider boundary with deterministic fake Stripe payment-intent data, a local EF SQLite ledger, and a fake read-only Stripe client that tracks write attempts.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeReconciliationServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeReconciliationService.cs`.
+- Verification evidence: Red run failed on missing reconciliation contracts. Green focused run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter StripeReconciliationServiceTests` passed 4/4, including paid-but-no-grant, amount-mismatch, grant-but-no-payment, clean dataset, and read-only client assertions. Full `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: Tests use fake Stripe payment intents only; no live Stripe, refund, grant, or charge creation call was made.
+
+### 2026-06-01 - data-module-review - PAY-22 reconciliation run persistence
+
+- Agent: Codex
+- Trigger: PAY-22 adds a persisted reconciliation summary and reads the `RewriteCredit` payment ledger by `StripePaymentIntentId`.
+- Action: Opened and followed the skill; reviewed `RewriteCredit` payment fields and indexes, added a `StripeReconciliationRun` table with count fields and structured report JSON, and kept reconciliation write behavior limited to recording the run summary.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/StripeReconciliationRun.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531213301_AddStripeReconciliationRuns.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`.
+- Verification evidence: EF SQLite tests verified persisted run counts/report JSON and admin stats summary. `git diff --check` passed. Full `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: The reconciler does not auto-create grants, refunds, or webhook replay records. Manual event reprocessing remains optional/out of scope for this issue.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-22 reconciliation xUnit coverage
+
+- Agent: Codex
+- Trigger: PAY-22 requires backend unit tests and `cd backend-dotnet && dotnet test`.
+- Action: Opened and followed the skill; wrote failing service-level xUnit tests first, then implemented the reconciliation service, Stripe read client adapter, notification alert hook, scheduled Functions timer, migration, and admin stats summary.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeReconciliationServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeReconciliationService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/StripeReconciliationTimerFunction.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Notifications/NotificationTemplates.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`.
+- Verification evidence: Focused red run failed on missing reconciliation types. Focused green run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter StripeReconciliationServiceTests` passed 4/4. Full backend gate `cd backend-dotnet && dotnet test` passed 411/411. Banned-term grep over `app components public lib` returned no matches.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. `dotnet ef migrations add` generated the migration after the application host timed out and fell back to the design-time context factory.

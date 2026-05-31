@@ -316,6 +316,10 @@ public sealed class AdminService(
                 x.StripeAmountTotal,
                 x.StripeCurrency))
             .ToList();
+        var paymentReconciliation = await GetLatestPaymentReconciliationSummaryAsync(
+            db,
+            cancellationToken);
+
         return new AdminStatsResponse(
             totalUsers,
             paidUsers,
@@ -325,7 +329,8 @@ public sealed class AdminService(
             creditRows.Sum(x => Math.Max(x.AmountGranted - x.AmountConsumed, 0)),
             paymentRows.Count,
             paymentRows.Sum(x => x.StripeAmountTotal ?? 0),
-            costRows.Sum());
+            costRows.Sum(),
+            paymentReconciliation);
     }
 
     public async Task<AdminCreditGrantServiceResult> GrantCreditsAsync(
@@ -574,6 +579,30 @@ public sealed class AdminService(
         amountTotal is not null ||
         string.Equals(source, "PURCHASE", StringComparison.OrdinalIgnoreCase);
 
+    private static async Task<AdminPaymentReconciliationSummary?> GetLatestPaymentReconciliationSummaryAsync(
+        AppDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.StripeReconciliationRuns
+            .AsNoTracking()
+            .Select(x => new AdminPaymentReconciliationSummary(
+                x.CompletedAt,
+                x.WindowStart,
+                x.WindowEnd,
+                x.PaidButNoGrantCount + x.GrantButNoPaymentCount + x.AmountMismatchCount,
+                x.PaidButNoGrantCount,
+                x.GrantButNoPaymentCount,
+                x.AmountMismatchCount,
+                x.StripePaymentCount,
+                x.PurchaseGrantCount))
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .OrderByDescending(x => x.LastCompletedAt)
+            .ThenByDescending(x => x.WindowEnd)
+            .FirstOrDefault();
+    }
+
     private static async Task<AdminRefundAuditDetails?> FindExistingRefundAsync(
         AppDbContext db,
         Guid targetUserId,
@@ -739,7 +768,19 @@ public sealed record AdminStatsResponse(
     int CreditRemaining,
     int PaymentCount,
     long PaymentAmountTotal,
-    decimal CostToDateUsd);
+    decimal CostToDateUsd,
+    AdminPaymentReconciliationSummary? PaymentReconciliation = null);
+
+public sealed record AdminPaymentReconciliationSummary(
+    DateTimeOffset LastCompletedAt,
+    DateTimeOffset WindowStart,
+    DateTimeOffset WindowEnd,
+    int DiscrepancyCount,
+    int PaidButNoGrantCount,
+    int GrantButNoPaymentCount,
+    int AmountMismatchCount,
+    int StripePaymentCount,
+    int PurchaseGrantCount);
 
 public sealed record AdminCreditGrantRequest(
     int? Amount,

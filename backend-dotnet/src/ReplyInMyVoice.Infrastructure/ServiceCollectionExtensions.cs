@@ -60,8 +60,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RewriteJobProcessor>();
         services.AddScoped<OutboxDispatcherService>();
         services.AddScoped<ExpiredReservationCleanupService>();
+        services.AddScoped<StripeReconciliationService>();
         services.AddScoped<StripeEventService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
+        services.AddScoped<IStripePaymentReconciliationClient, StripeBillingService>();
+        services.AddScoped<IStripeReconciliationAlerter, StripeReconciliationNotificationAlerter>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddHttpClient();
         services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleRewriteModelClient));

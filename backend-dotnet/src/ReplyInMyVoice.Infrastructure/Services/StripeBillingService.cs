@@ -11,7 +11,7 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class StripeBillingService(
     Func<AppDbContext> dbContextFactory,
-    IConfiguration configuration) : IStripeBillingService, IStripeRefundClient
+    IConfiguration configuration) : IStripeBillingService, IStripeRefundClient, IStripePaymentReconciliationClient
 {
     private const string LegacyPriceEnvVar = "STRIPE_PRICE_ID";
     internal const string PinnedStripeApiVersion = "2025-08-27.basil";
@@ -153,6 +153,50 @@ public sealed class StripeBillingService(
             refund.Status);
     }
 
+    public async Task<IReadOnlyList<StripePaidPayment>> ListPaidPaymentIntentsAsync(
+        DateTimeOffset windowStart,
+        DateTimeOffset windowEnd,
+        CancellationToken cancellationToken)
+    {
+        if (windowEnd <= windowStart)
+        {
+            throw new ArgumentException("reconciliation_window_invalid", nameof(windowEnd));
+        }
+
+        var paymentIntentService = new PaymentIntentService(CreateStripeClient());
+        var options = new PaymentIntentListOptions
+        {
+            Created = new DateRangeOptions
+            {
+                GreaterThanOrEqual = windowStart.UtcDateTime,
+                LessThan = windowEnd.UtcDateTime,
+            },
+            Limit = 100,
+        };
+
+        var payments = new List<StripePaidPayment>();
+        await foreach (var paymentIntent in paymentIntentService.ListAutoPagingAsync(
+            options,
+            requestOptions: null,
+            cancellationToken: cancellationToken))
+        {
+            if (!string.Equals(paymentIntent.Status, "succeeded", StringComparison.Ordinal) ||
+                paymentIntent.AmountReceived <= 0 ||
+                string.IsNullOrWhiteSpace(paymentIntent.Id))
+            {
+                continue;
+            }
+
+            payments.Add(new StripePaidPayment(
+                paymentIntent.Id,
+                paymentIntent.AmountReceived,
+                paymentIntent.Currency ?? string.Empty,
+                ToUtcDateTimeOffset(paymentIntent.Created)));
+        }
+
+        return payments;
+    }
+
     private async Task<AppUser> GetOrCreateUserAsync(
         string externalAuthUserId,
         string? email,
@@ -233,6 +277,14 @@ public sealed class StripeBillingService(
     {
         EnsureStripeApiVersionPinned();
         return new StripeClient(GetRequiredConfiguration("STRIPE_SECRET_KEY"));
+    }
+
+    private static DateTimeOffset ToUtcDateTimeOffset(DateTime value)
+    {
+        var utc = value.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            : value.ToUniversalTime();
+        return new DateTimeOffset(utc);
     }
 
     private string GetRequiredConfiguration(string key) =>
