@@ -343,8 +343,7 @@ public sealed class StripeEventService
 
         if (type == "charge.refunded")
         {
-            await RevokeRefundedChargeCreditsAsync(db, stripeObject, cancellationToken);
-            return null;
+            return await RevokeRefundedChargeCreditsAsync(db, stripeObject, cancellationToken);
         }
 
         if (type is "charge.dispute.created" or "charge.dispute.closed")
@@ -480,7 +479,7 @@ public sealed class StripeEventService
         return null;
     }
 
-    private async Task RevokeRefundedChargeCreditsAsync(
+    private async Task<string?> RevokeRefundedChargeCreditsAsync(
         AppDbContext db,
         JsonElement stripeObject,
         CancellationToken cancellationToken)
@@ -488,13 +487,17 @@ public sealed class StripeEventService
         var paymentIntentId = GetString(stripeObject, "payment_intent");
         if (string.IsNullOrWhiteSpace(paymentIntentId))
         {
-            return;
+            return null;
         }
 
         var credits = await db.RewriteCredits
             .AsTracking()
             .Where(x => x.StripePaymentIntentId == paymentIntentId)
             .ToListAsync(cancellationToken);
+        if (credits.Count == 0)
+        {
+            return $"No matching rewrite credit for Stripe refund payment_intent {paymentIntentId}.";
+        }
 
         foreach (var credit in credits)
         {
@@ -513,6 +516,8 @@ public sealed class StripeEventService
                 credit.RowVersion = Guid.NewGuid();
             }
         }
+
+        return null;
     }
 
     private async Task RevokeDisputedChargeCreditsAsync(

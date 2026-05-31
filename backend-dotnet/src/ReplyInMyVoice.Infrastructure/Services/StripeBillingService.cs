@@ -223,7 +223,12 @@ public sealed class StripeBillingService(
 
     internal static void EnsureStripeApiVersionPinned()
     {
-        if (!string.Equals(StripeConfiguration.ApiVersion, PinnedStripeApiVersion, StringComparison.Ordinal))
+        EnsureStripeApiVersionPinned(StripeConfiguration.ApiVersion);
+    }
+
+    internal static void EnsureStripeApiVersionPinned(string? actualApiVersion)
+    {
+        if (!string.Equals(actualApiVersion, PinnedStripeApiVersion, StringComparison.Ordinal))
         {
             throw new InvalidOperationException("stripe_api_version_mismatch");
         }
