@@ -336,6 +336,11 @@ public sealed class StripeEventService
             return await SyncCheckoutSessionAsync(db, eventId, stripeObject, now, cancellationToken);
         }
 
+        if (type == "invoice.payment_failed")
+        {
+            return await SyncInvoicePaymentFailedAsync(db, eventId, stripeObject, cancellationToken);
+        }
+
         if (type == "charge.refunded")
         {
             await RevokeRefundedChargeCreditsAsync(db, stripeObject, cancellationToken);
@@ -347,6 +352,41 @@ public sealed class StripeEventService
             await RevokeDisputedChargeCreditsAsync(db, stripeObject, cancellationToken);
         }
 
+        return null;
+    }
+
+    private async Task<string?> SyncInvoicePaymentFailedAsync(
+        AppDbContext db,
+        string eventId,
+        JsonElement stripeObject,
+        CancellationToken cancellationToken)
+    {
+        var customerId = GetString(stripeObject, "customer");
+        var subscriptionId = GetInvoiceSubscriptionId(stripeObject);
+        if (string.IsNullOrWhiteSpace(customerId) && string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return null;
+        }
+
+        var user = await db.AppUsers
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => (!string.IsNullOrWhiteSpace(customerId) && x.StripeCustomerId == customerId) ||
+                    (!string.IsNullOrWhiteSpace(subscriptionId) && x.StripeSubscriptionId == subscriptionId),
+                cancellationToken);
+        if (user is null)
+        {
+            return $"No matching user for Stripe invoice payment_failed customer {customerId ?? "unknown"} subscription {subscriptionId ?? "unknown"}.";
+        }
+
+        logger?.LogWarning(
+            "Stripe invoice payment failed for correlation {CorrelationId}, customer {StripeCustomerId}, subscription {StripeSubscriptionId}, invoice {StripeInvoiceId}, user {UserId}, attempt {AttemptCount}.",
+            eventId,
+            customerId,
+            subscriptionId,
+            GetString(stripeObject, "id"),
+            user.Id,
+            GetLong(stripeObject, "attempt_count"));
         return null;
     }
 
@@ -570,14 +610,24 @@ public sealed class StripeEventService
             message.Contains("RewriteCredits.StripeEventId", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static SubscriptionStatus MapSubscriptionStatus(string? status) =>
-        status switch
+    private static SubscriptionStatus MapSubscriptionStatus(string? status)
+    {
+        // PAY-01 policy: Pro/API has no renewal-failure grace period because credit packs
+        // are the primary paid product; Stripe non-paying states immediately fall back to
+        // the free plan through AccountService.GetUsagePlan.
+        return status?.Trim().ToLowerInvariant() switch
         {
             "active" => SubscriptionStatus.Active,
             "trialing" => SubscriptionStatus.Trialing,
             "canceled" => SubscriptionStatus.Canceled,
+            "past_due" or
+            "unpaid" or
+            "incomplete" or
+            "incomplete_expired" or
+            "paused" => SubscriptionStatus.Inactive,
             _ => SubscriptionStatus.Inactive,
         };
+    }
 
     private static string? GetString(JsonElement element, string propertyName)
     {
@@ -602,6 +652,25 @@ public sealed class StripeEventService
         }
 
         return value.GetString();
+    }
+
+    private static string? GetInvoiceSubscriptionId(JsonElement stripeObject)
+    {
+        var subscriptionId = GetString(stripeObject, "subscription");
+        if (!string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return subscriptionId;
+        }
+
+        if (stripeObject.TryGetProperty("parent", out var parent) &&
+            parent.ValueKind == JsonValueKind.Object &&
+            parent.TryGetProperty("subscription_details", out var details) &&
+            details.ValueKind == JsonValueKind.Object)
+        {
+            return GetString(details, "subscription");
+        }
+
+        return null;
     }
 
     private static long? GetLong(JsonElement element, string propertyName)
