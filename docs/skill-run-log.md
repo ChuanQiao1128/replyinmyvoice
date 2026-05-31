@@ -2103,3 +2103,39 @@ claude-heavy-planning-handoff
 - Output artifacts: GitHub issue #374; `docs/skill-run-log.md`.
 - Verification evidence: App account deletion UI returned to the public home page without delete errors for the verified email alias and the Google test account. Microsoft Graph active deletes and deleted-item hard deletes returned 204 for the matching CIAM users; the post-delete target-user query returned an empty list. Azure SQL verification returned `target_original_rows 0` for the test emails/original Entra object ids and `recent_erased_rows 3` for recent anonymized app-user rows.
 - Limitations: The temporary SQL access was only used for cleanup verification and no secrets or connection strings were logged. An older pre-existing `info+rimv-e2e-20260531@timeawake.co.nz` CIAM test user was observed but not touched because it was outside this owner-approved Gmail cleanup scope.
+
+### 2026-06-01 - state-machine-modeling - PAY-01 subscription renewal failure lifecycle
+
+- Agent: Codex
+- Trigger: GitHub issue #378/PAY-01 changes subscription/quota lifecycle and explicitly requires state-machine-modeling.
+- Action: Opened and followed the skill; modeled the paid states (`Active`, `Trialing`, `Testing`), free states (`Inactive`, `Canceled`), subscription update/delete events, `invoice.payment_failed`, duplicate webhook delivery, and the invariant that non-paying Stripe states must not receive the paid usage plan.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `docs/rewrite-packs-pricing-spec.md`; `docs/stripe-live-mode-cutover.md`.
+- Verification evidence: Added xUnit coverage for `past_due`, `unpaid`, `incomplete`, `incomplete_expired`, `paused`, and `canceled` subscription updates mapping to a non-paid status and `AccountService.GetUsagePlan` returning `free/free:lifetime/3`. Focused `StripeEventServiceTests` passed 20/20; full `cd backend-dotnet && dotnet test` passed 404/404.
+- Limitations: No new enum states or migrations were added. `invoice.payment_failed` logs the renewal failure hook; quota downgrade remains driven by Stripe subscription status events.
+
+### 2026-06-01 - resilience-test-generation - PAY-01 webhook replay and renewal failure handling
+
+- Agent: Codex
+- Trigger: PAY-01 adds handling for Stripe webhook replay/idempotency and renewal failure behavior.
+- Action: Opened and followed the skill; targeted duplicate event delivery as the critical failure mode, kept tests local with EF SQLite, and avoided live Stripe calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: The new `invoice.payment_failed` test failed first because no invoice-specific structured log was emitted; after implementation it passed and asserted first delivery processed, second delivery skipped, `StripeEvent` row count stayed 1, no rewrite credits were granted, and the renewal-failure log was emitted once with correlation/customer/subscription/user fields. Full `cd backend-dotnet && dotnet test` passed 404/404.
+- Limitations: Email/SMS/customer notification behavior remains out of scope for PAY-09.
+
+### 2026-06-01 - data-module-review - PAY-01 StripeEvent idempotency persistence
+
+- Agent: Codex
+- Trigger: PAY-01 reuses `StripeEvent` deduplication and touches subscription/quota persistence invariants.
+- Action: Opened and followed the skill; reviewed `AppDbContext` indexes/keys, `StripeEventService` transaction boundaries, `StripeEvents.EventId` primary-key dedupe, and `RewriteCredits.StripeEventId` uniqueness.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: No schema or migration change was needed. The invoice failure handler uses the existing transactional webhook path and persists one `StripeEvent` row per Stripe event id. Focused `StripeEventServiceTests` passed 20/20; full `cd backend-dotnet && dotnet test` passed 404/404.
+- Limitations: There is no separate invoice-failure table; PAY-02 alerting is expected to consume the structured log hook.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-01 xUnit payment lifecycle coverage
+
+- Agent: Codex
+- Trigger: PAY-01 requires new .NET/xUnit tests for subscription status mapping and `invoice.payment_failed` idempotency.
+- Action: Opened and followed the skill; added service-level EF SQLite tests for subscription mapping and invoice replay, then stabilized existing API test clients with `HandleCookies = false` to avoid the macOS sandbox `CookieContainer` domain-name failure while preserving assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`.
+- Verification evidence: Red run: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter "FullyQualifiedName~StripeEventServiceTests"` failed on the missing invoice failure log. Green runs: the same focused command passed 20/20, and `cd backend-dotnet && dotnet test` passed 404/404. `git diff --check` passed.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.

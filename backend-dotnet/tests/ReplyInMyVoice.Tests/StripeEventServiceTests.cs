@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -486,6 +487,124 @@ public sealed class StripeEventServiceTests
         updatedUser.CurrentPeriodEnd.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1780000200));
     }
 
+    [Theory]
+    [InlineData("past_due")]
+    [InlineData("unpaid")]
+    [InlineData("incomplete")]
+    [InlineData("incomplete_expired")]
+    [InlineData("paused")]
+    [InlineData("canceled")]
+    public async Task ProcessWebhookEventAsync_NonPayingSubscriptionStatusDowngradesToFreePlan(string stripeStatus)
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
+            storedUser.StripeCustomerId = "cus_subscription_nonpaying";
+            storedUser.StripeSubscriptionId = "sub_subscription_nonpaying";
+            storedUser.SubscriptionStatus = SubscriptionStatus.Active;
+            storedUser.CurrentPeriodEnd = DateTimeOffset.FromUnixTimeSeconds(1780000300);
+            await seedDb.SaveChangesAsync();
+        }
+
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-26T00:08:00Z");
+
+        var processed = await service.ProcessWebhookEventAsync(
+            $"evt_subscription_{stripeStatus}",
+            "customer.subscription.updated",
+            $$"""
+            {
+              "id": "evt_subscription_{{stripeStatus}}",
+              "type": "customer.subscription.updated",
+              "data": {
+                "object": {
+                  "id": "sub_subscription_nonpaying",
+                  "customer": "cus_subscription_nonpaying",
+                  "status": "{{stripeStatus}}",
+                  "current_period_end": 1780000300
+                }
+              }
+            }
+            """,
+            now);
+
+        processed.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
+        updatedUser.SubscriptionStatus.Should().NotBe(SubscriptionStatus.Active);
+        updatedUser.SubscriptionStatus.Should().NotBe(SubscriptionStatus.Trialing);
+        updatedUser.SubscriptionStatus.Should().NotBe(SubscriptionStatus.Testing);
+
+        var plan = AccountService.GetUsagePlan(updatedUser);
+        plan.Scope.Should().Be("free");
+        plan.PeriodKey.Should().Be("free:lifetime");
+        plan.QuotaLimit.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task ProcessWebhookEventAsync_InvoicePaymentFailedLogsOnceAndDedupesEvent()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
+            storedUser.StripeCustomerId = "cus_invoice_failed";
+            storedUser.StripeSubscriptionId = "sub_invoice_failed";
+            storedUser.SubscriptionStatus = SubscriptionStatus.Active;
+            await seedDb.SaveChangesAsync();
+        }
+
+        var logger = new ListLogger<StripeEventService>();
+        var service = new StripeEventService(fixture.CreateContext, logger);
+        var now = DateTimeOffset.Parse("2026-05-26T00:09:00Z");
+        const string rawBody = """
+        {
+          "id": "evt_invoice_failed",
+          "type": "invoice.payment_failed",
+          "data": {
+            "object": {
+              "id": "in_failed",
+              "customer": "cus_invoice_failed",
+              "subscription": "sub_invoice_failed",
+              "attempt_count": 1
+            }
+          }
+        }
+        """;
+
+        var first = await service.ProcessWebhookEventAsync(
+            "evt_invoice_failed",
+            "invoice.payment_failed",
+            rawBody,
+            now);
+        var second = await service.ProcessWebhookEventAsync(
+            "evt_invoice_failed",
+            "invoice.payment_failed",
+            rawBody,
+            now.AddSeconds(1));
+
+        first.Should().BeTrue();
+        second.Should().BeFalse();
+
+        await using var db = fixture.CreateContext();
+        (await db.StripeEvents.CountAsync(x => x.EventId == "evt_invoice_failed")).Should().Be(1);
+        (await db.RewriteCredits.CountAsync()).Should().Be(0);
+
+        var invoiceFailureLogs = logger.Records
+            .Where(record => record.Message.Contains("Stripe invoice payment failed", StringComparison.Ordinal))
+            .ToList();
+        invoiceFailureLogs.Should().ContainSingle();
+        var state = invoiceFailureLogs.Single().State;
+        state["CorrelationId"]?.ToString().Should().Be("evt_invoice_failed");
+        state["StripeCustomerId"]?.ToString().Should().Be("cus_invoice_failed");
+        state["StripeSubscriptionId"]?.ToString().Should().Be("sub_invoice_failed");
+        state["UserId"]?.ToString().Should().Be(user.Id.ToString());
+    }
+
     [Fact]
     public async Task DuplicateEventGrantRejected()
     {
@@ -767,6 +886,35 @@ public sealed class StripeEventServiceTests
         disputed.AmountGranted.Should().Be(1);
         disputed.AmountConsumed.Should().Be(1);
     }
+
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        public List<LogRecord> Records { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull =>
+            null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var values = state as IEnumerable<KeyValuePair<string, object?>>;
+            var stateValues = values?.ToDictionary(x => x.Key, x => x.Value) ??
+                new Dictionary<string, object?>();
+            Records.Add(new LogRecord(logLevel, formatter(state, exception), stateValues));
+        }
+    }
+
+    private sealed record LogRecord(
+        LogLevel Level,
+        string Message,
+        IReadOnlyDictionary<string, object?> State);
 
     private sealed class CheckoutGrantRaceFixture : IAsyncDisposable
     {
