@@ -35,6 +35,8 @@ The operator completes these in the Stripe dashboard once. Codex does not touch 
 
 Verification: after the steps, make a test Stripe sandbox checkout (M0-006 already documents test mode) and confirm the receipt email arrives with the right `From:` and a working customer portal link.
 
+Payment security posture: card entry must stay on Stripe-hosted Checkout and customer portal pages. Reply In My Voice support must never request or store full card numbers or card security codes; see `docs/pci-saq-a-posture.md`.
+
 ## 4. Auto-reply template
 
 Configure the auto-reply at `info@timeawake.co.nz` to fire on every inbound message. Keep it short.
@@ -137,6 +139,7 @@ If an inbound email indicates a security issue (account takeover claim, suspecte
 - This file: `docs/support-runbook.md` (canonical).
 - Auto-reply text: stored in the mail provider's settings; the source of truth here in §4 — copy/paste when reconfiguring.
 - Stripe portal copy: managed in Stripe dashboard per §3; cross-link from M4-008 (Terms page) so legal text and operational text stay in sync.
+- PCI / SAQ-A payment posture: `docs/pci-saq-a-posture.md`.
 
 ## 9. Open items
 
