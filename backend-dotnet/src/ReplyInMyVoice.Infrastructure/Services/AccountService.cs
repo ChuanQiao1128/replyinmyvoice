@@ -291,7 +291,7 @@ public sealed class AccountService(
 
     public static AccountUsagePlan GetUsagePlan(AppUser user)
     {
-        if (user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing)
+        if (user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing or SubscriptionStatus.PastDue)
         {
             return new AccountUsagePlan(
                 "paid",

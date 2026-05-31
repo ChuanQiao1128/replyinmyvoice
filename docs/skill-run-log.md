@@ -45,6 +45,42 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-01 - state-machine-modeling - PAY-23 payment dunning grace state
+
+- Agent: Codex
+- Trigger: PAY-23 changes the subscription lifecycle for failed renewal payments, grace expiry, terminal Stripe subscription states, and recovery.
+- Action: Opened/followed the state-machine workflow; modeled paid states (`Active`, `Trialing`, `Testing`, `PastDue`), terminal/non-paying states (`Inactive`, `Canceled`), events (`invoice.payment_failed`, `invoice.payment_succeeded`, local grace expiry, `subscription.updated` terminal statuses), illegal stale recovery from terminal states, and persisted grace timestamps.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Enums/SubscriptionStatus.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/AppUser.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `docs/support-runbook.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test` passed 411/411; support runbook §3.1 documents the transition timeline and invariants.
+- Limitations: No live Stripe webhook or real email was sent; behavior is verified with local SQLite and fakes.
+
+### 2026-06-01 - resilience-test-generation - PAY-23 webhook replay and notification fakes
+
+- Agent: Codex
+- Trigger: PAY-23 requires idempotent webhook replay behavior and no duplicate notifications for failed-payment, paused, and recovered states.
+- Action: Opened/followed the resilience workflow; used deterministic notification and billing-portal fakes, replayed the same Stripe event IDs in tests, and kept notification send actions post-commit so billing state is not rolled back by provider calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: Focused `StripeEventServiceTests` passed 24/24; full `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: Provider outages were not induced against live Stripe or Resend; tests prove local fake boundaries only. NuGet vulnerability metadata warnings appeared because `https://api.nuget.org/v3/index.json` was unavailable.
+
+### 2026-06-01 - data-module-review - PAY-23 AppUser grace persistence
+
+- Agent: Codex
+- Trigger: PAY-23 adds persisted payment failure/grace state to the EF Core `AppUser` model and migration history.
+- Action: Opened/followed the data-module workflow; added nullable `PaymentFailedAt` and `PaymentGraceEndsAt`, updated EF model configuration and snapshot, and generated `AddPaymentGraceState` migration.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/AppUser.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531214813_AddPaymentGraceState.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531214813_AddPaymentGraceState.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`.
+- Verification evidence: `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: Migration application was not run against a live database; no secrets or connection strings were logged.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-23 dunning tests
+
+- Agent: Codex
+- Trigger: PAY-23 requires .NET unit/integration coverage for `invoice.payment_failed`, local grace expiry, recovery, and idempotent replay.
+- Action: Opened/followed the .NET backend testing workflow; added xUnit coverage in the existing SQLite-backed `StripeEventServiceTests` with hand-written fakes for notifications and billing portal sessions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln --filter StripeEventServiceTests --no-restore` passed 24/24; `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: No real email, Stripe charge, deployment, push, or PR was performed.
+
 ### 2026-05-25 - system-spec-synthesis - Corrected smoke 10 eval and pipeline split
 
 - Agent: Codex

@@ -35,6 +35,26 @@ The operator completes these in the Stripe dashboard once. Codex does not touch 
 
 Verification: after the steps, make a test Stripe sandbox checkout (M0-006 already documents test mode) and confirm the receipt email arrives with the right `From:` and a working customer portal link.
 
+### 3.1 Dunning and renewal retry timeline
+
+Pro API is the only subscription SKU. Stripe owns payment collection, Smart Retries, invoices, receipts, refunds, and any Stripe-native failed-payment customer emails configured in the Stripe dashboard. Reply In My Voice adds only product-state notifications that Stripe cannot know about: whether the account is in our paid grace state, whether access has been paused after grace, and whether a failed renewal has recovered.
+
+| Moment | Stripe-native customer email | Reply In My Voice notification | Product state |
+|---|---|---|---|
+| Renewal payment fails (`invoice.payment_failed`) | Stripe may send its configured failed-payment email and retry schedule. | Send "Payment did not go through" with a Stripe billing portal link. | Set subscription status to `PastDue`, record `PaymentFailedAt`, set `PaymentGraceEndsAt`, and keep Pro API quota during grace. |
+| Stripe retry succeeds (`invoice.payment_succeeded`) | Stripe may send its configured successful-payment receipt. | Send "Your subscription is active again" when the user was in grace. | Clear grace timestamps and restore `Active`. |
+| Grace expires locally | None. | Send "Your subscription is paused". | Clear grace timestamps and downgrade to `Inactive`. |
+| Stripe sends terminal subscription state (`unpaid` or `canceled`) while in grace | Stripe may send invoice/subscription lifecycle emails depending on dashboard settings. | Send "Your subscription is paused" once for the webhook event. | Clear grace timestamps and downgrade to `Inactive` or `Canceled` per Stripe status. |
+
+Do not manually send additional failed-payment follow-ups when Stripe failed-payment emails are enabled. Use the app notification as the product-state notice only, and route users to the billing portal for card updates.
+
+Operational invariants:
+
+- `PastDue` is the only paid grace state. It keeps Pro API quota active and requires `PaymentFailedAt` plus `PaymentGraceEndsAt`.
+- `Inactive` and `Canceled` are non-paying states. Local grace expiry moves `PastDue` to `Inactive`; Stripe terminal `unpaid` and `canceled` states clear grace and use the matching downgraded status.
+- Replayed Stripe webhook event IDs must not resend notifications or reapply state changes.
+- A late recovery can restore `Active` only from `PastDue`; terminal states are not reactivated by a stale success event.
+
 ## 4. Auto-reply template
 
 Configure the auto-reply at `info@timeawake.co.nz` to fire on every inbound message. Keep it short.
@@ -146,4 +166,4 @@ If an inbound email indicates a security issue (account takeover claim, suspecte
 
 ---
 
-Last verified: 2026-05-22 (M7-004 documentation pass — operator still to perform Stripe dashboard config in §3).
+Last verified: 2026-06-01 (PAY-23 dunning timeline documented; operator still to perform Stripe dashboard config in §3).
