@@ -2158,6 +2158,33 @@ claude-heavy-planning-handoff
 - Verification evidence: Red run failed on missing notification namespace/contracts. Focused green run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter NotificationServiceTests` passed 3/3. Full `cd backend-dotnet && dotnet test` passed 407/407.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. Tests do not send real email; the provider-enabled test only resolves the DI type.
 
+### 2026-06-01 - ui-browser-testing - PAY-06 payment E2E
+
+- Agent: Codex
+- Trigger: GitHub issue #383/PAY-06 requires Playwright E2E coverage for pricing checkout, signed payment webhooks, `/app` balance, refund clawback, and anonymous checkout redirect behavior.
+- Action: Opened and followed the skill; added a focused Playwright spec with signed session cookies, a local payment test API, mocked Stripe Checkout URL, signed webhook delivery through the Next.js `/api/stripe/webhook` route, `/app` balance assertions, and skip behavior when the payment webhook signing env name is absent.
+- Output artifacts: `tests/e2e/payment-flow.spec.ts`; `tests/e2e/payment-flow-mock-api.ts`; `playwright.config.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run typecheck` passed. `npm run test` passed 298/298. `npm run lint` passed. `git diff --check` passed. Banned-term grep over `app components public lib` returned no matches. `npx playwright test tests/e2e/payment-flow.spec.ts --project=chromium` passed in absent-config mode with 2 skipped. A standalone HTTP smoke against `tests/e2e/payment-flow-mock-api.ts` verified signed checkout webhook grant from 3 to 13 and signed full refund clawback from 13 to 3.
+- Limitations: Browser-executed Playwright remains blocked in this macOS sandbox by Chromium `MachPortRendezvousServer` permission failure before page assertions execute. `PAYMENT_E2E_STRIPE_WEBHOOK_SECRET=... npx playwright test tests/e2e/payment-flow.spec.ts --project=chromium` and `npm run test:e2e` both failed for that launch reason, not from route assertions. The E2E uses a local payment test API and does not call Stripe or create a live payment.
+
+### 2026-06-01 - state-machine-modeling - PAY-06 checkout grant and refund clawback
+
+- Agent: Codex
+- Trigger: PAY-06 tests payment and quota lifecycle transitions: signed-out checkout redirect, signed checkout completion grant, and refund clawback.
+- Action: Opened and followed the skill; modeled the tested lifecycle as signed-out pricing click, signed-in free balance, checkout URL emitted without grant, signed `checkout.session.completed` grant, signed `charge.refunded` clawback, and duplicate-event safe handling in the local payment test API.
+- Output artifacts: `tests/e2e/payment-flow.spec.ts`; `tests/e2e/payment-flow-mock-api.ts`.
+- Verification evidence: The Playwright spec asserts no balance change before webhook, grant to 13 after Quick Pack completion, and clawback to 3 after full refund. The standalone signed-webhook HTTP smoke passed those same state transitions without browser execution.
+- Limitations: No production state machine, EF model, migration, or backend service code was changed.
+
+### 2026-06-01 - resilience-test-generation - PAY-06 signed webhook E2E resilience
+
+- Agent: Codex
+- Trigger: PAY-06 adds tests around signed payment webhook delivery and refund accounting, which overlaps webhook replay and payment-provider safety rules.
+- Action: Opened and followed the skill; kept the payment flow hermetic, avoided live Stripe calls, required a signing env name for the payment E2E, verified webhook signatures in the local test API, and included duplicate-event dedupe in the test API state.
+- Output artifacts: `tests/e2e/payment-flow.spec.ts`; `tests/e2e/payment-flow-mock-api.ts`; `playwright.config.ts`.
+- Verification evidence: Absent-config Playwright run skipped the spec cleanly. The signed-webhook HTTP smoke passed checkout grant and refund clawback. Full unit tests, typecheck, lint, and diff checks passed.
+- Limitations: Browser-backed Playwright assertions could not execute in this sandbox because Chromium launch is blocked. The new E2E does not depend on Stripe CLI, Stripe network calls, or live payment keys.
+
 ### 2026-06-01 - ui-browser-testing - PAY-07 admin UI
 
 - Agent: Codex
