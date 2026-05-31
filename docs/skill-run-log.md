@@ -2013,3 +2013,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.Eval/StageOneEnToZhSafePilot.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StageOneEnToZhSafePilotTests.cs`; `docs/rewrite-eval-results/20260528-142745-stage1-en-zh-pilot.md`; `docs/rewrite-strategy-memory.md`; `docs/skill-run-log.md`.
 - Verification evidence: Focused TDD tests failed before implementation, then passed. Focused Stage 1 suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter "FullyQualifiedName~StageOneEnToZhSafePilotTests"` (41 tests). Full suite passed with `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo` (312 tests). `git diff --check` passed. Source banned-term scan found no matches. Real provider 30-case run used Youdao calls 30 and DeepSeek calls 82; all 30 cases passed, final fact summary remained 241/241 preserved, and final failure breakdown was none.
 - Limitations: The structured glossary remains eval-only and in-memory. It does not add a persistent production glossary store, tenant/domain management UI, migration, placeholders, GPTZero, English back-translation, or stronger Chinese repair prompt.
+
+### 2026-05-31 - cloud-architecture-cost-review - Entra External ID tenant clarification
+
+- Agent: Codex
+- Trigger: Owner asked why the local Azure CLI tenant `53d7668e-c994-4634-8c4d-ff116a03c0b9` could not be used instead of the configured CIAM tenant, and whether a new tenant was required.
+- Action: Opened and followed the skill for an identity architecture/cost gate only; read `docs/manual-setup.md` and `docs/next-development-brief.md`, checked the Azure CLI default tenant and tenant list, then used a read-only Microsoft Graph token for the configured CIAM tenant to inspect the frontend app registration.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: `az account show` reported default tenant `53d7668e-c994-4634-8c4d-ff116a03c0b9`; `az account tenant list` also showed the configured CIAM tenant `614ea821-6ef3-43e2-8613-d4b13fae115d`; Microsoft Graph read of app id `02ffae8e-3d30-42d0-86cd-9b858ab33252` returned display name `Reply In My Voice Frontend`, `isFallbackPublicClient: true`, production/local callback URLs, and beta `nativeAuthenticationApisEnabled: all`.
+- Limitations: User-flow and identity-provider reads failed without delegated Graph permissions such as `IdentityUserFlow.Read.All` and `IdentityProvider.Read.All`, so email/password, email OTP, reset, and Google provider status still require portal confirmation or additional Graph consent. No Azure or Entra resources were created or modified.
+
+### 2026-05-31 - cloud-architecture-cost-review - CIAM tenant readiness for email auth E2E
+
+- Agent: Codex
+- Trigger: Owner asked whether the existing `info@timeawake.co.nz` accessible tenant can complete the remaining Entra External ID setup and when email-code/logout/reset end-to-end testing can run.
+- Action: Opened and followed the skill for an identity architecture/cost gate only; used read-only Graph and native-auth probes against the configured CIAM tenant without creating or modifying resources.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Microsoft Graph `/me` in tenant `614ea821-6ef3-43e2-8613-d4b13fae115d` returned `info_timeawake.co.nz#EXT#@replyinmyvoicecustomers.onmicrosoft.com` as `Member`; `/me/memberOf` returned `Global Administrator`; `/organization` returned display name `Reply In My Voice Customers` and tenant type `CIAM`. Direct native-auth sign-in/reset probes for nonexistent addresses returned `user_not_found` instead of client/tenant/native-auth configuration errors. The production logout endpoint returned 307 to `/` and cleared `rimv_session`, `rimv_oauth`, and access-token cookies.
+- Limitations: Registration start was intentionally not triggered because it sends a real verification email. User-flow and identity-provider portal screens were not changed.
+
+### 2026-05-31 - ui-browser-testing - Production auth pages readiness check
+
+- Agent: Codex
+- Trigger: Owner asked when email verification, logout, and related auth flows can be tested end to end.
+- Action: Opened and followed the skill; inspected the production sign-up, sign-in, and forgot-password pages with Playwright and used non-email-sending API probes for signed-out/native-auth behavior.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Production `/sign-up`, `/sign-in`, and `/forgot-password` each loaded with HTTP 200 and visible email fields; Playwright confirmed page titles and form visibility. Production `/api/auth/signin` with a unique nonexistent address returned `404 {"error":"user_not_found","ok":false}`. Production `/api/auth/reset/start` with a unique nonexistent address returned `404 {"error":"No account for this email. Please create one.","ok":false}`. Browser request failures observed were expected Cloudflare RUM/navigation aborts, not app route failures.
+- Limitations: The real sign-up verification-code flow, reset-code flow, authenticated `/app`, and sign-out button flow still require a live mailbox code from the owner and were not completed in this check.
