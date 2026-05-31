@@ -1,9 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-const resetPath = ["/forgot", ["pass", "word"].join("")].join("-");
-
 test("reset starts with the email step", async ({ page }) => {
-  await page.goto(resetPath);
+  await page.goto("/forgot-password");
 
   await expect(page.getByLabel("Email address")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send reset code" })).toBeVisible();

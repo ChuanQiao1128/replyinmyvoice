@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
 
 const signupFlowTtlSeconds = 10 * 60;
 const minEntryLength = 8;
-type EntryField = `pass${"word"}`;
-const entryField = ["pass", "word"].join("") as EntryField;
+type EntryField = "password";
+const entryField: EntryField = "password";
 const entryPolicyCode = `${entryField}_policy`;
 
 export async function POST(request: Request) {

@@ -115,8 +115,8 @@ function resetCookieOptions(maxAge: number) {
 }
 
 function getFlowCookieSigner() {
-  const authName = ["AUTH", "SESSION", ["SEC", "RET"].join("")].join("_");
-  const webhookName = ["STRIPE", "WEBHOOK", ["SEC", "RET"].join("")].join("_");
+  const authName = "AUTH_SESSION_SECRET";
+  const webhookName = "STRIPE_WEBHOOK_SECRET";
   return optionalEnv(authName) || optionalEnv(webhookName) || requireEnv(authName);
 }
 

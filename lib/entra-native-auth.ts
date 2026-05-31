@@ -1,16 +1,16 @@
 import { requireEnv } from "./env";
 import { getEntraAuthority } from "./entra-auth";
 
-type CredentialKey = `pass${"word"}`;
-type NewCredentialKey = `new${Capitalize<CredentialKey>}`;
-type PwdPolicyAppCode = `${CredentialKey}_policy`;
+type CredentialKey = "password";
+type NewCredentialKey = "newPassword";
+type PasswordPolicyAppCode = "password_policy";
 
 export type NativeAuthAppErrorCode =
   | "invalid_code"
   | "expired"
   | "user_not_found"
   | "user_already_exists"
-  | PwdPolicyAppCode
+  | PasswordPolicyAppCode
   | "redirect_required"
   | "rate_limited"
   | "server_error";
@@ -101,10 +101,10 @@ type NativeAuthErrorPayload = {
 
 type NativeAuthJsonObject = Record<string, unknown>;
 
-const pwdKey = ["pass", "word"].join("") as CredentialKey;
-const newPwdKey = `new${pwdKey.slice(0, 1).toUpperCase()}${pwdKey.slice(1)}` as NewCredentialKey;
-const pwdPolicyCode = `${pwdKey}_policy` as PwdPolicyAppCode;
-const credentialChallengeType = `${pwdKey} oob redirect`;
+const passwordKey: CredentialKey = "password";
+const newPasswordKey: NewCredentialKey = "newPassword";
+const passwordPolicyCode: PasswordPolicyAppCode = "password_policy";
+const credentialChallengeType = "password oob redirect";
 const oobChallengeType = "oob redirect";
 const nativeScopesPrefix = "openid offline_access email profile";
 
@@ -133,8 +133,8 @@ export function mapEntraError(
   const normalized = (code ?? "").trim().toLowerCase();
   const normalizedSuberror = (suberror ?? "").trim().toLowerCase();
 
-  if (isPwdPolicyCode(normalizedSuberror)) {
-    return pwdPolicyCode;
+  if (isPasswordPolicyCode(normalizedSuberror)) {
+    return passwordPolicyCode;
   }
 
   if (
@@ -184,17 +184,17 @@ export function mapEntraError(
 
   if (
     [
-      pwdPolicyCode,
-      `${pwdPolicyCode}_violation`,
-      `${pwdKey}_banned`,
-      `${pwdKey}_is_invalid`,
-      `${pwdKey}_recently_used`,
-      `${pwdKey}_too_long`,
-      `${pwdKey}_too_short`,
-      `${pwdKey}_too_weak`,
+      "password_policy",
+      "password_policy_violation",
+      "password_banned",
+      "password_is_invalid",
+      "password_recently_used",
+      "password_too_long",
+      "password_too_short",
+      "password_too_weak",
     ].includes(normalized)
   ) {
-    return pwdPolicyCode;
+    return passwordPolicyCode;
   }
 
   if (
@@ -256,7 +256,7 @@ export async function signupStart(
   const body: NativeAuthFetchBody = {
     challenge_type: credentialChallengeType,
     client_id: getNativeClientId(),
-    [pwdKey]: input[pwdKey],
+    password: input.password,
     username: input.email,
   };
 
@@ -318,7 +318,7 @@ async function signinWithCredential(
     },
   );
 
-  if (challengeTypes(challenged).length > 0 && !challengeTypes(challenged).includes(pwdKey)) {
+  if (challengeTypes(challenged).length > 0 && !challengeTypes(challenged).includes(passwordKey)) {
     throw new NativeAuthError({
       appCode: "redirect_required",
       entraCode: "redirect_required",
@@ -329,14 +329,14 @@ async function signinWithCredential(
   return nativeAuthFetch<NativeAuthTokenResponse>("/oauth2/v2.0/token", {
     client_id: getNativeClientId(),
     continuation_token: requireContinuationToken(challenged),
-    grant_type: pwdKey,
-    [pwdKey]: input[pwdKey],
+    grant_type: passwordKey,
+    password: input.password,
     scope: getNativeScopes(),
     username: input.email,
   });
 }
 
-export { signinWithCredential as signin\u0050assword };
+export { signinWithCredential as signinPassword };
 
 export async function resetStart(
   input: ResetStartRequest,
@@ -375,7 +375,7 @@ export async function resetSubmit(
   return nativeAuthFetch<NativeAuthContinuationResponse>(resetPath("submit"), {
     client_id: getNativeClientId(),
     continuation_token: input.continuationToken,
-    [`new_${pwdKey}`]: input[newPwdKey],
+    new_password: input[newPasswordKey],
   });
 }
 
@@ -446,21 +446,21 @@ function getNativeScopes() {
   return `${nativeScopesPrefix} ${requireEnv("NEXT_PUBLIC_ENTRA_API_SCOPE")}`;
 }
 
-function isPwdPolicyCode(code: string) {
+function isPasswordPolicyCode(code: string) {
   return [
-    `${pwdKey}_banned`,
-    `${pwdKey}_is_invalid`,
-    pwdPolicyCode,
-    `${pwdPolicyCode}_violation`,
-    `${pwdKey}_recently_used`,
-    `${pwdKey}_too_long`,
-    `${pwdKey}_too_short`,
-    `${pwdKey}_too_weak`,
+    "password_banned",
+    "password_is_invalid",
+    "password_policy",
+    "password_policy_violation",
+    "password_recently_used",
+    "password_too_long",
+    "password_too_short",
+    "password_too_weak",
   ].includes(code);
 }
 
 function resetPath(step: string) {
-  return `/reset${pwdKey}/v1.0/${step}`;
+  return `/resetpassword/v1.0/${step}`;
 }
 
 function challengeTypes(response: { challenge_type?: string }) {

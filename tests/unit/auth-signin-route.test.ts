@@ -1,13 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCookieStore, nativeAuthMocks } = vi.hoisted(() => {
-  const credentialName = ["pass", "word"].join("");
-  const signinWithCredentialName = [
-    "signin",
-    credentialName.slice(0, 1).toUpperCase(),
-    credentialName.slice(1),
-  ].join("");
-
   class MockNativeAuthError extends Error {
     readonly appCode: string;
     readonly entraCode: string | null;
@@ -29,7 +22,7 @@ const { mockCookieStore, nativeAuthMocks } = vi.hoisted(() => {
     },
     nativeAuthMocks: {
       NativeAuthError: MockNativeAuthError,
-      [signinWithCredentialName]: vi.fn(),
+      signinPassword: vi.fn(),
     },
   };
 });
@@ -45,14 +38,14 @@ import {
   sessionCookieName,
   verifySignedCookieValue,
 } from "../../lib/entra-auth";
-import { signin\u0050assword as signinWithCredential } from "../../lib/entra-native-auth";
+import { signinPassword as signinWithCredential } from "../../lib/entra-native-auth";
 
 const appUrl = "https://replyinmyvoice.com";
 const clientId = "native-client-id";
-const authEnvName = ["AUTH", "SESSION", ["SEC", "RET"].join("")].join("_");
+const authEnvName = "AUTH_SESSION_SECRET";
 const cookieSigningValue = ["unit", "session", "signing", "value"].join("-");
-type CredentialField = `pass${"word"}`;
-const credentialField = ["pass", "word"].join("") as CredentialField;
+type CredentialField = "password";
+const credentialField: CredentialField = "password";
 const credentialFixture = ["correct", "entry", "value", "123"].join(" ");
 const now = new Date("2026-05-31T00:00:00.000Z");
 
@@ -133,7 +126,7 @@ describe("sign-in route handler", () => {
       expires_in: 3600,
       id_token: unsignedJwt(),
       refresh_token: ["refresh", "fixture"].join("-"),
-      token_type: ["Be", "arer"].join(""),
+      token_type: "Bearer",
     });
 
     const response = await signIn(jsonRequest("/api/auth/signin", {

@@ -26,7 +26,7 @@ async function forwardAzureResponse(response: Response) {
   });
 }
 
-const authScheme = ["Be", "arer"].join("");
+const authScheme = "Bearer";
 
 async function currentAuthorizationHeader() {
   const accessToken = await getCurrentAccessToken();

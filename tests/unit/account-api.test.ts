@@ -19,7 +19,7 @@ import { getCurrentAccessToken } from "../../lib/entra-auth";
 const appUrl = "https://replyinmyvoice.com";
 const azureUrl = "https://rimv-api.example.test";
 const accessValue = "unit-auth-value";
-const authScheme = ["Be", "arer"].join("");
+const authScheme = "Bearer";
 
 function request(method: "DELETE" | "GET") {
   return new Request(`${appUrl}/api/me`, {

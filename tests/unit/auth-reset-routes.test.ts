@@ -53,13 +53,10 @@ import {
 } from "../../lib/entra-native-auth";
 
 const appUrl = "https://replyinmyvoice.com";
-const authEnvName = ["AUTH", "SESSION", ["SEC", "RET"].join("")].join("_");
+const authEnvName = "AUTH_SESSION_SECRET";
 const cookieSigningValue = ["unit", "session", "signing", "value"].join("-");
-type CredentialField = `pass${"word"}`;
-type NewCredentialField = `new${Capitalize<CredentialField>}`;
-const credentialField = ["pass", "word"].join("") as CredentialField;
-const newCredentialField =
-  `new${credentialField.slice(0, 1).toUpperCase()}${credentialField.slice(1)}` as NewCredentialField;
+type NewCredentialField = "newPassword";
+const newCredentialField: NewCredentialField = "newPassword";
 const newCredentialFixture = ["updated", "entry", "value", "123"].join(" ");
 const now = new Date("2026-05-31T00:00:00.000Z");
 const resetFlowCookieName = "rimv_reset";
@@ -298,7 +295,7 @@ describe("reset route handlers", () => {
     expect(decoded?.lastSentAt).toBe(Date.now());
   });
 
-  it(["no", credentialField, "in cookie"].join(" "), async () => {
+  it("no password in cookie", async () => {
     vi.mocked(resetStart).mockResolvedValueOnce({
       continuation_token: "reset-start-handle",
     });

@@ -6,8 +6,7 @@ import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from
 import styles from "./auth-panels.module.css";
 
 type AuthMode = "sign-in" | "sign-up" | "reset";
-type EntryKey = `pass${"word"}`;
-type FieldErrors = Partial<Record<"email" | EntryKey | "displayName" | "code" | "newEntry" | "confirmEntry", string>>;
+type FieldErrors = Partial<Record<"email" | "password" | "displayName" | "code" | "newEntry" | "confirmEntry", string>>;
 type JsonBody = Record<string, unknown> | null;
 
 type SignInAuthPageProps = {
@@ -26,18 +25,10 @@ type ResetAuthPageProps = {
   initialEmail?: string;
 };
 
-const entryKey = ["pass", "word"].join("") as EntryKey;
-const entryLabel = ["Pass", "word"].join("");
-const entryLower = entryLabel.toLowerCase();
 const minEntryLength = 8;
 const defaultRedirectTo = "/app";
 const defaultCodeLength = 6;
 const defaultCooldownSeconds = 30;
-const resetHref = ["/forgot", entryLower].join("-");
-const currentEntryAutoComplete = ["current", entryLower].join("-");
-const newEntryAutoComplete = ["new", entryLower].join("-");
-const resetPayloadEntryName = ["new", entryLabel].join("");
-const invalidEntryCode = ["invalid", ["cred", "entials"].join("")].join("_");
 const panelVisualStyle = {
   background: "var(--card)",
   borderColor: "var(--rule)",
@@ -95,7 +86,7 @@ export function SignInAuthPage({
 
     try {
       const response = await fetch("/api/auth/signin", {
-        body: JSON.stringify({ email, [entryKey]: entry, redirectTo: safeRedirect }),
+        body: JSON.stringify({ email, password: entry, redirectTo: safeRedirect }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -134,7 +125,7 @@ export function SignInAuthPage({
         <PanelHeader
           id="sign-in-title"
           eyebrow="Entra OAuth sign-in"
-          title={["Email and", entryLower].join(" ")}
+          title="Email and password"
           body="Enter the account details you used for Reply In My Voice."
         />
 
@@ -158,9 +149,9 @@ export function SignInAuthPage({
           />
 
           <EntryField
-            autoComplete={currentEntryAutoComplete}
-            error={fieldErrors[entryKey]}
-            label={entryLabel}
+            autoComplete="current-password"
+            error={fieldErrors.password}
+            label="Password"
             onChange={setEntry}
             showEntry={showEntry}
             toggleShowEntry={() => setShowEntry((value) => !value)}
@@ -169,8 +160,8 @@ export function SignInAuthPage({
 
           <div className={styles.formRow}>
             <span className={styles.hint}>Use at least {minEntryLength} characters.</span>
-            <Link className={styles.textLink} href={resetHref}>
-              {["Forgot ", entryLower, "?"].join("")}
+            <Link className={styles.textLink} href="/forgot-password">
+              Forgot password?
             </Link>
           </div>
 
@@ -285,7 +276,7 @@ export function ResetAuthPage({
 
     try {
       const response = await fetch("/api/auth/reset/verify", {
-        body: JSON.stringify({ code: trimmedCode, [resetPayloadEntryName]: newEntry }),
+        body: JSON.stringify({ code: trimmedCode, newPassword: newEntry }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -405,7 +396,7 @@ export function ResetAuthPage({
               />
 
               <EntryField
-                autoComplete={newEntryAutoComplete}
+                autoComplete="new-password"
                 error={fieldErrors.newEntry}
                 label="New sign-in value"
                 name="newEntry"
@@ -416,7 +407,7 @@ export function ResetAuthPage({
               />
 
               <EntryField
-                autoComplete={newEntryAutoComplete}
+                autoComplete="new-password"
                 error={fieldErrors.confirmEntry}
                 label="Confirm sign-in value"
                 name="confirmEntry"
@@ -513,7 +504,7 @@ export function SignUpAuthPage({
         body: JSON.stringify({
           displayName: displayName.trim() || undefined,
           email,
-          [entryKey]: entry,
+          password: entry,
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -665,9 +656,9 @@ export function SignUpAuthPage({
               />
 
               <EntryField
-                autoComplete={newEntryAutoComplete}
-                error={fieldErrors[entryKey]}
-                label={entryLabel}
+                autoComplete="new-password"
+                error={fieldErrors.password}
+                label="Password"
                 onChange={setEntry}
                 showEntry={showEntry}
                 toggleShowEntry={() => setShowEntry((value) => !value)}
@@ -872,7 +863,7 @@ function EntryField({
   autoComplete,
   error,
   label,
-  name = entryKey,
+  name = "password",
   onChange,
   showEntry,
   toggleShowEntry,
@@ -904,7 +895,7 @@ function EntryField({
           maxLength={128}
           name={name}
           onChange={(event) => onChange(event.currentTarget.value)}
-          type={showEntry ? "text" : entryKey}
+          type={showEntry ? "text" : "password"}
           value={value}
         />
         <button
@@ -988,7 +979,7 @@ function validateEmailEntry(email: string, entry: string) {
     errors.email = "Enter a valid email.";
   }
   if (entry.length < minEntryLength) {
-    errors[entryKey] = `Use at least ${minEntryLength} characters.`;
+    errors.password = `Use at least ${minEntryLength} characters.`;
   }
   return errors;
 }
@@ -1086,7 +1077,7 @@ function numberValue(value: unknown) {
 
 function signInErrorMessage(error: string | null) {
   switch (error) {
-    case invalidEntryCode:
+    case "invalid_credentials":
       return "Email or sign-in value is incorrect.";
     case "user_not_found":
       return "No account found for this email. Create one to continue.";

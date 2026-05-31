@@ -1,8 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-const entryLabel = ["Pass", "word"].join("");
-const recoveryLinkLabel = ["Forgot ", entryLabel.toLowerCase(), "?"].join("");
-
 test("signed-out users are sent to sign in before opening the workspace", async ({
   page,
 }) => {
@@ -16,9 +13,9 @@ test("sign-in offers email entry and Google options", async ({
   await page.goto("/sign-in");
 
   await expect(page.getByLabel("Email address")).toBeVisible();
-  await expect(page.getByLabel(entryLabel, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("link", { name: recoveryLinkLabel }),
+    page.getByRole("link", { name: "Forgot password?" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Continue with Google" }),
@@ -31,7 +28,7 @@ test("sign-up starts with email and entry fields", async ({ page }) => {
   await page.goto("/sign-up");
 
   await expect(page.getByLabel("Email address")).toBeVisible();
-  await expect(page.getByLabel(entryLabel, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   await expect(page.getByText("Email code sign-in")).toHaveCount(0);
   await expect(page.getByText("Continue with email code")).toHaveCount(0);
 });
