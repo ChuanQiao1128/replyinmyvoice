@@ -14,7 +14,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
+    command:
+      "WATCHPACK_POLLING=true AUTH_SESSION_SECRET=playwright-admin-session-secret ADMIN_EMAILS=admin@example.test npm run dev",
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

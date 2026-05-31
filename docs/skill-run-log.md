@@ -2157,3 +2157,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/NotificationServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Notifications/*`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`.
 - Verification evidence: Red run failed on missing notification namespace/contracts. Focused green run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter NotificationServiceTests` passed 3/3. Full `cd backend-dotnet && dotnet test` passed 407/407.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. Tests do not send real email; the provider-enabled test only resolves the DI type.
+
+### 2026-06-01 - ui-browser-testing - PAY-07 admin UI
+
+- Agent: Codex
+- Trigger: PAY-07 adds frontend admin pages, admin proxy routes, forms, auth gating, and Playwright coverage.
+- Action: Opened and followed the skill; added `/admin` and `/admin/users/[userId]` pages, browser-facing admin components, same-origin bearer proxy routes under `/api/admin/*`, unit proxy tests, and `tests/e2e/admin.spec.ts` for admin and non-admin flows.
+- Output artifacts: `app/admin/*`; `app/api/admin/*`; `components/admin/*`; `lib/admin-api-proxy.ts`; `lib/admin-auth.ts`; `lib/admin-types.ts`; `tests/unit/admin-api-routes.test.ts`; `tests/e2e/admin.spec.ts`; `playwright.config.ts`.
+- Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `git diff --check`, and banned-term grep over `app components public lib` passed. The admin route unit test passed 3/3. Dev-server HTTP checks returned 200 for an admin session and rendered the expected denied view for a non-admin session.
+- Limitations: Local Playwright Chromium could not launch in this macOS sandbox (`MachPortRendezvousServer` permission denied), so `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before executing page assertions. The Browser plugin was attempted but `iab` was unavailable in this session.
