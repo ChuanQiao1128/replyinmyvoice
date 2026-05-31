@@ -15,11 +15,13 @@ describe("middleware", () => {
     const res = middleware(req("/app"));
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("/sign-in");
-    expect(res.headers.get("location")).toContain("redirect_to=%2Fapp");
+    expect(res.headers.get("location")).toContain("redirectTo=%2Fapp");
+    expect(res.headers.get("location")).not.toContain("redirect_to=");
   });
   it("redirects unauthed /app/foo", () => {
     const res = middleware(req("/app/foo"));
-    expect(res.headers.get("location")).toContain("redirect_to=%2Fapp%2Ffoo");
+    expect(res.headers.get("location")).toContain("redirectTo=%2Fapp%2Ffoo");
+    expect(res.headers.get("location")).not.toContain("redirect_to=");
   });
   it("allows authed /app", () => {
     const res = middleware(req("/app", true));

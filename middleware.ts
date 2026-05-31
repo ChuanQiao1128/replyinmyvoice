@@ -18,7 +18,7 @@ export function middleware(request: NextRequest) {
   if (matchesPrefix(pathname, PROTECTED_PAGES)) {
     if (hasCookie(request)) return NextResponse.next();
     const url = new URL("/sign-in", request.url);
-    url.searchParams.set("redirect_to", pathname);
+    url.searchParams.set("redirectTo", pathname);
     return NextResponse.redirect(url, 307);
   }
   return NextResponse.next();

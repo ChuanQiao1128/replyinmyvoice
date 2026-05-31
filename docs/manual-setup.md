@@ -48,7 +48,7 @@ AZURE_APPLICATION_INSIGHTS_NAME=replyinmyvoice-ai-dev
 AZURE_SQL_SERVER_NAME=replyinmyvoice-sql-dev
 AZURE_SQL_DATABASE_NAME=replyinmyvoice-db-dev
 AZURE_SQL_ADMIN_USER=
-AZURE_SQL_ADMIN_PASSWORD=
+AZURE_SQL_ADMIN_password=
 AZURE_SQL_CONNECTION_STRING=
 
 AZURE_SERVICE_BUS_NAMESPACE=
@@ -66,7 +66,7 @@ AZURE_EXTERNAL_ID_WELL_KNOWN_URL=
 AZURE_EXTERNAL_ID_SIGN_IN_FLOW_NAME=
 
 GOOGLE_CLIENT_ID_FOR_ENTRA=
-GOOGLE_CLIENT_SECRET_FOR_ENTRA=
+GOOGLE_CLIENT_secret_FOR_ENTRA=
 
 NEXT_PUBLIC_AZURE_API_BASE_URL=https://replyinmyvoice-func-dev.azurewebsites.net
 NEXT_PUBLIC_ENTRA_AUTHORITY=
@@ -80,7 +80,7 @@ Dashboard steps:
 2. Create a frontend app registration for `replyinmyvoice.com`.
 3. Create an API app registration for the Azure Functions backend and expose one API scope.
 4. Create a sign-up/sign-in user flow and attach the frontend app.
-5. In the same Entra External ID user flow, enable email one-time passcode / email verification as a local account sign-up and sign-in method.
+5. Configure Entra External ID native authentication for email + local account sign-in as described in the Phase-0 checklist below.
 6. In Google Cloud Console, create a Google OAuth web app for Entra federation.
 7. Add `replyinmyvoice.com` to Google OAuth consent screen authorized domains if required.
 8. Add the exact redirect URI shown by Entra External ID when configuring Google federation.
@@ -88,13 +88,55 @@ Dashboard steps:
 10. Add the Google client id/secret to Entra External ID identity providers.
 11. Select Google in the Entra user flow.
 
-Email code sign-in behavior:
+### Entra External ID -- Native Email + Local Account
+
+Phase-0 owner checklist:
+
+1. In the frontend app registration matching `NEXT_PUBLIC_ENTRA_CLIENT_ID`, open **Authentication** and set **Allow public client flows** to **Yes**.
+2. In the same app registration, enable **native authentication**.
+3. Confirm the frontend app is attached to the customer sign-up/sign-in user flow.
+4. In the user flow, enable email plus local account sign-in for local account sign-up and sign-in.
+5. In the user flow, enable **Email one-time passcode** for email verification and account reset flows.
+6. Enable self-service account reset for the user flow.
+7. Confirm whether the user flow requires attributes such as display name. If it does, the native sign-up UI must collect them before launch.
+8. Keep Google as a hosted browser redirect through Entra. Native authentication does not replace the social sign-in path.
+9. Add `http://localhost:3000/auth/callback` to the Entra/Google redirect configuration for local Google testing.
+10. Confirm the API app scope copied into `NEXT_PUBLIC_ENTRA_API_SCOPE` is consented for the frontend app.
+
+Native email + local account behavior:
 
 ```text
-The app does not generate, store, or validate one-time email codes itself.
-The sign-in page sends the user's email as `login_hint` to Entra External ID.
-Entra External ID sends and verifies the email code inside the hosted user flow.
-After callback, `/api/me` in the .NET/Azure API upserts the verified Entra subject and email into Azure SQL through AccountService.
+The app hosts the email + local account screens.
+The Next.js route handlers call Entra native authentication endpoints server-side.
+Sign-up uses email plus local account sign-in, then Email one-time passcode for email verification.
+Account reset uses Email one-time passcode plus a replacement sign-in value.
+Google remains on the existing Entra hosted redirect flow.
+After tokens are issued, the existing `rimv_session` cookie and `/api/me` upsert path remain unchanged.
+Do not log or commit user-entered values or continuation values.
+```
+
+Token compatibility manual check:
+
+```text
+Status: needs_manual_verify.
+Reason: local `az` is signed into a different tenant than the active Entra External ID tenant.
+Owner action: after native authentication is enabled, sign in with a test account and decode the resulting JWT offline.
+Command: node scripts/verify-token-compat.mjs --token "<jwt>"
+Expected review: compare `aud`, `iss`, and `scp` / `scope` with `NEXT_PUBLIC_ENTRA_AUTHORITY`, `NEXT_PUBLIC_ENTRA_API_SCOPE`, and the .NET API validation settings.
+If the claims do not match, adjust the requested scope or Entra API audience configuration. Do not weaken backend token validation.
+```
+
+Production rate-limit requirement:
+
+```text
+The Next.js auth routes include a best-effort in-process limiter for local and single-instance protection on:
+- POST /api/auth/signin
+- POST /api/auth/signup/start
+- POST /api/auth/signup/resend
+- POST /api/auth/reset/start
+- POST /api/auth/reset/resend
+
+Because the production app runs on Cloudflare Workers, cross-instance abuse protection must also be enforced with Cloudflare WAF rate-limit rules for those paths. Use per-IP rules and, where available, request-body/email-aware controls or bot-management signals. Keep the route handlers' local limiter enabled as defense-in-depth.
 ```
 
 Reference:
@@ -147,14 +189,14 @@ Set production runtime variables/secrets for the Worker. Public app backend call
 Legacy Clerk/Neon variables may remain in the dashboard while old admin/library code is cleaned up, but public `/app`, rewrite, billing, webhook, and DB health routes should not depend on them after the 2026-05-23 cutover:
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
+- `CLERK_secret_KEY`
 - `NEXT_PUBLIC_CLERK_SIGN_IN_URL`
 - `NEXT_PUBLIC_CLERK_SIGN_UP_URL`
 - `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`
 - `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL`
 - `DATABASE_URL`
 - `DIRECT_URL`
-- `OPENAI_API_KEY`
+- `OPENAI_api_key`
 - `OPENAI_MODEL`
 - `OPENAI_MODEL_PRIMARY`
 - `OPENAI_MODEL_REPAIR`
@@ -171,12 +213,12 @@ Legacy Clerk/Neon variables may remain in the dashboard while old admin/library 
 - `OPENAI_PRICE_STRONG_INPUT_PER_1M`
 - `OPENAI_PRICE_STRONG_OUTPUT_PER_1M`
 - `OPENAI_TIMEOUT_SEC`
-- `STRIPE_SECRET_KEY`
+- `STRIPE_secret_KEY`
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `STRIPE_PRICE_ID`
-- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_WEBHOOK_secret`
 - `WRITING_SIGNAL_PROVIDER`
-- `SAPLING_API_KEY`
+- `SAPLING_api_key`
 - `WRITING_SIGNAL_TIMEOUT_SEC`
 - `REWRITE_LEARNING_LOG_ENABLED`
 - `REWRITE_COST_LOG_ENABLED`
@@ -202,7 +244,7 @@ Launch update on 2026-05-18:
 
 - Worker `replyinmyvoice-app` has the required runtime secret names configured.
 - `NODE_ENV` was corrected to `production` in Worker secrets.
-- Secret values were not printed or committed.
+- secret values were not printed or committed.
 
 ## Internal Admin Dashboard
 
@@ -327,4 +369,4 @@ verified end to end.
 
 ## Clerk removal — rollback notes (M1-012)
 
-The legacy `CLERK_*` env variables (`ADMIN_CLERK_USER_IDS`, `CLERK_SECRET_KEY` fallback) were removed in M1-012. The User model's `clerkUserId` field is still in the Prisma schema and will be renamed to `entra_user_id` in M1-007. If rollback is needed, restore the legacy env names from commit ba8127a.
+The legacy `CLERK_*` env variables (`ADMIN_CLERK_USER_IDS`, `CLERK_secret_KEY` fallback) were removed in M1-012. The User model's `clerkUserId` field is still in the Prisma schema and will be renamed to `entra_user_id` in M1-007. If rollback is needed, restore the legacy env names from commit ba8127a.

@@ -12,9 +12,20 @@ export async function GET(request: Request) {
     response.headers.set("Location", `${getAppUrl()}${result.redirectTo}`);
     return response;
   } catch (error) {
+    const errorCode = callbackErrorCode(request.url);
     console.error("entra_callback_failed", {
-      message: error instanceof Error ? error.message : "Unknown callback failure",
+      error: errorCode,
+      kind: error instanceof Error ? error.name : "UnknownCallbackFailure",
     });
-    return NextResponse.redirect(`${getAppUrl()}/sign-in?error=callback`);
+    return NextResponse.redirect(`${getAppUrl()}/sign-in?error=${errorCode}`);
+  }
+}
+
+function callbackErrorCode(requestUrl: string) {
+  try {
+    const providerError = new URL(requestUrl).searchParams.get("error");
+    return providerError === "access_denied" ? "access_denied" : "callback";
+  } catch {
+    return "callback";
   }
 }

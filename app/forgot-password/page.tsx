@@ -1,24 +1,24 @@
-import { SignUpAuthPage } from "@/components/auth/google-oauth-card";
+import { ResetAuthPage } from "@/components/auth/google-oauth-card";
 
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Sign up",
-  description: "Create your Reply In My Voice account with email or Google.",
+  title: "Reset sign-in",
+  description: "Reset your Reply In My Voice account sign-in value.",
 };
 
-type SignUpPageProps = {
+type ResetPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function SignUpPage({ searchParams }: SignUpPageProps) {
+export default async function ResetPage({
+  searchParams,
+}: ResetPageProps) {
   const params = await searchParams;
-  const redirectTo = firstParam(params?.redirectTo) ?? "/app";
 
   return (
-    <SignUpAuthPage
+    <ResetAuthPage
       initialEmail={firstParam(params?.email) ?? ""}
-      redirectTo={redirectTo}
     />
   );
 }
