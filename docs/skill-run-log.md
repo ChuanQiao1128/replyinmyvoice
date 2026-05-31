@@ -2139,3 +2139,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`.
 - Verification evidence: Red run: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter "FullyQualifiedName~StripeEventServiceTests"` failed on the missing invoice failure log. Green runs: the same focused command passed 20/20, and `cd backend-dotnet && dotnet test` passed 404/404. `git diff --check` passed.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - cloud-architecture-cost-review - PAY-19 notification provider choice
+
+- Agent: Codex
+- Trigger: PAY-19 explicitly requires cloud-architecture-cost-review before adding transactional notification infrastructure.
+- Action: Opened and followed the skill; compared Azure Communication Services Email, SendGrid, and Resend for a low-traffic Azure Functions backend. Selected Resend because it can be configured behind existing runtime env names without creating a new Azure resource or adding an uncached NuGet dependency in this worktree.
+- Output artifacts: `plans/decisions-log.md`; `.env.example`; `backend-dotnet/src/ReplyInMyVoice.Functions/local.settings.example.json`; `docs/manual-setup.md`.
+- Verification evidence: Provider decision recorded in `plans/decisions-log.md`; runtime config is opt-in via `NOTIFICATIONS_PROVIDER=resend`; missing/disabled config logs a no-op and does not throw. No paid resource, deployment, dashboard action, or real email send was performed.
+- Limitations: Exact provider pricing was not quoted or checked because no paid-resource action was taken. Resend requires a valid runtime key and verified sender/domain outside source control before real email can be sent.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-19 notification tests
+
+- Agent: Codex
+- Trigger: PAY-19 adds C#/.NET notification infrastructure and requires xUnit coverage for fake provider invocation and missing-config no-op behavior.
+- Action: Opened and followed the skill; wrote failing notification tests first, then added `INotificationService`, typed templates, a fake-provider unit test path, no-op fallback, Resend provider wiring, and DI registration.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/NotificationServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Notifications/*`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`.
+- Verification evidence: Red run failed on missing notification namespace/contracts. Focused green run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter NotificationServiceTests` passed 3/3. Full `cd backend-dotnet && dotnet test` passed 407/407.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. Tests do not send real email; the provider-enabled test only resolves the DI type.

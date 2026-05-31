@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Services;
@@ -61,9 +62,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<StripeEventService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
+        services.AddScoped<INotificationService, NotificationService>();
         services.AddHttpClient();
         services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleRewriteModelClient));
         services.AddResilientProviderHttpClient(nameof(SaplingWritingSignalClient));
+        services.AddHttpClient(nameof(ResendNotificationEmailProvider));
+        services.AddSingleton<INotificationEmailProvider>(sp =>
+            CreateNotificationEmailProvider(configuration, sp));
 
         var serviceBusConnection = configuration.GetConnectionString("ServiceBus")
             ?? configuration["ServiceBus"]
@@ -179,6 +184,45 @@ public static class ServiceCollectionExtensions
 
     private static IHttpClientBuilder AddResilienceHandler(this IHttpClientBuilder builder) =>
         builder.AddHttpMessageHandler(() => new ProviderHttpResilienceHandler());
+
+    private static INotificationEmailProvider CreateNotificationEmailProvider(
+        IConfiguration configuration,
+        IServiceProvider serviceProvider)
+    {
+        var configuredProvider = configuration["NOTIFICATIONS_PROVIDER"];
+        var normalizedProvider = (configuredProvider ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedProvider) ||
+            normalizedProvider is "disabled" or "none" or "noop")
+        {
+            return new NoOpNotificationEmailProvider(
+                "provider_disabled",
+                serviceProvider.GetRequiredService<ILogger<NoOpNotificationEmailProvider>>());
+        }
+
+        if (normalizedProvider != "resend")
+        {
+            return new NoOpNotificationEmailProvider(
+                "unsupported_provider",
+                serviceProvider.GetRequiredService<ILogger<NoOpNotificationEmailProvider>>());
+        }
+
+        var apiKey = configuration["RESEND_API_KEY"];
+        var fromEmail = configuration["NOTIFICATIONS_FROM_EMAIL"];
+        if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(fromEmail))
+        {
+            return new NoOpNotificationEmailProvider(
+                "missing_resend_config",
+                serviceProvider.GetRequiredService<ILogger<NoOpNotificationEmailProvider>>());
+        }
+
+        var clientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+        return new ResendNotificationEmailProvider(
+            clientFactory.CreateClient(nameof(ResendNotificationEmailProvider)),
+            apiKey,
+            fromEmail,
+            configuration["NOTIFICATIONS_REPLY_TO_EMAIL"],
+            serviceProvider.GetRequiredService<ILogger<ResendNotificationEmailProvider>>());
+    }
 
     public static void ValidateReplyInMyVoiceRuntimeConfiguration(
         this IConfiguration configuration,
