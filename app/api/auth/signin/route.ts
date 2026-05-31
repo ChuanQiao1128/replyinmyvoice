@@ -5,7 +5,7 @@ import {
 } from "../../../../lib/entra-auth";
 import {
   NativeAuthError,
-  signin\u0050assword as signinWithCredential,
+  signinPassword as signinWithCredential,
 } from "../../../../lib/entra-native-auth";
 import { getAppUrl } from "../../../../lib/env";
 import { requireSameOrigin } from "../../../../lib/http";
@@ -13,8 +13,8 @@ import { requireSameOrigin } from "../../../../lib/http";
 export const dynamic = "force-dynamic";
 
 const minCredentialLength = 8;
-type CredentialField = `pass${"word"}`;
-const credentialField = ["pass", "word"].join("") as CredentialField;
+type CredentialField = "password";
+const credentialField: CredentialField = "password";
 
 export async function POST(request: Request) {
   const originError = requireSameOrigin(request);

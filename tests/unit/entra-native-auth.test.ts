@@ -17,25 +17,25 @@ import {
   resetPoll,
   resetStart,
   resetSubmit,
-  signin\u0050assword as signinWithCredential,
+  signinPassword as signinWithCredential,
   signupChallenge,
   signupContinue,
   signupStart,
 } from "../../lib/entra-native-auth";
 
-type CredentialKey = `pass${"word"}`;
-type NewCredentialKey = `new${Capitalize<CredentialKey>}`;
+type CredentialKey = "password";
+type NewCredentialKey = "newPassword";
 
 const authority = "https://login.example.test/tenant/v2.0";
 const nativeBase = "https://login.example.test/tenant";
 const clientId = "native-client-id";
 const apiScope = "api://native-client-id/access_as_user";
-const pwdInputKey = ["pass", "word"].join("") as CredentialKey;
-const newPwdInputKey = `new${pwdInputKey.slice(0, 1).toUpperCase()}${pwdInputKey.slice(1)}` as NewCredentialKey;
-const pwdPolicyAppCode = `${pwdInputKey}_policy`;
-const authScheme = ["Be", "arer"].join("");
-const privateClientParam = ["client", "sec", "ret"].join("_");
-const resetPrefix = `reset${pwdInputKey}`;
+const pwdInputKey: CredentialKey = "password";
+const newPwdInputKey: NewCredentialKey = "newPassword";
+const pwdPolicyAppCode = "password_policy";
+const authScheme = "Bearer";
+const privateClientParam = "client_secret";
+const resetPrefix = "resetpassword";
 
 function fetchMock() {
   return vi.mocked(fetch);

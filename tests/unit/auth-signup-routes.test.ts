@@ -49,9 +49,9 @@ import { signupChallenge, signupContinue, signupStart } from "../../lib/entra-na
 
 const appUrl = "https://replyinmyvoice.com";
 const clientId = "native-client-id";
-type EntryField = `pass${"word"}`;
-const entryField = ["pass", "word"].join("") as EntryField;
-const authEnvName = ["AUTH", "SESSION", ["SEC", "RET"].join("")].join("_");
+type EntryField = "password";
+const entryField: EntryField = "password";
+const authEnvName = "AUTH_SESSION_SECRET";
 const cookieSigningValue = ["unit", "session", "signing", "value"].join("-");
 const entryFixture = ["fixture", "entry", "value", "123"].join(" ");
 const now = new Date("2026-05-31T00:00:00.000Z");
@@ -177,7 +177,7 @@ describe("sign-up route handlers", () => {
     expect(setCookieHeader(response)).toContain("HttpOnly");
   });
 
-  it(["no", entryField, "in cookie"].join(" "), async () => {
+  it("no password in cookie", async () => {
     vi.mocked(signupStart).mockResolvedValueOnce({
       continuation_token: "signup-start-handle",
     });
@@ -219,7 +219,7 @@ describe("sign-up route handlers", () => {
         expires_in: 3600,
         id_token: unsignedJwt(),
         refresh_token: ["refresh", "fixture"].join("-"),
-        token_type: ["Be", "arer"].join(""),
+        token_type: "Bearer",
       },
     });
 

@@ -18,11 +18,10 @@ export const dynamic = "force-dynamic";
 
 const minNewCredentialLength = 8;
 const maxPollAttempts = 5;
-type CredentialField = `pass${"word"}`;
-type NewCredentialField = `new${Capitalize<CredentialField>}`;
-const credentialField = ["pass", "word"].join("") as CredentialField;
-const newCredentialField =
-  `new${credentialField.slice(0, 1).toUpperCase()}${credentialField.slice(1)}` as NewCredentialField;
+type CredentialField = "password";
+type NewCredentialField = "newPassword";
+const credentialField: CredentialField = "password";
+const newCredentialField: NewCredentialField = "newPassword";
 const credentialPolicyCode = `${credentialField}_policy`;
 const successNext = "/sign-in?reset=success";
 const resetFlowCookieName = "rimv_reset";
@@ -170,8 +169,8 @@ function resetCookieOptions(maxAge: number) {
 }
 
 function getFlowCookieSigner() {
-  const authName = ["AUTH", "SESSION", ["SEC", "RET"].join("")].join("_");
-  const webhookName = ["STRIPE", "WEBHOOK", ["SEC", "RET"].join("")].join("_");
+  const authName = "AUTH_SESSION_SECRET";
+  const webhookName = "STRIPE_WEBHOOK_SECRET";
   return optionalEnv(authName) || optionalEnv(webhookName) || requireEnv(authName);
 }
 
