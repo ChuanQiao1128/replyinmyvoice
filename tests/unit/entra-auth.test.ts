@@ -26,6 +26,12 @@ import {
 } from "../../lib/entra-auth";
 
 const authority = "https://login.example.test/tenant/v2.0";
+const ciamAliasAuthority =
+  "https://replyinmyvoicecustomers.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0";
+const ciamMetadataIssuer =
+  "https://614ea821-6ef3-43e2-8613-d4b13fae115d.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0";
+const ciamJwksUrl =
+  "https://replyinmyvoicecustomers.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/discovery/v2.0/keys";
 const clientId = "reply-api-client";
 const requiredScope = "rewrite.use";
 const jwksUrl = "https://login.example.test/tenant/discovery/v2.0/keys";
@@ -102,7 +108,7 @@ function mockJwksEndpoint() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string | URL | Request) => {
-      expect(String(url)).toBe(jwksUrl);
+      expect([jwksUrl, ciamJwksUrl]).toContain(String(url));
       return Response.json({ keys: [publicJwk] });
     }),
   );
@@ -302,6 +308,23 @@ describe("Entra auth helpers", () => {
     ).rejects.toThrow("Invalid Entra identity token.");
 
     expect(mockCookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("mints a session when CIAM alias authority returns the canonical metadata issuer", async () => {
+    process.env.NEXT_PUBLIC_ENTRA_AUTHORITY = ciamAliasAuthority;
+
+    const session = await createSessionFromTokens({
+      idToken: signedToken({ iss: ciamMetadataIssuer }),
+      accessToken: unsignedToken(),
+    });
+
+    expect(session).toMatchObject({
+      email: "casey@example.com",
+      name: "Casey Rivera",
+      sub: "entra-subject-1",
+    });
+    expect(mockCookieStore.set.mock.calls.some(([name]) => name === sessionCookieName))
+      .toBe(true);
   });
 
   it("mints a session from a validly signed identity token", async () => {

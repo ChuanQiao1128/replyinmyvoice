@@ -293,6 +293,26 @@ function getConfiguredEntraAuthority() {
   return authority || null;
 }
 
+function validIdentityTokenIssuers(authority: string) {
+  const issuers = new Set([authority.replace(/\/$/, "")]);
+
+  try {
+    const url = new URL(authority);
+    const [, tenantId, version] = url.pathname.split("/");
+    if (
+      url.hostname.endsWith(".ciamlogin.com") &&
+      tenantId &&
+      version === "v2.0"
+    ) {
+      issuers.add(`https://${tenantId}.ciamlogin.com/${tenantId}/v2.0`);
+    }
+  } catch {
+    // Keep only the configured authority if it is not URL-shaped.
+  }
+
+  return issuers;
+}
+
 function getSessionSecret(): string;
 function getSessionSecret(options: { required: false }): string | null;
 function getSessionSecret({ required = true }: { required?: boolean } = {}): string | null {
@@ -612,8 +632,11 @@ export async function createSessionFromTokens(tokens: {
   let baseSession: AuthSession | null = null;
   if (
     identityJwt &&
+    configuredAuthority &&
     signatureValid &&
-    stringClaim(identityJwt.claims, "iss") === configuredAuthority
+    validIdentityTokenIssuers(configuredAuthority).has(
+      stringClaim(identityJwt.claims, "iss") ?? "",
+    )
   ) {
     baseSession = validateIdTokenClaims(identityJwt.claims);
   } else if (!configuredAuthority && process.env.NODE_ENV === "test") {
