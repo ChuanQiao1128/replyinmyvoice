@@ -606,6 +606,52 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
+    public async Task ProcessWebhookEventAsync_LogsWebhookFailedWhenCheckoutSyncFails()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var logger = new ListLogger<StripeEventService>();
+        var service = new StripeEventService(fixture.CreateContext, logger);
+        var now = DateTimeOffset.Parse("2026-05-31T00:09:00Z");
+        const string rawBody = """
+        {
+          "id": "evt_checkout_missing_user",
+          "type": "checkout.session.completed",
+          "data": {
+            "object": {
+              "customer": "cus_missing_user",
+              "mode": "payment",
+              "payment_status": "paid",
+              "payment_intent": "pi_missing_user",
+              "metadata": {
+                "sku": "quick_pack",
+                "rewrites": "10"
+              }
+            }
+          }
+        }
+        """;
+
+        var processed = await service.ProcessWebhookEventAsync(
+            "evt_checkout_missing_user",
+            "checkout.session.completed",
+            rawBody,
+            now);
+
+        processed.Should().BeFalse();
+        var webhookFailureLogs = logger.Records
+            .Where(record =>
+                record.Level == LogLevel.Error &&
+                record.Message.Contains("webhook_failed", StringComparison.Ordinal))
+            .ToList();
+        webhookFailureLogs.Should().ContainSingle();
+        var state = webhookFailureLogs.Single().State;
+        state["PaymentObservabilityEvent"]?.ToString().Should().Be("webhook_failed");
+        state["CorrelationId"]?.ToString().Should().Be("evt_checkout_missing_user");
+        state["EventType"]?.ToString().Should().Be("checkout.session.completed");
+        state["AttemptCount"]?.ToString().Should().Be("1");
+    }
+
+    [Fact]
     public async Task DuplicateEventGrantRejected()
     {
         await using var fixture = await DbFixture.CreateAsync();

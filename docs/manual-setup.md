@@ -203,6 +203,13 @@ Set production runtime variables/secrets for the Worker. Public app backend call
 - `NEXT_PUBLIC_ENTRA_CLIENT_ID`
 - `NEXT_PUBLIC_ENTRA_API_SCOPE`
 
+Payment observability is configured through Worker secrets, not `wrangler.jsonc` vars:
+
+- `SENTRY_DSN`
+- `POSTHOG_API_KEY`
+
+The same key names must also exist as Azure Functions app settings for backend payment/webhook traces, and as GitHub Actions secrets if CI is responsible for applying runtime settings. Do not print the values in workflow logs.
+
 Legacy Clerk/Neon variables may remain in the dashboard while old admin/library code is cleaned up, but public `/app`, rewrite, billing, webhook, and DB health routes should not depend on them after the 2026-05-23 cutover:
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`

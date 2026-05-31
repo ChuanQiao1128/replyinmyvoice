@@ -2166,3 +2166,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/admin/*`; `app/api/admin/*`; `components/admin/*`; `lib/admin-api-proxy.ts`; `lib/admin-auth.ts`; `lib/admin-types.ts`; `tests/unit/admin-api-routes.test.ts`; `tests/e2e/admin.spec.ts`; `playwright.config.ts`.
 - Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `git diff --check`, and banned-term grep over `app components public lib` passed. The admin route unit test passed 3/3. Dev-server HTTP checks returned 200 for an admin session and rendered the expected denied view for a non-admin session.
 - Limitations: Local Playwright Chromium could not launch in this macOS sandbox (`MachPortRendezvousServer` permission denied), so `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before executing page assertions. The Browser plugin was attempted but `iab` was unavailable in this session.
+
+### 2026-06-01 - cloud-architecture-cost-review - PAY-02 payment observability wiring
+
+- Agent: Codex
+- Trigger: GitHub issue #379/PAY-02 explicitly requires cloud-architecture-cost-review before adding Sentry/PostHog payment observability across Cloudflare Worker and Azure Functions.
+- Action: Opened and followed the skill; kept the existing Cloudflare Worker + Azure Functions consumption + Application Insights architecture, added runtime-keyed Worker/PostHog/Sentry-compatible instrumentation, and rejected adding a second backend APM package because Application Insights is already registered in `ReplyInMyVoice.Functions`.
+- Output artifacts: `lib/payment-observability.ts`; `lib/payment-observability-client.ts`; `app/api/observability/payment/route.ts`; `app/api/stripe/*`; `app/api/me/route.ts`; `docs/observability.md`; `docs/manual-setup.md`; `docs/support-runbook.md`; `.env.example`; `backend-dotnet/src/ReplyInMyVoice.Functions/local.settings.example.json`.
+- Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `cd backend-dotnet && dotnet build ReplyInMyVoice.sln`, and `cd backend-dotnet && dotnet test ReplyInMyVoice.sln` passed. Banned-term scan over `app components public lib` returned no matches.
+- Limitations: No paid resources, dashboard monitors, Worker secrets, Azure app settings, GitHub secrets, deploy commands, or source-map upload automation were created in this turn. Owner still needs to create PostHog, Azure Monitor, Sentry, and UptimeRobot dashboard configuration from `docs/observability.md`.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-02 Functions payment failure telemetry
+
+- Agent: Codex
+- Trigger: PAY-02 changes C#/.NET payment and webhook failure paths and required backend test coverage for the explicit `webhook_failed` event hook.
+- Action: Opened and followed the skill; wrote a failing xUnit service test for a Stripe checkout webhook sync failure, then added structured Application Insights-compatible logs with `PaymentObservabilityEvent` and `CorrelationId` in `StripeEventService`, `StripeWebhookFunction`, and `BillingHttpFunctions`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/StripeWebhookFunction.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/BillingHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeWebhookApiTests.cs`.
+- Verification evidence: Red run: focused `StripeEventServiceTests.ProcessWebhookEventAsync_LogsWebhookFailedWhenCheckoutSyncFails` failed because no `webhook_failed` error log existed. Green run passed after implementation. Full `dotnet test ReplyInMyVoice.sln` passed 408/408; `dotnet build ReplyInMyVoice.sln` passed.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. Account/Billing API tests needed the existing polling/no-reload WebApplicationFactory guard to avoid macOS sandbox `PhysicalFilesWatcher` stack overflow during full-suite runs.

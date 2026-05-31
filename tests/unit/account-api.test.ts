@@ -75,6 +75,7 @@ describe("/api/me route handler", () => {
       cache: "no-store",
       headers: {
         Authorization: `${authScheme} ${accessValue}`,
+        "X-Correlation-Id": expect.stringMatching(/^account_/),
       },
     });
   });
@@ -91,6 +92,7 @@ describe("/api/me route handler", () => {
       cache: "no-store",
       headers: {
         Authorization: `${authScheme} ${accessValue}`,
+        "X-Correlation-Id": expect.stringMatching(/^account_/),
       },
       method: "DELETE",
     });
