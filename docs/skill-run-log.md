@@ -2166,3 +2166,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/admin/*`; `app/api/admin/*`; `components/admin/*`; `lib/admin-api-proxy.ts`; `lib/admin-auth.ts`; `lib/admin-types.ts`; `tests/unit/admin-api-routes.test.ts`; `tests/e2e/admin.spec.ts`; `playwright.config.ts`.
 - Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `git diff --check`, and banned-term grep over `app components public lib` passed. The admin route unit test passed 3/3. Dev-server HTTP checks returned 200 for an admin session and rendered the expected denied view for a non-admin session.
 - Limitations: Local Playwright Chromium could not launch in this macOS sandbox (`MachPortRendezvousServer` permission denied), so `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before executing page assertions. The Browser plugin was attempted but `iab` was unavailable in this session.
+
+### 2026-06-01 - resilience-test-generation - PAY-04 Stripe API failure tests
+
+- Agent: Codex
+- Trigger: PAY-04 explicitly requires Stripe provider-failure tests for checkout-create and admin refund paths.
+- Action: Opened and followed the skill; modeled Stripe session creation timeout and refund timeout as deterministic fake-provider failures, asserted final persisted state, and avoided live Stripe calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRefundTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeBillingService.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/BillingHttpFunctions.cs`.
+- Verification evidence: Red run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter "StripeBillingServiceTests|StripeBillingApiTests|AdminRefundTests"` failed on missing Stripe billing fake seam. Focused green run with the same filter passed 10/10. Full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-04 xUnit payment failure coverage
+
+- Agent: Codex
+- Trigger: PAY-04 adds C#/.NET backend tests for checkout-create and refund Stripe API failures.
+- Action: Opened and followed the skill; added WebApplicationFactory API coverage for checkout 5xx behavior, EF SQLite service coverage for checkout persistence state, and AdminService coverage for refund failure audit/credit invariants.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRefundTests.cs`.
+- Verification evidence: Focused `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter "StripeBillingServiceTests|StripeBillingApiTests|AdminRefundTests"` passed 10/10 after implementation. Full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: The initial focused API run without the test-host reload guard hit the known macOS WebApplicationFactory file-watcher timeout pattern; the Stripe billing API test class now sets the same reload-disable environment variables used by existing API tests.
+
+### 2026-06-01 - data-module-review - PAY-04 checkout/refund persistence invariants
+
+- Agent: Codex
+- Trigger: PAY-04 requires proving no partial DB state for failed checkout-create and refund operations.
+- Action: Opened and followed the skill; reviewed `AppUsers`, `RewriteCredits`, and `AdminAuditLogs` mutations, moved checkout user/customer persistence until after successful Stripe session creation, and kept admin refund success audit persistence after successful refund only.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeBillingService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRefundTests.cs`.
+- Verification evidence: Checkout failure test asserts existing user email, Stripe customer id, row version, and credits remain unchanged. Refund failure test asserts zero admin audit rows, zero refund-success audit rows, unchanged credit grant/consumption, and deterministic refund idempotency key. Full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: No schema or migration changes were needed.

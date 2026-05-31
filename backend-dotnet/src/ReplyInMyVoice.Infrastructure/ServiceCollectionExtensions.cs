@@ -61,6 +61,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<OutboxDispatcherService>();
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<StripeEventService>();
+        services.AddSingleton<IStripeBillingClient, StripeBillingClient>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddHttpClient();

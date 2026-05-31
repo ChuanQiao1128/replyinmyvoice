@@ -210,6 +210,12 @@ app.MapPost("/api/stripe/checkout", async (
             title: "Billing is not configured",
             statusCode: StatusCodes.Status500InternalServerError);
     }
+    catch (Exception ex) when (IsBillingProviderFailure(ex, cancellationToken))
+    {
+        return Results.Problem(
+            title: "Billing provider request failed",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 });
 
 app.MapPost("/api/stripe/portal", async (
@@ -434,6 +440,10 @@ static bool IsProductionEnvironment(
 
 static bool IsProductionEnvironmentName(string? environmentName) =>
     string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
+
+static bool IsBillingProviderFailure(Exception exception, CancellationToken cancellationToken) =>
+    exception is StripeException ||
+    exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
 
 public sealed record RewriteAttemptResponse(
     Guid AttemptId,

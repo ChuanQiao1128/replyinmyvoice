@@ -11,10 +11,12 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class StripeBillingService(
     Func<AppDbContext> dbContextFactory,
-    IConfiguration configuration) : IStripeBillingService, IStripeRefundClient
+    IConfiguration configuration,
+    IStripeBillingClient? stripeBillingClient = null) : IStripeBillingService, IStripeRefundClient
 {
     private const string LegacyPriceEnvVar = "STRIPE_PRICE_ID";
     internal const string PinnedStripeApiVersion = "2025-08-27.basil";
+    private readonly IStripeBillingClient _stripeBillingClient = stripeBillingClient ?? new StripeBillingClient();
 
     private static readonly IReadOnlyDictionary<string, CheckoutSkuDefinition> SkuDefinitions =
         new Dictionary<string, CheckoutSkuDefinition>(StringComparer.Ordinal)
@@ -32,43 +34,31 @@ public sealed class StripeBillingService(
         CancellationToken cancellationToken)
     {
         var stripeClient = CreateStripeClient();
-        var user = await GetOrCreateUserAsync(externalAuthUserId, email, cancellationToken);
-        var customerId = await GetOrCreateCustomerIdAsync(stripeClient, user, email, cancellationToken);
+        var user = await GetCheckoutUserAsync(externalAuthUserId, cancellationToken);
         var appUrl = GetRequiredConfiguration("NEXT_PUBLIC_APP_URL").TrimEnd('/');
         var skuDefinition = ResolveSkuDefinition(sku);
         var priceEnvVar = skuDefinition?.PriceEnvVar ?? LegacyPriceEnvVar;
         var priceId = GetRequiredConfiguration(priceEnvVar);
         var mode = skuDefinition?.Mode ?? "subscription";
         var metadata = CreateCheckoutMetadata(externalAuthUserId, skuDefinition);
+        var customerId = user?.StripeCustomerId;
+        var session = await _stripeBillingClient.CreateCheckoutSessionAsync(
+            new StripeCheckoutSessionCreateRequest(
+                customerId,
+                string.IsNullOrWhiteSpace(customerId) ? email ?? user?.Email : null,
+                mode,
+                priceId,
+                appUrl,
+                externalAuthUserId,
+                metadata),
+            stripeClient,
+            cancellationToken);
 
-        var sessionService = new Stripe.Checkout.SessionService(stripeClient);
-        var options = new Stripe.Checkout.SessionCreateOptions
-        {
-            Mode = mode,
-            Customer = customerId,
-            ClientReferenceId = externalAuthUserId,
-            SuccessUrl = $"{appUrl}/app?checkout=success",
-            CancelUrl = $"{appUrl}/app?checkout=cancelled",
-            LineItems =
-            [
-                new Stripe.Checkout.SessionLineItemOptions
-                {
-                    Price = priceId,
-                    Quantity = 1,
-                }
-            ],
-            Metadata = metadata,
-        };
-
-        if (mode == "subscription")
-        {
-            options.SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
-            {
-                Metadata = metadata,
-            };
-        }
-
-        var session = await sessionService.CreateAsync(options, cancellationToken: cancellationToken);
+        await UpsertCheckoutUserAfterSessionCreatedAsync(
+            externalAuthUserId,
+            email,
+            session.CustomerId,
+            cancellationToken);
 
         return session.Url ?? throw new InvalidOperationException("stripe_checkout_url_missing");
     }
@@ -89,12 +79,11 @@ public sealed class StripeBillingService(
         }
 
         var appUrl = GetRequiredConfiguration("NEXT_PUBLIC_APP_URL").TrimEnd('/');
-        var portalService = new Stripe.BillingPortal.SessionService(stripeClient);
-        var session = await portalService.CreateAsync(new Stripe.BillingPortal.SessionCreateOptions
-        {
-            Customer = user.StripeCustomerId,
-            ReturnUrl = $"{appUrl}/app",
-        }, cancellationToken: cancellationToken);
+        var session = await _stripeBillingClient.CreatePortalSessionAsync(
+            user.StripeCustomerId,
+            $"{appUrl}/app",
+            stripeClient,
+            cancellationToken);
 
         return session.Url ?? throw new InvalidOperationException("stripe_portal_url_missing");
     }
@@ -109,14 +98,9 @@ public sealed class StripeBillingService(
             return;
         }
 
-        var subscriptionService = new SubscriptionService(CreateStripeClient());
-        await subscriptionService.CancelAsync(
+        await _stripeBillingClient.CancelSubscriptionAsync(
             normalizedSubscriptionId,
-            new SubscriptionCancelOptions
-            {
-                InvoiceNow = false,
-                Prorate = false,
-            },
+            CreateStripeClient(),
             cancellationToken: cancellationToken);
     }
 
@@ -124,101 +108,68 @@ public sealed class StripeBillingService(
         StripeRefundRequest request,
         CancellationToken cancellationToken)
     {
-        var refundService = new RefundService(CreateStripeClient());
-        var options = new RefundCreateOptions
-        {
-            PaymentIntent = request.PaymentIntentId,
-            Amount = request.Amount,
-            Currency = request.Currency,
-            Metadata = new Dictionary<string, string>
-            {
-                ["source"] = "admin",
-                ["targetUserId"] = request.TargetUserId.ToString("D"),
-            },
-        };
-
-        var refund = await refundService.CreateAsync(
-            options,
-            new RequestOptions
-            {
-                IdempotencyKey = request.IdempotencyKey,
-            },
-            cancellationToken: cancellationToken);
-
-        return new StripeRefundResult(
-            refund.Id,
-            refund.PaymentIntentId ?? request.PaymentIntentId,
-            refund.Amount,
-            refund.Currency ?? request.Currency,
-            refund.Status);
+        return await _stripeBillingClient.RefundPaymentAsync(
+            request,
+            CreateStripeClient(),
+            cancellationToken);
     }
 
-    private async Task<AppUser> GetOrCreateUserAsync(
+    private async Task<AppUser?> GetCheckoutUserAsync(
+        string externalAuthUserId,
+        CancellationToken cancellationToken)
+    {
+        await using var db = dbContextFactory();
+        return await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(
+            x => x.ExternalAuthUserId == externalAuthUserId,
+            cancellationToken);
+    }
+
+    private async Task UpsertCheckoutUserAfterSessionCreatedAsync(
         string externalAuthUserId,
         string? email,
+        string? stripeCustomerId,
         CancellationToken cancellationToken)
     {
         await using var db = dbContextFactory();
         var user = await db.AppUsers.AsTracking().SingleOrDefaultAsync(
             x => x.ExternalAuthUserId == externalAuthUserId,
             cancellationToken);
-        if (user is not null)
+        var now = DateTimeOffset.UtcNow;
+        if (user is null)
         {
-            if (!string.IsNullOrWhiteSpace(email) && user.Email != email)
+            user = new AppUser
             {
-                user.Email = email;
-                user.UpdatedAt = DateTimeOffset.UtcNow;
-                user.RowVersion = Guid.NewGuid();
-                await db.SaveChangesAsync(cancellationToken);
-            }
-
-            return user;
+                ExternalAuthUserId = externalAuthUserId,
+                Email = email,
+                StripeCustomerId = stripeCustomerId,
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.AppUsers.Add(user);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
         }
 
-        user = new AppUser
+        var changed = false;
+        if (!string.IsNullOrWhiteSpace(email) && !string.Equals(user.Email, email, StringComparison.Ordinal))
         {
-            ExternalAuthUserId = externalAuthUserId,
-            Email = email,
-            SubscriptionStatus = SubscriptionStatus.Inactive,
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
-        db.AppUsers.Add(user);
-        await db.SaveChangesAsync(cancellationToken);
-        return user;
-    }
-
-    private async Task<string> GetOrCreateCustomerIdAsync(
-        IStripeClient stripeClient,
-        AppUser user,
-        string? email,
-        CancellationToken cancellationToken)
-    {
-        if (!string.IsNullOrWhiteSpace(user.StripeCustomerId))
-        {
-            return user.StripeCustomerId;
+            user.Email = email;
+            changed = true;
         }
 
-        var customerService = new CustomerService(stripeClient);
-        var customer = await customerService.CreateAsync(new CustomerCreateOptions
+        if (string.IsNullOrWhiteSpace(user.StripeCustomerId) && !string.IsNullOrWhiteSpace(stripeCustomerId))
         {
-            Email = email ?? user.Email,
-            Metadata = new Dictionary<string, string>
-            {
-                ["externalAuthUserId"] = user.ExternalAuthUserId,
-            },
-        }, cancellationToken: cancellationToken);
+            user.StripeCustomerId = stripeCustomerId;
+            changed = true;
+        }
 
-        await using var db = dbContextFactory();
-        var trackedUser = await db.AppUsers.AsTracking().SingleAsync(
-            x => x.Id == user.Id,
-            cancellationToken);
-        trackedUser.StripeCustomerId = customer.Id;
-        trackedUser.UpdatedAt = DateTimeOffset.UtcNow;
-        trackedUser.RowVersion = Guid.NewGuid();
-        await db.SaveChangesAsync(cancellationToken);
-
-        return customer.Id;
+        if (changed)
+        {
+            user.UpdatedAt = now;
+            user.RowVersion = Guid.NewGuid();
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     internal static void EnsureStripeApiVersionPinned()
@@ -275,7 +226,162 @@ public sealed class StripeBillingService(
     }
 }
 
+public interface IStripeBillingClient
+{
+    Task<StripeCheckoutSessionResult> CreateCheckoutSessionAsync(
+        StripeCheckoutSessionCreateRequest request,
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken);
+
+    Task<StripePortalSessionResult> CreatePortalSessionAsync(
+        string customerId,
+        string returnUrl,
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken);
+
+    Task CancelSubscriptionAsync(
+        string stripeSubscriptionId,
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken);
+
+    Task<StripeRefundResult> RefundPaymentAsync(
+        StripeRefundRequest request,
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken);
+}
+
+public sealed class StripeBillingClient : IStripeBillingClient
+{
+    public async Task<StripeCheckoutSessionResult> CreateCheckoutSessionAsync(
+        StripeCheckoutSessionCreateRequest request,
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken)
+    {
+        var metadata = new Dictionary<string, string>(request.Metadata, StringComparer.Ordinal);
+        var options = new Stripe.Checkout.SessionCreateOptions
+        {
+            Mode = request.Mode,
+            ClientReferenceId = request.ExternalAuthUserId,
+            SuccessUrl = $"{request.AppUrl}/app?checkout=success",
+            CancelUrl = $"{request.AppUrl}/app?checkout=cancelled",
+            LineItems =
+            [
+                new Stripe.Checkout.SessionLineItemOptions
+                {
+                    Price = request.PriceId,
+                    Quantity = 1,
+                }
+            ],
+            Metadata = metadata,
+        };
+
+        if (!string.IsNullOrWhiteSpace(request.CustomerId))
+        {
+            options.Customer = request.CustomerId;
+        }
+        else
+        {
+            options.CustomerEmail = request.CustomerEmail;
+            if (request.Mode == "payment")
+            {
+                options.CustomerCreation = "always";
+            }
+        }
+
+        if (request.Mode == "subscription")
+        {
+            options.SubscriptionData = new Stripe.Checkout.SessionSubscriptionDataOptions
+            {
+                Metadata = metadata,
+            };
+        }
+
+        var sessionService = new Stripe.Checkout.SessionService(stripeClient);
+        var session = await sessionService.CreateAsync(options, cancellationToken: cancellationToken);
+        return new StripeCheckoutSessionResult(session.Url, session.CustomerId);
+    }
+
+    public async Task<StripePortalSessionResult> CreatePortalSessionAsync(
+        string customerId,
+        string returnUrl,
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken)
+    {
+        var portalService = new Stripe.BillingPortal.SessionService(stripeClient);
+        var session = await portalService.CreateAsync(new Stripe.BillingPortal.SessionCreateOptions
+        {
+            Customer = customerId,
+            ReturnUrl = returnUrl,
+        }, cancellationToken: cancellationToken);
+
+        return new StripePortalSessionResult(session.Url);
+    }
+
+    public async Task CancelSubscriptionAsync(
+        string stripeSubscriptionId,
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken)
+    {
+        var subscriptionService = new SubscriptionService(stripeClient);
+        await subscriptionService.CancelAsync(
+            stripeSubscriptionId,
+            new SubscriptionCancelOptions
+            {
+                InvoiceNow = false,
+                Prorate = false,
+            },
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task<StripeRefundResult> RefundPaymentAsync(
+        StripeRefundRequest request,
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken)
+    {
+        var refundService = new RefundService(stripeClient);
+        var options = new RefundCreateOptions
+        {
+            PaymentIntent = request.PaymentIntentId,
+            Amount = request.Amount,
+            Currency = request.Currency,
+            Metadata = new Dictionary<string, string>
+            {
+                ["source"] = "admin",
+                ["targetUserId"] = request.TargetUserId.ToString("D"),
+            },
+        };
+
+        var refund = await refundService.CreateAsync(
+            options,
+            new RequestOptions
+            {
+                IdempotencyKey = request.IdempotencyKey,
+            },
+            cancellationToken: cancellationToken);
+
+        return new StripeRefundResult(
+            refund.Id,
+            refund.PaymentIntentId ?? request.PaymentIntentId,
+            refund.Amount,
+            refund.Currency ?? request.Currency,
+            refund.Status);
+    }
+}
+
 public sealed record CheckoutSkuDefinition(string Sku, string PriceEnvVar, string Mode, int Rewrites);
+
+public sealed record StripeCheckoutSessionCreateRequest(
+    string? CustomerId,
+    string? CustomerEmail,
+    string Mode,
+    string PriceId,
+    string AppUrl,
+    string ExternalAuthUserId,
+    IReadOnlyDictionary<string, string> Metadata);
+
+public sealed record StripeCheckoutSessionResult(string? Url, string? CustomerId);
+
+public sealed record StripePortalSessionResult(string? Url);
 
 public interface IStripeRefundClient
 {

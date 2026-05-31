@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure.Services;
+using Stripe;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
@@ -66,6 +67,13 @@ public sealed class BillingHttpFunctions(
                 null,
                 StatusCodes.Status500InternalServerError);
         }
+        catch (Exception ex) when (IsBillingProviderFailure(ex, cancellationToken))
+        {
+            return FunctionHttpResults.Problem(
+                "Billing provider request failed",
+                null,
+                StatusCodes.Status500InternalServerError);
+        }
     }
 
     [Function("CreateBillingPortalSession")]
@@ -94,6 +102,13 @@ public sealed class BillingHttpFunctions(
                 "Billing customer not found",
                 null,
                 StatusCodes.Status400BadRequest);
+        }
+        catch (Exception ex) when (IsBillingProviderFailure(ex, cancellationToken))
+        {
+            return FunctionHttpResults.Problem(
+                "Billing provider request failed",
+                null,
+                StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -128,6 +143,10 @@ public sealed class BillingHttpFunctions(
 
         return new CheckoutSessionRequest(sku.ValueKind == JsonValueKind.String ? sku.GetString() : sku.ToString());
     }
+
+    private static bool IsBillingProviderFailure(Exception exception, CancellationToken cancellationToken) =>
+        exception is StripeException ||
+        exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
 }
 
 public sealed record BillingUrlResponse(string Url);
