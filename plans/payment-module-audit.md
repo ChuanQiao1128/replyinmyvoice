@@ -245,6 +245,24 @@ All under the `SO-*` site-overhaul wave + `SO-R*` resilience wave, merged 2026-0
 
 > One issue per row. Acceptance must be machine-checkable. Skill column = which project skill governs the work.
 
+**Created as GitHub issues on branch `audit/payment-module` (2026-06-01)** — scope = "make the front+back end real-testable by the owner". Self-contained briefs live at `plans/payment-issues/PAY-*.md`. The 8 implementation issues carry `delivery-pipeline`+`ready` (workflow-pickable); PAY-11 is an owner-only checkpoint with **no `ready` label** (automation must never charge a real card).
+
+| ID | GitHub | Priority | Note |
+|---|---|---|---|
+| PAY-01 | [#378](https://github.com/ChuanQiao1128/replyinmyvoice/issues/378) | P0 | invoice.payment_failed + status mapping + grace |
+| PAY-02 | [#379](https://github.com/ChuanQiao1128/replyinmyvoice/issues/379) | P0 | Sentry + PostHog payment observability |
+| PAY-03 | [#380](https://github.com/ChuanQiao1128/replyinmyvoice/issues/380) | P0 | forged-signature rejection test |
+| PAY-04 | [#381](https://github.com/ChuanQiao1128/replyinmyvoice/issues/381) | P0 | Stripe API failure test |
+| PAY-05 | [#382](https://github.com/ChuanQiao1128/replyinmyvoice/issues/382) | P0 | capture receipt_url |
+| PAY-06 | [#383](https://github.com/ChuanQiao1128/replyinmyvoice/issues/383) | P1 | e2e checkout→quota + refund→clawback |
+| PAY-07 | [#384](https://github.com/ChuanQiao1128/replyinmyvoice/issues/384) | P1 | /admin UI (refund/credit/suspend) |
+| PAY-10 | [#385](https://github.com/ChuanQiao1128/replyinmyvoice/issues/385) | P1 | remaining resilience + frontend tests |
+| PAY-11 | [#386](https://github.com/ChuanQiao1128/replyinmyvoice/issues/386) | P1 | **[OWNER]** real purchase + refund verification |
+
+**Deferred this wave** (not created — outside the "real-testable now" scope; kept as backlog in §5/§7): PAY-08 (reconciliation + GST tracker), PAY-09 (dunning + credit-expiry notices), PAY-12 (campaign codes), PAY-13 (async-payment events / explicit API-version set / ledger backfill).
+
+The full proposed set (incl. deferred) for reference:
+
 | Proposed ID | Title | Priority | Owner/Codex | Skill |
 |---|---|---|---|---|
 | PAY-01 | Verify `MapSubscriptionStatus` + add `invoice.payment_failed` handler + `past_due` grace policy | P0 | Codex | state-machine-modeling |
