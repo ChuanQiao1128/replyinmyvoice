@@ -19,7 +19,6 @@ export function middleware(request: NextRequest) {
     if (hasCookie(request)) return NextResponse.next();
     const url = new URL("/sign-in", request.url);
     url.searchParams.set("redirectTo", pathname);
-    url.searchParams.set(["redirect", "to"].join("_"), pathname);
     return NextResponse.redirect(url, 307);
   }
   return NextResponse.next();

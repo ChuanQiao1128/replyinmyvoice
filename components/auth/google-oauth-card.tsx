@@ -151,6 +151,7 @@ export function SignInAuthPage({
           <EntryField
             autoComplete="current-password"
             error={fieldErrors.password}
+            hintId="sign-in-entry-hint"
             label="Password"
             onChange={setEntry}
             showEntry={showEntry}
@@ -159,7 +160,9 @@ export function SignInAuthPage({
           />
 
           <div className={styles.formRow}>
-            <span className={styles.hint}>Use at least {minEntryLength} characters.</span>
+            <span className={styles.hint} id="sign-in-entry-hint">
+              Use at least {minEntryLength} characters.
+            </span>
             <Link className={styles.textLink} href="/forgot-password">
               Forgot password?
             </Link>
@@ -398,6 +401,7 @@ export function ResetAuthPage({
               <EntryField
                 autoComplete="new-password"
                 error={fieldErrors.newEntry}
+                hintId="reset-entry-hint"
                 label="New sign-in value"
                 name="newEntry"
                 onChange={setNewEntry}
@@ -409,6 +413,7 @@ export function ResetAuthPage({
               <EntryField
                 autoComplete="new-password"
                 error={fieldErrors.confirmEntry}
+                hintId="reset-entry-hint"
                 label="Confirm sign-in value"
                 name="confirmEntry"
                 onChange={setConfirmEntry}
@@ -417,7 +422,9 @@ export function ResetAuthPage({
                 value={confirmEntry}
               />
 
-              <p className={styles.hint}>Use at least {minEntryLength} characters.</p>
+              <p className={styles.hint} id="reset-entry-hint">
+                Use at least {minEntryLength} characters.
+              </p>
 
               <div className={styles.codeActions}>
                 <button className={styles.inlineButton} onClick={() => setStep("email")} type="button">
@@ -658,6 +665,7 @@ export function SignUpAuthPage({
               <EntryField
                 autoComplete="new-password"
                 error={fieldErrors.password}
+                hintId="sign-up-entry-hint"
                 label="Password"
                 onChange={setEntry}
                 showEntry={showEntry}
@@ -862,6 +870,7 @@ function TextField({
 function EntryField({
   autoComplete,
   error,
+  hintId,
   label,
   name = "password",
   onChange,
@@ -871,6 +880,7 @@ function EntryField({
 }: {
   autoComplete: string;
   error?: string;
+  hintId?: string;
   label: string;
   name?: string;
   onChange: (value: string) => void;
@@ -879,6 +889,7 @@ function EntryField({
   value: string;
 }) {
   const errorId = `${name}-error`;
+  const describedBy = [hintId, error ? errorId : undefined].filter(Boolean).join(" ") || undefined;
 
   return (
     <div className={styles.field}>
@@ -887,7 +898,7 @@ function EntryField({
       </label>
       <div className={`${styles.entryWrap} ${error ? styles.inputError : ""}`}>
         <input
-          aria-describedby={error ? errorId : undefined}
+          aria-describedby={describedBy}
           aria-invalid={Boolean(error)}
           autoComplete={autoComplete}
           className={styles.entryInput}
