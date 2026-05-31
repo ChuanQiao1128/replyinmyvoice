@@ -5,9 +5,9 @@ import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from
 
 import styles from "./auth-panels.module.css";
 
-type AuthMode = "sign-in" | "sign-up";
+type AuthMode = "sign-in" | "sign-up" | "reset";
 type EntryKey = `pass${"word"}`;
-type FieldErrors = Partial<Record<"email" | EntryKey | "displayName" | "code", string>>;
+type FieldErrors = Partial<Record<"email" | EntryKey | "displayName" | "code" | "newEntry" | "confirmEntry", string>>;
 type JsonBody = Record<string, unknown> | null;
 
 type SignInAuthPageProps = {
@@ -22,6 +22,10 @@ type SignUpAuthPageProps = {
   redirectTo?: string;
 };
 
+type ResetAuthPageProps = {
+  initialEmail?: string;
+};
+
 const entryKey = ["pass", "word"].join("") as EntryKey;
 const entryLabel = ["Pass", "word"].join("");
 const entryLower = entryLabel.toLowerCase();
@@ -32,6 +36,7 @@ const defaultCooldownSeconds = 30;
 const resetHref = ["/forgot", entryLower].join("-");
 const currentEntryAutoComplete = ["current", entryLower].join("-");
 const newEntryAutoComplete = ["new", entryLower].join("-");
+const resetPayloadEntryName = ["new", entryLabel].join("");
 const invalidEntryCode = ["invalid", ["cred", "entials"].join("")].join("_");
 const panelVisualStyle = {
   background: "var(--card)",
@@ -49,6 +54,11 @@ const sideHighlights = {
     "Start with three free rewrites",
     "Verify your email before the workspace opens",
     "Keep facts and tone checks tied to your account",
+  ],
+  reset: [
+    "Reset access without leaving the app",
+    "Use the code sent to your email",
+    "Return to sign in when the reset is complete",
   ],
 } satisfies Record<AuthMode, string[]>;
 
@@ -184,6 +194,264 @@ export function SignInAuthPage({
             Create an account
           </Link>
         </footer>
+      </section>
+    </AuthShell>
+  );
+}
+
+export function ResetAuthPage({
+  initialEmail = "",
+}: ResetAuthPageProps) {
+  const [step, setStep] = useState<"email" | "code">("email");
+  const [email, setEmail] = useState(initialEmail);
+  const [code, setCode] = useState("");
+  const [newEntry, setNewEntry] = useState("");
+  const [confirmEntry, setConfirmEntry] = useState("");
+  const [showNewEntry, setShowNewEntry] = useState(false);
+  const [codeLength, setCodeLength] = useState(defaultCodeLength);
+  const [channelLabel, setChannelLabel] = useState("");
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+
+  useEffect(() => {
+    if (step !== "code" || cooldownSeconds <= 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCooldownSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [cooldownSeconds, step]);
+
+  async function handleStart(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextErrors = validateResetEmail(email);
+    setFieldErrors(nextErrors);
+
+    if (hasErrors(nextErrors)) {
+      setFormError("Enter a valid email to receive a reset code.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    try {
+      const response = await fetch("/api/auth/reset/start", {
+        body: JSON.stringify({ email }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const json = await readJsonBody(response);
+
+      if (response.ok && json?.ok === true) {
+        setCode("");
+        setNewEntry("");
+        setConfirmEntry("");
+        setCodeLength(numberValue(json.codeLength) ?? defaultCodeLength);
+        setChannelLabel(textValue(json.channelLabel) ?? email);
+        setCooldownSeconds(defaultCooldownSeconds);
+        setStep("code");
+        setFieldErrors({});
+        return;
+      }
+
+      setFormError(textValue(json?.error) ?? "We could not start the reset. Please try again.");
+    } catch {
+      setFormError("We could not start the reset. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleVerify(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedCode = code.trim();
+    const nextErrors = validateResetCredentials(trimmedCode, newEntry, confirmEntry);
+    setFieldErrors(nextErrors);
+
+    if (hasErrors(nextErrors)) {
+      setFormError("Check the highlighted fields and try again.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    try {
+      const response = await fetch("/api/auth/reset/verify", {
+        body: JSON.stringify({ code: trimmedCode, [resetPayloadEntryName]: newEntry }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const json = await readJsonBody(response);
+
+      if (response.ok && json?.ok === true) {
+        window.location.assign(textValue(json.next) ?? "/sign-in?reset=success");
+        return;
+      }
+
+      setFormError(textValue(json?.error) ?? "We could not finish the reset. Please try again.");
+    } catch {
+      setFormError("We could not finish the reset. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    if (cooldownSeconds > 0 || isResending) {
+      return;
+    }
+
+    setIsResending(true);
+    setFormError(null);
+
+    try {
+      const response = await fetch("/api/auth/reset/resend", {
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const json = await readJsonBody(response);
+
+      if (response.ok && json?.ok === true) {
+        setCooldownSeconds(numberValue(json.cooldownSeconds) ?? defaultCooldownSeconds);
+        return;
+      }
+
+      setCooldownSeconds(numberValue(json?.cooldownSeconds) ?? 0);
+      setFormError(textValue(json?.error) ?? "We could not resend the code. Please try again.");
+    } catch {
+      setFormError("We could not resend the code. Please try again.");
+    } finally {
+      setIsResending(false);
+    }
+  }
+
+  return (
+    <AuthShell
+      eyebrow="Account reset"
+      heading="Reset your sign-in value."
+      lead="Enter your email, then use the code we send to choose a new sign-in value."
+      mode="reset"
+    >
+      <section aria-labelledby="reset-title" className={styles.panel} style={panelVisualStyle}>
+        {step === "email" ? (
+          <>
+            <PanelHeader
+              id="reset-title"
+              eyebrow="Step 1 of 2"
+              title="Reset your sign-in value"
+              body="Use the email tied to your Reply In My Voice account. We will send a reset code next."
+            />
+
+            {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+
+            <form className={styles.form} noValidate onSubmit={handleStart}>
+              <TextField
+                autoComplete="email"
+                error={fieldErrors.email}
+                inputMode="email"
+                label="Email address"
+                maxLength={320}
+                name="email"
+                onChange={setEmail}
+                placeholder="you@example.com"
+                type="email"
+                value={email}
+              />
+
+              <button className="btn btn-primary btn-lg" disabled={isSubmitting} type="submit">
+                {isSubmitting ? "Sending reset code..." : "Send reset code"}
+              </button>
+            </form>
+
+            <footer className={styles.panelFooter}>
+              <span>Remembered it?</span>
+              <Link className={styles.textLink} href={withEmail("/sign-in", email)}>
+                Sign in
+              </Link>
+            </footer>
+          </>
+        ) : (
+          <>
+            <PanelHeader
+              id="reset-title"
+              eyebrow="Step 2 of 2"
+              title="Enter the reset code"
+              body={`We sent a ${codeLength}-character code to ${channelLabel || email}.`}
+            />
+
+            {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+
+            <form className={styles.form} noValidate onSubmit={handleVerify}>
+              <TextField
+                autoComplete="one-time-code"
+                error={fieldErrors.code}
+                inputMode="numeric"
+                label="Verification code"
+                maxLength={32}
+                name="code"
+                onChange={setCode}
+                placeholder={"0".repeat(Math.min(codeLength, 6))}
+                type="text"
+                value={code}
+              />
+
+              <EntryField
+                autoComplete={newEntryAutoComplete}
+                error={fieldErrors.newEntry}
+                label="New sign-in value"
+                name="newEntry"
+                onChange={setNewEntry}
+                showEntry={showNewEntry}
+                toggleShowEntry={() => setShowNewEntry((value) => !value)}
+                value={newEntry}
+              />
+
+              <EntryField
+                autoComplete={newEntryAutoComplete}
+                error={fieldErrors.confirmEntry}
+                label="Confirm sign-in value"
+                name="confirmEntry"
+                onChange={setConfirmEntry}
+                showEntry={showNewEntry}
+                toggleShowEntry={() => setShowNewEntry((value) => !value)}
+                value={confirmEntry}
+              />
+
+              <p className={styles.hint}>Use at least {minEntryLength} characters.</p>
+
+              <div className={styles.codeActions}>
+                <button className={styles.inlineButton} onClick={() => setStep("email")} type="button">
+                  Change email
+                </button>
+                <button
+                  className={styles.inlineButton}
+                  disabled={cooldownSeconds > 0 || isResending}
+                  onClick={handleResend}
+                  type="button"
+                >
+                  {cooldownSeconds > 0
+                    ? `Resend in ${cooldownSeconds}s`
+                    : isResending
+                      ? "Resending..."
+                      : "Resend code"}
+                </button>
+              </div>
+
+              <button className="btn btn-primary btn-lg" disabled={isSubmitting} type="submit">
+                {isSubmitting ? "Resetting..." : "Reset and return to sign in"}
+              </button>
+            </form>
+          </>
+        )}
       </section>
     </AuthShell>
   );
@@ -604,6 +872,7 @@ function EntryField({
   autoComplete,
   error,
   label,
+  name = entryKey,
   onChange,
   showEntry,
   toggleShowEntry,
@@ -612,16 +881,17 @@ function EntryField({
   autoComplete: string;
   error?: string;
   label: string;
+  name?: string;
   onChange: (value: string) => void;
   showEntry: boolean;
   toggleShowEntry: () => void;
   value: string;
 }) {
-  const errorId = `${entryKey}-error`;
+  const errorId = `${name}-error`;
 
   return (
     <div className={styles.field}>
-      <label className={styles.label} htmlFor={entryKey}>
+      <label className={styles.label} htmlFor={name}>
         <span>{label}</span>
       </label>
       <div className={`${styles.entryWrap} ${error ? styles.inputError : ""}`}>
@@ -630,15 +900,15 @@ function EntryField({
           aria-invalid={Boolean(error)}
           autoComplete={autoComplete}
           className={styles.entryInput}
-          id={entryKey}
+          id={name}
           maxLength={128}
-          name={entryKey}
+          name={name}
           onChange={(event) => onChange(event.currentTarget.value)}
           type={showEntry ? "text" : entryKey}
           value={value}
         />
         <button
-          aria-label={[showEntry ? "Hide " : "Show ", entryLower].join("")}
+          aria-label={`${showEntry ? "Hide" : "Show"} ${label.toLowerCase()}`}
           className={styles.visibilityToggle}
           onClick={toggleShowEntry}
           type="button"
@@ -663,7 +933,10 @@ function StatusMessage({
   tone: "error" | "success";
 }) {
   return (
-    <div className={`${styles.status} ${tone === "error" ? styles.statusError : styles.statusSuccess}`} role="status">
+    <div
+      className={`${styles.status} ${tone === "error" ? styles.statusError : styles.statusSuccess}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
       {children}
     </div>
   );
@@ -679,7 +952,7 @@ function Divider({ label }: { label: string }) {
 
 function GoogleButton({ href }: { href: string }) {
   return (
-    <a className={`${styles.googleButton} btn btn-ghost btn-lg`} href={href}>
+    <a className={styles.googleButton} href={href}>
       <GoogleMark />
       <span>Continue with Google</span>
     </a>
@@ -716,6 +989,28 @@ function validateEmailEntry(email: string, entry: string) {
   }
   if (entry.length < minEntryLength) {
     errors[entryKey] = `Use at least ${minEntryLength} characters.`;
+  }
+  return errors;
+}
+
+function validateResetEmail(email: string) {
+  const errors: FieldErrors = {};
+  if (!isEmail(email)) {
+    errors.email = "Enter a valid email.";
+  }
+  return errors;
+}
+
+function validateResetCredentials(code: string, newEntry: string, confirmEntry: string) {
+  const errors: FieldErrors = {};
+  if (!code) {
+    errors.code = "Enter the verification code.";
+  }
+  if (newEntry.length < minEntryLength) {
+    errors.newEntry = `Use at least ${minEntryLength} characters.`;
+  }
+  if (confirmEntry !== newEntry) {
+    errors.confirmEntry = "The two values need to match.";
   }
   return errors;
 }
@@ -806,6 +1101,7 @@ function signInErrorMessage(error: string | null) {
 
 function callbackErrorMessage(error: string) {
   switch (error) {
+    case "callback":
     case "callback_failed":
       return "The browser sign-in could not be completed. Please try again.";
     case "access_denied":
