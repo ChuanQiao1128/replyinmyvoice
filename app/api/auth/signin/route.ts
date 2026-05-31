@@ -7,6 +7,10 @@ import {
   NativeAuthError,
   signinPassword as signinWithCredential,
 } from "../../../../lib/entra-native-auth";
+import {
+  authRateLimitPolicies,
+  checkAuthRateLimit,
+} from "../../../../lib/auth-rate-limit";
 import { getAppUrl } from "../../../../lib/env";
 import { requireSameOrigin } from "../../../../lib/http";
 
@@ -33,6 +37,15 @@ export async function POST(request: Request) {
 
   if (!credential || credential.length < minCredentialLength) {
     return signinJsonError("invalid_credentials", 401);
+  }
+
+  const rateLimit = await checkAuthRateLimit({
+    email,
+    policy: authRateLimitPolicies.signin,
+    request,
+  });
+  if (!rateLimit.allowed) {
+    return signinJsonError("rate_limited", 429);
   }
 
   try {

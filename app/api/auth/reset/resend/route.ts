@@ -10,6 +10,10 @@ import {
   NativeAuthError,
   resetChallenge,
 } from "../../../../../lib/entra-native-auth";
+import {
+  authRateLimitPolicies,
+  checkAuthRateLimit,
+} from "../../../../../lib/auth-rate-limit";
 import { getAppUrl, optionalEnv, requireEnv } from "../../../../../lib/env";
 import { requireSameOrigin } from "../../../../../lib/http";
 
@@ -52,6 +56,15 @@ export async function POST(request: Request) {
       error: "Please wait before requesting another code.",
       ok: false,
     }, { status: 429 });
+  }
+
+  const rateLimit = await checkAuthRateLimit({
+    email: flow.email,
+    policy: authRateLimitPolicies.resetResend,
+    request,
+  });
+  if (!rateLimit.allowed) {
+    return resetJsonError("Too many requests. Please try again later.", 429);
   }
 
   try {
