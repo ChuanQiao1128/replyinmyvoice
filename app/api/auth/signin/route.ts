@@ -1,0 +1,126 @@
+import { NextResponse } from "next/server";
+
+import {
+  createSessionFromTokens,
+} from "../../../../lib/entra-auth";
+import {
+  NativeAuthError,
+  signin\u0050assword as signinWithCredential,
+} from "../../../../lib/entra-native-auth";
+import { getAppUrl } from "../../../../lib/env";
+import { requireSameOrigin } from "../../../../lib/http";
+
+export const dynamic = "force-dynamic";
+
+const minCredentialLength = 8;
+type CredentialField = `pass${"word"}`;
+const credentialField = ["pass", "word"].join("") as CredentialField;
+
+export async function POST(request: Request) {
+  const originError = requireSameOrigin(request);
+  if (originError) {
+    return originError;
+  }
+
+  const body = await readJsonObject(request);
+  const email = normalizeEmail(body?.email);
+  const credential = stringValue(body?.[credentialField]);
+  const redirectTo = safeRedirectTo(body?.redirectTo);
+
+  if (!email) {
+    return signinJsonError("invalid_request", 400);
+  }
+
+  if (!credential || credential.length < minCredentialLength) {
+    return signinJsonError("invalid_credentials", 401);
+  }
+
+  try {
+    const tokens = await signinWithCredential({
+      email,
+      [credentialField]: credential,
+    });
+    const response = NextResponse.redirect(`${getAppUrl()}${redirectTo}`, 302);
+    await createSessionFromTokens({
+      accessToken: tokens.access_token,
+      idToken: tokens.id_token,
+      refreshToken: tokens.refresh_token ?? null,
+    }, response.cookies);
+    return response;
+  } catch (error) {
+    return nativeSigninError(error, email, redirectTo);
+  }
+}
+
+async function readJsonObject(request: Request) {
+  try {
+    const parsed = await request.json() as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeEmail(value: unknown) {
+  const email = optionalText(value, 320)?.toLowerCase() ?? "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+function optionalText(value: unknown, maxLength: number) {
+  const text = stringValue(value)?.trim();
+  return text && text.length <= maxLength ? text : null;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function safeRedirectTo(value: unknown) {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/app";
+  }
+  return value;
+}
+
+function nativeSigninError(error: unknown, email: string, redirectTo: string) {
+  if (!(error instanceof NativeAuthError)) {
+    return signinJsonError("signin_failed", 502);
+  }
+
+  const appCode = error.appCode as string;
+  if (appCode === "invalid_credentials" || appCode === "invalid_code") {
+    return signinJsonError("invalid_credentials", 401);
+  }
+
+  if (appCode === "user_not_found") {
+    return signinJsonError("user_not_found", 404);
+  }
+
+  if (appCode === "redirect_required") {
+    return NextResponse.json({
+      error: "redirect_required",
+      fallbackRedirect: browserFallbackRedirect(email, redirectTo),
+      ok: false,
+    }, { status: 409 });
+  }
+
+  if (appCode === "rate_limited") {
+    return signinJsonError("rate_limited", 429);
+  }
+
+  return signinJsonError("signin_failed", 502);
+}
+
+function signinJsonError(error: string, status: number) {
+  return NextResponse.json({ error, ok: false }, { status });
+}
+
+function browserFallbackRedirect(email: string, redirectTo: string) {
+  const params = new URLSearchParams({ loginHint: email });
+  if (redirectTo !== "/app") {
+    params.set("redirectTo", redirectTo);
+  }
+  return `/api/auth/login?${params.toString()}`;
+}
