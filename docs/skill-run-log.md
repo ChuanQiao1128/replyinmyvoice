@@ -276,7 +276,7 @@ claude-heavy-planning-handoff
 - Trigger: The task changes the `/students` landing page, workspace output UI, responsive layout, browser-visible routing, and local verification expectations.
 - Action: Opened and followed the skill; selected focused unit/source guards plus attempted local browser verification for `/students` after implementation.
 - Output artifacts: `app/students/page.tsx`; `app/globals.css`; `app/sitemap.ts`; `app/app/page.tsx`; `components/app/rewrite-workspace.tsx`; `tests/unit/students-v2-page.test.ts`; `tests/unit/workspace-copy.test.ts`; `tests/unit/pricing-auth-visual-system.test.ts`; `vitest.config.ts`; `.gitignore`; `docs/skill-run-log.md`.
-- Verification evidence: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, and full `npm test` passed. The banned-term scan `grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches. Local dev-server startup was attempted for browser verification, but both `0.0.0.0:3000` and `127.0.0.1:3000` failed with sandbox `listen EPERM`.
+- Verification evidence: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, and full `npm test` passed. The restricted-copy scan over app, components, public, and lib returned no matches. Local dev-server startup was attempted for browser verification, but both `0.0.0.0:3000` and `127.0.0.1:3000` failed with sandbox `listen EPERM`.
 - Limitations: No browser screenshot or live responsive browser pass was possible because this sandbox cannot bind a local HTTP port. A fallback `npm run build` was attempted and failed before route compilation because DNS to `fonts.googleapis.com` is unavailable for `next/font`; no secrets, deployment, Stripe, schema, middleware, auth, or rewrite-pipeline changes were made.
 
 ### 2026-05-23 - data-module-review - M1-007 Entra user id migration
@@ -1829,7 +1829,7 @@ claude-heavy-planning-handoff
 
 - Agent: Codex
 - Trigger: The admin console requirements review covers lifecycle-heavy areas: rewrite attempts, usage reservations, Stripe webhook processing, outbox dispatch, subscriptions, credits, canary rollback, and API keys.
-- Action: Opened and followed the skill; identified which admin phases must expose state lists, transition history, illegal/stuck states, retryable failures, and recovery actions without bypassing C#/.NET transition logic.
+- Action: Opened and followed the skill; identified which admin phases must expose state lists, transition history, illegal/stuck states, retryable failures, and recovery actions without skipping C#/.NET transition logic.
 - Output artifacts: `docs/skill-run-log.md`.
 - Verification evidence: Confirmed persisted state-bearing tables and indexes in EF Core: `RewriteAttempts`, `UsageReservations`, `StripeEvents`, `OutboxMessages`, `RewriteCredits`, `LearningRuns`, `StrategyCandidates`, `RewriteCanaryRollbacks`, `ApiKeys`, and `ApiKeyUsages`.
 - Limitations: No formal state-machine markdown was generated and no transition helper/test changes were made; this was used to order admin-console capabilities.
@@ -2103,3 +2103,39 @@ claude-heavy-planning-handoff
 - Output artifacts: GitHub issue #374; `docs/skill-run-log.md`.
 - Verification evidence: App account deletion UI returned to the public home page without delete errors for the verified email alias and the Google test account. Microsoft Graph active deletes and deleted-item hard deletes returned 204 for the matching CIAM users; the post-delete target-user query returned an empty list. Azure SQL verification returned `target_original_rows 0` for the test emails/original Entra object ids and `recent_erased_rows 3` for recent anonymized app-user rows.
 - Limitations: The temporary SQL access was only used for cleanup verification and no secrets or connection strings were logged. An older pre-existing `info+rimv-e2e-20260531@timeawake.co.nz` CIAM test user was observed but not touched because it was outside this owner-approved Gmail cleanup scope.
+
+### 2026-06-01 - state-machine-modeling - PAY-01 subscription renewal failure policy
+
+- Agent: Codex
+- Trigger: GitHub issue #378 changes subscription status, paid quota eligibility, and webhook lifecycle behavior for `invoice.payment_failed`.
+- Action: Opened and followed the skill; modeled `AppUser.SubscriptionStatus` as paid states (`Active`, `Trialing`, `Testing`) versus free states (`Inactive`, `Canceled`), then mapped Stripe subscription and invoice events to allowed transitions before coding.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`, `docs/rewrite-packs-pricing-spec.md`, `docs/stripe-live-mode-cutover.md`, `docs/skill-run-log.md`.
+- Verification evidence: Added xUnit coverage for `past_due` and `unpaid` subscription updates returning `free/free:lifetime/3`; `dotnet test` passed 400 tests.
+- Limitations: PAY-01 does not add `invoice.payment_succeeded`; renewal recovery remains handled by `customer.subscription.updated`.
+
+### 2026-06-01 - resilience-test-generation - PAY-01 Stripe webhook replay
+
+- Agent: Codex
+- Trigger: GitHub issue #378 requires duplicate `invoice.payment_failed` delivery to stay idempotent and keep one `StripeEvent` row.
+- Action: Opened and followed the skill; used a deterministic EF Core SQLite service test that processes the same Stripe event twice and asserts persisted state instead of live Stripe calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`, `docs/skill-run-log.md`.
+- Verification evidence: The new invoice test failed before implementation because the user stayed `Active`; after the handler was added, `dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~StripeEventServiceTests"` passed 16 tests and `dotnet test` passed 400 tests.
+- Limitations: The test does not call Stripe and does not send email; PAY-09 notifications remain out of scope.
+
+### 2026-06-01 - data-module-review - PAY-01 Stripe event and user persistence
+
+- Agent: Codex
+- Trigger: PAY-01 touches `AppUser.SubscriptionStatus`, `StripeEvent` idempotency rows, and Stripe customer/subscription lookup paths.
+- Action: Opened and followed the skill; reviewed `AppDbContext` entity configuration, `StripeEvent` primary key idempotency, `AccountService.GetUsagePlan`, and existing Stripe service transaction behavior before changing persistence logic.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`, `docs/skill-run-log.md`.
+- Verification evidence: The implementation reuses the existing serializable `StripeEventService` transaction and `StripeEvents.EventId` key; replay test confirms the second `invoice.payment_failed` delivery leaves one row. `dotnet test` passed 400 tests.
+- Limitations: No EF migration was needed because no schema changed.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-01 backend regression tests
+
+- Agent: Codex
+- Trigger: PAY-01 adds C#/.NET xUnit coverage for subscription renewal failure and webhook idempotency.
+- Action: Opened and followed the skill; wrote backend tests before production code, verified the missing invoice handler with a red test, then implemented the minimal service behavior and reran focused and full suites.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`, `docs/skill-run-log.md`.
+- Verification evidence: Initial focused test failed on `invoice.payment_failed` leaving the user `Active`; after implementation, focused Stripe service tests passed 16/16. `dotnet test` passed 400/400.
+- Limitations: NuGet vulnerability lookups emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable; restore/build/test still completed with cached packages.

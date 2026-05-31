@@ -127,7 +127,8 @@ Source inputs (no secret values quoted):
 **Stripe webhook** (idempotent via `StripeEventService`) `[GPT Pro]` `[RECONCILED]`:
 - One-time packs: on `checkout.session.completed` with `mode=payment` & `payment_status=paid` → grant by SKU (`PURCHASE`, expires +90d, `StripeCheckoutSessionId` unique-guards double-grant).
 - Pro/API: grant **only on `invoice.payment_succeeded`** (not checkout) → 90 rewrites (`SUBSCRIPTION`, expires at period end, `StripeInvoiceId` unique-guards). Set `planTier=PRO, apiAccess=true, subscriptionStatus=active`.
-- `customer.subscription.updated/deleted`: active/trialing → API on; past_due → keep web balance, API off; canceled/unpaid → API off. Already-granted rewrites expire naturally.
+- `customer.subscription.updated/deleted`: active/trialing → paid subscription quota remains available; past_due, unpaid, incomplete, incomplete_expired, paused, canceled, and deleted subscriptions immediately remove paid subscription quota. Already-granted one-time pack rewrites expire naturally.
+- `invoice.payment_failed`: required renewal-failure hook. The matched subscription user is immediately downgraded to the free quota plan and the webhook logs a structured correlation id for alerting. Notifications are out of scope.
 - `[ADDED]` Grant source-of-truth = **checkout `metadata`** (sku + rewrites), with line-item price id as a cross-check (Stripe events don't include line items unless the session is retrieved). `[ADDED]` Grant only on invoice `billing_reason ∈ { subscription_create, subscription_cycle }`; ignore others to avoid double-grant. `[ADDED]` Ack and no-op unhandled event types.
 
 **Grant-expiry job** — `[ADDED]` balance is computed on read (ignore `ExpiresAt ≤ now` and `Remaining ≤ 0`); a timer Function (extend `ExpiredReservationCleanup`) does housekeeping only.
@@ -139,6 +140,8 @@ Source inputs (no secret values quoted):
 **Grant lifecycle:** `granted → (partially) consumed → exhausted (Remaining=0) | expired (ExpiresAt≤now)`. Consumption order = **earliest-expiring grant first (FIFO by ExpiresAt)** so campaign bonuses (14d) burn before packs (90d). `[GPT Pro]`
 
 **Usage state machine:** `RESERVED → CONSUMED` (success) or `RESERVED → REFUNDED` (pipeline failure). Never charge after a successful pipeline call only — reserve **before** the model call. `[GPT Pro]`
+
+`[ADDED]` **Subscription renewal failure grace policy:** there is no paid-quota grace period after a failed Pro/API renewal. `past_due` and `unpaid` map to the free quota plan immediately, as do other non-paying Stripe subscription states. The product is pack-first, so the app does not lend the 90-rewrite subscription period after a failed charge.
 
 `[ADDED]` **Concurrency / double-spend:** reservation across multiple FIFO grants must be atomic (DB transaction with row locking / serializable isolation / optimistic concurrency). The C# `QuotaService` already proves "concurrent requests cannot exceed the slot" — reuse that pattern. Required test: N concurrent reserves on a balance of 1 yield exactly one success.
 

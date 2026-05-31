@@ -14,6 +14,13 @@ public sealed class AccountApiTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
 
+    static AccountApiTests()
+    {
+        Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
+        Environment.SetEnvironmentVariable("DOTNET_hostBuilder__reloadConfigOnChange", "false");
+        Environment.SetEnvironmentVariable("ASPNETCORE_hostBuilder__reloadConfigOnChange", "false");
+    }
+
     public async Task InitializeAsync()
     {
         await _connection.OpenAsync();
@@ -30,7 +37,7 @@ public sealed class AccountApiTests : IAsyncLifetime
     public async Task Me_upserts_authenticated_email_user_without_usage_side_effects()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "entra_email_user");
         client.DefaultRequestHeaders.Add("X-User-Email", "teacher@example.com");
 
@@ -54,7 +61,7 @@ public sealed class AccountApiTests : IAsyncLifetime
     public async Task Me_updates_email_for_existing_entra_subject_without_duplicate_user()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "entra_same_subject");
         client.DefaultRequestHeaders.Add("X-User-Email", "first@example.com");
         (await client.GetAsync("/api/me")).StatusCode.Should().Be(HttpStatusCode.OK);
@@ -74,7 +81,7 @@ public sealed class AccountApiTests : IAsyncLifetime
     public async Task Me_requires_authentication_and_does_not_create_user()
     {
         await using var factory = CreateFactory();
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
 
         var response = await client.GetAsync("/api/me");
 
@@ -101,6 +108,13 @@ public sealed class AccountApiTests : IAsyncLifetime
                 });
             });
     }
+
+    private static HttpClient CreateClient(WebApplicationFactory<Program> factory) =>
+        factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = false,
+        });
 
     private AppDbContext CreateContext()
     {

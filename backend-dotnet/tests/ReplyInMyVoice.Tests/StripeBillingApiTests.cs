@@ -15,6 +15,13 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
 
+    static StripeBillingApiTests()
+    {
+        Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
+        Environment.SetEnvironmentVariable("DOTNET_hostBuilder__reloadConfigOnChange", "false");
+        Environment.SetEnvironmentVariable("ASPNETCORE_hostBuilder__reloadConfigOnChange", "false");
+    }
+
     public async Task InitializeAsync()
     {
         await _connection.OpenAsync();
@@ -31,7 +38,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     public async Task Checkout_requires_authentication()
     {
         await using var factory = CreateFactory(new FakeStripeBillingService("https://billing.test/checkout"));
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
 
         var response = await client.PostAsync("/api/stripe/checkout", null);
 
@@ -43,7 +50,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     {
         var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
         await using var factory = CreateFactory(fakeBilling);
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout");
 
         var response = await client.PostAsync("/api/stripe/checkout", null);
@@ -60,7 +67,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     {
         var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
         await using var factory = CreateFactory(fakeBilling);
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_sku");
 
         var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
@@ -75,7 +82,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     {
         var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
         await using var factory = CreateFactory(fakeBilling);
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_bad_sku");
 
         var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "unknown_pack" });
@@ -91,7 +98,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
         {
             PortalError = new InvalidOperationException("stripe_customer_missing")
         });
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_portal");
 
         var response = await client.PostAsync("/api/stripe/portal", null);
@@ -124,6 +131,13 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
                 });
             });
     }
+
+    private static HttpClient CreateClient(WebApplicationFactory<Program> factory) =>
+        factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = false,
+        });
 
     private AppDbContext CreateContext()
     {

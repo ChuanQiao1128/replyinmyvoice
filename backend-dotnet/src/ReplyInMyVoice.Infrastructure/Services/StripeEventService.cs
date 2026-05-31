@@ -331,6 +331,11 @@ public sealed class StripeEventService
             return await SyncSubscriptionObjectAsync(db, type, stripeObject, now, cancellationToken);
         }
 
+        if (type == "invoice.payment_failed")
+        {
+            return await SyncInvoicePaymentFailedAsync(db, eventId, stripeObject, now, cancellationToken);
+        }
+
         if (type == "checkout.session.completed")
         {
             return await SyncCheckoutSessionAsync(db, eventId, stripeObject, now, cancellationToken);
@@ -381,6 +386,81 @@ public sealed class StripeEventService
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
         return null;
+    }
+
+    private async Task<string?> SyncInvoicePaymentFailedAsync(
+        AppDbContext db,
+        string eventId,
+        JsonElement stripeObject,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var customerId = GetString(stripeObject, "customer");
+        var subscriptionId = GetString(stripeObject, "subscription");
+        if (string.IsNullOrWhiteSpace(customerId) && string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return null;
+        }
+
+        var user = await FindUserByStripeInvoiceAsync(db, customerId, subscriptionId, cancellationToken);
+        if (user is null)
+        {
+            return $"No matching user for Stripe invoice payment_failed customer {customerId ?? "unknown"} subscription {subscriptionId ?? "unknown"}.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(customerId))
+        {
+            user.StripeCustomerId = customerId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            user.StripeSubscriptionId = subscriptionId;
+        }
+
+        // PAY-01 policy: failed subscription renewal has no paid grace period.
+        if (user.SubscriptionStatus != SubscriptionStatus.Canceled)
+        {
+            user.SubscriptionStatus = SubscriptionStatus.Inactive;
+        }
+        user.UpdatedAt = now;
+        user.RowVersion = Guid.NewGuid();
+
+        logger?.LogWarning(
+            "Stripe invoice payment failed for event {CorrelationId}; user {UserId}, customer {StripeCustomerId}, subscription {StripeSubscriptionId}.",
+            eventId,
+            user.Id,
+            customerId,
+            subscriptionId);
+
+        return null;
+    }
+
+    private static async Task<AppUser?> FindUserByStripeInvoiceAsync(
+        AppDbContext db,
+        string? customerId,
+        string? subscriptionId,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(customerId) && !string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return await db.AppUsers
+                .AsTracking()
+                .SingleOrDefaultAsync(
+                    x => x.StripeCustomerId == customerId || x.StripeSubscriptionId == subscriptionId,
+                    cancellationToken);
+        }
+
+        if (!string.IsNullOrWhiteSpace(customerId))
+        {
+            return await db.AppUsers
+                .AsTracking()
+                .SingleOrDefaultAsync(x => x.StripeCustomerId == customerId, cancellationToken);
+        }
+
+        return await db.AppUsers
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.StripeSubscriptionId == subscriptionId, cancellationToken);
     }
 
     private async Task<string?> SyncCheckoutSessionAsync(
@@ -576,6 +656,13 @@ public sealed class StripeEventService
             "active" => SubscriptionStatus.Active,
             "trialing" => SubscriptionStatus.Trialing,
             "canceled" => SubscriptionStatus.Canceled,
+            // PAY-01 policy: non-paying Stripe states, including past_due and unpaid,
+            // immediately fall back to the free quota plan because rewrite packs are primary.
+            "past_due" => SubscriptionStatus.Inactive,
+            "unpaid" => SubscriptionStatus.Inactive,
+            "incomplete" => SubscriptionStatus.Inactive,
+            "incomplete_expired" => SubscriptionStatus.Inactive,
+            "paused" => SubscriptionStatus.Inactive,
             _ => SubscriptionStatus.Inactive,
         };
 

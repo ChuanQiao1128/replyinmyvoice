@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -434,6 +435,122 @@ public sealed class StripeEventServiceTests
         updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Active);
         updatedUser.StripeSubscriptionId.Should().Be("sub_active");
         updatedUser.CurrentPeriodEnd.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1780000000));
+    }
+
+    [Theory]
+    [InlineData("past_due")]
+    [InlineData("unpaid")]
+    public async Task ProcessWebhookEventAsync_NonPayingSubscriptionStatusUsesFreePlan(string stripeStatus)
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
+            storedUser.StripeCustomerId = $"cus_subscription_{stripeStatus}";
+            storedUser.StripeSubscriptionId = $"sub_subscription_{stripeStatus}";
+            storedUser.SubscriptionStatus = SubscriptionStatus.Active;
+            await seedDb.SaveChangesAsync();
+        }
+
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-06-01T00:00:00Z");
+
+        var processed = await service.ProcessWebhookEventAsync(
+            $"evt_subscription_{stripeStatus}",
+            "customer.subscription.updated",
+            $$"""
+            {
+              "id": "evt_subscription_{{stripeStatus}}",
+              "type": "customer.subscription.updated",
+              "data": {
+                "object": {
+                  "id": "sub_subscription_{{stripeStatus}}",
+                  "customer": "cus_subscription_{{stripeStatus}}",
+                  "status": "{{stripeStatus}}",
+                  "current_period_end": 1780000000
+                }
+              }
+            }
+            """,
+            now);
+
+        processed.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
+        updatedUser.SubscriptionStatus.Should().NotBe(SubscriptionStatus.Active);
+        updatedUser.SubscriptionStatus.Should().NotBe(SubscriptionStatus.Trialing);
+        updatedUser.SubscriptionStatus.Should().NotBe(SubscriptionStatus.Testing);
+
+        var plan = AccountService.GetUsagePlan(updatedUser);
+        plan.Scope.Should().Be("free");
+        plan.PeriodKey.Should().Be("free:lifetime");
+        plan.QuotaLimit.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task ProcessWebhookEventAsync_InvoicePaymentFailedDowngradesPlanAndLogsOnce()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
+            storedUser.StripeCustomerId = "cus_invoice_payment_failed";
+            storedUser.StripeSubscriptionId = "sub_invoice_payment_failed";
+            storedUser.SubscriptionStatus = SubscriptionStatus.Active;
+            await seedDb.SaveChangesAsync();
+        }
+
+        var logger = new RecordingLogger<StripeEventService>();
+        var service = new StripeEventService(fixture.CreateContext, logger);
+        var now = DateTimeOffset.Parse("2026-06-01T00:05:00Z");
+        const string payload = """
+        {
+          "id": "evt_invoice_payment_failed",
+          "type": "invoice.payment_failed",
+          "data": {
+            "object": {
+              "id": "in_payment_failed",
+              "customer": "cus_invoice_payment_failed",
+              "subscription": "sub_invoice_payment_failed"
+            }
+          }
+        }
+        """;
+
+        var first = await service.ProcessWebhookEventAsync(
+            "evt_invoice_payment_failed",
+            "invoice.payment_failed",
+            payload,
+            now);
+        var second = await service.ProcessWebhookEventAsync(
+            "evt_invoice_payment_failed",
+            "invoice.payment_failed",
+            payload,
+            now.AddSeconds(1));
+
+        first.Should().BeTrue();
+        second.Should().BeFalse();
+
+        await using var db = fixture.CreateContext();
+        (await db.StripeEvents.CountAsync(x => x.EventId == "evt_invoice_payment_failed")).Should().Be(1);
+        var storedEvent = await db.StripeEvents.SingleAsync(x => x.EventId == "evt_invoice_payment_failed");
+        storedEvent.Status.Should().Be(StripeEventStatus.Processed);
+
+        var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
+        updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Inactive);
+        var plan = AccountService.GetUsagePlan(updatedUser);
+        plan.Scope.Should().Be("free");
+        plan.PeriodKey.Should().Be("free:lifetime");
+        plan.QuotaLimit.Should().Be(3);
+
+        var loggedPaymentFailure = logger.Entries.Any(entry =>
+            entry.Level == LogLevel.Warning &&
+            HasLogProperty(entry, "CorrelationId", "evt_invoice_payment_failed") &&
+            HasLogProperty(entry, "UserId", user.Id.ToString()));
+        loggedPaymentFailure.Should().BeTrue();
     }
 
     [Fact]
@@ -949,4 +1066,52 @@ public sealed class StripeEventServiceTests
                 message.Contains("RewriteCredits.StripeEventId", StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull =>
+            NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var properties = state as IEnumerable<KeyValuePair<string, object?>>;
+            Entries.Add(new LogEntry(
+                logLevel,
+                eventId,
+                formatter(state, exception),
+                properties?.ToArray() ?? Array.Empty<KeyValuePair<string, object?>>(),
+                exception));
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    private sealed record LogEntry(
+        LogLevel Level,
+        EventId EventId,
+        string Message,
+        IReadOnlyList<KeyValuePair<string, object?>> Properties,
+        Exception? Exception);
+
+    private static bool HasLogProperty(LogEntry entry, string key, string value) =>
+        entry.Properties.Any(property =>
+            property.Key == key &&
+            string.Equals(property.Value?.ToString(), value, StringComparison.Ordinal));
 }
