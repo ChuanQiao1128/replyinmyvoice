@@ -1085,6 +1085,7 @@ public sealed class StripeEventServiceTests
                 StripeSku = credit.StripeSku,
                 StripeAmountTotal = credit.StripeAmountTotal,
                 StripeCurrency = credit.StripeCurrency,
+                StripeReceiptUrl = credit.StripeReceiptUrl,
             };
 
         private static bool IsDatabaseLocked(DbUpdateException exception) =>

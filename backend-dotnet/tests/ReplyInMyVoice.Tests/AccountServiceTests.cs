@@ -262,6 +262,7 @@ public sealed class AccountServiceTests : IAsyncLifetime
                     StripeSku = "quick_pack",
                     StripeAmountTotal = 900,
                     StripeCurrency = "nzd",
+                    StripeReceiptUrl = "https://pay.stripe.test/receipts/quick-pack",
                 },
                 new RewriteCredit
                 {
@@ -290,6 +291,7 @@ public sealed class AccountServiceTests : IAsyncLifetime
         payment.Sku.Should().Be("quick_pack");
         payment.Amount.Should().Be(900);
         payment.Currency.Should().Be("nzd");
+        payment.ReceiptUrl.Should().Be("https://pay.stripe.test/receipts/quick-pack");
         payment.Date.Should().Be(now);
         payment.Expiry.Should().Be(expiry);
         payment.Remaining.Should().Be(7);

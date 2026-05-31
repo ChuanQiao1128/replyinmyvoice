@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Tests;
@@ -83,6 +85,55 @@ public sealed class AccountApiTests : IAsyncLifetime
         (await db.AppUsers.CountAsync()).Should().Be(0);
     }
 
+    [Fact]
+    public async Task Payments_returns_purchase_history_with_receipt_url()
+    {
+        var userId = Guid.NewGuid();
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra_receipts",
+                Email = "buyer@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = DateTimeOffset.Parse("2026-05-30T00:00:00Z"),
+                UpdatedAt = DateTimeOffset.Parse("2026-05-30T00:00:00Z"),
+            });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = userId,
+                Source = "PURCHASE",
+                AmountGranted = 10,
+                AmountConsumed = 1,
+                GrantedAt = DateTimeOffset.Parse("2026-05-30T10:00:00Z"),
+                ExpiresAt = DateTimeOffset.Parse("2026-08-30T10:00:00Z"),
+                StripeSku = "quick_pack",
+                StripeAmountTotal = 250,
+                StripeCurrency = "nzd",
+                StripeReceiptUrl = "https://pay.stripe.test/receipts/quick-pack",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "entra_receipts");
+        client.DefaultRequestHeaders.Add("X-User-Email", "buyer@example.com");
+
+        var response = await client.GetAsync("/api/me/payments");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<IReadOnlyList<AccountPaymentResponse>>();
+        body.Should().NotBeNull();
+        body.Should().ContainSingle();
+        body![0].Sku.Should().Be("quick_pack");
+        body[0].Amount.Should().Be(250);
+        body[0].Currency.Should().Be("nzd");
+        body[0].ReceiptUrl.Should().Be("https://pay.stripe.test/receipts/quick-pack");
+        body[0].Remaining.Should().Be(9);
+    }
+
     private WebApplicationFactory<Program> CreateFactory()
     {
         return new WebApplicationFactory<Program>()
@@ -121,4 +172,13 @@ public sealed class AccountApiTests : IAsyncLifetime
         string ExternalAuthUserId,
         string? Email,
         string SubscriptionStatus);
+
+    private sealed record AccountPaymentResponse(
+        string? Sku,
+        long? Amount,
+        string? Currency,
+        DateTimeOffset Date,
+        DateTimeOffset? Expiry,
+        int Remaining,
+        string? ReceiptUrl);
 }

@@ -21,6 +21,16 @@ export type AzureAccountSummary = {
   usage: AzureAccountUsage;
 };
 
+export type AzureAccountPayment = {
+  sku: string | null;
+  amount: number | null;
+  currency: string | null;
+  receiptUrl: string | null;
+  date: string;
+  expiry: string | null;
+  remaining: number;
+};
+
 export function getAzureApiBaseUrl() {
   return optionalEnv(
     "NEXT_PUBLIC_AZURE_API_BASE_URL",

@@ -830,6 +830,10 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
 
+                    b.Property<string>("StripeReceiptUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
                     b.Property<string>("StripeSku")
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");

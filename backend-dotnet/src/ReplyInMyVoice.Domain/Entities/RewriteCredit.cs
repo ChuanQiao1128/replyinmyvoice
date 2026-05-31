@@ -15,5 +15,6 @@ public sealed class RewriteCredit
     public string? StripeSku { get; set; }
     public long? StripeAmountTotal { get; set; }
     public string? StripeCurrency { get; set; }
+    public string? StripeReceiptUrl { get; set; }
     public Guid RowVersion { get; set; } = Guid.NewGuid();
 }
