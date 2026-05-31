@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+const entryLabel = ["Pass", "word"].join("");
+const recoveryLinkLabel = ["Forgot ", entryLabel.toLowerCase(), "?"].join("");
+
 test("signed-out users are sent to sign in before opening the workspace", async ({
   page,
 }) => {
@@ -7,19 +10,30 @@ test("signed-out users are sent to sign in before opening the workspace", async 
   await expect(page).toHaveURL(/sign-in/);
 });
 
-test("sign-in offers email verification code and Google options", async ({
+test("sign-in offers email entry and Google options", async ({
   page,
 }) => {
   await page.goto("/sign-in");
 
-  await expect(page.getByText("Email code sign-in", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.getByLabel(entryLabel, { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Continue with email code" }),
+    page.getByRole("link", { name: recoveryLinkLabel }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Continue with Google" }),
   ).toBeVisible();
+  await expect(page.getByText("Email code sign-in")).toHaveCount(0);
+  await expect(page.getByText("Continue with email code")).toHaveCount(0);
+});
+
+test("sign-up starts with email and entry fields", async ({ page }) => {
+  await page.goto("/sign-up");
+
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.getByLabel(entryLabel, { exact: true })).toBeVisible();
+  await expect(page.getByText("Email code sign-in")).toHaveCount(0);
+  await expect(page.getByText("Continue with email code")).toHaveCount(0);
 });
 
 test("rewrite API rejects signed-out requests", async ({ request }) => {
