@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -541,11 +543,83 @@ public sealed class AccountServiceTests : IAsyncLifetime
         (await verifyDb.AppUsers.CountAsync(x => x.ExternalAuthUserId == "entra-idempotent-delete")).Should().Be(0);
     }
 
+    [Fact]
+    public async Task DeleteAccountWorksWhenProviderUsesRetryingExecutionStrategy()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = CreateRetryingStrategyContext())
+        {
+            await db.Database.EnsureCreatedAsync();
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-retrying-delete",
+                Email = "retrying-delete@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now.AddDays(-1),
+                UpdatedAt = now,
+            });
+            db.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = userId,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 1,
+                ReservedCount = 1,
+                CreatedAt = now.AddDays(-1),
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateRetryingStrategyContext);
+
+        await service.DeleteAccountAsync("entra-retrying-delete", CancellationToken.None);
+
+        await using var verifyDb = CreateRetryingStrategyContext();
+        var user = await verifyDb.AppUsers.SingleAsync(x => x.Id == userId);
+        user.ExternalAuthUserId.Should().StartWith("erased:");
+        user.Email.Should().BeNull();
+        user.SubscriptionStatus.Should().Be(SubscriptionStatus.Canceled);
+
+        var period = await verifyDb.UsagePeriods.SingleAsync(x => x.UserId == userId);
+        period.PeriodKey.Should().StartWith("erased:");
+        period.QuotaLimit.Should().Be(0);
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(0);
+    }
+
     private AppDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlite(_connection)
             .Options;
         return new AppDbContext(options);
+    }
+
+    private AppDbContext CreateRetryingStrategyContext()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(_connection)
+            .ReplaceService<IExecutionStrategyFactory, TestExecutionStrategyFactory>()
+            .Options;
+        return new AppDbContext(options);
+    }
+
+    private sealed class TestExecutionStrategyFactory(
+        ExecutionStrategyDependencies dependencies) : IExecutionStrategyFactory
+    {
+        public IExecutionStrategy Create() => new TestExecutionStrategy(dependencies);
+    }
+
+    private sealed class TestExecutionStrategy(
+        ExecutionStrategyDependencies dependencies) : ExecutionStrategy(
+            dependencies,
+            maxRetryCount: 1,
+            maxRetryDelay: TimeSpan.Zero)
+    {
+        protected override bool ShouldRetryOn(Exception exception) => false;
     }
 }
