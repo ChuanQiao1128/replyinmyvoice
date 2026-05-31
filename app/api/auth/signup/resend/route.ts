@@ -10,6 +10,10 @@ import {
   NativeAuthError,
   signupChallenge,
 } from "../../../../../lib/entra-native-auth";
+import {
+  authRateLimitPolicies,
+  checkAuthRateLimit,
+} from "../../../../../lib/auth-rate-limit";
 import { requireSameOrigin } from "../../../../../lib/http";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +45,15 @@ export async function POST(request: Request) {
       error: "Please wait before requesting another code.",
       ok: false,
     }, { status: 429 });
+  }
+
+  const rateLimit = await checkAuthRateLimit({
+    email: flow.email,
+    policy: authRateLimitPolicies.signupResend,
+    request,
+  });
+  if (!rateLimit.allowed) {
+    return signupJsonError("Too many requests. Please try again later.", 429);
   }
 
   try {

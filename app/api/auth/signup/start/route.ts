@@ -9,6 +9,10 @@ import {
   signupChallenge,
   signupStart,
 } from "../../../../../lib/entra-native-auth";
+import {
+  authRateLimitPolicies,
+  checkAuthRateLimit,
+} from "../../../../../lib/auth-rate-limit";
 import { requireSameOrigin } from "../../../../../lib/http";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +40,15 @@ export async function POST(request: Request) {
 
   if (!entryValue || entryValue.length < minEntryLength) {
     return signupJsonError("Use at least 8 characters.", 400);
+  }
+
+  const rateLimit = await checkAuthRateLimit({
+    email,
+    policy: authRateLimitPolicies.signupStart,
+    request,
+  });
+  if (!rateLimit.allowed) {
+    return signupJsonError("Too many requests. Please try again later.", 429);
   }
 
   try {

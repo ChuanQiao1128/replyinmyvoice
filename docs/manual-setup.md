@@ -126,6 +126,19 @@ Expected review: compare `aud`, `iss`, and `scp` / `scope` with `NEXT_PUBLIC_ENT
 If the claims do not match, adjust the requested scope or Entra API audience configuration. Do not weaken backend token validation.
 ```
 
+Production rate-limit requirement:
+
+```text
+The Next.js auth routes include a best-effort in-process limiter for local and single-instance protection on:
+- POST /api/auth/signin
+- POST /api/auth/signup/start
+- POST /api/auth/signup/resend
+- POST /api/auth/reset/start
+- POST /api/auth/reset/resend
+
+Because the production app runs on Cloudflare Workers, cross-instance abuse protection must also be enforced with Cloudflare WAF rate-limit rules for those paths. Use per-IP rules and, where available, request-body/email-aware controls or bot-management signals. Keep the route handlers' local limiter enabled as defense-in-depth.
+```
+
 Reference:
 
 ```text
