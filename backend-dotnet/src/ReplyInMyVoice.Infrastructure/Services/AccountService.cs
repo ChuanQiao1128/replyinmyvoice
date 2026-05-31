@@ -195,92 +195,98 @@ public sealed class AccountService(
             await CancelStripeSubscriptionAsync(stripeSubscriptionId, cancellationToken);
         }
 
-        await using var db = dbContextFactory();
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var user = await db.AppUsers
-            .AsTracking()
-            .SingleOrDefaultAsync(x => x.ExternalAuthUserId == normalizedExternalId, cancellationToken);
-        if (user is null || IsErasedExternalAuthUserId(user.ExternalAuthUserId))
+        await using var strategyDb = dbContextFactory();
+        var strategy = strategyDb.Database.CreateExecutionStrategy();
+
+        await strategy.ExecuteAsync(async () =>
         {
-            await transaction.CommitAsync(cancellationToken);
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        var attempts = await db.RewriteAttempts
-            .AsTracking()
-            .Where(x => x.UserId == user.Id)
-            .ToListAsync(cancellationToken);
-        var usagePeriods = await db.UsagePeriods
-            .AsTracking()
-            .Where(x => x.UserId == user.Id)
-            .ToListAsync(cancellationToken);
-        var reservations = await db.UsageReservations
-            .AsTracking()
-            .Where(x => x.UserId == user.Id)
-            .ToListAsync(cancellationToken);
-        var credits = await db.RewriteCredits
-            .AsTracking()
-            .Where(x => x.UserId == user.Id)
-            .ToListAsync(cancellationToken);
-
-        user.ExternalAuthUserId = CreateErasedExternalAuthUserId(user.Id);
-        user.Email = null;
-        user.SubscriptionStatus = SubscriptionStatus.Canceled;
-        user.CurrentPeriodEnd = null;
-        user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
-
-        foreach (var attempt in attempts)
-        {
-            attempt.IdempotencyKey = CreateErasedChildToken(attempt.Id);
-            attempt.RequestHash = "erased";
-            attempt.RequestJson = "{}";
-            attempt.ResultJson = null;
-            attempt.ErrorMessage = null;
-            attempt.ExpiresAt = now;
-            if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
+            await using var db = dbContextFactory();
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var user = await db.AppUsers
+                .AsTracking()
+                .SingleOrDefaultAsync(x => x.ExternalAuthUserId == normalizedExternalId, cancellationToken);
+            if (user is null || IsErasedExternalAuthUserId(user.ExternalAuthUserId))
             {
-                attempt.Status = RewriteAttemptStatus.Failed;
-                attempt.ErrorCode = "account_erased";
-                attempt.CompletedAt = now;
+                await transaction.CommitAsync(cancellationToken);
+                return;
             }
 
-            attempt.RowVersion = Guid.NewGuid();
-        }
+            var now = DateTimeOffset.UtcNow;
+            var attempts = await db.RewriteAttempts
+                .AsTracking()
+                .Where(x => x.UserId == user.Id)
+                .ToListAsync(cancellationToken);
+            var usagePeriods = await db.UsagePeriods
+                .AsTracking()
+                .Where(x => x.UserId == user.Id)
+                .ToListAsync(cancellationToken);
+            var reservations = await db.UsageReservations
+                .AsTracking()
+                .Where(x => x.UserId == user.Id)
+                .ToListAsync(cancellationToken);
+            var credits = await db.RewriteCredits
+                .AsTracking()
+                .Where(x => x.UserId == user.Id)
+                .ToListAsync(cancellationToken);
 
-        foreach (var period in usagePeriods)
-        {
-            period.PeriodKey = CreateErasedChildToken(period.Id);
-            period.QuotaLimit = 0;
-            period.UsedCount = 0;
-            period.ReservedCount = 0;
-            period.PeriodStart = null;
-            period.PeriodEnd = null;
-            period.UpdatedAt = now;
-            period.RowVersion = Guid.NewGuid();
-        }
+            user.ExternalAuthUserId = CreateErasedExternalAuthUserId(user.Id);
+            user.Email = null;
+            user.SubscriptionStatus = SubscriptionStatus.Canceled;
+            user.CurrentPeriodEnd = null;
+            user.UpdatedAt = now;
+            user.RowVersion = Guid.NewGuid();
 
-        foreach (var reservation in reservations)
-        {
-            reservation.Status = UsageReservationStatus.Released;
-            reservation.FinalizedAt = null;
-            reservation.ReleasedAt = now;
-            reservation.ExpiresAt = now;
-            reservation.RowVersion = Guid.NewGuid();
-        }
+            foreach (var attempt in attempts)
+            {
+                attempt.IdempotencyKey = CreateErasedChildToken(attempt.Id);
+                attempt.RequestHash = "erased";
+                attempt.RequestJson = "{}";
+                attempt.ResultJson = null;
+                attempt.ErrorMessage = null;
+                attempt.ExpiresAt = now;
+                if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
+                {
+                    attempt.Status = RewriteAttemptStatus.Failed;
+                    attempt.ErrorCode = "account_erased";
+                    attempt.CompletedAt = now;
+                }
 
-        foreach (var credit in credits)
-        {
-            credit.Source = "ERASED";
-            credit.AmountGranted = 0;
-            credit.AmountConsumed = 0;
-            credit.ExpiresAt = now;
-            credit.RowVersion = Guid.NewGuid();
-        }
+                attempt.RowVersion = Guid.NewGuid();
+            }
 
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+            foreach (var period in usagePeriods)
+            {
+                period.PeriodKey = CreateErasedChildToken(period.Id);
+                period.QuotaLimit = 0;
+                period.UsedCount = 0;
+                period.ReservedCount = 0;
+                period.PeriodStart = null;
+                period.PeriodEnd = null;
+                period.UpdatedAt = now;
+                period.RowVersion = Guid.NewGuid();
+            }
+
+            foreach (var reservation in reservations)
+            {
+                reservation.Status = UsageReservationStatus.Released;
+                reservation.FinalizedAt = null;
+                reservation.ReleasedAt = now;
+                reservation.ExpiresAt = now;
+                reservation.RowVersion = Guid.NewGuid();
+            }
+
+            foreach (var credit in credits)
+            {
+                credit.Source = "ERASED";
+                credit.AmountGranted = 0;
+                credit.AmountConsumed = 0;
+                credit.ExpiresAt = now;
+                credit.RowVersion = Guid.NewGuid();
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        });
     }
 
     public static AccountUsagePlan GetUsagePlan(AppUser user)

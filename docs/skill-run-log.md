@@ -2040,3 +2040,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/skill-run-log.md`.
 - Verification evidence: Production `/sign-up`, `/sign-in`, and `/forgot-password` each loaded with HTTP 200 and visible email fields; Playwright confirmed page titles and form visibility. Production `/api/auth/signin` with a unique nonexistent address returned `404 {"error":"user_not_found","ok":false}`. Production `/api/auth/reset/start` with a unique nonexistent address returned `404 {"error":"No account for this email. Please create one.","ok":false}`. Browser request failures observed were expected Cloudflare RUM/navigation aborts, not app route failures.
 - Limitations: The real sign-up verification-code flow, reset-code flow, authenticated `/app`, and sign-out button flow still require a live mailbox code from the owner and were not completed in this check.
+
+### 2026-05-31 - ui-browser-testing - Dynamic auth E2E workflow completion
+
+- Agent: Codex
+- Trigger: Owner asked to run Entra External ID email/password auth E2E through a dynamic GitHub issue workflow with live code handoff, issue closure, and a sentinel monitor.
+- Action: Opened and followed the skill; verified production sign-up, `/app` session creation, logout signed-out gate, email/password re-login, forgot-password reset-code completion, and new-password sign-in. Used GitHub issues #356-#362 as the workflow ledger, fixed the discovered CIAM issuer session-minting bug through PR #363, and stopped the heartbeat sentinel after all workflow issues closed.
+- Output artifacts: GitHub issues #356-#362; PR #363; `docs/skill-run-log.md`.
+- Verification evidence: #357, #358, #359, #360, #361, #356, and #362 were closed with evidence comments. PR #363 merged to main as `a84023a43ede6f04bb891ce2927f4eac6c9e65e0`; main Cloudflare workflow `26707889589` completed build-test and deploy successfully. Runtime verification showed sign-in HTTP 302 followed by `/app` HTTP 200 with a workspace marker, logout HTTP 307 followed by `/app` HTTP 307 to `/sign-in?redirectTo=%2Fapp`, re-login HTTP 302 followed by `/app` HTTP 200, reset verify HTTP 200 with `ok: true`, and new-password sign-in HTTP 302 followed by `/app` HTTP 200.
+- Limitations: The run used one owner-accessible test email alias and owner-provided verification codes. Codes, temporary passwords, cookies, and tokens were intentionally not written to GitHub or docs.
+
+### 2026-05-31 - ui-browser-testing - Auth module completion status audit
+
+- Agent: Codex
+- Trigger: Owner asked whether the registration/login module was complete and what auth coverage remained untested.
+- Action: Opened and followed the skill; rechecked GitHub issue closure, the merged CIAM issuer fix PR, the successful main Cloudflare deployment, and the existing auth unit/E2E test coverage.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: GitHub issues #356-#362 were all `CLOSED` with `COMPLETED` state reason and `verified` label. PR #363 was merged to `main` as `a84023a43ede6f04bb891ce2927f4eac6c9e65e0`. Main Cloudflare workflow `26707889589` completed successfully. Auth coverage was present in `tests/e2e/auth-gate.spec.ts`, `tests/e2e/auth-forgot.spec.ts`, `tests/unit/auth-signup-routes.test.ts`, `tests/unit/auth-signin-route.test.ts`, `tests/unit/auth-reset-routes.test.ts`, `tests/unit/entra-native-auth.test.ts`, `tests/unit/entra-auth.test.ts`, and `tests/unit/auth-rate-limit.test.ts`.
+- Limitations: This was a status audit, not a new browser run. Remaining optional coverage includes Google OAuth live E2E, live resend-code paths, live negative-code/password-policy cases, production rate-limit behavior, mobile visual screenshots, session-expiry behavior, cross-browser coverage, and account deletion if that is considered part of auth acceptance.
+
+### 2026-05-31 - ui-browser-testing - Remaining auth coverage issue planning
+
+- Agent: Codex
+- Trigger: Owner asked to discuss, before starting, converting the remaining auth coverage gaps into GitHub issues supervised by subagents and a sentinel, with real frontend testing through Playwright MCP.
+- Action: Opened and followed the skill for planning only; no GitHub issues, browser runs, account deletions, or sentinels were started.
+- Output artifacts: `docs/skill-run-log.md`.
+- Verification evidence: Proposed a production-focused issue breakdown for Google OAuth, account cleanup, resend paths, negative auth cases, mobile screenshots, session behavior, rate-limit smoke, and cleanup/ledger closure. The plan requires Playwright MCP/browser evidence, console/network review, issue evidence comments, and no secrets or one-time codes in GitHub.
+- Limitations: Planning only. Execution awaits owner approval and clarification on whether the `chuanqiao1128@gmail.com` Google test user should remain registered after the flow or be cleaned up.
+
+### 2026-05-31 - cloud-architecture-cost-review - Temporary SQL access for auth cleanup
+
+- Agent: Codex
+- Trigger: Owner approved starting the remaining auth E2E workflow, which required deleting a pre-existing Google test account and checking Azure SQL-backed app state.
+- Action: Opened and followed the skill; compared the zero-cost temporary firewall/read-only verification path against unsafe direct production mutations. Added a single temporary Azure SQL firewall rule for the current IP, used it to verify and erase only the old test account through project `AccountService`, then removed the rule.
+- Output artifacts: GitHub issue #365; `docs/skill-run-log.md`.
+- Verification evidence: Temporary rule `codex-auth-e2e-20260531` was created for the current IP and later deleted. Backend lookup found one matching app user with no Stripe subscription; project `AccountService.DeleteAccountAsync` erased that state with postcheck active old external-auth id count 0. CIAM user delete returned 204, permanent deleted-item delete returned 204, and post-delete lookup returned 404.
+- Limitations: The temporary SQL access was used only for this cleanup check. No Azure resources were created or resized, no fixed monthly cost was added, and no connection strings, passwords, tokens, or one-time codes were logged.
+
+### 2026-05-31 - dotnet-backend-testing - Account deletion retry-strategy fix
+
+- Agent: Codex
+- Trigger: The auth cleanup exposed a production-path `.NET` bug: `AccountService.DeleteAccountAsync` failed when SQL Server retrying execution strategy was enabled around a user-initiated transaction.
+- Action: Opened and followed the skill; added a failing xUnit regression test using a retrying EF execution strategy, then wrapped the account-erasure transaction in `Database.CreateExecutionStrategy().ExecuteAsync`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: New focused test failed before the fix with `The configured execution strategy 'TestExecutionStrategy' does not support user-initiated transactions`; after the fix, the focused test passed. `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter "FullyQualifiedName~AccountServiceTests"` passed 9 tests. `dotnet test backend-dotnet/ReplyInMyVoice.sln --nologo` passed 397 tests.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
