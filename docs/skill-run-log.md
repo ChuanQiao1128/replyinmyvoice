@@ -2085,3 +2085,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `docs/skill-run-log.md`.
 - Verification evidence: New focused test failed before the fix with `The configured execution strategy 'TestExecutionStrategy' does not support user-initiated transactions`; after the fix, the focused test passed. `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter "FullyQualifiedName~AccountServiceTests"` passed 9 tests. `dotnet test backend-dotnet/ReplyInMyVoice.sln --nologo` passed 397 tests.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-05-31 - ui-browser-testing - Remaining auth coverage dynamic workflow execution
+
+- Agent: Codex
+- Trigger: Owner approved starting the remaining auth coverage workflow with GitHub issues, subagent-style/sentinel oversight, and real frontend testing through Playwright MCP/browser automation.
+- Action: Opened and followed the skill; executed GitHub issue workflow #364-#375 with production browser checks for Google OAuth self-service sign-up, Google logout/re-login, email sign-up and reset resend paths, negative auth cases, desktop/mobile screenshots, session persistence, protected-route redirects, and bounded rate-limit smoke.
+- Output artifacts: GitHub issues #364-#375; PR #376; local screenshot artifacts under `/tmp/rimv-auth-visual-20260531`; `docs/skill-run-log.md`.
+- Verification evidence: #365-#373 were closed with evidence comments. Google auth used the correct Entra branch `Use another account -> Sign in with Google -> attribute collection` and reached `/app`. Email sign-up/reset resend flows reached cooldown and resend states, completed with owner-supplied codes, and post-reset email login reached `/app`. Negative tests showed friendly errors for wrong password, weak sign-up value, wrong verification code, and stale flow-cookie calls. Desktop and mobile auth screenshots had no horizontal overflow, clipped controls, unexpected console errors, or failed requests. Session checks preserved `/app` across refresh/navigation and redirected signed-out `/app` to `/sign-in?redirectTo=%2Fapp`. Rate-limit smoke kept normal auth pages at HTTP 200 and returned bounded invalid sign-in attempts as HTTP 401, not 500.
+- Limitations: Owner-provided one-time codes and temporary sign-in values were intentionally not recorded in GitHub, docs, or logs. Cross-browser coverage beyond Chromium/Chrome was not part of this issue set.
+
+### 2026-05-31 - cloud-architecture-cost-review - Final auth E2E cleanup verification
+
+- Agent: Codex
+- Trigger: Final cleanup for the remaining auth coverage workflow required verifying Azure SQL-backed app erasure without leaving paid or long-lived infrastructure changes.
+- Action: Reused the cost-gated temporary-access pattern: deleted test account state through the app UI/account API, hard-deleted matching CIAM users through Microsoft Graph, created a single temporary Azure SQL firewall rule only for cleanup verification, queried for target app-user remnants, and removed the firewall rule.
+- Output artifacts: GitHub issue #374; `docs/skill-run-log.md`.
+- Verification evidence: App account deletion UI returned to the public home page without delete errors for the verified email alias and the Google test account. Microsoft Graph active deletes and deleted-item hard deletes returned 204 for the matching CIAM users; the post-delete target-user query returned an empty list. Azure SQL verification returned `target_original_rows 0` for the test emails/original Entra object ids and `recent_erased_rows 3` for recent anonymized app-user rows.
+- Limitations: The temporary SQL access was only used for cleanup verification and no secrets or connection strings were logged. An older pre-existing `info+rimv-e2e-20260531@timeawake.co.nz` CIAM test user was observed but not touched because it was outside this owner-approved Gmail cleanup scope.
