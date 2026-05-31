@@ -2166,3 +2166,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/admin/*`; `app/api/admin/*`; `components/admin/*`; `lib/admin-api-proxy.ts`; `lib/admin-auth.ts`; `lib/admin-types.ts`; `tests/unit/admin-api-routes.test.ts`; `tests/e2e/admin.spec.ts`; `playwright.config.ts`.
 - Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `git diff --check`, and banned-term grep over `app components public lib` passed. The admin route unit test passed 3/3. Dev-server HTTP checks returned 200 for an admin session and rendered the expected denied view for a non-admin session.
 - Limitations: Local Playwright Chromium could not launch in this macOS sandbox (`MachPortRendezvousServer` permission denied), so `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before executing page assertions. The Browser plugin was attempted but `iab` was unavailable in this session.
+
+### 2026-06-01 - data-module-review - PAY-05 credit receipt URL persistence
+
+- Agent: Codex
+- Trigger: PAY-05 changes `RewriteCredit` persistence and adds an EF Core migration for Stripe receipt reconciliation.
+- Action: Opened and followed the skill; reviewed `RewriteCredit`, `AppDbContext`, `StripeEventService.SyncCheckoutSessionAsync`, purchase-history projections, admin payment projections, and the generated migration for add-only/nullability safety.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531201712_AddRewriteCreditReceiptUrl.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531201712_AddRewriteCreditReceiptUrl.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; payment service/projection updates.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet` was run for persistence context. The new migration `Up` contains only `migrationBuilder.AddColumn<string>(name: "StripeReceiptUrl", table: "RewriteCredits", type: "nvarchar(2048)", maxLength: 2048, nullable: true)`, and `rg` over the new migration found no `DropColumn`, `DropTable`, `AlterColumn`, `Rename`, raw SQL, data delete, or drop-index operation. Full `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: The webhook stores a receipt URL only when Stripe supplies an expanded `payment_intent.latest_charge.receipt_url`; non-expanded or missing charge data remains nullable as required.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-05 receipt URL xUnit coverage
+
+- Agent: Codex
+- Trigger: PAY-05 requires xUnit coverage for receipt URL persistence and `GET /api/me/payments` response shape.
+- Action: Opened and followed the skill; wrote failing receipt URL assertions first, then added service-level EF SQLite coverage for expanded Stripe checkout receipt URLs, missing receipt URLs, account purchase-history serialization, and admin payment detail projection.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`.
+- Verification evidence: Red run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~StripeEventServiceTests|FullyQualifiedName~AccountApiTests"` failed on missing `RewriteCredit.StripeReceiptUrl`, proving the new assertions were active. Focused green receipt tests passed. Full `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.

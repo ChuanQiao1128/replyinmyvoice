@@ -151,6 +151,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Source).HasMaxLength(60);
             entity.Property(x => x.StripeEventId).HasMaxLength(160);
             entity.Property(x => x.StripePaymentIntentId).HasMaxLength(160);
+            entity.Property(x => x.StripeReceiptUrl).HasMaxLength(2048);
             entity.Property(x => x.StripeSku).HasMaxLength(120);
             entity.Property(x => x.StripeCurrency).HasMaxLength(12);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();

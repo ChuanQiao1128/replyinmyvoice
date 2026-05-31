@@ -470,7 +470,8 @@ public sealed class StripeEventService
                 GrantedAt = now,
                 ExpiresAt = now.AddDays(90),
                 StripeEventId = eventId,
-                StripePaymentIntentId = GetString(stripeObject, "payment_intent"),
+                StripePaymentIntentId = ResolvePaymentIntentId(stripeObject),
+                StripeReceiptUrl = ResolveReceiptUrl(stripeObject),
                 StripeSku = sku,
                 StripeAmountTotal = GetLong(stripeObject, "amount_total"),
                 StripeCurrency = GetString(stripeObject, "currency"),
@@ -546,6 +547,32 @@ public sealed class StripeEventService
     private static bool IsPaidPaymentSession(JsonElement stripeObject) =>
         GetString(stripeObject, "mode") == "payment" &&
         GetString(stripeObject, "payment_status") == "paid";
+
+    private static string? ResolvePaymentIntentId(JsonElement stripeObject)
+    {
+        if (!stripeObject.TryGetProperty("payment_intent", out var paymentIntent))
+        {
+            return null;
+        }
+
+        return paymentIntent.ValueKind == JsonValueKind.Object
+            ? GetString(paymentIntent, "id")
+            : GetString(stripeObject, "payment_intent");
+    }
+
+    private static string? ResolveReceiptUrl(JsonElement stripeObject)
+    {
+        if (!stripeObject.TryGetProperty("payment_intent", out var paymentIntent) ||
+            paymentIntent.ValueKind != JsonValueKind.Object ||
+            !paymentIntent.TryGetProperty("latest_charge", out var latestCharge) ||
+            latestCharge.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var receiptUrl = GetString(latestCharge, "receipt_url");
+        return string.IsNullOrWhiteSpace(receiptUrl) ? null : receiptUrl;
+    }
 
     private static bool RequiresCheckoutUser(JsonElement stripeObject) =>
         IsPaidPaymentSession(stripeObject) ||

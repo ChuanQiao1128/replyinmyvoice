@@ -373,6 +373,56 @@ public sealed class StripeEventServiceTests
         credit.StripeSku.Should().Be("quick_pack");
         credit.StripeAmountTotal.Should().Be(1200);
         credit.StripeCurrency.Should().Be("nzd");
+        credit.StripeReceiptUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ProcessWebhookEventAsync_PaidCheckoutPersistsExpandedLatestChargeReceiptUrl()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-25T00:20:00Z");
+
+        var processed = await service.ProcessWebhookEventAsync(
+            "evt_paid_receipt_url",
+            "checkout.session.completed",
+            $$"""
+            {
+              "id": "evt_paid_receipt_url",
+              "type": "checkout.session.completed",
+              "data": {
+                "object": {
+                  "client_reference_id": "{{user.ExternalAuthUserId}}",
+                  "customer": "cus_receipt",
+                  "mode": "payment",
+                  "payment_status": "paid",
+                  "payment_intent": {
+                    "id": "pi_receipt",
+                    "latest_charge": {
+                      "id": "ch_receipt",
+                      "receipt_url": "https://pay.stripe.com/receipts/test_receipt"
+                    }
+                  },
+                  "amount_total": 1200,
+                  "currency": "nzd",
+                  "metadata": {
+                    "sku": "quick_pack",
+                    "rewrites": "10",
+                    "externalAuthUserId": "{{user.ExternalAuthUserId}}"
+                  }
+                }
+              }
+            }
+            """,
+            now);
+
+        processed.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var credit = await db.RewriteCredits.SingleAsync();
+        credit.StripePaymentIntentId.Should().Be("pi_receipt");
+        credit.StripeReceiptUrl.Should().Be("https://pay.stripe.com/receipts/test_receipt");
     }
 
     [Fact]
@@ -1082,6 +1132,7 @@ public sealed class StripeEventServiceTests
                 ExpiresAt = credit.ExpiresAt,
                 StripeEventId = credit.StripeEventId,
                 StripePaymentIntentId = credit.StripePaymentIntentId,
+                StripeReceiptUrl = credit.StripeReceiptUrl,
                 StripeSku = credit.StripeSku,
                 StripeAmountTotal = credit.StripeAmountTotal,
                 StripeCurrency = credit.StripeCurrency,
