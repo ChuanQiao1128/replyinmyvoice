@@ -20,4 +20,5 @@ public sealed class AppUser
     public ICollection<UsagePeriod> UsagePeriods { get; } = new List<UsagePeriod>();
     public ICollection<RewriteAttempt> RewriteAttempts { get; } = new List<RewriteAttempt>();
     public ICollection<UsageReservation> UsageReservations { get; } = new List<UsageReservation>();
+    public ICollection<BillingSupportRequest> BillingSupportRequests { get; } = new List<BillingSupportRequest>();
 }

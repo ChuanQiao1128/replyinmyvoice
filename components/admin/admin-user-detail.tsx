@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
@@ -294,6 +295,7 @@ function PaymentTable({ payments }: { payments: AdminPayment[] }) {
 }
 
 export function AdminUserDetail({ userId }: { userId: string }) {
+  const searchParams = useSearchParams();
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [creditAmount, setCreditAmount] = useState("5");
   const [creditReason, setCreditReason] = useState("");
@@ -327,6 +329,18 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     () => detail?.payments.filter((payment) => payment.paymentIntentId) ?? [],
     [detail],
   );
+  const requestedPaymentIntentId = searchParams.get("paymentIntentId")?.trim() ?? "";
+
+  useEffect(() => {
+    if (
+      requestedPaymentIntentId &&
+      selectablePayments.some(
+        (payment) => payment.paymentIntentId === requestedPaymentIntentId,
+      )
+    ) {
+      setRefundPaymentIntentId(requestedPaymentIntentId);
+    }
+  }, [requestedPaymentIntentId, selectablePayments]);
 
   useEffect(() => {
     if (!refundPaymentIntentId && selectablePayments[0]?.paymentIntentId) {
@@ -487,7 +501,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
           <section className="grid gap-4 lg:grid-cols-[1fr_360px]">
             <div className="space-y-6">
-              <Card className="p-5">
+              <Card className="p-5" id="refund-action">
                 <h2 className="text-xl font-semibold tracking-normal">Subscription</h2>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   <SummaryItem

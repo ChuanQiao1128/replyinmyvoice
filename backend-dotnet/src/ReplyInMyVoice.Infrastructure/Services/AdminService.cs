@@ -328,6 +328,69 @@ public sealed class AdminService(
             costRows.Sum());
     }
 
+    public async Task<IReadOnlyList<AdminBillingSupportRequest>> GetBillingSupportQueueAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var db = dbContextFactory();
+        var rows = await db.BillingSupportRequests
+            .AsNoTracking()
+            .Include(x => x.User)
+            .Where(x => x.Status == BillingSupportRequestStatus.Open)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.Id)
+            .Select(ToAdminBillingSupportRequest)
+            .ToList();
+    }
+
+    public async Task<AdminBillingSupportRequest?> ResolveBillingSupportRequestAsync(
+        string adminExternalAuthUserId,
+        string? adminEmail,
+        Guid requestId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        await using var db = dbContextFactory();
+        var request = await db.BillingSupportRequests
+            .Include(x => x.User)
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == requestId, cancellationToken);
+        if (request is null)
+        {
+            return null;
+        }
+
+        if (request.Status == BillingSupportRequestStatus.Open)
+        {
+            request.Status = BillingSupportRequestStatus.Resolved;
+            request.ResolvedAt = now;
+            request.UpdatedAt = now;
+            request.RowVersion = Guid.NewGuid();
+
+            db.AdminAuditLogs.Add(new AdminAuditLog
+            {
+                AdminExternalAuthUserId = adminExternalAuthUserId.Trim(),
+                AdminEmail = adminEmail?.Trim() ?? string.Empty,
+                Action = "resolve_billing_support_request",
+                TargetUserId = request.UserId,
+                DetailsJson = JsonSerializer.Serialize(
+                    new AdminBillingSupportResolveAuditDetails(
+                        request.Id,
+                        BillingSupportService.FormatType(request.Type),
+                        request.RelatedPaymentIntentId,
+                        now),
+                    JsonOptions),
+                CreatedAt = now,
+            });
+
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return ToAdminBillingSupportRequest(request);
+    }
+
     public async Task<AdminCreditGrantServiceResult> GrantCreditsAsync(
         string adminExternalAuthUserId,
         string? adminEmail,
@@ -640,6 +703,21 @@ public sealed class AdminService(
             : normalized;
     }
 
+    private static AdminBillingSupportRequest ToAdminBillingSupportRequest(
+        BillingSupportRequest request) =>
+        new(
+            request.Id,
+            request.UserId,
+            request.User?.Email,
+            request.User?.ExternalAuthUserId,
+            BillingSupportService.FormatType(request.Type),
+            request.RelatedPaymentIntentId,
+            request.Message,
+            BillingSupportService.FormatStatus(request.Status),
+            request.CreatedAt,
+            request.UpdatedAt,
+            request.ResolvedAt);
+
     private sealed record AdminUserListRow(
         Guid Id,
         string ExternalAuthUserId,
@@ -740,6 +818,25 @@ public sealed record AdminStatsResponse(
     int PaymentCount,
     long PaymentAmountTotal,
     decimal CostToDateUsd);
+
+public sealed record AdminBillingSupportRequest(
+    Guid Id,
+    Guid UserId,
+    string? UserEmail,
+    string? ExternalAuthUserId,
+    string Type,
+    string? RelatedPaymentIntentId,
+    string Message,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? ResolvedAt);
+
+public sealed record AdminBillingSupportResolveAuditDetails(
+    Guid RequestId,
+    string Type,
+    string? RelatedPaymentIntentId,
+    DateTimeOffset ResolvedAt);
 
 public sealed record AdminCreditGrantRequest(
     int? Amount,

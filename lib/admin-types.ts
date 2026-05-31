@@ -93,3 +93,17 @@ export type AdminStatsResponse = {
   paymentAmountTotal: number;
   costToDateUsd: number;
 };
+
+export type AdminBillingSupportRequest = {
+  id: string;
+  userId: string;
+  userEmail: string | null;
+  externalAuthUserId: string | null;
+  type: "refund" | "billing-question";
+  relatedPaymentIntentId: string | null;
+  message: string;
+  status: "open" | "resolved";
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+};

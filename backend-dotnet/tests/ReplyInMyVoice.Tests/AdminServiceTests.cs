@@ -3,6 +3,7 @@ using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -170,6 +171,56 @@ public sealed class AdminServiceTests
         stats.CostToDateUsd.Should().Be(0.050m);
     }
 
+    [Fact]
+    public async Task AdminBillingSupportQueue_ReturnsOpenRequestsAndMarksResolved()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_support",
+            "support@example.com",
+            DateTimeOffset.Parse("2026-05-08T00:00:00Z"));
+        var requestId = await SeedBillingSupportRequestAsync(
+            fixture,
+            user.Id,
+            type: "refund",
+            paymentIntentId: "pi_support_admin",
+            message: "I was charged twice for the same pack.");
+
+        var function = CreateFunction(fixture);
+        var adminRequest = CreateRequest("admin-owner-oid", "owner@example.com");
+
+        var listResult = await function.ListBillingSupportRequests(adminRequest, CancellationToken.None);
+
+        var listOk = listResult.Should().BeOfType<OkObjectResult>().Subject;
+        var list = listOk.Value.Should().BeAssignableTo<IReadOnlyList<AdminBillingSupportRequest>>().Subject;
+        list.Should().ContainSingle();
+        list[0].Id.Should().Be(requestId);
+        list[0].UserId.Should().Be(user.Id);
+        list[0].UserEmail.Should().Be("support@example.com");
+        list[0].RelatedPaymentIntentId.Should().Be("pi_support_admin");
+        list[0].Status.Should().Be("open");
+
+        var resolveResult = await function.ResolveBillingSupportRequest(
+            adminRequest,
+            requestId.ToString(),
+            CancellationToken.None);
+
+        var resolveOk = resolveResult.Should().BeOfType<OkObjectResult>().Subject;
+        var resolved = resolveOk.Value.Should().BeOfType<AdminBillingSupportRequest>().Subject;
+        resolved.Id.Should().Be(requestId);
+        resolved.Status.Should().Be("resolved");
+        resolved.ResolvedAt.Should().NotBeNull();
+
+        await using var db = fixture.CreateContext();
+        var stored = await db.BillingSupportRequests.SingleAsync();
+        stored.Status.Should().Be(BillingSupportRequestStatus.Resolved);
+        stored.ResolvedAt.Should().NotBeNull();
+        var audit = await db.AdminAuditLogs.SingleAsync();
+        audit.Action.Should().Be("resolve_billing_support_request");
+        audit.TargetUserId.Should().Be(user.Id);
+    }
+
     private static AdminHttpFunctions CreateFunction(DbFixture fixture) =>
         new(BuildConfiguration("admin-owner-oid, owner@example.com"), fixture.CreateContext);
 
@@ -275,6 +326,30 @@ public sealed class AdminServiceTests
             TotalEstimatedCostUsd = totalCost,
         });
         await db.SaveChangesAsync();
+    }
+
+    private static async Task<Guid> SeedBillingSupportRequestAsync(
+        DbFixture fixture,
+        Guid userId,
+        string type,
+        string paymentIntentId,
+        string message)
+    {
+        await using var db = fixture.CreateContext();
+        var request = new BillingSupportRequest
+        {
+            UserId = userId,
+            Type = BillingSupportRequestType.Refund,
+            RelatedPaymentIntentId = paymentIntentId,
+            Message = message,
+            Status = BillingSupportRequestStatus.Open,
+            CreatedAt = DateTimeOffset.Parse("2026-05-08T01:00:00Z"),
+            UpdatedAt = DateTimeOffset.Parse("2026-05-08T01:00:00Z"),
+        };
+        db.BillingSupportRequests.Add(request);
+        await db.SaveChangesAsync();
+        type.Should().Be("refund");
+        return request.Id;
     }
 
     private static HttpRequest CreateRequest(string oid, string email)
