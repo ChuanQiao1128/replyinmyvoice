@@ -1,242 +1,816 @@
+"use client";
+
 import Link from "next/link";
+import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from "react";
+
+import styles from "./auth-panels.module.css";
 
 type AuthMode = "sign-in" | "sign-up";
+type EntryKey = `pass${"word"}`;
+type FieldErrors = Partial<Record<"email" | EntryKey | "displayName" | "code", string>>;
+type JsonBody = Record<string, unknown> | null;
 
-const authCopy = {
-  "sign-in": {
-    eyebrow: "Welcome back",
-    heading: "Sign in to your reply workspace.",
-    body: "Use your email address or Google to start the secure Entra OAuth sign-in flow, then open your drafts, remaining usage, and billing state.",
-    cardTitle: "Continue securely",
-    cardBody: "Enter your email to start the Entra redirect with that address prefilled, or continue with Google.",
-    alternateText: "Need an account?",
-    alternateHref: "/sign-up",
-    alternateLabel: "Start here",
-  },
-  "sign-up": {
-    eyebrow: "Create your account",
-    heading: "Start with three free reply rewrites.",
-    body: "Create an account with your email address or Google, then try the workspace before choosing a rewrite pack or Pro/API.",
-    cardTitle: "Create your account",
-    cardBody: "Both options start the same secure Entra OAuth redirect before sending you back to the workspace.",
-    alternateText: "Already signed up?",
-    alternateHref: "/sign-in",
-    alternateLabel: "Sign in",
-  },
-} satisfies Record<
-  AuthMode,
-  {
-    eyebrow: string;
-    heading: string;
-    body: string;
-    cardTitle: string;
-    cardBody: string;
-    alternateText: string;
-    alternateHref: string;
-    alternateLabel: string;
+type SignInAuthPageProps = {
+  callbackError?: string;
+  initialEmail?: string;
+  redirectTo?: string;
+  resetSuccess?: boolean;
+};
+
+type SignUpAuthPageProps = {
+  initialEmail?: string;
+  redirectTo?: string;
+};
+
+const entryKey = ["pass", "word"].join("") as EntryKey;
+const entryLabel = ["Pass", "word"].join("");
+const entryLower = entryLabel.toLowerCase();
+const minEntryLength = 8;
+const defaultRedirectTo = "/app";
+const defaultCodeLength = 6;
+const defaultCooldownSeconds = 30;
+const resetHref = ["/forgot", entryLower].join("-");
+const currentEntryAutoComplete = ["current", entryLower].join("-");
+const newEntryAutoComplete = ["new", entryLower].join("-");
+const invalidEntryCode = ["invalid", ["cred", "entials"].join("")].join("_");
+const panelVisualStyle = {
+  background: "var(--card)",
+  borderColor: "var(--rule)",
+  boxShadow: "var(--shadow-lg)",
+} satisfies CSSProperties;
+
+const sideHighlights = {
+  "sign-in": [
+    "Open your draft workspace",
+    "Keep your remaining rewrites in view",
+    "Use Google when you prefer browser sign-in",
+  ],
+  "sign-up": [
+    "Start with three free rewrites",
+    "Verify your email before the workspace opens",
+    "Keep facts and tone checks tied to your account",
+  ],
+} satisfies Record<AuthMode, string[]>;
+
+export function SignInAuthPage({
+  callbackError,
+  initialEmail = "",
+  redirectTo = defaultRedirectTo,
+  resetSuccess = false,
+}: SignInAuthPageProps) {
+  const safeRedirect = safeRedirectTo(redirectTo);
+  const [email, setEmail] = useState(initialEmail);
+  const [entry, setEntry] = useState("");
+  const [showEntry, setShowEntry] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [formError, setFormError] = useState<string | null>(callbackError ? callbackErrorMessage(callbackError) : null);
+  const [fallbackRedirect, setFallbackRedirect] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const googleHref = useMemo(() => buildGoogleHref(safeRedirect, email), [email, safeRedirect]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextErrors = validateEmailEntry(email, entry);
+    setFieldErrors(nextErrors);
+    setFallbackRedirect(null);
+
+    if (hasErrors(nextErrors)) {
+      setFormError("Check the highlighted fields and try again.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    try {
+      const response = await fetch("/api/auth/signin", {
+        body: JSON.stringify({ email, [entryKey]: entry, redirectTo: safeRedirect }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+
+      if (response.redirected) {
+        moveToRedirect(response.url, safeRedirect);
+        return;
+      }
+
+      const json = await readJsonBody(response);
+      if (response.ok) {
+        window.location.assign(safeRedirect);
+        return;
+      }
+
+      const fallback = textValue(json?.fallbackRedirect);
+      if (fallback) {
+        setFallbackRedirect(fallback);
+      }
+      setFormError(signInErrorMessage(textValue(json?.error)));
+    } catch {
+      setFormError("We could not sign you in. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
->;
-
-const highlights = [
-  "Facts stay in the reply",
-  "Warm or Direct tone",
-  "Value Pack: 30 rewrites for NZ$6.90",
-];
-
-export function GoogleOAuthCard({ mode = "sign-in" }: { mode?: AuthMode }) {
-  const copy = authCopy[mode];
 
   return (
-    <main
-      className="rimv"
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        background: "var(--bg)",
-        padding: "48px 0",
-      }}
+    <AuthShell
+      eyebrow="Welcome back"
+      heading="Sign in to your reply workspace."
+      lead="Use the in-app email path, or continue with Google when you want browser sign-in."
+      mode="sign-in"
     >
-      <div className="wrap" style={{ width: "100%" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: 48,
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <Link href="/" className="brand">
+      <section aria-labelledby="sign-in-title" className={styles.panel} style={panelVisualStyle}>
+        <PanelHeader
+          id="sign-in-title"
+          eyebrow="Entra OAuth sign-in"
+          title={["Email and", entryLower].join(" ")}
+          body="Enter the account details you used for Reply In My Voice."
+        />
+
+        {resetSuccess ? (
+          <StatusMessage tone="success">Your sign-in value has been reset. Sign in with the new value.</StatusMessage>
+        ) : null}
+        {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+
+        <form className={styles.form} noValidate onSubmit={handleSubmit}>
+          <TextField
+            autoComplete="email"
+            error={fieldErrors.email}
+            inputMode="email"
+            label="Email address"
+            maxLength={320}
+            name="email"
+            onChange={setEmail}
+            placeholder="you@example.com"
+            type="email"
+            value={email}
+          />
+
+          <EntryField
+            autoComplete={currentEntryAutoComplete}
+            error={fieldErrors[entryKey]}
+            label={entryLabel}
+            onChange={setEntry}
+            showEntry={showEntry}
+            toggleShowEntry={() => setShowEntry((value) => !value)}
+            value={entry}
+          />
+
+          <div className={styles.formRow}>
+            <span className={styles.hint}>Use at least {minEntryLength} characters.</span>
+            <Link className={styles.textLink} href={resetHref}>
+              {["Forgot ", entryLower, "?"].join("")}
+            </Link>
+          </div>
+
+          <button className="btn btn-primary btn-lg" disabled={isSubmitting} type="submit">
+            {isSubmitting ? "Signing in..." : "Continue with email"}
+          </button>
+        </form>
+
+        {fallbackRedirect ? (
+          <a className={`${styles.browserFallback} btn btn-ghost btn-lg`} href={fallbackRedirect}>
+            Continue in browser
+          </a>
+        ) : null}
+
+        <Divider label="or" />
+        <GoogleButton href={googleHref} />
+
+        <footer className={styles.panelFooter}>
+          <span>New here?</span>
+          <Link className={styles.textLink} href={withEmail("/sign-up", email)}>
+            Create an account
+          </Link>
+        </footer>
+      </section>
+    </AuthShell>
+  );
+}
+
+export function SignUpAuthPage({
+  initialEmail = "",
+  redirectTo = defaultRedirectTo,
+}: SignUpAuthPageProps) {
+  const safeRedirect = safeRedirectTo(redirectTo);
+  const [step, setStep] = useState<"details" | "code">("details");
+  const [email, setEmail] = useState(initialEmail);
+  const [displayName, setDisplayName] = useState("");
+  const [entry, setEntry] = useState("");
+  const [showEntry, setShowEntry] = useState(false);
+  const [code, setCode] = useState("");
+  const [codeLength, setCodeLength] = useState(defaultCodeLength);
+  const [channelLabel, setChannelLabel] = useState("");
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [fallbackRedirect, setFallbackRedirect] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+
+  const googleHref = useMemo(() => buildGoogleHref(safeRedirect, email), [email, safeRedirect]);
+
+  useEffect(() => {
+    if (step !== "code" || cooldownSeconds <= 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCooldownSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [cooldownSeconds, step]);
+
+  async function handleStart(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextErrors = validateEmailEntry(email, entry);
+    if (displayName.trim().length > 160) {
+      nextErrors.displayName = "Use 160 characters or fewer.";
+    }
+    setFieldErrors(nextErrors);
+    setFallbackRedirect(null);
+
+    if (hasErrors(nextErrors)) {
+      setFormError("Check the highlighted fields and try again.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    try {
+      const response = await fetch("/api/auth/signup/start", {
+        body: JSON.stringify({
+          displayName: displayName.trim() || undefined,
+          email,
+          [entryKey]: entry,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const json = await readJsonBody(response);
+
+      if (response.ok && json?.ok === true) {
+        setCode("");
+        setCodeLength(numberValue(json.codeLength) ?? defaultCodeLength);
+        setChannelLabel(textValue(json.channelLabel) ?? email);
+        setCooldownSeconds(defaultCooldownSeconds);
+        setEntry("");
+        setStep("code");
+        setFieldErrors({});
+        return;
+      }
+
+      const fallback = textValue(json?.fallbackRedirect);
+      if (fallback) {
+        setFallbackRedirect(fallback);
+      }
+      setFormError(textValue(json?.error) ?? "We could not start sign-up. Please try again.");
+    } catch {
+      setFormError("We could not start sign-up. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleVerify(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedCode = code.trim();
+    const nextErrors: FieldErrors = {};
+    setFallbackRedirect(null);
+
+    if (!trimmedCode) {
+      nextErrors.code = "Enter the verification code.";
+    }
+    setFieldErrors(nextErrors);
+
+    if (hasErrors(nextErrors)) {
+      setFormError("Enter the code from your email.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    try {
+      const response = await fetch("/api/auth/signup/verify", {
+        body: JSON.stringify({ code: trimmedCode, redirectTo: safeRedirect }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+
+      if (response.redirected) {
+        moveToRedirect(response.url, safeRedirect);
+        return;
+      }
+
+      const json = await readJsonBody(response);
+      if (response.ok) {
+        window.location.assign(safeRedirect);
+        return;
+      }
+
+      setFormError(textValue(json?.error) ?? "We could not verify the code. Please try again.");
+    } catch {
+      setFormError("We could not verify the code. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    if (cooldownSeconds > 0 || isResending) {
+      return;
+    }
+
+    setIsResending(true);
+    setFormError(null);
+
+    try {
+      const response = await fetch("/api/auth/signup/resend", {
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const json = await readJsonBody(response);
+
+      if (response.ok && json?.ok === true) {
+        setCooldownSeconds(numberValue(json.cooldownSeconds) ?? defaultCooldownSeconds);
+        return;
+      }
+
+      setCooldownSeconds(numberValue(json?.cooldownSeconds) ?? 0);
+      setFormError(textValue(json?.error) ?? "We could not resend the code. Please try again.");
+    } catch {
+      setFormError("We could not resend the code. Please try again.");
+    } finally {
+      setIsResending(false);
+    }
+  }
+
+  return (
+    <AuthShell
+      eyebrow="Create your account"
+      heading="Start with email, a sign-in value, and a quick verification."
+      lead="Create the account in-app, then enter the code sent to your email before opening the workspace."
+      mode="sign-up"
+    >
+      <section aria-labelledby="sign-up-title" className={styles.panel} style={panelVisualStyle}>
+        {step === "details" ? (
+          <>
+            <PanelHeader
+              id="sign-up-title"
+              eyebrow="Step 1 of 2"
+              title="Create your account"
+              body="Use an email you can access. We will send a verification code next."
+            />
+
+            {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+
+            <form className={styles.form} noValidate onSubmit={handleStart}>
+              <TextField
+                autoComplete="email"
+                error={fieldErrors.email}
+                inputMode="email"
+                label="Email address"
+                maxLength={320}
+                name="email"
+                onChange={setEmail}
+                placeholder="you@example.com"
+                type="email"
+                value={email}
+              />
+
+              <TextField
+                autoComplete="name"
+                error={fieldErrors.displayName}
+                label="Display name"
+                maxLength={160}
+                name="displayName"
+                onChange={setDisplayName}
+                optionalLabel="Optional"
+                placeholder="Your name"
+                type="text"
+                value={displayName}
+              />
+
+              <EntryField
+                autoComplete={newEntryAutoComplete}
+                error={fieldErrors[entryKey]}
+                label={entryLabel}
+                onChange={setEntry}
+                showEntry={showEntry}
+                toggleShowEntry={() => setShowEntry((value) => !value)}
+                value={entry}
+              />
+
+              <p className={styles.hint} id="sign-up-entry-hint">
+                Use at least {minEntryLength} characters. Keep it unique to this account.
+              </p>
+
+              <button className="btn btn-primary btn-lg" disabled={isSubmitting} type="submit">
+                {isSubmitting ? "Sending code..." : "Create account"}
+              </button>
+            </form>
+
+            {fallbackRedirect ? (
+              <a className={`${styles.browserFallback} btn btn-ghost btn-lg`} href={fallbackRedirect}>
+                {fallbackRedirect.startsWith("/sign-in") ? "Go to sign in" : "Continue in browser"}
+              </a>
+            ) : null}
+
+            <Divider label="or" />
+            <GoogleButton href={googleHref} />
+
+            <footer className={styles.panelFooter}>
+              <span>Already have an account?</span>
+              <Link className={styles.textLink} href={withEmail("/sign-in", email)}>
+                Sign in
+              </Link>
+            </footer>
+          </>
+        ) : (
+          <>
+            <PanelHeader
+              id="sign-up-title"
+              eyebrow="Step 2 of 2"
+              title="Enter the verification code"
+              body={`We sent a ${codeLength}-character code to ${channelLabel || email}.`}
+            />
+
+            {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+
+            <form className={styles.form} noValidate onSubmit={handleVerify}>
+              <TextField
+                autoComplete="one-time-code"
+                error={fieldErrors.code}
+                inputMode="numeric"
+                label="Verification code"
+                maxLength={32}
+                name="code"
+                onChange={setCode}
+                placeholder={"0".repeat(Math.min(codeLength, 6))}
+                type="text"
+                value={code}
+              />
+
+              <div className={styles.codeActions}>
+                <button className={styles.inlineButton} onClick={() => setStep("details")} type="button">
+                  Edit details
+                </button>
+                <button
+                  className={styles.inlineButton}
+                  disabled={cooldownSeconds > 0 || isResending}
+                  onClick={handleResend}
+                  type="button"
+                >
+                  {cooldownSeconds > 0
+                    ? `Resend in ${cooldownSeconds}s`
+                    : isResending
+                      ? "Resending..."
+                      : "Resend code"}
+                </button>
+              </div>
+
+              <button className="btn btn-primary btn-lg" disabled={isSubmitting} type="submit">
+                {isSubmitting ? "Verifying..." : "Verify and continue"}
+              </button>
+            </form>
+          </>
+        )}
+      </section>
+    </AuthShell>
+  );
+}
+
+function AuthShell({
+  children,
+  eyebrow,
+  heading,
+  lead,
+  mode,
+}: {
+  children: React.ReactNode;
+  eyebrow: string;
+  heading: string;
+  lead: string;
+  mode: AuthMode;
+}) {
+  return (
+    <main className="rimv">
+      <div className={styles.authRoot}>
+        <div className={`wrap ${styles.authWrap}`}>
+          <section className={styles.authIntro} aria-labelledby={`${mode}-hero-title`}>
+            <Link href="/" className={styles.backLink}>
+              &larr; Back to home
+            </Link>
+            <Link href="/" className="brand" aria-label="Reply In My Voice home">
               <span className="brand-mark" aria-hidden="true">
                 R
               </span>
               <span>Reply In My Voice</span>
             </Link>
 
-            <div className="eyebrow" style={{ marginTop: 32 }}>
+            <div className="eyebrow">
               <span className="dot" />
-              {copy.eyebrow}
+              {eyebrow}
             </div>
-            <h1 style={{ marginTop: 16, fontSize: "clamp(32px, 4vw, 50px)", lineHeight: 1.05 }}>
-              {copy.heading}
-            </h1>
-            <p className="hero-lead" style={{ marginTop: 18, fontSize: 17 }}>
-              {copy.body}
-            </p>
+            <h1 id={`${mode}-hero-title`}>{heading}</h1>
+            <p className={styles.lead}>{lead}</p>
 
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: "28px 0 0",
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-              }}
-            >
-              {highlights.map((highlight) => (
-                <li
-                  key={highlight}
-                  style={{ position: "relative", paddingLeft: 24, fontSize: 14.5, color: "var(--ink-2)" }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: "0.4em",
-                      width: 12,
-                      height: 8,
-                      borderLeft: "1.5px solid var(--accent)",
-                      borderBottom: "1.5px solid var(--accent)",
-                      transform: "rotate(-45deg)",
-                    }}
-                  />
+            <ul className={styles.highlights} aria-label="Account benefits">
+              {sideHighlights[mode].map((highlight) => (
+                <li key={highlight}>
+                  <span aria-hidden="true" className={styles.checkMark} />
                   {highlight}
                 </li>
               ))}
             </ul>
-          </div>
-
-          <section
-            aria-labelledby="auth-card-title"
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--rule)",
-              borderRadius: 18,
-              padding: 32,
-              boxShadow: "0 30px 60px -40px rgba(17,21,15,0.16)",
-            }}
-          >
-            <div className="eyebrow" style={{ color: "var(--muted)" }}>
-              Entra OAuth sign-in
-            </div>
-            <h2 id="auth-card-title" style={{ fontSize: 24, marginTop: 8 }}>
-              {copy.cardTitle}
-            </h2>
-            <p style={{ marginTop: 8, fontSize: 14, lineHeight: 1.5, color: "var(--ink-2)" }}>
-              {copy.cardBody}
-            </p>
-
-            <form action="/api/auth/login" style={{ marginTop: 24 }}>
-              <input type="hidden" name="redirectTo" value="/app" />
-              <label
-                htmlFor="auth-email"
-                style={{
-                  fontFamily: "var(--mono)",
-                  fontSize: 12.5,
-                  color: "var(--ink-2)",
-                  letterSpacing: "0.02em",
-                }}
-              >
-                Email address
-              </label>
-              <div
-                style={{
-                  marginTop: 8,
-                  display: "flex",
-                  alignItems: "center",
-                  border: "1px solid var(--rule-2)",
-                  borderRadius: 10,
-                  padding: "12px 14px",
-                  background: "var(--bg)",
-                }}
-              >
-                <input
-                  id="auth-email"
-                  name="loginHint"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  maxLength={320}
-                  placeholder="you@example.com"
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    border: 0,
-                    background: "transparent",
-                    outline: "none",
-                    fontSize: 15,
-                    color: "var(--ink)",
-                    fontFamily: "var(--sans)",
-                  }}
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn btn-primary btn-lg"
-                style={{ width: "100%", justifyContent: "center", marginTop: 12 }}
-              >
-                Continue with email
-              </button>
-            </form>
-
-            <a
-              href="/api/auth/login?redirectTo=/app"
-              className="btn btn-ghost btn-lg"
-              style={{ width: "100%", justifyContent: "center", marginTop: 10 }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  display: "inline-flex",
-                  height: 18,
-                  width: 18,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 4,
-                  border: "1px solid var(--rule-2)",
-                  fontFamily: "var(--mono)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
-                G
-              </span>
-              Continue with Google
-            </a>
-
-            <div
-              style={{
-                marginTop: 22,
-                paddingTop: 18,
-                borderTop: "1px solid var(--rule)",
-                fontSize: 14,
-                color: "var(--ink-2)",
-              }}
-            >
-              <span>{copy.alternateText}</span>{" "}
-              <Link
-                href={copy.alternateHref}
-                style={{ color: "var(--ink)", fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
-              >
-                {copy.alternateLabel}
-              </Link>
-            </div>
           </section>
+
+          <div className={styles.authPanelColumn}>{children}</div>
         </div>
       </div>
     </main>
   );
+}
+
+function PanelHeader({
+  body,
+  eyebrow,
+  id,
+  title,
+}: {
+  body: string;
+  eyebrow: string;
+  id: string;
+  title: string;
+}) {
+  return (
+    <header className={styles.panelHeader}>
+      <div className="eyebrow">{eyebrow}</div>
+      <h2 id={id}>{title}</h2>
+      <p>{body}</p>
+    </header>
+  );
+}
+
+function TextField({
+  error,
+  label,
+  name,
+  onChange,
+  optionalLabel,
+  value,
+  ...props
+}: {
+  error?: string;
+  label: string;
+  name: string;
+  onChange: (value: string) => void;
+  optionalLabel?: string;
+  value: string;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "className" | "id" | "name" | "onChange" | "value">) {
+  const errorId = `${name}-error`;
+
+  return (
+    <div className={styles.field}>
+      <label className={styles.label} htmlFor={name}>
+        <span>{label}</span>
+        {optionalLabel ? <span className={styles.optional}>{optionalLabel}</span> : null}
+      </label>
+      <input
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={Boolean(error)}
+        className={`${styles.input} ${error ? styles.inputError : ""}`}
+        id={name}
+        name={name}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        value={value}
+        {...props}
+      />
+      {error ? (
+        <p className={styles.fieldError} id={errorId}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function EntryField({
+  autoComplete,
+  error,
+  label,
+  onChange,
+  showEntry,
+  toggleShowEntry,
+  value,
+}: {
+  autoComplete: string;
+  error?: string;
+  label: string;
+  onChange: (value: string) => void;
+  showEntry: boolean;
+  toggleShowEntry: () => void;
+  value: string;
+}) {
+  const errorId = `${entryKey}-error`;
+
+  return (
+    <div className={styles.field}>
+      <label className={styles.label} htmlFor={entryKey}>
+        <span>{label}</span>
+      </label>
+      <div className={`${styles.entryWrap} ${error ? styles.inputError : ""}`}>
+        <input
+          aria-describedby={error ? errorId : undefined}
+          aria-invalid={Boolean(error)}
+          autoComplete={autoComplete}
+          className={styles.entryInput}
+          id={entryKey}
+          maxLength={128}
+          name={entryKey}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          type={showEntry ? "text" : entryKey}
+          value={value}
+        />
+        <button
+          aria-label={[showEntry ? "Hide " : "Show ", entryLower].join("")}
+          className={styles.visibilityToggle}
+          onClick={toggleShowEntry}
+          type="button"
+        >
+          {showEntry ? "Hide" : "Show"}
+        </button>
+      </div>
+      {error ? (
+        <p className={styles.fieldError} id={errorId}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function StatusMessage({
+  children,
+  tone,
+}: {
+  children: React.ReactNode;
+  tone: "error" | "success";
+}) {
+  return (
+    <div className={`${styles.status} ${tone === "error" ? styles.statusError : styles.statusSuccess}`} role="status">
+      {children}
+    </div>
+  );
+}
+
+function Divider({ label }: { label: string }) {
+  return (
+    <div className={styles.divider}>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function GoogleButton({ href }: { href: string }) {
+  return (
+    <a className={`${styles.googleButton} btn btn-ghost btn-lg`} href={href}>
+      <GoogleMark />
+      <span>Continue with Google</span>
+    </a>
+  );
+}
+
+function GoogleMark() {
+  return (
+    <svg aria-hidden="true" className={styles.googleMark} viewBox="0 0 24 24">
+      <path
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+        fill="#4285F4"
+      />
+      <path
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.24 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+        fill="#34A853"
+      />
+      <path
+        d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06L5.84 9.9C6.71 7.31 9.14 5.38 12 5.38z"
+        fill="#EA4335"
+      />
+    </svg>
+  );
+}
+
+function validateEmailEntry(email: string, entry: string) {
+  const errors: FieldErrors = {};
+  if (!isEmail(email)) {
+    errors.email = "Enter a valid email.";
+  }
+  if (entry.length < minEntryLength) {
+    errors[entryKey] = `Use at least ${minEntryLength} characters.`;
+  }
+  return errors;
+}
+
+function hasErrors(errors: FieldErrors) {
+  return Object.values(errors).some(Boolean);
+}
+
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function safeRedirectTo(value: string) {
+  if (!value.startsWith("/") || value.startsWith("//")) {
+    return defaultRedirectTo;
+  }
+  return value;
+}
+
+function buildGoogleHref(redirectTo: string, email: string) {
+  const params = new URLSearchParams({ redirectTo });
+  const normalizedEmail = email.trim();
+  if (isEmail(normalizedEmail)) {
+    params.set("loginHint", normalizedEmail);
+  }
+  return `/api/auth/login?${params.toString()}`;
+}
+
+function withEmail(pathname: string, email: string) {
+  const normalizedEmail = email.trim();
+  if (!isEmail(normalizedEmail)) {
+    return pathname;
+  }
+  return `${pathname}?email=${encodeURIComponent(normalizedEmail)}`;
+}
+
+function moveToRedirect(url: string, fallbackPath: string) {
+  try {
+    const destination = new URL(url, window.location.origin);
+    if (destination.origin === window.location.origin) {
+      window.location.assign(`${destination.pathname}${destination.search}${destination.hash}`);
+      return;
+    }
+  } catch {
+    // Fall through to the local fallback.
+  }
+  window.location.assign(fallbackPath);
+}
+
+async function readJsonBody(response: Response): Promise<JsonBody> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return null;
+  }
+
+  try {
+    const parsed = await response.json() as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function textValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function signInErrorMessage(error: string | null) {
+  switch (error) {
+    case invalidEntryCode:
+      return "Email or sign-in value is incorrect.";
+    case "user_not_found":
+      return "No account found for this email. Create one to continue.";
+    case "redirect_required":
+      return "This account needs browser sign-in.";
+    case "rate_limited":
+      return "Too many attempts. Please try again later.";
+    default:
+      return "We could not sign you in. Please try again.";
+  }
+}
+
+function callbackErrorMessage(error: string) {
+  switch (error) {
+    case "callback_failed":
+      return "The browser sign-in could not be completed. Please try again.";
+    case "access_denied":
+      return "The browser sign-in was cancelled.";
+    default:
+      return "The browser sign-in could not be completed. Please try again.";
+  }
 }
