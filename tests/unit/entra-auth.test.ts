@@ -83,6 +83,21 @@ function unsignedToken(claimOverrides: Record<string, unknown> = {}) {
   ].join(".");
 }
 
+function tokenWithoutSignature(claimOverrides: Record<string, unknown> = {}) {
+  return [
+    encodeJwtPart({ alg: "RS256", kid: "unit-key-1", typ: "JWT" }),
+    encodeJwtPart({
+      aud: clientId,
+      email: "casey@example.com",
+      exp: now + 60 * 60,
+      iss: authority,
+      name: "Casey Rivera",
+      sub: "entra-subject-1",
+      ...claimOverrides,
+    }),
+  ].join(".");
+}
+
 function mockJwksEndpoint() {
   vi.stubGlobal(
     "fetch",
@@ -188,7 +203,7 @@ describe("Entra auth helpers", () => {
 
   it("keeps the browser session cookie below the 4KB browser limit", async () => {
     const session = await createSessionFromTokens({
-      idToken: unsignedToken(),
+      idToken: signedToken(),
       accessToken: unsignedToken({ pad: "x".repeat(3500) }),
       refreshToken: "refresh-token-" + "y".repeat(1200),
     });
@@ -243,7 +258,7 @@ describe("Entra auth helpers", () => {
 
     await createSessionFromTokens(
       {
-        idToken: unsignedToken(),
+        idToken: signedToken(),
         accessToken: unsignedToken({ pad: "x".repeat(3500) }),
       },
       responseCookieWriter,
@@ -256,8 +271,52 @@ describe("Entra auth helpers", () => {
       .toBe(true);
     expect(
       responseCookieWriter.set.mock.calls.filter(([name]) => /^rimv_access_\d+$/.test(String(name)))
-        .length,
+      .length,
     ).toBeGreaterThan(1);
+  });
+
+  it("rejects session minting when the identity token signature is invalid or absent", async () => {
+    await expect(
+      createSessionFromTokens({
+        idToken: unsignedToken(),
+        accessToken: unsignedToken(),
+      }),
+    ).rejects.toThrow("Invalid Entra identity token.");
+
+    await expect(
+      createSessionFromTokens({
+        idToken: tokenWithoutSignature(),
+        accessToken: unsignedToken(),
+      }),
+    ).rejects.toThrow("Invalid Entra identity token.");
+
+    expect(mockCookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("rejects session minting when the signed identity token issuer is wrong", async () => {
+    await expect(
+      createSessionFromTokens({
+        idToken: signedToken({ iss: "https://login.example.test/other/v2.0" }),
+        accessToken: unsignedToken(),
+      }),
+    ).rejects.toThrow("Invalid Entra identity token.");
+
+    expect(mockCookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("mints a session from a validly signed identity token", async () => {
+    const session = await createSessionFromTokens({
+      idToken: signedToken({ email: "signed@example.com", name: "Signed User" }),
+      accessToken: unsignedToken(),
+    });
+
+    expect(session).toMatchObject({
+      email: "signed@example.com",
+      name: "Signed User",
+      sub: "entra-subject-1",
+    });
+    expect(mockCookieStore.set.mock.calls.some(([name]) => name === sessionCookieName))
+      .toBe(true);
   });
 });
 

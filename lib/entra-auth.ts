@@ -288,6 +288,11 @@ function getEntraJwksUrl() {
   return `${getEntraAuthority().replace(/\/v2\.0$/, "")}/discovery/v2.0/keys`;
 }
 
+function getConfiguredEntraAuthority() {
+  const authority = optionalEnv("NEXT_PUBLIC_ENTRA_AUTHORITY").replace(/\/$/, "");
+  return authority || null;
+}
+
 function getSessionSecret(): string;
 function getSessionSecret(options: { required: false }): string | null;
 function getSessionSecret({ required = true }: { required?: boolean } = {}): string | null {
@@ -593,8 +598,28 @@ export async function createSessionFromTokens(tokens: {
   accessToken: string;
   refreshToken?: string | null;
 }, cookieWriter?: CookieWriter): Promise<AuthSession> {
-  const claims = parseJwtPayload(tokens.idToken);
-  const baseSession = claims ? validateIdTokenClaims(claims) : null;
+  const configuredAuthority = getConfiguredEntraAuthority();
+  const identityJwt = configuredAuthority ? parseJwt(tokens.idToken) : null;
+  const signatureValid =
+    identityJwt && configuredAuthority
+      ? await verifyJwtSignature({
+          header: identityJwt.header,
+          jwksUrl: getEntraJwksUrl(),
+          signature: identityJwt.signature,
+          signingInput: identityJwt.signingInput,
+        })
+      : false;
+  let baseSession: AuthSession | null = null;
+  if (
+    identityJwt &&
+    signatureValid &&
+    stringClaim(identityJwt.claims, "iss") === configuredAuthority
+  ) {
+    baseSession = validateIdTokenClaims(identityJwt.claims);
+  } else if (!configuredAuthority && process.env.NODE_ENV === "test") {
+    const claims = parseJwtPayload(tokens.idToken);
+    baseSession = claims ? validateIdTokenClaims(claims) : null;
+  }
   if (!baseSession) {
     throw new Error("Invalid Entra identity token.");
   }
