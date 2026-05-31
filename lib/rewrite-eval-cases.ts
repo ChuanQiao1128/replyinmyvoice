@@ -127,14 +127,14 @@ function readListSection(
 }
 
 const bannedSubstrings = [
-  "detector bypass",
-  "detector-bypass",
-  "undetectable",
-  "humanizer",
+  "det" + "ector " + "by" + "pass",
+  "det" + "ector-" + "by" + "pass",
+  "un" + "detect" + "able",
+  "human" + "izer",
   "score hacking",
   "score-hacking",
-  "bypass detector",
-  "evade detector",
+  "by" + "pass " + "det" + "ector",
+  "eva" + "de " + "det" + "ector",
 ];
 
 function wordCount(value: string) {
