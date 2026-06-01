@@ -150,6 +150,7 @@ public sealed class AccountService(
                 x.StripePaymentIntentId,
                 x.StripeAmountTotal,
                 x.StripeCurrency,
+                x.StripeReceiptUrl,
                 x.GrantedAt,
                 x.ExpiresAt,
                 x.AmountGranted,
@@ -164,6 +165,7 @@ public sealed class AccountService(
                 x.StripePaymentIntentId,
                 x.StripeAmountTotal,
                 x.StripeCurrency,
+                x.StripeReceiptUrl,
                 x.GrantedAt,
                 x.ExpiresAt,
                 Math.Max(x.AmountGranted - x.AmountConsumed, 0)))
@@ -415,6 +417,7 @@ public sealed record AccountPayment(
     string? PaymentIntentId,
     long? Amount,
     string? Currency,
+    string? ReceiptUrl,
     DateTimeOffset Date,
     DateTimeOffset? Expiry,
     int Remaining);

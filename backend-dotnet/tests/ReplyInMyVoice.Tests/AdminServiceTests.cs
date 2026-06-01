@@ -94,7 +94,8 @@ public sealed class AdminServiceTests
             stripePaymentIntentId: "pi_paid",
             stripeSku: "quick_pack",
             stripeAmountTotal: 1200,
-            stripeCurrency: "nzd");
+            stripeCurrency: "nzd",
+            stripeReceiptUrl: "https://pay.stripe.com/receipts/test_receipt");
         await SeedCreditAsync(
             fixture,
             user.Id,
@@ -126,6 +127,7 @@ public sealed class AdminServiceTests
         detail.Payments[0].PaymentIntentId.Should().Be("pi_paid");
         detail.Payments[0].AmountTotal.Should().Be(1200);
         detail.Payments[0].Currency.Should().Be("nzd");
+        detail.Payments[0].ReceiptUrl.Should().Be("https://pay.stripe.com/receipts/test_receipt");
         detail.CostToDateUsd.Should().Be(0.0223m);
     }
 
@@ -287,7 +289,8 @@ public sealed class AdminServiceTests
         string? stripePaymentIntentId = null,
         string? stripeSku = null,
         long? stripeAmountTotal = null,
-        string? stripeCurrency = null)
+        string? stripeCurrency = null,
+        string? stripeReceiptUrl = null)
     {
         await using var db = fixture.CreateContext();
         db.RewriteCredits.Add(new RewriteCredit
@@ -302,6 +305,7 @@ public sealed class AdminServiceTests
             StripeSku = stripeSku,
             StripeAmountTotal = stripeAmountTotal,
             StripeCurrency = stripeCurrency,
+            StripeReceiptUrl = stripeReceiptUrl,
         });
         await db.SaveChangesAsync();
     }

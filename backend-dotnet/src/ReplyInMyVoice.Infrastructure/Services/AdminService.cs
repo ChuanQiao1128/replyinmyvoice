@@ -197,6 +197,7 @@ public sealed class AdminService(
                 x.StripeSku,
                 x.StripeAmountTotal,
                 x.StripeCurrency,
+                x.StripeReceiptUrl,
             })
             .ToListAsync(cancellationToken);
         creditRows = creditRows
@@ -216,7 +217,8 @@ public sealed class AdminService(
                 x.StripePaymentIntentId,
                 x.StripeSku,
                 x.StripeAmountTotal,
-                x.StripeCurrency))
+                x.StripeCurrency,
+                x.StripeReceiptUrl))
             .ToList();
 
         var payments = creditRows
@@ -235,6 +237,7 @@ public sealed class AdminService(
                 x.StripeSku,
                 x.StripeAmountTotal,
                 x.StripeCurrency,
+                x.StripeReceiptUrl,
                 x.GrantedAt,
                 x.ExpiresAt,
                 x.AmountGranted,
@@ -792,7 +795,8 @@ public sealed record AdminCredit(
     string? PaymentIntentId,
     string? Sku,
     long? AmountTotal,
-    string? Currency);
+    string? Currency,
+    string? ReceiptUrl);
 
 public sealed record AdminPayment(
     Guid CreditId,
@@ -802,6 +806,7 @@ public sealed record AdminPayment(
     string? Sku,
     long? AmountTotal,
     string? Currency,
+    string? ReceiptUrl,
     DateTimeOffset GrantedAt,
     DateTimeOffset? ExpiresAt,
     int CreditsGranted,

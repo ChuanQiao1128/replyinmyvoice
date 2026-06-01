@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ReplyInMyVoice.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using ReplyInMyVoice.Infrastructure.Data;
 namespace ReplyInMyVoice.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260531201712_AddRewriteCreditReceiptUrl")]
+    partial class AddRewriteCreditReceiptUrl
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -238,59 +241,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasFilter("[StripeCustomerId] IS NOT NULL");
 
                     b.ToTable("AppUsers");
-                });
-
-            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.BillingSupportRequest", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<string>("RelatedPaymentIntentId")
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
-                    b.Property<DateTimeOffset?>("ResolvedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("RowVersion")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RelatedPaymentIntentId")
-                        .HasFilter("[RelatedPaymentIntentId] IS NOT NULL");
-
-                    b.HasIndex("Status", "CreatedAt");
-
-                    b.HasIndex("UserId", "CreatedAt");
-
-                    b.ToTable("BillingSupportRequests");
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.LearningFinding", b =>
@@ -856,9 +806,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ExpiresAt")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<DateTimeOffset?>("ExpiryReminderSentAt")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<DateTimeOffset>("GrantedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -1321,17 +1268,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Navigation("ApiKey");
                 });
 
-            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.BillingSupportRequest", b =>
-                {
-                    b.HasOne("ReplyInMyVoice.Domain.Entities.AppUser", "User")
-                        .WithMany("BillingSupportRequests")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.LearningFinding", b =>
                 {
                     b.HasOne("ReplyInMyVoice.Domain.Entities.LearningRun", "Run")
@@ -1470,8 +1406,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.AppUser", b =>
                 {
-                    b.Navigation("BillingSupportRequests");
-
                     b.Navigation("RewriteAttempts");
 
                     b.Navigation("UsagePeriods");
