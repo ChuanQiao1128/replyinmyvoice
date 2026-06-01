@@ -97,6 +97,34 @@ public sealed class RewriteJobProcessor(
         {
             result = await rewriteProvider.RewriteAsync(job.AttemptId, request, cancellationToken);
         }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            var timeoutFinishedAt = DateTimeOffset.UtcNow;
+            const string timeoutErrorCode = "provider_timeout";
+            logger?.LogWarning(
+                ex,
+                "Rewrite provider timed out for attempt {AttemptId}.",
+                job.AttemptId);
+            await WriteCostLogAsync(
+                job.AttemptId,
+                request,
+                null,
+                providerCallCapture.Calls,
+                "failed",
+                timeoutErrorCode,
+                rewriteStartedAt,
+                timeoutFinishedAt,
+                cancellationToken);
+            await ExecuteAttemptMutationAsync(
+                job.AttemptId,
+                () => quotaService.ReleaseAsync(
+                    job.AttemptId,
+                    timeoutErrorCode,
+                    timeoutFinishedAt,
+                    cancellationToken),
+                cancellationToken);
+            return;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger?.LogError(

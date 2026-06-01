@@ -142,6 +142,80 @@ public sealed class RewriteJobProcessorTests
         attempt.Status.Should().Be(RewriteAttemptStatus.Failed);
         attempt.ErrorCode.Should().Be("provider_json_parse_failed");
     }
+
+    [Theory]
+    [InlineData("operation", false)]
+    [InlineData("task", true)]
+    public async Task ProcessAsync_releases_reservation_when_provider_times_out(
+        string exceptionKind,
+        bool creditBacked)
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.UtcNow;
+        if (creditBacked)
+        {
+            await using var seedDb = fixture.CreateContext();
+            seedDb.UsagePeriods.Add(new ReplyInMyVoice.Domain.Entities.UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 1,
+                UsedCount = 1,
+                ReservedCount = 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            seedDb.RewriteCredits.Add(new ReplyInMyVoice.Domain.Entities.RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 1,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var quota = new QuotaService(fixture.CreateContext);
+        var reservedAttempt = await quota.ReserveAsync(
+            user.Id,
+            $"idem-worker-timeout-{exceptionKind}",
+            "hash",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            creditBacked ? 1 : 3,
+            now,
+            TimeSpan.FromMinutes(10));
+        var provider = new ThrowingRewriteProvider(
+            exceptionKind == "task"
+                ? new TaskCanceledException("provider call timed out")
+                : new OperationCanceledException("provider call timed out"));
+        var processor = new RewriteJobProcessor(fixture.CreateContext, provider);
+
+        await processor.ProcessAsync(new RewriteJob(reservedAttempt.AttemptId), CancellationToken.None);
+
+        provider.CallCount.Should().Be(1);
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        if (creditBacked)
+        {
+            period.UsedCount.Should().Be(1);
+            period.ReservedCount.Should().Be(0);
+            (await db.RewriteCredits.SingleAsync()).AmountConsumed.Should().Be(0);
+        }
+        else
+        {
+            period.UsedCount.Should().Be(0);
+            period.ReservedCount.Should().Be(0);
+        }
+
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Released);
+        var attempt = await db.RewriteAttempts.SingleAsync();
+        attempt.Status.Should().Be(RewriteAttemptStatus.Failed);
+        attempt.ErrorCode.Should().Be("provider_timeout");
+    }
 }
 
 internal sealed class FakeRewriteProvider(RewriteProviderResult result) : IRewriteProvider
@@ -154,5 +228,16 @@ internal sealed class FakeRewriteProvider(RewriteProviderResult result) : IRewri
         CallCount += 1;
         SeenRequest = request;
         return Task.FromResult(result);
+    }
+}
+
+internal sealed class ThrowingRewriteProvider(Exception exception) : IRewriteProvider
+{
+    public int CallCount { get; private set; }
+
+    public Task<RewriteProviderResult> RewriteAsync(Guid attemptId, RewriteRequest request, CancellationToken cancellationToken)
+    {
+        CallCount += 1;
+        return Task.FromException<RewriteProviderResult>(exception);
     }
 }

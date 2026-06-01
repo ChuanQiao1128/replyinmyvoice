@@ -823,6 +823,88 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
+    public async Task ProcessWebhookEventAsync_RefundBeforeGrantCanBeReplayedAfterCreditArrives()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-05-30T00:03:00Z");
+        const string refundEvent = """
+        {
+          "id": "evt_refund_before_grant",
+          "type": "charge.refunded",
+          "data": {
+            "object": {
+              "id": "ch_refund_before_grant",
+              "payment_intent": "pi_refund_before_grant",
+              "amount": 1200,
+              "amount_refunded": 600,
+              "refunded": false
+            }
+          }
+        }
+        """;
+
+        var orphanResult = await service.ProcessWebhookEventAsync(
+            "evt_refund_before_grant",
+            "charge.refunded",
+            refundEvent,
+            now);
+
+        orphanResult.Should().BeFalse();
+        await using (var orphanDb = fixture.CreateContext())
+        {
+            var storedEvent = await orphanDb.StripeEvents.SingleAsync(x => x.EventId == "evt_refund_before_grant");
+            storedEvent.Status.Should().Be(StripeEventStatus.Failed);
+            storedEvent.ProcessedAt.Should().BeNull();
+            storedEvent.AttemptCount.Should().Be(1);
+            storedEvent.LastError.Should().Contain("No matching rewrite credit");
+            (await orphanDb.RewriteCredits.CountAsync()).Should().Be(0);
+        }
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 10,
+                AmountConsumed = 0,
+                GrantedAt = now.AddSeconds(30),
+                StripePaymentIntentId = "pi_refund_before_grant",
+                StripeSku = "quick_pack",
+                StripeAmountTotal = 1200,
+                StripeCurrency = "nzd",
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var replayResult = await service.ProcessWebhookEventAsync(
+            "evt_refund_before_grant",
+            "charge.refunded",
+            refundEvent,
+            now.AddMinutes(1));
+        var duplicateResult = await service.ProcessWebhookEventAsync(
+            "evt_refund_before_grant",
+            "charge.refunded",
+            refundEvent,
+            now.AddMinutes(2));
+
+        replayResult.Should().BeTrue();
+        duplicateResult.Should().BeFalse();
+
+        await using var db = fixture.CreateContext();
+        var processedEvent = await db.StripeEvents.SingleAsync(x => x.EventId == "evt_refund_before_grant");
+        processedEvent.Status.Should().Be(StripeEventStatus.Processed);
+        processedEvent.AttemptCount.Should().Be(2);
+        processedEvent.LastError.Should().BeNull();
+
+        var credit = await db.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_refund_before_grant");
+        credit.AmountGranted.Should().Be(5);
+        credit.AmountConsumed.Should().Be(0);
+    }
+
+    [Fact]
     public async Task ProcessWebhookEventAsync_SequentialPartialRefundsUseCumulativeOriginalGrant()
     {
         await using var fixture = await DbFixture.CreateAsync();

@@ -2203,6 +2203,51 @@ claude-heavy-planning-handoff
 - Verification evidence: Absent-config Playwright run skipped the spec cleanly. The signed-webhook HTTP smoke passed checkout grant and refund clawback. Full unit tests, typecheck, lint, and diff checks passed.
 - Limitations: Browser-backed Playwright assertions could not execute in this sandbox because Chromium launch is blocked. The new E2E does not depend on Stripe CLI, Stripe network calls, or live payment keys.
 
+### 2026-06-01 - dotnet-backend-testing - PAY-10 payment resilience test gaps
+
+- Agent: Codex
+- Trigger: GitHub issue #385/PAY-10 explicitly requires .NET backend tests for Stripe refund replay, Stripe API-version pinning, quota reservation races, and rewrite worker timeout release.
+- Action: Opened and followed the skill; added xUnit/FluentAssertions tests using existing EF SQLite fixtures and deterministic fake providers, plus an internal visibility hook for the Stripe billing pin guard test.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Properties/AssemblyInfo.cs`.
+- Verification evidence: Focused backend run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter "FullyQualifiedName~StripeBillingServiceTests|FullyQualifiedName~StripeEventServiceTests|FullyQualifiedName~QuotaServiceTests|FullyQualifiedName~RewriteJobProcessorTests" --no-restore` passed 45/45. Full `cd backend-dotnet && dotnet test` passed 412/412.
+- Limitations: The Stripe SDK exposes `StripeConfiguration.ApiVersion` as read-only, so the mismatch test drives the same internal pin check through an overload while also asserting the live SDK value equals the pinned version. NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - resilience-test-generation - PAY-10 replay, timeout, and quota-race coverage
+
+- Agent: Codex
+- Trigger: PAY-10 changes/tests retryable Stripe refund ordering, true concurrent quota reservation, and provider timeout/cancellation recovery.
+- Action: Opened and followed the skill; framed tests around timeout, duplicate/replay, partial ordering, and concurrent request failure modes. Kept all provider and Stripe behavior local with fakes and JSON payloads; no live Stripe, OpenAI, Sapling, Azure, or production database calls were made.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/QuotaService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`.
+- Verification evidence: Added coverage for refund-before-grant failing retryably then replaying after credit arrives, `Task.WhenAll` quota reservation on one remaining slot producing exactly one `Created` and one `QuotaExceeded`, and provider `OperationCanceledException`/`TaskCanceledException` releasing reservations with `provider_timeout` and refunding quota/credit. Focused backend run passed 45/45; full `cd backend-dotnet && dotnet test` passed 412/412.
+- Limitations: Retry handling is bounded to reservation-race/concurrency exceptions; no new external provider retry policy, live network timeout test, or deployment behavior was added.
+
+### 2026-06-01 - ui-browser-testing - PAY-10 buy-button checkout branch coverage
+
+- Agent: Codex
+- Trigger: PAY-10 requires frontend checkout flow coverage for `components/landing/buy-button.tsx` 401, success, and API error branches.
+- Action: Opened and followed the skill; added a Vitest unit flow test under `tests/unit/` that exercises the button handler with mocked fetch, window navigation, and React state updates.
+- Output artifacts: `tests/unit/buy-button-checkout-flow.test.ts`.
+- Verification evidence: Focused `npm run test -- tests/unit/buy-button-checkout-flow.test.ts` passed 3/3. Full `npm run typecheck` passed. Full `npm run test` passed 301/301. Banned-term scan over `app components public lib` returned no matches.
+- Limitations: The issue allowed Vitest or Playwright; this implementation uses Vitest and does not add screenshot or browser-run artifacts because no visual layout changed.
+
+### 2026-06-01 - state-machine-modeling - PAY-10 payment and rewrite recovery transitions
+
+- Agent: Codex
+- Trigger: PAY-10 touches webhook lifecycle, usage reservation lifecycle, rewrite attempt lifecycle, and quota/credit transitions.
+- Action: Opened and followed the skill; modeled states as `StripeEvent` Processing/Failed/Processed, `UsageReservation` Pending/Released/Finalized/Expired, and `RewriteAttempt` Pending/Processing/Failed/Succeeded/Expired. Events modeled: out-of-order `charge.refunded`, refund replay after credit grant, duplicate processed refund, concurrent `ReserveAsync`, and provider timeout/cancellation. Allowed transitions added/tested: no-credit refund -> Failed/retryable with no credit mutation; replayed refund -> Processed with clamped grant; concurrent reservation -> one Pending reservation and one `QuotaExceeded`; provider timeout from Processing -> Failed attempt plus Released reservation. Illegal transitions tested include duplicate processed refund not reapplying and reservation race not over-reserving.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/QuotaService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`; related xUnit tests.
+- Verification evidence: Focused backend run passed 45/45. Full `cd backend-dotnet && dotnet test` passed 412/412.
+- Limitations: No enum values or database migrations were added; the work only clarified existing transition behavior and added recovery tests.
+
+### 2026-06-01 - data-module-review - PAY-10 EF quota and payment persistence invariants
+
+- Agent: Codex
+- Trigger: PAY-10 changes EF-backed usage counters, idempotency/replay rows, credit balances, and transaction behavior under concurrency.
+- Action: Opened and followed the skill; reviewed `AppDbContext` uniqueness/concurrency configuration, `StripeEventService` transaction behavior, `QuotaService` read-then-write reservation path, `RewriteJobProcessor` timeout release path, and the new tests against the relevant invariants.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/QuotaService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/*`.
+- Verification evidence: Findings: no migration needed; existing unique keys on `StripeEvents.EventId`, `UsagePeriods(userId, periodKey)`, `RewriteAttempts(userId, idempotencyKey)`, and `UsageReservations.RewriteAttemptId` support the new tests. The quota race test uses file-backed SQLite with WAL and asserts one attempt/reservation/outbox row. `git diff --check`, banned-term scan over `app components public lib`, full `cd backend-dotnet && dotnet test`, `npm run typecheck`, and `npm run test` all passed.
+- Limitations: The review did not run a live SQL Server concurrency test; coverage is local EF SQLite integration coverage matching the issue brief.
+
 ### 2026-06-01 - ui-browser-testing - PAY-07 admin UI
 
 - Agent: Codex
