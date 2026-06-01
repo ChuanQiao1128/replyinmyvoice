@@ -2489,3 +2489,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TestHostEnvironment.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`.
 - Verification evidence: Red run `dotnet test ReplyInMyVoice.sln --filter AdminAccountingRevenueCsv` failed on missing `ExportAccountingRevenueCsv` and `WriteAccountingRevenueCsvAsync`. Green runs: `dotnet test ReplyInMyVoice.sln --filter AdminAccountingRevenueCsv --no-restore` passed 3/3, isolated API host timeout repros passed after moving test-host settings to a module initializer, full `cd backend-dotnet && dotnet test` passed 410/410, and `git diff --check` passed.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - cloud-architecture-cost-review - PAY-30 multi-currency design
+
+- Agent: Codex
+- Trigger: GitHub issue #398/PAY-30 explicitly requires cloud-architecture-cost-review for multi-currency payment coverage.
+- Action: Opened and followed the skill; reviewed the payment audit, manual setup notes, Azure/Cloudflare backend posture, current Stripe SKU mapping, and PAY-22/PAY-29 reporting briefs. Recommended separate Stripe Prices per SKU per currency, explicit user currency selection with optional geo preselection, and NZD fallback without adding cloud resources or application-side exchange-rate logic.
+- Output artifacts: `docs/multi-currency-plan.md`; `docs/skill-run-log.md`.
+- Verification evidence: `docs/multi-currency-plan.md` records the architecture cost review, approval gates, rejected options, and reporting implications. `cd backend-dotnet && dotnet test` passed 407/407. `git diff --check` passed.
+- Limitations: No exact Stripe fee comparison was performed because PAY-30 does not select a concrete additional currency, quote prices, create Stripe Prices, or provision paid resources. No optional multi-currency implementation was added because the issue did not include owner opt-in.
+
+### 2026-06-01 - system-spec-synthesis - PAY-30 multi-currency implementation-ready plan
+
+- Agent: Codex
+- Trigger: PAY-30 asks for a design document covering future SKU/currency price mapping, currency selection, data persistence, and reconciliation/export behavior.
+- Action: Opened and followed the skill; converted the issue, PAY brief, payment audit, current backend/frontend code, and reporting briefs into an implementation-ready specification with goals, non-goals, current system, proposed architecture, data model, API contracts, rollout, verification, and open questions.
+- Output artifacts: `docs/multi-currency-plan.md`; `docs/skill-run-log.md`.
+- Verification evidence: `docs/multi-currency-plan.md` is non-empty and documents per-currency Stripe price IDs, SKU-to-currency price mapping, user/geo currency selection, existing `RewriteCredit.StripeCurrency` persistence, and PAY-22/PAY-29 grouping by currency. `cd backend-dotnet && dotnet test` passed 407/407. `git diff --check` passed.
+- Limitations: The output is a design/spec artifact only. Backend SKU resolution, frontend currency selection, and two-currency unit coverage remain deferred until owner supplies a concrete currency decision and Stripe price IDs through runtime configuration.
