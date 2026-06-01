@@ -10,6 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RewriteAttempt> RewriteAttempts => Set<RewriteAttempt>();
     public DbSet<UsageReservation> UsageReservations => Set<UsageReservation>();
     public DbSet<StripeEvent> StripeEvents => Set<StripeEvent>();
+    public DbSet<StripeReconciliationRun> StripeReconciliationRuns => Set<StripeReconciliationRun>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<RewriteCredit> RewriteCredits => Set<RewriteCredit>();
     public DbSet<Referral> Referrals => Set<Referral>();
@@ -123,6 +124,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.LastError).HasMaxLength(1000);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
             entity.HasIndex(x => new { x.Status, x.LockedUntil });
+        });
+
+        modelBuilder.Entity<StripeReconciliationRun>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.CompletedAt);
+            entity.HasIndex(x => new { x.WindowStart, x.WindowEnd });
+            entity.Property(x => x.ReportJson).IsRequired();
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
         });
 
         modelBuilder.Entity<OutboxMessage>(entity =>

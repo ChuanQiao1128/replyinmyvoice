@@ -132,6 +132,32 @@ public static class NotificationTemplates
                 """);
         });
 
+    public static readonly NotificationTemplate<PaymentReconciliationNotificationModel> PaymentReconciliationDiscrepancy = new(
+        "payment-reconciliation-discrepancy",
+        model =>
+        {
+            var windowStart = model.WindowStartUtc.ToString("yyyy-MM-dd HH:mm 'UTC'");
+            var windowEnd = model.WindowEndUtc.ToString("yyyy-MM-dd HH:mm 'UTC'");
+
+            return new RenderedNotification(
+                "Payment reconciliation needs review",
+                $"""
+                Stripe reconciliation found {model.DiscrepancyCount} discrepancy row(s) for {windowStart} to {windowEnd}.
+
+                paid-but-no-grant: {model.PaidButNoGrantCount}
+                grant-but-no-payment: {model.GrantButNoPaymentCount}
+                amount-mismatch: {model.AmountMismatchCount}
+                """,
+                $"""
+                <p>Stripe reconciliation found {model.DiscrepancyCount} discrepancy row(s) for {Html(windowStart)} to {Html(windowEnd)}.</p>
+                <ul>
+                <li>paid-but-no-grant: {model.PaidButNoGrantCount}</li>
+                <li>grant-but-no-payment: {model.GrantButNoPaymentCount}</li>
+                <li>amount-mismatch: {model.AmountMismatchCount}</li>
+                </ul>
+                """);
+        });
+
     private static string SafeName(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "there" : value.Trim();
 
@@ -178,3 +204,11 @@ public sealed record GstTurnoverThresholdNotificationModel(
     decimal WarningFraction,
     DateTimeOffset WindowEndUtc,
     string? SupportEmail);
+
+public sealed record PaymentReconciliationNotificationModel(
+    DateTimeOffset WindowStartUtc,
+    DateTimeOffset WindowEndUtc,
+    int DiscrepancyCount,
+    int PaidButNoGrantCount,
+    int GrantButNoPaymentCount,
+    int AmountMismatchCount);

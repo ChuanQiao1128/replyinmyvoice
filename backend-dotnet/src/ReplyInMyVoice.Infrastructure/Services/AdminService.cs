@@ -326,6 +326,9 @@ public sealed class AdminService(
         var gstTurnover = await _taxTurnoverService.GetRollingTwelveMonthReportAsync(
             DateTimeOffset.UtcNow,
             cancellationToken);
+        var paymentReconciliation = await GetLatestPaymentReconciliationSummaryAsync(
+            db,
+            cancellationToken);
 
         return new AdminStatsResponse(
             totalUsers,
@@ -337,7 +340,8 @@ public sealed class AdminService(
             paymentRows.Count,
             paymentRows.Sum(x => x.StripeAmountTotal ?? 0),
             costRows.Sum(),
-            gstTurnover);
+            gstTurnover,
+            paymentReconciliation);
     }
 
     public async Task<IReadOnlyList<AdminBillingSupportRequest>> GetBillingSupportQueueAsync(
@@ -649,6 +653,30 @@ public sealed class AdminService(
         amountTotal is not null ||
         string.Equals(source, "PURCHASE", StringComparison.OrdinalIgnoreCase);
 
+    private static async Task<AdminPaymentReconciliationSummary?> GetLatestPaymentReconciliationSummaryAsync(
+        AppDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.StripeReconciliationRuns
+            .AsNoTracking()
+            .Select(x => new AdminPaymentReconciliationSummary(
+                x.CompletedAt,
+                x.WindowStart,
+                x.WindowEnd,
+                x.PaidButNoGrantCount + x.GrantButNoPaymentCount + x.AmountMismatchCount,
+                x.PaidButNoGrantCount,
+                x.GrantButNoPaymentCount,
+                x.AmountMismatchCount,
+                x.StripePaymentCount,
+                x.PurchaseGrantCount))
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .OrderByDescending(x => x.LastCompletedAt)
+            .ThenByDescending(x => x.WindowEnd)
+            .FirstOrDefault();
+    }
+
     private static async Task<AdminRefundAuditDetails?> FindExistingRefundAsync(
         AppDbContext db,
         Guid targetUserId,
@@ -832,7 +860,8 @@ public sealed record AdminStatsResponse(
     int PaymentCount,
     long PaymentAmountTotal,
     decimal CostToDateUsd,
-    TaxTurnoverReport GstTurnover);
+    TaxTurnoverReport GstTurnover,
+    AdminPaymentReconciliationSummary? PaymentReconciliation = null);
 
 public sealed record AdminBillingSupportRequest(
     Guid Id,
@@ -852,6 +881,17 @@ public sealed record AdminBillingSupportResolveAuditDetails(
     string Type,
     string? RelatedPaymentIntentId,
     DateTimeOffset ResolvedAt);
+
+public sealed record AdminPaymentReconciliationSummary(
+    DateTimeOffset LastCompletedAt,
+    DateTimeOffset WindowStart,
+    DateTimeOffset WindowEnd,
+    int DiscrepancyCount,
+    int PaidButNoGrantCount,
+    int GrantButNoPaymentCount,
+    int AmountMismatchCount,
+    int StripePaymentCount,
+    int PurchaseGrantCount);
 
 public sealed record AdminCreditGrantRequest(
     int? Amount,
