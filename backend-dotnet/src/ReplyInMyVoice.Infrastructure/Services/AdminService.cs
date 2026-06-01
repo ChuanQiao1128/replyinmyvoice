@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Domain.Entities;
@@ -11,8 +13,12 @@ public sealed class AdminService(
     IStripeRefundClient? stripeRefundClient = null)
 {
     private const int MaxPageSize = 100;
+    private const int AccountingExportPageSize = 500;
+    private const int MaxAccountingExportPageSize = 1000;
     private const int AdminCreditExpiryDays = 90;
     private const string AdminCreditSource = "ADMIN";
+    private const string AccountingRevenueCsvHeader =
+        "date,userRef,sku,amount,currency,paymentIntent,receiptUrl,creditsGranted,creditsConsumed,creditsRemaining";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<AdminUsersListResponse> GetUsersAsync(
@@ -328,6 +334,56 @@ public sealed class AdminService(
             costRows.Sum());
     }
 
+    public async Task WriteAccountingRevenueCsvAsync(
+        Stream output,
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive,
+        int pageSize = AccountingExportPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (toExclusive <= fromInclusive)
+        {
+            throw new ArgumentException("The export end date must be after the start date.", nameof(toExclusive));
+        }
+
+        pageSize = Math.Clamp(pageSize, 1, MaxAccountingExportPageSize);
+
+        await using var db = dbContextFactory();
+        await using var writer = new StreamWriter(
+            output,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            bufferSize: 16 * 1024,
+            leaveOpen: true)
+        {
+            NewLine = "\r\n",
+        };
+
+        await writer.WriteLineAsync(AccountingRevenueCsvHeader.AsMemory(), cancellationToken);
+
+        if (db.Database.IsSqlite())
+        {
+            await WriteAccountingRevenueCsvSqliteAsync(
+                db,
+                writer,
+                fromInclusive,
+                toExclusive,
+                pageSize,
+                cancellationToken);
+        }
+        else
+        {
+            await WriteAccountingRevenueCsvRelationalAsync(
+                db,
+                writer,
+                fromInclusive,
+                toExclusive,
+                pageSize,
+                cancellationToken);
+        }
+
+        await writer.FlushAsync(cancellationToken);
+    }
+
     public async Task<AdminCreditGrantServiceResult> GrantCreditsAsync(
         string adminExternalAuthUserId,
         string? adminEmail,
@@ -601,6 +657,157 @@ public sealed class AdminService(
         return null;
     }
 
+    private static async Task WriteAccountingRevenueCsvRelationalAsync(
+        AppDbContext db,
+        StreamWriter writer,
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var skip = 0;
+        while (true)
+        {
+            var rows = await PaymentCredits(db.RewriteCredits)
+                .Where(x => x.GrantedAt >= fromInclusive && x.GrantedAt < toExclusive)
+                .OrderBy(x => x.GrantedAt)
+                .ThenBy(x => x.Id)
+                .Skip(skip)
+                .Take(pageSize)
+                .Select(x => new AccountingRevenueCreditRow(
+                    x.Id,
+                    x.UserId,
+                    x.GrantedAt,
+                    x.StripeSku,
+                    x.StripeAmountTotal,
+                    x.StripeCurrency,
+                    x.StripePaymentIntentId,
+                    x.AmountGranted,
+                    x.AmountConsumed))
+                .ToListAsync(cancellationToken);
+
+            if (rows.Count == 0)
+            {
+                return;
+            }
+
+            await WriteAccountingRevenueCsvRowsAsync(writer, rows, cancellationToken);
+            await writer.FlushAsync(cancellationToken);
+
+            if (rows.Count < pageSize)
+            {
+                return;
+            }
+
+            skip += rows.Count;
+        }
+    }
+
+    private static async Task WriteAccountingRevenueCsvSqliteAsync(
+        AppDbContext db,
+        StreamWriter writer,
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var skip = 0;
+        while (true)
+        {
+            // SQLite tests cannot translate DateTimeOffset range/order; keep the same bounded
+            // page size and filter each fetched page in memory.
+            var page = await PaymentCredits(db.RewriteCredits)
+                .OrderBy(x => x.Id)
+                .Skip(skip)
+                .Take(pageSize)
+                .Select(x => new AccountingRevenueCreditRow(
+                    x.Id,
+                    x.UserId,
+                    x.GrantedAt,
+                    x.StripeSku,
+                    x.StripeAmountTotal,
+                    x.StripeCurrency,
+                    x.StripePaymentIntentId,
+                    x.AmountGranted,
+                    x.AmountConsumed))
+                .ToListAsync(cancellationToken);
+
+            if (page.Count == 0)
+            {
+                return;
+            }
+
+            var rows = page
+                .Where(x => x.GrantedAt >= fromInclusive && x.GrantedAt < toExclusive)
+                .OrderBy(x => x.GrantedAt)
+                .ThenBy(x => x.CreditId)
+                .ToList();
+            await WriteAccountingRevenueCsvRowsAsync(writer, rows, cancellationToken);
+            await writer.FlushAsync(cancellationToken);
+
+            if (page.Count < pageSize)
+            {
+                return;
+            }
+
+            skip += page.Count;
+        }
+    }
+
+    private static IQueryable<RewriteCredit> PaymentCredits(IQueryable<RewriteCredit> credits) =>
+        credits
+            .AsNoTracking()
+            .Where(x =>
+                (x.StripePaymentIntentId != null && x.StripePaymentIntentId != string.Empty) ||
+                (x.StripeEventId != null && x.StripeEventId != string.Empty) ||
+                (x.StripeSku != null && x.StripeSku != string.Empty) ||
+                (x.StripeCurrency != null && x.StripeCurrency != string.Empty) ||
+                x.StripeAmountTotal != null ||
+                x.Source == "PURCHASE" ||
+                x.Source == "Purchase" ||
+                x.Source == "purchase");
+
+    private static async Task WriteAccountingRevenueCsvRowsAsync(
+        StreamWriter writer,
+        IEnumerable<AccountingRevenueCreditRow> rows,
+        CancellationToken cancellationToken)
+    {
+        foreach (var row in rows)
+        {
+            await writer.WriteLineAsync(FormatAccountingRevenueCsvRow(row).AsMemory(), cancellationToken);
+        }
+    }
+
+    private static string FormatAccountingRevenueCsvRow(AccountingRevenueCreditRow row)
+    {
+        var remaining = Math.Max(row.AmountGranted - row.AmountConsumed, 0);
+        return string.Join(",", new[]
+        {
+            CsvField(row.GrantedAt.ToString("O", CultureInfo.InvariantCulture)),
+            CsvField(row.UserId.ToString("D")),
+            CsvField(row.Sku),
+            CsvField(row.AmountTotal?.ToString(CultureInfo.InvariantCulture)),
+            CsvField(row.Currency),
+            CsvField(row.PaymentIntentId),
+            CsvField(null),
+            CsvField(row.AmountGranted.ToString(CultureInfo.InvariantCulture)),
+            CsvField(row.AmountConsumed.ToString(CultureInfo.InvariantCulture)),
+            CsvField(remaining.ToString(CultureInfo.InvariantCulture)),
+        });
+    }
+
+    private static string CsvField(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        return value.IndexOfAny([',', '"', '\r', '\n']) < 0
+            ? value
+            : $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+    }
+
     private static AdminRefundAuditDetails? TryParseRefundDetails(string? detailsJson)
     {
         if (string.IsNullOrWhiteSpace(detailsJson))
@@ -652,6 +859,17 @@ public sealed class AdminService(
         string? PaymentIntentId,
         long? AmountTotal,
         string? Currency);
+
+    private sealed record AccountingRevenueCreditRow(
+        Guid CreditId,
+        Guid UserId,
+        DateTimeOffset GrantedAt,
+        string? Sku,
+        long? AmountTotal,
+        string? Currency,
+        string? PaymentIntentId,
+        int AmountGranted,
+        int AmountConsumed);
 }
 
 public sealed record AdminUsersListResponse(
