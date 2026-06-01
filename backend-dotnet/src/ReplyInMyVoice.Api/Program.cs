@@ -11,14 +11,20 @@ using System.Security.Claims;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
+Console.Error.WriteLine("TRACE api: builder created");
 
 builder.Services.AddEndpointsApiExplorer();
+Console.Error.WriteLine("TRACE api: endpoints registered");
 builder.Services.AddSwaggerGen();
+Console.Error.WriteLine("TRACE api: swagger registered");
 builder.Services.AddApplicationInsightsTelemetry();
+Console.Error.WriteLine("TRACE api: app insights registered");
 
 builder.Services.AddReplyInMyVoiceInfrastructure(builder.Configuration);
+Console.Error.WriteLine("TRACE api: infrastructure registered");
 
 var app = builder.Build();
+Console.Error.WriteLine("TRACE api: app built");
 
 if (app.Environment.IsDevelopment())
 {

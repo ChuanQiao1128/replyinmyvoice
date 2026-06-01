@@ -60,6 +60,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RewriteJobProcessor>();
         services.AddScoped<OutboxDispatcherService>();
         services.AddScoped<ExpiredReservationCleanupService>();
+        services.AddScoped<CreditExpiryReminderService>();
         services.AddScoped<StripeEventService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<INotificationService, NotificationService>();

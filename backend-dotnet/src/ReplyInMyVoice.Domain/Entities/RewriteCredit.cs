@@ -10,6 +10,7 @@ public sealed class RewriteCredit
     public int AmountConsumed { get; set; }
     public DateTimeOffset GrantedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset? ExpiryReminderSentAt { get; set; }
     public string? StripeEventId { get; set; }
     public string? StripePaymentIntentId { get; set; }
     public string? StripeSku { get; set; }
