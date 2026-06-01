@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -14,8 +15,11 @@ namespace ReplyInMyVoice.Functions.Functions;
 public sealed class BillingHttpFunctions(
     IConfiguration configuration,
     IStripeBillingService billingService,
-    ILogger<BillingHttpFunctions> logger)
+    ILogger<BillingHttpFunctions> logger,
+    ICheckoutVelocityLimiter? checkoutVelocityLimiter = null)
 {
+    private readonly ICheckoutVelocityLimiter checkoutLimiter = checkoutVelocityLimiter ?? new CheckoutVelocityLimiter();
+
     [Function("CreateCheckoutSession")]
     public async Task<IActionResult> CreateCheckoutSession(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "stripe/checkout")]
@@ -54,6 +58,16 @@ public sealed class BillingHttpFunctions(
         }
 
         var correlationId = ResolveCorrelationId(request);
+        var velocity = checkoutLimiter.Check(authUser.ExternalAuthUserId);
+        if (!velocity.Allowed)
+        {
+            SetRetryAfter(request, velocity);
+            return FunctionHttpResults.Problem(
+                "Checkout rate limit reached",
+                "Too many checkout sessions were requested. Please wait before trying again.",
+                StatusCodes.Status429TooManyRequests);
+        }
+
         try
         {
             var url = await billingService.CreateCheckoutSessionUrlAsync(
@@ -207,6 +221,17 @@ public sealed class BillingHttpFunctions(
     private static bool IsBillingProviderFailure(Exception exception, CancellationToken cancellationToken) =>
         exception is StripeException ||
         exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
+
+    private static void SetRetryAfter(HttpRequest request, CheckoutVelocityLimitResult velocity)
+    {
+        if (velocity.RetryAfter is not { } retryAfter)
+        {
+            return;
+        }
+
+        var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+        request.HttpContext.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
+    }
 }
 
 public sealed record BillingUrlResponse(string Url);

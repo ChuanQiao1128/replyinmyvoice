@@ -92,6 +92,13 @@ export type AdminStatsResponse = {
   paymentCount: number;
   paymentAmountTotal: number;
   costToDateUsd: number;
+  refundReview: {
+    flaggedUserCount: number;
+    refundCountThreshold: number;
+    refundAmountThreshold: number;
+    totalRefundCount: number;
+    totalRefundAmount: number;
+  };
 };
 
 export type AdminBillingSupportRequest = {

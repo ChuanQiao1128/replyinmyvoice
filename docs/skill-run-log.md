@@ -2507,3 +2507,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `docs/multi-currency-plan.md`; `docs/skill-run-log.md`.
 - Verification evidence: `docs/multi-currency-plan.md` is non-empty and documents per-currency Stripe price IDs, SKU-to-currency price mapping, user/geo currency selection, existing `RewriteCredit.StripeCurrency` persistence, and PAY-22/PAY-29 grouping by currency. `cd backend-dotnet && dotnet test` passed 407/407. `git diff --check` passed.
 - Limitations: The output is a design/spec artifact only. Backend SKU resolution, frontend currency selection, and two-currency unit coverage remain deferred until owner supplies a concrete currency decision and Stripe price IDs through runtime configuration.
+
+### 2026-06-01 - resilience-test-generation - PAY-31 checkout velocity and refund review signals
+
+- Agent: Codex
+- Trigger: GitHub issue #399/PAY-31 requires purchase-side abuse controls and explicitly names resilience-test-generation for checkout velocity limiting and refund-abuse monitoring tests.
+- Action: Opened and followed the skill; identified checkout-session creation as the critical operation, kept Stripe calls behind a fake billing service, and wrote the failing 429/under-limit API test before adding the limiter.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/CheckoutVelocityLimiter.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/BillingHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `docs/fraud-controls.md`.
+- Verification evidence: Red run failed on missing `CheckoutVelocityLimiter`. Green focused run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~StripeBillingApiTests|FullyQualifiedName~AdminServiceTests"` passed 11/11. Full `cd backend-dotnet && dotnet test` passed 409/409.
+- Limitations: The limiter is process-local and intended as a purchase-side throttle before creating a Stripe Checkout session. Stripe Radar dashboard rules remain owner-configured.
+
+### 2026-06-01 - data-module-review - PAY-31 AdminAuditLog refund review aggregate
+
+- Agent: Codex
+- Trigger: PAY-31 reads refund entries from `AdminAuditLog` and adds admin stats derived from persisted audit data.
+- Action: Opened and followed the skill; reviewed the existing `AdminAuditLog` action/details shape and reused `AdminRefundAuditDetails` parsing without adding tables, migrations, or auto-actions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; `docs/fraud-controls.md`.
+- Verification evidence: Added xUnit coverage for count-threshold and amount-threshold refund review flags computed from persisted audit rows. Focused admin/billing tests passed 11/11; full `cd backend-dotnet && dotnet test` passed 409/409.
+- Limitations: Malformed refund audit details are ignored for the aggregate. The stats are informational and do not suspend, refund, or block a user.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-31 backend tests
+
+- Agent: Codex
+- Trigger: PAY-31 adds C#/.NET backend behavior and requires tests for checkout velocity and refund-review stats.
+- Action: Opened and followed the skill; added WebApplicationFactory coverage for checkout 429 behavior, EF SQLite-backed function coverage for admin stats, and a test-process polling watcher bootstrap to prevent the macOS sandbox FileSystemWatcher host-startup crash.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TestEnvironmentBootstrap.cs`.
+- Verification evidence: Red run failed on missing checkout limiter/admin stats properties. Green runs: the new checkout test passed 1/1, the new admin stats test passed 1/1, focused admin/billing tests passed 11/11, and full `cd backend-dotnet && dotnet test` passed 409/409.
+- Limitations: Dotnet restore emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but cached restore/build/test succeeded.
+
+### 2026-06-01 - ui-browser-testing - PAY-31 admin refund-review stat surface
+
+- Agent: Codex
+- Trigger: PAY-31 adds a browser-visible admin stats tile for the refund-review aggregate.
+- Action: Opened and followed the skill; updated the admin stats TypeScript contract, dashboard stat tile, and admin Playwright fixture/assertion for the new refund-review count.
+- Output artifacts: `components/admin/admin-dashboard.tsx`; `lib/admin-types.ts`; `tests/e2e/admin.spec.ts`.
+- Verification evidence: `npm run typecheck` passed; `npm run test` passed 298/298; banned-term grep over `app components public lib` returned no matches.
+- Limitations: `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before page assertions because Chromium launch is blocked in this sandbox by `MachPortRendezvousServer` permission denied. A Next dev server started during the attempt, but the sandbox refused permission to terminate its child process afterward.

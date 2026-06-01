@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -103,6 +104,30 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Checkout_velocity_limit_allows_configured_requests_and_rejects_next()
+    {
+        var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
+        await using var factory = CreateFactory(fakeBilling);
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_velocity");
+
+        for (var requestNumber = 0; requestNumber < CheckoutVelocityLimiter.DefaultMaxSessions; requestNumber++)
+        {
+            var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        var limitedResponse = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
+
+        limitedResponse.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        limitedResponse.Headers.RetryAfter.Should().NotBeNull();
+        var problem = await limitedResponse.Content.ReadFromJsonAsync<ProblemDetails>();
+        problem!.Title.Should().Be("Checkout rate limit reached");
+        fakeBilling.CheckoutCallCount.Should().Be(CheckoutVelocityLimiter.DefaultMaxSessions);
+    }
+
+    [Fact]
     public async Task Checkout_rejects_unknown_sku()
     {
         var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
@@ -177,6 +202,7 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
     public string? CheckoutUserId { get; private set; }
     public string? CheckoutSku { get; private set; }
     public Exception? CheckoutError { get; init; }
+    public int CheckoutCallCount { get; private set; }
     public InvalidOperationException? PortalError { get; init; }
 
     public Task<string> CreateCheckoutSessionUrlAsync(
@@ -187,6 +213,7 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
     {
         CheckoutUserId = externalAuthUserId;
         CheckoutSku = sku;
+        CheckoutCallCount++;
         if (CheckoutError is not null)
         {
             throw CheckoutError;

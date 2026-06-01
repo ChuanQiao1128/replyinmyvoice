@@ -68,6 +68,13 @@ function adminStatsPayload() {
     paidUsers: 1,
     paymentAmountTotal: 900,
     paymentCount: 1,
+    refundReview: {
+      flaggedUserCount: 2,
+      refundAmountThreshold: 2500,
+      refundCountThreshold: 3,
+      totalRefundAmount: 4200,
+      totalRefundCount: 4,
+    },
     totalUsers: 1,
     usageReserved: 1,
     usageUsed: 6,
@@ -178,6 +185,8 @@ test("admin can open a user detail", async ({ context, page }) => {
     page.getByRole("heading", { name: "Billing support queue" }),
   ).toBeVisible();
   await expect(page.getByText("I was charged twice")).toBeVisible();
+  const refundReviewTile = page.getByText("Refund review").locator("..");
+  await expect(refundReviewTile.getByText("2", { exact: true })).toBeVisible();
   await expect(page.getByText("customer@example.test")).toBeVisible();
 
   await page.getByRole("link", { name: /customer@example\.test/ }).click();

@@ -7,6 +7,7 @@ using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
 using Stripe;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -198,6 +199,7 @@ app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
 app.MapPost("/api/stripe/checkout", async (
     HttpRequest httpRequest,
     IStripeBillingService billingService,
+    ICheckoutVelocityLimiter checkoutVelocityLimiter,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -217,6 +219,16 @@ app.MapPost("/api/stripe/checkout", async (
             return Results.Problem(
                 title: "Unknown checkout SKU",
                 statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var velocity = checkoutVelocityLimiter.Check(externalUserId);
+        if (!velocity.Allowed)
+        {
+            SetRetryAfter(httpRequest, velocity);
+            return Results.Problem(
+                title: "Checkout rate limit reached",
+                detail: "Too many checkout sessions were requested. Please wait before trying again.",
+                statusCode: StatusCodes.Status429TooManyRequests);
         }
 
         var url = await billingService.CreateCheckoutSessionUrlAsync(
@@ -402,6 +414,17 @@ static async Task<CheckoutSessionRequest?> ReadCheckoutSessionRequestAsync(
     }
 
     return new CheckoutSessionRequest(sku.ValueKind == JsonValueKind.String ? sku.GetString() : sku.ToString());
+}
+
+static void SetRetryAfter(HttpRequest request, CheckoutVelocityLimitResult velocity)
+{
+    if (velocity.RetryAfter is not { } retryAfter)
+    {
+        return;
+    }
+
+    var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+    request.HttpContext.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
 }
 
 static string? ResolveExternalUserId(

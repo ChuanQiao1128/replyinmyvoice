@@ -14,6 +14,9 @@ public sealed class AdminService(
     IStripeRefundClient? stripeRefundClient = null,
     TaxTurnoverService? taxTurnoverService = null)
 {
+    public const int RefundReviewCountThreshold = 3;
+    public const long RefundReviewAmountThreshold = 2_500;
+
     private const int MaxPageSize = 100;
     private const int AccountingExportPageSize = 500;
     private const int MaxAccountingExportPageSize = 1000;
@@ -336,6 +339,7 @@ public sealed class AdminService(
         var paymentReconciliation = await GetLatestPaymentReconciliationSummaryAsync(
             db,
             cancellationToken);
+        var refundReview = await GetRefundReviewStatsAsync(db, cancellationToken);
 
         return new AdminStatsResponse(
             totalUsers,
@@ -348,7 +352,8 @@ public sealed class AdminService(
             paymentRows.Sum(x => x.StripeAmountTotal ?? 0),
             costRows.Sum(),
             gstTurnover,
-            paymentReconciliation);
+            paymentReconciliation,
+            refundReview);
     }
 
     public async Task<IReadOnlyList<AdminBillingSupportRequest>> GetBillingSupportQueueAsync(
@@ -735,6 +740,53 @@ public sealed class AdminService(
             .FirstOrDefault();
     }
 
+    private static async Task<AdminRefundReviewStats> GetRefundReviewStatsAsync(
+        AppDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var auditRows = await db.AdminAuditLogs
+            .AsNoTracking()
+            .Where(x => x.TargetUserId.HasValue && x.Action == "refund")
+            .Select(x => new
+            {
+                x.TargetUserId,
+                x.DetailsJson,
+            })
+            .ToListAsync(cancellationToken);
+
+        var refunds = new List<AdminRefundReviewRow>();
+        foreach (var auditRow in auditRows)
+        {
+            var details = TryParseRefundDetails(auditRow.DetailsJson);
+            if (details is null || auditRow.TargetUserId is null)
+            {
+                continue;
+            }
+
+            refunds.Add(new AdminRefundReviewRow(auditRow.TargetUserId.Value, details.Amount));
+        }
+
+        var refundRowsByUser = refunds
+            .GroupBy(x => x.TargetUserId)
+            .Select(x => new
+            {
+                RefundCount = x.Count(),
+                RefundAmount = x.Sum(row => row.Amount),
+            })
+            .ToList();
+
+        var flaggedUserCount = refundRowsByUser.Count(x =>
+            x.RefundCount >= RefundReviewCountThreshold ||
+            x.RefundAmount >= RefundReviewAmountThreshold);
+
+        return new AdminRefundReviewStats(
+            flaggedUserCount,
+            RefundReviewCountThreshold,
+            RefundReviewAmountThreshold,
+            refunds.Count,
+            refunds.Sum(x => x.Amount));
+    }
+
     private static async Task<AdminRefundAuditDetails?> FindExistingRefundAsync(
         AppDbContext db,
         Guid targetUserId,
@@ -990,6 +1042,8 @@ public sealed class AdminService(
         string? PaymentIntentId,
         int AmountGranted,
         int AmountConsumed);
+
+    private sealed record AdminRefundReviewRow(Guid TargetUserId, long Amount);
 }
 
 public sealed record AdminUsersListResponse(
@@ -1081,7 +1135,8 @@ public sealed record AdminStatsResponse(
     long PaymentAmountTotal,
     decimal CostToDateUsd,
     TaxTurnoverReport GstTurnover,
-    AdminPaymentReconciliationSummary? PaymentReconciliation = null);
+    AdminPaymentReconciliationSummary? PaymentReconciliation,
+    AdminRefundReviewStats RefundReview);
 
 public sealed record AdminBillingSupportRequest(
     Guid Id,
@@ -1112,6 +1167,13 @@ public sealed record AdminPaymentReconciliationSummary(
     int AmountMismatchCount,
     int StripePaymentCount,
     int PurchaseGrantCount);
+
+public sealed record AdminRefundReviewStats(
+    int FlaggedUserCount,
+    int RefundCountThreshold,
+    long RefundAmountThreshold,
+    int TotalRefundCount,
+    long TotalRefundAmount);
 
 public sealed record AdminCreditGrantRequest(
     int? Amount,
