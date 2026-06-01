@@ -139,7 +139,7 @@ afterEach(() => {
 });
 
 describe("Entra auth helpers", () => {
-  it("builds an Entra authorization URL without a brittle provider hint", async () => {
+  it("omits the Entra domain_hint when no provider hint is configured", async () => {
     const url = await buildEntraAuthorizeUrl({
       authority: "https://replyinmyvoicecustomers.ciamlogin.com/tenant/v2.0",
       clientId: "frontend-client",
@@ -160,6 +160,21 @@ describe("Entra auth helpers", () => {
     expect(url.searchParams.get("prompt")).toBe("select_account");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("code_challenge")).toBeTruthy();
+  });
+
+  it("includes the configured provider as domain_hint to deep-link the IdP", async () => {
+    const url = await buildEntraAuthorizeUrl({
+      authority: "https://replyinmyvoicecustomers.ciamlogin.com/tenant/v2.0",
+      clientId: "frontend-client",
+      redirectUri: "https://replyinmyvoice.com/auth/callback",
+      state: "state-test",
+      nonce: "nonce-test",
+      codeVerifier: "verifier-test",
+      domainHint: "Google",
+      prompt: "select_account",
+    });
+
+    expect(url.searchParams.get("domain_hint")).toBe("Google");
   });
 
   it("passes a user email as login_hint for the Entra OAuth redirect", async () => {

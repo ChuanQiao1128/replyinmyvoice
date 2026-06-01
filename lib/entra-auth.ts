@@ -50,6 +50,7 @@ export type EntraAuthorizeUrlInput = {
   nonce: string;
   codeVerifier: string;
   loginHint?: string;
+  domainHint?: string;
   prompt?: "select_account";
 };
 
@@ -345,6 +346,10 @@ export async function buildEntraAuthorizeUrl(input: EntraAuthorizeUrlInput) {
   url.searchParams.set("code_challenge", codeChallenge);
   url.searchParams.set("code_challenge_method", "S256");
 
+  if (input.domainHint) {
+    url.searchParams.set("domain_hint", input.domainHint);
+  }
+
   if (input.prompt) {
     url.searchParams.set("prompt", input.prompt);
   }
@@ -397,6 +402,12 @@ export async function createLoginRedirectUrl(
     nonce,
     codeVerifier,
     loginHint: options.loginHint,
+    // Optional Entra IdP display name (e.g. "Google") that deep-links the
+    // browser sign-in straight to that provider, skipping Entra's combined
+    // hosted page. Sourced from env — not hardcoded — because Entra's expected
+    // value is case-sensitive (it accepts "Google", not "google"/"google.com")
+    // and can change; a hardcoded literal silently breaks when it does.
+    domainHint: optionalEnv("ENTRA_GOOGLE_DOMAIN_HINT").trim() || undefined,
     prompt: "select_account",
   });
 }
