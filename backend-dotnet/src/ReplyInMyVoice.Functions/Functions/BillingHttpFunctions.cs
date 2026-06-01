@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure.Services;
+using Stripe;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
@@ -76,6 +77,20 @@ public sealed class BillingHttpFunctions(
                 null,
                 StatusCodes.Status500InternalServerError);
         }
+        catch (Exception ex) when (IsBillingProviderFailure(ex, cancellationToken))
+        {
+            logger.LogError(
+                ex,
+                "{PaymentObservabilityEvent} checkout error for correlation {CorrelationId}, user {ExternalAuthUserId}, reason {PaymentFailureReason}.",
+                "payment_failed",
+                correlationId,
+                authUser.ExternalAuthUserId,
+                "billing_provider_failure");
+            return FunctionHttpResults.Problem(
+                "Billing provider request failed",
+                null,
+                StatusCodes.Status500InternalServerError);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(
@@ -122,6 +137,20 @@ public sealed class BillingHttpFunctions(
                 "Billing customer not found",
                 null,
                 StatusCodes.Status400BadRequest);
+        }
+        catch (Exception ex) when (IsBillingProviderFailure(ex, cancellationToken))
+        {
+            logger.LogError(
+                ex,
+                "{PaymentObservabilityEvent} billing portal error for correlation {CorrelationId}, user {ExternalAuthUserId}, reason {PaymentFailureReason}.",
+                "payment_failed",
+                correlationId,
+                authUser.ExternalAuthUserId,
+                "billing_provider_failure");
+            return FunctionHttpResults.Problem(
+                "Billing provider request failed",
+                null,
+                StatusCodes.Status500InternalServerError);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -174,6 +203,10 @@ public sealed class BillingHttpFunctions(
             ? request.HttpContext.TraceIdentifier
             : header;
     }
+
+    private static bool IsBillingProviderFailure(Exception exception, CancellationToken cancellationToken) =>
+        exception is StripeException ||
+        exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
 }
 
 public sealed record BillingUrlResponse(string Url);

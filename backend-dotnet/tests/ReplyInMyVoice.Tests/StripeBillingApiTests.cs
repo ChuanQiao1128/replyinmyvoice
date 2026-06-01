@@ -63,6 +63,31 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Checkout_returns_5xx_and_persists_no_state_when_billing_service_fails()
+    {
+        var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout")
+        {
+            CheckoutError = new TaskCanceledException("simulated Stripe timeout"),
+        };
+        await using var factory = CreateFactory(fakeBilling);
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_failure");
+        client.DefaultRequestHeaders.Add("X-User-Email", "checkout-failure@example.com");
+
+        var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("Billing provider request failed");
+        fakeBilling.CheckoutUserId.Should().Be("clerk_checkout_failure");
+        fakeBilling.CheckoutSku.Should().Be("quick_pack");
+
+        await using var db = CreateContext();
+        (await db.AppUsers.CountAsync()).Should().Be(0);
+        (await db.RewriteCredits.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task Checkout_forwards_allowed_sku_to_billing_service()
     {
         var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
@@ -151,6 +176,7 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
 {
     public string? CheckoutUserId { get; private set; }
     public string? CheckoutSku { get; private set; }
+    public Exception? CheckoutError { get; init; }
     public InvalidOperationException? PortalError { get; init; }
 
     public Task<string> CreateCheckoutSessionUrlAsync(
@@ -161,6 +187,11 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
     {
         CheckoutUserId = externalAuthUserId;
         CheckoutSku = sku;
+        if (CheckoutError is not null)
+        {
+            throw CheckoutError;
+        }
+
         return Task.FromResult(checkoutUrl);
     }
 
