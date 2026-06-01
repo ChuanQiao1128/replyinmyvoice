@@ -85,6 +85,14 @@ public sealed class StripeEventService
                 {
                     MarkFailed(stripeEvent, syncFailure, now);
                     await db.SaveChangesAsync(cancellationToken);
+                    logger?.LogError(
+                        "{PaymentObservabilityEvent} for correlation {CorrelationId}, Stripe event {EventId} of type {EventType}, attempt {AttemptCount}: {WebhookFailureReason}",
+                        "webhook_failed",
+                        eventId,
+                        eventId,
+                        type,
+                        stripeEvent.AttemptCount,
+                        syncFailure);
                     return false;
                 }
 
@@ -125,7 +133,9 @@ public sealed class StripeEventService
             var failure = await MarkFailedAsync(eventId, type, ex.Message, now, cancellationToken);
             logger?.LogError(
                 ex,
-                "Stripe webhook failed for event {EventId} of type {EventType} after {AttemptCount} attempt(s).",
+                "{PaymentObservabilityEvent} for correlation {CorrelationId}, Stripe webhook failed for event {EventId} of type {EventType} after {AttemptCount} attempt(s).",
+                "webhook_failed",
+                eventId,
                 eventId,
                 type,
                 failure?.AttemptCount ?? 0);
@@ -136,6 +146,7 @@ public sealed class StripeEventService
     private IDisposable? BeginEventScope(string eventId) =>
         logger?.BeginScope(new Dictionary<string, object>
         {
+            ["CorrelationId"] = eventId,
             ["eventId"] = eventId,
         });
 
@@ -380,7 +391,8 @@ public sealed class StripeEventService
         }
 
         logger?.LogWarning(
-            "Stripe invoice payment failed for correlation {CorrelationId}, customer {StripeCustomerId}, subscription {StripeSubscriptionId}, invoice {StripeInvoiceId}, user {UserId}, attempt {AttemptCount}.",
+            "{PaymentObservabilityEvent} Stripe invoice payment failed for correlation {CorrelationId}, customer {StripeCustomerId}, subscription {StripeSubscriptionId}, invoice {StripeInvoiceId}, user {UserId}, attempt {AttemptCount}.",
+            "payment_failed",
             eventId,
             customerId,
             subscriptionId,

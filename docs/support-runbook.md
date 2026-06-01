@@ -22,7 +22,7 @@ We deliberately do **not** publish multiple addresses to keep the inbox single-f
 
 - Operator checks `info@timeawake.co.nz` at minimum twice per business day (NZ business hours).
 - Auto-reply (see §4) sets a 1-business-day response expectation.
-- Out-of-band escalations: Stripe disputes go to the operator's phone via Stripe dashboard notifications; webhook failure alerts go via Application Insights / Sentry once those are wired (M7-003).
+- Out-of-band escalations: Stripe disputes go to the operator's phone via Stripe dashboard notifications; webhook and payment failure alerts route through PostHog/Application Insights/Sentry once PAY-02 secrets and dashboard alerts are configured.
 - If the operator is unavailable for >24h, set an auto-responder with the expected return date. Do not promise faster response than the runbook commits to.
 
 ## 3. Stripe integration (user-action steps)
@@ -140,10 +140,10 @@ If an inbound email indicates a security issue (account takeover claim, suspecte
 
 ## 9. Open items
 
-- M7-003 (Sentry) will add automated alerting that routes to `info@timeawake.co.nz`. Until then, error reports come exclusively from customers.
-- M7-006 (UptimeRobot) will add proactive availability monitoring. Until then, outage detection depends on customer reports + manual checks.
+- PAY-02 operator actions: add `SENTRY_DSN` and `POSTHOG_API_KEY` to Worker secrets, Azure Functions app settings, and CI secrets; create the PostHog and Azure Monitor alerts documented in `docs/observability.md`.
+- UptimeRobot monitors in `docs/observability.md` §2 remain owner-created dashboard items.
 - M8-016 (B2B onboarding) will add a separate onboarding email — when it ships, decide whether to split `support@` and `sales@`.
 
 ---
 
-Last verified: 2026-05-22 (M7-004 documentation pass — operator still to perform Stripe dashboard config in §3).
+Last verified: 2026-06-01 (PAY-02 documentation pass — operator still to perform Stripe dashboard config in §3 plus observability dashboard actions in `docs/observability.md`).

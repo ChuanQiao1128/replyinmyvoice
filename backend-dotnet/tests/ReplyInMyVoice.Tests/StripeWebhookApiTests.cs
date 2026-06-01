@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
@@ -244,7 +245,8 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
                 .AddInMemoryCollection(settings)
                 .Build(),
             new TestHostEnvironment(environment),
-            new StripeEventService(() => CreateContext()));
+            new StripeEventService(() => CreateContext()),
+            NullLogger<StripeWebhookFunction>.Instance);
     }
 
     private AppDbContext CreateContext()

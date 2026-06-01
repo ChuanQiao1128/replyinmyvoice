@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 
+import {
+  capturePaymentBrowserEvent,
+  initializePaymentBrowserObservability,
+} from "../../lib/payment-observability-client";
+
 type BuyButtonProps = {
   sku: string;
   label: string;
@@ -19,7 +24,13 @@ export function BuyButton({
   async function startCheckout() {
     setLoading(true);
     setError("");
+    initializePaymentBrowserObservability();
+    capturePaymentBrowserEvent("checkout_started", {
+      sku,
+      source: "buy_button",
+    });
 
+    let failureCaptured = false;
     try {
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
@@ -42,11 +53,23 @@ export function BuyButton({
       };
 
       if (!response.ok || !payload.url) {
+        capturePaymentBrowserEvent("payment_failed", {
+          sku,
+          source: "buy_button",
+          status: response.status,
+        });
+        failureCaptured = true;
         throw new Error(payload.error ?? "Could not start checkout.");
       }
 
       window.location.assign(payload.url);
     } catch (checkoutError) {
+      if (!failureCaptured) {
+        capturePaymentBrowserEvent("payment_failed", {
+          sku,
+          source: "buy_button",
+        });
+      }
       setError(
         checkoutError instanceof Error
           ? checkoutError.message
