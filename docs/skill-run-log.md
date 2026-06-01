@@ -99,6 +99,15 @@ claude-heavy-planning-handoff
 - Verification evidence: `dotnet test ReplyInMyVoice.sln --filter StripeEventServiceTests --no-restore` passed 24/24; `cd backend-dotnet && dotnet test` passed 411/411.
 - Limitations: No real email, Stripe charge, deployment, push, or PR was performed.
 
+### 2026-06-01 - state-machine-modeling - PAY-26 dispute chargeback runbook
+
+- Agent: Codex
+- Trigger: GitHub issue #394 / PAY-26 explicitly required `state-machine-modeling` for the dispute and chargeback operations lifecycle.
+- Action: Opened and followed the state-machine workflow to document dispute states, events, transitions, invariants, illegal transitions, persistence implications, and a future test checklist.
+- Output artifacts: `docs/dispute-chargeback-runbook.md`; `docs/skill-run-log.md`.
+- Verification evidence: Runbook includes the required deadline guidance, evidence checklist, repeat-disputer policy, and dispute lifecycle model.
+- Limitations: No optional direct `payment_intent` admin evidence endpoint was added; PAY-26 was completed as a docs-only operational runbook. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
 ### 2026-05-25 - system-spec-synthesis - Corrected smoke 10 eval and pipeline split
 
 - Agent: Codex
