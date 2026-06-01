@@ -20,7 +20,9 @@ public static class NotificationTemplates
 
                 Your latest payment for Reply In My Voice did not go through.
 
-                Please update your payment method in billing settings. If you have questions, contact {supportEmail}.
+                Please update your payment method in billing settings: {billingPortalUrl}
+
+                If you have questions, contact {supportEmail}.
                 """,
                 $"""
                 <p>Hi {Html(name)},</p>
@@ -51,6 +53,52 @@ public static class NotificationTemplates
                 <p>Hi {Html(name)},</p>
                 <p>{credits} Reply In My Voice credit(s) expire on {Html(expiresOn)}.</p>
                 <p>You can use them from your workspace. If you have questions, contact <a href="mailto:{HtmlAttribute(supportEmail)}">{Html(supportEmail)}</a>.</p>
+                """);
+        });
+
+    public static readonly NotificationTemplate<SubscriptionPausedNotificationModel> SubscriptionPaused = new(
+        "subscription-paused",
+        model =>
+        {
+            var name = SafeName(model.CustomerName);
+            var supportEmail = SafeEmail(model.SupportEmail);
+
+            return new RenderedNotification(
+                "Your subscription is paused",
+                $"""
+                Hi {name},
+
+                Your Reply In My Voice subscription is paused because the payment grace window ended.
+
+                You can update your billing details from the workspace. If you have questions, contact {supportEmail}.
+                """,
+                $"""
+                <p>Hi {Html(name)},</p>
+                <p>Your Reply In My Voice subscription is paused because the payment grace window ended.</p>
+                <p>You can update your billing details from the workspace. If you have questions, contact <a href="mailto:{HtmlAttribute(supportEmail)}">{Html(supportEmail)}</a>.</p>
+                """);
+        });
+
+    public static readonly NotificationTemplate<PaymentRecoveredNotificationModel> PaymentRecovered = new(
+        "payment-recovered",
+        model =>
+        {
+            var name = SafeName(model.CustomerName);
+            var supportEmail = SafeEmail(model.SupportEmail);
+
+            return new RenderedNotification(
+                "Your subscription is active again",
+                $"""
+                Hi {name},
+
+                Your Reply In My Voice payment has been recovered and your subscription is active again.
+
+                If you have questions, contact {supportEmail}.
+                """,
+                $"""
+                <p>Hi {Html(name)},</p>
+                <p>Your Reply In My Voice payment has been recovered and your subscription is active again.</p>
+                <p>If you have questions, contact <a href="mailto:{HtmlAttribute(supportEmail)}">{Html(supportEmail)}</a>.</p>
                 """);
         });
 
@@ -187,6 +235,14 @@ public sealed record CreditExpiringNotificationModel(
     string SupportEmail,
     int CreditsExpiring,
     DateTimeOffset ExpiresOnUtc);
+
+public sealed record SubscriptionPausedNotificationModel(
+    string CustomerName,
+    string SupportEmail);
+
+public sealed record PaymentRecoveredNotificationModel(
+    string CustomerName,
+    string SupportEmail);
 
 public sealed record RefundRequestReceivedNotificationModel(
     string CustomerName,

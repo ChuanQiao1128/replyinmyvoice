@@ -5,20 +5,37 @@ using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Notifications;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class StripeEventService
 {
+    private const int DefaultPaymentGraceDays = 7;
+    private const string SupportEmail = "info@timeawake.co.nz";
+
     private readonly Func<AppDbContext> dbContextFactory;
+    private readonly INotificationService? notificationService;
+    private readonly IStripeBillingService? stripeBillingService;
     private readonly ILogger<StripeEventService>? logger;
 
     public StripeEventService(
         Func<AppDbContext> dbContextFactory,
         ILogger<StripeEventService>? logger = null)
+        : this(dbContextFactory, null, null, logger)
+    {
+    }
+
+    public StripeEventService(
+        Func<AppDbContext> dbContextFactory,
+        INotificationService? notificationService,
+        IStripeBillingService? stripeBillingService = null,
+        ILogger<StripeEventService>? logger = null)
     {
         StripeBillingService.EnsureStripeApiVersionPinned();
         this.dbContextFactory = dbContextFactory;
+        this.notificationService = notificationService;
+        this.stripeBillingService = stripeBillingService;
         this.logger = logger;
     }
 
@@ -70,6 +87,7 @@ public sealed class StripeEventService
         CancellationToken cancellationToken = default)
     {
         using var scope = BeginEventScope(eventId);
+        var postCommitActions = new List<Func<CancellationToken, Task>>();
         try
         {
             var processed = await ExecuteInTransactionAsync(async db =>
@@ -80,7 +98,14 @@ public sealed class StripeEventService
                     return false;
                 }
 
-                var syncFailure = await SyncEntitlementAsync(db, eventId, type, rawBody, now, cancellationToken);
+                var syncFailure = await SyncEntitlementAsync(
+                    db,
+                    eventId,
+                    type,
+                    rawBody,
+                    now,
+                    postCommitActions,
+                    cancellationToken);
                 if (syncFailure is not null)
                 {
                     MarkFailed(stripeEvent, syncFailure, now);
@@ -107,6 +132,7 @@ public sealed class StripeEventService
                     "Stripe webhook processed for event {EventId} of type {EventType}.",
                     eventId,
                     type);
+                await RunPostCommitActionsAsync(postCommitActions, cancellationToken);
             }
             else
             {
@@ -141,6 +167,43 @@ public sealed class StripeEventService
                 failure?.AttemptCount ?? 0);
             throw;
         }
+    }
+
+    public async Task<int> ProcessExpiredPaymentGraceAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        var postCommitActions = new List<Func<CancellationToken, Task>>();
+        var processedCount = await ExecuteInTransactionAsync(async db =>
+        {
+            var graceUsers = await db.AppUsers
+                .AsTracking()
+                .Where(x => x.SubscriptionStatus == SubscriptionStatus.PastDue &&
+                    x.PaymentGraceEndsAt != null)
+                .ToListAsync(cancellationToken);
+            var expiredUsers = graceUsers
+                .Where(x => x.PaymentGraceEndsAt <= now)
+                .ToList();
+
+            foreach (var user in expiredUsers)
+            {
+                user.SubscriptionStatus = SubscriptionStatus.Inactive;
+                ClearPaymentGrace(user);
+                user.UpdatedAt = now;
+                user.RowVersion = Guid.NewGuid();
+                EnqueueSubscriptionPausedNotification(postCommitActions, user);
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            return expiredUsers.Count;
+        }, cancellationToken);
+
+        if (processedCount > 0)
+        {
+            await RunPostCommitActionsAsync(postCommitActions, cancellationToken);
+        }
+
+        return processedCount;
     }
 
     private IDisposable? BeginEventScope(string eventId) =>
@@ -328,6 +391,7 @@ public sealed class StripeEventService
         string type,
         string rawBody,
         DateTimeOffset now,
+        List<Func<CancellationToken, Task>> postCommitActions,
         CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(rawBody);
@@ -339,7 +403,7 @@ public sealed class StripeEventService
 
         if (type.StartsWith("customer.subscription.", StringComparison.Ordinal))
         {
-            return await SyncSubscriptionObjectAsync(db, type, stripeObject, now, cancellationToken);
+            return await SyncSubscriptionObjectAsync(db, type, stripeObject, now, postCommitActions, cancellationToken);
         }
 
         if (type == "checkout.session.completed")
@@ -349,7 +413,12 @@ public sealed class StripeEventService
 
         if (type == "invoice.payment_failed")
         {
-            return await SyncInvoicePaymentFailedAsync(db, eventId, stripeObject, cancellationToken);
+            return await SyncInvoicePaymentFailedAsync(db, eventId, stripeObject, now, postCommitActions, cancellationToken);
+        }
+
+        if (type == "invoice.payment_succeeded")
+        {
+            return await SyncInvoicePaymentSucceededAsync(db, stripeObject, now, postCommitActions, cancellationToken);
         }
 
         if (type == "charge.refunded")
@@ -369,6 +438,8 @@ public sealed class StripeEventService
         AppDbContext db,
         string eventId,
         JsonElement stripeObject,
+        DateTimeOffset now,
+        List<Func<CancellationToken, Task>> postCommitActions,
         CancellationToken cancellationToken)
     {
         var customerId = GetString(stripeObject, "customer");
@@ -389,6 +460,15 @@ public sealed class StripeEventService
             return $"No matching user for Stripe invoice payment_failed customer {customerId ?? "unknown"} subscription {subscriptionId ?? "unknown"}.";
         }
 
+        user.StripeCustomerId = customerId ?? user.StripeCustomerId;
+        user.StripeSubscriptionId = subscriptionId ?? user.StripeSubscriptionId;
+        user.SubscriptionStatus = SubscriptionStatus.PastDue;
+        user.PaymentFailedAt = now;
+        user.PaymentGraceEndsAt = ResolvePaymentGraceEndsAt(stripeObject, user.CurrentPeriodEnd, now);
+        user.UpdatedAt = now;
+        user.RowVersion = Guid.NewGuid();
+        EnqueueFailedPaymentNotification(postCommitActions, user);
+
         logger?.LogWarning(
             "{PaymentObservabilityEvent} Stripe invoice payment failed for correlation {CorrelationId}, customer {StripeCustomerId}, subscription {StripeSubscriptionId}, invoice {StripeInvoiceId}, user {UserId}, attempt {AttemptCount}.",
             "payment_failed",
@@ -401,11 +481,59 @@ public sealed class StripeEventService
         return null;
     }
 
+    private async Task<string?> SyncInvoicePaymentSucceededAsync(
+        AppDbContext db,
+        JsonElement stripeObject,
+        DateTimeOffset now,
+        List<Func<CancellationToken, Task>> postCommitActions,
+        CancellationToken cancellationToken)
+    {
+        var customerId = GetString(stripeObject, "customer");
+        var subscriptionId = GetInvoiceSubscriptionId(stripeObject);
+        if (string.IsNullOrWhiteSpace(customerId) && string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return null;
+        }
+
+        var user = await db.AppUsers
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => (!string.IsNullOrWhiteSpace(customerId) && x.StripeCustomerId == customerId) ||
+                    (!string.IsNullOrWhiteSpace(subscriptionId) && x.StripeSubscriptionId == subscriptionId),
+                cancellationToken);
+        if (user is null)
+        {
+            return $"No matching user for Stripe invoice payment_succeeded customer {customerId ?? "unknown"} subscription {subscriptionId ?? "unknown"}.";
+        }
+
+        if (!HasPaymentGrace(user))
+        {
+            return null;
+        }
+
+        var recoveredToActive = user.SubscriptionStatus == SubscriptionStatus.PastDue;
+        if (recoveredToActive)
+        {
+            user.SubscriptionStatus = SubscriptionStatus.Active;
+        }
+
+        ClearPaymentGrace(user);
+        user.UpdatedAt = now;
+        user.RowVersion = Guid.NewGuid();
+        if (recoveredToActive)
+        {
+            EnqueuePaymentRecoveredNotification(postCommitActions, user);
+        }
+
+        return null;
+    }
+
     private async Task<string?> SyncSubscriptionObjectAsync(
         AppDbContext db,
         string type,
         JsonElement stripeObject,
         DateTimeOffset now,
+        List<Func<CancellationToken, Task>> postCommitActions,
         CancellationToken cancellationToken)
     {
         var customerId = GetString(stripeObject, "customer");
@@ -422,15 +550,39 @@ public sealed class StripeEventService
             return $"No matching user for Stripe subscription customer {customerId}.";
         }
 
+        var rawStatus = type == "customer.subscription.deleted"
+            ? "canceled"
+            : GetString(stripeObject, "status");
         var status = type == "customer.subscription.deleted"
             ? SubscriptionStatus.Canceled
-            : MapSubscriptionStatus(GetString(stripeObject, "status"));
+            : MapSubscriptionStatus(rawStatus);
+        var wasInPaymentGrace = HasPaymentGrace(user) || user.SubscriptionStatus == SubscriptionStatus.PastDue;
 
         user.StripeSubscriptionId = GetString(stripeObject, "id") ?? user.StripeSubscriptionId;
         user.SubscriptionStatus = status;
         user.CurrentPeriodEnd = GetSubscriptionPeriodEnd(stripeObject);
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
+
+        if (status == SubscriptionStatus.PastDue)
+        {
+            user.PaymentFailedAt ??= now;
+            user.PaymentGraceEndsAt ??= ResolvePaymentGraceEndsAt(stripeObject, user.CurrentPeriodEnd, now);
+        }
+        else if (IsTerminalDunningStatus(rawStatus))
+        {
+            if (wasInPaymentGrace)
+            {
+                EnqueueSubscriptionPausedNotification(postCommitActions, user);
+            }
+
+            ClearPaymentGrace(user);
+        }
+        else if (status is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing)
+        {
+            ClearPaymentGrace(user);
+        }
+
         return null;
     }
 
@@ -490,6 +642,137 @@ public sealed class StripeEventService
         }
 
         return null;
+    }
+
+    private async Task RunPostCommitActionsAsync(
+        IReadOnlyList<Func<CancellationToken, Task>> postCommitActions,
+        CancellationToken cancellationToken)
+    {
+        foreach (var action in postCommitActions)
+        {
+            try
+            {
+                await action(cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger?.LogError(ex, "Stripe webhook post-commit action failed.");
+            }
+        }
+    }
+
+    private void EnqueueFailedPaymentNotification(
+        List<Func<CancellationToken, Task>> postCommitActions,
+        AppUser user)
+    {
+        if (notificationService is null || string.IsNullOrWhiteSpace(user.Email))
+        {
+            return;
+        }
+
+        var recipient = CreateRecipient(user);
+        var externalAuthUserId = user.ExternalAuthUserId;
+        postCommitActions.Add(async cancellationToken =>
+        {
+            var billingPortalUrl = await ResolveBillingPortalUrlAsync(externalAuthUserId, cancellationToken);
+            await notificationService.SendAsync(
+                NotificationTemplates.FailedPayment,
+                recipient,
+                new FailedPaymentNotificationModel("there", SupportEmail, billingPortalUrl),
+                cancellationToken);
+        });
+    }
+
+    private void EnqueueSubscriptionPausedNotification(
+        List<Func<CancellationToken, Task>> postCommitActions,
+        AppUser user)
+    {
+        if (notificationService is null || string.IsNullOrWhiteSpace(user.Email))
+        {
+            return;
+        }
+
+        var recipient = CreateRecipient(user);
+        postCommitActions.Add(cancellationToken => notificationService.SendAsync(
+            NotificationTemplates.SubscriptionPaused,
+            recipient,
+            new SubscriptionPausedNotificationModel("there", SupportEmail),
+            cancellationToken));
+    }
+
+    private void EnqueuePaymentRecoveredNotification(
+        List<Func<CancellationToken, Task>> postCommitActions,
+        AppUser user)
+    {
+        if (notificationService is null || string.IsNullOrWhiteSpace(user.Email))
+        {
+            return;
+        }
+
+        var recipient = CreateRecipient(user);
+        postCommitActions.Add(cancellationToken => notificationService.SendAsync(
+            NotificationTemplates.PaymentRecovered,
+            recipient,
+            new PaymentRecoveredNotificationModel("there", SupportEmail),
+            cancellationToken));
+    }
+
+    private async Task<string> ResolveBillingPortalUrlAsync(
+        string externalAuthUserId,
+        CancellationToken cancellationToken)
+    {
+        if (stripeBillingService is null)
+        {
+            return "https://replyinmyvoice.com/app";
+        }
+
+        try
+        {
+            return await stripeBillingService.CreatePortalSessionUrlAsync(externalAuthUserId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogWarning(
+                ex,
+                "Could not create Stripe billing portal session for failed-payment notification.");
+            return "https://replyinmyvoice.com/app";
+        }
+    }
+
+    private static NotificationRecipient CreateRecipient(AppUser user) =>
+        new(user.Email!, null);
+
+    private static bool HasPaymentGrace(AppUser user) =>
+        user.PaymentFailedAt is not null || user.PaymentGraceEndsAt is not null;
+
+    private static void ClearPaymentGrace(AppUser user)
+    {
+        user.PaymentFailedAt = null;
+        user.PaymentGraceEndsAt = null;
+    }
+
+    private static DateTimeOffset ResolvePaymentGraceEndsAt(
+        JsonElement stripeObject,
+        DateTimeOffset? currentPeriodEnd,
+        DateTimeOffset now)
+    {
+        var graceEndsAt = GetUnixDateTime(stripeObject, "next_payment_attempt") ??
+            GetUnixDateTime(stripeObject, "due_date") ??
+            GetUnixDateTime(stripeObject, "current_period_end") ??
+            currentPeriodEnd;
+
+        if (graceEndsAt is { } candidate && candidate > now)
+        {
+            return candidate;
+        }
+
+        return now.AddDays(DefaultPaymentGraceDays);
+    }
+
+    private static bool IsTerminalDunningStatus(string? status)
+    {
+        var normalized = status?.Trim().ToLowerInvariant();
+        return normalized is "unpaid" or "canceled";
     }
 
     private async Task<string?> RevokeRefundedChargeCreditsAsync(
@@ -656,15 +939,12 @@ public sealed class StripeEventService
 
     private static SubscriptionStatus MapSubscriptionStatus(string? status)
     {
-        // PAY-01 policy: Pro/API has no renewal-failure grace period because credit packs
-        // are the primary paid product; Stripe non-paying states immediately fall back to
-        // the free plan through AccountService.GetUsagePlan.
         return status?.Trim().ToLowerInvariant() switch
         {
             "active" => SubscriptionStatus.Active,
             "trialing" => SubscriptionStatus.Trialing,
+            "past_due" => SubscriptionStatus.PastDue,
             "canceled" => SubscriptionStatus.Canceled,
-            "past_due" or
             "unpaid" or
             "incomplete" or
             "incomplete_expired" or

@@ -282,7 +282,8 @@ public sealed class AdminService(
             .CountAsync(
                 x => x.SubscriptionStatus == SubscriptionStatus.Active ||
                      x.SubscriptionStatus == SubscriptionStatus.Trialing ||
-                     x.SubscriptionStatus == SubscriptionStatus.Testing,
+                     x.SubscriptionStatus == SubscriptionStatus.Testing ||
+                     x.SubscriptionStatus == SubscriptionStatus.PastDue,
                 cancellationToken);
 
         var usageRows = await db.UsagePeriods
