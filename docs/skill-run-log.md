@@ -108,6 +108,33 @@ claude-heavy-planning-handoff
 - Verification evidence: Runbook includes the required deadline guidance, evidence checklist, repeat-disputer policy, and dispute lifecycle model.
 - Limitations: No optional direct `payment_intent` admin evidence endpoint was added; PAY-26 was completed as a docs-only operational runbook. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
 
+### 2026-06-01 - resilience-test-generation - PAY-32 webhook delivery monitoring
+
+- Agent: Codex
+- Trigger: GitHub issue #400 / PAY-32 required webhook failure monitoring and replay-safe operations coverage.
+- Action: Opened and followed the skill; identified Stripe webhook processing as the critical operation, with database-backed idempotency and replay as the resilience invariant.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/HealthFunction.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/webhook-ops-runbook.md`.
+- Verification evidence: Added readiness coverage that seeds a failed Stripe event and asserts it is surfaced, plus coverage for the configured no-processed-event window. The regression failed before implementation, then `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter "Ready_health" --no-restore` passed 2/2 and `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: PAY-02 dashboard alert creation remains an owner/operator action. NuGet vulnerability metadata lookup warned because `https://api.nuget.org/v3/index.json` was unavailable; restore/build/test still completed. No secrets or raw webhook payloads were logged.
+
+### 2026-06-01 - data-module-review - PAY-32 StripeEvent readiness metrics
+
+- Agent: Codex
+- Trigger: The task reads `StripeEvent` and `RewriteCredit.StripeEventId` persistence state to expose webhook health and document idempotent replay.
+- Action: Opened and followed the skill; reviewed `StripeEvent` status fields, `ProcessedAt`, EF configuration, and the unique `RewriteCredit.StripeEventId` invariant. Ran the bundled data-risk scan with `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 40 backend-dotnet`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/HealthFunction.cs`; `docs/webhook-ops-runbook.md`.
+- Verification evidence: No schema or migration change was needed. The readiness query now counts all unresolved `StripeEvent.Status = Failed` rows and reads the latest processed Stripe event timestamp without mutating persistence.
+- Limitations: The data-risk scan reports broad repo signals and was used only as a scope/risk check. No migration was generated. No secrets or private payloads were logged.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-32 readiness health coverage
+
+- Agent: Codex
+- Trigger: The issue required a backend test for seeded failed Stripe events and the change touched .NET Azure Functions readiness behavior.
+- Action: Opened and followed the skill; used xUnit/FluentAssertions with the existing SQLite-backed test fixture, wrote the readiness regression before production changes, and ran focused then full backend tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/HealthFunction.cs`.
+- Verification evidence: Initial focused test failed because `lastProcessedStripeEvent` was absent and older failed events were not counted. After implementation, `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter "Ready_health" --no-restore` passed 2/2 and `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: This did not add browser/UI coverage because PAY-32 is backend/docs-only. NuGet vulnerability metadata lookup warned due external index access, but tests passed. No secrets were logged.
+
 ### 2026-05-25 - system-spec-synthesis - Corrected smoke 10 eval and pipeline split
 
 - Agent: Codex

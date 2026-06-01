@@ -245,9 +245,18 @@ public sealed class RewriteApiTests : IAsyncLifetime
                 EventId = "evt_ready_failed",
                 Type = "checkout.session.completed",
                 Status = StripeEventStatus.Failed,
-                CreatedAt = now.AddMinutes(-5),
-                LastAttemptAt = now.AddMinutes(-5),
+                CreatedAt = now.AddHours(-2),
+                LastAttemptAt = now.AddHours(-2),
                 LastError = "temporary failure",
+            });
+            db.StripeEvents.Add(new StripeEvent
+            {
+                EventId = "evt_ready_processed",
+                Type = "checkout.session.completed",
+                Status = StripeEventStatus.Processed,
+                CreatedAt = now.AddMinutes(-4),
+                LastAttemptAt = now.AddMinutes(-4),
+                ProcessedAt = now.AddMinutes(-4),
             });
             db.OutboxMessages.Add(new OutboxMessage
             {
@@ -309,9 +318,47 @@ public sealed class RewriteApiTests : IAsyncLifetime
         json.Should().Contain("\"database\"");
         json.Should().Contain("\"serviceBus\"");
         json.Should().Contain("\"failedStripeEvents\"");
+        json.Should().Contain("\"lastProcessedStripeEvent\"");
         json.Should().Contain("\"outboxBacklog\"");
         json.Should().Contain("\"stuckReservations\"");
         json.Should().Contain("\"ok\":false");
+
+        using var document = JsonDocument.Parse(json);
+        var checks = document.RootElement.GetProperty("checks");
+        var failedStripeEvents = checks.GetProperty("failedStripeEvents");
+        failedStripeEvents.GetProperty("count").GetInt32().Should().Be(1);
+        failedStripeEvents.GetProperty("ok").GetBoolean().Should().BeFalse();
+
+        var lastProcessed = checks.GetProperty("lastProcessedStripeEvent");
+        lastProcessed.GetProperty("ok").GetBoolean().Should().BeTrue();
+        lastProcessed.GetProperty("lastProcessedAt").GetDateTimeOffset().Should().BeCloseTo(
+            now.AddMinutes(-4),
+            TimeSpan.FromSeconds(5));
+        lastProcessed.GetProperty("ageSeconds").GetInt64().Should().BeInRange(240, 300);
+        lastProcessed.GetProperty("maxAgeMinutes").GetInt32().Should().Be(60);
+    }
+
+    [Fact]
+    public async Task Ready_health_reports_no_processed_stripe_events_when_age_threshold_is_configured()
+    {
+        await using var healthDb = CreateContext();
+        var function = new HealthFunction(healthDb, BuildHealthConfiguration());
+
+        var result = await function.ReadinessHealth(
+            new DefaultHttpContext().Request,
+            CancellationToken.None);
+
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        var json = JsonSerializer.Serialize(objectResult.Value);
+        using var document = JsonDocument.Parse(json);
+        var lastProcessed = document.RootElement
+            .GetProperty("checks")
+            .GetProperty("lastProcessedStripeEvent");
+        lastProcessed.GetProperty("ok").GetBoolean().Should().BeFalse();
+        lastProcessed.GetProperty("error").GetString().Should().Be("no_processed_events");
+        lastProcessed.GetProperty("ageSeconds").ValueKind.Should().Be(JsonValueKind.Null);
+        lastProcessed.GetProperty("maxAgeMinutes").GetInt32().Should().Be(60);
     }
 
     private WebApplicationFactory<Program> CreateFactory(string environment = "Testing")
@@ -354,6 +401,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Health:OutboxBacklogMinutes"] = "10",
+                ["Health:StripeLastProcessedMaxAgeMinutes"] = "60",
             })
             .Build();
 
