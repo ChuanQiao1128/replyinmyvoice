@@ -13,6 +13,7 @@ describe("PurchaseHistorySection", () => {
         currency: "nzd",
         date: "2026-05-30T10:00:00Z",
         expiry: "2026-08-30T10:00:00Z",
+        paymentIntentId: "pi_quick_pack",
         receiptUrl: "https://payments.example.test/receipt/quick-pack",
         remaining: 9,
         sku: "quick_pack",

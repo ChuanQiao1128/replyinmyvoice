@@ -12,7 +12,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import React, { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import type {
   AzureAccountPayment,
@@ -552,7 +552,6 @@ export function AccountPanel() {
   }
 
   const account = accountState.account;
-  const payments = accountState.payments;
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
