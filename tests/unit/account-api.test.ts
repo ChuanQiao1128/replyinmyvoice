@@ -12,7 +12,16 @@ const { azureApiMock, entraAuthMock } = vi.hoisted(() => ({
 vi.mock("../../lib/azure-api", () => azureApiMock);
 vi.mock("../../lib/entra-auth", () => entraAuthMock);
 
-import { DELETE, GET, dynamic } from "../../app/api/me/route";
+import { DELETE, GET as getAccount, dynamic } from "../../app/api/me/route";
+import {
+  GET as paymentsGet,
+  GET as getPayments,
+  dynamic as paymentsDynamic,
+} from "../../app/api/me/payments/route";
+import {
+  GET as billingSupportGet,
+  POST as billingSupportPost,
+} from "../../app/api/billing-support-requests/route";
 import { getAzureApiBaseUrl } from "../../lib/azure-api";
 import { getCurrentAccessToken } from "../../lib/entra-auth";
 
@@ -67,7 +76,7 @@ describe("/api/me route handler", () => {
     };
     fetchMock().mockResolvedValueOnce(Response.json(summary, { status: 200 }));
 
-    const response = await GET();
+    const response = await getAccount();
 
     await expect(response.json()).resolves.toEqual(summary);
     expect(response.status).toBe(200);
@@ -75,6 +84,7 @@ describe("/api/me route handler", () => {
       cache: "no-store",
       headers: {
         Authorization: `${authScheme} ${accessValue}`,
+        "X-Correlation-Id": expect.stringMatching(/^account_/),
       },
     });
   });
@@ -91,6 +101,7 @@ describe("/api/me route handler", () => {
       cache: "no-store",
       headers: {
         Authorization: `${authScheme} ${accessValue}`,
+        "X-Correlation-Id": expect.stringMatching(/^account_/),
       },
       method: "DELETE",
     });
@@ -99,12 +110,120 @@ describe("/api/me route handler", () => {
   it("returns 401 when no access token is available", async () => {
     vi.mocked(getCurrentAccessToken).mockResolvedValueOnce(null);
 
-    const response = await GET();
+    const response = await getAccount();
 
     await expect(response.json()).resolves.toEqual({
       error: "Authentication required.",
     });
     expect(response.status).toBe(401);
     expect(fetchMock()).not.toHaveBeenCalled();
+  });
+
+  it("forwards caller payment reads with the current auth value", async () => {
+    const payments = [
+      {
+        amount: 900,
+        currency: "nzd",
+        date: "2026-05-31T00:00:00Z",
+        expiry: "2026-08-29T00:00:00Z",
+        paymentIntentId: "pi_customer_pack",
+        remaining: 10,
+        sku: "quick_pack",
+      },
+    ];
+    fetchMock().mockResolvedValueOnce(Response.json(payments, { status: 200 }));
+
+    const response = await paymentsGet();
+
+    await expect(response.json()).resolves.toEqual(payments);
+    expect(response.status).toBe(200);
+    expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/me/payments`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `${authScheme} ${accessValue}`,
+      },
+    });
+  });
+
+  it("forwards caller billing support reads and same-origin creates", async () => {
+    const created = {
+      id: "request-1",
+      message: "I was charged twice.",
+      relatedPaymentIntentId: "pi_customer_pack",
+      status: "open",
+      type: "refund",
+    };
+    fetchMock()
+      .mockResolvedValueOnce(Response.json([created], { status: 200 }))
+      .mockResolvedValueOnce(Response.json(created, { status: 201 }));
+
+    const readResponse = await billingSupportGet();
+    await expect(readResponse.json()).resolves.toEqual([created]);
+
+    const body = JSON.stringify({
+      message: "I was charged twice.",
+      relatedPaymentIntentId: "pi_customer_pack",
+      type: "refund",
+    });
+    const createResponse = await billingSupportPost(
+      new Request(`${appUrl}/api/billing-support-requests`, {
+        body,
+        headers: {
+          "content-type": "application/json",
+          origin: appUrl,
+        },
+        method: "POST",
+      }),
+    );
+
+    await expect(createResponse.json()).resolves.toEqual(created);
+    expect(createResponse.status).toBe(201);
+    expect(fetchMock()).toHaveBeenNthCalledWith(1, `${azureUrl}/api/billing-support-requests`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `${authScheme} ${accessValue}`,
+      },
+    });
+    expect(fetchMock()).toHaveBeenNthCalledWith(2, `${azureUrl}/api/billing-support-requests`, {
+      body,
+      cache: "no-store",
+      headers: {
+        Authorization: `${authScheme} ${accessValue}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+  });
+});
+
+describe("/api/me/payments route handler", () => {
+  it("is dynamic", () => {
+    expect(paymentsDynamic).toBe("force-dynamic");
+  });
+
+  it("forwards GET to Azure payments with the current auth value", async () => {
+    const payments = [
+      {
+        amount: 250,
+        currency: "nzd",
+        date: "2026-05-30T10:00:00Z",
+        expiry: "2026-08-30T10:00:00Z",
+        receiptUrl: "https://pay.stripe.test/receipts/quick-pack",
+        remaining: 9,
+        sku: "quick_pack",
+      },
+    ];
+    fetchMock().mockResolvedValueOnce(Response.json(payments, { status: 200 }));
+
+    const response = await getPayments();
+
+    await expect(response.json()).resolves.toEqual(payments);
+    expect(response.status).toBe(200);
+    expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/me/payments`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `${authScheme} ${accessValue}`,
+      },
+    });
   });
 });

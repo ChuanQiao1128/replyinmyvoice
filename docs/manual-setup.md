@@ -74,6 +74,23 @@ NEXT_PUBLIC_ENTRA_CLIENT_ID=
 NEXT_PUBLIC_ENTRA_API_SCOPE=
 ```
 
+Optional transactional notification values:
+
+```env
+NOTIFICATIONS_PROVIDER=disabled
+NOTIFICATIONS_FROM_EMAIL=Reply In My Voice <info@timeawake.co.nz>
+NOTIFICATIONS_REPLY_TO_EMAIL=info@timeawake.co.nz
+RESEND_API_KEY=
+```
+
+Notification behavior:
+
+```text
+The backend sends no transactional email unless NOTIFICATIONS_PROVIDER=resend and the Resend key/from address are configured at runtime.
+If notification config is missing, disabled, or unsupported, the backend logs a no-op and continues without throwing.
+Use info@timeawake.co.nz as the customer support reply address.
+```
+
 Dashboard steps:
 
 1. Create or confirm a Microsoft Entra External ID external tenant.
@@ -185,6 +202,13 @@ Set production runtime variables/secrets for the Worker. Public app backend call
 - `NEXT_PUBLIC_ENTRA_AUTHORITY`
 - `NEXT_PUBLIC_ENTRA_CLIENT_ID`
 - `NEXT_PUBLIC_ENTRA_API_SCOPE`
+
+Payment observability is configured through Worker secrets, not `wrangler.jsonc` vars:
+
+- `SENTRY_DSN`
+- `POSTHOG_API_KEY`
+
+The same key names must also exist as Azure Functions app settings for backend payment/webhook traces, and as GitHub Actions secrets if CI is responsible for applying runtime settings. Do not print the values in workflow logs.
 
 Legacy Clerk/Neon variables may remain in the dashboard while old admin/library code is cleaned up, but public `/app`, rewrite, billing, webhook, and DB health routes should not depend on them after the 2026-05-23 cutover:
 

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,13 @@ namespace ReplyInMyVoice.Tests;
 public sealed class StripeBillingApiTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
+
+    static StripeBillingApiTests()
+    {
+        Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
+        Environment.SetEnvironmentVariable("DOTNET_hostBuilder__reloadConfigOnChange", "false");
+        Environment.SetEnvironmentVariable("ASPNETCORE_hostBuilder__reloadConfigOnChange", "false");
+    }
 
     public async Task InitializeAsync()
     {
@@ -31,7 +39,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     public async Task Checkout_requires_authentication()
     {
         await using var factory = CreateFactory(new FakeStripeBillingService("https://billing.test/checkout"));
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
 
         var response = await client.PostAsync("/api/stripe/checkout", null);
 
@@ -43,7 +51,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     {
         var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
         await using var factory = CreateFactory(fakeBilling);
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout");
 
         var response = await client.PostAsync("/api/stripe/checkout", null);
@@ -56,11 +64,36 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Checkout_returns_5xx_and_persists_no_state_when_billing_service_fails()
+    {
+        var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout")
+        {
+            CheckoutError = new TaskCanceledException("simulated Stripe timeout"),
+        };
+        await using var factory = CreateFactory(fakeBilling);
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_failure");
+        client.DefaultRequestHeaders.Add("X-User-Email", "checkout-failure@example.com");
+
+        var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("Billing provider request failed");
+        fakeBilling.CheckoutUserId.Should().Be("clerk_checkout_failure");
+        fakeBilling.CheckoutSku.Should().Be("quick_pack");
+
+        await using var db = CreateContext();
+        (await db.AppUsers.CountAsync()).Should().Be(0);
+        (await db.RewriteCredits.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task Checkout_forwards_allowed_sku_to_billing_service()
     {
         var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
         await using var factory = CreateFactory(fakeBilling);
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_sku");
 
         var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
@@ -71,11 +104,35 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Checkout_velocity_limit_allows_configured_requests_and_rejects_next()
+    {
+        var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
+        await using var factory = CreateFactory(fakeBilling);
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_velocity");
+
+        for (var requestNumber = 0; requestNumber < CheckoutVelocityLimiter.DefaultMaxSessions; requestNumber++)
+        {
+            var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        var limitedResponse = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "quick_pack" });
+
+        limitedResponse.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        limitedResponse.Headers.RetryAfter.Should().NotBeNull();
+        var problem = await limitedResponse.Content.ReadFromJsonAsync<ProblemDetails>();
+        problem!.Title.Should().Be("Checkout rate limit reached");
+        fakeBilling.CheckoutCallCount.Should().Be(CheckoutVelocityLimiter.DefaultMaxSessions);
+    }
+
+    [Fact]
     public async Task Checkout_rejects_unknown_sku()
     {
         var fakeBilling = new FakeStripeBillingService("https://billing.test/checkout");
         await using var factory = CreateFactory(fakeBilling);
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_checkout_bad_sku");
 
         var response = await client.PostAsJsonAsync("/api/stripe/checkout", new { sku = "unknown_pack" });
@@ -91,7 +148,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
         {
             PortalError = new InvalidOperationException("stripe_customer_missing")
         });
-        var client = factory.CreateClient();
+        var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_portal");
 
         var response = await client.PostAsync("/api/stripe/portal", null);
@@ -125,6 +182,12 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
             });
     }
 
+    private static HttpClient CreateClient(WebApplicationFactory<Program> factory) =>
+        factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = false,
+        });
+
     private AppDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -138,6 +201,8 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
 {
     public string? CheckoutUserId { get; private set; }
     public string? CheckoutSku { get; private set; }
+    public Exception? CheckoutError { get; init; }
+    public int CheckoutCallCount { get; private set; }
     public InvalidOperationException? PortalError { get; init; }
 
     public Task<string> CreateCheckoutSessionUrlAsync(
@@ -148,6 +213,12 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
     {
         CheckoutUserId = externalAuthUserId;
         CheckoutSku = sku;
+        CheckoutCallCount++;
+        if (CheckoutError is not null)
+        {
+            throw CheckoutError;
+        }
+
         return Task.FromResult(checkoutUrl);
     }
 

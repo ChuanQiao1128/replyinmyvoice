@@ -1,8 +1,11 @@
 using System.Net;
 using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -13,6 +16,8 @@ namespace ReplyInMyVoice.Tests;
 
 public sealed class AdminServiceTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     [Fact]
     public async Task AdminUsersList_ReturnsPagedUsersForAdmin()
     {
@@ -60,6 +65,121 @@ public sealed class AdminServiceTests
     }
 
     [Fact]
+    public async Task AdminAccountingRevenueCsv_NonAdminGetsForbidden()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var function = CreateFunction(fixture);
+        var request = CreateRequest("regular-user-oid", "regular@example.com");
+        request.QueryString = new QueryString("?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z");
+
+        var result = await function.ExportAccountingRevenueCsv(request, CancellationToken.None);
+
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
+    public async Task AdminAccountingRevenueCsv_ReturnsSeededRevenueRowsWithEscapingAndDateRange()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_accounting",
+            "accounting@example.com",
+            DateTimeOffset.Parse("2026-05-01T00:00:00Z"));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "PURCHASE",
+            amountGranted: 10,
+            amountConsumed: 2,
+            stripePaymentIntentId: "pi_\"csv\"",
+            stripeSku: "quick,\"starter\"\npack",
+            stripeAmountTotal: 250,
+            stripeCurrency: "nzd",
+            grantedAt: DateTimeOffset.Parse("2026-05-12T08:30:00Z"));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "PURCHASE",
+            amountGranted: 30,
+            amountConsumed: 0,
+            stripePaymentIntentId: "pi_outside",
+            stripeSku: "value_pack",
+            stripeAmountTotal: 690,
+            stripeCurrency: "nzd",
+            grantedAt: DateTimeOffset.Parse("2026-04-30T23:59:59Z"));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "ADMIN",
+            amountGranted: 5,
+            amountConsumed: 0,
+            grantedAt: DateTimeOffset.Parse("2026-05-13T00:00:00Z"));
+
+        var function = CreateFunction(fixture);
+        var request = CreateRequest("admin-owner-oid", "owner@example.com");
+        request.QueryString = new QueryString("?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z");
+        request.HttpContext.Response.Body = new MemoryStream();
+
+        var result = await function.ExportAccountingRevenueCsv(request, CancellationToken.None);
+
+        result.Should().BeOfType<EmptyResult>();
+        request.HttpContext.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        request.HttpContext.Response.ContentType.Should().Be("text/csv; charset=utf-8");
+        var csv = await ReadResponseBodyAsync(request.HttpContext.Response.Body);
+        var expectedRow =
+            $"2026-05-12T08:30:00.0000000+00:00,{user.Id},\"quick,\"\"starter\"\"\npack\",250,nzd,\"pi_\"\"csv\"\"\",,10,2,8";
+        csv.Should().Be(
+            "date,userRef,sku,amount,currency,paymentIntent,receiptUrl,creditsGranted,creditsConsumed,creditsRemaining\r\n" +
+            expectedRow +
+            "\r\n");
+    }
+
+    [Fact]
+    public async Task AdminAccountingRevenueCsv_UsesPagedRevenueWriterForLargeRanges()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_large_export",
+            "large-export@example.com",
+            DateTimeOffset.Parse("2026-05-01T00:00:00Z"));
+        for (var i = 0; i < 7; i++)
+        {
+            await SeedCreditAsync(
+                fixture,
+                user.Id,
+                source: "PURCHASE",
+                amountGranted: 10,
+                amountConsumed: i % 3,
+                stripePaymentIntentId: $"pi_large_{i}",
+                stripeSku: $"quick_pack_{i}",
+                stripeAmountTotal: 250,
+                stripeCurrency: "nzd",
+                grantedAt: DateTimeOffset.Parse("2026-05-01T00:00:00Z").AddDays(i));
+        }
+
+        await using var output = new MemoryStream();
+        var service = new AdminService(fixture.CreateContext);
+
+        await service.WriteAccountingRevenueCsvAsync(
+            output,
+            DateTimeOffset.Parse("2026-05-01T00:00:00Z"),
+            DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+            pageSize: 2,
+            CancellationToken.None);
+
+        var csv = Encoding.UTF8.GetString(output.ToArray());
+        var lines = csv.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        lines.Should().HaveCount(8);
+        for (var i = 0; i < 7; i++)
+        {
+            lines.Should().Contain(line => line.Contains($"pi_large_{i}", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
     public async Task AdminUserDetailIncludesCost_ReturnsUsageCreditsPaymentsSubscriptionAndCostToDate()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -93,7 +213,8 @@ public sealed class AdminServiceTests
             stripePaymentIntentId: "pi_paid",
             stripeSku: "quick_pack",
             stripeAmountTotal: 1200,
-            stripeCurrency: "nzd");
+            stripeCurrency: "nzd",
+            stripeReceiptUrl: "https://pay.stripe.com/receipts/test_receipt");
         await SeedCreditAsync(
             fixture,
             user.Id,
@@ -125,6 +246,7 @@ public sealed class AdminServiceTests
         detail.Payments[0].PaymentIntentId.Should().Be("pi_paid");
         detail.Payments[0].AmountTotal.Should().Be(1200);
         detail.Payments[0].Currency.Should().Be("nzd");
+        detail.Payments[0].ReceiptUrl.Should().Be("https://pay.stripe.com/receipts/test_receipt");
         detail.CostToDateUsd.Should().Be(0.0223m);
     }
 
@@ -139,6 +261,8 @@ public sealed class AdminServiceTests
             DateTimeOffset.Parse("2026-05-06T00:00:00Z"),
             SubscriptionStatus.Active);
         var freeUser = await SeedUserAsync(fixture, "clerk_free_stats", "free-stats@example.com", DateTimeOffset.Parse("2026-05-07T00:00:00Z"));
+        var recentPurchaseAt = DateTimeOffset.UtcNow.AddDays(-10);
+        var olderPurchaseAt = DateTimeOffset.UtcNow.AddMonths(-13);
         await SeedUsagePeriodAsync(fixture, paidUser.Id, "paid:stats", quota: 90, used: 8, reserved: 1);
         await SeedUsagePeriodAsync(fixture, freeUser.Id, "free:lifetime", quota: 3, used: 2, reserved: 0);
         await SeedCreditAsync(
@@ -149,7 +273,18 @@ public sealed class AdminServiceTests
             amountConsumed: 3,
             stripePaymentIntentId: "pi_stats",
             stripeAmountTotal: 900,
-            stripeCurrency: "nzd");
+            stripeCurrency: "nzd",
+            grantedAt: recentPurchaseAt);
+        await SeedCreditAsync(
+            fixture,
+            paidUser.Id,
+            source: "PURCHASE",
+            amountGranted: 30,
+            amountConsumed: 0,
+            stripePaymentIntentId: "pi_stats_old",
+            stripeAmountTotal: 6900,
+            stripeCurrency: "nzd",
+            grantedAt: olderPurchaseAt);
         await SeedCostLogAsync(fixture, paidUser.Id, "stats-request-1", 0.030m);
         await SeedCostLogAsync(fixture, freeUser.Id, "stats-request-2", 0.020m);
 
@@ -164,10 +299,120 @@ public sealed class AdminServiceTests
         stats.PaidUsers.Should().Be(1);
         stats.UsageUsed.Should().Be(10);
         stats.UsageReserved.Should().Be(1);
-        stats.CreditRemaining.Should().Be(7);
-        stats.PaymentCount.Should().Be(1);
-        stats.PaymentAmountTotal.Should().Be(900);
+        stats.CreditRemaining.Should().Be(37);
+        stats.PaymentCount.Should().Be(2);
+        stats.PaymentAmountTotal.Should().Be(7800);
         stats.CostToDateUsd.Should().Be(0.050m);
+        stats.GstTurnover.Currency.Should().Be("nzd");
+        stats.GstTurnover.GrossAmountTotal.Should().Be(900);
+        stats.GstTurnover.Warning.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AdminBillingSupportQueue_ReturnsOpenRequestsAndMarksResolved()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_support",
+            "support@example.com",
+            DateTimeOffset.Parse("2026-05-08T00:00:00Z"));
+        var requestId = await SeedBillingSupportRequestAsync(
+            fixture,
+            user.Id,
+            type: "refund",
+            paymentIntentId: "pi_support_admin",
+            message: "I was charged twice for the same pack.");
+
+        var function = CreateFunction(fixture);
+        var adminRequest = CreateRequest("admin-owner-oid", "owner@example.com");
+
+        var listResult = await function.ListBillingSupportRequests(adminRequest, CancellationToken.None);
+
+        var listOk = listResult.Should().BeOfType<OkObjectResult>().Subject;
+        var list = listOk.Value.Should().BeAssignableTo<IReadOnlyList<AdminBillingSupportRequest>>().Subject;
+        list.Should().ContainSingle();
+        list[0].Id.Should().Be(requestId);
+        list[0].UserId.Should().Be(user.Id);
+        list[0].UserEmail.Should().Be("support@example.com");
+        list[0].RelatedPaymentIntentId.Should().Be("pi_support_admin");
+        list[0].Status.Should().Be("open");
+
+        var resolveResult = await function.ResolveBillingSupportRequest(
+            adminRequest,
+            requestId.ToString(),
+            CancellationToken.None);
+
+        var resolveOk = resolveResult.Should().BeOfType<OkObjectResult>().Subject;
+        var resolved = resolveOk.Value.Should().BeOfType<AdminBillingSupportRequest>().Subject;
+        resolved.Id.Should().Be(requestId);
+        resolved.Status.Should().Be("resolved");
+        resolved.ResolvedAt.Should().NotBeNull();
+
+        await using var db = fixture.CreateContext();
+        var stored = await db.BillingSupportRequests.SingleAsync();
+        stored.Status.Should().Be(BillingSupportRequestStatus.Resolved);
+        stored.ResolvedAt.Should().NotBeNull();
+        var audit = await db.AdminAuditLogs.SingleAsync();
+        audit.Action.Should().Be("resolve_billing_support_request");
+        audit.TargetUserId.Should().Be(user.Id);
+    }
+
+    [Fact]
+    public async Task AdminStats_FlagsUsersAtRefundReviewCountOrAmountThreshold()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var countFlaggedUser = await SeedUserAsync(
+            fixture,
+            "clerk_refund_count",
+            "refund-count@example.com",
+            DateTimeOffset.Parse("2026-05-08T00:00:00Z"));
+        var amountFlaggedUser = await SeedUserAsync(
+            fixture,
+            "clerk_refund_amount",
+            "refund-amount@example.com",
+            DateTimeOffset.Parse("2026-05-09T00:00:00Z"));
+        var unflaggedUser = await SeedUserAsync(
+            fixture,
+            "clerk_refund_normal",
+            "refund-normal@example.com",
+            DateTimeOffset.Parse("2026-05-10T00:00:00Z"));
+
+        for (var refundNumber = 0; refundNumber < AdminService.RefundReviewCountThreshold; refundNumber++)
+        {
+            await SeedRefundAuditLogAsync(
+                fixture,
+                countFlaggedUser.Id,
+                $"pi_count_{refundNumber}",
+                100);
+        }
+
+        await SeedRefundAuditLogAsync(
+            fixture,
+            amountFlaggedUser.Id,
+            "pi_amount_threshold",
+            AdminService.RefundReviewAmountThreshold);
+        await SeedRefundAuditLogAsync(
+            fixture,
+            unflaggedUser.Id,
+            "pi_under_threshold",
+            AdminService.RefundReviewAmountThreshold - 1);
+
+        var function = CreateFunction(fixture);
+        var request = CreateRequest("admin-owner-oid", "owner@example.com");
+
+        var result = await function.GetStats(request, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var stats = okResult.Value.Should().BeOfType<AdminStatsResponse>().Subject;
+        stats.RefundReview.FlaggedUserCount.Should().Be(2);
+        stats.RefundReview.RefundCountThreshold.Should().Be(AdminService.RefundReviewCountThreshold);
+        stats.RefundReview.RefundAmountThreshold.Should().Be(AdminService.RefundReviewAmountThreshold);
+        stats.RefundReview.TotalRefundCount.Should().Be(AdminService.RefundReviewCountThreshold + 2);
+        stats.RefundReview.TotalRefundAmount.Should().Be(
+            AdminService.RefundReviewCountThreshold * 100 +
+            AdminService.RefundReviewAmountThreshold +
+            AdminService.RefundReviewAmountThreshold - 1);
     }
 
     private static AdminHttpFunctions CreateFunction(DbFixture fixture) =>
@@ -236,7 +481,9 @@ public sealed class AdminServiceTests
         string? stripePaymentIntentId = null,
         string? stripeSku = null,
         long? stripeAmountTotal = null,
-        string? stripeCurrency = null)
+        string? stripeCurrency = null,
+        string? stripeReceiptUrl = null,
+        DateTimeOffset? grantedAt = null)
     {
         await using var db = fixture.CreateContext();
         db.RewriteCredits.Add(new RewriteCredit
@@ -245,12 +492,13 @@ public sealed class AdminServiceTests
             Source = source,
             AmountGranted = amountGranted,
             AmountConsumed = amountConsumed,
-            GrantedAt = DateTimeOffset.Parse("2026-05-10T00:00:00Z"),
+            GrantedAt = grantedAt ?? DateTimeOffset.Parse("2026-05-10T00:00:00Z"),
             StripeEventId = stripeEventId,
             StripePaymentIntentId = stripePaymentIntentId,
             StripeSku = stripeSku,
             StripeAmountTotal = stripeAmountTotal,
             StripeCurrency = stripeCurrency,
+            StripeReceiptUrl = stripeReceiptUrl,
         });
         await db.SaveChangesAsync();
     }
@@ -273,6 +521,58 @@ public sealed class AdminServiceTests
             StartedAt = DateTimeOffset.Parse("2026-05-10T00:00:00Z"),
             FinishedAt = DateTimeOffset.Parse("2026-05-10T00:00:02Z"),
             TotalEstimatedCostUsd = totalCost,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<Guid> SeedBillingSupportRequestAsync(
+        DbFixture fixture,
+        Guid userId,
+        string type,
+        string paymentIntentId,
+        string message)
+    {
+        await using var db = fixture.CreateContext();
+        var request = new BillingSupportRequest
+        {
+            UserId = userId,
+            Type = BillingSupportRequestType.Refund,
+            RelatedPaymentIntentId = paymentIntentId,
+            Message = message,
+            Status = BillingSupportRequestStatus.Open,
+            CreatedAt = DateTimeOffset.Parse("2026-05-08T01:00:00Z"),
+            UpdatedAt = DateTimeOffset.Parse("2026-05-08T01:00:00Z"),
+        };
+        db.BillingSupportRequests.Add(request);
+        await db.SaveChangesAsync();
+        type.Should().Be("refund");
+        return request.Id;
+    }
+
+    private static async Task<string> ReadResponseBodyAsync(Stream body)
+    {
+        body.Position = 0;
+        using var reader = new StreamReader(body, leaveOpen: true);
+        return await reader.ReadToEndAsync();
+    }
+
+    private static async Task SeedRefundAuditLogAsync(
+        DbFixture fixture,
+        Guid userId,
+        string paymentIntentId,
+        long amount)
+    {
+        await using var db = fixture.CreateContext();
+        db.AdminAuditLogs.Add(new AdminAuditLog
+        {
+            AdminExternalAuthUserId = "admin-owner-oid",
+            AdminEmail = "owner@example.com",
+            Action = "refund",
+            TargetUserId = userId,
+            DetailsJson = JsonSerializer.Serialize(
+                new AdminRefundAuditDetails(paymentIntentId, $"re_{paymentIntentId}", amount, "nzd", "succeeded"),
+                JsonOptions),
+            CreatedAt = DateTimeOffset.Parse("2026-05-11T00:00:00Z"),
         });
         await db.SaveChangesAsync();
     }

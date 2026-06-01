@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Entities;
@@ -13,6 +14,7 @@ public sealed class QuotaService(
     ILogger<QuotaService>? logger = null)
 {
     private const int ExpiredReservationSweepBatchSize = 500;
+    private const int ReservationRaceMaxAttempts = 3;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -29,6 +31,58 @@ public sealed class QuotaService(
         DateTimeOffset now,
         TimeSpan reservationTtl,
         CancellationToken cancellationToken = default)
+    {
+        for (var attempt = 1; attempt <= ReservationRaceMaxAttempts; attempt++)
+        {
+            try
+            {
+                return await ReserveCoreAsync(
+                    userId,
+                    idempotencyKey,
+                    requestHash,
+                    requestJson,
+                    periodKey,
+                    quotaLimit,
+                    now,
+                    reservationTtl,
+                    cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < ReservationRaceMaxAttempts)
+            {
+                await DelayReservationRaceRetryAsync(attempt, cancellationToken);
+            }
+            catch (DbUpdateException ex) when (attempt < ReservationRaceMaxAttempts && IsReservationRaceException(ex))
+            {
+                await DelayReservationRaceRetryAsync(attempt, cancellationToken);
+            }
+            catch (SqliteException ex) when (attempt < ReservationRaceMaxAttempts && IsDatabaseLocked(ex))
+            {
+                await DelayReservationRaceRetryAsync(attempt, cancellationToken);
+            }
+        }
+
+        return await ReserveCoreAsync(
+            userId,
+            idempotencyKey,
+            requestHash,
+            requestJson,
+            periodKey,
+            quotaLimit,
+            now,
+            reservationTtl,
+            cancellationToken);
+    }
+
+    private async Task<ReserveRewriteResult> ReserveCoreAsync(
+        Guid userId,
+        string idempotencyKey,
+        string requestHash,
+        string requestJson,
+        string periodKey,
+        int quotaLimit,
+        DateTimeOffset now,
+        TimeSpan reservationTtl,
+        CancellationToken cancellationToken)
     {
         return await ExecuteInTransactionAsync(async db =>
         {
@@ -452,6 +506,26 @@ public sealed class QuotaService(
                 return true;
             },
             cancellationToken);
+
+    private static Task DelayReservationRaceRetryAsync(int attempt, CancellationToken cancellationToken) =>
+        Task.Delay(TimeSpan.FromMilliseconds(10 * attempt), cancellationToken);
+
+    private static bool IsReservationRaceException(DbUpdateException exception)
+    {
+        var message = exception.ToString();
+        return IsDatabaseLocked(exception) ||
+            message.Contains("IX_UsagePeriods_UserId_PeriodKey", StringComparison.OrdinalIgnoreCase) ||
+            (message.Contains("UsagePeriods.UserId", StringComparison.OrdinalIgnoreCase) &&
+                message.Contains("UsagePeriods.PeriodKey", StringComparison.OrdinalIgnoreCase)) ||
+            message.Contains("IX_RewriteAttempts_UserId_IdempotencyKey", StringComparison.OrdinalIgnoreCase) ||
+            (message.Contains("RewriteAttempts.UserId", StringComparison.OrdinalIgnoreCase) &&
+                message.Contains("RewriteAttempts.IdempotencyKey", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsDatabaseLocked(Exception exception) =>
+        exception is SqliteException { SqliteErrorCode: 5 or 6 } ||
+        exception.ToString().Contains("database is locked", StringComparison.OrdinalIgnoreCase) ||
+        exception.ToString().Contains("database table is locked", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<RewriteCredit?> FindUsableCreditAsync(
         AppDbContext db,

@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
@@ -181,6 +182,56 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Stripe_webhook_rejects_wrong_secret_signature_in_production_without_persisting_event_or_grant()
+    {
+        const string webhookSecret = "whsec_test_secret";
+        var function = CreateFunction("Production", webhookSecret);
+        const string externalAuthUserId = "clerk_wrong_secret_signature";
+        await SeedCreditCheckoutUserAsync(externalAuthUserId);
+        var payload = CreatePaidCheckoutPayload("evt_wrong_secret_signature", externalAuthUserId);
+
+        var response = await function.Run(
+            CreateSignedFunctionRequest(payload, "whsec_different_secret"),
+            CancellationToken.None);
+
+        await AssertRejectedWithNoWebhookSideEffectsAsync(response);
+    }
+
+    [Fact]
+    public async Task Stripe_webhook_rejects_tampered_payload_signature_in_production_without_persisting_event_or_grant()
+    {
+        const string webhookSecret = "whsec_test_secret";
+        var function = CreateFunction("Production", webhookSecret);
+        const string externalAuthUserId = "clerk_tampered_signature";
+        await SeedCreditCheckoutUserAsync(externalAuthUserId);
+        var originalPayload = CreatePaidCheckoutPayload("evt_tampered_signature", externalAuthUserId, rewriteCount: "10");
+        var deliveredPayload = originalPayload.Replace("\"rewrites\":\"10\"", "\"rewrites\":\"30\"", StringComparison.Ordinal);
+
+        var response = await function.Run(
+            CreateSignedFunctionRequest(deliveredPayload, webhookSecret, payloadToSign: originalPayload),
+            CancellationToken.None);
+
+        await AssertRejectedWithNoWebhookSideEffectsAsync(response);
+    }
+
+    [Fact]
+    public async Task Stripe_webhook_rejects_stale_timestamp_signature_in_production_without_persisting_event_or_grant()
+    {
+        const string webhookSecret = "whsec_test_secret";
+        var function = CreateFunction("Production", webhookSecret);
+        const string externalAuthUserId = "clerk_stale_timestamp_signature";
+        await SeedCreditCheckoutUserAsync(externalAuthUserId);
+        var payload = CreatePaidCheckoutPayload("evt_stale_timestamp_signature", externalAuthUserId);
+        var staleTimestamp = DateTimeOffset.UtcNow.AddHours(-1).ToUnixTimeSeconds();
+
+        var response = await function.Run(
+            CreateSignedFunctionRequest(payload, webhookSecret, timestamp: staleTimestamp),
+            CancellationToken.None);
+
+        await AssertRejectedWithNoWebhookSideEffectsAsync(response);
+    }
+
+    [Fact]
     public async Task WebhookRefusesWhenSecretMissingInProduction()
     {
         await using (var db = CreateContext())
@@ -244,7 +295,8 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
                 .AddInMemoryCollection(settings)
                 .Build(),
             new TestHostEnvironment(environment),
-            new StripeEventService(() => CreateContext()));
+            new StripeEventService(() => CreateContext()),
+            NullLogger<StripeWebhookFunction>.Instance);
     }
 
     private AppDbContext CreateContext()
@@ -255,6 +307,66 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
         return new AppDbContext(options);
     }
 
+    private async Task SeedCreditCheckoutUserAsync(string externalAuthUserId)
+    {
+        await using var db = CreateContext();
+        db.AppUsers.Add(new AppUser
+        {
+            ExternalAuthUserId = externalAuthUserId,
+            Email = $"{externalAuthUserId}@example.com",
+            SubscriptionStatus = SubscriptionStatus.Inactive,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private async Task AssertRejectedWithNoWebhookSideEffectsAsync(IActionResult response)
+    {
+        var objectResult = response.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+
+        await using var db = CreateContext();
+        (await db.StripeEvents.CountAsync()).Should().Be(0);
+        (await db.RewriteCredits.CountAsync()).Should().Be(0);
+    }
+
+    private static string CreatePaidCheckoutPayload(
+        string eventId,
+        string externalAuthUserId,
+        string rewriteCount = "10")
+    {
+        return JsonSerializer.Serialize(new
+        {
+            id = eventId,
+            @object = "event",
+            api_version = "2025-08-27.basil",
+            request = (string?)null,
+            type = "checkout.session.completed",
+            data = new
+            {
+                @object = new
+                {
+                    id = $"cs_{eventId}",
+                    @object = "checkout.session",
+                    client_reference_id = externalAuthUserId,
+                    customer = $"cus_{eventId}",
+                    mode = "payment",
+                    payment_status = "paid",
+                    payment_intent = $"pi_{eventId}",
+                    amount_total = 1200,
+                    currency = "nzd",
+                    metadata = new
+                    {
+                        sku = "quick_pack",
+                        rewrites = rewriteCount,
+                        externalAuthUserId,
+                    },
+                },
+            },
+        });
+    }
+
     private static HttpRequest CreateFunctionRequest(string payload)
     {
         var context = new DefaultHttpContext();
@@ -263,15 +375,19 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
         return context.Request;
     }
 
-    private static HttpRequest CreateSignedFunctionRequest(string payload, string webhookSecret)
+    private static HttpRequest CreateSignedFunctionRequest(
+        string payload,
+        string webhookSecret,
+        long? timestamp = null,
+        string? payloadToSign = null)
     {
         var request = CreateFunctionRequest(payload);
-        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var signedPayload = $"{timestamp}.{payload}";
+        var signatureTimestamp = timestamp ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var signedPayload = $"{signatureTimestamp}.{payloadToSign ?? payload}";
         var hash = HMACSHA256.HashData(
             Encoding.UTF8.GetBytes(webhookSecret),
             Encoding.UTF8.GetBytes(signedPayload));
-        request.Headers["Stripe-Signature"] = $"t={timestamp},v1={Convert.ToHexString(hash).ToLowerInvariant()}";
+        request.Headers["Stripe-Signature"] = $"t={signatureTimestamp},v1={Convert.ToHexString(hash).ToLowerInvariant()}";
         return request;
     }
 

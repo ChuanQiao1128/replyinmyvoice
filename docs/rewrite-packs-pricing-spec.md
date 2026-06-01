@@ -126,9 +126,10 @@ Source inputs (no secret values quoted):
 
 **Stripe webhook** (idempotent via `StripeEventService`) `[GPT Pro]` `[RECONCILED]`:
 - One-time packs: on `checkout.session.completed` with `mode=payment` & `payment_status=paid` → grant by SKU (`PURCHASE`, expires +90d, `StripeCheckoutSessionId` unique-guards double-grant).
-- Pro/API: grant **only on `invoice.payment_succeeded`** (not checkout) → 90 rewrites (`SUBSCRIPTION`, expires at period end, `StripeInvoiceId` unique-guards). Set `planTier=PRO, apiAccess=true, subscriptionStatus=active`.
-- `customer.subscription.updated/deleted`: active/trialing → API on; past_due → keep web balance, API off; canceled/unpaid → API off. Already-granted rewrites expire naturally.
-- `[ADDED]` Grant source-of-truth = **checkout `metadata`** (sku + rewrites), with line-item price id as a cross-check (Stripe events don't include line items unless the session is retrieved). `[ADDED]` Grant only on invoice `billing_reason ∈ { subscription_create, subscription_cycle }`; ignore others to avoid double-grant. `[ADDED]` Ack and no-op unhandled event types.
+- Pro/API: current C#/Azure entitlement is **status-driven**, not a `RewriteCredit` grant. `active`/`trialing` subscriptions receive the paid usage plan of 90 rewrites per Stripe period.
+- Renewal failure grace policy: **no grace period** for Pro/API renewal failures. `past_due`, `unpaid`, `incomplete`, `incomplete_expired`, and `paused` immediately map to the free plan (`free:lifetime`, limit 3). `canceled`/`customer.subscription.deleted` also map to a non-paid plan. Already-purchased pack rewrites are not revoked by subscription status alone and still expire or get clawed back through the refund/dispute paths.
+- `invoice.payment_failed`: process idempotently, locate the user by Stripe customer and/or subscription, and emit a structured operations log with the Stripe event correlation id for PAY-02 alerting. Do not send email from this handler.
+- `[ADDED]` Grant source-of-truth for one-time packs = **checkout `metadata`** (sku + rewrites), with line-item price id as a cross-check (Stripe events don't include line items unless the session is retrieved). `[ADDED]` Ack and no-op unhandled event types. If a later issue changes Pro/API from status-driven quota to subscription credit grants, grant only on invoice `billing_reason ∈ { subscription_create, subscription_cycle }` and ignore others to avoid double-grant.
 
 **Grant-expiry job** — `[ADDED]` balance is computed on read (ignore `ExpiresAt ≤ now` and `Remaining ≤ 0`); a timer Function (extend `ExpiredReservationCleanup`) does housekeeping only.
 
@@ -233,6 +234,6 @@ Deliverables to owner on completion `[GPT Pro]`: changed-file list; migration na
 2. ✅ **RESOLVED** (see Owner Decisions 2026-05-24): input cap = **~2500 chars total**, char-based, combined authoritative, per-field caps demoted to sub-limits; update `AGENTS.md` + `replyinmyvoice_requirements.md`.
 3. ✅ **RESOLVED** (see Owner Decisions 2026-05-24): **one campaign redemption per user, total.**
 4. `[OPEN]` **Quick Pack margin:** accept NZ$2.50/10 as a thin-margin acquisition product, or revisit after measuring real pipeline cost from `RewriteCostLog`?
-5. `[OPEN]` **Subscription details:** confirm no monthly rollover (unused 90 expire at period end); how to treat mid-cycle upgrade/downgrade/proration (recommend defer, don't crash).
+5. ✅ **RESOLVED** (PAY-01 2026-06-01): Pro/API renewal failures have **no grace period**. `past_due`, `unpaid`, `incomplete`, `incomplete_expired`, and `paused` immediately fall back to the free status-driven quota. Monthly rollover and mid-cycle upgrade/downgrade/proration remain deferred unless a later payment issue changes them.
 6. `[OPEN]` **Refund/chargeback policy:** claw-back unused rewrites + floor balance at 0?
 7. `[ASSUMPTION]` Pre-GST (turnover < NZ$60k); prices set GST-inclusive in anticipation.
