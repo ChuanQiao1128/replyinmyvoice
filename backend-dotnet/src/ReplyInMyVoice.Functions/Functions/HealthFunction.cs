@@ -14,6 +14,7 @@ public sealed class HealthFunction
 {
     private const int DefaultOutboxBacklogMinutes = 10;
     private const int DefaultFailedStripeEventsThreshold = 0;
+    private const int DefaultStripeLastProcessedMaxAgeMinutes = 0;
     private const int DefaultOutboxBacklogThreshold = 0;
     private const int DefaultStuckReservationsThreshold = 0;
 
@@ -65,6 +66,9 @@ public sealed class HealthFunction
         var failedStripeEventsThreshold = ReadNonNegativeInt(
             "Health:FailedStripeEventsThreshold",
             DefaultFailedStripeEventsThreshold);
+        var stripeLastProcessedMaxAgeMinutes = ReadNonNegativeInt(
+            "Health:StripeLastProcessedMaxAgeMinutes",
+            DefaultStripeLastProcessedMaxAgeMinutes);
         var outboxBacklogThreshold = ReadNonNegativeInt(
             "Health:OutboxBacklogThreshold",
             DefaultOutboxBacklogThreshold);
@@ -75,8 +79,13 @@ public sealed class HealthFunction
         var database = await CheckDatabaseAsync(cancellationToken);
         var serviceBus = CheckServiceBus();
         var failedStripeEvents = database.Ok
-            ? await CheckFailedStripeEventsAsync(now, failedStripeEventsThreshold, cancellationToken)
+            ? await CheckFailedStripeEventsAsync(failedStripeEventsThreshold, cancellationToken)
             : CountReadinessCheck.Unavailable("database_unavailable", failedStripeEventsThreshold);
+        var lastProcessedStripeEvent = database.Ok
+            ? await CheckLastProcessedStripeEventAsync(now, stripeLastProcessedMaxAgeMinutes, cancellationToken)
+            : LastProcessedStripeEventReadinessCheck.Unavailable(
+                "database_unavailable",
+                stripeLastProcessedMaxAgeMinutes);
         var outboxBacklog = database.Ok
             ? await CheckOutboxBacklogAsync(now, outboxBacklogMinutes, outboxBacklogThreshold, cancellationToken)
             : CountReadinessCheck.Unavailable("database_unavailable", outboxBacklogThreshold);
@@ -88,11 +97,13 @@ public sealed class HealthFunction
             database,
             serviceBus,
             failedStripeEvents,
+            lastProcessedStripeEvent,
             outboxBacklog,
             stuckReservations);
         var ok = checks.Database.Ok &&
             checks.ServiceBus.Ok &&
             checks.FailedStripeEvents.Ok &&
+            checks.LastProcessedStripeEvent.Ok &&
             checks.OutboxBacklog.Ok &&
             checks.StuckReservations.Ok;
         var response = new ReadinessResponse(
@@ -145,19 +156,33 @@ public sealed class HealthFunction
     }
 
     private async Task<CountReadinessCheck> CheckFailedStripeEventsAsync(
-        DateTimeOffset now,
         int threshold,
         CancellationToken cancellationToken)
     {
         try
         {
-            var cutoff = now.AddHours(-1);
-            var count = await CountFailedStripeEventsAsync(cutoff, cancellationToken);
+            var count = await CountFailedStripeEventsAsync(cancellationToken);
             return CountReadinessCheck.FromCount(count, threshold);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return CountReadinessCheck.Unavailable(ex.GetType().Name, threshold);
+        }
+    }
+
+    private async Task<LastProcessedStripeEventReadinessCheck> CheckLastProcessedStripeEventAsync(
+        DateTimeOffset now,
+        int maxAgeMinutes,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var lastProcessedAt = await GetLastProcessedStripeEventAsync(cancellationToken);
+            return LastProcessedStripeEventReadinessCheck.FromLastProcessed(now, lastProcessedAt, maxAgeMinutes);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return LastProcessedStripeEventReadinessCheck.Unavailable(ex.GetType().Name, maxAgeMinutes);
         }
     }
 
@@ -195,28 +220,30 @@ public sealed class HealthFunction
         }
     }
 
-    private async Task<int> CountFailedStripeEventsAsync(
-        DateTimeOffset cutoff,
-        CancellationToken cancellationToken)
+    private async Task<int> CountFailedStripeEventsAsync(CancellationToken cancellationToken) =>
+        await db.StripeEvents
+            .AsNoTracking()
+            .CountAsync(x => x.Status == StripeEventStatus.Failed, cancellationToken);
+
+    private async Task<DateTimeOffset?> GetLastProcessedStripeEventAsync(CancellationToken cancellationToken)
     {
         if (IsSqlite())
         {
-            var failedEvents = await db.StripeEvents
+            var processedEvents = await db.StripeEvents
                 .AsNoTracking()
-                .Where(x => x.Status == StripeEventStatus.Failed)
-                .Select(x => new { x.CreatedAt, x.LastAttemptAt })
+                .Where(x => x.Status == StripeEventStatus.Processed)
+                .Select(x => new { x.ProcessedAt, x.CreatedAt })
                 .ToListAsync(cancellationToken);
 
-            return failedEvents.Count(x => (x.LastAttemptAt ?? x.CreatedAt) >= cutoff);
+            return processedEvents.Count == 0
+                ? null
+                : processedEvents.Max(x => x.ProcessedAt ?? x.CreatedAt);
         }
 
         return await db.StripeEvents
             .AsNoTracking()
-            .CountAsync(
-                x => x.Status == StripeEventStatus.Failed &&
-                    ((x.LastAttemptAt != null && x.LastAttemptAt >= cutoff) ||
-                        (x.LastAttemptAt == null && x.CreatedAt >= cutoff)),
-                cancellationToken);
+            .Where(x => x.Status == StripeEventStatus.Processed)
+            .MaxAsync(x => (DateTimeOffset?)(x.ProcessedAt ?? x.CreatedAt), cancellationToken);
     }
 
     private async Task<int> CountOutboxBacklogAsync(
@@ -296,6 +323,8 @@ public sealed class HealthFunction
         [property: JsonPropertyName("database")] DatabaseReadinessCheck Database,
         [property: JsonPropertyName("serviceBus")] ServiceBusReadinessCheck ServiceBus,
         [property: JsonPropertyName("failedStripeEvents")] CountReadinessCheck FailedStripeEvents,
+        [property: JsonPropertyName("lastProcessedStripeEvent")]
+        LastProcessedStripeEventReadinessCheck LastProcessedStripeEvent,
         [property: JsonPropertyName("outboxBacklog")] CountReadinessCheck OutboxBacklog,
         [property: JsonPropertyName("stuckReservations")] CountReadinessCheck StuckReservations);
 
@@ -329,5 +358,39 @@ public sealed class HealthFunction
             int threshold,
             int? olderThanMinutes = null) =>
             new(false, 0, threshold, olderThanMinutes, error);
+    }
+
+    public sealed record LastProcessedStripeEventReadinessCheck(
+        [property: JsonPropertyName("ok")] bool Ok,
+        [property: JsonPropertyName("lastProcessedAt")] DateTimeOffset? LastProcessedAt,
+        [property: JsonPropertyName("ageSeconds")] long? AgeSeconds,
+        [property: JsonPropertyName("maxAgeMinutes")] int MaxAgeMinutes,
+        [property: JsonPropertyName("error")] string? Error)
+    {
+        public static LastProcessedStripeEventReadinessCheck FromLastProcessed(
+            DateTimeOffset now,
+            DateTimeOffset? lastProcessedAt,
+            int maxAgeMinutes)
+        {
+            if (lastProcessedAt is null)
+            {
+                return new(
+                    maxAgeMinutes == 0,
+                    null,
+                    null,
+                    maxAgeMinutes,
+                    maxAgeMinutes == 0 ? null : "no_processed_events");
+            }
+
+            var ageSeconds = Math.Max(0, (long)Math.Floor((now - lastProcessedAt.Value).TotalSeconds));
+            var maxAgeSeconds = maxAgeMinutes * 60L;
+            var ok = maxAgeMinutes == 0 || ageSeconds <= maxAgeSeconds;
+            return new(ok, lastProcessedAt, ageSeconds, maxAgeMinutes, ok ? null : "stale");
+        }
+
+        public static LastProcessedStripeEventReadinessCheck Unavailable(
+            string error,
+            int maxAgeMinutes) =>
+            new(false, null, null, maxAgeMinutes, error);
     }
 }
