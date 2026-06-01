@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -58,6 +59,121 @@ public sealed class AdminServiceTests
 
         var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
         objectResult.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
+    public async Task AdminAccountingRevenueCsv_NonAdminGetsForbidden()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var function = CreateFunction(fixture);
+        var request = CreateRequest("regular-user-oid", "regular@example.com");
+        request.QueryString = new QueryString("?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z");
+
+        var result = await function.ExportAccountingRevenueCsv(request, CancellationToken.None);
+
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
+    public async Task AdminAccountingRevenueCsv_ReturnsSeededRevenueRowsWithEscapingAndDateRange()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_accounting",
+            "accounting@example.com",
+            DateTimeOffset.Parse("2026-05-01T00:00:00Z"));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "PURCHASE",
+            amountGranted: 10,
+            amountConsumed: 2,
+            stripePaymentIntentId: "pi_\"csv\"",
+            stripeSku: "quick,\"starter\"\npack",
+            stripeAmountTotal: 250,
+            stripeCurrency: "nzd",
+            grantedAt: DateTimeOffset.Parse("2026-05-12T08:30:00Z"));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "PURCHASE",
+            amountGranted: 30,
+            amountConsumed: 0,
+            stripePaymentIntentId: "pi_outside",
+            stripeSku: "value_pack",
+            stripeAmountTotal: 690,
+            stripeCurrency: "nzd",
+            grantedAt: DateTimeOffset.Parse("2026-04-30T23:59:59Z"));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "ADMIN",
+            amountGranted: 5,
+            amountConsumed: 0,
+            grantedAt: DateTimeOffset.Parse("2026-05-13T00:00:00Z"));
+
+        var function = CreateFunction(fixture);
+        var request = CreateRequest("admin-owner-oid", "owner@example.com");
+        request.QueryString = new QueryString("?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z");
+        request.HttpContext.Response.Body = new MemoryStream();
+
+        var result = await function.ExportAccountingRevenueCsv(request, CancellationToken.None);
+
+        result.Should().BeOfType<EmptyResult>();
+        request.HttpContext.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        request.HttpContext.Response.ContentType.Should().Be("text/csv; charset=utf-8");
+        var csv = await ReadResponseBodyAsync(request.HttpContext.Response.Body);
+        var expectedRow =
+            $"2026-05-12T08:30:00.0000000+00:00,{user.Id},\"quick,\"\"starter\"\"\npack\",250,nzd,\"pi_\"\"csv\"\"\",,10,2,8";
+        csv.Should().Be(
+            "date,userRef,sku,amount,currency,paymentIntent,receiptUrl,creditsGranted,creditsConsumed,creditsRemaining\r\n" +
+            expectedRow +
+            "\r\n");
+    }
+
+    [Fact]
+    public async Task AdminAccountingRevenueCsv_UsesPagedRevenueWriterForLargeRanges()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_large_export",
+            "large-export@example.com",
+            DateTimeOffset.Parse("2026-05-01T00:00:00Z"));
+        for (var i = 0; i < 7; i++)
+        {
+            await SeedCreditAsync(
+                fixture,
+                user.Id,
+                source: "PURCHASE",
+                amountGranted: 10,
+                amountConsumed: i % 3,
+                stripePaymentIntentId: $"pi_large_{i}",
+                stripeSku: $"quick_pack_{i}",
+                stripeAmountTotal: 250,
+                stripeCurrency: "nzd",
+                grantedAt: DateTimeOffset.Parse("2026-05-01T00:00:00Z").AddDays(i));
+        }
+
+        await using var output = new MemoryStream();
+        var service = new AdminService(fixture.CreateContext);
+
+        await service.WriteAccountingRevenueCsvAsync(
+            output,
+            DateTimeOffset.Parse("2026-05-01T00:00:00Z"),
+            DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+            pageSize: 2,
+            CancellationToken.None);
+
+        var csv = Encoding.UTF8.GetString(output.ToArray());
+        var lines = csv.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        lines.Should().HaveCount(8);
+        for (var i = 0; i < 7; i++)
+        {
+            lines.Should().Contain(line => line.Contains($"pi_large_{i}", StringComparison.Ordinal));
+        }
     }
 
     [Fact]
@@ -371,6 +487,13 @@ public sealed class AdminServiceTests
         await db.SaveChangesAsync();
         type.Should().Be("refund");
         return request.Id;
+    }
+
+    private static async Task<string> ReadResponseBodyAsync(Stream body)
+    {
+        body.Position = 0;
+        using var reader = new StreamReader(body, leaveOpen: true);
+        return await reader.ReadToEndAsync();
     }
 
     private static HttpRequest CreateRequest(string oid, string email)

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -201,6 +202,56 @@ public sealed class AdminHttpFunctions
         }
 
         return new OkObjectResult(resolved);
+    }
+
+    [Function("AdminAccountingRevenueCsv")]
+    public async Task<IActionResult> ExportAccountingRevenueCsv(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/accounting/revenue.csv")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await RequireAdminResultAsync(request, cancellationToken);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!TryParseDateQuery(request.Query, "from", out var fromInclusive) ||
+            !TryParseDateQuery(request.Query, "to", out var toExclusive))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid accounting export date range",
+                "The accounting export requires valid from and to query parameters.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (toExclusive <= fromInclusive)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid accounting export date range",
+                "The accounting export to date must be after the from date.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var response = request.HttpContext.Response;
+        response.StatusCode = StatusCodes.Status200OK;
+        response.ContentType = "text/csv; charset=utf-8";
+        response.Headers.CacheControl = "no-store";
+        response.Headers.ContentDisposition =
+            $"attachment; filename=\"accounting-revenue-{fromInclusive.UtcDateTime:yyyyMMdd}-{toExclusive.UtcDateTime:yyyyMMdd}.csv\"";
+
+        await _adminService.WriteAccountingRevenueCsvAsync(
+            response.Body,
+            fromInclusive,
+            toExclusive,
+            cancellationToken: cancellationToken);
+
+        return new EmptyResult();
     }
 
     [Function("AdminGrantCredits")]
@@ -458,6 +509,22 @@ public sealed class AdminHttpFunctions
         }
 
         return Math.Min(parsed, maxValue);
+    }
+
+    private static bool TryParseDateQuery(
+        IQueryCollection query,
+        string key,
+        out DateTimeOffset value)
+    {
+        value = default;
+        return query.TryGetValue(key, out var values) &&
+            DateTimeOffset.TryParse(
+                values.ToString(),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces |
+                DateTimeStyles.AssumeUniversal |
+                DateTimeStyles.AdjustToUniversal,
+                out value);
     }
 
     private static async Task<AdminRefundRequest?> ReadRefundRequestAsync(

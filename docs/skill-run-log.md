@@ -2471,4 +2471,21 @@ claude-heavy-planning-handoff
 - Action: Opened and followed the skill; added a failing xUnit regression in `StripeEventServiceTests` for an old 7-rewrite `quick_pack` grant while the current SKU map grants 10, then fixed the service to use the persisted original grant count for cumulative partial refunds.
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`.
 - Verification evidence: Red run failed with `Expected credit.AmountGranted to be 3, but found 5`; green focused run for the regression passed 1/1; focused `StripeEventServiceTests` passed 21/21; full `cd backend-dotnet && dotnet test` passed 408/408.
+
+### 2026-06-01 - data-module-review - PAY-29 accounting revenue export
+
+- Agent: Codex
+- Trigger: PAY-29 reads payment/accounting data from `RewriteCredit` and existing usage/cost persistence without changing schema.
+- Action: Opened and followed the skill; reviewed `RewriteCredit`, `UsagePeriod`, `UsageReservation`, `RewriteCostLog`, `AppDbContext`, existing admin endpoints, and ran the data risk scanner over `backend-dotnet`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`.
+- Verification evidence: No migration or new persisted field was added. The export reads admin payment rows from the existing credit ledger, emits only payment/accounting fields, and uses page-sized reads plus response-body CSV writes. Focused `dotnet test ReplyInMyVoice.sln --filter AdminAccountingRevenueCsv --no-restore` passed 3/3; full `cd backend-dotnet && dotnet test` passed 410/410; `git diff --check` passed.
+- Limitations: `receiptUrl` is included as a CSV column but remains empty when the ledger has no stored receipt URL; receipt capture is outside PAY-29.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-29 admin CSV export coverage
+
+- Agent: Codex
+- Trigger: PAY-29 requires .NET backend coverage for admin CSV export, non-admin 403, CSV escaping, date range filtering, and paged export behavior.
+- Action: Opened and followed the skill; wrote failing xUnit tests first for the missing function/service methods, then implemented the admin function and service writer until the focused suite passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TestHostEnvironment.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`.
+- Verification evidence: Red run `dotnet test ReplyInMyVoice.sln --filter AdminAccountingRevenueCsv` failed on missing `ExportAccountingRevenueCsv` and `WriteAccountingRevenueCsvAsync`. Green runs: `dotnet test ReplyInMyVoice.sln --filter AdminAccountingRevenueCsv --no-restore` passed 3/3, isolated API host timeout repros passed after moving test-host settings to a module initializer, full `cd backend-dotnet && dotnet test` passed 410/410, and `git diff --check` passed.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
