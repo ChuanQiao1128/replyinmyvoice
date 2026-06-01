@@ -45,6 +45,24 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-01 - dotnet-backend-testing - PAY-03 forged Stripe webhook signature tests
+
+- Agent: Codex
+- Trigger: GitHub issue #380/PAY-03 required C# xUnit coverage for production Stripe webhook signature rejection behavior.
+- Action: Opened and followed the skill; added focused API-level tests around `StripeWebhookFunction` with SQLite persisted-state assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeWebhookApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter StripeWebhookApiTests` passed 9/9; `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: Test-only change; no production code, deploy, push, or PR creation. NuGet vulnerability metadata warnings appeared because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed.
+
+### 2026-06-01 - resilience-test-generation - PAY-03 webhook signature failure matrix
+
+- Agent: Codex
+- Trigger: PAY-03 tests stale/tampered Stripe webhook delivery and requires proving rejected webhooks create no event or credit side effects.
+- Action: Opened and followed the resilience test workflow; covered wrong-secret, mutated-body-after-signing, and stale-timestamp failure cases using deterministic local HMAC signatures.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeWebhookApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter StripeWebhookApiTests` passed 9/9; `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: No live Stripe calls were made; tests exercise local signature verification and database side effects only. No secrets or credential values were logged.
+
 ### 2026-05-25 - system-spec-synthesis - Corrected smoke 10 eval and pipeline split
 
 - Agent: Codex
