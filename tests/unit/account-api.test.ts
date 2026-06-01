@@ -12,8 +12,12 @@ const { azureApiMock, entraAuthMock } = vi.hoisted(() => ({
 vi.mock("../../lib/azure-api", () => azureApiMock);
 vi.mock("../../lib/entra-auth", () => entraAuthMock);
 
-import { DELETE, GET, dynamic } from "../../app/api/me/route";
-import { GET as paymentsGet } from "../../app/api/me/payments/route";
+import { DELETE, GET as getAccount, dynamic } from "../../app/api/me/route";
+import {
+  GET as paymentsGet,
+  GET as getPayments,
+  dynamic as paymentsDynamic,
+} from "../../app/api/me/payments/route";
 import {
   GET as billingSupportGet,
   POST as billingSupportPost,
@@ -72,7 +76,7 @@ describe("/api/me route handler", () => {
     };
     fetchMock().mockResolvedValueOnce(Response.json(summary, { status: 200 }));
 
-    const response = await GET();
+    const response = await getAccount();
 
     await expect(response.json()).resolves.toEqual(summary);
     expect(response.status).toBe(200);
@@ -106,7 +110,7 @@ describe("/api/me route handler", () => {
   it("returns 401 when no access token is available", async () => {
     vi.mocked(getCurrentAccessToken).mockResolvedValueOnce(null);
 
-    const response = await GET();
+    const response = await getAccount();
 
     await expect(response.json()).resolves.toEqual({
       error: "Authentication required.",
@@ -188,6 +192,38 @@ describe("/api/me route handler", () => {
         "Content-Type": "application/json",
       },
       method: "POST",
+    });
+  });
+});
+
+describe("/api/me/payments route handler", () => {
+  it("is dynamic", () => {
+    expect(paymentsDynamic).toBe("force-dynamic");
+  });
+
+  it("forwards GET to Azure payments with the current auth value", async () => {
+    const payments = [
+      {
+        amount: 250,
+        currency: "nzd",
+        date: "2026-05-30T10:00:00Z",
+        expiry: "2026-08-30T10:00:00Z",
+        receiptUrl: "https://pay.stripe.test/receipts/quick-pack",
+        remaining: 9,
+        sku: "quick_pack",
+      },
+    ];
+    fetchMock().mockResolvedValueOnce(Response.json(payments, { status: 200 }));
+
+    const response = await getPayments();
+
+    await expect(response.json()).resolves.toEqual(payments);
+    expect(response.status).toBe(200);
+    expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/me/payments`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `${authScheme} ${accessValue}`,
+      },
     });
   });
 });

@@ -26,6 +26,7 @@ export type AzureAccountPayment = {
   paymentIntentId: string | null;
   amount: number | null;
   currency: string | null;
+  receiptUrl: string | null;
   date: string;
   expiry: string | null;
   remaining: number;

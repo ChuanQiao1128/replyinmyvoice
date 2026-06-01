@@ -3,9 +3,11 @@
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   LifeBuoy,
   Loader2,
   LogOut,
+  ReceiptText,
   Send,
   Trash2,
   UserRound,
@@ -81,22 +83,6 @@ function formatDateTime(value: string | null) {
   }).format(date);
 }
 
-function formatMoney(amount: number | null, currency: string | null) {
-  if (amount === null) {
-    return "Amount not stored";
-  }
-
-  const major = amount / 100;
-  try {
-    return new Intl.NumberFormat(undefined, {
-      currency: currency?.toUpperCase() || "NZD",
-      style: "currency",
-    }).format(major);
-  } catch {
-    return `${amount} ${currency?.toUpperCase() ?? ""}`.trim();
-  }
-}
-
 function paymentOptionLabel(payment: AzureAccountPayment) {
   const intent = payment.paymentIntentId ?? "No payment intent";
   return `${intent} · ${formatMoney(payment.amount, payment.currency)} · ${formatDate(payment.date)}`;
@@ -111,6 +97,51 @@ function usageCopy(account: AzureAccountSummary) {
   const cadence =
     usage.scope === "paid" ? "this billing period" : "from your free allowance";
   return `${usage.remaining} of ${usage.quota} rewrites remaining ${cadence}`;
+}
+
+function formatMoney(amount: number | null, currency: string | null) {
+  if (amount == null) {
+    return "Not recorded";
+  }
+
+  const value = (amount / 100).toFixed(2);
+  const normalizedCurrency = currency?.trim().toUpperCase();
+  return normalizedCurrency ? `${normalizedCurrency} ${value}` : value;
+}
+
+function formatSku(sku: string | null) {
+  const normalized = sku?.trim();
+  if (!normalized) {
+    return "Purchase";
+  }
+
+  const labels: Record<string, string> = {
+    focus_pack: "Focus Pack",
+    pro_api: "Pro / API",
+    quick_pack: "Quick Pack",
+    value_pack: "Value Pack",
+  };
+  const labelKey = normalized.toLowerCase();
+  if (labels[labelKey]) {
+    return labels[labelKey];
+  }
+
+  return normalized
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function safeReceiptUrl(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function readJsonError(response: Response) {
@@ -189,6 +220,99 @@ async function loadAccountBundle() {
   ]);
 
   return { account, payments, supportRequests };
+}
+
+export function PurchaseHistorySection({
+  payments,
+}: {
+  payments: AzureAccountPayment[];
+}) {
+  return (
+    <section
+      aria-labelledby="purchase-history-title"
+      className="rounded-lg border border-line bg-white/75 p-6 shadow-soft sm:p-8"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-3">
+          <span className="inline-flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-sage">
+            <ReceiptText className="h-4 w-4" aria-hidden="true" />
+            Receipts
+          </span>
+          <div>
+            <h2 id="purchase-history-title" className="text-2xl sm:text-3xl">
+              Receipts / Purchase history
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm text-ink/65">
+              View Stripe-hosted receipts for completed purchases.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {payments.length > 0 ? (
+        <div className="mt-6 overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-b border-line bg-paper-deep/40 text-xs uppercase text-ink/50">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Pack</th>
+                <th className="px-4 py-3 font-semibold">Date</th>
+                <th className="px-4 py-3 font-semibold">Amount</th>
+                <th className="px-4 py-3 font-semibold">Expiry</th>
+                <th className="px-4 py-3 font-semibold">Remaining</th>
+                <th className="px-4 py-3 font-semibold">Receipt</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {payments.map((payment, index) => {
+                const receiptUrl = safeReceiptUrl(payment.receiptUrl);
+                return (
+                  <tr
+                    className="bg-white/45"
+                    key={`${payment.date}-${payment.sku ?? "purchase"}-${index}`}
+                  >
+                    <td className="whitespace-nowrap px-4 py-4 font-semibold">
+                      {formatSku(payment.sku)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {formatDate(payment.date)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {formatMoney(payment.amount, payment.currency)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {formatDate(payment.expiry)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {payment.remaining} remaining
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {receiptUrl ? (
+                        <a
+                          className="inline-flex items-center gap-1.5 font-semibold text-clay underline-offset-4 hover:underline"
+                          href={receiptUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          View receipt
+                          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                        </a>
+                      ) : (
+                        <span className="text-ink/45">Not available</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="mt-6 rounded-md border border-dashed border-line bg-paper px-4 py-6 text-sm text-ink/55">
+          No purchases yet.
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function AccountPanel() {
@@ -428,195 +552,200 @@ export function AccountPanel() {
   }
 
   const account = accountState.account;
+  const payments = accountState.payments;
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-      <section className="rounded-lg border border-line bg-white/75 p-6 shadow-soft sm:p-8">
-        <div className="flex flex-col gap-7">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 space-y-3">
-              <span className="inline-flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-sage">
-                <UserRound className="h-4 w-4" aria-hidden="true" />
-                Account
-              </span>
-              <div>
-                <h1 className="break-words text-4xl sm:text-5xl">Your account</h1>
-                <p className="mt-3 max-w-2xl text-base text-ink/65">
-                  Review your sign-in details and current rewrite allowance.
+      <div className="flex flex-col gap-5">
+        <section className="rounded-lg border border-line bg-white/75 p-6 shadow-soft sm:p-8">
+          <div className="flex flex-col gap-7">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-3">
+                <span className="inline-flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-sage">
+                  <UserRound className="h-4 w-4" aria-hidden="true" />
+                  Account
+                </span>
+                <div>
+                  <h1 className="break-words text-4xl sm:text-5xl">Your account</h1>
+                  <p className="mt-3 max-w-2xl text-base text-ink/65">
+                    Review your sign-in details and current rewrite allowance.
+                  </p>
+                </div>
+              </div>
+              <Button
+                disabled={isSigningOut}
+                onClick={signOut}
+                type="button"
+                variant="secondary"
+              >
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+                {isSigningOut ? "Signing out..." : "Sign out"}
+              </Button>
+            </div>
+
+            <dl className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-md border border-line bg-paper px-4 py-3">
+                <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink/45">
+                  Email
+                </dt>
+                <dd className="mt-1 break-words text-sm font-semibold text-ink">
+                  {email}
+                </dd>
+              </div>
+              <div className="rounded-md border border-line bg-paper px-4 py-3">
+                <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink/45">
+                  Subscription status
+                </dt>
+                <dd className="mt-1 text-sm font-semibold text-ink">
+                  {formatStatus(account.subscriptionStatus)}
+                </dd>
+              </div>
+              <div className="rounded-md border border-line bg-paper px-4 py-3">
+                <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink/45">
+                  Remaining usage
+                </dt>
+                <dd className="mt-1 text-sm font-semibold text-sage">
+                  {usageCopy(account)}
+                </dd>
+              </div>
+              <div className="rounded-md border border-line bg-paper px-4 py-3">
+                <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink/45">
+                  Period end
+                </dt>
+                <dd className="mt-1 text-sm font-semibold text-ink">
+                  {formatDate(account.usage.periodEnd ?? account.currentPeriodEnd)}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="rounded-md border border-sage/20 bg-sky px-4 py-3">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 text-sage" aria-hidden="true" />
+                <p className="text-sm text-ink/70">
+                  Successful rewrites count against your allowance. Validation or
+                  service errors are not charged.
                 </p>
               </div>
             </div>
-            <Button
-              disabled={isSigningOut}
-              onClick={signOut}
-              type="button"
-              variant="secondary"
-            >
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-              {isSigningOut ? "Signing out..." : "Sign out"}
-            </Button>
           </div>
+        </section>
 
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-md border border-line bg-paper px-4 py-3">
-              <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink/45">
-                Email
-              </dt>
-              <dd className="mt-1 break-words text-sm font-semibold text-ink">
-                {email}
-              </dd>
-            </div>
-            <div className="rounded-md border border-line bg-paper px-4 py-3">
-              <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink/45">
-                Subscription status
-              </dt>
-              <dd className="mt-1 text-sm font-semibold text-ink">
-                {formatStatus(account.subscriptionStatus)}
-              </dd>
-            </div>
-            <div className="rounded-md border border-line bg-paper px-4 py-3">
-              <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink/45">
-                Remaining usage
-              </dt>
-              <dd className="mt-1 text-sm font-semibold text-sage">
-                {usageCopy(account)}
-              </dd>
-            </div>
-            <div className="rounded-md border border-line bg-paper px-4 py-3">
-              <dt className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink/45">
-                Period end
-              </dt>
-              <dd className="mt-1 text-sm font-semibold text-ink">
-                {formatDate(account.usage.periodEnd ?? account.currentPeriodEnd)}
-              </dd>
-            </div>
-          </dl>
-
-          <div className="rounded-md border border-sage/20 bg-sky px-4 py-3">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 h-5 w-5 text-sage" aria-hidden="true" />
-              <p className="text-sm text-ink/70">
-                Successful rewrites count against your allowance. Validation or
-                service errors are not charged.
+        <section className="rounded-lg border border-line bg-white/80 p-6 shadow-soft sm:p-8">
+          <div className="flex items-start gap-3">
+            <LifeBuoy className="mt-0.5 h-5 w-5 text-clay" aria-hidden="true" />
+            <div className="min-w-0">
+              <h2 className="text-2xl">Billing support</h2>
+              <p className="mt-2 max-w-2xl text-sm text-ink/65">
+                Send a billing question or refund request for owner review.
               </p>
             </div>
           </div>
 
-          <section className="rounded-lg border border-line bg-white/80 p-5">
-            <div className="flex items-start gap-3">
-              <LifeBuoy className="mt-0.5 h-5 w-5 text-clay" aria-hidden="true" />
-              <div className="min-w-0">
-                <h2 className="text-2xl">Billing support</h2>
-                <p className="mt-2 max-w-2xl text-sm text-ink/65">
-                  Send a billing question or refund request for owner review.
-                </p>
-              </div>
-            </div>
-
-            <form className="mt-5 grid gap-4" onSubmit={submitSupportRequest}>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block text-sm font-semibold text-ink/70">
-                  Reason
-                  <select
-                    className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
-                    onChange={(event) =>
-                      setSupportType(event.target.value as SupportRequestType)
-                    }
-                    value={supportType}
-                  >
-                    <option value="refund">Refund request</option>
-                    <option value="billing-question">Billing question</option>
-                  </select>
-                </label>
-
-                <label className="block text-sm font-semibold text-ink/70">
-                  Purchase
-                  <select
-                    className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
-                    onChange={(event) =>
-                      setSupportPaymentIntentId(event.target.value)
-                    }
-                    value={supportPaymentIntentId}
-                  >
-                    <option value="">No specific purchase</option>
-                    {paymentOptions.map((payment) => (
-                      <option
-                        key={payment.paymentIntentId}
-                        value={payment.paymentIntentId ?? ""}
-                      >
-                        {paymentOptionLabel(payment)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
+          <form className="mt-5 grid gap-4" onSubmit={submitSupportRequest}>
+            <div className="grid gap-4 md:grid-cols-2">
               <label className="block text-sm font-semibold text-ink/70">
-                Message
-                <Textarea
-                  className="mt-1 min-h-28"
-                  maxLength={2000}
-                  onChange={(event) => setSupportMessage(event.target.value)}
-                  placeholder="Tell us what happened and include any amount or date that matters."
-                  required
-                  value={supportMessage}
-                />
+                Reason
+                <select
+                  className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+                  onChange={(event) =>
+                    setSupportType(event.target.value as SupportRequestType)
+                  }
+                  value={supportType}
+                >
+                  <option value="refund">Refund request</option>
+                  <option value="billing-question">Billing question</option>
+                </select>
               </label>
 
-              {supportError ? (
-                <p className="text-sm font-semibold text-rust">{supportError}</p>
-              ) : null}
-              {supportNotice ? (
-                <p className="text-sm font-semibold text-sage">{supportNotice}</p>
-              ) : null}
-
-              <div className="flex justify-end">
-                <Button disabled={isSubmittingSupport} type="submit">
-                  {isSubmittingSupport ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <Send className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  {isSubmittingSupport ? "Sending..." : "Send request"}
-                </Button>
-              </div>
-            </form>
-
-            <div className="mt-6 border-t border-line pt-5">
-              <h3 className="text-sm font-semibold uppercase text-ink/45">
-                Recent requests
-              </h3>
-              <div className="mt-3 grid gap-3">
-                {supportRequests.map((request) => (
-                  <div
-                    className="rounded-md border border-line bg-paper px-4 py-3"
-                    key={request.id}
-                  >
-                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase text-ink/45">
-                      <span>{requestTypeLabel(request.type)}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{request.status}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{formatDateTime(request.createdAt)}</span>
-                    </div>
-                    {request.relatedPaymentIntentId ? (
-                      <p className="mt-2 break-all font-mono text-xs text-ink/50">
-                        {request.relatedPaymentIntentId}
-                      </p>
-                    ) : null}
-                    <p className="mt-2 text-sm text-ink/70">{request.message}</p>
-                  </div>
-                ))}
-                {supportRequests.length === 0 ? (
-                  <p className="rounded-md border border-dashed border-line px-4 py-5 text-sm text-ink/55">
-                    No billing support requests yet.
-                  </p>
-                ) : null}
-              </div>
+              <label className="block text-sm font-semibold text-ink/70">
+                Purchase
+                <select
+                  className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+                  onChange={(event) =>
+                    setSupportPaymentIntentId(event.target.value)
+                  }
+                  value={supportPaymentIntentId}
+                >
+                  <option value="">No specific purchase</option>
+                  {paymentOptions.map((payment) => (
+                    <option
+                      key={payment.paymentIntentId}
+                      value={payment.paymentIntentId ?? ""}
+                    >
+                      {paymentOptionLabel(payment)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-          </section>
-        </div>
-      </section>
+
+            <label className="block text-sm font-semibold text-ink/70">
+              Message
+              <Textarea
+                className="mt-1 min-h-28"
+                maxLength={2000}
+                onChange={(event) => setSupportMessage(event.target.value)}
+                placeholder="Tell us what happened and include any amount or date that matters."
+                required
+                value={supportMessage}
+              />
+            </label>
+
+            {supportError ? (
+              <p className="text-sm font-semibold text-rust">{supportError}</p>
+            ) : null}
+            {supportNotice ? (
+              <p className="text-sm font-semibold text-sage">{supportNotice}</p>
+            ) : null}
+
+            <div className="flex justify-end">
+              <Button disabled={isSubmittingSupport} type="submit">
+                {isSubmittingSupport ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Send className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isSubmittingSupport ? "Sending..." : "Send request"}
+              </Button>
+            </div>
+          </form>
+
+          <div className="mt-6 border-t border-line pt-5">
+            <h3 className="text-sm font-semibold uppercase text-ink/45">
+              Recent requests
+            </h3>
+            <div className="mt-3 grid gap-3">
+              {supportRequests.map((request) => (
+                <div
+                  className="rounded-md border border-line bg-paper px-4 py-3"
+                  key={request.id}
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase text-ink/45">
+                    <span>{requestTypeLabel(request.type)}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{request.status}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{formatDateTime(request.createdAt)}</span>
+                  </div>
+                  {request.relatedPaymentIntentId ? (
+                    <p className="mt-2 break-all font-mono text-xs text-ink/50">
+                      {request.relatedPaymentIntentId}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-sm text-ink/70">{request.message}</p>
+                </div>
+              ))}
+              {supportRequests.length === 0 ? (
+                <p className="rounded-md border border-dashed border-line px-4 py-5 text-sm text-ink/55">
+                  No billing support requests yet.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        <PurchaseHistorySection payments={payments} />
+      </div>
 
       <aside className="flex flex-col gap-5">
         <section className="rounded-lg border border-line bg-white/75 p-5 shadow-crisp">

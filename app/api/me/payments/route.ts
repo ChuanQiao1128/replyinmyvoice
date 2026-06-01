@@ -13,6 +13,13 @@ async function forwardAzureResponse(response: Response) {
     headers.set("Content-Type", contentType);
   }
 
+  if (response.status === 204) {
+    return new NextResponse(null, {
+      headers,
+      status: response.status,
+    });
+  }
+
   return new NextResponse(await response.text(), {
     headers,
     status: response.status,

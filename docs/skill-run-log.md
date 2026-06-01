@@ -2355,3 +2355,30 @@ claude-heavy-planning-handoff
 - Output artifacts: None in frontend/browser paths.
 - Verification evidence: `rg -n "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches. No browser-visible files were changed, so no Playwright/browser run was applicable for PAY-20.
 - Limitations: The admin frontend does not render a dedicated GST turnover tile in this issue; the machine-checkable surface is the backend admin stats response.
+
+### 2026-06-01 - data-module-review - PAY-21 receipt URL payment history contract
+
+- Agent: Codex
+- Trigger: PAY-21 changes the `RewriteCredit` payment ledger and `AccountService.GetPurchaseHistoryAsync` contract to expose Stripe-hosted receipt links.
+- Action: Opened and followed the skill; reviewed the owned `RewriteCredit` table/entity, `AppDbContext` mapping, migration safety, caller-scoped purchase-history query, and account payment projection. Added a nullable `StripeReceiptUrl` column with a 2048-character limit and no tax calculation logic.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260601090000_AddRewriteCreditReceiptUrl.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `docs/payment-receipts-tax-invoices.md`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed and surfaced broad existing quota/idempotency signals, with no new blocker for this nullable receipt-link projection. Focused account tests passed 13/13; full backend `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false dotnet test` passed 408/408.
+- Limitations: PAY-21 relies on Stripe receipt capture populating `StripeReceiptUrl`; this change surfaces and stores the value but does not hand-roll tax math or generate invoices.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-21 payment history API coverage
+
+- Agent: Codex
+- Trigger: PAY-21 adds C#/.NET tests for purchase-history receipt links and the ASP.NET Core `/api/me/payments` route.
+- Action: Opened and followed the skill; used an EF Core SQLite service test for the persisted receipt URL invariant and a `WebApplicationFactory` API test for route/auth/JSON contract behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: Red run failed on missing `StripeReceiptUrl`, `ReceiptUrl`, and missing frontend proxy route. Green runs: `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --no-restore --filter "FullyQualifiedName~AccountServiceTests|FullyQualifiedName~AccountApiTests"` passed 13/13; full backend `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false dotnet test` passed 408/408.
+- Limitations: Local .NET test runs emitted `NU1900` warnings because the NuGet vulnerability feed was unavailable. Without `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false`, this macOS sandbox recursed through config change tokens and stack-overflowed in WebApplicationFactory before PAY-21 assertions could complete.
+
+### 2026-06-01 - ui-browser-testing - PAY-21 account receipts UI
+
+- Agent: Codex
+- Trigger: PAY-21 adds a browser-visible account-area receipts / purchase-history view and a Playwright acceptance test.
+- Action: Opened and followed the skill; added the `/api/me/payments` thin proxy, `AzureAccountPayment` client type, account purchase-history table, Stripe receipt link rendering, a React component acceptance test, and `tests/e2e/account-receipts.spec.ts` with seeded account/payment responses.
+- Output artifacts: `app/api/me/payments/route.ts`; `components/account/account-panel.tsx`; `lib/azure-api.ts`; `tests/unit/account-api.test.ts`; `tests/unit/account-receipts-component.test.ts`; `tests/e2e/account-receipts.spec.ts`; `docs/payment-receipts-tax-invoices.md`.
+- Verification evidence: `npm run typecheck`, `npm run test` (301 tests), `npm run build`, `npm run test -- tests/unit/account-api.test.ts`, `npm run test -- tests/unit/account-receipts-component.test.ts`, `git diff --check`, and banned-term grep over `app components public lib` passed. `npx playwright test tests/e2e/account-receipts.spec.ts --project=chromium` reached browser startup and failed before page execution with Chromium `MachPortRendezvousServer` permission denied in the local macOS sandbox.
+- Limitations: No desktop/mobile screenshots were captured because local Chromium could not launch. Component coverage verifies the seeded purchase list and receipt link; the Playwright spec is present for the supervisor or a browser-capable environment to execute.
