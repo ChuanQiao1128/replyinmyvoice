@@ -62,6 +62,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<CreditExpiryReminderService>();
         services.AddScoped<StripeEventService>();
+        services.AddScoped<BillingSupportService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddHttpClient();

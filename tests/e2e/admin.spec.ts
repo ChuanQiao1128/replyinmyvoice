@@ -74,6 +74,24 @@ function adminStatsPayload() {
   };
 }
 
+function adminBillingSupportPayload() {
+  return [
+    {
+      createdAt: "2026-05-31T10:00:00Z",
+      externalAuthUserId: "external-customer-1",
+      id: "2b0bf65e-e5fc-4df4-9397-05d7139a4225",
+      message: "I was charged twice for the same rewrite pack.",
+      relatedPaymentIntentId: "pi_test_admin_refund",
+      resolvedAt: null,
+      status: "open",
+      type: "refund",
+      updatedAt: "2026-05-31T10:00:00Z",
+      userEmail: "customer@example.test",
+      userId,
+    },
+  ];
+}
+
 function adminUserDetailPayload() {
   return {
     costToDateUsd: 0.42,
@@ -146,6 +164,9 @@ test("admin can open a user detail", async ({ context, page }) => {
   await page.route("**/api/admin/users?page=*", async (route) => {
     await route.fulfill({ json: adminUsersPayload() });
   });
+  await page.route("**/api/admin/billing-support-requests", async (route) => {
+    await route.fulfill({ json: adminBillingSupportPayload() });
+  });
   await page.route(`**/api/admin/users/${userId}`, async (route) => {
     await route.fulfill({ json: adminUserDetailPayload() });
   });
@@ -153,6 +174,10 @@ test("admin can open a user detail", async ({ context, page }) => {
   await page.goto("/admin");
 
   await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Billing support queue" }),
+  ).toBeVisible();
+  await expect(page.getByText("I was charged twice")).toBeVisible();
   await expect(page.getByText("customer@example.test")).toBeVisible();
 
   await page.getByRole("link", { name: /customer@example\.test/ }).click();

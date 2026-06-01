@@ -23,6 +23,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsage> ApiKeyUsages => Set<ApiKeyUsage>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
+    public DbSet<BillingSupportRequest> BillingSupportRequests => Set<BillingSupportRequest>();
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
@@ -360,6 +361,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.AdminExternalAuthUserId).HasMaxLength(160);
             entity.Property(x => x.AdminEmail).HasMaxLength(320);
             entity.Property(x => x.Action).HasMaxLength(120);
+        });
+
+        modelBuilder.Entity<BillingSupportRequest>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.UserId, x.CreatedAt });
+            entity.HasIndex(x => new { x.Status, x.CreatedAt });
+            entity.HasIndex(x => x.RelatedPaymentIntentId)
+                .HasFilter("[RelatedPaymentIntentId] IS NOT NULL");
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.RelatedPaymentIntentId).HasMaxLength(160);
+            entity.Property(x => x.Message).HasMaxLength(2000);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.BillingSupportRequests)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

@@ -17,6 +17,8 @@ import { POST as issueRefund } from "../../app/api/admin/users/[userId]/refund/r
 import { POST as setSuspension } from "../../app/api/admin/users/[userId]/suspension/route";
 import { GET as userDetail } from "../../app/api/admin/users/[userId]/route";
 import { GET as listUsers } from "../../app/api/admin/users/route";
+import { GET as billingSupportQueue } from "../../app/api/admin/billing-support-requests/route";
+import { POST as resolveBillingSupportRequest } from "../../app/api/admin/billing-support-requests/[requestId]/resolve/route";
 import { getAzureApiBaseUrl } from "../../lib/azure-api";
 import { getCurrentAccessToken } from "../../lib/entra-auth";
 
@@ -32,6 +34,12 @@ function request(path: string, init: RequestInit = {}) {
 function context(id = userId) {
   return {
     params: Promise.resolve({ userId: id }),
+  };
+}
+
+function requestContext(requestId = "2b0bf65e-e5fc-4df4-9397-05d7139a4225") {
+  return {
+    params: Promise.resolve({ requestId }),
   };
 }
 
@@ -186,6 +194,63 @@ describe("admin API route handlers", () => {
           paymentIntentId: "pi_test_admin_refund",
           reason: "Launch test refund",
         }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessValue}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+  });
+
+  it("forwards admin billing support queue reads and resolve calls", async () => {
+    const supportRequestId = "2b0bf65e-e5fc-4df4-9397-05d7139a4225";
+    const queue = [
+      {
+        id: supportRequestId,
+        message: "I was charged twice.",
+        relatedPaymentIntentId: "pi_support_queue",
+        status: "open",
+        type: "refund",
+        userEmail: "customer@example.test",
+        userId,
+      },
+    ];
+    fetchMock()
+      .mockResolvedValueOnce(Response.json(queue, { status: 200 }))
+      .mockResolvedValueOnce(Response.json({ ...queue[0], status: "resolved" }, { status: 200 }));
+
+    await billingSupportQueue(
+      request("/api/admin/billing-support-requests", {
+        headers: { origin: appUrl },
+        method: "GET",
+      }),
+    );
+
+    await resolveBillingSupportRequest(
+      request(`/api/admin/billing-support-requests/${supportRequestId}/resolve`, {
+        headers: { origin: appUrl },
+        method: "POST",
+      }),
+      requestContext(supportRequestId),
+    );
+
+    expect(fetchMock()).toHaveBeenNthCalledWith(
+      1,
+      `${azureUrl}/api/admin/billing-support-requests`,
+      {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessValue}`,
+        },
+      },
+    );
+    expect(fetchMock()).toHaveBeenNthCalledWith(
+      2,
+      `${azureUrl}/api/admin/billing-support-requests/${supportRequestId}/resolve`,
+      {
+        body: "",
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${accessValue}`,

@@ -3,22 +3,36 @@
 import {
   AlertCircle,
   CheckCircle2,
+  LifeBuoy,
   Loader2,
   LogOut,
+  Send,
   Trash2,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
-import type { AzureAccountSummary } from "../../lib/azure-api";
+import type {
+  AzureAccountPayment,
+  AzureAccountSummary,
+  AzureBillingSupportRequest,
+} from "../../lib/azure-api";
 import { Button, LinkButton } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 type AccountState =
   | { status: "loading" }
-  | { status: "ready"; account: AzureAccountSummary }
+  | {
+      status: "ready";
+      account: AzureAccountSummary;
+      payments: AzureAccountPayment[];
+      supportRequests: AzureBillingSupportRequest[];
+    }
   | { status: "error"; message: string };
+
+type SupportRequestType = "refund" | "billing-question";
 
 function formatStatus(status: string) {
   const normalized = status.trim();
@@ -48,6 +62,50 @@ function formatDate(value: string | null) {
   }).format(date);
 }
 
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "Not set";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Not set";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatMoney(amount: number | null, currency: string | null) {
+  if (amount === null) {
+    return "Amount not stored";
+  }
+
+  const major = amount / 100;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      currency: currency?.toUpperCase() || "NZD",
+      style: "currency",
+    }).format(major);
+  } catch {
+    return `${amount} ${currency?.toUpperCase() ?? ""}`.trim();
+  }
+}
+
+function paymentOptionLabel(payment: AzureAccountPayment) {
+  const intent = payment.paymentIntentId ?? "No payment intent";
+  return `${intent} · ${formatMoney(payment.amount, payment.currency)} · ${formatDate(payment.date)}`;
+}
+
+function requestTypeLabel(type: SupportRequestType) {
+  return type === "refund" ? "Refund request" : "Billing question";
+}
+
 function usageCopy(account: AzureAccountSummary) {
   const { usage } = account;
   const cadence =
@@ -57,9 +115,11 @@ function usageCopy(account: AzureAccountSummary) {
 
 async function readJsonError(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
+    detail?: string;
     error?: string;
+    title?: string;
   } | null;
-  return payload?.error;
+  return payload?.error ?? payload?.detail ?? payload?.title;
 }
 
 async function loadAccount() {
@@ -81,6 +141,56 @@ async function loadAccount() {
   return (await response.json()) as AzureAccountSummary;
 }
 
+async function loadPayments() {
+  const response = await fetch("/api/me/payments", {
+    cache: "no-store",
+  });
+
+  if (response.status === 401) {
+    window.location.assign("/sign-in");
+    return [];
+  }
+
+  if (!response.ok) {
+    throw new Error((await readJsonError(response)) ?? "Could not load purchases.");
+  }
+
+  return (await response.json()) as AzureAccountPayment[];
+}
+
+async function loadSupportRequests() {
+  const response = await fetch("/api/billing-support-requests", {
+    cache: "no-store",
+  });
+
+  if (response.status === 401) {
+    window.location.assign("/sign-in");
+    return [];
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      (await readJsonError(response)) ?? "Could not load billing support requests.",
+    );
+  }
+
+  return (await response.json()) as AzureBillingSupportRequest[];
+}
+
+async function loadAccountBundle() {
+  const account = await loadAccount();
+  if (!account) {
+    return null;
+  }
+
+  const [payments, supportRequests] = await Promise.all([
+    loadPayments(),
+    loadSupportRequests(),
+  ]);
+
+  return { account, payments, supportRequests };
+}
+
 export function AccountPanel() {
   const [accountState, setAccountState] = useState<AccountState>({
     status: "loading",
@@ -90,15 +200,21 @@ export function AccountPanel() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [supportType, setSupportType] = useState<SupportRequestType>("refund");
+  const [supportPaymentIntentId, setSupportPaymentIntentId] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
+  const [supportError, setSupportError] = useState<string | null>(null);
+  const [supportNotice, setSupportNotice] = useState<string | null>(null);
+  const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
 
   useEffect(() => {
     let isCurrent = true;
 
     async function refreshAccount() {
       try {
-        const account = await loadAccount();
-        if (isCurrent && account) {
-          setAccountState({ account, status: "ready" });
+        const bundle = await loadAccountBundle();
+        if (isCurrent && bundle) {
+          setAccountState({ ...bundle, status: "ready" });
         }
       } catch (error) {
         if (isCurrent) {
@@ -122,6 +238,13 @@ export function AccountPanel() {
 
   const readyAccount =
     accountState.status === "ready" ? accountState.account : undefined;
+  const payments = accountState.status === "ready" ? accountState.payments : [];
+  const supportRequests =
+    accountState.status === "ready" ? accountState.supportRequests : [];
+  const paymentOptions = useMemo(
+    () => payments.filter((payment) => payment.paymentIntentId),
+    [payments],
+  );
   const email = readyAccount?.email?.trim() || "No email on file";
   const canConfirmDelete = useMemo(() => {
     const value = confirmation.trim();
@@ -145,6 +268,58 @@ export function AccountPanel() {
   function signOut() {
     setIsSigningOut(true);
     window.location.assign("/api/auth/logout");
+  }
+
+  async function submitSupportRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (accountState.status !== "ready" || isSubmittingSupport) {
+      return;
+    }
+
+    const message = supportMessage.trim();
+    if (message.length < 10) {
+      setSupportError("Add a short message with the billing details.");
+      return;
+    }
+
+    setSupportError(null);
+    setSupportNotice(null);
+    setIsSubmittingSupport(true);
+
+    try {
+      const response = await fetch("/api/billing-support-requests", {
+        body: JSON.stringify({
+          message,
+          relatedPaymentIntentId: supportPaymentIntentId || null,
+          type: supportType,
+        }),
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          (await readJsonError(response)) ?? "Could not send this request.",
+        );
+      }
+
+      const created = (await response.json()) as AzureBillingSupportRequest;
+      setAccountState({
+        ...accountState,
+        supportRequests: [created, ...accountState.supportRequests],
+      });
+      setSupportMessage("");
+      setSupportNotice("Request received. We sent a confirmation to your email.");
+    } catch (error) {
+      setSupportError(
+        error instanceof Error ? error.message : "Could not send this request.",
+      );
+    } finally {
+      setIsSubmittingSupport(false);
+    }
   }
 
   async function deleteAccount() {
@@ -217,11 +392,15 @@ export function AccountPanel() {
               onClick={() => {
                 setAccountState({ status: "loading" });
                 void loadAccount()
-                  .then((loadedAccount) => {
+                  .then(async (loadedAccount) => {
                     if (loadedAccount) {
+                      const [loadedPayments, loadedSupportRequests] =
+                        await Promise.all([loadPayments(), loadSupportRequests()]);
                       setAccountState({
                         account: loadedAccount,
+                        payments: loadedPayments,
                         status: "ready",
+                        supportRequests: loadedSupportRequests,
                       });
                     }
                   })
@@ -322,6 +501,120 @@ export function AccountPanel() {
               </p>
             </div>
           </div>
+
+          <section className="rounded-lg border border-line bg-white/80 p-5">
+            <div className="flex items-start gap-3">
+              <LifeBuoy className="mt-0.5 h-5 w-5 text-clay" aria-hidden="true" />
+              <div className="min-w-0">
+                <h2 className="text-2xl">Billing support</h2>
+                <p className="mt-2 max-w-2xl text-sm text-ink/65">
+                  Send a billing question or refund request for owner review.
+                </p>
+              </div>
+            </div>
+
+            <form className="mt-5 grid gap-4" onSubmit={submitSupportRequest}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block text-sm font-semibold text-ink/70">
+                  Reason
+                  <select
+                    className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+                    onChange={(event) =>
+                      setSupportType(event.target.value as SupportRequestType)
+                    }
+                    value={supportType}
+                  >
+                    <option value="refund">Refund request</option>
+                    <option value="billing-question">Billing question</option>
+                  </select>
+                </label>
+
+                <label className="block text-sm font-semibold text-ink/70">
+                  Purchase
+                  <select
+                    className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+                    onChange={(event) =>
+                      setSupportPaymentIntentId(event.target.value)
+                    }
+                    value={supportPaymentIntentId}
+                  >
+                    <option value="">No specific purchase</option>
+                    {paymentOptions.map((payment) => (
+                      <option
+                        key={payment.paymentIntentId}
+                        value={payment.paymentIntentId ?? ""}
+                      >
+                        {paymentOptionLabel(payment)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block text-sm font-semibold text-ink/70">
+                Message
+                <Textarea
+                  className="mt-1 min-h-28"
+                  maxLength={2000}
+                  onChange={(event) => setSupportMessage(event.target.value)}
+                  placeholder="Tell us what happened and include any amount or date that matters."
+                  required
+                  value={supportMessage}
+                />
+              </label>
+
+              {supportError ? (
+                <p className="text-sm font-semibold text-rust">{supportError}</p>
+              ) : null}
+              {supportNotice ? (
+                <p className="text-sm font-semibold text-sage">{supportNotice}</p>
+              ) : null}
+
+              <div className="flex justify-end">
+                <Button disabled={isSubmittingSupport} type="submit">
+                  {isSubmittingSupport ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Send className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {isSubmittingSupport ? "Sending..." : "Send request"}
+                </Button>
+              </div>
+            </form>
+
+            <div className="mt-6 border-t border-line pt-5">
+              <h3 className="text-sm font-semibold uppercase text-ink/45">
+                Recent requests
+              </h3>
+              <div className="mt-3 grid gap-3">
+                {supportRequests.map((request) => (
+                  <div
+                    className="rounded-md border border-line bg-paper px-4 py-3"
+                    key={request.id}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase text-ink/45">
+                      <span>{requestTypeLabel(request.type)}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{request.status}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{formatDateTime(request.createdAt)}</span>
+                    </div>
+                    {request.relatedPaymentIntentId ? (
+                      <p className="mt-2 break-all font-mono text-xs text-ink/50">
+                        {request.relatedPaymentIntentId}
+                      </p>
+                    ) : null}
+                    <p className="mt-2 text-sm text-ink/70">{request.message}</p>
+                  </div>
+                ))}
+                {supportRequests.length === 0 ? (
+                  <p className="rounded-md border border-dashed border-line px-4 py-5 text-sm text-ink/55">
+                    No billing support requests yet.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </section>
         </div>
       </section>
 

@@ -79,6 +79,32 @@ public static class NotificationTemplates
                 """);
         });
 
+    public static readonly NotificationTemplate<BillingSupportRequestReceivedNotificationModel> BillingSupportRequestReceived = new(
+        "billing-support-request-received",
+        model =>
+        {
+            var name = SafeName(model.CustomerName);
+            var supportEmail = SafeEmail(model.SupportEmail);
+            var requestReference = string.IsNullOrWhiteSpace(model.RequestReference)
+                ? "your request"
+                : model.RequestReference.Trim();
+
+            return new RenderedNotification(
+                "We received your billing support request",
+                $"""
+                Hi {name},
+
+                We received {requestReference}. The owner will review it and follow up from the support queue.
+
+                If you need to add anything, reply to {supportEmail}.
+                """,
+                $"""
+                <p>Hi {Html(name)},</p>
+                <p>We received {Html(requestReference)}. The owner will review it and follow up from the support queue.</p>
+                <p>If you need to add anything, reply to <a href="mailto:{HtmlAttribute(supportEmail)}">{Html(supportEmail)}</a>.</p>
+                """);
+        });
+
     private static string SafeName(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "there" : value.Trim();
 
@@ -107,6 +133,11 @@ public sealed record CreditExpiringNotificationModel(
     DateTimeOffset ExpiresOnUtc);
 
 public sealed record RefundRequestReceivedNotificationModel(
+    string CustomerName,
+    string SupportEmail,
+    string RequestReference);
+
+public sealed record BillingSupportRequestReceivedNotificationModel(
     string CustomerName,
     string SupportEmail,
     string RequestReference);

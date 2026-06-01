@@ -133,6 +133,73 @@ public sealed class AdminHttpFunctions
         return new OkObjectResult(stats);
     }
 
+    [Function("AdminBillingSupportRequests")]
+    public async Task<IActionResult> ListBillingSupportRequests(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/billing-support-requests")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await RequireAdminResultAsync(request, cancellationToken);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        var queue = await _adminService.GetBillingSupportQueueAsync(cancellationToken);
+        return new OkObjectResult(queue);
+    }
+
+    [Function("AdminResolveBillingSupportRequest")]
+    public async Task<IActionResult> ResolveBillingSupportRequest(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/billing-support-requests/{requestId}/resolve")]
+        HttpRequest request,
+        string requestId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Admin access required",
+                "The authenticated user is not allowed to access admin endpoints.",
+                StatusCodes.Status403Forbidden);
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(requestId, out var parsedRequestId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid billing support request id",
+                "The admin billing support route requires a valid request id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var resolved = await _adminService.ResolveBillingSupportRequestAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            parsedRequestId,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+        if (resolved is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Billing support request not found",
+                "No billing support request exists for the requested id.",
+                StatusCodes.Status404NotFound);
+        }
+
+        return new OkObjectResult(resolved);
+    }
+
     [Function("AdminGrantCredits")]
     public async Task<IActionResult> GrantCredits(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/credits")]
