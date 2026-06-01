@@ -216,10 +216,11 @@ export function AdminDashboard() {
 
       {state.status === "ready" ? (
         <div className="space-y-6">
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <StatTile label="Total users" value={state.stats.totalUsers} />
             <StatTile label="Paid users" value={state.stats.paidUsers} />
             <StatTile label="Credits remaining" value={state.stats.creditRemaining} />
+            <StatTile label="Refund review" value={state.stats.refundReview.flaggedUserCount} />
             <StatTile label="Cost to date" value={formatUsd(state.stats.costToDateUsd)} />
           </section>
 

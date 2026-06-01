@@ -63,6 +63,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<StripeEventService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddSingleton<ICheckoutVelocityLimiter, CheckoutVelocityLimiter>();
         services.AddHttpClient();
         services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleRewriteModelClient));
         services.AddResilientProviderHttpClient(nameof(SaplingWritingSignalClient));

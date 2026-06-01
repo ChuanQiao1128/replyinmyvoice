@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -13,6 +14,8 @@ namespace ReplyInMyVoice.Tests;
 
 public sealed class AdminServiceTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     [Fact]
     public async Task AdminUsersList_ReturnsPagedUsersForAdmin()
     {
@@ -170,6 +173,63 @@ public sealed class AdminServiceTests
         stats.CostToDateUsd.Should().Be(0.050m);
     }
 
+    [Fact]
+    public async Task AdminStats_FlagsUsersAtRefundReviewCountOrAmountThreshold()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var countFlaggedUser = await SeedUserAsync(
+            fixture,
+            "clerk_refund_count",
+            "refund-count@example.com",
+            DateTimeOffset.Parse("2026-05-08T00:00:00Z"));
+        var amountFlaggedUser = await SeedUserAsync(
+            fixture,
+            "clerk_refund_amount",
+            "refund-amount@example.com",
+            DateTimeOffset.Parse("2026-05-09T00:00:00Z"));
+        var unflaggedUser = await SeedUserAsync(
+            fixture,
+            "clerk_refund_normal",
+            "refund-normal@example.com",
+            DateTimeOffset.Parse("2026-05-10T00:00:00Z"));
+
+        for (var refundNumber = 0; refundNumber < AdminService.RefundReviewCountThreshold; refundNumber++)
+        {
+            await SeedRefundAuditLogAsync(
+                fixture,
+                countFlaggedUser.Id,
+                $"pi_count_{refundNumber}",
+                100);
+        }
+
+        await SeedRefundAuditLogAsync(
+            fixture,
+            amountFlaggedUser.Id,
+            "pi_amount_threshold",
+            AdminService.RefundReviewAmountThreshold);
+        await SeedRefundAuditLogAsync(
+            fixture,
+            unflaggedUser.Id,
+            "pi_under_threshold",
+            AdminService.RefundReviewAmountThreshold - 1);
+
+        var function = CreateFunction(fixture);
+        var request = CreateRequest("admin-owner-oid", "owner@example.com");
+
+        var result = await function.GetStats(request, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var stats = okResult.Value.Should().BeOfType<AdminStatsResponse>().Subject;
+        stats.RefundReview.FlaggedUserCount.Should().Be(2);
+        stats.RefundReview.RefundCountThreshold.Should().Be(AdminService.RefundReviewCountThreshold);
+        stats.RefundReview.RefundAmountThreshold.Should().Be(AdminService.RefundReviewAmountThreshold);
+        stats.RefundReview.TotalRefundCount.Should().Be(AdminService.RefundReviewCountThreshold + 2);
+        stats.RefundReview.TotalRefundAmount.Should().Be(
+            AdminService.RefundReviewCountThreshold * 100 +
+            AdminService.RefundReviewAmountThreshold +
+            AdminService.RefundReviewAmountThreshold - 1);
+    }
+
     private static AdminHttpFunctions CreateFunction(DbFixture fixture) =>
         new(BuildConfiguration("admin-owner-oid, owner@example.com"), fixture.CreateContext);
 
@@ -273,6 +333,27 @@ public sealed class AdminServiceTests
             StartedAt = DateTimeOffset.Parse("2026-05-10T00:00:00Z"),
             FinishedAt = DateTimeOffset.Parse("2026-05-10T00:00:02Z"),
             TotalEstimatedCostUsd = totalCost,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedRefundAuditLogAsync(
+        DbFixture fixture,
+        Guid userId,
+        string paymentIntentId,
+        long amount)
+    {
+        await using var db = fixture.CreateContext();
+        db.AdminAuditLogs.Add(new AdminAuditLog
+        {
+            AdminExternalAuthUserId = "admin-owner-oid",
+            AdminEmail = "owner@example.com",
+            Action = "refund",
+            TargetUserId = userId,
+            DetailsJson = JsonSerializer.Serialize(
+                new AdminRefundAuditDetails(paymentIntentId, $"re_{paymentIntentId}", amount, "nzd", "succeeded"),
+                JsonOptions),
+            CreatedAt = DateTimeOffset.Parse("2026-05-11T00:00:00Z"),
         });
         await db.SaveChangesAsync();
     }

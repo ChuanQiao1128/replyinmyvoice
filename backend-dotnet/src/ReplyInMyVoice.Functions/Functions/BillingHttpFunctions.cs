@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -11,8 +12,11 @@ namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class BillingHttpFunctions(
     IConfiguration configuration,
-    IStripeBillingService billingService)
+    IStripeBillingService billingService,
+    ICheckoutVelocityLimiter? checkoutVelocityLimiter = null)
 {
+    private readonly ICheckoutVelocityLimiter checkoutLimiter = checkoutVelocityLimiter ?? new CheckoutVelocityLimiter();
+
     [Function("CreateCheckoutSession")]
     public async Task<IActionResult> CreateCheckoutSession(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "stripe/checkout")]
@@ -48,6 +52,16 @@ public sealed class BillingHttpFunctions(
                 "Unknown checkout SKU",
                 null,
                 StatusCodes.Status400BadRequest);
+        }
+
+        var velocity = checkoutLimiter.Check(authUser.ExternalAuthUserId);
+        if (!velocity.Allowed)
+        {
+            SetRetryAfter(request, velocity);
+            return FunctionHttpResults.Problem(
+                "Checkout rate limit reached",
+                "Too many checkout sessions were requested. Please wait before trying again.",
+                StatusCodes.Status429TooManyRequests);
         }
 
         try
@@ -127,6 +141,17 @@ public sealed class BillingHttpFunctions(
         }
 
         return new CheckoutSessionRequest(sku.ValueKind == JsonValueKind.String ? sku.GetString() : sku.ToString());
+    }
+
+    private static void SetRetryAfter(HttpRequest request, CheckoutVelocityLimitResult velocity)
+    {
+        if (velocity.RetryAfter is not { } retryAfter)
+        {
+            return;
+        }
+
+        var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+        request.HttpContext.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
     }
 }
 
