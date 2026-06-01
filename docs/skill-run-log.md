@@ -2445,3 +2445,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeReconciliationServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeReconciliationService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/StripeReconciliationTimerFunction.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Notifications/NotificationTemplates.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`.
 - Verification evidence: Focused red run failed on missing reconciliation types. Focused green run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter StripeReconciliationServiceTests` passed 4/4. Full backend gate `cd backend-dotnet && dotnet test` passed 411/411. Banned-term grep over `app components public lib` returned no matches.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. `dotnet ef migrations add` generated the migration after the application host timed out and fell back to the design-time context factory.
+
+### 2026-06-01 - data-module-review - PAY-25 price versioning credit invariants
+
+- Agent: Codex
+- Trigger: GitHub issue #393/PAY-25 changes `RewriteCredit` persistence and explicitly requires `data-module-review`.
+- Action: Opened and followed the skill; reviewed `RewriteCredit`, `StripeBillingService.SkuDefinitions`, checkout metadata grant creation, account summary balance reads, and partial refund clawback math. Added nullable `OriginalAmountGranted` with migration backfill so historical purchase size is persisted independently of the current SKU map.
+- Output artifacts: `docs/price-change-playbook.md`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531224044_AddRewriteCreditOriginalAmountGranted.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: Data risk scan ran over `backend-dotnet/src`; focused Stripe event tests passed 21/21; full `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: EF migration generation emitted a design-time host timeout warning after producing the migration, so the migration was reviewed and the backfill SQL was added manually.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-25 historical grant regression
+
+- Agent: Codex
+- Trigger: PAY-25 requires a .NET regression test proving later SKU size changes do not alter the balance of an old granted credit.
+- Action: Opened and followed the skill; added a failing xUnit regression in `StripeEventServiceTests` for an old 7-rewrite `quick_pack` grant while the current SKU map grants 10, then fixed the service to use the persisted original grant count for cumulative partial refunds.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`.
+- Verification evidence: Red run failed with `Expected credit.AmountGranted to be 3, but found 5`; green focused run for the regression passed 1/1; focused `StripeEventServiceTests` passed 21/21; full `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.

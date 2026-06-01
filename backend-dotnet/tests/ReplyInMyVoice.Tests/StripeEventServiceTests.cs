@@ -115,6 +115,7 @@ public sealed class StripeEventServiceTests
         credit.UserId.Should().Be(user.Id);
         credit.Source.Should().Be("PURCHASE");
         credit.AmountGranted.Should().Be(30);
+        credit.OriginalAmountGranted.Should().Be(30);
         credit.AmountConsumed.Should().Be(0);
         credit.StripeEventId.Should().Be("evt_paid_pack");
         credit.GrantedAt.Should().Be(now);
@@ -1174,6 +1175,60 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
+    public async Task ProcessWebhookEventAsync_PartialRefundUsesPersistedGrantAfterSkuSizeChange()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new StripeEventService(fixture.CreateContext);
+        var now = DateTimeOffset.Parse("2026-06-01T00:00:00Z");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 7,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-1),
+                StripePaymentIntentId = "pi_old_quick_size",
+                StripeSku = "quick_pack",
+                StripeAmountTotal = 700,
+                StripeCurrency = "nzd",
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var refund = await service.ProcessWebhookEventAsync(
+            "evt_refund_old_quick_size",
+            "charge.refunded",
+            """
+            {
+              "id": "evt_refund_old_quick_size",
+              "type": "charge.refunded",
+              "data": {
+                "object": {
+                  "id": "ch_old_quick_size",
+                  "payment_intent": "pi_old_quick_size",
+                  "amount": 700,
+                  "amount_refunded": 350,
+                  "refunded": false
+                }
+              }
+            }
+            """,
+            now);
+
+        refund.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var credit = await db.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_old_quick_size");
+        credit.AmountGranted.Should().Be(3);
+        credit.OriginalAmountGranted.Should().Be(7);
+        credit.AmountConsumed.Should().Be(0);
+    }
+
+    [Fact]
     public async Task ProcessWebhookEventAsync_SequentialPartialRefundsUseCumulativeOriginalGrant()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -1564,6 +1619,7 @@ public sealed class StripeEventServiceTests
                 UserId = credit.UserId,
                 Source = credit.Source,
                 AmountGranted = credit.AmountGranted,
+                OriginalAmountGranted = credit.OriginalAmountGranted,
                 AmountConsumed = credit.AmountConsumed,
                 GrantedAt = credit.GrantedAt,
                 ExpiresAt = credit.ExpiresAt,

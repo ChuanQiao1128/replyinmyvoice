@@ -629,6 +629,7 @@ public sealed class StripeEventService
                 UserId = user.Id,
                 Source = "PURCHASE",
                 AmountGranted = rewrites,
+                OriginalAmountGranted = rewrites,
                 AmountConsumed = 0,
                 GrantedAt = now,
                 ExpiresAt = now.AddDays(90),
@@ -798,6 +799,9 @@ public sealed class StripeEventService
         foreach (var credit in credits)
         {
             var previousGranted = credit.AmountGranted;
+            var previousOriginalGranted = credit.OriginalAmountGranted;
+            credit.OriginalAmountGranted ??= credit.AmountGranted;
+
             if (IsFullRefund(stripeObject))
             {
                 credit.AmountGranted = credit.AmountConsumed;
@@ -807,7 +811,8 @@ public sealed class StripeEventService
                 credit.AmountGranted = targetGranted;
             }
 
-            if (credit.AmountGranted != previousGranted)
+            if (credit.AmountGranted != previousGranted ||
+                credit.OriginalAmountGranted != previousOriginalGranted)
             {
                 credit.RowVersion = Guid.NewGuid();
             }
@@ -908,6 +913,11 @@ public sealed class StripeEventService
 
     private static int? ResolveOriginalGrantedRewrites(RewriteCredit credit)
     {
+        if (credit.OriginalAmountGranted is > 0)
+        {
+            return credit.OriginalAmountGranted;
+        }
+
         return StripeBillingService.TryGetSkuDefinition(credit.StripeSku, out var definition)
             ? definition!.Rewrites
             : null;
