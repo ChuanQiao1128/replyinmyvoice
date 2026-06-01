@@ -142,6 +142,8 @@ public sealed class AdminServiceTests
             DateTimeOffset.Parse("2026-05-06T00:00:00Z"),
             SubscriptionStatus.Active);
         var freeUser = await SeedUserAsync(fixture, "clerk_free_stats", "free-stats@example.com", DateTimeOffset.Parse("2026-05-07T00:00:00Z"));
+        var recentPurchaseAt = DateTimeOffset.UtcNow.AddDays(-10);
+        var olderPurchaseAt = DateTimeOffset.UtcNow.AddMonths(-13);
         await SeedUsagePeriodAsync(fixture, paidUser.Id, "paid:stats", quota: 90, used: 8, reserved: 1);
         await SeedUsagePeriodAsync(fixture, freeUser.Id, "free:lifetime", quota: 3, used: 2, reserved: 0);
         await SeedCreditAsync(
@@ -152,7 +154,18 @@ public sealed class AdminServiceTests
             amountConsumed: 3,
             stripePaymentIntentId: "pi_stats",
             stripeAmountTotal: 900,
-            stripeCurrency: "nzd");
+            stripeCurrency: "nzd",
+            grantedAt: recentPurchaseAt);
+        await SeedCreditAsync(
+            fixture,
+            paidUser.Id,
+            source: "PURCHASE",
+            amountGranted: 30,
+            amountConsumed: 0,
+            stripePaymentIntentId: "pi_stats_old",
+            stripeAmountTotal: 6900,
+            stripeCurrency: "nzd",
+            grantedAt: olderPurchaseAt);
         await SeedCostLogAsync(fixture, paidUser.Id, "stats-request-1", 0.030m);
         await SeedCostLogAsync(fixture, freeUser.Id, "stats-request-2", 0.020m);
 
@@ -167,10 +180,13 @@ public sealed class AdminServiceTests
         stats.PaidUsers.Should().Be(1);
         stats.UsageUsed.Should().Be(10);
         stats.UsageReserved.Should().Be(1);
-        stats.CreditRemaining.Should().Be(7);
-        stats.PaymentCount.Should().Be(1);
-        stats.PaymentAmountTotal.Should().Be(900);
+        stats.CreditRemaining.Should().Be(37);
+        stats.PaymentCount.Should().Be(2);
+        stats.PaymentAmountTotal.Should().Be(7800);
         stats.CostToDateUsd.Should().Be(0.050m);
+        stats.GstTurnover.Currency.Should().Be("nzd");
+        stats.GstTurnover.GrossAmountTotal.Should().Be(900);
+        stats.GstTurnover.Warning.Should().BeNull();
     }
 
     [Fact]
@@ -290,7 +306,8 @@ public sealed class AdminServiceTests
         string? stripeSku = null,
         long? stripeAmountTotal = null,
         string? stripeCurrency = null,
-        string? stripeReceiptUrl = null)
+        string? stripeReceiptUrl = null,
+        DateTimeOffset? grantedAt = null)
     {
         await using var db = fixture.CreateContext();
         db.RewriteCredits.Add(new RewriteCredit
@@ -299,7 +316,7 @@ public sealed class AdminServiceTests
             Source = source,
             AmountGranted = amountGranted,
             AmountConsumed = amountConsumed,
-            GrantedAt = DateTimeOffset.Parse("2026-05-10T00:00:00Z"),
+            GrantedAt = grantedAt ?? DateTimeOffset.Parse("2026-05-10T00:00:00Z"),
             StripeEventId = stripeEventId,
             StripePaymentIntentId = stripePaymentIntentId,
             StripeSku = stripeSku,

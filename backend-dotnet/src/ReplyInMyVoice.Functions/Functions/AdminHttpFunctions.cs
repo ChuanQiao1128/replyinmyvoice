@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Functions.Functions;
@@ -23,14 +24,16 @@ public sealed class AdminHttpFunctions
     public AdminHttpFunctions(
         IConfiguration configuration,
         Func<AppDbContext>? dbContextFactory = null,
-        IStripeRefundClient? refundClient = null)
+        IStripeRefundClient? refundClient = null,
+        INotificationService? notificationService = null)
     {
         _adminAccess = new AdminAccess(configuration);
         _adminService = dbContextFactory is null
             ? null
             : new AdminService(
                 dbContextFactory,
-                refundClient ?? new StripeBillingService(dbContextFactory, configuration));
+                refundClient ?? new StripeBillingService(dbContextFactory, configuration),
+                new TaxTurnoverService(dbContextFactory, configuration, notificationService));
     }
 
     [Function("AdminPing")]

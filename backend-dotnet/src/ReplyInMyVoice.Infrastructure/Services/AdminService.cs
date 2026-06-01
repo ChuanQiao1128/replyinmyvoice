@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -8,12 +9,15 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class AdminService(
     Func<AppDbContext> dbContextFactory,
-    IStripeRefundClient? stripeRefundClient = null)
+    IStripeRefundClient? stripeRefundClient = null,
+    TaxTurnoverService? taxTurnoverService = null)
 {
     private const int MaxPageSize = 100;
     private const int AdminCreditExpiryDays = 90;
     private const string AdminCreditSource = "ADMIN";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly TaxTurnoverService _taxTurnoverService =
+        taxTurnoverService ?? new TaxTurnoverService(dbContextFactory, new ConfigurationBuilder().Build());
 
     public async Task<AdminUsersListResponse> GetUsersAsync(
         int page,
@@ -319,6 +323,10 @@ public sealed class AdminService(
                 x.StripeAmountTotal,
                 x.StripeCurrency))
             .ToList();
+        var gstTurnover = await _taxTurnoverService.GetRollingTwelveMonthReportAsync(
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
         return new AdminStatsResponse(
             totalUsers,
             paidUsers,
@@ -328,7 +336,8 @@ public sealed class AdminService(
             creditRows.Sum(x => Math.Max(x.AmountGranted - x.AmountConsumed, 0)),
             paymentRows.Count,
             paymentRows.Sum(x => x.StripeAmountTotal ?? 0),
-            costRows.Sum());
+            costRows.Sum(),
+            gstTurnover);
     }
 
     public async Task<IReadOnlyList<AdminBillingSupportRequest>> GetBillingSupportQueueAsync(
@@ -822,7 +831,8 @@ public sealed record AdminStatsResponse(
     int CreditRemaining,
     int PaymentCount,
     long PaymentAmountTotal,
-    decimal CostToDateUsd);
+    decimal CostToDateUsd,
+    TaxTurnoverReport GstTurnover);
 
 public sealed record AdminBillingSupportRequest(
     Guid Id,

@@ -64,6 +64,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<StripeEventService>();
         services.AddScoped<BillingSupportService>();
         services.AddSingleton<IStripeBillingClient, StripeBillingClient>();
+        services.AddScoped<TaxTurnoverService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddHttpClient();

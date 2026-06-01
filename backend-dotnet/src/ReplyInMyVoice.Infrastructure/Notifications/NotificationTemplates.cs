@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 
 namespace ReplyInMyVoice.Infrastructure.Notifications;
@@ -105,6 +106,32 @@ public static class NotificationTemplates
                 """);
         });
 
+    public static readonly NotificationTemplate<GstTurnoverThresholdNotificationModel> GstTurnoverThreshold = new(
+        "gst-turnover-threshold",
+        model =>
+        {
+            var supportEmail = SafeEmail(model.SupportEmail);
+            var gross = FormatNzd(model.GrossAmountTotal);
+            var threshold = FormatNzd(model.RegistrationThresholdAmountTotal);
+            var warningPercent = Math.Round(model.WarningFraction * 100m, 0);
+            var windowEnd = model.WindowEndUtc.ToString("yyyy-MM-dd");
+
+            return new RenderedNotification(
+                "GST turnover threshold warning",
+                $"""
+                Reply In My Voice gross paid revenue for the rolling 12-month window ending {windowEnd} is {gross}.
+
+                This is at or above the configured {warningPercent}% warning level toward the {threshold} GST registration threshold. Review the admin stats and complete the owner GST checklist before switching Stripe Tax on.
+
+                Support contact: {supportEmail}
+                """,
+                $"""
+                <p>Reply In My Voice gross paid revenue for the rolling 12-month window ending {Html(windowEnd)} is {Html(gross)}.</p>
+                <p>This is at or above the configured {Html(warningPercent.ToString("0"))}% warning level toward the {Html(threshold)} GST registration threshold. Review the admin stats and complete the owner GST checklist before switching Stripe Tax on.</p>
+                <p>Support contact: <a href="mailto:{HtmlAttribute(supportEmail)}">{Html(supportEmail)}</a></p>
+                """);
+        });
+
     private static string SafeName(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "there" : value.Trim();
 
@@ -113,6 +140,9 @@ public static class NotificationTemplates
 
     private static string SafeUrl(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "https://replyinmyvoice.com/app" : value.Trim();
+
+    private static string FormatNzd(long minorUnits) =>
+        $"NZ${(minorUnits / 100m).ToString("0.00", CultureInfo.InvariantCulture)}";
 
     private static string Html(string value) =>
         WebUtility.HtmlEncode(value);
@@ -141,3 +171,10 @@ public sealed record BillingSupportRequestReceivedNotificationModel(
     string CustomerName,
     string SupportEmail,
     string RequestReference);
+
+public sealed record GstTurnoverThresholdNotificationModel(
+    long GrossAmountTotal,
+    long RegistrationThresholdAmountTotal,
+    decimal WarningFraction,
+    DateTimeOffset WindowEndUtc,
+    string? SupportEmail);

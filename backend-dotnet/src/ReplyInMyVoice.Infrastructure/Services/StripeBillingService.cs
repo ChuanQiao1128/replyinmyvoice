@@ -50,7 +50,8 @@ public sealed class StripeBillingService(
                 priceId,
                 appUrl,
                 externalAuthUserId,
-                metadata),
+                metadata,
+                IsAutomaticTaxEnabled(configuration)),
             stripeClient,
             cancellationToken);
 
@@ -194,6 +195,16 @@ public sealed class StripeBillingService(
     private string GetRequiredConfiguration(string key) =>
         configuration[key] ?? throw new InvalidOperationException($"{key}_missing");
 
+    private static bool IsAutomaticTaxEnabled(IConfiguration configuration)
+    {
+        var value = configuration["STRIPE_AUTOMATIC_TAX_ENABLED"]?.Trim();
+        return value is not null &&
+            (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(value, "on", StringComparison.OrdinalIgnoreCase));
+    }
+
     public static bool IsKnownSku(string sku) => SkuDefinitions.ContainsKey(sku);
 
     public static bool TryGetSkuDefinition(string? sku, out CheckoutSkuDefinition? definition)
@@ -301,6 +312,25 @@ public sealed class StripeBillingClient : IStripeBillingClient
             };
         }
 
+        if (request.AutomaticTaxEnabled)
+        {
+            options.AutomaticTax = new Stripe.Checkout.SessionAutomaticTaxOptions
+            {
+                Enabled = true,
+            };
+            options.BillingAddressCollection = "required";
+            options.CustomerUpdate = new Stripe.Checkout.SessionCustomerUpdateOptions
+            {
+                Address = "auto",
+                Name = "auto",
+            };
+            options.TaxIdCollection = new Stripe.Checkout.SessionTaxIdCollectionOptions
+            {
+                Enabled = true,
+                Required = "if_supported",
+            };
+        }
+
         var sessionService = new Stripe.Checkout.SessionService(stripeClient);
         var session = await sessionService.CreateAsync(options, cancellationToken: cancellationToken);
         return new StripeCheckoutSessionResult(session.Url, session.CustomerId);
@@ -382,7 +412,8 @@ public sealed record StripeCheckoutSessionCreateRequest(
     string PriceId,
     string AppUrl,
     string ExternalAuthUserId,
-    IReadOnlyDictionary<string, string> Metadata);
+    IReadOnlyDictionary<string, string> Metadata,
+    bool AutomaticTaxEnabled = false);
 
 public sealed record StripeCheckoutSessionResult(string? Url, string? CustomerId);
 
