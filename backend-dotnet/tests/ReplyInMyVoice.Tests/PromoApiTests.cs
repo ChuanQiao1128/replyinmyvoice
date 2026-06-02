@@ -227,7 +227,7 @@ public sealed class PromoApiTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<PromoRedeemResponse>();
         body.Should().NotBeNull();
         body!.CreditsGranted.Should().Be(3);
-        body.TotalRemaining.Should().Be(6);
+        body.TotalRemaining.Should().Be(3);
         body.ExpiresAt.Should().NotBeNull();
         body.ExpiresAt!.Value.Should().BeOnOrAfter(before.AddDays(90));
         body.ExpiresAt.Value.Should().BeOnOrBefore(after.AddDays(90).AddSeconds(1));

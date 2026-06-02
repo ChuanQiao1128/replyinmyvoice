@@ -51,6 +51,8 @@ public sealed class AccountApiTests : IAsyncLifetime
         body.Should().NotBeNull();
         body!.ExternalAuthUserId.Should().Be("entra_email_user");
         body.Email.Should().Be("teacher@example.com");
+        body.Usage.Remaining.Should().Be(0);
+        body.Usage.Exhausted.Should().BeTrue();
 
         await using var db = CreateContext();
         var user = await db.AppUsers.SingleAsync();
@@ -169,11 +171,89 @@ public sealed class AccountApiTests : IAsyncLifetime
         body.Promo.Eligible.Should().BeFalse();
         body.Promo.TrialRemaining.Should().Be(2);
         body.Promo.TrialExpiresAt.Should().BeCloseTo(expiresAt, TimeSpan.FromSeconds(1));
-        body.Usage.Remaining.Should().Be(5);
+        body.Usage.Remaining.Should().Be(2);
+        body.Usage.Exhausted.Should().BeFalse();
         body.Usage.Sources.Should().ContainSingle(x =>
             x.Source == "PROMO" &&
             x.Label == "Trial rewrites" &&
             x.Remaining == 2);
+    }
+
+    [Fact]
+    public async Task Me_reports_exhausted_state_when_promo_credit_is_used()
+    {
+        var userId = Guid.NewGuid();
+        var promoCodeId = Guid.NewGuid();
+        var creditId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra_promo_exhausted",
+                Email = "promo-exhausted@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.PromoCodes.Add(new PromoCode
+            {
+                Id = promoCodeId,
+                Code = "EXHAUSTEDCHECK",
+                DisplayCode = "ExhaustedCheck",
+                Description = "Trial credits",
+                Kind = PromoCodeKind.TrialCredits,
+                CreditsGranted = 3,
+                GrantTtlDays = 90,
+                ValidFrom = now.AddDays(-1),
+                ValidUntil = now.AddDays(30),
+                MaxRedemptionsGlobal = 100,
+                MaxRedemptionsPerUser = 1,
+                RedemptionCount = 1,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                Id = creditId,
+                UserId = userId,
+                Source = "PROMO",
+                AmountGranted = 3,
+                AmountConsumed = 3,
+                GrantedAt = now,
+                ExpiresAt = now.AddDays(30),
+            });
+            db.PromoCodeRedemptions.Add(new PromoCodeRedemption
+            {
+                PromoCodeId = promoCodeId,
+                UserId = userId,
+                RewriteCreditId = creditId,
+                CreditsGranted = 3,
+                CodeSnapshot = "EXHAUSTEDCHECK",
+                Status = PromoCodeRedemptionStatus.Applied,
+                RedeemedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "entra_promo_exhausted");
+        client.DefaultRequestHeaders.Add("X-User-Email", "promo-exhausted@example.com");
+
+        var response = await client.GetAsync("/api/me");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<AccountResponse>();
+        body.Should().NotBeNull();
+        body!.Usage.Remaining.Should().Be(0);
+        body.Usage.Exhausted.Should().BeTrue();
+        body.Promo.HasRedeemed.Should().BeTrue();
+        body.Promo.Eligible.Should().BeFalse();
+        body.Promo.TrialRemaining.Should().Be(0);
     }
 
     private WebApplicationFactory<Program> CreateFactory()
@@ -220,6 +300,7 @@ public sealed class AccountApiTests : IAsyncLifetime
 
     private sealed record AccountUsageResponse(
         int Remaining,
+        bool Exhausted,
         IReadOnlyList<AccountUsageSourceResponse> Sources);
 
     private sealed record AccountUsageSourceResponse(

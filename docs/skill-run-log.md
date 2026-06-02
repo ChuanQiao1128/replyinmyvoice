@@ -2292,3 +2292,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoConcurrencyTests.cs`; `docs/skill-run-log.md`.
 - Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter PromoConcurrencyTests --no-restore` passed 8 tests; `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 438 tests; `git diff --check` passed; the new backend test file had no prohibited-term matches.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because the remote package vulnerability feed was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-02 - system-spec-synthesis - PROMO-06 free baseline consistency checkpoint
+
+- Agent: Codex
+- Trigger: GitHub issue #432 and `plans/promo-issues/PROMO-06-free-baseline-zero.md` require an implementation-ready free-baseline cutover plan across `/api/me`, `ReserveAsync`, EF migration, and account erasure.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the PROMO-06 issue body, the PROMO-06 brief, and `plans/promo-code-trial-spec.md` sections 4 and 16.1. Converted the requirements into implementation checkpoints: free baseline default zero with `FREE_BASELINE_REWRITES` runtime override, preserve paid quota, document that `ReserveAsync` receives and applies the caller quota instead of trusting stale persisted free-period limits, add a forward-only data migration for `free:lifetime`, and extend account erasure to clear promo redemption IP hashes while retaining rows.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260602091811_FreeBaselineZero.cs`; backend acceptance tests; `docs/skill-run-log.md`.
+- Verification evidence: Focused PROMO-06 test command passed 46 tests; full `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 445 tests after the generated migration pair was finalized.
+- Limitations: PR description authoring is handled by the supervisor; the required finding is recorded in this log and final report for the supervisor to carry into the PR.
+
+### 2026-06-02 - state-machine-modeling - PROMO-06 quota and promo-credit states
+
+- Agent: Codex
+- Trigger: PROMO-06 changes free quota, promo-credit availability, exhausted/paywall behavior, and account erasure privacy state.
+- Action: Opened and followed the skill; modeled account quota states as free-baseline zero, promo credit available, promo credit exhausted, and paid unchanged. Events covered account summary read, rewrite reserve request, promo-credit consumption, old free-period row after migration, and account erase. Invariants: new inactive users have zero remaining without credit, stale free-period rows do not add remaining quota, reserve without credit creates no attempt/reservation/outbox, active PROMO credits are the only trial remaining source, exhausted PROMO credits set `Usage.Exhausted`, and erasure retains redemption records while nulling IP hash data.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Tests assert the allowed and rejected state transitions above; focused tests passed 46/46 and full backend tests passed 445/445.
+- Limitations: No new persisted state enum was added; the state remains derived from existing usage-period counters, active credits, and promo redemption rows.
+
+### 2026-06-02 - data-module-review - PROMO-06 UsagePeriods migration and promo erasure
+
+- Agent: Codex
+- Trigger: PROMO-06 changes EF migration data, usage counter invariants, and `PromoCodeRedemption` privacy handling during account deletion.
+- Action: Opened and followed the skill; reviewed `UsagePeriod`, `RewriteCredit`, `UsageReservation`, `PromoCodeRedemption`, `AppDbContext`, `AccountService`, and `QuotaService` together. Added a generated EF migration pair with SQL-only `Up` that updates `UsagePeriods` rows where `PeriodKey='free:lifetime'` to `QuotaLimit=0`, refreshes `UpdatedAt`, and changes `RowVersion`; `Down` is empty for forward-only behavior. Ran `scan_data_risks.py --limit 40 backend-dotnet`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260602091811_FreeBaselineZero.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260602091811_FreeBaselineZero.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/FreeBaselineMigrationTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `FreeBaselineMigrationTests` inspects migration operations for the free-row update and empty `Down`; full backend tests passed 445/445. Touched-file prohibited-term scan returned no matches.
+- Limitations: The first scan invocation used multiple roots and returned a usage error; it was rerun successfully with the single `backend-dotnet` root. The scan reports broad pre-existing quota/idempotency signal rows by design.
+
+### 2026-06-02 - resilience-test-generation - PROMO-06 no-credit and stale-row failure matrix
+
+- Agent: Codex
+- Trigger: PROMO-06 tests quota reservation behavior around stale free-period rows, no-credit requests, promo-credit availability, and exhausted promo credits.
+- Action: Opened and followed the skill; treated `QuotaService.ReserveAsync` plus `/api/rewrite` as the critical operation and `no successful rewrite attempt without period quota or active credit` as the invariant. Added deterministic tests for no-credit rewrite rejection, old free period with two used rewrites rejecting the next request, promo credit preserving success paths, and exhausted promo credit setting account exhaustion.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused PROMO-06 tests passed 46/46; full backend tests passed 445/445.
+- Limitations: No live provider, payment, queue, or cloud dependency was called; tests use EF SQLite and local WebApplicationFactory paths.
+
+### 2026-06-02 - dotnet-backend-testing - PROMO-06 backend acceptance coverage
+
+- Agent: Codex
+- Trigger: PROMO-06 requires C#/.NET tests for `/api/me`, `ReserveAsync`, EF migration behavior, promo-credit account summary, promo exhaustion, and account erasure.
+- Action: Opened and followed the skill; wrote failing xUnit/WebApplicationFactory/EF SQLite tests before production changes, then implemented the account service, rewrite caller wiring, EF migration, and adjusted legacy credit-total expectations. Reused xUnit, FluentAssertions, EF Core SQLite, WebApplicationFactory, and existing local fixture patterns.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/FreeBaselineMigrationTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminCreditAdjustTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Initial focused test run failed before implementation because `GetUsagePlan` lacked a configuration overload; after implementation, focused tests passed 46/46 and full `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 445/445.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because the remote package vulnerability feed was unavailable, but restore/build/test completed with cached packages.

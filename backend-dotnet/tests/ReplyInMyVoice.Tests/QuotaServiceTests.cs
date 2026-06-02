@@ -333,6 +333,52 @@ public sealed class QuotaServiceTests
     }
 
     [Fact]
+    public async Task ReserveAsync_rejects_free_rewrite_without_credit_when_old_period_has_two_used()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-02T00:00:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 2,
+                ReservedCount = 0,
+                CreatedAt = now.AddDays(-10),
+                UpdatedAt = now.AddDays(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var plan = AccountService.GetUsagePlan(user);
+        var service = new QuotaService(fixture.CreateContext);
+
+        var result = await service.ReserveAsync(
+            user.Id,
+            "idem-old-free-no-credit",
+            "hash-old-free-no-credit",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            plan.PeriodKey,
+            plan.QuotaLimit,
+            now,
+            TimeSpan.FromMinutes(10));
+
+        result.Kind.Should().Be(ReserveRewriteResultKind.QuotaExceeded);
+
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.QuotaLimit.Should().Be(3);
+        period.UsedCount.Should().Be(2);
+        period.ReservedCount.Should().Be(0);
+        (await db.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task MarkProcessingAsync_allows_only_one_pending_claim()
     {
         await using var fixture = await DbFixture.CreateAsync();
