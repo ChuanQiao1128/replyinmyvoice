@@ -2220,3 +2220,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Initial focused tests failed before implementation because `AccountSummary.Promo` and `/api/promo/redeem` were missing. After implementation, `timeout 180 dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter "FullyQualifiedName~PromoApiTests|FullyQualifiedName~AccountSummaryIncludesPromoBlockAndTrialCreditLabel|FullyQualifiedName~Me_includes_promo_block_and_trial_credit_label" --logger "console;verbosity=normal"` passed 13 tests, and full `dotnet test backend-dotnet/ReplyInMyVoice.sln --logger "console;verbosity=normal"` passed 425 tests.
 - Limitations: A local git commit was attempted but blocked by sandbox write access to `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-429/index.lock`; no push or PR was attempted.
+
+### 2026-06-02 - system-spec-synthesis - PROMO-04 admin promo API contract
+
+- Agent: Codex
+- Trigger: GitHub issue #430 and `plans/promo-issues/PROMO-04-admin-endpoints.md` require implementation-ready admin API contracts for promo create/list/detail/update/disable/enable.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the PROMO-04 brief, and `plans/promo-code-trial-spec.md` section 7. Converted the requirements into implementation checkpoints: reuse `AdminAccess.RequireAdminAsync`, keep backend-only scope, normalize/store promo codes through the existing EF entities, write `AdminAuditLog` for every promo mutation, and expose aggregate stats with IP hash clusters only.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoAdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminPromoTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused PROMO-04 tests passed 5 tests with `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter AdminPromoTests --no-restore`; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 430 tests.
+- Limitations: This issue implemented backend endpoints only; the admin UI remains owned by PROMO-10.
+
+### 2026-06-02 - state-machine-modeling - PROMO-04 admin active-state transitions
+
+- Agent: Codex
+- Trigger: PROMO-04 changes admin-controlled promo-code lifecycle transitions for disable and enable, while list/detail status is derived from active flag, validity window, and global cap.
+- Action: Opened and followed the skill; modeled `PromoCode` status as pending/active/expired/exhausted/disabled derived state and implemented disable/enable as explicit `IsActive` transitions with audit rows. Kept redemptions and credits unchanged by admin list/detail/stat reads.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoAdminService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminPromoTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `AdminPromoTests` asserts non-admin rejection, create, duplicate rejection, disable, and stats payload behavior; full backend suite passed 430 tests.
+- Limitations: No new persisted enum state was added because the promo spec defines admin status as derived from existing columns.
+
+### 2026-06-02 - data-module-review - PROMO-04 promo admin persistence and audit
+
+- Agent: Codex
+- Trigger: PROMO-04 changes EF-backed promo-code administration, validation, audit persistence, and redemption-stat queries.
+- Action: Opened and followed the skill; reviewed `PromoCode`, `PromoCodeRedemption`, `RewriteCredit`, `AdminAuditLog`, `AppDbContext`, `PromoService`, and existing admin audit patterns. Implemented service-layer validation mirroring promo CHECK constraints, duplicate-code rejection before save plus unique-index fallback, audit JSON containing `promoCodeId` and changed field names, and stats derived from applied redemptions plus linked credit consumption.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoAdminService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminPromoTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `scan_data_risks.py --limit 40` ran and reported broad pre-existing quota/idempotency signals, with no PROMO-04-specific blocker found. Focused tests and full backend suite passed.
+- Limitations: `AdminAuditLog` has no dedicated promo-code foreign-key column, so PROMO-04 records `promoCodeId` inside `DetailsJson` to reuse the existing audit table without a schema change.
+
+### 2026-06-02 - dotnet-backend-testing - PROMO-04 admin endpoint integration tests
+
+- Agent: Codex
+- Trigger: PROMO-04 requires C#/.NET integration tests for admin auth, create/audit, duplicate handling, disable persistence, and privacy-safe stats.
+- Action: Opened and followed the skill; wrote failing xUnit tests first against `AdminHttpFunctions`, then implemented `PromoAdminService` and the six admin promo routes. Reused existing `DbFixture`, xUnit, FluentAssertions, EF Core SQLite, and direct Functions invocation patterns.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminPromoTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoAdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Initial focused test run failed before implementation because `CreatePromoCode`, `DisablePromoCode`, `GetPromoCodeDetail`, and response types were missing. After implementation, `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter AdminPromoTests --no-restore` passed 5 tests and `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 430 tests.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because the remote package vulnerability feed was unavailable, but restore/build/test completed with cached packages.
