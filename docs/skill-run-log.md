@@ -2373,3 +2373,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/app/redeem-code-card.tsx`; `app/app/page.tsx`; `tests/e2e/promo-redeem-ui.spec.ts`; `playwright.config.ts`; `tests/unit/workspace-copy.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: `npm run typecheck` passed; `npm run test` passed 309/309; `npm run lint` passed; `npm run build` passed. Focused Playwright attempts reached the browser launch phase after production build/start, but local Chromium launch failed before any page loaded because this macOS sandbox denies the browser process Mach-port registration.
 - Limitations: Browser assertions are committed and ready for the supervisor/CI environment, but local Playwright execution could not complete in this sandbox. A full guard scan still reports pre-existing copy-guard strings in `lib/rewrite-eval-cases.ts`; the diff-only scan for this issue returned no matches.
+
+### 2026-06-02 - system-spec-synthesis - PROMO-09 signup verification contract
+
+- Agent: Codex
+- Trigger: PROMO-09 changes the Entra-native signup API contract and browser-visible signup form by requiring Turnstile verification and listed email-domain rejection before account creation.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the PROMO-09 issue body, `plans/promo-issues/PROMO-09-signup-hardening.md`, and `plans/promo-code-trial-spec.md` sections 7.3 and 8.3. Converted the requirements into checkpoints: server-side signup-start gate, runtime Turnstile verification, bundled listed-domain checker, signup widget using `NEXT_PUBLIC_TURNSTILE_SITE_KEY` with dev test fallback, and scoped unit/E2E coverage without changing Google sign-in.
+- Output artifacts: `app/api/auth/signup/start/route.ts`; `components/auth/google-oauth-card.tsx`; `components/auth/auth-panels.module.css`; `lib/disposable-email-domains.ts`; `lib/disposable-email-domains.json`; `tests/unit/auth-signup-routes.test.ts`; `tests/e2e/auth-gate.spec.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused signup route test failed before implementation for the new gates, then `npm run test -- tests/unit/auth-signup-routes.test.ts` passed 10/10. `npm run typecheck`, `npm run test`, and `npm run build` passed after implementation.
+- Limitations: Local commit creation failed because Git worktree metadata is outside the writable sandbox. No push, PR, deploy, payment, or secret-file changes were attempted.
+
+### 2026-06-02 - resilience-test-generation - PROMO-09 Turnstile failure gates
+
+- Agent: Codex
+- Trigger: PROMO-09 adds provider-dependent signup protection and fail-closed behavior for missing, rejected, or unavailable Turnstile verification.
+- Action: Opened and followed the skill; treated `/api/auth/signup/start` as the critical operation and `no Entra signup call unless email/password are valid, domain is allowed, and Turnstile verifies` as the invariant. Added deterministic local mocks for Turnstile success, failed token verification, and missing runtime config.
+- Output artifacts: `tests/unit/auth-signup-routes.test.ts`; `app/api/auth/signup/start/route.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run test -- tests/unit/auth-signup-routes.test.ts` passed 10/10 and asserts that Entra `signupStart` and `signupChallenge` are not called for listed domains, missing tokens, failed verification, or missing verification config.
+- Limitations: No live Cloudflare, Entra, database, or payment dependency was called; provider behavior is covered with local fakes. No secrets or token values were logged.
+
+### 2026-06-02 - ui-browser-testing - PROMO-09 signup form verification
+
+- Agent: Codex
+- Trigger: PROMO-09 adds a Turnstile widget and browser-visible signup errors for blank verification and listed email domains.
+- Action: Opened and followed the skill; added focused Playwright coverage to `tests/e2e/auth-gate.spec.ts` with an in-page Turnstile stub, blank-token disabled-submit check, listed-domain guidance check, and normal signup-start success flow to the email-code step.
+- Output artifacts: `components/auth/google-oauth-card.tsx`; `components/auth/auth-panels.module.css`; `tests/e2e/auth-gate.spec.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run build` passed. `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/rimv-promo-09-ms-playwright npx playwright test tests/e2e/auth-gate.spec.ts` and `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/rimv-promo-09-ms-playwright npm run test:e2e` reached the browser launch phase but could not run page assertions because this macOS sandbox denies Chromium Mach-port registration.
+- Limitations: The Playwright assertions are present for CI/supervisor verification, but local browser execution is environment-blocked. Changed-file guard scan returned no matches; a full repo scan still reports pre-existing copy-guard strings in an unrelated rewrite eval fixture.

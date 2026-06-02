@@ -11,9 +11,12 @@ import {
 } from "../../../../../lib/entra-native-auth";
 import {
   authRateLimitPolicies,
+  cloudflareClientIpFromRequest,
   checkAuthRateLimit,
 } from "../../../../../lib/auth-rate-limit";
+import { isDisposableEmail } from "../../../../../lib/disposable-email-domains";
 import { requireSameOrigin } from "../../../../../lib/http";
+import { verifyTurnstileToken } from "../../../../../lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +36,7 @@ export async function POST(request: Request) {
   const email = normalizeEmail(body?.email);
   const entryValue = stringValue(body?.[entryField]);
   const displayName = optionalText(body?.displayName, 160);
+  const turnstileToken = stringValue(body?.turnstileToken)?.trim() ?? "";
 
   if (!email) {
     return signupJsonError("Enter a valid email.", 400);
@@ -40,6 +44,24 @@ export async function POST(request: Request) {
 
   if (!entryValue || entryValue.length < minEntryLength) {
     return signupJsonError("Use at least 8 characters.", 400);
+  }
+
+  if (isDisposableEmail(email)) {
+    return signupJsonError("Use a long-term email address for your account.", 400);
+  }
+
+  if (!turnstileToken) {
+    return signupJsonError("Complete the verification and try again.", 403);
+  }
+
+  const turnstile = await verifyTurnstileToken({
+    clientIp: cloudflareClientIpFromRequest(request),
+    token: turnstileToken,
+  });
+  if (!turnstile.ok) {
+    return turnstile.error === "server_config"
+      ? signupJsonError("Verification is not available. Please try again later.", 500)
+      : signupJsonError("Complete the verification and try again.", 403);
   }
 
   const rateLimit = await checkAuthRateLimit({

@@ -220,6 +220,18 @@
   line-height: 1.45;
 }
 
+.turnstileField {
+  display: grid;
+  gap: 7px;
+}
+
+.turnstileWidget {
+  width: 100%;
+  min-height: 70px;
+  display: grid;
+  align-items: center;
+}
+
 .formRow,
 .codeActions,
 .panelFooter {
