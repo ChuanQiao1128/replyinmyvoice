@@ -19,6 +19,7 @@ public sealed class AdminHttpFunctions
 
     private readonly AdminAccess _adminAccess;
     private readonly AdminService? _adminService;
+    private readonly PromoAdminService? _promoAdminService;
 
     public AdminHttpFunctions(
         IConfiguration configuration,
@@ -31,6 +32,9 @@ public sealed class AdminHttpFunctions
             : new AdminService(
                 dbContextFactory,
                 refundClient ?? new StripeBillingService(dbContextFactory, configuration));
+        _promoAdminService = dbContextFactory is null
+            ? null
+            : new PromoAdminService(dbContextFactory);
     }
 
     [Function("AdminPing")]
@@ -132,6 +136,190 @@ public sealed class AdminHttpFunctions
         var stats = await _adminService.GetStatsAsync(cancellationToken);
         return new OkObjectResult(stats);
     }
+
+    [Function("AdminPromoCodesCreate")]
+    public async Task<IActionResult> CreatePromoCode(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/promo-codes")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (_promoAdminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        AdminPromoCodeCreateRequest? createRequest;
+        try
+        {
+            createRequest = await ReadJsonRequestAsync<AdminPromoCodeCreateRequest>(request, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid promo code request",
+                "The promo code request body must be a JSON object.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (createRequest is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid promo code request",
+                "The promo code request body is required.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _promoAdminService.CreatePromoCodeAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            createRequest,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        return MapPromoMutationResult(result);
+    }
+
+    [Function("AdminPromoCodesList")]
+    public async Task<IActionResult> ListPromoCodes(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/promo-codes")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await RequireAdminResultAsync(request, cancellationToken);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        if (_promoAdminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        var promoCodes = await _promoAdminService.ListPromoCodesAsync(DateTimeOffset.UtcNow, cancellationToken);
+        return new OkObjectResult(promoCodes);
+    }
+
+    [Function("AdminPromoCodeDetail")]
+    public async Task<IActionResult> GetPromoCodeDetail(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/promo-codes/{promoCodeId}")]
+        HttpRequest request,
+        string promoCodeId,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await RequireAdminResultAsync(request, cancellationToken);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        if (_promoAdminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(promoCodeId, out var parsedPromoCodeId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid promo code id",
+                "The promo code detail route requires a valid promo code id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var detail = await _promoAdminService.GetPromoCodeDetailAsync(
+            parsedPromoCodeId,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+        if (detail is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Promo code not found",
+                "No promo code exists for the requested id.",
+                StatusCodes.Status404NotFound);
+        }
+
+        return new OkObjectResult(detail);
+    }
+
+    [Function("AdminPromoCodeUpdate")]
+    public async Task<IActionResult> UpdatePromoCode(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "admin/promo-codes/{promoCodeId}")]
+        HttpRequest request,
+        string promoCodeId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (_promoAdminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(promoCodeId, out var parsedPromoCodeId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid promo code id",
+                "The promo code update route requires a valid promo code id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        AdminPromoCodeUpdateRequest? updateRequest;
+        try
+        {
+            updateRequest = await ReadJsonRequestAsync<AdminPromoCodeUpdateRequest>(request, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid promo code request",
+                "The promo code request body must be a JSON object.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (updateRequest is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid promo code request",
+                "The promo code request body is required.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _promoAdminService.UpdatePromoCodeAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            parsedPromoCodeId,
+            updateRequest,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        return MapPromoMutationResult(result);
+    }
+
+    [Function("AdminPromoCodeDisable")]
+    public async Task<IActionResult> DisablePromoCode(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/promo-codes/{promoCodeId}/disable")]
+        HttpRequest request,
+        string promoCodeId,
+        CancellationToken cancellationToken) =>
+        await SetPromoCodeActiveAsync(request, promoCodeId, isActive: false, cancellationToken);
+
+    [Function("AdminPromoCodeEnable")]
+    public async Task<IActionResult> EnablePromoCode(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/promo-codes/{promoCodeId}/enable")]
+        HttpRequest request,
+        string promoCodeId,
+        CancellationToken cancellationToken) =>
+        await SetPromoCodeActiveAsync(request, promoCodeId, isActive: true, cancellationToken);
 
     [Function("AdminGrantCredits")]
     public async Task<IActionResult> GrantCredits(
@@ -362,11 +550,68 @@ public sealed class AdminHttpFunctions
             return null;
         }
 
-        return FunctionHttpResults.Problem(
+        return AdminForbidden();
+    }
+
+    private async Task<IActionResult> SetPromoCodeActiveAsync(
+        HttpRequest request,
+        string promoCodeId,
+        bool isActive,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (_promoAdminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(promoCodeId, out var parsedPromoCodeId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid promo code id",
+                "The promo code active-state route requires a valid promo code id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _promoAdminService.SetPromoCodeActiveAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            parsedPromoCodeId,
+            isActive,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        return MapPromoMutationResult(result);
+    }
+
+    private static IActionResult MapPromoMutationResult(AdminPromoMutationResult result) =>
+        result.Kind switch
+        {
+            AdminPromoResultKind.Success => new OkObjectResult(result.Response),
+            AdminPromoResultKind.NotFound => FunctionHttpResults.Problem(
+                "Promo code not found",
+                result.Detail,
+                StatusCodes.Status404NotFound),
+            AdminPromoResultKind.DuplicateCode => FunctionHttpResults.Problem(
+                "Duplicate promo code",
+                result.Detail,
+                StatusCodes.Status400BadRequest),
+            _ => FunctionHttpResults.Problem(
+                "Invalid promo code request",
+                result.Detail,
+                StatusCodes.Status400BadRequest),
+        };
+
+    private static IActionResult AdminForbidden() =>
+        FunctionHttpResults.Problem(
             "Admin access required",
             "The authenticated user is not allowed to access admin endpoints.",
             StatusCodes.Status403Forbidden);
-    }
 
     private static IActionResult AdminServiceUnavailable() =>
         FunctionHttpResults.Problem(
@@ -430,5 +675,19 @@ public sealed class AdminHttpFunctions
         }
 
         return JsonSerializer.Deserialize<AdminSuspensionRequest>(body, JsonOptions);
+    }
+
+    private static async Task<T?> ReadJsonRequestAsync<T>(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(request.Body);
+        var body = await reader.ReadToEndAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return default;
+        }
+
+        return JsonSerializer.Deserialize<T>(body, JsonOptions);
     }
 }
