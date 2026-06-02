@@ -12,9 +12,9 @@ export function PricingV2() {
             <span className="sec-num">06 · Pricing</span>
           </div>
           <div className="sec-head-lead">
-            <h2>Start free, then buy rewrites as you need them.</h2>
+            <h2>Redeem a trial code, then buy rewrites as you need them.</h2>
             <p className="lede">
-              Everyone starts with 3 lifetime rewrites and no card. After that,
+              Trial codes unlock 3 rewrites with no card. After that,
               buy one-time rewrite packs, or go Pro/API for monthly rewrites and
               developer access.
             </p>
@@ -25,28 +25,28 @@ export function PricingV2() {
           <div className="plan plan-free">
             <div className="eyebrow">
               <span className="dot" />
-              Free tier
+              Trial code access
             </div>
-            <h3>Try it three times.</h3>
+            <h3>Redeem a code to try it.</h3>
             <div className="plan-price">
-              3<small>free rewrites</small>
+              3<small>trial rewrites</small>
             </div>
             <p className="uc-body">
-              Sign up, paste a draft, and see whether it sounds closer to you.
-              No card required to start.
+              Sign up, enter a trial code, paste a draft, and see whether it
+              sounds closer to you.
             </p>
             <ul className="plan-list">
-              <li>3 successful lifetime rewrites</li>
+              <li>Trial code unlocks 3 successful rewrites</li>
               <li>Tone check before and after</li>
               <li>Warm and Direct tone presets</li>
               <li>Facts-preserved view</li>
             </ul>
             <div className="plan-cta">
               <Link href="/sign-up" className="btn btn-ghost btn-lg">
-                Create a free account <span className="btn-arrow">-&gt;</span>
+                Redeem a trial code <span className="btn-arrow">-&gt;</span>
               </Link>
             </div>
-            <div className="plan-meta">No credit card required</div>
+            <div className="plan-meta">No card required for trial-code access</div>
           </div>
 
           <div className="plan plan-paid">

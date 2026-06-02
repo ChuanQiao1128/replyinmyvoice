@@ -65,7 +65,7 @@ export function SiteFooter() {
         </div>
         <div className="footer-bottom">
           <span>© 2026 TimeAwake Ltd. All rights reserved.</span>
-          <span>3 free rewrites · Rewrite packs from NZ$2.50 · Pro/API NZ$19.90/mo</span>
+          <span>Redeem trial codes · Rewrite packs from NZ$2.50 · Pro/API NZ$19.90/mo</span>
         </div>
       </div>
     </footer>

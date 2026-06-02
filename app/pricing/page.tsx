@@ -7,7 +7,7 @@ import { SiteHeader } from "../../components/site-header";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Start free with 3 lifetime rewrites, then buy one-time rewrite packs or go Pro/API for monthly rewrites and developer API access.",
+    "Redeem a trial code for 3 rewrites, then buy one-time rewrite packs or go Pro/API for monthly rewrites and developer API access.",
 };
 
 type PaidSku = "quick_pack" | "value_pack" | "pro_api" | "focus_pack";
@@ -146,9 +146,9 @@ export default function PricingPage() {
               <span className="dot" />
               Pricing
             </div>
-            <h1>Start free. Buy rewrites when you need them.</h1>
+            <h1>Redeem a trial code. Buy rewrites when you need them.</h1>
             <p className="lede">
-              Every signed-in user gets 3 lifetime rewrites with no card. After
+              Trial codes unlock 3 rewrites with no card. After
               that, buy one-time rewrite packs, or go Pro/API for monthly
               rewrites and developer API access.
             </p>
@@ -158,28 +158,28 @@ export default function PricingPage() {
             <div className="plan plan-free">
               <div className="eyebrow">
                 <span className="dot" />
-                Free tier
+                Trial code access
               </div>
-              <h3>Try 3 rewrites first.</h3>
+              <h3>Redeem a code to try it.</h3>
               <div className="plan-price">
-                3<small>lifetime rewrites</small>
+                3<small>trial rewrites</small>
               </div>
               <p className="uc-body">
-                No card required. Paste one real message, rewrite the reply, and
-                decide whether the workflow fits.
+                Enter a trial code, paste one real message, rewrite the reply,
+                and decide whether the workflow fits.
               </p>
               <ul className="plan-list">
-                <li>3 successful rewrites total</li>
+                <li>Trial code unlocks 3 successful rewrites</li>
                 <li>Warm and Direct tone presets</li>
                 <li>Tone check and facts-preserved view</li>
                 <li>Upgrade only when you need more</li>
               </ul>
               <div className="plan-cta">
                 <Link className="btn btn-ghost btn-lg" href="/sign-up">
-                  Create a free account <span className="btn-arrow">-&gt;</span>
+                  Redeem a trial code <span className="btn-arrow">-&gt;</span>
                 </Link>
               </div>
-              <div className="plan-meta">No card required</div>
+              <div className="plan-meta">No card required for trial-code access</div>
             </div>
 
             <div className="plan plan-paid">

@@ -669,8 +669,8 @@ export function RewriteWorkspace({
                       </p>
                       <p className="mt-1 font-mono text-[11px] text-ink/45">
                         {freeRewritesRemaining > 0
-                          ? `${freeRewritesRemaining} free rewrite${freeRewritesRemaining === 1 ? "" : "s"} left after this copy.`
-                          : "That was your last free rewrite."}
+                          ? `${freeRewritesRemaining} trial rewrite${freeRewritesRemaining === 1 ? "" : "s"} left after this copy.`
+                          : "That was your last trial rewrite."}
                       </p>
                     </div>
                     <button

@@ -242,7 +242,7 @@ export default function DevelopersPage() {
                   Get early access <span className="btn-arrow">→</span>
                 </Link>
                 <div className="meta">
-                  No card required · 3 free rewrites to try the engine
+                  Trial codes unlock 3 rewrites to try the engine
                 </div>
               </div>
             </div>

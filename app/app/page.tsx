@@ -80,7 +80,7 @@ export default async function AppPage() {
     ? `${usage.remaining} of ${usage.quota} rewrites remaining this billing period`
     : hasTrialCredits
       ? `${trialRemaining} of ${trialQuota} trial rewrites remaining${trialExpiry ? ` - ${trialExpiry}` : ""}`
-    : `${usage.remaining} of ${usage.quota} free rewrites remaining`;
+    : `${usage.remaining} of ${usage.quota} rewrite credits remaining`;
   const workspaceQuota = hasTrialCredits ? trialQuota : usage.quota;
   const workspacePlanRemaining = hasTrialCredits ? trialRemaining : usage.remaining;
 

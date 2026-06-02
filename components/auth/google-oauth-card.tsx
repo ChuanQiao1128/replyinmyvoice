@@ -66,7 +66,7 @@ const sideHighlights = {
     "Use Google when you prefer browser sign-in",
   ],
   "sign-up": [
-    "Start with three free rewrites",
+    "Redeem a trial code for 3 rewrites",
     "Verify your email before the workspace opens",
     "Keep facts and tone checks tied to your account",
   ],

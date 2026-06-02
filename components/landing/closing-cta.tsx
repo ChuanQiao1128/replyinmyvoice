@@ -25,7 +25,7 @@ export function ClosingCta() {
             <Link href="/sign-up" className="btn btn-accent">
               Start rewriting <span className="btn-arrow">→</span>
             </Link>
-            <div className="meta">3 free rewrites · No card required</div>
+            <div className="meta">Redeem a trial code · 3 trial rewrites</div>
             <div className="meta" style={{ marginTop: 12 }}>
               Value Pack NZ$6.90 · 30 rewrites · most popular
             </div>
