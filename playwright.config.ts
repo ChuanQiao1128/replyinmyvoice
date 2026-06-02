@@ -7,6 +7,7 @@ const authSessionSecret = "playwright-auth-session-secret";
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
+  workers: 1,
   use: {
     baseURL: appUrl,
     trace: "on-first-retry",
@@ -14,7 +15,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"], channel: "chromium" },
+      use: { ...devices["Desktop Chrome"] },
     },
   ],
   webServer: {

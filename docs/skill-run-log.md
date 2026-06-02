@@ -2400,3 +2400,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/auth/google-oauth-card.tsx`; `components/auth/auth-panels.module.css`; `tests/e2e/auth-gate.spec.ts`; `docs/skill-run-log.md`.
 - Verification evidence: `npm run build` passed. `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/rimv-promo-09-ms-playwright npx playwright test tests/e2e/auth-gate.spec.ts` and `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/rimv-promo-09-ms-playwright npm run test:e2e` reached the browser launch phase but could not run page assertions because this macOS sandbox denies Chromium Mach-port registration.
 - Limitations: The Playwright assertions are present for CI/supervisor verification, but local browser execution is environment-blocked. Changed-file guard scan returned no matches; a full repo scan still reports pre-existing copy-guard strings in an unrelated rewrite eval fixture.
+
+### 2026-06-02 - system-spec-synthesis - PROMO-10 admin promo-code console contract
+
+- Agent: Codex
+- Trigger: PROMO-10 adds the first `/admin` page plus a thin Next.js admin proxy for the existing C# promo-code admin endpoints.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the PROMO-10 issue body, `plans/promo-issues/PROMO-10-admin-ui.md`, and `plans/promo-code-trial-spec.md` section 7. Converted the requirements into checkpoints: server-side auth/admin gating, same-origin admin mutations, bearer forwarding, create/list/detail/disable/enable proxy routes, duplicate-code field errors, derived list status, and stats sanitization to hash clusters only.
+- Output artifacts: `app/admin/promo-codes/page.tsx`; `app/admin/promo-codes/loading.tsx`; `app/api/admin/promo-codes/**/route.ts`; `components/admin/promo-codes-admin.tsx`; `lib/admin-promo-codes.ts`; `lib/admin-promo-proxy.ts`; `tests/unit/admin-promo-codes.test.ts`; `tests/unit/admin-promo-proxy-route.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused tests first failed because the admin helper and proxy routes did not exist; after implementation, `npm test -- tests/unit/admin-promo-codes.test.ts tests/unit/admin-promo-proxy-route.test.ts` passed 12/12. `npm run test`, `npm run typecheck`, `npm run lint`, and `npm run build` passed.
+- Limitations: No backend persistence, payment, secrets, deployment, or production branch wiring was changed.
+
+### 2026-06-02 - ui-browser-testing - PROMO-10 admin page browser coverage
+
+- Agent: Codex
+- Trigger: PROMO-10 requires browser-visible admin states, desktop/mobile screenshots, duplicate field errors, immediate disable state, and no browser-visible raw IP values.
+- Action: Opened and followed the skill; added a focused Playwright spec with a local Azure admin mock, signed test-session cookies, signed-out redirect coverage, non-admin 403 view, admin create/duplicate/stats/disable coverage, mobile and desktop screenshot capture calls, and a direct mock redeem check after disable. Also adjusted Playwright to use one worker so the fixed mock backend port is not raced across files.
+- Output artifacts: `tests/e2e/admin-promo-codes.spec.ts`; `playwright.config.ts`; `components/admin/promo-codes-admin.tsx`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run test` passed 325/325; `npm run typecheck` passed; `npm run lint` passed; `npm run build` passed. Focused Playwright attempts with an installed temporary Chromium cache reached browser launch after production build/start, but local Chromium failed before page load because this macOS sandbox denies Chromium Mach-port registration.
+- Limitations: Playwright assertions and screenshot capture are committed for the supervisor/CI environment, but local browser execution could not complete in this sandbox. Changed-file guard scan returned no matches; a full repo scan still reports pre-existing copy-guard strings in `lib/rewrite-eval-cases.ts`.
