@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import styles from "./auth-panels.module.css";
 
@@ -29,11 +29,35 @@ const minEntryLength = 8;
 const defaultRedirectTo = "/app";
 const defaultCodeLength = 6;
 const defaultCooldownSeconds = 30;
+const turnstileScriptSrc =
+  "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const turnstileTestSiteKey = "1x00000000000000000000AA";
 const panelVisualStyle = {
   background: "var(--card)",
   borderColor: "var(--rule)",
   boxShadow: "var(--shadow-lg)",
 } satisfies CSSProperties;
+
+type TurnstileRenderOptions = {
+  callback: (token: string) => void;
+  "error-callback": () => void;
+  "expired-callback": () => void;
+  sitekey: string;
+  size: "flexible";
+};
+
+type TurnstileApi = {
+  remove: (widgetId: string) => void;
+  render: (container: HTMLElement, options: TurnstileRenderOptions) => string;
+  reset: (widgetId: string) => void;
+};
+
+type WindowWithTurnstile = Window &
+  typeof globalThis & {
+    turnstile?: TurnstileApi;
+  };
+
+let turnstileScriptPromise: Promise<void> | null = null;
 
 const sideHighlights = {
   "sign-in": [
@@ -474,8 +498,66 @@ export function SignUpAuthPage({
   const [fallbackRedirect, setFallbackRedirect] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileError, setTurnstileError] = useState("");
+  const turnstileContainerRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const siteKey = getTurnstileSiteKey();
 
   const googleHref = useMemo(() => buildGoogleHref(safeRedirect, email), [email, safeRedirect]);
+
+  useEffect(() => {
+    const container = turnstileContainerRef.current;
+    if (!container || step !== "details") {
+      return;
+    }
+
+    if (!siteKey) {
+      setTurnstileError("Verification is not configured yet.");
+      return;
+    }
+
+    let active = true;
+    loadTurnstileScript()
+      .then(() => {
+        const turnstile = browserWindow().turnstile;
+        if (!active || !turnstile || turnstileWidgetIdRef.current) {
+          return;
+        }
+
+        turnstileWidgetIdRef.current = turnstile.render(container, {
+          callback: (token) => {
+            setTurnstileToken(token);
+            setTurnstileError("");
+          },
+          "error-callback": () => {
+            setTurnstileToken("");
+            setTurnstileError("Verification failed. Try again.");
+          },
+          "expired-callback": () => {
+            setTurnstileToken("");
+            setTurnstileError("Verification expired. Complete it again.");
+          },
+          sitekey: siteKey,
+          size: "flexible",
+        });
+      })
+      .catch(() => {
+        if (active) {
+          setTurnstileError("Verification could not load. Refresh and try again.");
+        }
+      });
+
+    return () => {
+      active = false;
+      const widgetId = turnstileWidgetIdRef.current;
+      const turnstile = browserWindow().turnstile;
+      if (widgetId && turnstile) {
+        turnstile.remove(widgetId);
+        turnstileWidgetIdRef.current = null;
+      }
+    };
+  }, [siteKey, step]);
 
   useEffect(() => {
     if (step !== "code" || cooldownSeconds <= 0) {
@@ -488,6 +570,15 @@ export function SignUpAuthPage({
 
     return () => window.clearTimeout(timer);
   }, [cooldownSeconds, step]);
+
+  function resetTurnstile() {
+    const turnstile = browserWindow().turnstile;
+    const widgetId = turnstileWidgetIdRef.current;
+    if (widgetId && turnstile) {
+      turnstile.reset(widgetId);
+    }
+    setTurnstileToken("");
+  }
 
   async function handleStart(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -503,6 +594,11 @@ export function SignUpAuthPage({
       return;
     }
 
+    if (!turnstileToken) {
+      setFormError("Complete the verification and try again.");
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
 
@@ -512,6 +608,7 @@ export function SignUpAuthPage({
           displayName: displayName.trim() || undefined,
           email,
           password: entry,
+          turnstileToken,
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -534,8 +631,10 @@ export function SignUpAuthPage({
         setFallbackRedirect(fallback);
       }
       setFormError(textValue(json?.error) ?? "We could not start sign-up. Please try again.");
+      resetTurnstile();
     } catch {
       setFormError("We could not start sign-up. Please try again.");
+      resetTurnstile();
     } finally {
       setIsSubmitting(false);
     }
@@ -677,7 +776,23 @@ export function SignUpAuthPage({
                 Use at least {minEntryLength} characters. Keep it unique to this account.
               </p>
 
-              <button className="btn btn-primary btn-lg" disabled={isSubmitting} type="submit">
+              <div className={styles.turnstileField}>
+                <div
+                  aria-label="Account verification"
+                  className={styles.turnstileWidget}
+                  data-testid="signup-turnstile-widget"
+                  ref={turnstileContainerRef}
+                />
+                {turnstileError ? (
+                  <p className={styles.fieldError}>{turnstileError}</p>
+                ) : null}
+              </div>
+
+              <button
+                className="btn btn-primary btn-lg"
+                disabled={isSubmitting || !turnstileToken}
+                type="submit"
+              >
                 {isSubmitting ? "Sending code..." : "Create account"}
               </button>
             </form>
@@ -750,6 +865,54 @@ export function SignUpAuthPage({
       </section>
     </AuthShell>
   );
+}
+
+function browserWindow() {
+  return window as WindowWithTurnstile;
+}
+
+function getTurnstileSiteKey() {
+  const configuredSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+  if (configuredSiteKey) {
+    return configuredSiteKey;
+  }
+
+  return process.env.NODE_ENV === "production" ? "" : turnstileTestSiteKey;
+}
+
+function loadTurnstileScript() {
+  if (browserWindow().turnstile) {
+    return Promise.resolve();
+  }
+
+  if (turnstileScriptPromise) {
+    return turnstileScriptPromise;
+  }
+
+  turnstileScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[src="${turnstileScriptSrc}"]`,
+    );
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("load")), {
+        once: true,
+      });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.async = true;
+    script.defer = true;
+    script.src = turnstileScriptSrc;
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => reject(new Error("load")), {
+      once: true,
+    });
+    document.head.appendChild(script);
+  });
+
+  return turnstileScriptPromise;
 }
 
 function AuthShell({

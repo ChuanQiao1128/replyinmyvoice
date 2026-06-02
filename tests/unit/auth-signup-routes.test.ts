@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCookieStore, nativeAuthMocks } = vi.hoisted(() => {
+const { mockCookieStore, nativeAuthMocks, turnstileMocks } = vi.hoisted(() => {
   class MockNativeAuthError extends Error {
     readonly appCode: string;
     readonly entraCode: string | null;
@@ -26,6 +26,9 @@ const { mockCookieStore, nativeAuthMocks } = vi.hoisted(() => {
       signupContinue: vi.fn(),
       signupStart: vi.fn(),
     },
+    turnstileMocks: {
+      verifyTurnstileToken: vi.fn(),
+    },
   };
 });
 
@@ -34,6 +37,7 @@ vi.mock("next/headers", () => ({
 }));
 
 vi.mock("../../lib/entra-native-auth", () => nativeAuthMocks);
+vi.mock("../../lib/turnstile", () => turnstileMocks);
 
 import { POST as resendSignup } from "../../app/api/auth/signup/resend/route";
 import { POST as startSignup } from "../../app/api/auth/signup/start/route";
@@ -46,6 +50,7 @@ import {
   verifySignedCookieValue,
 } from "../../lib/entra-auth";
 import { signupChallenge, signupContinue, signupStart } from "../../lib/entra-native-auth";
+import { verifyTurnstileToken } from "../../lib/turnstile";
 
 const appUrl = "https://replyinmyvoice.com";
 const clientId = "native-client-id";
@@ -130,6 +135,8 @@ beforeEach(() => {
   nativeAuthMocks.signupChallenge.mockReset();
   nativeAuthMocks.signupContinue.mockReset();
   nativeAuthMocks.signupStart.mockReset();
+  turnstileMocks.verifyTurnstileToken.mockReset();
+  turnstileMocks.verifyTurnstileToken.mockResolvedValue({ ok: true });
   process.env[authEnvName] = cookieSigningValue;
   process.env.NEXT_PUBLIC_APP_URL = appUrl;
   process.env.NEXT_PUBLIC_ENTRA_CLIENT_ID = clientId;
@@ -157,6 +164,7 @@ describe("sign-up route handlers", () => {
       displayName: "Casey Rivera",
       email: "Casey@Example.com",
       [entryField]: entryFixture,
+      turnstileToken: "signup-token",
     }));
 
     await expect(readJson(response)).resolves.toEqual({
@@ -169,6 +177,10 @@ describe("sign-up route handlers", () => {
       attributes: { displayName: "Casey Rivera" },
       email: "casey@example.com",
       [entryField]: entryFixture,
+    });
+    expect(verifyTurnstileToken).toHaveBeenCalledWith({
+      clientIp: null,
+      token: "signup-token",
     });
     expect(signupChallenge).toHaveBeenCalledWith({
       continuationToken: "signup-start-handle",
@@ -190,6 +202,7 @@ describe("sign-up route handlers", () => {
     const response = await startSignup(jsonRequest("/api/auth/signup/start", {
       email: "casey@example.com",
       [entryField]: entryFixture,
+      turnstileToken: "signup-token",
     }));
 
     const rawSignupCookie = cookieValue(response, signupFlowCookieName);
@@ -324,6 +337,7 @@ describe("sign-up route handlers", () => {
     const response = await startSignup(jsonRequest("/api/auth/signup/start", {
       email: "casey@example.com",
       [entryField]: "short",
+      turnstileToken: "signup-token",
     }));
 
     await expect(readJson(response)).resolves.toEqual({
@@ -331,6 +345,86 @@ describe("sign-up route handlers", () => {
       ok: false,
     });
     expect(response.status).toBe(400);
+    expect(signupStart).not.toHaveBeenCalled();
+    expect(signupChallenge).not.toHaveBeenCalled();
+    expect(verifyTurnstileToken).not.toHaveBeenCalled();
+  });
+
+  it("rejects listed email domains before calling Entra", async () => {
+    const response = await startSignup(jsonRequest("/api/auth/signup/start", {
+      email: "casey@mailinator.com",
+      [entryField]: entryFixture,
+      turnstileToken: "signup-token",
+    }));
+
+    await expect(readJson(response)).resolves.toEqual({
+      error: "Use a long-term email address for your account.",
+      ok: false,
+    });
+    expect(response.status).toBe(400);
+    expect(verifyTurnstileToken).not.toHaveBeenCalled();
+    expect(signupStart).not.toHaveBeenCalled();
+    expect(signupChallenge).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing Turnstile tokens before calling Entra", async () => {
+    const response = await startSignup(jsonRequest("/api/auth/signup/start", {
+      email: "casey@example.com",
+      [entryField]: entryFixture,
+    }));
+
+    await expect(readJson(response)).resolves.toEqual({
+      error: "Complete the verification and try again.",
+      ok: false,
+    });
+    expect(response.status).toBe(403);
+    expect(verifyTurnstileToken).not.toHaveBeenCalled();
+    expect(signupStart).not.toHaveBeenCalled();
+    expect(signupChallenge).not.toHaveBeenCalled();
+  });
+
+  it("rejects failed Turnstile checks before calling Entra", async () => {
+    vi.mocked(verifyTurnstileToken).mockResolvedValueOnce({
+      error: "invalid_captcha",
+      ok: false,
+    });
+
+    const response = await startSignup(jsonRequest("/api/auth/signup/start", {
+      email: "casey@example.com",
+      [entryField]: entryFixture,
+      turnstileToken: "blocked-token",
+    }));
+
+    await expect(readJson(response)).resolves.toEqual({
+      error: "Complete the verification and try again.",
+      ok: false,
+    });
+    expect(response.status).toBe(403);
+    expect(verifyTurnstileToken).toHaveBeenCalledWith({
+      clientIp: null,
+      token: "blocked-token",
+    });
+    expect(signupStart).not.toHaveBeenCalled();
+    expect(signupChallenge).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing Turnstile config before calling Entra", async () => {
+    vi.mocked(verifyTurnstileToken).mockResolvedValueOnce({
+      error: "server_config",
+      ok: false,
+    });
+
+    const response = await startSignup(jsonRequest("/api/auth/signup/start", {
+      email: "casey@example.com",
+      [entryField]: entryFixture,
+      turnstileToken: "signup-token",
+    }));
+
+    await expect(readJson(response)).resolves.toEqual({
+      error: "Verification is not available. Please try again later.",
+      ok: false,
+    });
+    expect(response.status).toBe(500);
     expect(signupStart).not.toHaveBeenCalled();
     expect(signupChallenge).not.toHaveBeenCalled();
   });
