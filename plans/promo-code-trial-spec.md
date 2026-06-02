@@ -1,578 +1,489 @@
-# Promo-Code Trial Specification
+# Promo-Code Trial Specification (v2 — feasibility-evaluated & risk-hardened)
 
-> Replace the automatic "3 free rewrites on sign-up" with a **redeemable promo code**: a
-> signed-in user enters an alphanumeric code to unlock 3 trial rewrites. Launch with one
-> universal code for everyone, but build a commercial-grade, multi-code, analytics-ready
-> system underneath.
+> Replace the automatic "3 free rewrites on sign-up" with a **redeemable promo code**. Launch
+> with one universal code (`ReplyAsHuman2026` is the owner's example/test value — admin-settable),
+> but build a commercial-grade, admin-managed, abuse-resistant, analytics-ready system underneath.
 
-- **Status:** Design only — no code written yet (per owner instruction).
+- **Status:** Design only — no source code written yet (owner instruction: evaluate & design first).
 - **Branch:** `feat/promo-code-trial`
-- **Author:** Claude Code (supervisor), via `system-spec-synthesis` (+ `state-machine-modeling`, `data-module-review` lenses).
-- **Date:** 2026-06-02
-- **Implementation model:** substantive source changes are delegated to Codex workers (supervisor mode); this doc is the brief.
+- **Author:** Claude Code (supervisor) — `system-spec-synthesis` (+ `state-machine-modeling`, `data-module-review`, `resilience-test-generation` lenses).
+- **Date:** 2026-06-02 · **v2** adds: feasibility/gap assessment against the live code, admin console design, full threat model, user stories, and a risk register.
+- **Implementation:** delegated to Codex workers after owner sign-off on the Open Questions.
 
 ---
 
-## TL;DR (the one big idea)
+## 0. Feasibility & Gap Assessment — "can my backend already do this?"
 
-The live backend **already has everything we need to grant trial rewrites**: the
-`RewriteCredit` table + `QuotaService` "credit overflow" consumption + `/api/me` per-source
-balance display. Purchased packs and admin grants both flow through it. So:
+Answer: **the data + grant + consumption machinery is already there; the promo layer, the
+admin self-service UI, and durable IP-based abuse defense are the real net-new work.** Verified
+against live C#/Azure source on 2026-06-02.
 
-1. **Stop auto-granting free rewrites.** Change the free baseline quota from `3` → `0`
-   (one constant in `AccountService.GetUsagePlan`) + a one-time data migration so display
-   and enforcement agree.
-2. **Add a promo layer.** Two new tables (`PromoCode` definition + `PromoCodeRedemption`
-   ledger), one redeem service, one HTTP endpoint, one Next.js proxy, and a small UI.
-3. **Redemption = grant a credit.** A successful redemption inserts a
-   `RewriteCredit { Source = "PROMO", AmountGranted = 3, ExpiresAt = … }` — the *exact* row
-   shape that `AdminService.GrantCreditsAsync` and the Stripe purchase path already create.
-   **No change to the consumption / paywall / quota-race logic at all.**
+| Owner requirement | Exists today? | Gap / what's missing | Effort |
+|---|---|---|---|
+| 1a Credits count + validity per code | ⚠️ partial | `RewriteCredit` grants exist (admin/purchase) but no per-code *config*; need `PromoCode` table | M |
+| 1b Per-person redemption cap | ❌ | New: unique `(codeId,userId)` index + `MaxRedemptionsPerUser` | S |
+| 1c Max total redemptions ("1001st fails") | ❌ | New: `MaxRedemptionsGlobal` + **atomic** counter guard | S |
+| 1d "一人一码" (one redemption per identity) | ❌ | New: per-user uniqueness + anti-multi-account defense | M |
+| 2 Admin creates / disables codes | ⚠️ **API-only** | Admin auth (`ADMIN_EMAILS` allowlist) + audit log + grant pattern all exist — **but there is NO admin web UI anywhere in `app/`**. Today admins call HTTP endpoints directly (curl/Postman). | endpoints S; **UI M** |
+| 2 Disable → immediate | ✅ (pattern) | `IsActive=false` checked at redeem time; no deploy needed | S |
+| 3a Credit TTL 90 days | ✅ | `AdminCreditExpiryDays = 90` precedent; per-code `GrantTtlDays` | S |
+| 3b Two clocks: code window vs 90-day credit | ✅ design | Code `ValidUntil` (redeem window) is independent of granted `RewriteCredit.ExpiresAt = redeemedAt + 90d`. Matches owner's example exactly. | — |
+| 3c Cap optional (capped *or* uncapped) | ❌ | `MaxRedemptionsGlobal` **nullable** (null = unlimited) | S |
+| 4 Trace IP / anti multi-account | ⚠️ **weak** | `cf-connecting-ip` is readable at the **Worker/proxy** (`lib/auth-rate-limit.ts` already does). BUT: (a) that limiter is **in-memory per-isolate** → ephemeral, not global; (b) the **C# backend sits behind the Worker and does not see the real client IP** unless the proxy forwards it; (c) a forwarded `X-Forwarded-For` is **spoofable** by anyone hitting the Functions URL directly. Need durable, trustworthy IP capture + DB-backed velocity. | M–L |
 
-The net new surface area is small and isolated. The risk is concentrated in two places: (a)
-the free-baseline = 0 cutover (display vs. enforcement consistency), and (b) the redemption
-transaction's idempotency/race handling. Both are addressed below.
+**Bottom line:** No blocker. The heaviest items are the **admin console UI** (none exists) and
+**doing IP abuse-defense properly** (the existing rate limiter is not sufficient on its own).
+Everything else is small, isolated, and rides on proven patterns.
 
 ---
 
-## Context
+## 1. TL;DR (the load-bearing idea)
 
-### Product change requested
+The live backend already grants & consumes "rewrite credits": `RewriteCredit` rows (Source =
+`PURCHASE` / `ADMIN`) are consumed by `QuotaService` once a user's period quota is used up, and
+`/api/me` already sums them into `remaining` with a per-source "expires in N days" breakdown.
 
-| | Today | After this change |
-|---|---|---|
-| New signed-in user | Gets **3 free lifetime rewrites** automatically | Gets **0**; must **redeem a code** to unlock 3 |
-| Free trial trigger | Implicit, frictionless | Explicit user action (enter a code) |
-| Code model | none | **One universal alphanumeric code** for everyone (commercial-grade system underneath) |
-| Expiry | n/a | Code stops working after **end of August 2026** |
-| Goal | Maximize free funnel | **Filter for users with genuine intent**, not no-threshold free |
+So:
+1. **Stop auto-granting.** Free baseline quota `3 → 0` (one constant in `AccountService.GetUsagePlan`) + a one-time data migration so display and enforcement agree.
+2. **Add a promo layer.** Two tables (`PromoCode` config + `PromoCodeRedemption` ledger), one redeem service, one user endpoint, admin code-management endpoints + a small admin UI, a `/app` redeem card, and copy changes.
+3. **Redemption = grant a credit.** A valid redemption inserts `RewriteCredit{Source="PROMO", AmountGranted=3, ExpiresAt=redeemedAt+90d}` — the exact shape `AdminService.GrantCreditsAsync` already creates. **Consumption, paywall, 402, quota-race, Stripe — all unchanged.**
 
-### Why (owner's stated intent)
+Risk is concentrated in three places, each addressed below: (a) the free-baseline=0 cutover, (b) redemption idempotency/race + global-cap race, (c) multi-account abuse defense.
 
-> "筛选出真正有需求的用户来使用这三次机会，而不是单纯的无门槛免费."
-> *Select for users who actually have a need, rather than no-threshold free.*
+---
 
-The filter is **the act of obtaining + entering a code**, plus the existing sign-up + email
-verification. See [How this filters for intent — and its honest limits](#how-this-filters-for-intent--and-its-honest-limits).
+## 2. Requirements (consolidated)
 
-### Grounding — what the live system actually is (verified 2026-06-02)
+### 2.1 Per-code configuration (admin-set)
+- **Credits granted** (e.g. 3) and **granted-credit TTL** (default **90 days** from redemption).
+- **Redemption window**: `ValidFrom`..`ValidUntil` (e.g. until end of Aug 2026, **NZ time**). After `ValidUntil`, redemption fails with a clear "expired" message.
+- **Per-person cap** (`MaxRedemptionsPerUser`, default **1**).
+- **Global cap** (`MaxRedemptionsGlobal`, **nullable** = optional): e.g. 1000 → the **1001st** distinct redemption is rejected with "this code has reached its limit"; the code is effectively spent.
+- **On/off** kill switch (`IsActive`): disabling takes effect **immediately** (checked per redeem, no deploy).
 
-Production backend is **C# / .NET on Azure Functions + Azure SQL (EF Core)**. The TypeScript
-`lib/` pipeline and `lib/generated/prisma/**` are **dead Slice-7 code** — ignore them (note:
-the dead Prisma schema shows an old `User.referralCode` field; that is **not** the live model).
+### 2.2 "一人一码" — interpretation (please confirm)
+Read as **one redemption per identity** (each account may redeem a given code at most once),
+enforced by a unique `(PromoCodeId, UserId)` index and hardened by anti-multi-account defenses
+(§7). This is **not** literal per-user-unique code *strings* — though the same schema supports
+that later (issue many single-use codes, `MaxRedemptionsGlobal=1` each) if you want true 1:1
+issuance. **If you meant unique strings per user, say so — it changes distribution, not the core schema.**
 
-| Concern | Live location |
+### 2.3 Two independent clocks (owner's example, locked in)
+- **Code redemption window**: until `2026-08-31` 23:59:59 NZ. Stops *new* redemptions after that.
+- **Granted-credit lifetime**: a user who redeems on, say, Aug 20 gets 3 rewrites valid **90 days from Aug 20** (≈ Nov 18). Expiry of the *code* does **not** retroactively kill already-granted credits.
+
+### 2.4 Admin (owner) can self-serve
+Create codes, list them with live redemption counts, disable them, and view per-code
+effectiveness stats — from an authenticated admin surface (see §6).
+
+### 2.5 Goal: select for genuine intent
+The filter is the friction of obtaining + entering a code, plus sign-up + email verification,
+plus one-redemption-per-identity. Honest limits and the upgrade path are in §7.4.
+
+---
+
+## 3. Current System (grounded; verified 2026-06-02)
+
+Production = **C#/.NET Azure Functions + Azure SQL (EF Core)**, behind **Cloudflare Worker
+(OpenNext Next.js)**. The TS `lib/` rewrite pipeline and `lib/generated/prisma/**` are **dead
+Slice-7 code** (the dead Prisma schema's `User.referralCode` is *not* the live model).
+
+| Concern | Live location & fact |
 |---|---|
-| Free "3" constant | `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs` → `GetUsagePlan()` returns `new AccountUsagePlan("free", "free:lifetime", 3)` |
-| Account summary (`/api/me`) | `AccountService.GetOrCreateAccountSummaryAsync()` — computes `remaining = periodRemaining + creditRemaining`, returns per-`Sources` breakdown with `ExpiresInDays` |
-| Credit grant pattern to mirror | `AdminService.GrantCreditsAsync()` — inserts `RewriteCredit{Source="ADMIN", ExpiresAt=now+90d}` + `AdminAuditLog`, all in one `SaveChanges` |
-| Credit entity | `…/Domain/Entities/RewriteCredit.cs` (`Source`, `AmountGranted`, `AmountConsumed`, `GrantedAt`, `ExpiresAt`, `RowVersion`) |
-| Consumption / paywall gate | `…/Infrastructure/Services/QuotaService.cs` → `ReserveAsync()` + `FindUsableCreditAsync()` (period quota first, then usable credits; **no change needed**) |
-| Serializable tx helper pattern | `StripeEventService.ExecuteInTransactionAsync()` (execution strategy + `IsolationLevel.Serializable`) |
-| DbContext | `…/Infrastructure/Data/AppDbContext.cs` (DbSets + `OnModelCreating` conventions) |
-| Migrations | `…/Infrastructure/Migrations/` (`YYYYMMDDhhmmss_Name`), applied on push to `main` via `.github/workflows/dotnet-azure.yml` (`dotnet ef database update` on live Azure SQL) |
-| HTTP endpoints | `…/Functions/Functions/*HttpFunctions.cs` — isolated-worker `[Function]` + `HttpTrigger(… Route = "…")`; auth via `FunctionAuthResolver` (Entra `oid` → `AppUser.ExternalAuthUserId`) |
-| Frontend proxy | `app/api/me/route.ts` → `${getAzureApiBaseUrl()}/api/me` |
-| `/app` quota UI | `app/app/page.tsx`, `components/app/subscription-status.tsx`, `components/app/paywall-card.tsx` |
-| Copy contract tests | `tests/unit/pricing-auth-visual-system.test.ts`, `tests/unit/workspace-copy.test.ts` |
+| Free "3" constant | `…/Infrastructure/Services/AccountService.cs` → `GetUsagePlan()` returns `("free","free:lifetime",3)`. It's a **`UsagePeriod.QuotaLimit`, not a credit.** |
+| `/api/me` builder | `AccountService.GetOrCreateAccountSummaryAsync()` → `remaining = periodRemaining + creditRemaining`; emits `Sources[]` per credit with `ExpiresInDays`; `Exhausted = remaining<=0`. |
+| Grant pattern to mirror | `AdminService.GrantCreditsAsync()` → inserts `RewriteCredit{Source="ADMIN", ExpiresAt=now+90d}` + `AdminAuditLog`, one `SaveChanges`. |
+| Consumption / paywall | `QuotaService.ReserveAsync()` + `FindUsableCreditAsync()` (period quota first, then usable credits, **soonest-expiring first**). **No change needed.** |
+| Serializable tx helper | `StripeEventService.ExecuteInTransactionAsync()` (execution strategy + `IsolationLevel.Serializable`). |
+| Admin auth | `…/Functions/Auth/AdminAccess.cs` → `RequireAdminAsync` resolves the Entra user (`FunctionAuthResolver`), allows if `oid` **or** `email` ∈ `ADMIN_EMAILS` (comma-sep, case-insensitive). |
+| Admin endpoints | `…/Functions/Functions/AdminHttpFunctions.cs`: `admin/ping|users|users/{id}|stats|users/{id}/credits|.../suspension|.../refund`. **All API-only — no admin page in `app/`.** |
+| Rate-limit precedent | `lib/auth-rate-limit.ts`: per-email + per-IP buckets, `clientIpFromRequest()` reads `x-forwarded-for` then `cf-connecting-ip`. **In-memory per-isolate → ephemeral, best-effort only.** |
+| IP plumbing | `cf-connecting-ip` visible at the Worker. `Referral.SignupIpHash` (max 128) exists but **unused**; no signup-IP capture wired. |
+| User identity | Entra `oid` → `AppUser.ExternalAuthUserId` (unique); PK `Guid Id`. |
+| Migrations | `…/Infrastructure/Migrations/` (`YYYYMMDDhhmmss_Name`), auto-applied on merge to `main` via `.github/workflows/dotnet-azure.yml` (`dotnet ef database update` on live Azure SQL). |
+| Copy contract tests | `tests/unit/pricing-auth-visual-system.test.ts`, `tests/unit/workspace-copy.test.ts` (gate `cf:deploy`). |
 
-There is **no existing promo / coupon / redeem code** in the live stack. The C# `Referral`
-entity exists but is **vestigial** (declared in `AppDbContext` only, used by no service); we do
-not extend it, though we borrow its `SignupIpHash` anti-abuse idea.
+No existing promo/coupon/redeem code. C# `Referral` is vestigial (declared in `AppDbContext`, used by no service).
 
 ---
 
-## Goals
+## 4. Proposed Architecture
 
-1. New signed-in users receive **0** automatic rewrites.
-2. A signed-in user can **redeem an alphanumeric code** to receive **3** trial rewrites.
-3. The code is **one universal value** at launch, distributed through owner-chosen channels.
-4. The code **expires** (default end of August 2026 NZ time); redemption after expiry fails with a clear message.
-5. **Commercial-grade**: multi-code capable, per-code configurable, abuse-resistant, idempotent, race-safe.
-6. **Analytics**: persist enough to answer "how many distinct users redeemed code X, and when" to evaluate promo effectiveness.
-7. No regression to purchase/paywall/quota/Stripe behavior.
+```
+sign up + verify email (Entra) ──▶ AppUser{Inactive}
+        │
+        ▼
+GET /api/me ── GetUsagePlan()=("free","free:lifetime",0)  ← change 3→0
+        │      remaining = 0 + activeCredits(0); promo.hasRedeemed=false
+        ▼
+/app shows "Redeem your code" card   ← NEW empty state (NOT buy-paywall)
+        │
+POST /api/promo/redeem {code}  (proxy forwards trusted client IP)
+        │  PromoService.RedeemAsync(): normalize → validate window/active/cap
+        │   → IP velocity check (DB) → in Serializable tx:
+        │       atomic conditional ++RedemptionCount (cap guard)
+        │       insert RewriteCredit{Source="PROMO",Amount=3,ExpiresAt=now+90d}
+        │       insert PromoCodeRedemption{...unique(codeId,userId)..., RedeemIpHash}
+        ▼
+GET /api/me ── remaining = 3; Sources=[…,{Source="PROMO",ExpiresInDays≈90}]
+        ▼
+/app workspace (3 trial rewrites) ── POST /api/rewrite consumes PROMO credit (UNCHANGED path)
+        ▼
+PROMO credit exhausted ── /app buy-paywall (promo.hasRedeemed=true)
+```
 
-## Non-Goals
-
-- **Not** percentage/amount discounts on Stripe checkout (this grants *rewrites*, not money off). The schema leaves room (`PromoCodeKind`) but only `TrialCredits` is implemented now.
-- **Not** per-user unique codes at launch (architecture supports them later; see limits section).
-- **Not** referral/affiliate mechanics (separate concern; `Referral` table untouched).
-- **Not** changing the rewrite engine, Stripe packs, pricing, or paid quota (90/mo).
-- **Not** a user-visible "account settings" page redesign — redeem entry lives in `/app` and `/pricing`.
-- **Not** automatic free credits for anonymous (signed-out) users — redemption requires auth.
+Why: consumption/paywall/quota-race/Stripe untouched; `/api/me` already shows per-source
+expiry; redemption reuses the proven grant + serializable-tx patterns.
 
 ---
 
-## Current System (free-quota flow today)
+## 5. Data Model (`data-module-review` lens)
 
-```
-sign up + verify email (Entra native) ──▶ AppUser{SubscriptionStatus=Inactive}
-        │
-        ▼
-GET /api/me ──▶ GetUsagePlan() = ("free","free:lifetime",3)
-        │        remaining = max(3 - used - reserved, 0) + activeCredits
-        ▼
-/app shows workspace while remaining > 0
-        │
-POST /api/rewrite ──▶ QuotaService.ReserveAsync(periodKey="free:lifetime", quota=3)
-        │   period quota first; if exhausted → FindUsableCreditAsync() (purchased packs)
-        │   if neither → 402 / QuotaExceeded
-        ▼
-remaining == 0 ──▶ /app shows paywall-card ("Buy a rewrite pack")
-```
+EF conventions: `Guid Id`, `Guid RowVersion` concurrency token, `DateTimeOffset`, string enums
+via `.HasConversion<string>()`+`HasMaxLength`, indexes in `OnModelCreating`. Migration
+`_AddPromoCodes`; **no** reset/force-reset/drops (AGENTS.md).
 
-Key insight: **the free "3" is a `UsagePeriod.QuotaLimit`, not a `RewriteCredit`.** Credits
-are the *overflow* mechanism. We will flip the trial to ride on the credit mechanism.
-
----
-
-## Proposed Architecture
-
-### Decision: trial credits ride on `RewriteCredit` (Source = "PROMO"), free baseline = 0
-
-```
-sign up + verify email ──▶ AppUser{Inactive}
-        │
-        ▼
-GET /api/me ──▶ GetUsagePlan() = ("free","free:lifetime",0)   ← change 3→0
-        │        remaining = 0 + activeCredits(=0)  → exhausted=true, promo.hasRedeemed=false
-        ▼
-/app shows "Redeem your code" card  ← NEW empty state (NOT the buy-paywall)
-        │
-POST /api/promo/redeem {code}
-        │   PromoService.RedeemAsync(): validate → in Serializable tx:
-        │     insert RewriteCredit{Source="PROMO", AmountGranted=3, ExpiresAt=now+TTL}
-        │     insert PromoCodeRedemption{...}  (unique on (codeId,userId))
-        │     code.RedemptionCount++           (analytics + global cap)
-        ▼
-GET /api/me ──▶ remaining = 0 + 3 = 3, Sources=[…, {Source="PROMO", ExpiresInDays}]
-        │
-        ▼
-/app shows workspace (3 trial rewrites)
-        │
-POST /api/rewrite ──▶ QuotaService.ReserveAsync(quota=0)
-        │   period quota 0 → FindUsableCreditAsync() → consumes the PROMO credit  ← UNCHANGED
-        ▼
-PROMO credit exhausted ──▶ /app shows paywall-card (buy packs)   (promo.hasRedeemed=true)
-```
-
-**Why this design**
-- The consumption path, quota-race guard, 402 logic, paywall, and Stripe purchase grant are
-  **completely unchanged**. `FindUsableCreditAsync` already orders "soonest-expiring first",
-  so a PROMO credit is consumed before a later-expiring purchased pack — correct behavior.
-- `/api/me` already sums credits into `remaining` and emits a per-source row with
-  `ExpiresInDays`, so the UI can show "3 trial rewrites · expires in N days" with near-zero
-  backend display work.
-- Redemption reuses the proven `AdminService.GrantCreditsAsync` grant shape and the
-  `ExecuteInTransactionAsync` serializable-tx pattern.
-
-### Component ownership
-
-| Component | New / changed | Layer |
-|---|---|---|
-| `PromoCode`, `PromoCodeRedemption` entities | **new** | Domain |
-| `AppDbContext` DbSets + config + migration | **changed** | Infrastructure |
-| `PromoService` (validate + redeem + status) | **new** | Infrastructure |
-| `AccountService.GetUsagePlan` free quota 3→0 | **changed** | Infrastructure |
-| `AccountService` summary: add `promo` block + friendly source labels | **changed** | Infrastructure |
-| `PromoHttpFunctions` (`POST promo/redeem`, `GET promo/status`) | **new** | Functions |
-| `AdminService` / `AdminHttpFunctions`: create/list codes + redemption stats | **new** | Infrastructure/Functions |
-| `app/api/promo/redeem/route.ts`, `app/api/promo/status/route.ts` proxies | **new** | Next.js |
-| `components/app/redeem-code-card.tsx` + `/app` state logic | **new/changed** | Next.js |
-| Landing/pricing/footer/auth copy | **changed** | Next.js |
-| Copy contract tests | **changed** | tests |
-
----
-
-## Data Model
-
-Follow existing EF conventions: `Guid Id = Guid.NewGuid()`, `Guid RowVersion` concurrency
-token, `DateTimeOffset` timestamps, enums stored via `.HasConversion<string>()` with
-`HasMaxLength`, unique/composite indexes in `OnModelCreating`.
-
-### `PromoCode` (code definition — the knob)
-
+### `PromoCode` (config — the knob)
 ```csharp
-public sealed class PromoCode
-{
+public sealed class PromoCode {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public required string Code { get; set; }              // normalized: trimmed, UPPERCASE, no spaces/dashes. UNIQUE.
-    public string? Description { get; set; }               // internal label, e.g. "Launch universal trial"
+    public required string Code { get; set; }            // normalized: trim+UPPER+strip space/dash. UNIQUE.
+    public string? Description { get; set; }             // internal label
     public PromoCodeKind Kind { get; set; } = PromoCodeKind.TrialCredits;
-    public int CreditsGranted { get; set; }                // e.g. 3
-    public int GrantTtlDays { get; set; } = 90;            // lifetime of the granted credit after redemption
-    public DateTimeOffset ValidFrom { get; set; }          // redemption window start
-    public DateTimeOffset ValidUntil { get; set; }         // redemption window end (e.g. 2026-08-31T23:59:59+12:00)
-    public int? MaxRedemptionsGlobal { get; set; }         // null = unlimited
-    public int MaxRedemptionsPerUser { get; set; } = 1;    // launch = 1
-    public int RedemptionCount { get; set; }               // denormalized counter (cap check + quick stats)
-    public bool IsActive { get; set; } = true;             // admin kill switch (instant disable without delete)
+    public int CreditsGranted { get; set; }              // e.g. 3
+    public int GrantTtlDays { get; set; } = 90;          // credit lifetime after redemption
+    public DateTimeOffset ValidFrom { get; set; }
+    public DateTimeOffset ValidUntil { get; set; }       // e.g. 2026-08-31T23:59:59+12:00
+    public int? MaxRedemptionsGlobal { get; set; }       // null = uncapped
+    public int MaxRedemptionsPerUser { get; set; } = 1;
+    public int RedemptionCount { get; set; }             // denormalized; cap guard + fast stats
+    public bool IsActive { get; set; } = true;           // immediate kill switch
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public Guid RowVersion { get; set; } = Guid.NewGuid();
-
     public ICollection<PromoCodeRedemption> Redemptions { get; } = new List<PromoCodeRedemption>();
 }
-
-public enum PromoCodeKind { TrialCredits }   // extensible (PercentOff, AmountOff…) — not implemented now
+public enum PromoCodeKind { TrialCredits }   // extensible; only this is implemented now
 ```
+Config: `HasIndex(Code).IsUnique()`; `Code` max 40, `Description` max 200, `Kind` conv-string max 40; `RowVersion` concurrency token.
 
-Indexes / config:
-- `HasIndex(x => x.Code).IsUnique()`
-- `Property(x => x.Code).HasMaxLength(40)`; `Description` max 200; `Kind` `HasConversion<string>().HasMaxLength(40)`
-- `Property(x => x.RowVersion).IsConcurrencyToken()`
-
-### `PromoCodeRedemption` (event ledger — analytics source of truth)
-
+### `PromoCodeRedemption` (ledger — analytics source of truth)
 ```csharp
-public sealed class PromoCodeRedemption
-{
+public sealed class PromoCodeRedemption {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid PromoCodeId { get; set; }
-    public PromoCode? PromoCode { get; set; }
-    public Guid UserId { get; set; }
-    public AppUser? User { get; set; }
-    public Guid RewriteCreditId { get; set; }              // the RewriteCredit this redemption created
+    public Guid PromoCodeId { get; set; }  public PromoCode? PromoCode { get; set; }
+    public Guid UserId { get; set; }       public AppUser? User { get; set; }
+    public Guid RewriteCreditId { get; set; }            // the credit this redemption created
     public int CreditsGranted { get; set; }
-    public string CodeSnapshot { get; set; } = string.Empty;// normalized code text as redeemed (audit; survives code edits)
-    public string? SignupIpHash { get; set; }              // optional anti-abuse (mirrors Referral.SignupIpHash); never raw IP
+    public string CodeSnapshot { get; set; } = "";       // normalized code text as redeemed (audit)
+    public string? RedeemIpHash { get; set; }            // salted SHA-256(IP) — never raw IP
     public PromoCodeRedemptionStatus Status { get; set; } = PromoCodeRedemptionStatus.Applied;
     public DateTimeOffset RedeemedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? ReversedAt { get; set; }        // admin clawback
+    public DateTimeOffset? ReversedAt { get; set; }      // admin clawback
     public Guid RowVersion { get; set; } = Guid.NewGuid();
 }
-
 public enum PromoCodeRedemptionStatus { Applied, Reversed }
 ```
+Config / indexes:
+- **`HasIndex(new {PromoCodeId, UserId}).IsUnique()`** — enforces one-per-user **and** is the redemption race backstop (mirrors `RewriteAttempt (UserId,IdempotencyKey)`).
+- `HasIndex(PromoCodeId)`, `HasIndex(UserId)`, `HasIndex(RedeemIpHash)` (velocity queries), `HasIndex(RedeemedAt)`.
+- FK `PromoCodeId→PromoCode` `OnDelete(Restrict)`; `UserId→AppUser` `OnDelete(Cascade)`; `RewriteCreditId` a plain indexed `Guid` (no cascade FK — avoids SQL Server multiple-cascade-path error, same reason as `Referral.RefereeId`).
+- `RedeemIpHash` max 128, nullable.
 
-Indexes / config:
-- **`HasIndex(x => new { x.PromoCodeId, x.UserId }).IsUnique()`** — enforces one-redemption-per-user **and** is the race guard (concurrent dup → unique violation → caught as `AlreadyRedeemed`). Mirrors the `RewriteAttempt (UserId, IdempotencyKey)` unique-index precedent.
-- `HasIndex(x => x.PromoCodeId)` (analytics rollups), `HasIndex(x => x.UserId)`
-- FK `PromoCodeId → PromoCode` `OnDelete(Restrict)` (never cascade-delete redemption history). FK `UserId → AppUser` `OnDelete(Cascade)` (consistent with other per-user tables; account-erase path handles anonymization).
-- `RewriteCreditId`: plain indexed `Guid` (no cascade FK, to avoid SQL Server multiple-cascade-path errors — same reasoning the codebase used for `Referral.RefereeId`).
-
-> **Account deletion / GDPR:** `AccountService.DeleteAccountAsync` currently anonymizes
-> `RewriteAttempt/UsagePeriod/UsageReservation/RewriteCredit`. It must be extended to also
-> handle `PromoCodeRedemption` for the erased user (null the `SignupIpHash`, keep an
-> anonymized count row or delete the row). Decide: keep anonymized aggregate vs. hard-delete.
-> Recommended: null PII fields, keep the row (so promo totals stay accurate), set
-> `Status = Reversed` only if we also reclaim credits (we don't on erase).
-
-### Analytics query (answers the owner's question directly)
-
+### Global-cap correctness (the "1001st" guarantee)
+Do **not** read-then-write the counter — under load it would over-issue. Use an **atomic
+conditional increment** as the cap guard (race-proof even at READ COMMITTED):
 ```sql
--- distinct users who redeemed a given code, and when
-SELECT COUNT(*) AS redemptions, MIN(RedeemedAt) AS first, MAX(RedeemedAt) AS last
-FROM   PromoCodeRedemptions
-WHERE  PromoCodeId = @id AND Status = 'Applied';
-
--- redemptions per day (promo curve)
-SELECT CAST(RedeemedAt AS date) AS day, COUNT(*) AS n
-FROM   PromoCodeRedemptions WHERE PromoCodeId = @id AND Status = 'Applied'
-GROUP  BY CAST(RedeemedAt AS date) ORDER BY day;
+UPDATE PromoCodes
+SET RedemptionCount = RedemptionCount + 1, UpdatedAt=@now, RowVersion=@new
+WHERE Id=@id AND IsActive=1 AND @now BETWEEN ValidFrom AND ValidUntil
+  AND (MaxRedemptionsGlobal IS NULL OR RedemptionCount < MaxRedemptionsGlobal);
+-- rows affected == 0 ⇒ disabled / outside window / cap reached → re-read to pick the message
 ```
+(EF: `ExecuteUpdateAsync` with that predicate, inside the same tx as the credit + redemption inserts.)
 
-Plus a coarse activation signal by joining `RewriteCreditId → RewriteCredit.AmountConsumed`
-("how many redeemers actually used ≥1 trial rewrite") — a direct measure of "real need".
+### Account deletion
+Extend `AccountService.DeleteAccountAsync` (which already anonymizes attempts/periods/reservations/credits)
+to also handle `PromoCodeRedemption` for the erased user: **null `RedeemIpHash`**, keep the row
+(so promo totals stay accurate). Do not resurrect free quota on erase.
 
-### Migration
-
-New migration `…_AddPromoCodes` creating both tables + indexes. Applied automatically on
-merge to `main` (CI `dotnet ef database update` on live Azure SQL). Migration safety rules
-from `AGENTS.md` apply: **no** `migrate reset` / `--force-reset` / table drops.
-
-**Free-baseline data migration (separate concern, see Rollout):** within the same migration
-or a dedicated one, normalize any existing `UsagePeriod` rows so display == enforcement after
-the constant flips to 0 (see Rollout Plan step 2).
-
-### Seeding the launch code
-
-Do **not** hardcode the code value in source/env (not commercial-grade, and it would land in
-the banned-term-free but still leak-prone code). Instead create it as data via the **admin
-create-code endpoint** (below). Optionally a seed migration that inserts a placeholder row the
-owner edits — but the admin endpoint is cleaner and reusable. The actual code string,
-`ValidUntil`, and `CreditsGranted` are **owner inputs** (see Open Questions).
+### Analytics (answers "how many people used code X, and did they actually use it?")
+```sql
+-- distinct redeemers + window
+SELECT COUNT(*) AS redemptions, MIN(RedeemedAt) first, MAX(RedeemedAt) last
+FROM PromoCodeRedemptions WHERE PromoCodeId=@id AND Status='Applied';
+-- daily curve
+SELECT CAST(RedeemedAt AS date) day, COUNT(*) n FROM PromoCodeRedemptions
+WHERE PromoCodeId=@id AND Status='Applied' GROUP BY CAST(RedeemedAt AS date);
+-- ACTIVATION: redeemers who used ≥1 of the granted rewrites (the real "genuine need" signal)
+SELECT SUM(CASE WHEN rc.AmountConsumed>0 THEN 1 ELSE 0 END) activated, COUNT(*) total
+FROM PromoCodeRedemptions r JOIN RewriteCredits rc ON rc.Id=r.RewriteCreditId
+WHERE r.PromoCodeId=@id AND r.Status='Applied';
+-- abuse signal: same IP hash redeeming many times across accounts
+SELECT RedeemIpHash, COUNT(*) n FROM PromoCodeRedemptions
+WHERE PromoCodeId=@id AND RedeemIpHash IS NOT NULL GROUP BY RedeemIpHash HAVING COUNT(*)>3;
+```
 
 ---
 
-## API and Job Contracts
+## 6. Admin Capabilities & Console (net-new — owner self-service)
 
-### Backend (C# Azure Functions) — `PromoHttpFunctions.cs`
+**Auth (reuse):** all promo-admin endpoints gated by `AdminAccess.RequireAdminAsync` (owner's
+Entra email in `ADMIN_EMAILS`). Every mutating action writes `AdminAuditLog` (existing pattern).
 
-All authenticated like `AccountHttpFunctions` (resolve Entra `oid` via `FunctionAuthResolver`;
-same-origin/JWT handling consistent with existing `me` function).
+**Backend endpoints** (extend `AdminService` + new `PromoAdminHttpFunctions` or fold into `AdminHttpFunctions`):
+| Method/Route | Purpose |
+|---|---|
+| `POST /api/admin/promo-codes` | Create: `{code, description, creditsGranted, grantTtlDays, validFrom, validUntil, maxRedemptionsGlobal?, maxRedemptionsPerUser?}` → validates (unique code, sane numbers, `validUntil>validFrom`) → audit. |
+| `GET /api/admin/promo-codes` | List with `redemptionCount`, derived status (active/pending/expired/exhausted/disabled), config. |
+| `GET /api/admin/promo-codes/{id}` | Detail + stats (redemptions, distinct users, daily curve, activation rate, top IP-hash buckets). |
+| `PATCH /api/admin/promo-codes/{id}` | Edit `validUntil`, caps, description (audited). Lowering a cap below current count blocks new redemptions but keeps existing. |
+| `POST /api/admin/promo-codes/{id}/disable` (and `/enable`) | Flip `IsActive` — **immediate**. |
 
-**`POST /api/promo/redeem`**
-```jsonc
-// request
-{ "code": "WELCOME2026" }       // server normalizes (trim, uppercase, strip spaces/dashes)
-// 200 OK
-{ "creditsGranted": 3, "totalRemaining": 3, "expiresAt": "2026-09-01T11:59:59Z",
-  "source": "PROMO", "alreadyRedeemed": false }
-// errors (JSON { "error": <code>, "message": <friendly> })
-401 unauthorized
-400 invalid_request        // missing/oversized body
-422 invalid_code           // not found / inactive / not-yet-valid  (merged to limit enumeration)
-422 code_expired           // past ValidUntil
-409 already_redeemed       // this user already redeemed this code (idempotent; no new grant)
-409 code_exhausted         // global cap reached
-429 too_many_attempts      // rate limit
-500 server_error
+**Admin UI decision (please pick — see Open Questions):** there is **no admin web page today**.
+- **Option A (recommended): minimal admin UI** — a new authenticated `app/admin/promo-codes` page (table + "New code" form + disable toggle + per-code stats). Matches "在后台操作". Effort M. Reuses the same admin auth (server-side fetch with the admin's session/bearer; page returns 403 for non-admins). It can also surface the *other* existing admin APIs later (users/stats) since none are currently UI-exposed.
+- **Option B: API-only (status quo)** — owner runs documented `curl`/HTTP calls (or a tiny local script) to create/disable codes. Zero UI effort; least friendly. Reasonable as a *stopgap* to launch the first code, then build the UI.
+
+> Recommendation: ship endpoints first (Option B unblocks creating `ReplyAsHuman2026` immediately), build the small UI (Option A) in the same wave.
+
+---
+
+## 7. Security — Threat Model & Defense-in-Depth (the "real commercial risk" the owner flagged)
+
+### 7.1 Trust boundary & IP capture (the architecture that makes "追查 IP" actually work)
+```
+Client ──(cf-connecting-ip set by Cloudflare)──▶ Worker/Next.js proxy ──▶ Azure Functions (C#)
+                                                  ▲ sees real IP        ▲ sees ONLY what proxy forwards
+```
+- **Capture point:** the Worker/proxy (`app/api/promo/redeem/route.ts`) reads `cf-connecting-ip` (trustworthy — Cloudflare sets it) and forwards it to C# as a header.
+- **Spoofing caveat (must address):** the Functions endpoint is internet-reachable and `AuthorizationLevel.Anonymous` (JWT-checked, but not IP-restricted). A direct caller could forge `X-Forwarded-For`. **Therefore C# must not trust an arbitrary client XFF.** Choose one:
+  1. Forward the client IP in a header guarded by a **proxy shared secret** (`X-RIMV-Proxy-Secret`, a new Worker→Functions secret); C# accepts the IP header only when the secret matches. *(Recommended; verify whether such a shared secret already exists between proxy and Functions — today the proxy forwards the user bearer only.)*
+  2. Restrict Functions ingress to Cloudflare IP ranges / use Azure access restrictions, then trust the forwarded header.
+- **Storage:** C# hashes the IP (salted SHA-256, salt from config — never raw IP, never logged) → `PromoCodeRedemption.RedeemIpHash`. (Optionally also stamp signup IP on `AppUser` via a new nullable column — bigger change to the Entra signup path; mark optional.)
+
+### 7.2 Velocity / anti-multi-account (durable, not the in-memory limiter)
+- The existing `lib/auth-rate-limit.ts` is **per-isolate in-memory** → fine as a cheap first
+  layer on the proxy, **insufficient alone**. Authoritative defense is **DB-backed** in the C#
+  redeem path:
+  - Reject/flag if `COUNT(PromoCodeRedemption WHERE RedeemIpHash=@h AND RedeemedAt > now-24h) ≥ N` (e.g. N=3). Tune N; log flagged attempts for the owner to review.
+- **Global cap** (§5) bounds *total* exposure regardless of who redeems.
+- **Per-user unique index** stops the same account double-dipping.
+
+### 7.3 Threats & mitigations
+| # | Threat | Mitigation | Residual |
+|---|---|---|---|
+| T1 | One human, many accounts (disposable emails) → 3×N | Email verification (already) + IP velocity (§7.2) + global cap + activation analytics to spot farming | Determined attacker across IPs/emails still gets some free use; bounded by global cap |
+| T2 | Brute-force code guessing | Generic `invalid_code` (no enumeration) + per-IP/per-user rate limit on redeem | Low (single known universal code today) |
+| T3 | Universal code leaks publicly | Expected; bounded by **global cap + `ValidUntil` + instant disable**; upgrade to per-user codes if abused | Accepted by design |
+| T4 | Bots auto signup+redeem | IP velocity + optional **Cloudflare Turnstile/BotID** on signup &/or redeem | Medium without CAPTCHA; low with |
+| T5 | Replay / concurrent double-grant | Idempotent redeem + unique `(codeId,userId)` + atomic cap increment + Serializable tx | Negligible |
+| T6 | Delete account → re-signup to re-farm | `RedeemIpHash` retained (anonymized PII) so IP velocity still catches bursts | Low–medium |
+| T7 | IP header spoofing to dodge velocity | Proxy shared-secret-guarded IP header / ingress restriction (§7.1) | Low if implemented; **must implement** |
+| T8 | Admin endpoint abuse | `ADMIN_EMAILS` allowlist + audit log on every mutation | Low |
+
+### 7.4 How this filters for intent — and honest limits
+**Genuinely filters:** removing frictionless auto-free (biggest lever) · sign-up + email verify ·
+the deliberate act of entering a code · one-redemption-per-identity · (optional) shorter credit
+TTL to favor "act now" · controlled distribution (don't splash the code on the hero).
+**Does *not* filter:** a universal code **will leak**; free email signups enable multi-account
+farming (bounded, not eliminated). **Real upgrade path (schema already supports):** issue
+**per-user unique codes** (`MaxRedemptionsGlobal=1` each) — switch if redemption/activation data
+shows abuse. Recommend launching universal, watching the data, escalating only if needed.
+
+### 7.5 Hygiene
+No banned terms (`humanizer|bypass|undetect|detector|evade`) in code identifiers/copy (CI grep
+scans `app components public lib`). The code *value* `ReplyAsHuman2026` does **not** trip the grep
+(no banned substring) — usable as the test value. *(Brand note: AGENTS.md positions the product
+as "reply in my voice", not "guaranteed human"; a code like `ReplyInMyVoice2026`/`Welcome2026`
+sits more cleanly with positioning. Your call — it's admin-set.)* No secrets in source; the code
+value lives in the DB; never log code values or raw IPs.
+
+---
+
+## 8. State Machines (`state-machine-modeling` lens)
+
+### `PromoCode` (derived states — computed from columns, not a stored enum)
+```
+[Pending] now<ValidFrom ──▶ [Active] ──┬─ now>ValidUntil ─▶ [Expired]   (terminal for redeem)
+                                        ├─ RedemptionCount≥MaxGlobal ─▶ [Exhausted]
+                                        └─ IsActive=false ─▶ [Disabled] ⇄ (admin enable) ─▶ [Active]
+```
+Redeemable iff `IsActive ∧ ValidFrom≤now≤ValidUntil ∧ (MaxGlobal==null ∨ RedemptionCount<MaxGlobal)`.
+Invariant: `RedemptionCount == COUNT(redemptions WHERE Status=Applied)`.
+
+### `PromoCodeRedemption` (per user×code)
+```
+(none) ──success──▶ [Applied] ──admin clawback──▶ [Reversed]
+  ▲ second Applied for same (code,user) → blocked by unique index (illegal)
+```
+Invariants: ≤1 row per `(codeId,userId)`; every `Applied` references a real `RewriteCredit` created in the same tx. `Reversed` optionally zeroes the linked credit (mirror erase path; column present, full build out of scope now).
+
+---
+
+## 9. Redeem Algorithm (idempotent, race-safe, IP-aware)
+
+```
+RedeemAsync(extUserId, email, rawCode, clientIpTrusted?, now):
+  code = Normalize(rawCode)                          // trim; UPPER; strip spaces/dashes
+  if !FormatValid(code): return InvalidCode
+  user = AccountService.GetOrCreateUser(...)
+  ipHash = clientIpTrusted is null ? null : HashIp(clientIpTrusted)   // salted SHA-256
+  if ipHash != null && RecentRedemptions(ipHash, now-24h) >= N: return IpVelocityBlocked   // flag+log
+  return ExecuteInTransactionAsync(Serializable):
+    pc = db.PromoCodes.SingleOrDefault(c => c.Code == code)
+    if pc == null || !pc.IsActive:        return InvalidCode          // also covers unknown
+    if now <  pc.ValidFrom:               return InvalidCode          // not-yet-valid → generic
+    if now >  pc.ValidUntil:              return Expired
+    if db.PromoCodeRedemptions.Any(r => r.PromoCodeId==pc.Id && r.UserId==user.Id):
+        return AlreadyRedeemed                                        // idempotent, no new grant
+    affected = ExecuteUpdate(++RedemptionCount WHERE cap predicate)   // §5 atomic cap guard
+    if affected == 0:                     return CapReachedOrInactive // re-read → Exhausted/Expired/Disabled
+    credit = RewriteCredit{ UserId, Source="PROMO", AmountGranted=pc.CreditsGranted,
+                            AmountConsumed=0, GrantedAt=now, ExpiresAt=now.AddDays(pc.GrantTtlDays) }
+    db.RewriteCredits.Add(credit)
+    db.PromoCodeRedemptions.Add(new {... RewriteCreditId=credit.Id, CodeSnapshot=code,
+                                      RedeemIpHash=ipHash, Status=Applied, RedeemedAt=now})
+    try: SaveChanges(); commit
+    catch DbUpdateException when unique(codeId,userId) violated:
+        rollback; return AlreadyRedeemed                             // lost concurrent race
+  return Success(credit.AmountGranted, credit.ExpiresAt)
 ```
 
-**`GET /api/promo/status`** *(or fold into `/api/me`; see below)*
-```jsonc
-// 200 OK — drives the /app empty-state branching
-{ "eligible": true,            // a redeemable code generally exists & user hasn't redeemed
-  "hasRedeemed": false,        // user has an Applied redemption (any code)
-  "activeTrialRemaining": 0,   // remaining PROMO credits
-  "trialExpiresAt": null }
-```
+### Resilience matrix (drives tests)
+| Scenario | Expected |
+|---|---|
+| Same user, two concurrent redeems | exactly one Applied + one PROMO credit; other → AlreadyRedeemed |
+| Replay (double tap) | 409 already_redeemed; balance unchanged |
+| `ValidUntil` boundary | `now ≤ ValidUntil` ok; `now > ValidUntil` → expired (single `now` per request) |
+| Global cap N, N+5 concurrent | **exactly N** Applied (atomic ++); overflow → code_exhausted |
+| 1001st redemption (cap 1000) | rejected, message "code has reached its limit" |
+| Grant then rewrite | `FindUsableCreditAsync` consumes PROMO credit (soonest-expiring first) — unchanged |
+| Engine/Sapling fails on trial rewrite | existing no-charge releases reservation; PROMO credit not consumed |
+| Same IP, many accounts in 24h | ≥N → IpVelocityBlocked + logged for owner review |
+| Spoofed XFF direct to Functions | ignored unless proxy-secret valid (§7.1) |
 
-**Recommended:** extend `/api/me` (`AccountUsageSummary`) with a small `promo` object rather
-than add a separate round-trip, since `/app` already fetches `/api/me`:
+---
+
+## 10. User Stories (with acceptance)
+
+### Admin (owner)
+- **A1 Create code:** As admin I create `ReplyAsHuman2026` with credits=3, TTL=90d, validUntil=Aug 31 NZ, perUser=1, global=1000 (or none). *Accept:* code appears Active; audit logged.
+- **A2 Disable code:** I toggle a code off. *Accept:* next redemption → invalid immediately, no deploy.
+- **A3 Measure effectiveness:** I view a code's stats. *Accept:* see total redemptions, distinct users, daily curve, **activation rate** (used ≥1), top IP-hash buckets.
+- **A4 Edit code:** I extend `validUntil` or change the cap. *Accept:* audited; lowering cap below count blocks new but keeps existing.
+- **A5 Duplicate code:** I try to create an existing code string. *Accept:* rejected (unique).
+- **A6 List/triage:** I see all codes with derived status. *Accept:* Active/Pending/Expired/Exhausted/Disabled shown.
+
+### End user
+- **U1 New user, no code:** signed-in, 0 rewrites → sees **Redeem** card (not buy-paywall).
+- **U2 Redeem valid:** enters code → +3, "expires in ~90 days", can rewrite.
+- **U3 Redeem twice:** → "already redeemed", no double grant.
+- **U4 Expired code:** after Aug 31 → "this code has expired".
+- **U5 Invalid/typo:** → "that code isn't valid".
+- **U6 Cap reached (1001st):** → "this code is no longer available".
+- **U7 TTL expiry:** redeems Aug 20, uses 1; day 89 → 2 left; day 91 → expired, buy-paywall.
+- **U8 Paid subscriber redeems:** allowed; +3 PROMO credits sit as overflow (rarely used at 90/mo). *(Or restrict to non-paid — Open Question.)*
+- **U9 Two different codes:** with multiple codes, user may redeem each once (per-code cap). *(Optional "one trial per user ever" policy — Open Question.)*
+- **U10 Signed-out CTA:** redeem CTA → `/sign-in?redirectTo=/app` → back to redeem.
+- **U11 Mobile:** redeem card responsive, no overflow.
+
+### Abuser (negative)
+- **T1 Multi-account farm:** blocked/slowed by email verify + IP velocity + global cap; surfaced in stats.
+- **T2 Brute force:** generic errors + rate limit.
+- **T5 Race/replay:** no double grant.
+
+---
+
+## 11. Risk Register
+| Risk | Likelihood | Impact | Mitigation | Owner action |
+|---|---|---|---|---|
+| Free-baseline=0 display/enforcement mismatch for existing free rows | Med | Med | Constant→0 **+** one-time `UPDATE UsagePeriods SET QuotaLimit=0 WHERE PeriodKey='free:lifetime'`; verify which value `ReserveAsync` trusts | confirm grandfathering (likely ~no live users) |
+| Global-cap over-issue under load | Low | Med | Atomic conditional `++RedemptionCount` (not read-then-write) | — |
+| IP unobtainable / spoofable at C# | Med | High (defeats anti-abuse) | Proxy forwards `cf-connecting-ip` via shared-secret header; C# ignores untrusted XFF | confirm/establish proxy↔Functions secret |
+| Multi-account farming despite defenses | Med | Med | global cap + velocity + activation monitoring; per-user codes as escalation | watch data after launch |
+| Copy change breaks contract tests → blocks deploy | High if missed | Med | Update `pricing-auth-visual-system` + `workspace-copy` tests in same PR | — |
+| Admin UI scope creep | Med | Low | Ship endpoints first; minimal table UI | pick Option A vs B |
+| Code value brand drift ("AsHuman") | Low | Low | optional rename; grep-clean either way | choose value |
+
+---
+
+## 12. API Contracts (user-facing)
+
+**`POST /api/promo/redeem`** (auth required; proxy forwards trusted client IP)
+```jsonc
+// req: { "code": "ReplyAsHuman2026" }
+// 200: { "creditsGranted":3, "totalRemaining":3, "expiresAt":"2026-11-18T…Z", "alreadyRedeemed":false }
+// errors {error,message}: 401 unauthorized · 400 invalid_request · 422 invalid_code ·
+//   422 code_expired · 409 already_redeemed · 409 code_exhausted · 429 too_many_attempts · 500 server_error
+```
+**`/api/me` extension** (preferred over a 2nd round-trip; drives `/app` empty-state branching):
 ```jsonc
 "promo": { "hasRedeemed": false, "eligible": true, "trialRemaining": 0, "trialExpiresAt": null }
 ```
-The UI uses `promo.hasRedeemed` to pick the empty state. Keep `GET /api/promo/status` too if a
-lighter poll is wanted, but `/api/me` extension is the primary path.
-
-### Backend admin (extend `AdminHttpFunctions.cs` / `AdminService.cs`)
-
-- **`POST /api/admin/promo-codes`** — create a code `{code, description, creditsGranted, grantTtlDays, validFrom, validUntil, maxRedemptionsGlobal?, maxRedemptionsPerUser?}` → writes `PromoCode` + `AdminAuditLog{Action="create_promo_code"}`. (Mirrors `GrantCreditsAsync` audit pattern; admin auth already exists.)
-- **`GET /api/admin/promo-codes`** — list codes with `RedemptionCount`, validity, active flag.
-- **`POST /api/admin/promo-codes/{id}/disable`** — set `IsActive=false` (kill switch).
-- **`GET /api/admin/promo-codes/{id}/stats`** — redemptions, distinct users, daily curve, activation rate (redeemers who consumed ≥1). Feeds the promo-effectiveness evaluation.
-- Extend `AdminStatsResponse` with `promoRedemptions` total (optional).
-
-### Frontend (Next.js proxies, mirror `app/api/me/route.ts`)
-
-- `app/api/promo/redeem/route.ts` — `POST`, same-origin enforced (per `AGENTS.md` "Same-Origin Protection"), forwards bearer/cookie to `${getAzureApiBaseUrl()}/api/promo/redeem`.
-- `app/api/promo/status/route.ts` — `GET` (only if not folding into `/api/me`).
-
-### Jobs
-
-None required. Expiry is evaluated at redeem time and at credit-consumption time (existing
-`FindUsableCreditAsync` filters `ExpiresAt > now`). No cron. (Optional later: a reminder email
-before trial credits expire — out of scope.)
+**Proxies (Next.js, mirror `app/api/me/route.ts`):** `app/api/promo/redeem/route.ts` (POST, same-origin enforced per AGENTS.md, forwards `cf-connecting-ip` + proxy secret).
 
 ---
 
-## State and Error Handling
+## 13. Frontend & Backend Change List (explicit)
 
-### State machine — `PromoCode`
+### Backend (C#)
+1. **Domain:** `PromoCode.cs`, `PromoCodeRedemption.cs` (+ enums).
+2. **Infrastructure:** `AppDbContext` DbSets + `OnModelCreating` (unique `Code`; unique `(codeId,userId)`; indexes; FKs); migration `_AddPromoCodes`.
+3. **`PromoService.cs`:** `RedeemAsync`, `GetStatusAsync` (reuse `ExecuteInTransactionAsync`); `HashIp`; IP-velocity query; atomic cap update.
+4. **`AccountService`:** free `QuotaLimit` 3→0 (config-backed `FREE_BASELINE_REWRITES`); add `promo` block + friendly source labels (`"PROMO"`→"Trial rewrites") to summary; **+ data migration** for existing free rows; extend `DeleteAccountAsync` for redemptions.
+5. **Admin:** `AdminService` promo methods (create/list/detail/edit/disable/stats) + `AdminAuditLog`; `PromoAdminHttpFunctions` (or extend `AdminHttpFunctions`) using `RequireAdminAsync`.
+6. **`PromoHttpFunctions.cs`:** `POST promo/redeem` (+ optional `GET promo/status`); read trusted client-IP header.
+7. **Config/secrets:** `FREE_BASELINE_REWRITES`, `PROMO_IP_HASH_SALT`, `PROMO_IP_VELOCITY_MAX_24H`, proxy shared secret (names only; set in Worker vars + Functions app settings, kept in sync).
 
-```
-                 ┌───────────── (admin disable) ─────────────┐
-                 ▼                                            │
-[Active]  (now∈[ValidFrom,ValidUntil] ∧ IsActive ∧ Redemptions<Cap)
-   │  │                                                       ▲
-   │  ├── now > ValidUntil ───────────────▶ [Expired]  (terminal for redemption)
-   │  ├── RedemptionCount ≥ MaxGlobal ─────▶ [Exhausted]
-   │  └── now < ValidFrom ─────────────────▶ [Pending]  (→ Active when time passes)
-   └── IsActive=false ─────────────────────▶ [Disabled]
-```
-- **Redeemable iff:** `IsActive ∧ ValidFrom ≤ now ≤ ValidUntil ∧ (MaxRedemptionsGlobal == null ∨ RedemptionCount < MaxRedemptionsGlobal)`.
-- These are *derived* states (computed from columns), not a stored status enum — keeps it simple and race-safe (the cap/time checks happen inside the redeem transaction).
-- **Invariant:** `RedemptionCount == COUNT(redemptions WHERE Status=Applied)`.
-
-### State machine — `PromoCodeRedemption` (per user × code)
-
-```
-(none) ──redeem success──▶ [Applied] ──admin clawback──▶ [Reversed]
-   ▲                            │
-   └───── illegal: second Applied for same (code,user) — blocked by unique index
-```
-- **Invariant:** at most one row per `(PromoCodeId, UserId)`.
-- **Invariant:** every `Applied` row references a real `RewriteCredit` (created in the same tx).
-- `Reversed` (admin clawback) optionally zeroes the linked `RewriteCredit` (`AmountGranted=0`) — mirror the erase path; out of scope to fully build now, but the column exists.
-
-### Redeem algorithm (idempotent, race-safe)
-
-```
-RedeemAsync(externalAuthUserId, email, rawCode, ipHash?, now):
-  normalized = Normalize(rawCode)              // trim; uppercase; strip spaces & dashes
-  if !FormatValid(normalized): return InvalidCode
-  user = AccountService.GetOrCreateUser(...)
-  return ExecuteInTransactionAsync(Serializable):     // reuse StripeEventService pattern
-    code = db.PromoCodes.SingleOrDefault(c => c.Code == normalized)
-    if code == null || !code.IsActive:  return InvalidCode
-    if now <  code.ValidFrom:           return InvalidCode      // not-yet-valid → generic
-    if now >  code.ValidUntil:          return Expired
-    if db.PromoCodeRedemptions.Any(r => r.PromoCodeId==code.Id && r.UserId==user.Id):
-        return AlreadyRedeemed(existing grant)                  // idempotent: no new credit
-    if code.MaxRedemptionsGlobal is int cap && code.RedemptionCount >= cap:
-        return GlobalCapReached
-    credit = new RewriteCredit{ UserId=user.Id, Source="PROMO",
-                                AmountGranted=code.CreditsGranted, AmountConsumed=0,
-                                GrantedAt=now, ExpiresAt=now.AddDays(code.GrantTtlDays) }
-    db.RewriteCredits.Add(credit)
-    db.PromoCodeRedemptions.Add(new {... RewriteCreditId=credit.Id, CodeSnapshot=normalized,
-                                      SignupIpHash=ipHash, Status=Applied, RedeemedAt=now})
-    code.RedemptionCount++; code.UpdatedAt=now; code.RowVersion=Guid.NewGuid()
-    try: SaveChanges(); commit
-    catch DbUpdateException when unique (PromoCodeId,UserId) violated:
-        rollback; return AlreadyRedeemed     // lost a concurrent race — treat as success-ish
-  return Success(credit.AmountGranted, expiresAt)
-```
-
-### Resilience / failure matrix (drives tests — `resilience-test-generation` lens)
-
-| Scenario | Expected |
-|---|---|
-| Two concurrent redeems, same user+code | Exactly one `Applied` row + one PROMO credit; the other → `AlreadyRedeemed`, no double grant |
-| Replay (user taps redeem twice) | Second → `409 already_redeemed`, credits unchanged (idempotent) |
-| Redeem at `ValidUntil` boundary | `now ≤ ValidUntil` passes; `now > ValidUntil` → `code_expired` (use a single `now` per request) |
-| Global cap race (cap=N, N+1 concurrent) | At most N `Applied`; overflow → `code_exhausted` (cap re-checked inside tx; unique index is the hard backstop) |
-| Grant succeeds, then rewrite consumes it | `FindUsableCreditAsync` picks the PROMO credit (soonest-expiring first) — unchanged path |
-| DB transient failure | Execution strategy retries (Serializable + `CreateExecutionStrategy`) |
-| Sapling/engine fails on the trial rewrite | Existing no-charge-on-failure logic releases the reservation — credit not consumed (unchanged) |
-| Unknown / malformed code | `422 invalid_code` (no enumeration of which codes exist) |
-| Brute-force redeem attempts | `429 too_many_attempts` (per-user + per-IP limiter) |
+### Frontend (Next.js)
+8. **Proxies:** `app/api/promo/redeem/route.ts` (+ status), same-origin + IP/secret forwarding.
+9. **`components/app/redeem-code-card.tsx`** (input + Redeem + inline states) and `/app/page.tsx` empty-state branching on `promo.hasRedeemed`; map PROMO source to "Trial rewrites".
+10. **Admin UI (Option A):** `app/admin/promo-codes/page.tsx` (+ components) — list/create/disable/stats; 403 for non-admins.
+11. **Copy** (de-emphasize "free", emphasize "redeem"): `components/landing/hero.tsx:6`, `…/closing-cta.tsx:28`, `…/pricing-v2.tsx`, `app/pricing/page.tsx`, `components/site-footer.tsx:68`, `app/developers/page.tsx:245`, `components/auth/google-oauth-card.tsx:45`, `app/app/page.tsx` quota label.
+12. **Tests:** update `tests/unit/pricing-auth-visual-system.test.ts` + `tests/unit/workspace-copy.test.ts` to new strings (they gate `cf:deploy`).
 
 ---
 
-## Security and Privacy
+## 14. Rollout Plan
+1. **Schema + service + endpoints + admin** (free baseline still 3; no user-visible change). Merge → migration applies to Azure SQL. Create `ReplyAsHuman2026` via admin endpoint (Option B) to validate end-to-end.
+2. **Free baseline 3→0** + consistency data migration (`UsagePeriods` free rows). Decide grandfathering (≈no live users → safe to zero).
+3. **User UI** (redeem card + `/app` branching + copy + tests) — Playwright verify desktop/mobile.
+4. **Admin UI** (Option A).
+5. **Worker-preview smoke** of redeem→rewrite→paywall + invalid/expired/already/cap + IP forwarding; banned-term grep clean.
+6. **Deploy** (push `main` → CI → `cf:deploy` + `dotnet ef database update`). Rollback = `wrangler rollback`; code instantly disablable via `IsActive=false`.
 
-- **Auth required** for redeem/status (Entra `oid`). No anonymous grants.
-- **Enumeration resistance:** unknown/inactive/not-yet-valid all return the *same* generic
-  `invalid_code`. Only `expired` and `already_redeemed` are distinguished (useful, low-risk).
-- **Rate limiting:** redeem endpoint limited per user and per IP (reuse the existing auth
-  rate-limit approach). A single universal code makes brute force moot today, but this is
-  required once per-user-unique codes ship.
-- **No secrets in source:** the code value lives in the DB, created via admin endpoint — not
-  in `.env.local`, not hardcoded. Never log the code value in app logs.
-- **Banned terms:** none of the new identifiers/copy may contain `humanizer|bypass|undetect|detector|evade`. The CI grep scans `app components public lib`; this doc lives in `plans/` (not scanned) but proposed code names (`PromoCode`, `RedeemCodeCard`, etc.) are clean. Run the guard before completion.
-- **PII:** `SignupIpHash` is a salted hash, never a raw IP (mirror `Referral.SignupIpHash`). Account-erase must clear it (see Data Model note).
-- **Audit:** admin code creation/disable writes `AdminAuditLog` (existing table + pattern).
-
-### How this filters for intent — and its honest limits
-
-The owner's goal is to select for genuine need. Be realistic about what a **single universal
-code** does and does not achieve:
-
-**What genuinely filters (keep these):**
-1. **Removing frictionless auto-free** — the biggest lever. Pure tire-kickers who'd burn 3 free without engaging now self-select out.
-2. **Sign-up + email verification** (already required) — a real, verified identity per trial.
-3. **The deliberate act of entering a code** — small but real intent signal.
-4. **One redemption per account** + optional **shorter credit TTL** (e.g. 30 days) to select for users who act now, not someday.
-5. **Controlled distribution** — show the code only in targeted channels (launch email, a specific campaign/partner, a "request access" reply), not splashed on the hero.
-
-**What does *not* filter (be honest):**
-- A universal code **will leak** (forums, screenshots). Secrecy is not the moat.
-- Free email sign-ups mean a determined user can make N accounts for 3N rewrites. Email
-  verification + `MaxRedemptionsGlobal` + `SignupIpHash` *bound* this; they don't eliminate it.
-
-**The real upgrade path (architecture already supports it):** issue **per-user unique codes**
-(one row per code, `MaxRedemptionsGlobal=1`, distributed individually). The schema, redeem
-flow, and analytics work unchanged — only the code-generation/distribution differs. Recommend
-launching universal, watching `PromoCodeRedemption` + activation rate, and switching to unique
-codes if abuse or low-intent redemption shows up in the data.
+**Guardrails (unchanged):** don't touch `LAUNCH_CONFIRMED`/Stripe price/webhook secrets/DNS; Stripe stays in configured mode; no real charges; keep Worker vars ↔ Functions app settings in sync.
 
 ---
 
-## Rollout Plan
-
-Ordered, each step independently reviewable; substantive code delegated to Codex.
-
-1. **Schema + service + endpoints (no UI cutover yet).** Add entities, migration, `PromoService`, `PromoHttpFunctions`, admin code-management, `/api/me` `promo` block. Free baseline still `3`. Ship behind no user-visible change. Merge → migration applies to Azure SQL.
-2. **Free baseline cutover (`3 → 0`) + consistency migration.**
-   - Change `AccountService.GetUsagePlan` free `QuotaLimit` `3 → 0` (consider a `FREE_BASELINE_REWRITES` config/const for reversibility).
-   - **Consistency:** `GetOrCreateAccountSummaryAsync` computes `periodRemaining` from the
-     *constant* (`usagePlan.QuotaLimit`), while `QuotaService.ReserveAsync` enforces against the
-     *persisted* `UsagePeriod.QuotaLimit`. For any pre-existing `free:lifetime` rows these can
-     now disagree. Mitigation: a one-time data migration `UPDATE UsagePeriods SET QuotaLimit=0,
-     UpdatedAt=… WHERE PeriodKey='free:lifetime'`, **and** confirm `ReserveAsync` reconciles an
-     existing row's `QuotaLimit` to the plan value (if it does not, the migration is the source
-     of truth). Implementation checkpoint: verify in code which value `ReserveAsync` trusts.
-   - Decision: existing users' grandfathered free — since the live site has ~no real users
-     (sprint note 2026-05-21), zeroing all `free:lifetime` rows is safe and simplest. If real
-     users exist, optionally grant them a one-off PROMO credit to avoid a bad surprise.
-3. **UI.** Add `redeem-code-card`, branch `/app` empty state on `promo.hasRedeemed`, update copy + contract tests. Verify with Playwright/`ui-browser-testing` (desktop+mobile, console/network).
-4. **Seed the launch code** via admin endpoint with owner-provided value/expiry/credits.
-5. **Verify end-to-end on Worker preview** before prod (per `AGENTS.md` cutover gates): redeem happy path, expired/already-redeemed/invalid, rewrite consumes PROMO credit, paywall after exhaustion. Banned-term grep clean.
-6. **Deploy.** Push to `main` → CI build-test → `cf:deploy` + `dotnet ef database update`. Rollback = `wrangler rollback` (frontend) + the code is disablable via `IsActive=false` without a deploy.
-
-> **Deployment guardrails (unchanged):** Stripe stays in its configured mode; do **not** touch
-> `LAUNCH_CONFIRMED`, `STRIPE_*`, price IDs, DNS, or the Pages custom domain. No real charges.
-> Keep Worker `vars` and Azure Functions app settings in sync if any new config is added.
+## 15. Verification Plan
+- **Backend (`dotnet-backend-testing`):** redeem happy/idempotent/concurrent (retrying execution strategy + unique index → one grant); validity gates (invalid/expired/boundary); **global cap exactness** under parallel load; consumption 3→2→1→0→paywall; new-user remaining=0; IP-velocity block; account-erase covers redemptions; admin create/list/disable/stats + audit.
+- **Frontend (`ui-browser-testing`):** new-user redeem card (not paywall); redeem success → workspace "3 trial · expires in N days"; invalid/expired/already inline errors; exhaustion → buy-paywall; admin page create/disable/stats; desktop+mobile screenshots, no console/network errors; copy contract tests green.
+- **Gates before deploy:** `npm run test` + `dotnet test` green; banned-term grep clean; Worker-preview smoke of the full loop incl. IP forwarding.
 
 ---
 
-## Verification Plan
-
-### Backend (`dotnet-backend-testing` lens — xUnit + EF SQLite + WebApplicationFactory)
-- `PromoService`: happy redeem grants exactly `CreditsGranted` credits with correct `ExpiresAt`.
-- Idempotency: second redeem → `AlreadyRedeemed`, balance unchanged, one credit row.
-- Concurrency: two parallel redeems (retrying execution strategy + unique index) → one grant.
-- Validity gates: not-found/inactive/not-yet-valid → `invalid_code`; past `ValidUntil` → `expired`; `ValidUntil` boundary inclusive.
-- Global cap: cap=N, N+1 redeems → N applied, overflow `code_exhausted`.
-- Consumption: after redeem, `QuotaService.ReserveAsync` consumes the PROMO credit; `/api/me` `remaining` goes 3→2→1→0 then paywall.
-- Free baseline: brand-new user → `remaining=0`, `exhausted=true`, `promo.hasRedeemed=false`.
-- Account-erase extended to `PromoCodeRedemption` (no orphan PII).
-- Admin: create/list/disable/stats endpoints; audit log written.
-
-### Frontend (`ui-browser-testing` lens — Playwright)
-- New user `/app` shows **redeem** card (not buy-paywall); after redeem shows workspace with "3 trial rewrites · expires in N days".
-- Invalid/expired/already-redeemed show friendly inline errors.
-- After exhausting trial → buy-paywall appears.
-- Desktop + mobile screenshots: no overflow/clipping, no console/network errors.
-- Copy contract tests (`pricing-auth-visual-system.test.ts`, `workspace-copy.test.ts`) updated to new strings and **passing** (they gate `cf:deploy`).
-
-### Gates before deploy
-- `npm run test` green (copy contracts), `dotnet test` green, banned-term grep clean, Worker-preview smoke of the full redeem→rewrite→paywall loop.
+## 16. Open Questions (owner inputs — do not invent)
+1. **"一人一码" meaning:** confirm = *one redemption per identity* (my reading), or *literal unique code string per user*?
+2. **Admin UI:** Option A (build minimal `/admin/promo-codes` page — recommended) or B (API-only stopgap)?
+3. **Code value:** `ReplyAsHuman2026` for testing (confirmed). Final launch value? (brand note in §7.5).
+4. **Expiry instant:** `2026-08-31 23:59:59` NZ (`+12:00` NZST = `11:59:59Z`) — confirm.
+5. **Credit TTL:** 90 days (default) or shorter (e.g. 30d) to reinforce "act now"?
+6. **Global cap:** capped (e.g. 1000) or uncapped at launch? (admin can set either.)
+7. **Paid users redeeming (U8)** + **one-trial-per-user-across-codes (U9):** allow or restrict?
+8. **IP defense depth:** OK to add a proxy↔Functions shared secret + DB IP-velocity now? Add Cloudflare Turnstile on signup/redeem (T4)?
+9. **Existing users:** grandfather any current free quota or zero it?
 
 ---
 
-## Copy & Interaction Design (scope 1a)
+## 17. Implementation Checkpoints (for the Codex brief)
+1. Entities + DbContext config + migration `_AddPromoCodes` (no other entity edits beyond nav collection).
+2. `PromoService` (redeem/status) with serializable tx, **atomic cap increment**, idempotency catch, IP hash + velocity.
+3. `PromoHttpFunctions` (user) + admin promo endpoints (reuse `RequireAdminAsync` + audit).
+4. `AccountService`: `promo` summary block + labels; **separately** free `QuotaLimit` 3→0 (config) + consistency migration; verify `ReserveAsync` quota source.
+5. Next.js proxies (+ trusted IP/secret forwarding); `redeem-code-card` + `/app` branching; admin UI (Option A).
+6. Copy changes + update both contract tests.
+7. Extend `DeleteAccountAsync` for `PromoCodeRedemption`.
+8. Tests per §15; banned-term grep; Worker-preview smoke; deploy.
 
-Concrete strings are owner-tunable; below is the recommended direction. **Every string change
-must update the contract tests** (see [grounding table](#grounding--what-the-live-system-actually-is-verified-2026-06-02)).
-
-### Homepage / landing (de-emphasize "free", emphasize "redeem")
-- **Hero stat** (`components/landing/hero.tsx:6`): `"3 free"` → `"3 rewrites"` with sub `"when you redeem a trial code"` (or drop the stat). Eyebrow drop "Start free".
-- **Closing CTA** (`components/landing/closing-cta.tsx:28`): `"3 free rewrites · No card required"` → `"Have a trial code? Redeem it for 3 rewrites · No card required"`.
-- **Landing pricing block** (`components/landing/pricing-v2.tsx`) & **pricing page** (`app/pricing/page.tsx`): replace "Everyone starts with 3 lifetime rewrites" with "Redeem a trial code for 3 rewrites, then buy packs…". Free-tier card becomes a **"Trial code"** card: "Enter a code to unlock 3 rewrites" with a CTA to `/app` (sign-in first).
-- **Footer** (`components/site-footer.tsx:68`) & **developers page** (`app/developers/page.tsx:245`): swap "3 free rewrites" → "Redeem a trial code".
-- **Auth sign-up highlights** (`components/auth/google-oauth-card.tsx:45`): "Start with three free rewrites" → "Redeem a trial code for three rewrites".
-
-### `/app` workspace (the redeem entry — primary surface)
-- **New empty state** when `scope=="free" && remaining==0 && !promo.hasRedeemed`: a
-  `redeem-code-card` with a single text input + "Redeem" button:
-  - Title: "Unlock your trial" · Body: "Enter your trial code to get 3 rewrites." · input placeholder "Trial code" · button "Redeem".
-  - Inline states: success ("3 rewrites unlocked — they expire in N days."), `invalid_code` ("That code isn't valid."), `code_expired` ("This code has expired."), `already_redeemed` ("You've already redeemed a trial code.").
-- **Quota label** (`app/app/page.tsx`): for a PROMO source show "N of 3 trial rewrites remaining" (map `Source=="PROMO"` → friendly label "Trial rewrites"; today `AccountUsageSource.Label` is just the raw source string).
-- **Exhausted** when `promo.hasRedeemed && remaining==0` → existing `paywall-card` (buy packs) — unchanged.
-- Optionally surface a small "Have a code?" link in the paywall so users with a code who hit a zero state can still redeem.
-
-### Interaction principles
-- Redeem requires sign-in; signed-out users clicking a redeem CTA route through `/sign-in?redirectTo=/app`.
-- One input, instant inline validation, no page reload (call proxy, re-fetch `/api/me`).
-- Do **not** print the universal code anywhere it would defeat the intent filter (no hero banner). Distribution is the owner's channel choice.
-
----
-
-## Open Questions (owner inputs — do not invent these)
-
-1. **Code value** — the actual universal string (e.g. `WELCOME2026`, `REPLY3`, …)? Recommend 6–12 uppercase alphanumerics, easy to type.
-2. **Expiry instant** — confirm "end of August 2026". Recommended default: `2026-08-31T23:59:59+12:00` (NZST) = `2026-08-31T11:59:59Z`. Confirm timezone.
-3. **Granted-credit TTL** — how long do the 3 trial rewrites last *after* redemption? Default 90 days (matches purchases/admin grants); a shorter 30 days reinforces "act now / real need". Pick `GrantTtlDays`.
-4. **Global cap** — any limit on total redemptions (`MaxRedemptionsGlobal`)? Default null (unlimited) for a launch universal code; a cap bounds abuse exposure.
-5. **Existing users** — if any real users already have free quota, grandfather them or zero them? (Likely moot — ~no live users.)
-6. **Distribution channel** — where will the code be shown? (Decides how loud the homepage copy is.) 
-7. **Universal vs. per-user** — confirm launching with one universal code (yes per current plan); revisit if redemption data shows abuse.
-
----
-
-## Implementation Checkpoints (for the Codex brief)
-
-1. Add `PromoCode` + `PromoCodeRedemption` entities; register DbSets + `OnModelCreating` config (unique `Code`; unique `(PromoCodeId,UserId)`; string enums; concurrency tokens); create EF migration `_AddPromoCodes`. **Do not** edit other entities except adding nav collection.
-2. `PromoService.RedeemAsync` + `GetStatusAsync` using `ExecuteInTransactionAsync` (Serializable), mirroring `AdminService.GrantCreditsAsync` grant shape and catching the unique-index race.
-3. `PromoHttpFunctions` (`POST promo/redeem`, optional `GET promo/status`); admin code-management endpoints + audit logs.
-4. Extend `AccountService.GetOrCreateAccountSummaryAsync` with a `promo` block + friendly source labels; **separately** flip free `QuotaLimit` 3→0 (config-backed) + consistency data migration; verify which `QuotaLimit` `ReserveAsync` trusts.
-5. Next.js proxies `app/api/promo/redeem/route.ts` (+ status), same-origin enforced.
-6. `components/app/redeem-code-card.tsx` + `/app` empty-state branching + copy changes across hero/pricing/footer/auth/developers; update `tests/unit/pricing-auth-visual-system.test.ts` + `tests/unit/workspace-copy.test.ts`.
-7. Extend `AccountService.DeleteAccountAsync` to cover `PromoCodeRedemption`.
-8. Tests per Verification Plan; banned-term grep; Worker-preview smoke; then deploy.
-
-**Codex constraints to echo in every brief:** banned terms `humanizer|bypass|undetect|detector|evade`; no secrets in source; validate env at runtime; no `migrate reset`/force-reset/table drops; do not touch `LAUNCH_CONFIRMED`/Stripe price/webhook secrets/DNS; no real charges.
+**Echo in every Codex brief:** banned terms `humanizer|bypass|undetect|detector|evade`; no secrets in source (validate env at runtime); no `migrate reset`/force-reset/drops; don't touch `LAUNCH_CONFIRMED`/Stripe price/webhook secrets/DNS; no real charges; keep Worker vars ↔ Functions app settings in sync.
