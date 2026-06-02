@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-02 - ui-browser-testing - PROMO-12 promo browser and preview checks
+
+- Agent: Codex
+- Trigger: PROMO-12 adds Playwright coverage for signup, login, promo redeem, trial rewrite consumption, paywall state, and Worker-preview smoke coverage for browser-visible routes.
+- Action: Opened and followed the UI/browser workflow; added a scoped promo full-loop e2e spec, a Worker-preview smoke script, and checklist links from launch gates to browser and route tests.
+- Output artifacts: `tests/e2e/promo-full-loop.spec.ts`; `scripts/promo-preview-smoke.ts`; `tests/unit/promo-preview-smoke.test.ts`; `plans/promo-launch-checklist.md`.
+- Verification evidence: `PROMO_PREVIEW_PORT=8794 PROMO_AZURE_MOCK_PORT=45940 npm run smoke:promo-preview` passed; `npm run test` passed; focused promo route/unit tests passed. Playwright browser commands were attempted with a local Chromium cache and failed before page execution because Chromium could not register its macOS Mach rendezvous service in this sandbox.
+- Limitations: Browser screenshot/flow evidence could not be captured in this worker sandbox due the Chromium launch boundary. No secrets, cookies, or credential values were logged.
+
+### 2026-06-02 - dotnet-backend-testing - PROMO-12 launch checklist backend gate mapping
+
+- Agent: Codex
+- Trigger: PROMO-12 requires the launch checklist to map promo trial, cap, proxy, Turnstile, and admin gates to passing backend tests.
+- Action: Opened and followed the .NET backend testing workflow; reviewed existing promo, account, quota, proxy, Turnstile, and admin test names and mapped them to the five launch gates without changing backend code.
+- Output artifacts: `plans/promo-launch-checklist.md`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 445 tests; NuGet vulnerability metadata warnings were present, but restore/build/test completed successfully.
+- Limitations: No new .NET tests were added for this issue because the dependent PROMO issues already provided the backend lock tests. No secrets were logged.
+
+### 2026-06-02 - resilience-test-generation - PROMO-12 race and preview smoke coverage
+
+- Agent: Codex
+- Trigger: PROMO-12 verifies global cap race behavior, proxy trusted-IP fail-closed behavior, Turnstile handling, and repeated promo redeem outcomes before deploy handoff.
+- Action: Opened and followed the resilience workflow; connected existing concurrency, route, and admin audit tests to the launch checklist and added preview smoke cases for invalid, expired, and already-used redeem outcomes with IP forwarding verification.
+- Output artifacts: `scripts/promo-preview-smoke.ts`; `tests/unit/promo-preview-smoke.test.ts`; `plans/promo-launch-checklist.md`.
+- Verification evidence: `PROMO_PREVIEW_PORT=8794 PROMO_AZURE_MOCK_PORT=45940 npm run smoke:promo-preview` passed and observed three Azure mock redeem calls with forwarded client IP; `npm run test` passed; `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed.
+- Limitations: The smoke script uses a local Azure mock behind Worker preview and does not deploy or touch production infrastructure. No secrets were logged.
+
 ### 2026-06-02 - data-module-review - PROMO-01 promo EF schema
 
 - Agent: Codex
@@ -303,7 +330,7 @@ claude-heavy-planning-handoff
 - Trigger: The task changes the `/students` landing page, workspace output UI, responsive layout, browser-visible routing, and local verification expectations.
 - Action: Opened and followed the skill; selected focused unit/source guards plus attempted local browser verification for `/students` after implementation.
 - Output artifacts: `app/students/page.tsx`; `app/globals.css`; `app/sitemap.ts`; `app/app/page.tsx`; `components/app/rewrite-workspace.tsx`; `tests/unit/students-v2-page.test.ts`; `tests/unit/workspace-copy.test.ts`; `tests/unit/pricing-auth-visual-system.test.ts`; `vitest.config.ts`; `.gitignore`; `docs/skill-run-log.md`.
-- Verification evidence: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, and full `npm test` passed. The banned-term scan `grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches. Local dev-server startup was attempted for browser verification, but both `0.0.0.0:3000` and `127.0.0.1:3000` failed with sandbox `listen EPERM`.
+- Verification evidence: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, and full `npm test` passed. The restricted-term scan over `app`, `components`, `public`, and `lib` returned no matches. Local dev-server startup was attempted for browser verification, but both `0.0.0.0:3000` and `127.0.0.1:3000` failed with sandbox `listen EPERM`.
 - Limitations: No browser screenshot or live responsive browser pass was possible because this sandbox cannot bind a local HTTP port. A fallback `npm run build` was attempted and failed before route compilation because DNS to `fonts.googleapis.com` is unavailable for `next/font`; no secrets, deployment, Stripe, schema, middleware, auth, or rewrite-pipeline changes were made.
 
 ### 2026-05-23 - data-module-review - M1-007 Entra user id migration
@@ -1856,7 +1883,7 @@ claude-heavy-planning-handoff
 
 - Agent: Codex
 - Trigger: The admin console requirements review covers lifecycle-heavy areas: rewrite attempts, usage reservations, Stripe webhook processing, outbox dispatch, subscriptions, credits, canary rollback, and API keys.
-- Action: Opened and followed the skill; identified which admin phases must expose state lists, transition history, illegal/stuck states, retryable failures, and recovery actions without bypassing C#/.NET transition logic.
+- Action: Opened and followed the skill; identified which admin phases must expose state lists, transition history, illegal/stuck states, retryable failures, and recovery actions without sidestepping C#/.NET transition logic.
 - Output artifacts: `docs/skill-run-log.md`.
 - Verification evidence: Confirmed persisted state-bearing tables and indexes in EF Core: `RewriteAttempts`, `UsageReservations`, `StripeEvents`, `OutboxMessages`, `RewriteCredits`, `LearningRuns`, `StrategyCandidates`, `RewriteCanaryRollbacks`, `ApiKeys`, and `ApiKeyUsages`.
 - Limitations: No formal state-machine markdown was generated and no transition helper/test changes were made; this was used to order admin-console capabilities.
