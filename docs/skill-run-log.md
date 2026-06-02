@@ -2337,3 +2337,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/FreeBaselineMigrationTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminCreditAdjustTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoApiTests.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Initial focused test run failed before implementation because `GetUsagePlan` lacked a configuration overload; after implementation, focused tests passed 46/46 and full `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 445/445.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because the remote package vulnerability feed was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-02 - system-spec-synthesis - PROMO-07 redeem proxy contract
+
+- Agent: Codex
+- Trigger: GitHub issue #433 and `plans/promo-issues/PROMO-07-redeem-proxy.md` define a new Next.js BFF API route contract for promo redemption, Turnstile verification, trusted Cloudflare IP forwarding, and runtime secret validation.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the PROMO-07 issue body, the PROMO-07 brief, and `plans/promo-code-trial-spec.md` sections 8.1, 8.3, and 13. Converted the requirements into checkpoints: same-origin POST, `{code, turnstileToken}` parsing, Turnstile `siteverify` with `cf-connecting-ip`, runtime `TURNSTILE_SECRET_KEY` and `PROMO_PROXY_SHARED_SECRET` checks, Azure bearer forwarding, and response pass-through.
+- Output artifacts: `app/api/promo/redeem/route.ts`; `lib/turnstile.ts`; `lib/auth-rate-limit.ts`; `tests/unit/promo-redeem-route.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red test first failed because `app/api/promo/redeem/route.ts` did not exist; after implementation, `npm run test -- tests/unit/promo-redeem-route.test.ts` passed 7/7, `npm run typecheck` passed, and full `npm run test` passed 302/302.
+- Limitations: The optional promo status proxy was not implemented because PROMO-07 marks it optional and acceptance is fully covered by the redeem route. No UI, backend, payment, deployment, or secret file was changed.
+
+### 2026-06-02 - resilience-test-generation - PROMO-07 Turnstile and fail-closed proxy tests
+
+- Agent: Codex
+- Trigger: PROMO-07 changes a provider-dependent route and requires tests for blocked/missing Turnstile tokens, production missing secrets, and trusted IP/secret forwarding.
+- Action: Opened and followed the skill; treated `/api/promo/redeem` as the critical operation and `no Azure redeem call unless same-origin, configured, captcha-verified, and authenticated` as the invariant. Added deterministic local fetch fakes for Turnstile success and rejection, asserted missing token rejection, asserted production missing secret errors happen before provider calls, and asserted forwarded `X-Client-IP` comes from `cf-connecting-ip` even when `x-forwarded-for` is present.
+- Output artifacts: `tests/unit/promo-redeem-route.test.ts`; `app/api/promo/redeem/route.ts`; `lib/turnstile.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused route tests passed 7/7 and full Vitest passed 302/302 with no live Turnstile, Azure, database, or payment dependency calls.
+- Limitations: No retry policy was added; provider failure is fail-closed as `invalid_captcha`, matching the issue's proxy gate behavior.
