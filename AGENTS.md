@@ -2,6 +2,14 @@
 
 ## Recent Decisions (Change Log)
 
+### 2026-06-02
+- Promo-code trial wave (branch `feat/promo-code-trial`; spec `plans/promo-code-trial-spec.md`): the owner explicitly authorized FULL autonomous delivery THROUGH production deploy. The delivery daemon runs all 4 phases into the integration branch `feat/promo-code-trial`, then — gated by AUTOMATED checks (not a human pause) — merges to `main` so CI/CD deploys. Merge-to-main is allowed only when ALL of the following hold:
+  1. all wave issues meet their acceptance criteria and the 5 launch-gating checkpoints (free-baseline cutover, global-cap race, proxy trusted-IP fail-closed, Turnstile env handling, admin auth/audit) are test-locked green;
+  2. Worker-preview smoke passes (Turnstile via Cloudflare test keys on preview; prod uses the domain-locked real key);
+  3. prod readiness check passes — required prod secrets/config are present in the Worker + Azure Functions (`TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `PROMO_PROXY_SHARED_SECRET`, `PROMO_IP_HASH_SALT`, `FREE_BASELINE_REWRITES=0`); deploy ABORTS if any is missing (fail-closed would otherwise break live signup/redeem);
+  4. post-deploy live smoke runs; on failure → auto-rollback (`wrangler rollback`) + report.
+- Scope: this authorization is specific to the promo-code wave. It does NOT modify `LAUNCH_CONFIRMED` (already true), Stripe live keys / `STRIPE_PRICE_ID` / webhook secret, or DNS, and triggers no real charge. The general deployment-cutover caution in this file remains in force for all unrelated work.
+
 ### 2026-05-21
 - Stripe cutover sandbox → live. STRIPE_LIVE_CUTOVER_APPROVED=true set.
 - LAUNCH_CONFIRMED=true set; formal domain cutover authorized.
