@@ -101,8 +101,27 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Rewrite_without_promo_credit_returns_payment_required()
+    {
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_no_credit");
+        client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-no-credit");
+
+        var response = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
+
+        response.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
+        await using var db = CreateContext();
+        (await db.UsagePeriods.CountAsync()).Should().Be(0);
+        (await db.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task Rewrite_creates_attempt_and_outbox_message()
     {
+        await SeedPromoCreditAsync("clerk_test", amountGranted: 3);
         await using var factory = CreateFactory();
         var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_test");
@@ -125,6 +144,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     [Fact]
     public async Task Rewrite_same_idempotency_key_with_different_body_returns_conflict_without_new_outbox()
     {
+        await SeedPromoCreditAsync("clerk_conflict", amountGranted: 3);
         await using var factory = CreateFactory();
         var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_conflict");
@@ -153,6 +173,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     [Fact]
     public async Task Attempt_lookup_returns_attempt_status_for_same_user()
     {
+        await SeedPromoCreditAsync("clerk_test", amountGranted: 3);
         await using var factory = CreateFactory();
         var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_test");
@@ -171,6 +192,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     [Fact]
     public async Task Rewrite_retry_after_success_returns_same_result_without_new_reservation()
     {
+        await SeedPromoCreditAsync("clerk_retry_success", amountGranted: 3);
         await using var factory = CreateFactory();
         var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_retry_success");
@@ -356,6 +378,31 @@ public sealed class RewriteApiTests : IAsyncLifetime
                 ["Health:OutboxBacklogMinutes"] = "10",
             })
             .Build();
+
+    private async Task SeedPromoCreditAsync(string externalAuthUserId, int amountGranted)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await using var db = CreateContext();
+        var user = new AppUser
+        {
+            ExternalAuthUserId = externalAuthUserId,
+            Email = $"{externalAuthUserId}@example.com",
+            SubscriptionStatus = SubscriptionStatus.Inactive,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.AppUsers.Add(user);
+        db.RewriteCredits.Add(new RewriteCredit
+        {
+            User = user,
+            Source = "PROMO",
+            AmountGranted = amountGranted,
+            AmountConsumed = 0,
+            GrantedAt = now,
+            ExpiresAt = now.AddDays(90),
+        });
+        await db.SaveChangesAsync();
+    }
 
     private static Task<HttpResponseMessage> PostRewriteAsync(HttpClient client, string idempotencyKey)
     {

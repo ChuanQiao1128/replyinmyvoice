@@ -50,7 +50,7 @@ public sealed class AdminCreditAdjustTests
             user.Email,
             CancellationToken.None);
         after.Usage.Remaining.Should().Be(7);
-        after.Usage.Quota.Should().Be(10);
+        after.Usage.Quota.Should().Be(7);
         after.Usage.Sources.Should().ContainSingle(x =>
             x.Source == "ADMIN" &&
             x.Limit == 7 &&

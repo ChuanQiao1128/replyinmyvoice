@@ -90,7 +90,7 @@ app.MapPost("/api/rewrite", async (
         externalUserId,
         ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
         cancellationToken);
-    var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user);
+    var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user, builder.Configuration);
 
     var result = await rewriteRequestService.CreateAttemptAsync(
         user.Id,

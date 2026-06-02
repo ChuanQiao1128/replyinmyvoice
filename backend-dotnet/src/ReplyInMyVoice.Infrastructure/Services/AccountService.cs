@@ -11,6 +11,8 @@ public sealed class AccountService(
     IConfiguration? configuration = null,
     Func<string, CancellationToken, Task>? cancelSubscriptionAsync = null)
 {
+    private const int DefaultFreeBaselineRewrites = 0;
+
     public async Task<AppUser> GetOrCreateUserAsync(
         string externalAuthUserId,
         string? email,
@@ -69,7 +71,7 @@ public sealed class AccountService(
     {
         var user = await GetOrCreateUserAsync(externalAuthUserId, email, cancellationToken);
         await using var db = dbContextFactory();
-        var usagePlan = GetUsagePlan(user);
+        var usagePlan = GetUsagePlan(user, configuration);
         var period = await db.UsagePeriods.AsNoTracking().SingleOrDefaultAsync(
             x => x.UserId == user.Id && x.PeriodKey == usagePlan.PeriodKey,
             cancellationToken);
@@ -265,6 +267,10 @@ public sealed class AccountService(
                 .AsTracking()
                 .Where(x => x.UserId == user.Id)
                 .ToListAsync(cancellationToken);
+            var promoRedemptions = await db.PromoCodeRedemptions
+                .AsTracking()
+                .Where(x => x.UserId == user.Id)
+                .ToListAsync(cancellationToken);
 
             user.ExternalAuthUserId = CreateErasedExternalAuthUserId(user.Id);
             user.Email = null;
@@ -321,12 +327,18 @@ public sealed class AccountService(
                 credit.RowVersion = Guid.NewGuid();
             }
 
+            foreach (var redemption in promoRedemptions)
+            {
+                redemption.RedeemIpHash = null;
+                redemption.RowVersion = Guid.NewGuid();
+            }
+
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         });
     }
 
-    public static AccountUsagePlan GetUsagePlan(AppUser user)
+    public static AccountUsagePlan GetUsagePlan(AppUser user, IConfiguration? configuration = null)
     {
         if (user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing)
         {
@@ -336,7 +348,18 @@ public sealed class AccountService(
                 user.SubscriptionStatus == SubscriptionStatus.Testing ? 10_000 : 90);
         }
 
-        return new AccountUsagePlan("free", "free:lifetime", 3);
+        return new AccountUsagePlan(
+            "free",
+            "free:lifetime",
+            ResolveFreeBaselineRewrites(configuration));
+    }
+
+    private static int ResolveFreeBaselineRewrites(IConfiguration? configuration)
+    {
+        var configuredValue = configuration?["FREE_BASELINE_REWRITES"];
+        return int.TryParse(configuredValue, out var parsed) && parsed >= 0
+            ? parsed
+            : DefaultFreeBaselineRewrites;
     }
 
     private async Task CancelStripeSubscriptionAsync(

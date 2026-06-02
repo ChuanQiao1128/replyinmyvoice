@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -41,11 +42,79 @@ public sealed class AccountServiceTests : IAsyncLifetime
         summary.SubscriptionStatus.Should().Be("Inactive");
         summary.Usage.Scope.Should().Be("free");
         summary.Usage.PeriodKey.Should().Be("free:lifetime");
-        summary.Usage.Quota.Should().Be(3);
+        summary.Usage.Quota.Should().Be(0);
         summary.Usage.Used.Should().Be(0);
         summary.Usage.Reserved.Should().Be(0);
-        summary.Usage.Remaining.Should().Be(3);
-        summary.Usage.Exhausted.Should().BeFalse();
+        summary.Usage.Remaining.Should().Be(0);
+        summary.Usage.Exhausted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetOrCreateAccountSummary_ignores_old_free_period_limit_after_cutover()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-old-free-period",
+                Email = "old-free@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = userId,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 0,
+                ReservedCount = 0,
+                CreatedAt = now.AddDays(-1),
+                UpdatedAt = now.AddDays(-1),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var summary = await service.GetOrCreateAccountSummaryAsync(
+            "entra-old-free-period",
+            "old-free@example.com",
+            CancellationToken.None);
+
+        summary.Usage.Quota.Should().Be(0);
+        summary.Usage.Remaining.Should().Be(0);
+        summary.Usage.Exhausted.Should().BeTrue();
+        summary.Usage.Sources.Should().ContainSingle(x =>
+            x.Source == "free" &&
+            x.Limit == 0 &&
+            x.Remaining == 0);
+    }
+
+    [Fact]
+    public void GetUsagePlan_uses_free_baseline_configuration_override()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FREE_BASELINE_REWRITES"] = "2",
+            })
+            .Build();
+        var user = new AppUser
+        {
+            ExternalAuthUserId = "entra-config-free",
+            SubscriptionStatus = SubscriptionStatus.Inactive,
+        };
+
+        var plan = AccountService.GetUsagePlan(user, configuration);
+
+        plan.Scope.Should().Be("free");
+        plan.PeriodKey.Should().Be("free:lifetime");
+        plan.QuotaLimit.Should().Be(2);
     }
 
     [Fact]
@@ -154,7 +223,7 @@ public sealed class AccountServiceTests : IAsyncLifetime
             CancellationToken.None);
 
         summary.Usage.Scope.Should().Be("free");
-        summary.Usage.Quota.Should().Be(6);
+        summary.Usage.Quota.Should().Be(3);
         summary.Usage.Used.Should().Be(3);
         summary.Usage.Reserved.Should().Be(0);
         summary.Usage.Remaining.Should().Be(3);
@@ -221,8 +290,8 @@ public sealed class AccountServiceTests : IAsyncLifetime
         summary.Usage.Sources.Should().HaveCount(2);
         summary.Usage.Sources[0].Source.Should().Be("free");
         summary.Usage.Sources[0].Used.Should().Be(1);
-        summary.Usage.Sources[0].Limit.Should().Be(3);
-        summary.Usage.Sources[0].Remaining.Should().Be(1);
+        summary.Usage.Sources[0].Limit.Should().Be(0);
+        summary.Usage.Sources[0].Remaining.Should().Be(0);
         summary.Usage.Sources[0].ExpiresAt.Should().BeNull();
 
         summary.Usage.Sources[1].Source.Should().Be("quick-pack");
@@ -300,8 +369,8 @@ public sealed class AccountServiceTests : IAsyncLifetime
             "promo-summary@example.com",
             CancellationToken.None);
 
-        summary.Usage.Remaining.Should().Be(5);
-        summary.Usage.Quota.Should().Be(5);
+        summary.Usage.Remaining.Should().Be(2);
+        summary.Usage.Quota.Should().Be(2);
         summary.Promo.HasRedeemed.Should().BeTrue();
         summary.Promo.Eligible.Should().BeFalse();
         summary.Promo.TrialRemaining.Should().Be(2);
@@ -516,6 +585,37 @@ public sealed class AccountServiceTests : IAsyncLifetime
                 ExpiresAt = now.AddDays(25),
                 StripeEventId = "evt_credit",
             });
+            db.PromoCodes.Add(new PromoCode
+            {
+                Id = Guid.NewGuid(),
+                Code = "ERASECHECK",
+                DisplayCode = "EraseCheck",
+                Description = "Account erase coverage",
+                Kind = PromoCodeKind.TrialCredits,
+                CreditsGranted = 3,
+                GrantTtlDays = 90,
+                ValidFrom = now.AddDays(-1),
+                ValidUntil = now.AddDays(30),
+                MaxRedemptionsGlobal = 100,
+                MaxRedemptionsPerUser = 1,
+                RedemptionCount = 1,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                Redemptions =
+                {
+                    new PromoCodeRedemption
+                    {
+                        UserId = userId,
+                        RewriteCreditId = creditId,
+                        CreditsGranted = 3,
+                        CodeSnapshot = "ERASECHECK",
+                        RedeemIpHash = "ip-hash-to-clear",
+                        Status = PromoCodeRedemptionStatus.Applied,
+                        RedeemedAt = now,
+                    },
+                },
+            });
             await db.SaveChangesAsync();
         }
 
@@ -568,6 +668,11 @@ public sealed class AccountServiceTests : IAsyncLifetime
             credit.AmountConsumed.Should().Be(0);
             credit.ExpiresAt.Should().NotBeNull();
             credit.StripeEventId.Should().Be("evt_credit");
+
+            var redemption = await db.PromoCodeRedemptions.SingleAsync();
+            redemption.UserId.Should().Be(userId);
+            redemption.RedeemIpHash.Should().BeNull();
+            redemption.Status.Should().Be(PromoCodeRedemptionStatus.Applied);
         }
 
         var freshUser = await service.GetOrCreateUserAsync(
