@@ -2355,3 +2355,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `tests/unit/promo-redeem-route.test.ts`; `app/api/promo/redeem/route.ts`; `lib/turnstile.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused route tests passed 7/7 and full Vitest passed 302/302 with no live Turnstile, Azure, database, or payment dependency calls.
 - Limitations: No retry policy was added; provider failure is fail-closed as `invalid_captcha`, matching the issue's proxy gate behavior.
+
+### 2026-06-02 - state-machine-modeling - PROMO-08 redeem UI quota states
+
+- Agent: Codex
+- Trigger: PROMO-08 changes `/app` branching for no-redemption, active trial-credit, exhausted trial, and paid quota states.
+- Action: Opened and followed the skill; modeled the UI state entity as the `/api/me` account summary. States: new signed-in account with zero remaining and no promo redemption; active promo trial credit; redeemed and exhausted promo trial; paid account with current quota; paid account with exhausted monthly quota. Events: account summary read, successful redeem, redeem error, trial credit consumption, paid quota exhaustion. Allowed transitions: new zero-quota account -> redeem card; redeem success -> workspace; trial credit remaining -> workspace; redeemed zero remaining -> buy paywall; paid exhausted -> billing-management paywall. Illegal transitions: new zero-quota account -> buy paywall; paid exhausted account -> forced redeem card; error response -> workspace. Invariants: trial display uses 3 as the grant size, PROMO source is labeled `Trial rewrites`, and the universal code value is never rendered.
+- Output artifacts: `lib/promo-app-state.ts`; `tests/unit/promo-app-state.test.ts`; `app/app/page.tsx`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run test -- tests/unit/promo-app-state.test.ts tests/unit/workspace-copy.test.ts` passed 13/13; `npm run typecheck` passed; `npm run test` passed 309/309; `npm run build` passed and listed `/app`.
+- Limitations: No backend persistence state was changed; the state remains derived from the existing account summary and promo block.
+
+### 2026-06-02 - ui-browser-testing - PROMO-08 redeem card and responsive flow
+
+- Agent: Codex
+- Trigger: PROMO-08 adds a browser-visible redeem form, Turnstile widget, inline error states, success refresh, `/app` empty-state branching, and mobile overflow acceptance.
+- Action: Opened and followed the skill; identified the user-visible flow as signed-in `/app` -> redeem card -> inline error or redeem success -> `/api/me` refetch -> workspace trial quota line. Added a focused Playwright spec with a local Azure account-summary mock, signed test session cookies, browser-level redeem response stubs, and a Turnstile stub covering new user, success, inline errors, exhausted trial, and mobile overflow.
+- Output artifacts: `components/app/redeem-code-card.tsx`; `app/app/page.tsx`; `tests/e2e/promo-redeem-ui.spec.ts`; `playwright.config.ts`; `tests/unit/workspace-copy.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run typecheck` passed; `npm run test` passed 309/309; `npm run lint` passed; `npm run build` passed. Focused Playwright attempts reached the browser launch phase after production build/start, but local Chromium launch failed before any page loaded because this macOS sandbox denies the browser process Mach-port registration.
+- Limitations: Browser assertions are committed and ready for the supervisor/CI environment, but local Playwright execution could not complete in this sandbox. A full guard scan still reports pre-existing copy-guard strings in `lib/rewrite-eval-cases.ts`; the diff-only scan for this issue returned no matches.

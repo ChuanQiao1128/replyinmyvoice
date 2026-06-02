@@ -10,6 +10,22 @@ export type AzureAccountUsage = {
   remaining: number;
   exhausted: boolean;
   periodEnd: string | null;
+  sources?: AzureQuotaCreditSource[];
+};
+
+export type AzureQuotaCreditSource = {
+  source: string;
+  label: string;
+  remaining: number;
+  expiresAt: string | null;
+  expiresInDays: number | null;
+};
+
+export type AzurePromoSummary = {
+  eligible: boolean;
+  hasRedeemed: boolean;
+  trialRemaining: number;
+  trialExpiresAt: string | null;
 };
 
 export type AzureAccountSummary = {
@@ -19,6 +35,7 @@ export type AzureAccountSummary = {
   subscriptionStatus: string;
   currentPeriodEnd: string | null;
   usage: AzureAccountUsage;
+  promo?: AzurePromoSummary | null;
 };
 
 export function getAzureApiBaseUrl() {

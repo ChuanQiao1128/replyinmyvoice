@@ -13,6 +13,10 @@ const paywallSource = readFileSync(
   new URL("../../components/app/paywall-card.tsx", import.meta.url),
   "utf8",
 );
+const redeemCardSource = readFileSync(
+  new URL("../../components/app/redeem-code-card.tsx", import.meta.url),
+  "utf8",
+);
 const appPageSource = readFileSync(
   new URL("../../app/app/page.tsx", import.meta.url),
   "utf8",
@@ -91,9 +95,9 @@ describe("rewrite workspace surface copy", () => {
 
   it("wires Azure-backed quota and a post-copy upgrade nudge", () => {
     expect(appPageSource).toContain("remaining={usage.remaining}");
-    expect(appPageSource).toContain("quota={usage.quota}");
-    expect(appPageSource).toContain("planRemaining={usage.remaining}");
-    expect(appPageSource).toContain("quotaSources={[]}");
+    expect(appPageSource).toContain("quota={workspaceQuota}");
+    expect(appPageSource).toContain("planRemaining={workspacePlanRemaining}");
+    expect(appPageSource).toContain("quotaSources={quotaSources}");
     expect(workspaceSource).toContain("quota: number");
     expect(workspaceSource).toContain("planRemaining");
     expect(workspaceSource).toContain("freeRewritesRemaining");
@@ -113,5 +117,29 @@ describe("rewrite workspace surface copy", () => {
     );
     expect(submitBody).not.toContain("setShowPostCopyNudge(true)");
     expect(copyBody).toContain("setShowPostCopyNudge(true)");
+  });
+
+  it("wires the promo redeem card without exposing the code value", () => {
+    expect(appPageSource).toContain("selectAppExperience");
+    expect(appPageSource).toContain("RedeemCodeCard");
+    expect(appPageSource).toContain("account.promo");
+    expect(appPageSource).toContain("labelForQuotaSource");
+    expect(appPageSource).not.toContain("ReplyAsHuman2026");
+
+    expect(redeemCardSource).toContain("NEXT_PUBLIC_TURNSTILE_SITE_KEY");
+    expect(redeemCardSource).toContain(
+      "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit",
+    );
+    expect(redeemCardSource).toContain('fetch("/api/promo/redeem"');
+    expect(redeemCardSource).toContain('fetch("/api/me"');
+    expect(redeemCardSource).toContain("router.refresh()");
+    expect(redeemCardSource).toContain("3 rewrites unlocked");
+    expect(redeemCardSource).toContain("Trial rewrites");
+    expect(redeemCardSource).toContain("invalid_code");
+    expect(redeemCardSource).toContain("code_expired");
+    expect(redeemCardSource).toContain("already_redeemed");
+    expect(redeemCardSource).toContain("code_exhausted");
+    expect(redeemCardSource).toContain("ip_velocity");
+    expect(redeemCardSource).not.toContain("ReplyAsHuman2026");
   });
 });
