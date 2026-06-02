@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-02 - data-module-review - PROMO-01 promo EF schema
+
+- Agent: Codex
+- Trigger: PROMO-01 adds EF Core entities, indexes, concurrency tokens, check constraints, and a migration for promo codes and redemptions.
+- Action: Opened and followed the data-module workflow; reviewed uniqueness, FK shape, delete behavior, indexed lookup columns, check constraints, and migration output.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/PromoCode.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/PromoCodeRedemption.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260602080020_AddPromoCodes.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260602080020_AddPromoCodes.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln` passed; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 401/401; idempotent EF SQL script generation passed and contained the promo tables, checks, unique indexes, and no `RewriteCreditId` FK on promo redemptions.
+- Limitations: No local SQL Server target was available in this worker environment, so database update was verified through EF script generation plus SQLite schema tests. No secrets were logged.
+
+### 2026-06-02 - state-machine-modeling - PROMO-01 redemption status
+
+- Agent: Codex
+- Trigger: PROMO-01 adds persisted promo redemption status with `Applied` and `Reversed` values.
+- Action: Opened and followed the state workflow at schema scope; kept the issue to persisted states only and used the unique `(PromoCodeId, UserId)` index as the duplicate-apply backstop.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/PromoCodeRedemption.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoCodeSchemaTests.cs`.
+- Verification evidence: Focused `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter PromoCodeSchemaTests --no-restore` passed 4/4; full backend test command passed 401/401.
+- Limitations: PROMO-01 intentionally adds no redemption service, transition function, reversal behavior, quota behavior, or consumption logic. No secrets were logged.
+
+### 2026-06-02 - dotnet-backend-testing - PROMO-01 SQLite schema tests
+
+- Agent: Codex
+- Trigger: PROMO-01 requires xUnit SQLite tests for unique promo code, unique redemption per user and code, and check constraints.
+- Action: Opened and followed the .NET backend testing workflow; wrote the failing promo schema tests first, then implemented the EF entities and mapping; also reused the repo's no-cookie WebApplicationFactory client pattern so existing API tests run in this sandbox.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoCodeSchemaTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`.
+- Verification evidence: Initial focused promo test failed before implementation because promo entity types were missing; after implementation, focused promo tests passed 4/4. Full `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 401/401.
+- Limitations: NuGet vulnerability metadata lookup warned because `https://api.nuget.org/v3/index.json` was unreachable, but restore/build/test artifacts were available. No secrets were logged.
+
 ### 2026-05-25 - system-spec-synthesis - Corrected smoke 10 eval and pipeline split
 
 - Agent: Codex

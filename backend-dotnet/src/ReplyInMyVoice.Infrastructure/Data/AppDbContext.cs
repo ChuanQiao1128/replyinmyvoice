@@ -23,6 +23,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsage> ApiKeyUsages => Set<ApiKeyUsage>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
+    public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
+    public DbSet<PromoCodeRedemption> PromoCodeRedemptions => Set<PromoCodeRedemption>();
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
@@ -360,6 +362,51 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.AdminExternalAuthUserId).HasMaxLength(160);
             entity.Property(x => x.AdminEmail).HasMaxLength(320);
             entity.Property(x => x.Action).HasMaxLength(120);
+        });
+
+        modelBuilder.Entity<PromoCode>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.ToTable(x =>
+            {
+                x.HasCheckConstraint("CK_PromoCodes_CreditsGranted_Positive", "[CreditsGranted] > 0");
+                x.HasCheckConstraint("CK_PromoCodes_GrantTtlDays_Positive", "[GrantTtlDays] > 0");
+                x.HasCheckConstraint("CK_PromoCodes_MaxRedemptionsPerUser_Minimum", "[MaxRedemptionsPerUser] >= 1");
+                x.HasCheckConstraint(
+                    "CK_PromoCodes_MaxRedemptionsGlobal_PositiveOrNull",
+                    "[MaxRedemptionsGlobal] IS NULL OR [MaxRedemptionsGlobal] > 0");
+                x.HasCheckConstraint("CK_PromoCodes_ValidUntil_After_ValidFrom", "[ValidUntil] > [ValidFrom]");
+                x.HasCheckConstraint("CK_PromoCodes_RedemptionCount_NonNegative", "[RedemptionCount] >= 0");
+            });
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.Property(x => x.Code).HasMaxLength(40);
+            entity.Property(x => x.DisplayCode).HasMaxLength(40);
+            entity.Property(x => x.Description).HasMaxLength(200);
+            entity.Property(x => x.Kind).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+        });
+
+        modelBuilder.Entity<PromoCodeRedemption>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.PromoCodeId, x.UserId }).IsUnique();
+            entity.HasIndex(x => x.PromoCodeId);
+            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.RewriteCreditId);
+            entity.HasIndex(x => x.RedeemIpHash);
+            entity.HasIndex(x => x.RedeemedAt);
+            entity.Property(x => x.CodeSnapshot).HasMaxLength(40);
+            entity.Property(x => x.RedeemIpHash).HasMaxLength(128);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.PromoCode)
+                .WithMany(x => x.Redemptions)
+                .HasForeignKey(x => x.PromoCodeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 
