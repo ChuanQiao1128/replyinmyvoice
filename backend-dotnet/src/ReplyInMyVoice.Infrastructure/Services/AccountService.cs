@@ -89,6 +89,38 @@ public sealed class AccountService(
             .ToList();
         var creditRemaining = activeCredits
             .Sum(x => Math.Max(x.AmountGranted - x.AmountConsumed, 0));
+        var activePromoCredits = activeCredits
+            .Where(x => x.Source == "PROMO")
+            .ToList();
+        var trialRemaining = activePromoCredits
+            .Sum(x => Math.Max(x.AmountGranted - x.AmountConsumed, 0));
+        var trialExpiresAt = activePromoCredits
+            .Where(x => x.ExpiresAt is not null && x.AmountGranted - x.AmountConsumed > 0)
+            .Select(x => x.ExpiresAt!.Value)
+            .OrderBy(x => x)
+            .Cast<DateTimeOffset?>()
+            .FirstOrDefault();
+        var hasRedeemedPromo = await db.PromoCodeRedemptions
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.UserId == user.Id && x.Status == PromoCodeRedemptionStatus.Applied,
+                cancellationToken);
+        var promoCodes = await db.PromoCodes
+            .AsNoTracking()
+            .Select(x => new
+            {
+                x.IsActive,
+                x.ValidFrom,
+                x.ValidUntil,
+                x.MaxRedemptionsGlobal,
+                x.RedemptionCount,
+            })
+            .ToListAsync(cancellationToken);
+        var hasRedeemableCode = promoCodes.Any(x =>
+            x.IsActive &&
+            x.ValidFrom <= now &&
+            now <= x.ValidUntil &&
+            (x.MaxRedemptionsGlobal is null || x.RedemptionCount < x.MaxRedemptionsGlobal));
         var remaining = periodRemaining + creditRemaining;
         var sources = new List<AccountUsageSource>
         {
@@ -107,7 +139,7 @@ public sealed class AccountService(
             var sourceRemaining = Math.Max(x.AmountGranted - x.AmountConsumed, 0);
             return new AccountUsageSource(
                 x.Source,
-                x.Source,
+                LabelForCreditSource(x.Source),
                 x.AmountConsumed,
                 x.AmountGranted,
                 0,
@@ -131,7 +163,12 @@ public sealed class AccountService(
                 remaining <= 0)
             {
                 Sources = sources,
-            });
+            },
+            new AccountPromoSummary(
+                hasRedeemedPromo,
+                !hasRedeemedPromo && hasRedeemableCode,
+                trialRemaining,
+                trialExpiresAt));
     }
 
     public async Task<IReadOnlyList<AccountPayment>> GetPurchaseHistoryAsync(
@@ -361,6 +398,9 @@ public sealed class AccountService(
 
         return Math.Max(0, (int)Math.Ceiling((expiresAt.Value - now).TotalDays));
     }
+
+    private static string LabelForCreditSource(string source) =>
+        source == "PROMO" ? "Trial rewrites" : source;
 }
 
 internal sealed record DeleteAccountLookup(string? StripeSubscriptionId);
@@ -370,7 +410,8 @@ public sealed record AccountSummary(
     string ExternalAuthUserId,
     string? Email,
     string SubscriptionStatus,
-    AccountUsageSummary Usage);
+    AccountUsageSummary Usage,
+    AccountPromoSummary Promo);
 
 public sealed record AccountUsageSummary(
     string Scope,
@@ -393,6 +434,12 @@ public sealed record AccountUsageSource(
     int Remaining,
     DateTimeOffset? ExpiresAt,
     int? ExpiresInDays);
+
+public sealed record AccountPromoSummary(
+    bool HasRedeemed,
+    bool Eligible,
+    int TrialRemaining,
+    DateTimeOffset? TrialExpiresAt);
 
 public sealed record AccountPayment(
     string? Sku,

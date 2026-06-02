@@ -8,6 +8,8 @@ using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
 using Stripe;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -165,6 +167,101 @@ app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
         attempt.Status.ToString(),
         attempt.ResultJson,
         attempt.ErrorCode));
+});
+
+app.MapPost("/api/promo/redeem", async (
+    HttpRequest httpRequest,
+    PromoService promoService,
+    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    CancellationToken cancellationToken) =>
+{
+    var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
+    if (string.IsNullOrWhiteSpace(externalUserId))
+    {
+        return PromoError("authentication_required", StatusCodes.Status401Unauthorized);
+    }
+
+    PromoRedeemRequest? request;
+    try
+    {
+        request = await ReadPromoRedeemRequestAsync(httpRequest, cancellationToken);
+    }
+    catch (JsonException)
+    {
+        return PromoError("invalid_request", StatusCodes.Status400BadRequest);
+    }
+
+    if (request is null || string.IsNullOrWhiteSpace(request.Code))
+    {
+        return PromoError("invalid_request", StatusCodes.Status400BadRequest);
+    }
+
+    if (string.IsNullOrWhiteSpace(request.TurnstileToken))
+    {
+        return PromoError("invalid_captcha", StatusCodes.Status403Forbidden);
+    }
+
+    try
+    {
+        var email = ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration);
+        var result = await promoService.RedeemAsync(
+            externalUserId,
+            email,
+            request.Code,
+            ResolveTrustedPromoClientIp(httpRequest, builder.Configuration),
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        return await MapPromoRedeemResultAsync(
+            result,
+            externalUserId,
+            email,
+            accountService,
+            cancellationToken);
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+        throw;
+    }
+    catch
+    {
+        return PromoError("server_error", StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapGet("/api/promo/status", async (
+    HttpRequest httpRequest,
+    PromoService promoService,
+    CancellationToken cancellationToken) =>
+{
+    var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
+    if (string.IsNullOrWhiteSpace(externalUserId))
+    {
+        return PromoError("authentication_required", StatusCodes.Status401Unauthorized);
+    }
+
+    try
+    {
+        var status = await promoService.GetStatusAsync(
+            externalUserId,
+            ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        return Results.Ok(new PromoStatusResponse(
+            status.HasRedeemed,
+            status.Eligible,
+            status.TrialRemaining,
+            status.TrialExpiresAt));
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+        throw;
+    }
+    catch
+    {
+        return PromoError("server_error", StatusCodes.Status500InternalServerError);
+    }
 });
 
 app.MapPost("/api/stripe/checkout", async (
@@ -370,6 +467,99 @@ static async Task<CheckoutSessionRequest?> ReadCheckoutSessionRequestAsync(
     return new CheckoutSessionRequest(sku.ValueKind == JsonValueKind.String ? sku.GetString() : sku.ToString());
 }
 
+static async Task<PromoRedeemRequest?> ReadPromoRedeemRequestAsync(
+    HttpRequest request,
+    CancellationToken cancellationToken)
+{
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync(cancellationToken);
+    if (string.IsNullOrWhiteSpace(body))
+    {
+        return null;
+    }
+
+    return JsonSerializer.Deserialize<PromoRedeemRequest>(
+        body,
+        new JsonSerializerOptions(JsonSerializerDefaults.Web));
+}
+
+static async Task<IResult> MapPromoRedeemResultAsync(
+    PromoRedeemResult result,
+    string externalUserId,
+    string? email,
+    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    CancellationToken cancellationToken)
+{
+    switch (result.Kind)
+    {
+        case PromoRedeemResultKind.Success:
+            var account = await accountService.GetOrCreateAccountSummaryAsync(
+                externalUserId,
+                email,
+                cancellationToken);
+            return Results.Ok(new PromoRedeemResponse(
+                result.CreditsGranted,
+                account.Usage.Remaining,
+                result.ExpiresAt,
+                AlreadyRedeemed: false));
+
+        case PromoRedeemResultKind.InvalidCode:
+            return PromoError("invalid_code", StatusCodes.Status422UnprocessableEntity);
+
+        case PromoRedeemResultKind.Expired:
+            return PromoError("code_expired", StatusCodes.Status422UnprocessableEntity);
+
+        case PromoRedeemResultKind.AlreadyRedeemed:
+            return PromoError("already_redeemed", StatusCodes.Status409Conflict);
+
+        case PromoRedeemResultKind.CapReached:
+            return PromoError("code_exhausted", StatusCodes.Status409Conflict);
+
+        case PromoRedeemResultKind.IpVelocityBlocked:
+            return PromoError("ip_velocity", StatusCodes.Status429TooManyRequests);
+
+        case PromoRedeemResultKind.ServerConfig:
+            return PromoError("server_config", StatusCodes.Status500InternalServerError);
+
+        default:
+            return PromoError("server_error", StatusCodes.Status500InternalServerError);
+    }
+}
+
+static string? ResolveTrustedPromoClientIp(HttpRequest request, IConfiguration configuration)
+{
+    const string clientIpHeader = "X-Client-IP";
+    const string proxySecretHeader = "X-RIMV-Proxy-Secret";
+
+    var candidateIp = request.Headers[clientIpHeader].ToString();
+    if (string.IsNullOrWhiteSpace(candidateIp))
+    {
+        return null;
+    }
+
+    var expectedSecret = configuration["PROMO_PROXY_SHARED_SECRET"];
+    var suppliedSecret = request.Headers[proxySecretHeader].ToString();
+    if (string.IsNullOrWhiteSpace(expectedSecret) ||
+        string.IsNullOrWhiteSpace(suppliedSecret) ||
+        !SecretsMatch(expectedSecret, suppliedSecret))
+    {
+        return null;
+    }
+
+    return candidateIp;
+}
+
+static bool SecretsMatch(string expectedSecret, string suppliedSecret)
+{
+    var expectedBytes = Encoding.UTF8.GetBytes(expectedSecret);
+    var suppliedBytes = Encoding.UTF8.GetBytes(suppliedSecret);
+    return expectedBytes.Length == suppliedBytes.Length &&
+        CryptographicOperations.FixedTimeEquals(expectedBytes, suppliedBytes);
+}
+
+static IResult PromoError(string error, int statusCode) =>
+    Results.Json(new PromoErrorResponse(error), statusCode: statusCode);
+
 static string? ResolveExternalUserId(
     HttpRequest request,
     IWebHostEnvironment environment,
@@ -444,5 +634,21 @@ public sealed record RewriteAttemptResponse(
 public sealed record BillingUrlResponse(string Url);
 
 public sealed record CheckoutSessionRequest(string? Sku);
+
+public sealed record PromoRedeemRequest(string? Code, string? TurnstileToken);
+
+public sealed record PromoRedeemResponse(
+    int CreditsGranted,
+    int TotalRemaining,
+    DateTimeOffset? ExpiresAt,
+    bool AlreadyRedeemed);
+
+public sealed record PromoStatusResponse(
+    bool HasRedeemed,
+    bool Eligible,
+    int TrialRemaining,
+    DateTimeOffset? TrialExpiresAt);
+
+public sealed record PromoErrorResponse(string Error);
 
 public partial class Program;
