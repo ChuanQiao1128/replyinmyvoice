@@ -110,9 +110,13 @@ export async function checkAuthRateLimit(input: AuthRateLimitCheck) {
 }
 
 export function clientIpFromRequest(request: Request) {
-  return firstHeaderValue(request.headers.get("x-forwarded-for")) ??
-    firstHeaderValue(request.headers.get("cf-connecting-ip")) ??
+  return cloudflareClientIpFromRequest(request) ??
+    firstHeaderValue(request.headers.get("x-forwarded-for")) ??
     fallbackClientIp;
+}
+
+export function cloudflareClientIpFromRequest(request: Request) {
+  return firstHeaderValue(request.headers.get("cf-connecting-ip"));
 }
 
 async function hashEmail(email: string) {
