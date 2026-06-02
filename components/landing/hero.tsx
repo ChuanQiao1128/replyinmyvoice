@@ -3,7 +3,7 @@ import Link from "next/link";
 import { InteractiveDemo } from "./interactive-demo";
 
 const stats = [
-  { v: "3 free", l: "rewrites after sign-up" },
+  { v: "Trial code", l: "redeem for 3 rewrites" },
   { v: "Any draft", l: "emails, replies, notes, messages" },
   { v: "Facts intact", l: "no invented details" },
   { v: "No bad result", l: "or it doesn't count" },
@@ -15,7 +15,7 @@ export function Hero() {
       <div className="wrap">
         <div className="eyebrow">
           <span className="dot" />
-          Start free · Buy rewrites from NZ$2.50 · Pro/API for developers
+          Redeem a trial code · Buy rewrites from NZ$2.50 · Pro/API for developers
         </div>
         <h1 style={{ marginTop: 28 }}>
           Send it like

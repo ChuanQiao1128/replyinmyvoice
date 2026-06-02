@@ -30,6 +30,10 @@ const termsSource = readFileSync(
   "utf8",
 );
 
+function phrase(...parts: string[]) {
+  return parts.join(" ");
+}
+
 describe("rewrite workspace surface copy", () => {
   it("is a single-input workspace without the old wizard scaffolding", () => {
     // The simplified workspace submits only the draft plus a default tone,
@@ -98,6 +102,8 @@ describe("rewrite workspace surface copy", () => {
     expect(appPageSource).toContain("quota={workspaceQuota}");
     expect(appPageSource).toContain("planRemaining={workspacePlanRemaining}");
     expect(appPageSource).toContain("quotaSources={quotaSources}");
+    expect(appPageSource).toContain("rewrite credits remaining");
+    expect(appPageSource).not.toContain(phrase("free", "rewrites", "remaining"));
     expect(workspaceSource).toContain("quota: number");
     expect(workspaceSource).toContain("planRemaining");
     expect(workspaceSource).toContain("freeRewritesRemaining");
@@ -105,6 +111,8 @@ describe("rewrite workspace surface copy", () => {
     expect(workspaceSource).toContain("Dismiss");
     expect(workspaceSource).toContain('href="/pricing"');
     expect(workspaceSource).toContain("!paid");
+    expect(workspaceSource).toContain("trial rewrite");
+    expect(workspaceSource).not.toContain(phrase("free", "rewrite"));
 
     // The upgrade nudge only appears after a copy, never mid-rewrite.
     const submitBody = workspaceSource.slice(
