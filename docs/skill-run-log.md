@@ -2256,3 +2256,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminPromoTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoAdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Initial focused test run failed before implementation because `CreatePromoCode`, `DisablePromoCode`, `GetPromoCodeDetail`, and response types were missing. After implementation, `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter AdminPromoTests --no-restore` passed 5 tests and `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 430 tests.
 - Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because the remote package vulnerability feed was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-02 - resilience-test-generation - PROMO-05 parallel redeem and failure matrix
+
+- Agent: Codex
+- Trigger: GitHub issue #431 and `plans/promo-issues/PROMO-05-concurrency-security-tests.md` require adversarial promo redemption tests for duplicate requests, parallel global-cap pressure, invalid code states, proxy trust handling, IP velocity, and validity boundaries.
+- Action: Opened and followed the skill; identified `PromoService.RedeemAsync` as the critical operation and `PromoCode.RedemptionCount == COUNT(Applied redemptions)` plus one credit per applied redemption as the invariant. Covered duplicate same-user requests, cap=1 parallel users through `Task.WhenAll`, expired/disabled code states, untrusted proxy headers, production fail-closed behavior, same-IP velocity flag/block thresholds, and inclusive `ValidUntil`.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoConcurrencyTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter PromoConcurrencyTests --no-restore` passed 8 tests; `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 438 tests.
+- Limitations: This issue adds coverage only. No production code, schema, deploy, payment, or frontend files were changed.
+
+### 2026-06-02 - state-machine-modeling - PROMO-05 promo redeem lifecycle checks
+
+- Agent: Codex
+- Trigger: PROMO-05 tests promo-code and promo-redemption lifecycle transitions under duplicate, invalid, expired, disabled, capped, and velocity-limited inputs.
+- Action: Opened and followed the skill; modeled states as `PromoCode` pending/active/expired/exhausted/disabled derived from `IsActive`, validity window, and cap, and `PromoCodeRedemption` none -> applied with duplicate apply rejected. Events covered redeem request, duplicate redeem request, code disabled, code expired, cap reached, proxy trust missing, IP threshold reached, and boundary-time redeem. Invariants: an applied redemption creates exactly one PROMO credit, duplicate requests do not create a second credit, cap=1 cannot exceed one applied redemption, expired/disabled codes create no credit, and equality with `ValidUntil` remains redeemable.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoConcurrencyTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: The new tests assert illegal transitions return `AlreadyRedeemed`, `InvalidCode`, `Expired`, `CapReached`, `IpVelocityBlocked`, or `ServerConfig` without extra credits; focused and full backend tests passed.
+- Limitations: No new persisted state field or transition helper was added because PROMO-05 is a test-lock issue only.
+
+### 2026-06-02 - data-module-review - PROMO-05 promo persistence invariants
+
+- Agent: Codex
+- Trigger: PROMO-05 reviews and test-locks EF-backed promo counters, redemptions, unique user/code behavior, IP hashes, and credit grants under concurrency.
+- Action: Opened and followed the skill; reviewed `PromoCode`, `PromoCodeRedemption`, `RewriteCredit`, `AppUser`, `AppDbContext`, `PromoService`, `PromoApiTests`, and existing SQLite fixture patterns. Added file-backed SQLite tests for real parallel transactions and asserted persisted final state after each adversarial path.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoConcurrencyTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Assertions cover `RewriteCredits`, applied `PromoCodeRedemptions`, `PromoCodes.RedemptionCount`, nullable `RedeemIpHash` for untrusted proxy input, and no user/credit/redemption rows on production config failure. Focused and full backend suites passed.
+- Limitations: No schema or migration change was made; broad app/lib prohibited-term grep still reports pre-existing matches in `lib/rewrite-eval-cases.ts`, which this issue did not touch.
+
+### 2026-06-02 - dotnet-backend-testing - PROMO-05 concurrency and security xUnit coverage
+
+- Agent: Codex
+- Trigger: PROMO-05 requires C#/.NET xUnit + SQLite/retrying execution-strategy coverage for backend concurrency and security cases.
+- Action: Opened and followed the project skill; added `PromoConcurrencyTests` with xUnit, FluentAssertions, EF Core SQLite, file-backed SQLite for parallel service tests, and WebApplicationFactory for API proxy trust handling. Kept test helpers local to the new class and used generated per-test config values instead of fixed secret-like placeholders.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoConcurrencyTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter PromoConcurrencyTests --no-restore` passed 8 tests; `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 438 tests; `git diff --check` passed; the new backend test file had no prohibited-term matches.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because the remote package vulnerability feed was unavailable, but restore/build/test completed with cached packages.
