@@ -54,7 +54,7 @@ public static class ServiceCollectionExtensions
         });
         services.AddScoped<AccountService>();
         services.AddScoped<QuotaService>();
-        services.AddScoped<AccountService>();
+        services.AddScoped<PromoService>();
         services.AddScoped<RewriteRequestService>();
         services.AddScoped<RewriteJobProcessor>();
         services.AddScoped<OutboxDispatcherService>();

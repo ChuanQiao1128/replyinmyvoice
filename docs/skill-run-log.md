@@ -2139,3 +2139,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/promo-code-trial-spec.md`; branch `feat/promo-code-trial`; `docs/skill-run-log.md`.
 - Verification evidence: Design only — no code, tests, migrations, or deploys executed. Key architecture claims verified against live source (free "3" is a `UsagePeriod.QuotaLimit`, not a credit; `/api/me` already sums credits into `remaining` with per-source `ExpiresInDays`; redemption can reuse the `RewriteCredit{Source="PROMO"}` grant shape so the consumption/paywall/quota-race path is unchanged). Confirmed no driver/codex process was running and the payment wave was `WAVE_DONE` before branching, to avoid a shared-checkout collision.
 - Limitations: Planning only; implementation of source changes is delegated to Codex and awaits owner confirmation of the open inputs (actual code value, exact expiry instant/timezone, granted-credit TTL, global cap, distribution channel). Honest constraint documented in the spec: a single universal code cannot be fully abuse-proofed; per-user-unique codes are the real upgrade path the schema already supports.
+
+### 2026-06-02 - state-machine-modeling - PROMO-02 redemption lifecycle
+
+- Agent: Codex
+- Trigger: GitHub issue #428 changes the promo-code and per-user redemption lifecycle with terminal success, duplicate, expired, exhausted, and IP-velocity outcomes.
+- Action: Opened and followed the skill; modeled `PromoCode` as redeemable only when active, within the valid window, and below the global cap, and modeled `PromoCodeRedemption` as none -> applied with duplicate apply rejected by the unique index.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter PromoServiceTests --no-restore` passed 11 tests; `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 412 tests.
+- Limitations: PROMO-02 implements service-level redeem/status only; HTTP endpoint mapping and `/api/me` promo block are left to PROMO-03.
+
+### 2026-06-02 - data-module-review - PROMO-02 promo persistence invariants
+
+- Agent: Codex
+- Trigger: GitHub issue #428 changes EF-backed promo redemption persistence, usage-credit grants, idempotency, and global cap accounting.
+- Action: Opened and followed the skill; reviewed the existing `PromoCode`, `PromoCodeRedemption`, `RewriteCredit`, `AppDbContext`, `AccountService`, `AdminService.GrantCreditsAsync`, `QuotaService`, and `StripeEventService` transaction patterns before implementing the service.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: New tests assert one `RewriteCredit{Source="PROMO"}` per successful redemption, one applied redemption per user/code, exact `RedemptionCount` under parallel cap pressure, salted IP hash storage, and no second grant on duplicate redeem. Full backend suite passed with 412 tests.
+- Limitations: No schema or migration changes were made in PROMO-02 because PROMO-01 already supplied the entities, indexes, and checks.
+
+### 2026-06-02 - resilience-test-generation - PROMO-02 duplicate and race coverage
+
+- Agent: Codex
+- Trigger: GitHub issue #428 requires idempotent redemption, concurrent same-user replay protection, exact global-cap behavior under parallel load, and IP velocity handling.
+- Action: Opened and followed the skill; wrote SQLite integration tests that assert final persisted state across duplicate calls, same-user parallel calls, N+ parallel cap attempts, IP velocity block/flag behavior, and production missing trusted IP fail-closed behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoService.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused PROMO-02 test class passed 11 tests; full backend suite passed 412 tests. `git diff --check` passed. Changed backend files had no forbidden-substring matches.
+- Limitations: SQLite file-backed WAL fixtures were used for local race tests; production SQL Server still relies on its retrying execution strategy and the same atomic conditional update.
+
+### 2026-06-02 - dotnet-backend-testing - PROMO-02 xUnit/SQLite coverage
+
+- Agent: Codex
+- Trigger: GitHub issue #428 adds C#/.NET backend service behavior and requires xUnit + SQLite acceptance coverage.
+- Action: Opened and followed the skill; added `PromoServiceTests` using existing xUnit, FluentAssertions, EF Core SQLite, deterministic clocks, and local logger capture.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoService.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Initial focused run failed before implementation because `PromoService`/result types were missing; after implementation, `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter PromoServiceTests --no-restore` passed 11 tests and `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 412 tests.
+- Limitations: A local git commit was attempted but blocked by sandbox write access to the parent repository's worktree metadata; no push or PR was attempted.
