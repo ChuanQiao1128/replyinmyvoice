@@ -12,6 +12,7 @@
     "cf:build": "node scripts/clean-open-next.mjs && opennextjs-cloudflare build",
     "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy -- --keep-vars",
+    "smoke:promo-preview": "tsx scripts/promo-preview-smoke.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
