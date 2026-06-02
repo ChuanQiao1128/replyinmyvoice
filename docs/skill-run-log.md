@@ -2175,3 +2175,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/PromoService.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Initial focused run failed before implementation because `PromoService`/result types were missing; after implementation, `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter PromoServiceTests --no-restore` passed 11 tests and `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore` passed 412 tests.
 - Limitations: A local git commit was attempted but blocked by sandbox write access to the parent repository's worktree metadata; no push or PR was attempted.
+
+### 2026-06-02 - system-spec-synthesis - PROMO-03 endpoint and account summary contract
+
+- Agent: Codex
+- Trigger: GitHub issue #429 and `plans/promo-issues/PROMO-03-user-endpoints.md` require API contract implementation for `POST /api/promo/redeem`, optional status, and `/api/me` promo summary data.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, `plans/promo-issues/PROMO-03-user-endpoints.md`, and `plans/promo-code-trial-spec.md` sections 4, 12, and 13. Converted the requirements into implementation checkpoints: thin HTTP mapper over `PromoService`, proxy-secret guarded IP extraction only, stable promo error codes, unchanged credit consumption math, `/api/me` promo block, and WebApplicationFactory acceptance coverage.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PromoHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused PROMO-03 acceptance tests passed 13 tests; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --logger "console;verbosity=normal"` passed 425 tests.
+- Limitations: The ASP.NET Core API route mirror was added so existing WebApplicationFactory tests can assert the same contract; the deployed Azure Functions route is also implemented in `PromoHttpFunctions`.
+
+### 2026-06-02 - state-machine-modeling - PROMO-03 redemption HTTP outcomes
+
+- Agent: Codex
+- Trigger: PROMO-03 exposes the redemption lifecycle over HTTP and must preserve duplicate, invalid, expired, exhausted, velocity, config-error, and success transitions from `PromoService`.
+- Action: Opened and followed the skill; modeled `PromoCode` availability as active-window-cap derived state and `PromoCodeRedemption` as none -> applied, with duplicate apply rejected by the unique index and mapped to `already_redeemed`. Locked illegal/terminal outcomes in endpoint tests instead of adding new state fields.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PromoHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `PromoApiTests` asserts 401, 400, 403, 422 invalid, 422 expired, 409 already, 409 exhausted, 429, 500 server_config, and 200 success mappings; the full backend suite passed 425 tests.
+- Limitations: No new persisted states were added; PROMO-03 only exposes and summarizes the existing PROMO-02 lifecycle.
+
+### 2026-06-02 - data-module-review - PROMO-03 promo summary and credit-label invariants
+
+- Agent: Codex
+- Trigger: PROMO-03 changes EF-backed account summary reads, active promo credit accounting, and per-source labels.
+- Action: Opened and followed the skill; reviewed `AccountService`, `PromoService`, promo entities, `RewriteCredit`, and `AppDbContext` invariants. Ran `scan_data_risks.py --limit 40 backend-dotnet/src/ReplyInMyVoice.Infrastructure`; implemented read-only promo summary derivation from `PromoCodeRedemptions` plus active `RewriteCredit{Source="PROMO"}` rows and mapped the PROMO source label to `Trial rewrites`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Account service/API tests assert `promo.hasRedeemed`, `eligible`, `trialRemaining`, `trialExpiresAt`, and `Trial rewrites`; full `dotnet test` passed 425 tests.
+- Limitations: The scan reported broad pre-existing quota/idempotency signals in infrastructure and migrations; no schema changes were made for PROMO-03.
+
+### 2026-06-02 - resilience-test-generation - PROMO-03 HTTP failure matrix
+
+- Agent: Codex
+- Trigger: PROMO-03 tests authentication failures, malformed payloads, proxy/Turnstile gate behavior, duplicate redemption, global-cap exhaustion, IP velocity, and server config failure paths.
+- Action: Opened and followed the skill; generated a `promo-redeem` resilience matrix and implemented deterministic WebApplicationFactory tests for malformed JSON, missing verified Turnstile token, repeated requests, exhausted cap, five-redemption IP velocity block, missing IP hash salt, and trusted-IP/XFF handling.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused PROMO-03 test command passed 13 tests; full backend suite passed 425 tests. Changed backend files had no forbidden-substring matches.
+- Limitations: The 403 test represents the backend/API mirror rejecting a request without a verified Turnstile token; the future Next.js proxy issue still owns live Cloudflare Turnstile verification and forwarding.
+
+### 2026-06-02 - dotnet-backend-testing - PROMO-03 WebApplicationFactory endpoint coverage
+
+- Agent: Codex
+- Trigger: PROMO-03 requires C#/.NET WebApplicationFactory integration tests for every redeem status code path and `/api/me` promo block serialization.
+- Action: Opened and followed the skill; wrote failing WebApplicationFactory and service tests first, then implemented the Functions endpoint, ASP.NET Core API mirror, and account summary changes. Reused xUnit, FluentAssertions, EF Core SQLite, and project header-auth test conventions. Added host-builder reload guards to touched API test classes to avoid local host-factory hangs.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/PromoApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Initial focused tests failed before implementation because `AccountSummary.Promo` and `/api/promo/redeem` were missing. After implementation, `timeout 180 dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter "FullyQualifiedName~PromoApiTests|FullyQualifiedName~AccountSummaryIncludesPromoBlockAndTrialCreditLabel|FullyQualifiedName~Me_includes_promo_block_and_trial_credit_label" --logger "console;verbosity=normal"` passed 13 tests, and full `dotnet test backend-dotnet/ReplyInMyVoice.sln --logger "console;verbosity=normal"` passed 425 tests.
+- Limitations: A local git commit was attempted but blocked by sandbox write access to `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-429/index.lock`; no push or PR was attempted.

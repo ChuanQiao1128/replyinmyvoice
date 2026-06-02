@@ -233,6 +233,87 @@ public sealed class AccountServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AccountSummaryIncludesPromoBlockAndTrialCreditLabel()
+    {
+        var userId = Guid.NewGuid();
+        var promoCodeId = Guid.NewGuid();
+        var creditId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var validExpiry = now.AddDays(30);
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-promo-summary",
+                Email = "promo-summary@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.PromoCodes.Add(new PromoCode
+            {
+                Id = promoCodeId,
+                Code = "SUMMARYCHECK",
+                DisplayCode = "SummaryCheck",
+                Description = "Trial credits",
+                Kind = PromoCodeKind.TrialCredits,
+                CreditsGranted = 3,
+                GrantTtlDays = 90,
+                ValidFrom = now.AddDays(-1),
+                ValidUntil = now.AddDays(30),
+                MaxRedemptionsGlobal = 100,
+                MaxRedemptionsPerUser = 1,
+                RedemptionCount = 1,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                Id = creditId,
+                UserId = userId,
+                Source = "PROMO",
+                AmountGranted = 3,
+                AmountConsumed = 1,
+                GrantedAt = now,
+                ExpiresAt = validExpiry,
+            });
+            db.PromoCodeRedemptions.Add(new PromoCodeRedemption
+            {
+                PromoCodeId = promoCodeId,
+                UserId = userId,
+                RewriteCreditId = creditId,
+                CreditsGranted = 3,
+                CodeSnapshot = "SUMMARYCHECK",
+                Status = PromoCodeRedemptionStatus.Applied,
+                RedeemedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var summary = await service.GetOrCreateAccountSummaryAsync(
+            "entra-promo-summary",
+            "promo-summary@example.com",
+            CancellationToken.None);
+
+        summary.Usage.Remaining.Should().Be(5);
+        summary.Usage.Quota.Should().Be(5);
+        summary.Promo.HasRedeemed.Should().BeTrue();
+        summary.Promo.Eligible.Should().BeFalse();
+        summary.Promo.TrialRemaining.Should().Be(2);
+        summary.Promo.TrialExpiresAt.Should().Be(validExpiry);
+        summary.Usage.Sources.Should().ContainSingle(x =>
+            x.Source == "PROMO" &&
+            x.Label == "Trial rewrites" &&
+            x.Remaining == 2 &&
+            x.ExpiresAt == validExpiry);
+    }
+
+    [Fact]
     public async Task PaymentsListsCallerPurchases()
     {
         var userId = Guid.NewGuid();
