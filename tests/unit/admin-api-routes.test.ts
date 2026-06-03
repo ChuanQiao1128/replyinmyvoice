@@ -15,7 +15,10 @@ vi.mock("../../lib/entra-auth", () => entraAuthMock);
 import { POST as grantCredits } from "../../app/api/admin/users/[userId]/credits/route";
 import { POST as issueRefund } from "../../app/api/admin/users/[userId]/refund/route";
 import { POST as setSuspension } from "../../app/api/admin/users/[userId]/suspension/route";
-import { GET as userDetail } from "../../app/api/admin/users/[userId]/route";
+import {
+  DELETE as deleteUser,
+  GET as userDetail,
+} from "../../app/api/admin/users/[userId]/route";
 import { GET as listUsers } from "../../app/api/admin/users/route";
 import { GET as billingSupportQueue } from "../../app/api/admin/billing-support-requests/route";
 import { POST as resolveBillingSupportRequest } from "../../app/api/admin/billing-support-requests/[requestId]/resolve/route";
@@ -200,6 +203,30 @@ describe("admin API route handlers", () => {
           "Content-Type": "application/json",
         },
         method: "POST",
+      },
+    );
+  });
+
+  it("forwards admin user deletes with the current bearer token", async () => {
+    fetchMock().mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    const response = await deleteUser(
+      request(`/api/admin/users/${userId}`, {
+        headers: { origin: appUrl },
+        method: "DELETE",
+      }),
+      context(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(fetchMock()).toHaveBeenCalledWith(
+      `${azureUrl}/api/console/users/${userId}`,
+      {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessValue}`,
+        },
+        method: "DELETE",
       },
     );
   });

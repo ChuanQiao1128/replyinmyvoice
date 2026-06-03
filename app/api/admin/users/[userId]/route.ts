@@ -1,4 +1,7 @@
-import { forwardAdminGet } from "../../../../../lib/admin-api-proxy";
+import {
+  forwardAdminDelete,
+  forwardAdminGet,
+} from "../../../../../lib/admin-api-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -9,4 +12,12 @@ type RouteContext = {
 export async function GET(request: Request, context: RouteContext) {
   const { userId } = await context.params;
   return forwardAdminGet(request, `/api/console/users/${encodeURIComponent(userId)}`);
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  const { userId } = await context.params;
+  return forwardAdminDelete(
+    request,
+    `/api/console/users/${encodeURIComponent(userId)}`,
+  );
 }

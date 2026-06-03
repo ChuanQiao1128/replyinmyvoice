@@ -41,7 +41,7 @@ function adminUsersPayload() {
   return {
     page: 1,
     pageSize: 25,
-    totalCount: 1,
+    totalCount: 2,
     totalPages: 1,
     users: [
       {
@@ -55,6 +55,18 @@ function adminUsersPayload() {
         subscriptionStatus: "active",
         updatedAt: "2026-05-31T10:00:00Z",
         usedRewrites: 6,
+      },
+      {
+        costToDateUsd: 0,
+        createdAt: "2026-05-29T10:00:00Z",
+        creditRemaining: 0,
+        email: null,
+        externalAuthUserId: "erased:test-account-1",
+        id: "erased-user-id",
+        reservedRewrites: 0,
+        subscriptionStatus: "canceled",
+        updatedAt: "2026-05-31T10:00:00Z",
+        usedRewrites: 0,
       },
     ],
   };
@@ -189,7 +201,11 @@ test("admin can open a user detail", async ({ context, page }) => {
   await expect(refundReviewTile.getByText("2", { exact: true })).toBeVisible();
   await expect(page.getByText("customer@example.test")).toBeVisible();
 
-  await page.getByRole("link", { name: /customer@example\.test/ }).click();
+  await page
+    .locator("table")
+    .nth(1)
+    .getByRole("link", { name: /customer@example\.test/ })
+    .click();
 
   await expect(page).toHaveURL(new RegExp(`/admin/users/${userId}`));
   await expect(
@@ -197,6 +213,62 @@ test("admin can open a user detail", async ({ context, page }) => {
   ).toBeVisible();
   await expect(page.getByText("Subscription")).toBeVisible();
   await expect(page.getByText("pi_test_admin_refund")).toBeVisible();
+});
+
+test("admin dashboard exposes promo navigation and user erase controls", async ({
+  context,
+  page,
+}) => {
+  await addSessionCookie(context, adminEmail);
+
+  let deleteCalled = false;
+
+  await page.route("**/api/admin/stats", async (route) => {
+    await route.fulfill({ json: adminStatsPayload() });
+  });
+  await page.route("**/api/admin/users?page=*", async (route) => {
+    await route.fulfill({ json: adminUsersPayload() });
+  });
+  await page.route("**/api/admin/billing-support-requests", async (route) => {
+    await route.fulfill({ json: adminBillingSupportPayload() });
+  });
+  await page.route(`**/api/admin/users/${userId}`, async (route) => {
+    if (route.request().method() === "DELETE") {
+      deleteCalled = true;
+      await route.fulfill({ status: 204 });
+      return;
+    }
+
+    await route.fulfill({ json: adminUserDetailPayload() });
+  });
+
+  page.on("dialog", async (dialog) => {
+    expect(dialog.message()).toBe(
+      "Permanently erase this account? This anonymizes the user and removes their data. This cannot be undone.",
+    );
+    await dialog.accept();
+  });
+
+  await page.goto("/admin");
+
+  await expect(page.getByRole("link", { name: "Promo codes" })).toHaveAttribute(
+    "href",
+    "/admin/promo-codes",
+  );
+  await expect(
+    page.getByText("Inactive / Free = no active subscription (normal). Canceled = account erased."),
+  ).toBeVisible();
+  await expect(page.getByText("1 erased account hidden")).toBeVisible();
+  await expect(page.getByText("erased:test-account-1")).toHaveCount(0);
+
+  const usersTable = page.locator("table").nth(1);
+  const customerRow = usersTable.getByRole("row", {
+    name: /customer@example\.test/,
+  });
+  await customerRow.getByRole("button", { name: "Delete" }).click();
+
+  expect(deleteCalled).toBe(true);
+  await expect(customerRow).toHaveCount(0);
 });
 
 test("non-admin users are blocked from admin pages", async ({ context, page }) => {
