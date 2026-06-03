@@ -63,12 +63,25 @@ public sealed class AdminService(
         }
         else
         {
-            totalCount = await userQuery.CountAsync(cancellationToken);
-            users = await userQuery
+            // Order + page on the AppUser ENTITY (real columns) BEFORE projecting.
+            // Projecting to AdminUserListRow first and then ordering by a projected
+            // member (x.CreatedAt) cannot be translated by EF Core on SQL Server and
+            // throws InvalidOperationException at runtime (the SQLite test path orders
+            // in-memory after ToList, so it never reproduces this).
+            totalCount = await db.AppUsers.AsNoTracking().CountAsync(cancellationToken);
+            users = await db.AppUsers
+                .AsNoTracking()
                 .OrderByDescending(x => x.CreatedAt)
                 .ThenBy(x => x.Id)
                 .Skip(skip)
                 .Take(pageSize)
+                .Select(x => new AdminUserListRow(
+                    x.Id,
+                    x.ExternalAuthUserId,
+                    x.Email,
+                    x.SubscriptionStatus,
+                    x.CreatedAt,
+                    x.UpdatedAt))
                 .ToListAsync(cancellationToken);
         }
 
