@@ -1,0 +1,32 @@
+# dynamic-delivery-workflow — sample wave queue (TAB-separated, dependency-first order).
+#
+# Copy this into your control dir as queue.tsv and edit. The scripts read it row by row.
+# Lines starting with # and blank lines are ignored.
+#
+# Columns (TAB-separated — NOT spaces; a single literal tab between each field):
+#   ISSUE        GitHub issue number. Drives `gh issue view`, the branch name, and the worktree dir.
+#   TAG          Short slug used in the branch name + to locate the brief (e.g. PAY-19, AUTH-03).
+#                Branch = <BRANCH_PREFIX>/<TAG>-<ISSUE>.
+#   TIER         1 = prerequisite (its branch is merged INTO the integration base before any
+#                dependent runs, so dependents build on it); 2 = ordinary (PR only, no base-merge).
+#   TIER1_MERGE  yes = after this issue's PR is created, fast-merge its branch into the integration
+#                base via the _integration worktree. Only meaningful for TIER 1. Use `no` otherwise.
+#   DEPS         comma-separated ISSUE numbers that must be merged into base first ( - = none).
+#                A dependent DEFERS until every dep is in base history, then is picked up on a re-loop.
+#   BRIEF_GLOB   filename (or glob) of the per-issue brief under ${BRIEF_DIR} (set in wave.conf).
+#                The brief is the authoritative spec handed to Codex alongside the issue body.
+#   TIMEOUT_MIN  per-codex-attempt hard timeout in MINUTES. Adaptive — do NOT use one flat value:
+#                  ~75 for backend/feature issues, ~40 default, ~20 for docs-only.
+#                v1's flat 40 killed 3 big features (exit 124); size this per row.
+#
+# ISSUE  TAG     TIER  TIER1_MERGE  DEPS     BRIEF_GLOB                          TIMEOUT_MIN
+#
+# --- TIER 1 (prereqs; merged into base on pass, in this order) ---
+387	PAY-19	1	yes	-	PAY-19-notification-infrastructure.md	75
+378	PAY-01	1	yes	-	PAY-01-invoice-renewal-failure.md	75
+384	PAY-07	1	yes	-	PAY-07-admin-ui.md	60
+# --- TIER 2 (rest; PR into base, no auto-merge into base) ---
+379	PAY-02	2	no	-	PAY-02-payment-observability.md	40
+388	PAY-20	2	no	-	PAY-20-gst-tax.md	60
+391	PAY-23	2	no	378,387	PAY-23-dunning.md	75
+394	PAY-26	2	no	-	PAY-26-dispute-runbook.md	20
