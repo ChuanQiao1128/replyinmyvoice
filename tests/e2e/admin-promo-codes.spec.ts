@@ -99,7 +99,11 @@ async function startAzureMock(options: {
         body += String(chunk);
       });
       request.on("end", () => {
-        const payload = JSON.parse(body) as { code?: string };
+        const payload = JSON.parse(body) as {
+          code?: string;
+          validFrom?: string;
+          validUntil?: string;
+        };
         const normalized = (payload.code ?? "").replace(/[\s-]/g, "").toUpperCase();
         if (options.getCodes().some((code) => code.code === normalized)) {
           send(problem(
@@ -113,6 +117,8 @@ async function startAzureMock(options: {
         const nextCode = activePromoCode({
           code: normalized,
           displayCode: payload.code ?? normalized,
+          validFrom: payload.validFrom,
+          validUntil: payload.validUntil,
         });
         options.setCodes([nextCode, ...options.getCodes()]);
         send({
@@ -292,6 +298,12 @@ async function fillCreateForm(page: Page) {
   await page.getByLabel("Per-user cap").fill("1");
 }
 
+function localDateTimeValue(value: string) {
+  const parsed = new Date(value);
+  expect(Number.isNaN(parsed.getTime())).toBe(false);
+  return parsed;
+}
+
 test.describe("admin promo codes", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -333,6 +345,51 @@ test.describe("admin promo codes", () => {
       page.getByRole("heading", { name: "Admin access required" }),
     ).toBeVisible();
     await expect(page.getByText("You do not have permission")).toBeVisible();
+  });
+
+  test("admin create defaults are active immediately with a long expiry and page guidance", async ({
+    context,
+    page,
+  }) => {
+    await addSignedInSession(context);
+
+    const beforeLoad = new Date();
+    await page.goto("/admin/promo-codes");
+    const afterLoad = new Date();
+
+    await expect(page.getByRole("link", { name: "Back to Admin" })).toHaveAttribute(
+      "href",
+      "/admin",
+    );
+    await expect(page.getByText("Active = redeemable now")).toBeVisible();
+    await expect(
+      page.getByText("Pending = not yet active (valid-from is in the future)"),
+    ).toBeVisible();
+    await expect(page.getByText("Expired = past valid-until")).toBeVisible();
+    await expect(page.getByText("Exhausted = global cap reached")).toBeVisible();
+    await expect(page.getByText("Disabled = turned off by an admin.")).toBeVisible();
+
+    const validFrom = localDateTimeValue(
+      await page.getByLabel("Valid from").inputValue(),
+    );
+    const validUntil = localDateTimeValue(
+      await page.getByLabel("Valid until").inputValue(),
+    );
+    expect(validFrom.getTime()).toBeGreaterThanOrEqual(
+      beforeLoad.getTime() - 60_000,
+    );
+    expect(validFrom.getTime()).toBeLessThanOrEqual(afterLoad.getTime());
+    const daysBetween = (validUntil.getTime() - validFrom.getTime()) /
+      (24 * 60 * 60 * 1000);
+    expect(daysBetween).toBeGreaterThanOrEqual(89.9);
+    expect(daysBetween).toBeLessThanOrEqual(90.1);
+
+    await page.getByLabel("Code", { exact: true }).fill("DEFAULTS2026");
+    await page.getByRole("button", { name: "Create code" }).click();
+
+    await expect(page.getByText("DEFAULTS2026 created.")).toBeVisible();
+    await expect(page.getByText("Active")).toBeVisible();
+    await expect(page.getByText("Pending")).not.toBeVisible();
   });
 
   test("admins can create, see duplicate field errors, view stats, and disable", async ({
