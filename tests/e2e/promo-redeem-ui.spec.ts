@@ -53,11 +53,21 @@ function accountSummary(state: MockAccountState) {
   };
 }
 
-async function startAzureMock(getState: () => MockAccountState) {
+async function startAzureMock(
+  getState: () => MockAccountState,
+  onCheckout?: () => void,
+) {
   const server = createServer((request, response) => {
     if (request.method === "GET" && request.url === "/api/me") {
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify(accountSummary(getState())));
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/stripe/checkout") {
+      onCheckout?.();
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ url: "https://checkout.stripe.test/session" }));
       return;
     }
 
@@ -253,9 +263,10 @@ test.describe("promo redeem UI", () => {
       page.getByRole("heading", { name: "Rewrite workspace" }),
     ).toBeVisible();
     await expect(page.locator("#roughDraftReply")).toBeVisible();
-    await expect(page.getByText("You have 0 rewrites.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Redeem code" })).toHaveCount(2);
-    await expect(page.getByRole("link", { name: "Buy rewrites" })).toBeVisible();
+    await expect(page.getByText("You're out of rewrites.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Redeem code" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Buy rewrites" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Buy rewrites" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Redeem your code" })).toHaveCount(
       0,
     );
@@ -311,14 +322,39 @@ test.describe("promo redeem UI", () => {
     await expect(
       page.getByRole("heading", { name: "Rewrite workspace" }),
     ).toBeVisible();
-    await expect(page.getByText("You have 0 rewrites.")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Buy rewrites" })).toBeVisible();
+    await expect(page.getByText("You're out of rewrites.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Buy rewrites" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Buy rewrites" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Redeem your code" })).toHaveCount(
       0,
     );
   });
 
-  test("paid users out of monthly quota see an in-workspace buy and manage nudge", async ({
+  test("top-bar buy rewrites button starts checkout", async ({ page }) => {
+    let checkoutRequests = 0;
+    await closeServer(azureMock);
+    azureMock = await startAzureMock(() => state, () => {
+      checkoutRequests += 1;
+    });
+    await page.route("https://checkout.stripe.test/session", async (route) => {
+      await route.fulfill({
+        body: "<title>Checkout</title>",
+        contentType: "text/html",
+        status: 200,
+      });
+    });
+    state = "exhausted";
+    await page.goto("/app");
+
+    await page.getByRole("button", { name: "Buy rewrites" }).click();
+
+    await expect
+      .poll(() => checkoutRequests, { message: "checkout request count" })
+      .toBe(1);
+    await expect(page).toHaveURL("https://checkout.stripe.test/session");
+  });
+
+  test("paid users out of monthly quota see top-bar billing without output actions", async ({
     page,
   }) => {
     state = "paidExhausted";
@@ -330,11 +366,8 @@ test.describe("promo redeem UI", () => {
     await expect(
       page.getByText("Your monthly rewrite quota has been used for this billing period."),
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "Buy rewrites" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Manage billing" })).toHaveCount(2);
-    await expect(page.getByRole("heading", { name: "Your monthly limit has been reached." })).toHaveCount(
-      0,
-    );
+    await expect(page.getByRole("link", { name: "Buy rewrites" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Manage billing" })).toHaveCount(1);
   });
 
   test("mobile redeem modal has no horizontal overflow and keeps verification visible", async ({

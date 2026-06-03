@@ -85,7 +85,8 @@ describe("rewrite workspace surface copy", () => {
   it("keeps the slim quota bar and buy copy aligned with the rewrite-packs model", () => {
     expect(subscriptionStatusSource).toContain("bg-sky");
     expect(subscriptionStatusSource).toContain("Manage billing");
-    expect(subscriptionStatusSource).toContain("Upgrade");
+    expect(subscriptionStatusSource).toContain("Buy rewrites");
+    expect(subscriptionStatusSource).not.toContain("Upgrade");
     expect(subscriptionStatusSource).toContain("Redeem code");
     expect(paywallSource).toContain("Value Pack");
     expect(paywallSource).toContain("NZ$6.90");
@@ -143,11 +144,18 @@ describe("rewrite workspace surface copy", () => {
   });
 
   it("wires the promo redeem modal without exposing the code value", () => {
+    const outOfCreditsNudgeSource = workspaceSource.slice(
+      workspaceSource.indexOf("function outOfCreditsHint"),
+      workspaceSource.indexOf("export function RewriteWorkspace"),
+    );
+
     expect(workspaceSource).toContain("RedeemCodeCard");
     expect(workspaceSource).toContain("redeemModalOpen");
-    expect(workspaceSource).toContain("You have 0 rewrites. Redeem a trial code or buy a pack.");
-    expect(workspaceSource).toContain("Buy rewrites");
-    expect(workspaceSource).toContain("Your monthly rewrite quota has been used");
+    expect(outOfCreditsNudgeSource).toContain("bar above");
+    expect(outOfCreditsNudgeSource).not.toContain("onRedeemClick");
+    expect(outOfCreditsNudgeSource).not.toContain("onManageBillingClick");
+    expect(outOfCreditsNudgeSource).not.toContain("<Button");
+    expect(outOfCreditsNudgeSource).not.toContain("<Link");
 
     expect(redeemCardSource).toContain("NEXT_PUBLIC_TURNSTILE_SITE_KEY");
     expect(redeemCardSource).toContain(
