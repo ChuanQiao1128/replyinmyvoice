@@ -5,18 +5,6 @@ import { describe, expect, it } from "vitest";
 import { derivePromoCodeStatus } from "../../lib/admin-promo-codes";
 import type { AdminPromoCode } from "../../lib/admin-promo-codes";
 
-function inputTag(markup: string, id: string) {
-  const match = new RegExp(`<input(?=[^>]*\\bid="${id}")[^>]*>`).exec(markup);
-  expect(match?.[0]).toBeTruthy();
-  return match?.[0] ?? "";
-}
-
-function inputValue(markup: string, id: string) {
-  const match = /\bvalue="([^"]*)"/.exec(inputTag(markup, id));
-  expect(match?.[1]).toBeTruthy();
-  return match?.[1] ?? "";
-}
-
 function localDateTimeValue(value: string) {
   const parsed = new Date(value);
   expect(Number.isNaN(parsed.getTime())).toBe(false);
@@ -49,15 +37,16 @@ function promoCode(overrides: Partial<AdminPromoCode> = {}): AdminPromoCode {
 describe("PromoCodesAdmin", () => {
   it("renders create defaults that are active immediately with status guidance", async () => {
     (globalThis as { React?: typeof React }).React = React;
-    const { PromoCodesAdmin } = await import(
+    const { initialFormValues, PromoCodesAdmin } = await import(
       "../../components/admin/promo-codes-admin"
     );
 
-    const beforeRender = new Date();
+    const beforeDefaults = new Date();
+    const defaults = initialFormValues();
+    const afterDefaults = new Date();
     const markup = renderToStaticMarkup(
       createElement(PromoCodesAdmin, { initialCodes: [] }),
     );
-    const afterRender = new Date();
 
     expect(markup).toContain('href="/admin"');
     expect(markup).toContain("Back to Admin");
@@ -77,13 +66,13 @@ describe("PromoCodesAdmin", () => {
     expect(markup).not.toContain("Active = redeemable now");
     expect(markup).not.toContain("Pending = not yet active");
 
-    const validFrom = localDateTimeValue(inputValue(markup, "promo-from"));
-    const validUntil = localDateTimeValue(inputValue(markup, "promo-until"));
+    const validFrom = localDateTimeValue(defaults.validFrom);
+    const validUntil = localDateTimeValue(defaults.validUntil);
 
     expect(validFrom.getTime()).toBeGreaterThanOrEqual(
-      beforeRender.getTime() - 60_000,
+      beforeDefaults.getTime() - 60_000,
     );
-    expect(validFrom.getTime()).toBeLessThanOrEqual(afterRender.getTime());
+    expect(validFrom.getTime()).toBeLessThanOrEqual(afterDefaults.getTime());
 
     const daysBetween = (validUntil.getTime() - validFrom.getTime()) /
       (24 * 60 * 60 * 1000);
@@ -98,12 +87,12 @@ describe("PromoCodesAdmin", () => {
           validFrom: validFrom.toISOString(),
           validUntil: validUntil.toISOString(),
         },
-        afterRender,
+        afterDefaults,
       ),
     ).toBe("active");
   });
 
-  it("renders create hints and card-level quick actions", async () => {
+  it("renders legend chips and table-level quick actions", async () => {
     (globalThis as { React?: typeof React }).React = React;
     const { PromoCodesAdmin } = await import(
       "../../components/admin/promo-codes-admin"
@@ -113,14 +102,11 @@ describe("PromoCodesAdmin", () => {
       createElement(PromoCodesAdmin, { initialCodes: [promoCode()] }),
     );
 
-    expect(inputTag(markup, "promo-global-cap")).toContain('placeholder="Unlimited"');
-    expect(markup).toContain(
-      "Display code is the same code with optional spacing/hyphens for sharing.",
-    );
-    expect(markup).toContain("Days a redeemed code&#x27;s credits stay valid.");
-    expect(markup).toContain("When the code stops being redeemable.");
+    expect(markup).toContain('role="table"');
+    expect(markup).toContain("New code");
     expect(markup).not.toContain("Selected code");
     expect(markup).toContain('aria-label="Copy code SPRING-2026"');
+    expect(markup).toContain('aria-label="View stats for SPRING-2026"');
     expect(markup).toContain('aria-label="Archive SPRING-2026"');
   });
 });
