@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  ArrowLeft,
   Ban,
   BarChart3,
   CheckCircle2,
@@ -11,6 +12,7 @@ import {
   Ticket,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -65,7 +67,6 @@ function toLocalDateTimeInput(date: Date) {
 
 function initialFormValues(): AdminPromoCreateFormValues {
   const now = new Date();
-  const inFiveMinutes = new Date(now.getTime() + 5 * 60 * 1000);
   return {
     code: "",
     credits: "3",
@@ -73,8 +74,8 @@ function initialFormValues(): AdminPromoCreateFormValues {
     globalCap: "1000",
     perUserCap: "1",
     ttlDays: "90",
-    validFrom: toLocalDateTimeInput(inFiveMinutes),
-    validUntil: toLocalDateTimeInput(addDays(inFiveMinutes, 30)),
+    validFrom: toLocalDateTimeInput(now),
+    validUntil: toLocalDateTimeInput(addDays(now, 90)),
   };
 }
 
@@ -490,6 +491,13 @@ export function PromoCodesAdmin({
         <div className="wrap py-8">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
+              <Link
+                className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-clay transition hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                href="/admin"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Back to Admin
+              </Link>
               <p className="text-xs font-semibold uppercase text-clay">
                 Admin
               </p>
@@ -678,6 +686,14 @@ export function PromoCodesAdmin({
               </div>
               <span className="text-sm text-ink/55">{codes.length} total</span>
             </div>
+            <p
+              aria-label="Promo code status legend"
+              className="mb-4 text-xs leading-5 text-ink/55"
+            >
+              Active = redeemable now · Pending = not yet active (valid-from is in the
+              future) · Expired = past valid-until · Exhausted = global cap reached ·
+              Disabled = turned off by an admin.
+            </p>
 
             {listError ? (
               <p className="mb-3 rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
