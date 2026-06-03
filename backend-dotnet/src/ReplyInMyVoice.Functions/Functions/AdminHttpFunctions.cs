@@ -35,7 +35,8 @@ public sealed class AdminHttpFunctions
             : new AdminService(
                 dbContextFactory,
                 refundClient ?? new StripeBillingService(dbContextFactory, configuration),
-                new TaxTurnoverService(dbContextFactory, configuration, notificationService));
+                new TaxTurnoverService(dbContextFactory, configuration, notificationService),
+                new AccountService(dbContextFactory, configuration));
         _promoAdminService = dbContextFactory is null
             ? null
             : new PromoAdminService(dbContextFactory);
@@ -118,6 +119,60 @@ public sealed class AdminHttpFunctions
         }
 
         return new OkObjectResult(detail);
+    }
+
+    [Function("AdminDeleteUser")]
+    public async Task<IActionResult> DeleteUser(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "console/users/{userId}")]
+        HttpRequest request,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Admin access required",
+                "The authenticated user is not allowed to access admin endpoints.",
+                StatusCodes.Status403Forbidden);
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(userId, out var parsedUserId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid user id",
+                "The admin delete route requires a valid user id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _adminService.DeleteUserAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            parsedUserId,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        return result.Kind switch
+        {
+            AdminDeleteUserResultKind.Success => new OkObjectResult(result.Response),
+            AdminDeleteUserResultKind.UserNotFound => FunctionHttpResults.Problem(
+                "User not found",
+                result.Detail,
+                StatusCodes.Status404NotFound),
+            AdminDeleteUserResultKind.Forbidden => FunctionHttpResults.Problem(
+                "Delete user forbidden",
+                result.Detail,
+                StatusCodes.Status403Forbidden),
+            _ => FunctionHttpResults.Problem(
+                "Invalid delete request",
+                result.Detail,
+                StatusCodes.Status400BadRequest),
+        };
     }
 
     [Function("AdminStats")]

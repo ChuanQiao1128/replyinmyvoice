@@ -3002,3 +3002,57 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/app/subscription-status.tsx`; `components/app/rewrite-workspace.tsx`; `tests/unit/workspace-copy.test.ts`; `tests/e2e/promo-redeem-ui.spec.ts`; `tests/e2e/promo-full-loop.spec.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused red run `npm run test -- tests/unit/workspace-copy.test.ts` failed on the old `Upgrade` label and output nudge controls. Focused green run passed 8/8. `npm run typecheck` passed. `npm run test` passed 349/349. Banned-term grep over `app components public lib` returned no matches.
 - Limitations: Focused Playwright run `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/promo-ux2-issue-456-ms-playwright npx playwright test tests/e2e/promo-redeem-ui.spec.ts --project=promo-chromium` built the app but could not execute browser assertions because Chromium launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied. Initial Playwright attempt also required installing Chromium into a temporary browser cache.
+
+### 2026-06-03 - ui-browser-testing - ADM-01 promo create defaults
+
+- Agent: Codex
+- Trigger: ADM-01 changes the browser-visible admin promo-code create form defaults, promo status guidance, and admin navigation.
+- Action: Opened and followed the skill; added a failing component render test for immediate-active defaults, 90-day expiry, status legend copy, back-to-admin navigation, and `derivePromoCodeStatus` behavior, then added matching admin Playwright acceptance coverage.
+- Output artifacts: `components/admin/promo-codes-admin.tsx`; `tests/unit/admin-promo-codes-component.test.ts`; `tests/e2e/admin-promo-codes.spec.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run `npm run test -- tests/unit/admin-promo-codes-component.test.ts` failed on missing `href="/admin"`. Focused green run passed 1/1. `grep -n "inFiveMinutes" components/admin/promo-codes-admin.tsx` returned no matches. `npm run typecheck` passed. `npm run test` passed 350/350. Banned-term grep over `app components public lib` returned no matches. Authenticated local page smoke against `http://127.0.0.1:3001/admin/promo-codes` passed with `validFrom=2026-06-03T19:42`, `validUntil=2026-09-01T19:42`, and `days=90.00`.
+- Limitations: `npx playwright test tests/e2e/admin-promo-codes.spec.ts -g "admin create defaults" --project=promo-chromium` could not run before dependency install because npm attempted to write its cache outside the writable sandbox. After installing dependencies and Chromium into writable temp paths, the focused Playwright run still could not execute browser assertions because Chromium launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied. The in-app browser backend was also unavailable for this session. Local verification servers on ports 3001 and 45934 were started for the authenticated HTTP smoke, but the sandbox denied signal-based cleanup afterward.
+
+### 2026-06-03 - ui-browser-testing - ADM-02 dashboard nav and user management
+
+- Agent: Codex
+- Trigger: ADM-02 changes the browser-visible `/admin` dashboard navigation, Users table filtering, status guidance, and row actions.
+- Action: Opened and followed the skill; wrote route and admin Playwright coverage for the promo-code navigation link, erased-account hiding note, status legend, and confirmed user erase action before implementing the Next DELETE proxy and dashboard UI.
+- Output artifacts: `components/admin/admin-dashboard.tsx`; `lib/admin-api-proxy.ts`; `app/api/admin/users/[userId]/route.ts`; `tests/unit/admin-api-routes.test.ts`; `tests/e2e/admin.spec.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red route run `npm run test -- tests/unit/admin-api-routes.test.ts` failed on missing `DELETE`; focused green run passed 5/5. `npm run typecheck` passed. `npm run test` passed 351/351. `npm run lint` exited 0 with one existing `components/account/account-panel.tsx` warning. Banned-term grep over `app components public lib` returned no matches. `git diff --check` passed.
+- Limitations: Focused Playwright run `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/ms-playwright-issue-460 npx playwright test tests/e2e/admin.spec.ts --project=chromium` could not execute browser assertions because Chromium launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied. Installing dependencies initially hit a root-owned npm cache, so dependencies were installed using a writable temp npm cache. The in-app browser backend was unavailable for this worker session.
+
+### 2026-06-03 - system-spec-synthesis - ADM-03 admin delete-user endpoint
+
+- Agent: Codex
+- Trigger: ADM-03 adds a new C# Functions API contract, service method, guard behavior, audit entry, and backend acceptance checks.
+- Action: Opened and followed the skill; treated GitHub issue #461 and `plans/admin-polish-issues/ADM-03-backend-delete-user-endpoint.md` as the authoritative implementation-ready spec, then mapped it to the existing admin route/service/test structure without creating a separate design artifact.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminDeleteUserTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRouteMetadataTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Issue acceptance greps found both GET and DELETE `console/users/{userId}` triggers and `AdminDeleteUser`; full `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 496/496.
+- Limitations: No new standalone spec was written because the issue brief was already the approved spec for this unattended worker run.
+
+### 2026-06-03 - state-machine-modeling - ADM-03 account erase guard states
+
+- Agent: Codex
+- Trigger: ADM-03 changes account erase lifecycle behavior from the admin console, including active target, self-target, missing target, and already-erased target states.
+- Action: Opened and followed the skill; modeled the allowed event as admin DELETE on an active non-self account, with terminal erased accounts and self-delete attempts rejected before mutation or audit.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminDeleteUserTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Added xUnit coverage for successful active-account erase plus audit, missing-user not found, self-delete forbidden, and already-erased forbidden. Focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter AdminDeleteUser` passed 5/5; full solution tests passed 496/496.
+- Limitations: The state model is enforced in service code and tests; no new persisted status field or migration was added.
+
+### 2026-06-03 - data-module-review - ADM-03 account erase persistence
+
+- Agent: Codex
+- Trigger: ADM-03 mutates persisted `AppUser` account data through the existing account erase service and writes `AdminAuditLog`.
+- Action: Opened and followed the skill; reviewed `AccountService.DeleteAccountAsync`, `AdminService` audit patterns, `AdminAuditLog`, `AppUser`, and SQLite-backed tests. Reused the existing erase path instead of duplicating child-row scrubbing or adding cascade deletes.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminDeleteUserTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 20 backend-dotnet/src` completed and returned existing broad persistence signals. New tests assert user anonymization, usage-period reset, credit reset, audit creation, and no audit for rejected guards. No migration files are modified.
+- Limitations: The account erase and audit insert are separate database saves because `AccountService.DeleteAccountAsync` owns its existing transaction boundary; no schema changes were made.
+
+### 2026-06-03 - dotnet-backend-testing - ADM-03 backend delete-user coverage
+
+- Agent: Codex
+- Trigger: ADM-03 adds C# Azure Functions and `AdminService` behavior requiring xUnit/backend coverage.
+- Action: Opened and followed the skill; wrote failing tests first for missing `DeleteUserAsync`, result types, public erased-account helper, function route, and route metadata, then implemented the endpoint and service until focused and full backend suites passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminDeleteUserTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRouteMetadataTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Red run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter AdminDeleteUser` failed on missing delete-user API symbols. Green focused run passed 5/5. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 496/496. Acceptance greps passed; banned-term scans over the diff, backend source/tests, and `app components public lib` returned no matches.
+- Limitations: `dotnet test` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore/build/test completed. Local git commit was blocked because the shared worktree git index lives outside the writable sandbox.

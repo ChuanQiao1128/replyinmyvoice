@@ -100,3 +100,25 @@ export async function forwardAdminPost(request: Request, path: string) {
 
   return forwardAzureAdminResponse(response);
 }
+
+export async function forwardAdminDelete(request: Request, path: string) {
+  const originError = requireAdminProxyOrigin(request);
+  if (originError) {
+    return originError;
+  }
+
+  const authorization = await currentAuthorizationHeader();
+  if (!authorization) {
+    return jsonError("Authentication required.", 401);
+  }
+
+  const response = await fetch(azureAdminUrl(path, request), {
+    cache: "no-store",
+    headers: {
+      Authorization: authorization,
+    },
+    method: "DELETE",
+  });
+
+  return forwardAzureAdminResponse(response);
+}
