@@ -10,6 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RewriteAttempt> RewriteAttempts => Set<RewriteAttempt>();
     public DbSet<UsageReservation> UsageReservations => Set<UsageReservation>();
     public DbSet<StripeEvent> StripeEvents => Set<StripeEvent>();
+    public DbSet<StripeReconciliationRun> StripeReconciliationRuns => Set<StripeReconciliationRun>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<RewriteCredit> RewriteCredits => Set<RewriteCredit>();
     public DbSet<Referral> Referrals => Set<Referral>();
@@ -25,6 +26,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
     public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
     public DbSet<PromoCodeRedemption> PromoCodeRedemptions => Set<PromoCodeRedemption>();
+    public DbSet<BillingSupportRequest> BillingSupportRequests => Set<BillingSupportRequest>();
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
@@ -52,6 +54,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.StripeCustomerId).HasMaxLength(160);
             entity.Property(x => x.StripeSubscriptionId).HasMaxLength(160);
             entity.Property(x => x.SubscriptionStatus).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.PaymentFailedAt).IsRequired(false);
+            entity.Property(x => x.PaymentGraceEndsAt).IsRequired(false);
             entity.Property(x => x.SuspendedAt).IsRequired(false);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
         });
@@ -126,6 +130,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => new { x.Status, x.LockedUntil });
         });
 
+        modelBuilder.Entity<StripeReconciliationRun>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.CompletedAt);
+            entity.HasIndex(x => new { x.WindowStart, x.WindowEnd });
+            entity.Property(x => x.ReportJson).IsRequired();
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+        });
+
         modelBuilder.Entity<OutboxMessage>(entity =>
         {
             entity.HasKey(x => x.Id);
@@ -153,6 +166,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Source).HasMaxLength(60);
             entity.Property(x => x.StripeEventId).HasMaxLength(160);
             entity.Property(x => x.StripePaymentIntentId).HasMaxLength(160);
+            entity.Property(x => x.StripeReceiptUrl).HasMaxLength(2048);
             entity.Property(x => x.StripeSku).HasMaxLength(120);
             entity.Property(x => x.StripeCurrency).HasMaxLength(12);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
@@ -405,6 +419,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.User)
                 .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BillingSupportRequest>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.UserId, x.CreatedAt });
+            entity.HasIndex(x => new { x.Status, x.CreatedAt });
+            entity.HasIndex(x => x.RelatedPaymentIntentId)
+                .HasFilter("[RelatedPaymentIntentId] IS NOT NULL");
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.RelatedPaymentIntentId).HasMaxLength(160);
+            entity.Property(x => x.Message).HasMaxLength(2000);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.BillingSupportRequests)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

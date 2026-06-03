@@ -38,6 +38,29 @@ export type AzureAccountSummary = {
   promo?: AzurePromoSummary | null;
 };
 
+export type AzureAccountPayment = {
+  sku: string | null;
+  paymentIntentId: string | null;
+  amount: number | null;
+  currency: string | null;
+  receiptUrl: string | null;
+  date: string;
+  expiry: string | null;
+  remaining: number;
+};
+
+export type AzureBillingSupportRequest = {
+  id: string;
+  userId: string;
+  type: "refund" | "billing-question";
+  relatedPaymentIntentId: string | null;
+  message: string;
+  status: "open" | "resolved";
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+};
+
 export function getAzureApiBaseUrl() {
   return optionalEnv(
     "NEXT_PUBLIC_AZURE_API_BASE_URL",

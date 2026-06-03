@@ -186,8 +186,10 @@ public sealed class AccountService(
             .Select(x => new
             {
                 x.StripeSku,
+                x.StripePaymentIntentId,
                 x.StripeAmountTotal,
                 x.StripeCurrency,
+                x.StripeReceiptUrl,
                 x.GrantedAt,
                 x.ExpiresAt,
                 x.AmountGranted,
@@ -199,8 +201,10 @@ public sealed class AccountService(
             .OrderByDescending(x => x.GrantedAt)
             .Select(x => new AccountPayment(
                 x.StripeSku,
+                x.StripePaymentIntentId,
                 x.StripeAmountTotal,
                 x.StripeCurrency,
+                x.StripeReceiptUrl,
                 x.GrantedAt,
                 x.ExpiresAt,
                 Math.Max(x.AmountGranted - x.AmountConsumed, 0)))
@@ -271,6 +275,10 @@ public sealed class AccountService(
                 .AsTracking()
                 .Where(x => x.UserId == user.Id)
                 .ToListAsync(cancellationToken);
+            var billingSupportRequests = await db.BillingSupportRequests
+                .AsTracking()
+                .Where(x => x.UserId == user.Id)
+                .ToListAsync(cancellationToken);
 
             user.ExternalAuthUserId = CreateErasedExternalAuthUserId(user.Id);
             user.Email = null;
@@ -322,6 +330,7 @@ public sealed class AccountService(
             {
                 credit.Source = "ERASED";
                 credit.AmountGranted = 0;
+                credit.OriginalAmountGranted = null;
                 credit.AmountConsumed = 0;
                 credit.ExpiresAt = now;
                 credit.RowVersion = Guid.NewGuid();
@@ -333,6 +342,16 @@ public sealed class AccountService(
                 redemption.RowVersion = Guid.NewGuid();
             }
 
+            foreach (var billingSupportRequest in billingSupportRequests)
+            {
+                billingSupportRequest.RelatedPaymentIntentId = null;
+                billingSupportRequest.Message = "erased";
+                billingSupportRequest.Status = BillingSupportRequestStatus.Resolved;
+                billingSupportRequest.ResolvedAt ??= now;
+                billingSupportRequest.UpdatedAt = now;
+                billingSupportRequest.RowVersion = Guid.NewGuid();
+            }
+
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         });
@@ -340,7 +359,7 @@ public sealed class AccountService(
 
     public static AccountUsagePlan GetUsagePlan(AppUser user, IConfiguration? configuration = null)
     {
-        if (user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing)
+        if (user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing or SubscriptionStatus.PastDue)
         {
             return new AccountUsagePlan(
                 "paid",
@@ -466,8 +485,10 @@ public sealed record AccountPromoSummary(
 
 public sealed record AccountPayment(
     string? Sku,
+    string? PaymentIntentId,
     long? Amount,
     string? Currency,
+    string? ReceiptUrl,
     DateTimeOffset Date,
     DateTimeOffset? Expiry,
     int Remaining);

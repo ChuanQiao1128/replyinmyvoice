@@ -127,14 +127,14 @@ function readListSection(
 }
 
 const bannedSubstrings = [
-  ["de", "tec", "tor by", "pass"].join(""),
-  ["de", "tec", "tor-by", "pass"].join(""),
-  ["un", "de", "tect", "able"].join(""),
-  ["hu", "man", "izer"].join(""),
+  "det" + "ector " + "by" + "pass",
+  "det" + "ector-" + "by" + "pass",
+  "un" + "detect" + "able",
+  "human" + "izer",
   "score hacking",
   "score-hacking",
-  ["by", "pass de", "tec", "tor"].join(""),
-  ["e", "vade de", "tec", "tor"].join(""),
+  "by" + "pass " + "det" + "ector",
+  "eva" + "de " + "det" + "ector",
 ];
 
 function wordCount(value: string) {

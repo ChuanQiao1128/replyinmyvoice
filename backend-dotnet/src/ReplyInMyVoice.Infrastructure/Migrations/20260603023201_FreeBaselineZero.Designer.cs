@@ -12,7 +12,7 @@ using ReplyInMyVoice.Infrastructure.Data;
 namespace ReplyInMyVoice.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260602091811_FreeBaselineZero")]
+    [Migration("20260603023201_FreeBaselineZero")]
     partial class FreeBaselineZero
     {
         /// <inheritdoc />
@@ -208,6 +208,12 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
 
+                    b.Property<DateTimeOffset?>("PaymentFailedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("PaymentGraceEndsAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<Guid>("RowVersion")
                         .IsConcurrencyToken()
                         .HasColumnType("uniqueidentifier");
@@ -241,6 +247,59 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasFilter("[StripeCustomerId] IS NOT NULL");
 
                     b.ToTable("AppUsers");
+                });
+
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.BillingSupportRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("RelatedPaymentIntentId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RelatedPaymentIntentId")
+                        .HasFilter("[RelatedPaymentIntentId] IS NOT NULL");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("BillingSupportRequests");
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.LearningFinding", b =>
@@ -945,8 +1004,14 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ExpiresAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("ExpiryReminderSentAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset>("GrantedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("OriginalAmountGranted")
+                        .HasColumnType("int");
 
                     b.Property<Guid>("RowVersion")
                         .IsConcurrencyToken()
@@ -971,6 +1036,10 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<string>("StripePaymentIntentId")
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("StripeReceiptUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
 
                     b.Property<string>("StripeSku")
                         .HasMaxLength(120)
@@ -1279,6 +1348,56 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.ToTable("StripeEvents");
                 });
 
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.StripeReconciliationRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AmountMismatchCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("GrantButNoPaymentCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PaidButNoGrantCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PurchaseGrantCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReportJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("StripePaymentCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("WindowEnd")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("WindowStart")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompletedAt");
+
+                    b.HasIndex("WindowStart", "WindowEnd");
+
+                    b.ToTable("StripeReconciliationRuns");
+                });
+
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.UsagePeriod", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1401,6 +1520,17 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("ApiKey");
+                });
+
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.BillingSupportRequest", b =>
+                {
+                    b.HasOne("ReplyInMyVoice.Domain.Entities.AppUser", "User")
+                        .WithMany("BillingSupportRequests")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.LearningFinding", b =>
@@ -1560,6 +1690,8 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.AppUser", b =>
                 {
+                    b.Navigation("BillingSupportRequests");
+
                     b.Navigation("RewriteAttempts");
 
                     b.Navigation("UsagePeriods");

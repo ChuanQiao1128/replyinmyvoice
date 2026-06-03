@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Functions.Functions;
@@ -24,14 +26,16 @@ public sealed class AdminHttpFunctions
     public AdminHttpFunctions(
         IConfiguration configuration,
         Func<AppDbContext>? dbContextFactory = null,
-        IStripeRefundClient? refundClient = null)
+        IStripeRefundClient? refundClient = null,
+        INotificationService? notificationService = null)
     {
         _adminAccess = new AdminAccess(configuration);
         _adminService = dbContextFactory is null
             ? null
             : new AdminService(
                 dbContextFactory,
-                refundClient ?? new StripeBillingService(dbContextFactory, configuration));
+                refundClient ?? new StripeBillingService(dbContextFactory, configuration),
+                new TaxTurnoverService(dbContextFactory, configuration, notificationService));
         _promoAdminService = dbContextFactory is null
             ? null
             : new PromoAdminService(dbContextFactory);
@@ -135,6 +139,123 @@ public sealed class AdminHttpFunctions
 
         var stats = await _adminService.GetStatsAsync(cancellationToken);
         return new OkObjectResult(stats);
+    }
+
+    [Function("AdminBillingSupportRequests")]
+    public async Task<IActionResult> ListBillingSupportRequests(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/billing-support-requests")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await RequireAdminResultAsync(request, cancellationToken);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        var queue = await _adminService.GetBillingSupportQueueAsync(cancellationToken);
+        return new OkObjectResult(queue);
+    }
+
+    [Function("AdminResolveBillingSupportRequest")]
+    public async Task<IActionResult> ResolveBillingSupportRequest(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/billing-support-requests/{requestId}/resolve")]
+        HttpRequest request,
+        string requestId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Admin access required",
+                "The authenticated user is not allowed to access admin endpoints.",
+                StatusCodes.Status403Forbidden);
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(requestId, out var parsedRequestId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid billing support request id",
+                "The admin billing support route requires a valid request id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var resolved = await _adminService.ResolveBillingSupportRequestAsync(
+            admin.ExternalAuthUserId,
+            admin.Email,
+            parsedRequestId,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+        if (resolved is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Billing support request not found",
+                "No billing support request exists for the requested id.",
+                StatusCodes.Status404NotFound);
+        }
+
+        return new OkObjectResult(resolved);
+    }
+
+    [Function("AdminAccountingRevenueCsv")]
+    public async Task<IActionResult> ExportAccountingRevenueCsv(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/accounting/revenue.csv")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await RequireAdminResultAsync(request, cancellationToken);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        if (_adminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!TryParseDateQuery(request.Query, "from", out var fromInclusive) ||
+            !TryParseDateQuery(request.Query, "to", out var toExclusive))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid accounting export date range",
+                "The accounting export requires valid from and to query parameters.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (toExclusive <= fromInclusive)
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid accounting export date range",
+                "The accounting export to date must be after the from date.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var response = request.HttpContext.Response;
+        response.StatusCode = StatusCodes.Status200OK;
+        response.ContentType = "text/csv; charset=utf-8";
+        response.Headers.CacheControl = "no-store";
+        response.Headers.ContentDisposition =
+            $"attachment; filename=\"accounting-revenue-{fromInclusive.UtcDateTime:yyyyMMdd}-{toExclusive.UtcDateTime:yyyyMMdd}.csv\"";
+
+        await _adminService.WriteAccountingRevenueCsvAsync(
+            response.Body,
+            fromInclusive,
+            toExclusive,
+            cancellationToken: cancellationToken);
+
+        return new EmptyResult();
     }
 
     [Function("AdminPromoCodesCreate")]
@@ -633,6 +754,22 @@ public sealed class AdminHttpFunctions
         }
 
         return Math.Min(parsed, maxValue);
+    }
+
+    private static bool TryParseDateQuery(
+        IQueryCollection query,
+        string key,
+        out DateTimeOffset value)
+    {
+        value = default;
+        return query.TryGetValue(key, out var values) &&
+            DateTimeOffset.TryParse(
+                values.ToString(),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces |
+                DateTimeStyles.AssumeUniversal |
+                DateTimeStyles.AdjustToUniversal,
+                out value);
     }
 
     private static async Task<AdminRefundRequest?> ReadRefundRequestAsync(

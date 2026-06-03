@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -388,6 +389,7 @@ public sealed class AccountServiceTests : IAsyncLifetime
         var userId = Guid.NewGuid();
         var now = DateTimeOffset.Parse("2026-05-30T01:02:03Z");
         var expiry = now.AddDays(90);
+        var receiptUrl = "https://pay.stripe.com/receipts/test_receipt";
 
         await using (var db = CreateContext())
         {
@@ -412,6 +414,7 @@ public sealed class AccountServiceTests : IAsyncLifetime
                     StripeSku = "quick_pack",
                     StripeAmountTotal = 900,
                     StripeCurrency = "nzd",
+                    StripeReceiptUrl = receiptUrl,
                 },
                 new RewriteCredit
                 {
@@ -440,9 +443,15 @@ public sealed class AccountServiceTests : IAsyncLifetime
         payment.Sku.Should().Be("quick_pack");
         payment.Amount.Should().Be(900);
         payment.Currency.Should().Be("nzd");
+        payment.ReceiptUrl.Should().Be(receiptUrl);
         payment.Date.Should().Be(now);
         payment.Expiry.Should().Be(expiry);
         payment.Remaining.Should().Be(7);
+
+        var json = JsonSerializer.Serialize(
+            payments,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        json.Should().Contain("\"receiptUrl\":\"https://pay.stripe.com/receipts/test_receipt\"");
     }
 
     [Fact]

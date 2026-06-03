@@ -130,6 +130,40 @@ public sealed class AdminRefundTests : IAsyncLifetime
         (await db.AdminAuditLogs.CountAsync()).Should().Be(1);
     }
 
+    [Fact]
+    public async Task AdminRefundDoesNotAuditOrClawBackCreditWhenStripeRefundFails()
+    {
+        var user = await SeedPaidUserAsync();
+        await SeedPaymentCreditAsync(user.Id, "pi_refund_failure", 1200, "nzd");
+        var fakeRefundClient = new FakeStripeRefundClient("re_never_saved")
+        {
+            RefundError = new TaskCanceledException("simulated Stripe refund timeout"),
+        };
+        var service = new AdminService(CreateContext, fakeRefundClient);
+        var request = new AdminRefundRequest("pi_refund_failure", 1200, "nzd");
+
+        var act = () => service.IssueRefundAsync(
+            "admin-owner-oid",
+            "owner@example.com",
+            user.Id,
+            request,
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<TaskCanceledException>()
+            .WithMessage("*simulated Stripe refund timeout*");
+
+        fakeRefundClient.Calls.Should().ContainSingle();
+        fakeRefundClient.Calls[0].IdempotencyKey.Should()
+            .Be($"admin-refund:{user.Id:N}:pi_refund_failure:1200");
+
+        await using var db = CreateContext();
+        (await db.AdminAuditLogs.CountAsync()).Should().Be(0);
+        (await db.AdminAuditLogs.CountAsync(x => x.Action == "refund")).Should().Be(0);
+        var credit = await db.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_refund_failure");
+        credit.AmountGranted.Should().Be(10);
+        credit.AmountConsumed.Should().Be(0);
+    }
+
     private AdminHttpFunctions CreateFunction(FakeStripeRefundClient fakeRefundClient) =>
         new(BuildConfiguration(), CreateContext, fakeRefundClient);
 
@@ -209,11 +243,18 @@ public sealed class AdminRefundTests : IAsyncLifetime
     {
         public List<StripeRefundRequest> Calls { get; } = [];
 
+        public Exception? RefundError { get; init; }
+
         public Task<StripeRefundResult> RefundPaymentAsync(
             StripeRefundRequest request,
             CancellationToken cancellationToken)
         {
             Calls.Add(request);
+            if (RefundError is not null)
+            {
+                throw RefundError;
+            }
+
             return Task.FromResult(new StripeRefundResult(
                 refundId,
                 request.PaymentIntentId,

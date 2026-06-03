@@ -27,7 +27,7 @@ const sections = [
   },
   {
     title: "Account and billing data",
-    text: "The app stores account identifiers, subscription status, usage counts, and Stripe event records needed to run access control and billing. Payment details are handled by Stripe.",
+    text: "The app stores account identifiers, subscription status, usage counts, and Stripe event records needed to run access control and billing. Payment details are entered on Stripe-hosted Checkout and customer portal pages. Reply In My Voice does not collect or store full card numbers or card security codes.",
   },
   {
     title: "Vendors and subprocessors",

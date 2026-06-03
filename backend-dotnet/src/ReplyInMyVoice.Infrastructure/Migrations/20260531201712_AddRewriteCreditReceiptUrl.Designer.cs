@@ -12,8 +12,8 @@ using ReplyInMyVoice.Infrastructure.Data;
 namespace ReplyInMyVoice.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260602080020_AddPromoCodes")]
-    partial class AddPromoCodes
+    [Migration("20260531201712_AddRewriteCreditReceiptUrl")]
+    partial class AddRewriteCreditReceiptUrl
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -449,145 +449,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.ToTable("OutboxMessages");
                 });
 
-            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.PromoCode", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("CreditsGranted")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("DisplayCode")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<int>("GrantTtlDays")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<int?>("MaxRedemptionsGlobal")
-                        .HasColumnType("int");
-
-                    b.Property<int>("MaxRedemptionsPerUser")
-                        .HasColumnType("int");
-
-                    b.Property<int>("RedemptionCount")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("RowVersion")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset>("ValidFrom")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset>("ValidUntil")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.ToTable("PromoCodes", t =>
-                        {
-                            t.HasCheckConstraint("CK_PromoCodes_CreditsGranted_Positive", "[CreditsGranted] > 0");
-
-                            t.HasCheckConstraint("CK_PromoCodes_GrantTtlDays_Positive", "[GrantTtlDays] > 0");
-
-                            t.HasCheckConstraint("CK_PromoCodes_MaxRedemptionsGlobal_PositiveOrNull", "[MaxRedemptionsGlobal] IS NULL OR [MaxRedemptionsGlobal] > 0");
-
-                            t.HasCheckConstraint("CK_PromoCodes_MaxRedemptionsPerUser_Minimum", "[MaxRedemptionsPerUser] >= 1");
-
-                            t.HasCheckConstraint("CK_PromoCodes_RedemptionCount_NonNegative", "[RedemptionCount] >= 0");
-
-                            t.HasCheckConstraint("CK_PromoCodes_ValidUntil_After_ValidFrom", "[ValidUntil] > [ValidFrom]");
-                        });
-                });
-
-            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.PromoCodeRedemption", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("CodeSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<int>("CreditsGranted")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("PromoCodeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("RedeemIpHash")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<DateTimeOffset>("RedeemedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset?>("ReversedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("RewriteCreditId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("RowVersion")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PromoCodeId");
-
-                    b.HasIndex("RedeemIpHash");
-
-                    b.HasIndex("RedeemedAt");
-
-                    b.HasIndex("RewriteCreditId");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("PromoCodeId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("PromoCodeRedemptions");
-                });
-
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.Referral", b =>
                 {
                     b.Property<Guid>("Id")
@@ -971,6 +832,10 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<string>("StripePaymentIntentId")
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("StripeReceiptUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
 
                     b.Property<string>("StripeSku")
                         .HasMaxLength(120)
@@ -1414,25 +1279,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Navigation("Run");
                 });
 
-            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.PromoCodeRedemption", b =>
-                {
-                    b.HasOne("ReplyInMyVoice.Domain.Entities.PromoCode", "PromoCode")
-                        .WithMany("Redemptions")
-                        .HasForeignKey("PromoCodeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("ReplyInMyVoice.Domain.Entities.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("PromoCode");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.Referral", b =>
                 {
                     b.HasOne("ReplyInMyVoice.Domain.Entities.AppUser", "Referrer")
@@ -1575,11 +1421,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.LearningRun", b =>
                 {
                     b.Navigation("Findings");
-                });
-
-            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.PromoCode", b =>
-                {
-                    b.Navigation("Redemptions");
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.RewriteAttempt", b =>

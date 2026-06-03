@@ -45,6 +45,51 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-03 - data-module-review - promo branch merge migration reconciliation
+
+- Agent: Codex
+- Trigger: Merging `origin/main` into `feat/promo-code-trial` changed EF Core entities, `AppDbContext`, promo redemption persistence, billing support persistence, and migration history.
+- Action: Opened and followed the data-module workflow; preserved main's payment/billing entities and promo entities/config, deleted stale promo migrations, reset the snapshot to main, regenerated promo schema and free-baseline data migrations, and reviewed uniqueness, check constraints, FKs, and account erasure behavior.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260603023140_AddPromoCodes.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260603023201_FreeBaselineZero.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`.
+- Verification evidence: `dotnet ef migrations list` listed all main migrations followed by `20260603023140_AddPromoCodes` and `20260603023201_FreeBaselineZero`; `AddPromoCodes` contains only promo table/index/check/FK DDL; `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 490/490.
+- Limitations: EF could not connect to the configured SQL Server while listing applied/pending status, so only the local migration chain order was verified. No database reset, deploy, remote fetch, push, or production operation was run.
+
+### 2026-06-03 - state-machine-modeling - promo redemption and free quota merge
+
+- Agent: Codex
+- Trigger: The merge reconciled promo redemption state, subscription downgrade-to-free behavior, and free-baseline quota semantics after `main` added payment lifecycle changes.
+- Action: Opened and followed the state-machine workflow; preserved `PromoCodeRedemptionStatus.Applied`, duplicate redemption rejection through `(PromoCodeId, UserId)`, `PastDue` paid entitlement, and updated non-paying subscription test expectations to the promo branch's `FREE_BASELINE_REWRITES=0` default.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; regenerated promo migrations.
+- Verification evidence: Focused backend rerun for `FreeBaselineMigrationTests` plus non-paying subscription downgrade tests passed 7/7; full backend suite passed 490/490.
+- Limitations: No new persisted state names were added. The change preserves existing payment and promo state models rather than redesigning lifecycle architecture.
+
+### 2026-06-03 - resilience-test-generation - promo/payment merge gates
+
+- Agent: Codex
+- Trigger: The reconcile task had to preserve promo idempotency, global-cap, trusted-IP/Turnstile fail-closed behavior, and payment/webhook replay behavior while merging branches.
+- Action: Opened and followed the resilience workflow; kept existing promo and payment resilience tests, preserved proxy-secret/IP handling and checkout/webhook helpers, and used failing test evidence before updating stale free-baseline assertions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 490/490; `npm run test` passed 345/345; `grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches.
+- Limitations: No live Stripe, Cloudflare, Azure, OpenAI, Sapling, or production database calls were made. EF list attempted local configured SQL connection only to determine applied status and continued without it.
+
+### 2026-06-03 - dotnet-backend-testing - backend merge conflict verification
+
+- Agent: Codex
+- Trigger: The merge changed C# API/Functions routes, `AccountService`, EF migrations, and backend xUnit/WebApplicationFactory coverage.
+- Action: Opened and followed the .NET backend testing workflow; resolved backend conflicts as unions, regenerated migrations, ran focused failing tests after root-cause investigation, then ran the full backend solution test suite.
+- Output artifacts: backend conflict files, regenerated EF migrations, `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: Focused rerun passed 7/7; `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 490/490. `NU1900` vulnerability metadata warnings appeared because the NuGet feed was unreachable, but restore/build/test completed.
+- Limitations: No remote CI run was started and no push/PR/deploy was performed.
+
+### 2026-06-03 - ui-browser-testing - frontend merge and Playwright config reconciliation
+
+- Agent: Codex
+- Trigger: The merge changed frontend routes, account/admin UI contracts, Playwright configuration, and browser-visible promo/payment flows.
+- Action: Opened and followed the UI/browser testing workflow; resolved `playwright.config.ts` to preserve both payment/admin and promo E2E server assumptions, then ran frontend typecheck and unit tests.
+- Output artifacts: `playwright.config.ts`; `lib/rewrite-eval-cases.ts`; merged frontend/admin/account route files from `origin/main` plus promo branch files.
+- Verification evidence: `npm run typecheck` passed; `npm run test` passed 345/345; banned-term grep over `app components public lib` returned no matches.
+- Limitations: Playwright browser E2E was not run in this turn because the requested gates were typecheck and unit tests. No browser screenshots, deploy, or remote testing were performed.
+
 ### 2026-06-02 - ui-browser-testing - PROMO-12 promo browser and preview checks
 
 - Agent: Codex
@@ -2454,3 +2499,470 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/landing/hero.tsx`; `components/landing/closing-cta.tsx`; `components/landing/pricing-v2.tsx`; `app/pricing/page.tsx`; `components/site-footer.tsx`; `app/developers/page.tsx`; `components/auth/google-oauth-card.tsx`; `app/app/page.tsx`; `components/app/rewrite-workspace.tsx`; `lib/rewrite-eval-cases.ts`; `tests/unit/pricing-auth-visual-system.test.ts`; `tests/unit/workspace-copy.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused copy tests failed before implementation and then passed 11/11. Final `npm run test` passed 326/326; `npm run typecheck` passed; required restricted-term grep returned no matches; stale old-copy phrase scan returned no matches. Dev server returned HTTP 200 for `/`, `/pricing`, `/developers`, and `/sign-up`, and the rendered responses contained the expected trial-code copy.
 - Limitations: Local Chromium launch through Playwright failed before page load because this macOS sandbox denied Chromium Mach-port registration, so screenshot-level browser verification could not be completed here. The dev server also reported watcher `EMFILE` warnings in the sandbox, but the checked routes compiled and returned 200.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-03 forged Stripe webhook signature tests
+
+- Agent: Codex
+- Trigger: GitHub issue #380/PAY-03 required C# xUnit coverage for production Stripe webhook signature rejection behavior.
+- Action: Opened and followed the skill; added focused API-level tests around `StripeWebhookFunction` with SQLite persisted-state assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeWebhookApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter StripeWebhookApiTests` passed 9/9; `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: Test-only change; no production code, deploy, push, or PR creation. NuGet vulnerability metadata warnings appeared because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed.
+
+### 2026-06-01 - resilience-test-generation - PAY-03 webhook signature failure matrix
+
+- Agent: Codex
+- Trigger: PAY-03 tests stale/tampered Stripe webhook delivery and requires proving rejected webhooks create no event or credit side effects.
+- Action: Opened and followed the resilience test workflow; covered wrong-secret, mutated-body-after-signing, and stale-timestamp failure cases using deterministic local HMAC signatures.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeWebhookApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter StripeWebhookApiTests` passed 9/9; `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: No live Stripe calls were made; tests exercise local signature verification and database side effects only. No secrets or credential values were logged.
+
+### 2026-06-01 - state-machine-modeling - PAY-23 payment dunning grace state
+
+- Agent: Codex
+- Trigger: PAY-23 changes the subscription lifecycle for failed renewal payments, grace expiry, terminal Stripe subscription states, and recovery.
+- Action: Opened/followed the state-machine workflow; modeled paid states (`Active`, `Trialing`, `Testing`, `PastDue`), terminal/non-paying states (`Inactive`, `Canceled`), events (`invoice.payment_failed`, `invoice.payment_succeeded`, local grace expiry, `subscription.updated` terminal statuses), illegal stale recovery from terminal states, and persisted grace timestamps.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Enums/SubscriptionStatus.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/AppUser.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `docs/support-runbook.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test` passed 411/411; support runbook §3.1 documents the transition timeline and invariants.
+- Limitations: No live Stripe webhook or real email was sent; behavior is verified with local SQLite and fakes.
+
+### 2026-06-01 - resilience-test-generation - PAY-23 webhook replay and notification fakes
+
+- Agent: Codex
+- Trigger: PAY-23 requires idempotent webhook replay behavior and no duplicate notifications for failed-payment, paused, and recovered states.
+- Action: Opened/followed the resilience workflow; used deterministic notification and billing-portal fakes, replayed the same Stripe event IDs in tests, and kept notification send actions post-commit so billing state is not rolled back by provider calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: Focused `StripeEventServiceTests` passed 24/24; full `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: Provider outages were not induced against live Stripe or Resend; tests prove local fake boundaries only. NuGet vulnerability metadata warnings appeared because `https://api.nuget.org/v3/index.json` was unavailable.
+
+### 2026-06-01 - data-module-review - PAY-23 AppUser grace persistence
+
+- Agent: Codex
+- Trigger: PAY-23 adds persisted payment failure/grace state to the EF Core `AppUser` model and migration history.
+- Action: Opened/followed the data-module workflow; added nullable `PaymentFailedAt` and `PaymentGraceEndsAt`, updated EF model configuration and snapshot, and generated `AddPaymentGraceState` migration.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/AppUser.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531214813_AddPaymentGraceState.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531214813_AddPaymentGraceState.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`.
+- Verification evidence: `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: Migration application was not run against a live database; no secrets or connection strings were logged.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-23 dunning tests
+
+- Agent: Codex
+- Trigger: PAY-23 requires .NET unit/integration coverage for `invoice.payment_failed`, local grace expiry, recovery, and idempotent replay.
+- Action: Opened/followed the .NET backend testing workflow; added xUnit coverage in the existing SQLite-backed `StripeEventServiceTests` with hand-written fakes for notifications and billing portal sessions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln --filter StripeEventServiceTests --no-restore` passed 24/24; `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: No real email, Stripe charge, deployment, push, or PR was performed.
+
+### 2026-06-01 - state-machine-modeling - PAY-26 dispute chargeback runbook
+
+- Agent: Codex
+- Trigger: GitHub issue #394 / PAY-26 explicitly required `state-machine-modeling` for the dispute and chargeback operations lifecycle.
+- Action: Opened and followed the state-machine workflow to document dispute states, events, transitions, invariants, illegal transitions, persistence implications, and a future test checklist.
+- Output artifacts: `docs/dispute-chargeback-runbook.md`; `docs/skill-run-log.md`.
+- Verification evidence: Runbook includes the required deadline guidance, evidence checklist, repeat-disputer policy, and dispute lifecycle model.
+- Limitations: No optional direct `payment_intent` admin evidence endpoint was added; PAY-26 was completed as a docs-only operational runbook. No secrets, `.env.local` values, API tokens, private keys, or credentials were logged.
+
+### 2026-06-01 - resilience-test-generation - PAY-32 webhook delivery monitoring
+
+- Agent: Codex
+- Trigger: GitHub issue #400 / PAY-32 required webhook failure monitoring and replay-safe operations coverage.
+- Action: Opened and followed the skill; identified Stripe webhook processing as the critical operation, with database-backed idempotency and replay as the resilience invariant.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/HealthFunction.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/webhook-ops-runbook.md`.
+- Verification evidence: Added readiness coverage that seeds a failed Stripe event and asserts it is surfaced, plus coverage for the configured no-processed-event window. The regression failed before implementation, then `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter "Ready_health" --no-restore` passed 2/2 and `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: PAY-02 dashboard alert creation remains an owner/operator action. NuGet vulnerability metadata lookup warned because `https://api.nuget.org/v3/index.json` was unavailable; restore/build/test still completed. No secrets or raw webhook payloads were logged.
+
+### 2026-06-01 - data-module-review - PAY-32 StripeEvent readiness metrics
+
+- Agent: Codex
+- Trigger: The task reads `StripeEvent` and `RewriteCredit.StripeEventId` persistence state to expose webhook health and document idempotent replay.
+- Action: Opened and followed the skill; reviewed `StripeEvent` status fields, `ProcessedAt`, EF configuration, and the unique `RewriteCredit.StripeEventId` invariant. Ran the bundled data-risk scan with `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 40 backend-dotnet`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/HealthFunction.cs`; `docs/webhook-ops-runbook.md`.
+- Verification evidence: No schema or migration change was needed. The readiness query now counts all unresolved `StripeEvent.Status = Failed` rows and reads the latest processed Stripe event timestamp without mutating persistence.
+- Limitations: The data-risk scan reports broad repo signals and was used only as a scope/risk check. No migration was generated. No secrets or private payloads were logged.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-32 readiness health coverage
+
+- Agent: Codex
+- Trigger: The issue required a backend test for seeded failed Stripe events and the change touched .NET Azure Functions readiness behavior.
+- Action: Opened and followed the skill; used xUnit/FluentAssertions with the existing SQLite-backed test fixture, wrote the readiness regression before production changes, and ran focused then full backend tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/HealthFunction.cs`.
+- Verification evidence: Initial focused test failed because `lastProcessedStripeEvent` was absent and older failed events were not counted. After implementation, `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter "Ready_health" --no-restore` passed 2/2 and `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: This did not add browser/UI coverage because PAY-32 is backend/docs-only. NuGet vulnerability metadata lookup warned due external index access, but tests passed. No secrets were logged.
+
+### 2026-06-01 - state-machine-modeling - PAY-01 subscription renewal failure lifecycle
+
+- Agent: Codex
+- Trigger: GitHub issue #378/PAY-01 changes subscription/quota lifecycle and explicitly requires state-machine-modeling.
+- Action: Opened and followed the skill; modeled the paid states (`Active`, `Trialing`, `Testing`), free states (`Inactive`, `Canceled`), subscription update/delete events, `invoice.payment_failed`, duplicate webhook delivery, and the invariant that non-paying Stripe states must not receive the paid usage plan.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `docs/rewrite-packs-pricing-spec.md`; `docs/stripe-live-mode-cutover.md`.
+- Verification evidence: Added xUnit coverage for `past_due`, `unpaid`, `incomplete`, `incomplete_expired`, `paused`, and `canceled` subscription updates mapping to a non-paid status and `AccountService.GetUsagePlan` returning `free/free:lifetime/3`. Focused `StripeEventServiceTests` passed 20/20; full `cd backend-dotnet && dotnet test` passed 404/404.
+- Limitations: No new enum states or migrations were added. `invoice.payment_failed` logs the renewal failure hook; quota downgrade remains driven by Stripe subscription status events.
+
+### 2026-06-01 - resilience-test-generation - PAY-01 webhook replay and renewal failure handling
+
+- Agent: Codex
+- Trigger: PAY-01 adds handling for Stripe webhook replay/idempotency and renewal failure behavior.
+- Action: Opened and followed the skill; targeted duplicate event delivery as the critical failure mode, kept tests local with EF SQLite, and avoided live Stripe calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: The new `invoice.payment_failed` test failed first because no invoice-specific structured log was emitted; after implementation it passed and asserted first delivery processed, second delivery skipped, `StripeEvent` row count stayed 1, no rewrite credits were granted, and the renewal-failure log was emitted once with correlation/customer/subscription/user fields. Full `cd backend-dotnet && dotnet test` passed 404/404.
+- Limitations: Email/SMS/customer notification behavior remains out of scope for PAY-09.
+
+### 2026-06-01 - data-module-review - PAY-01 StripeEvent idempotency persistence
+
+- Agent: Codex
+- Trigger: PAY-01 reuses `StripeEvent` deduplication and touches subscription/quota persistence invariants.
+- Action: Opened and followed the skill; reviewed `AppDbContext` indexes/keys, `StripeEventService` transaction boundaries, `StripeEvents.EventId` primary-key dedupe, and `RewriteCredits.StripeEventId` uniqueness.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: No schema or migration change was needed. The invoice failure handler uses the existing transactional webhook path and persists one `StripeEvent` row per Stripe event id. Focused `StripeEventServiceTests` passed 20/20; full `cd backend-dotnet && dotnet test` passed 404/404.
+- Limitations: There is no separate invoice-failure table; PAY-02 alerting is expected to consume the structured log hook.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-01 xUnit payment lifecycle coverage
+
+- Agent: Codex
+- Trigger: PAY-01 requires new .NET/xUnit tests for subscription status mapping and `invoice.payment_failed` idempotency.
+- Action: Opened and followed the skill; added service-level EF SQLite tests for subscription mapping and invoice replay, then stabilized existing API test clients with `HandleCookies = false` to avoid the macOS sandbox `CookieContainer` domain-name failure while preserving assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`.
+- Verification evidence: Red run: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter "FullyQualifiedName~StripeEventServiceTests"` failed on the missing invoice failure log. Green runs: the same focused command passed 20/20, and `cd backend-dotnet && dotnet test` passed 404/404. `git diff --check` passed.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - cloud-architecture-cost-review - PAY-19 notification provider choice
+
+- Agent: Codex
+- Trigger: PAY-19 explicitly requires cloud-architecture-cost-review before adding transactional notification infrastructure.
+- Action: Opened and followed the skill; compared Azure Communication Services Email, SendGrid, and Resend for a low-traffic Azure Functions backend. Selected Resend because it can be configured behind existing runtime env names without creating a new Azure resource or adding an uncached NuGet dependency in this worktree.
+- Output artifacts: `plans/decisions-log.md`; `.env.example`; `backend-dotnet/src/ReplyInMyVoice.Functions/local.settings.example.json`; `docs/manual-setup.md`.
+- Verification evidence: Provider decision recorded in `plans/decisions-log.md`; runtime config is opt-in via `NOTIFICATIONS_PROVIDER=resend`; missing/disabled config logs a no-op and does not throw. No paid resource, deployment, dashboard action, or real email send was performed.
+- Limitations: Exact provider pricing was not quoted or checked because no paid-resource action was taken. Resend requires a valid runtime key and verified sender/domain outside source control before real email can be sent.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-19 notification tests
+
+- Agent: Codex
+- Trigger: PAY-19 adds C#/.NET notification infrastructure and requires xUnit coverage for fake provider invocation and missing-config no-op behavior.
+- Action: Opened and followed the skill; wrote failing notification tests first, then added `INotificationService`, typed templates, a fake-provider unit test path, no-op fallback, Resend provider wiring, and DI registration.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/NotificationServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Notifications/*`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`.
+- Verification evidence: Red run failed on missing notification namespace/contracts. Focused green run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter NotificationServiceTests` passed 3/3. Full `cd backend-dotnet && dotnet test` passed 407/407.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. Tests do not send real email; the provider-enabled test only resolves the DI type.
+
+### 2026-06-01 - ui-browser-testing - PAY-06 payment E2E
+
+- Agent: Codex
+- Trigger: GitHub issue #383/PAY-06 requires Playwright E2E coverage for pricing checkout, signed payment webhooks, `/app` balance, refund clawback, and anonymous checkout redirect behavior.
+- Action: Opened and followed the skill; added a focused Playwright spec with signed session cookies, a local payment test API, mocked Stripe Checkout URL, signed webhook delivery through the Next.js `/api/stripe/webhook` route, `/app` balance assertions, and skip behavior when the payment webhook signing env name is absent.
+- Output artifacts: `tests/e2e/payment-flow.spec.ts`; `tests/e2e/payment-flow-mock-api.ts`; `playwright.config.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `npm run typecheck` passed. `npm run test` passed 298/298. `npm run lint` passed. `git diff --check` passed. Banned-term grep over `app components public lib` returned no matches. `npx playwright test tests/e2e/payment-flow.spec.ts --project=chromium` passed in absent-config mode with 2 skipped. A standalone HTTP smoke against `tests/e2e/payment-flow-mock-api.ts` verified signed checkout webhook grant from 3 to 13 and signed full refund clawback from 13 to 3.
+- Limitations: Browser-executed Playwright remains blocked in this macOS sandbox by Chromium `MachPortRendezvousServer` permission failure before page assertions execute. `PAYMENT_E2E_STRIPE_WEBHOOK_SECRET=... npx playwright test tests/e2e/payment-flow.spec.ts --project=chromium` and `npm run test:e2e` both failed for that launch reason, not from route assertions. The E2E uses a local payment test API and does not call Stripe or create a live payment.
+
+### 2026-06-01 - state-machine-modeling - PAY-06 checkout grant and refund clawback
+
+- Agent: Codex
+- Trigger: PAY-06 tests payment and quota lifecycle transitions: signed-out checkout redirect, signed checkout completion grant, and refund clawback.
+- Action: Opened and followed the skill; modeled the tested lifecycle as signed-out pricing click, signed-in free balance, checkout URL emitted without grant, signed `checkout.session.completed` grant, signed `charge.refunded` clawback, and duplicate-event safe handling in the local payment test API.
+- Output artifacts: `tests/e2e/payment-flow.spec.ts`; `tests/e2e/payment-flow-mock-api.ts`.
+- Verification evidence: The Playwright spec asserts no balance change before webhook, grant to 13 after Quick Pack completion, and clawback to 3 after full refund. The standalone signed-webhook HTTP smoke passed those same state transitions without browser execution.
+- Limitations: No production state machine, EF model, migration, or backend service code was changed.
+
+### 2026-06-01 - resilience-test-generation - PAY-06 signed webhook E2E resilience
+
+- Agent: Codex
+- Trigger: PAY-06 adds tests around signed payment webhook delivery and refund accounting, which overlaps webhook replay and payment-provider safety rules.
+- Action: Opened and followed the skill; kept the payment flow hermetic, avoided live Stripe calls, required a signing env name for the payment E2E, verified webhook signatures in the local test API, and included duplicate-event dedupe in the test API state.
+- Output artifacts: `tests/e2e/payment-flow.spec.ts`; `tests/e2e/payment-flow-mock-api.ts`; `playwright.config.ts`.
+- Verification evidence: Absent-config Playwright run skipped the spec cleanly. The signed-webhook HTTP smoke passed checkout grant and refund clawback. Full unit tests, typecheck, lint, and diff checks passed.
+- Limitations: Browser-backed Playwright assertions could not execute in this sandbox because Chromium launch is blocked. The new E2E does not depend on Stripe CLI, Stripe network calls, or live payment keys.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-10 payment resilience test gaps
+
+- Agent: Codex
+- Trigger: GitHub issue #385/PAY-10 explicitly requires .NET backend tests for Stripe refund replay, Stripe API-version pinning, quota reservation races, and rewrite worker timeout release.
+- Action: Opened and followed the skill; added xUnit/FluentAssertions tests using existing EF SQLite fixtures and deterministic fake providers, plus an internal visibility hook for the Stripe billing pin guard test.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Properties/AssemblyInfo.cs`.
+- Verification evidence: Focused backend run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter "FullyQualifiedName~StripeBillingServiceTests|FullyQualifiedName~StripeEventServiceTests|FullyQualifiedName~QuotaServiceTests|FullyQualifiedName~RewriteJobProcessorTests" --no-restore` passed 45/45. Full `cd backend-dotnet && dotnet test` passed 412/412.
+- Limitations: The Stripe SDK exposes `StripeConfiguration.ApiVersion` as read-only, so the mismatch test drives the same internal pin check through an overload while also asserting the live SDK value equals the pinned version. NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - resilience-test-generation - PAY-10 replay, timeout, and quota-race coverage
+
+- Agent: Codex
+- Trigger: PAY-10 changes/tests retryable Stripe refund ordering, true concurrent quota reservation, and provider timeout/cancellation recovery.
+- Action: Opened and followed the skill; framed tests around timeout, duplicate/replay, partial ordering, and concurrent request failure modes. Kept all provider and Stripe behavior local with fakes and JSON payloads; no live Stripe, OpenAI, Sapling, Azure, or production database calls were made.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/QuotaService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`.
+- Verification evidence: Added coverage for refund-before-grant failing retryably then replaying after credit arrives, `Task.WhenAll` quota reservation on one remaining slot producing exactly one `Created` and one `QuotaExceeded`, and provider `OperationCanceledException`/`TaskCanceledException` releasing reservations with `provider_timeout` and refunding quota/credit. Focused backend run passed 45/45; full `cd backend-dotnet && dotnet test` passed 412/412.
+- Limitations: Retry handling is bounded to reservation-race/concurrency exceptions; no new external provider retry policy, live network timeout test, or deployment behavior was added.
+
+### 2026-06-01 - ui-browser-testing - PAY-10 buy-button checkout branch coverage
+
+- Agent: Codex
+- Trigger: PAY-10 requires frontend checkout flow coverage for `components/landing/buy-button.tsx` 401, success, and API error branches.
+- Action: Opened and followed the skill; added a Vitest unit flow test under `tests/unit/` that exercises the button handler with mocked fetch, window navigation, and React state updates.
+- Output artifacts: `tests/unit/buy-button-checkout-flow.test.ts`.
+- Verification evidence: Focused `npm run test -- tests/unit/buy-button-checkout-flow.test.ts` passed 3/3. Full `npm run typecheck` passed. Full `npm run test` passed 301/301. Banned-term scan over `app components public lib` returned no matches.
+- Limitations: The issue allowed Vitest or Playwright; this implementation uses Vitest and does not add screenshot or browser-run artifacts because no visual layout changed.
+
+### 2026-06-01 - state-machine-modeling - PAY-10 payment and rewrite recovery transitions
+
+- Agent: Codex
+- Trigger: PAY-10 touches webhook lifecycle, usage reservation lifecycle, rewrite attempt lifecycle, and quota/credit transitions.
+- Action: Opened and followed the skill; modeled states as `StripeEvent` Processing/Failed/Processed, `UsageReservation` Pending/Released/Finalized/Expired, and `RewriteAttempt` Pending/Processing/Failed/Succeeded/Expired. Events modeled: out-of-order `charge.refunded`, refund replay after credit grant, duplicate processed refund, concurrent `ReserveAsync`, and provider timeout/cancellation. Allowed transitions added/tested: no-credit refund -> Failed/retryable with no credit mutation; replayed refund -> Processed with clamped grant; concurrent reservation -> one Pending reservation and one `QuotaExceeded`; provider timeout from Processing -> Failed attempt plus Released reservation. Illegal transitions tested include duplicate processed refund not reapplying and reservation race not over-reserving.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/QuotaService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`; related xUnit tests.
+- Verification evidence: Focused backend run passed 45/45. Full `cd backend-dotnet && dotnet test` passed 412/412.
+- Limitations: No enum values or database migrations were added; the work only clarified existing transition behavior and added recovery tests.
+
+### 2026-06-01 - data-module-review - PAY-10 EF quota and payment persistence invariants
+
+- Agent: Codex
+- Trigger: PAY-10 changes EF-backed usage counters, idempotency/replay rows, credit balances, and transaction behavior under concurrency.
+- Action: Opened and followed the skill; reviewed `AppDbContext` uniqueness/concurrency configuration, `StripeEventService` transaction behavior, `QuotaService` read-then-write reservation path, `RewriteJobProcessor` timeout release path, and the new tests against the relevant invariants.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/QuotaService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/*`.
+- Verification evidence: Findings: no migration needed; existing unique keys on `StripeEvents.EventId`, `UsagePeriods(userId, periodKey)`, `RewriteAttempts(userId, idempotencyKey)`, and `UsageReservations.RewriteAttemptId` support the new tests. The quota race test uses file-backed SQLite with WAL and asserts one attempt/reservation/outbox row. `git diff --check`, banned-term scan over `app components public lib`, full `cd backend-dotnet && dotnet test`, `npm run typecheck`, and `npm run test` all passed.
+- Limitations: The review did not run a live SQL Server concurrency test; coverage is local EF SQLite integration coverage matching the issue brief.
+
+### 2026-06-01 - ui-browser-testing - PAY-07 admin UI
+
+- Agent: Codex
+- Trigger: PAY-07 adds frontend admin pages, admin proxy routes, forms, auth gating, and Playwright coverage.
+- Action: Opened and followed the skill; added `/admin` and `/admin/users/[userId]` pages, browser-facing admin components, same-origin bearer proxy routes under `/api/admin/*`, unit proxy tests, and `tests/e2e/admin.spec.ts` for admin and non-admin flows.
+- Output artifacts: `app/admin/*`; `app/api/admin/*`; `components/admin/*`; `lib/admin-api-proxy.ts`; `lib/admin-auth.ts`; `lib/admin-types.ts`; `tests/unit/admin-api-routes.test.ts`; `tests/e2e/admin.spec.ts`; `playwright.config.ts`.
+- Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `git diff --check`, and banned-term grep over `app components public lib` passed. The admin route unit test passed 3/3. Dev-server HTTP checks returned 200 for an admin session and rendered the expected denied view for a non-admin session.
+- Limitations: Local Playwright Chromium could not launch in this macOS sandbox (`MachPortRendezvousServer` permission denied), so `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before executing page assertions. The Browser plugin was attempted but `iab` was unavailable in this session.
+
+### 2026-06-01 - cloud-architecture-cost-review - PAY-02 payment observability wiring
+
+- Agent: Codex
+- Trigger: GitHub issue #379/PAY-02 explicitly requires cloud-architecture-cost-review before adding Sentry/PostHog payment observability across Cloudflare Worker and Azure Functions.
+- Action: Opened and followed the skill; kept the existing Cloudflare Worker + Azure Functions consumption + Application Insights architecture, added runtime-keyed Worker/PostHog/Sentry-compatible instrumentation, and rejected adding a second backend APM package because Application Insights is already registered in `ReplyInMyVoice.Functions`.
+- Output artifacts: `lib/payment-observability.ts`; `lib/payment-observability-client.ts`; `app/api/observability/payment/route.ts`; `app/api/stripe/*`; `app/api/me/route.ts`; `docs/observability.md`; `docs/manual-setup.md`; `docs/support-runbook.md`; `.env.example`; `backend-dotnet/src/ReplyInMyVoice.Functions/local.settings.example.json`.
+- Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, `cd backend-dotnet && dotnet build ReplyInMyVoice.sln`, and `cd backend-dotnet && dotnet test ReplyInMyVoice.sln` passed. Banned-term scan over `app components public lib` returned no matches.
+- Limitations: No paid resources, dashboard monitors, Worker secrets, Azure app settings, GitHub secrets, deploy commands, or source-map upload automation were created in this turn. Owner still needs to create PostHog, Azure Monitor, Sentry, and UptimeRobot dashboard configuration from `docs/observability.md`.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-02 Functions payment failure telemetry
+
+- Agent: Codex
+- Trigger: PAY-02 changes C#/.NET payment and webhook failure paths and required backend test coverage for the explicit `webhook_failed` event hook.
+- Action: Opened and followed the skill; wrote a failing xUnit service test for a Stripe checkout webhook sync failure, then added structured Application Insights-compatible logs with `PaymentObservabilityEvent` and `CorrelationId` in `StripeEventService`, `StripeWebhookFunction`, and `BillingHttpFunctions`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/StripeWebhookFunction.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/BillingHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeWebhookApiTests.cs`.
+- Verification evidence: Red run: focused `StripeEventServiceTests.ProcessWebhookEventAsync_LogsWebhookFailedWhenCheckoutSyncFails` failed because no `webhook_failed` error log existed. Green run passed after implementation. Full `dotnet test ReplyInMyVoice.sln` passed 408/408; `dotnet build ReplyInMyVoice.sln` passed.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. Account/Billing API tests needed the existing polling/no-reload WebApplicationFactory guard to avoid macOS sandbox `PhysicalFilesWatcher` stack overflow during full-suite runs.
+
+### 2026-06-01 - resilience-test-generation - PAY-04 Stripe API failure tests
+
+- Agent: Codex
+- Trigger: PAY-04 explicitly requires Stripe provider-failure tests for checkout-create and admin refund paths.
+- Action: Opened and followed the skill; modeled Stripe session creation timeout and refund timeout as deterministic fake-provider failures, asserted final persisted state, and avoided live Stripe calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRefundTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeBillingService.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/BillingHttpFunctions.cs`.
+- Verification evidence: Red run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter "StripeBillingServiceTests|StripeBillingApiTests|AdminRefundTests"` failed on missing Stripe billing fake seam. Focused green run with the same filter passed 10/10. Full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-04 xUnit payment failure coverage
+
+- Agent: Codex
+- Trigger: PAY-04 adds C#/.NET backend tests for checkout-create and refund Stripe API failures.
+- Action: Opened and followed the skill; added WebApplicationFactory API coverage for checkout 5xx behavior, EF SQLite service coverage for checkout persistence state, and AdminService coverage for refund failure audit/credit invariants.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRefundTests.cs`.
+- Verification evidence: Focused `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter "StripeBillingServiceTests|StripeBillingApiTests|AdminRefundTests"` passed 10/10 after implementation. Full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: The initial focused API run without the test-host reload guard hit the known macOS WebApplicationFactory file-watcher timeout pattern; the Stripe billing API test class now sets the same reload-disable environment variables used by existing API tests.
+
+### 2026-06-01 - data-module-review - PAY-04 checkout/refund persistence invariants
+
+- Agent: Codex
+- Trigger: PAY-04 requires proving no partial DB state for failed checkout-create and refund operations.
+- Action: Opened and followed the skill; reviewed `AppUsers`, `RewriteCredits`, and `AdminAuditLogs` mutations, moved checkout user/customer persistence until after successful Stripe session creation, and kept admin refund success audit persistence after successful refund only.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeBillingService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRefundTests.cs`.
+- Verification evidence: Checkout failure test asserts existing user email, Stripe customer id, row version, and credits remain unchanged. Refund failure test asserts zero admin audit rows, zero refund-success audit rows, unchanged credit grant/consumption, and deterministic refund idempotency key. Full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: No schema or migration changes were needed.
+
+### 2026-06-01 - data-module-review - PAY-05 credit receipt URL persistence
+
+- Agent: Codex
+- Trigger: PAY-05 changes `RewriteCredit` persistence and adds an EF Core migration for Stripe receipt reconciliation.
+- Action: Opened and followed the skill; reviewed `RewriteCredit`, `AppDbContext`, `StripeEventService.SyncCheckoutSessionAsync`, purchase-history projections, admin payment projections, and the generated migration for add-only/nullability safety.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531201712_AddRewriteCreditReceiptUrl.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531201712_AddRewriteCreditReceiptUrl.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; payment service/projection updates.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet` was run for persistence context. The new migration `Up` contains only `migrationBuilder.AddColumn<string>(name: "StripeReceiptUrl", table: "RewriteCredits", type: "nvarchar(2048)", maxLength: 2048, nullable: true)`, and `rg` over the new migration found no `DropColumn`, `DropTable`, `AlterColumn`, `Rename`, raw SQL, data delete, or drop-index operation. Full `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: The webhook stores a receipt URL only when Stripe supplies an expanded `payment_intent.latest_charge.receipt_url`; non-expanded or missing charge data remains nullable as required.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-05 receipt URL xUnit coverage
+
+- Agent: Codex
+- Trigger: PAY-05 requires xUnit coverage for receipt URL persistence and `GET /api/me/payments` response shape.
+- Action: Opened and followed the skill; wrote failing receipt URL assertions first, then added service-level EF SQLite coverage for expanded Stripe checkout receipt URLs, missing receipt URLs, account purchase-history serialization, and admin payment detail projection.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`.
+- Verification evidence: Red run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~StripeEventServiceTests|FullyQualifiedName~AccountApiTests"` failed on missing `RewriteCredit.StripeReceiptUrl`, proving the new assertions were active. Focused green receipt tests passed. Full `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - cloud-architecture-cost-review - PAY-20 GST tax readiness
+
+- Agent: Codex
+- Trigger: PAY-20 explicitly requires cloud-architecture-cost-review for Stripe Tax readiness and GST threshold monitoring.
+- Action: Opened and followed the skill; selected the no-new-infrastructure option: keep Stripe Tax dashboard/legal setup owner-only, add a default-off checkout flag, compute turnover from the existing `RewriteCredit` ledger, and reuse PAY-19 notification infrastructure when configured.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeBillingService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeCheckoutSessionOptionsFactory.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/TaxTurnoverService.cs`; `docs/gst-tax-playbook.md`.
+- Verification evidence: Official IRD GST registration guidance confirmed the NZ$60,000 actual/expected 12-month threshold; official Stripe Checkout Tax docs confirmed `automatic_tax`, required billing address collection, `customer_update[address]=auto`, and tax ID collection for Checkout. Focused backend tests passed 7/7, and full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: No Stripe Dashboard setting, IRD registration, deploy command, paid cloud resource, or real charge was performed. Exact tax/accounting advice remains owner/accountant responsibility.
+
+### 2026-06-01 - data-module-review - PAY-20 turnover tracker
+
+- Agent: Codex
+- Trigger: PAY-20 computes rolling gross revenue from `RewriteCredit` payment fields and surfaces it in admin stats.
+- Action: Opened and followed the skill; reviewed `RewriteCredit` fields, `AppDbContext` mapping, `StripeEventService` purchase grant writes, and `AdminService.GetStatsAsync`. Kept the change read-side only with no migration because `Source`, `GrantedAt`, `StripeAmountTotal`, and `StripeCurrency` already support the report.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/TaxTurnoverService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TaxTurnoverServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`.
+- Verification evidence: The new xUnit test seeds in-window/out-of-window/admin/non-NZD credits and verifies only gross in-window NZD purchases count toward the configured warning threshold. Focused backend tests passed 7/7, and full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: The report follows PAY-20's specified `RewriteCredit` purchase source and does not convert non-NZD amounts or subtract refunds.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-20 checkout tax and turnover tests
+
+- Agent: Codex
+- Trigger: PAY-20 adds C# backend checkout option wiring, turnover computation, notification template wiring, and admin stats response coverage.
+- Action: Opened and followed the skill; wrote failing tests first for the missing checkout options factory, turnover service, and admin stats field, then implemented the minimal backend code to pass.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeCheckoutSessionOptionsFactoryTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TaxTurnoverServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; related production service files.
+- Verification evidence: Red run failed on missing `StripeCheckoutSessionOptionsFactory`, missing `TaxTurnoverService`, and missing `AdminStatsResponse.GstTurnover`. Focused green run `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --filter "FullyQualifiedName~StripeCheckoutSessionOptionsFactoryTests|FullyQualifiedName~TaxTurnoverServiceTests|FullyQualifiedName~AdminServiceTests"` passed 7/7. Full `cd backend-dotnet && dotnet test` passed 410/410.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - ui-browser-testing - PAY-20 admin stats routing check
+
+- Agent: Codex
+- Trigger: PAY-20 says to surface the GST turnover tracker in admin stats, which may affect browser-visible admin UI depending on implementation.
+- Action: Opened the skill as a routing check; kept this issue backend/API-scoped by adding `gstTurnover` to `AdminStatsResponse` without changing `app/`, `components/`, `lib/`, `public/`, or Playwright files.
+- Output artifacts: None in frontend/browser paths.
+- Verification evidence: `rg -n "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches. No browser-visible files were changed, so no Playwright/browser run was applicable for PAY-20.
+- Limitations: The admin frontend does not render a dedicated GST turnover tile in this issue; the machine-checkable surface is the backend admin stats response.
+
+### 2026-06-01 - data-module-review - PAY-21 receipt URL payment history contract
+
+- Agent: Codex
+- Trigger: PAY-21 changes the `RewriteCredit` payment ledger and `AccountService.GetPurchaseHistoryAsync` contract to expose Stripe-hosted receipt links.
+- Action: Opened and followed the skill; reviewed the owned `RewriteCredit` table/entity, `AppDbContext` mapping, migration safety, caller-scoped purchase-history query, and account payment projection. Added a nullable `StripeReceiptUrl` column with a 2048-character limit and no tax calculation logic.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260601090000_AddRewriteCreditReceiptUrl.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `docs/payment-receipts-tax-invoices.md`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80` completed and surfaced broad existing quota/idempotency signals, with no new blocker for this nullable receipt-link projection. Focused account tests passed 13/13; full backend `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false dotnet test` passed 408/408.
+- Limitations: PAY-21 relies on Stripe receipt capture populating `StripeReceiptUrl`; this change surfaces and stores the value but does not hand-roll tax math or generate invoices.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-21 payment history API coverage
+
+- Agent: Codex
+- Trigger: PAY-21 adds C#/.NET tests for purchase-history receipt links and the ASP.NET Core `/api/me/payments` route.
+- Action: Opened and followed the skill; used an EF Core SQLite service test for the persisted receipt URL invariant and a `WebApplicationFactory` API test for route/auth/JSON contract behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: Red run failed on missing `StripeReceiptUrl`, `ReceiptUrl`, and missing frontend proxy route. Green runs: `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --nologo --no-restore --filter "FullyQualifiedName~AccountServiceTests|FullyQualifiedName~AccountApiTests"` passed 13/13; full backend `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false dotnet test` passed 408/408.
+- Limitations: Local .NET test runs emitted `NU1900` warnings because the NuGet vulnerability feed was unavailable. Without `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false`, this macOS sandbox recursed through config change tokens and stack-overflowed in WebApplicationFactory before PAY-21 assertions could complete.
+
+### 2026-06-01 - ui-browser-testing - PAY-21 account receipts UI
+
+- Agent: Codex
+- Trigger: PAY-21 adds a browser-visible account-area receipts / purchase-history view and a Playwright acceptance test.
+- Action: Opened and followed the skill; added the `/api/me/payments` thin proxy, `AzureAccountPayment` client type, account purchase-history table, Stripe receipt link rendering, a React component acceptance test, and `tests/e2e/account-receipts.spec.ts` with seeded account/payment responses.
+- Output artifacts: `app/api/me/payments/route.ts`; `components/account/account-panel.tsx`; `lib/azure-api.ts`; `tests/unit/account-api.test.ts`; `tests/unit/account-receipts-component.test.ts`; `tests/e2e/account-receipts.spec.ts`; `docs/payment-receipts-tax-invoices.md`.
+- Verification evidence: `npm run typecheck`, `npm run test` (301 tests), `npm run build`, `npm run test -- tests/unit/account-api.test.ts`, `npm run test -- tests/unit/account-receipts-component.test.ts`, `git diff --check`, and banned-term grep over `app components public lib` passed. `npx playwright test tests/e2e/account-receipts.spec.ts --project=chromium` reached browser startup and failed before page execution with Chromium `MachPortRendezvousServer` permission denied in the local macOS sandbox.
+- Limitations: No desktop/mobile screenshots were captured because local Chromium could not launch. Component coverage verifies the seeded purchase list and receipt link; the Playwright spec is present for the supervisor or a browser-capable environment to execute.
+
+### 2026-06-01 - resilience-test-generation - PAY-22 Stripe reconciliation failure coverage
+
+- Agent: Codex
+- Trigger: GitHub issue #390/PAY-22 requires detecting missed webhooks and payment/ledger drift without Stripe writes.
+- Action: Opened and followed the skill; modeled the critical payment-provider boundary with deterministic fake Stripe payment-intent data, a local EF SQLite ledger, and a fake read-only Stripe client that tracks write attempts.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeReconciliationServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeReconciliationService.cs`.
+- Verification evidence: Red run failed on missing reconciliation contracts. Green focused run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter StripeReconciliationServiceTests` passed 4/4, including paid-but-no-grant, amount-mismatch, grant-but-no-payment, clean dataset, and read-only client assertions. Full `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: Tests use fake Stripe payment intents only; no live Stripe, refund, grant, or charge creation call was made.
+
+### 2026-06-01 - data-module-review - PAY-22 reconciliation run persistence
+
+- Agent: Codex
+- Trigger: PAY-22 adds a persisted reconciliation summary and reads the `RewriteCredit` payment ledger by `StripePaymentIntentId`.
+- Action: Opened and followed the skill; reviewed `RewriteCredit` payment fields and indexes, added a `StripeReconciliationRun` table with count fields and structured report JSON, and kept reconciliation write behavior limited to recording the run summary.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/StripeReconciliationRun.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531213301_AddStripeReconciliationRuns.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`.
+- Verification evidence: EF SQLite tests verified persisted run counts/report JSON and admin stats summary. `git diff --check` passed. Full `cd backend-dotnet && dotnet test` passed 411/411.
+- Limitations: The reconciler does not auto-create grants, refunds, or webhook replay records. Manual event reprocessing remains optional/out of scope for this issue.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-22 reconciliation xUnit coverage
+
+- Agent: Codex
+- Trigger: PAY-22 requires backend unit tests and `cd backend-dotnet && dotnet test`.
+- Action: Opened and followed the skill; wrote failing service-level xUnit tests first, then implemented the reconciliation service, Stripe read client adapter, notification alert hook, scheduled Functions timer, migration, and admin stats summary.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeReconciliationServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeReconciliationService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/StripeReconciliationTimerFunction.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Notifications/NotificationTemplates.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`.
+- Verification evidence: Focused red run failed on missing reconciliation types. Focused green run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter StripeReconciliationServiceTests` passed 4/4. Full backend gate `cd backend-dotnet && dotnet test` passed 411/411. Banned-term grep over `app components public lib` returned no matches.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages. `dotnet ef migrations add` generated the migration after the application host timed out and fell back to the design-time context factory.
+
+### 2026-06-01 - data-module-review - PAY-25 price versioning credit invariants
+
+- Agent: Codex
+- Trigger: GitHub issue #393/PAY-25 changes `RewriteCredit` persistence and explicitly requires `data-module-review`.
+- Action: Opened and followed the skill; reviewed `RewriteCredit`, `StripeBillingService.SkuDefinitions`, checkout metadata grant creation, account summary balance reads, and partial refund clawback math. Added nullable `OriginalAmountGranted` with migration backfill so historical purchase size is persisted independently of the current SKU map.
+- Output artifacts: `docs/price-change-playbook.md`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260531224044_AddRewriteCreditOriginalAmountGranted.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: Data risk scan ran over `backend-dotnet/src`; focused Stripe event tests passed 21/21; full `cd backend-dotnet && dotnet test` passed 408/408.
+- Limitations: EF migration generation emitted a design-time host timeout warning after producing the migration, so the migration was reviewed and the backfill SQL was added manually.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-25 historical grant regression
+
+- Agent: Codex
+- Trigger: PAY-25 requires a .NET regression test proving later SKU size changes do not alter the balance of an old granted credit.
+- Action: Opened and followed the skill; added a failing xUnit regression in `StripeEventServiceTests` for an old 7-rewrite `quick_pack` grant while the current SKU map grants 10, then fixed the service to use the persisted original grant count for cumulative partial refunds.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteCredit.cs`.
+- Verification evidence: Red run failed with `Expected credit.AmountGranted to be 3, but found 5`; green focused run for the regression passed 1/1; focused `StripeEventServiceTests` passed 21/21; full `cd backend-dotnet && dotnet test` passed 408/408.
+
+### 2026-06-01 - data-module-review - PAY-29 accounting revenue export
+
+- Agent: Codex
+- Trigger: PAY-29 reads payment/accounting data from `RewriteCredit` and existing usage/cost persistence without changing schema.
+- Action: Opened and followed the skill; reviewed `RewriteCredit`, `UsagePeriod`, `UsageReservation`, `RewriteCostLog`, `AppDbContext`, existing admin endpoints, and ran the data risk scanner over `backend-dotnet`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`.
+- Verification evidence: No migration or new persisted field was added. The export reads admin payment rows from the existing credit ledger, emits only payment/accounting fields, and uses page-sized reads plus response-body CSV writes. Focused `dotnet test ReplyInMyVoice.sln --filter AdminAccountingRevenueCsv --no-restore` passed 3/3; full `cd backend-dotnet && dotnet test` passed 410/410; `git diff --check` passed.
+- Limitations: `receiptUrl` is included as a CSV column but remains empty when the ledger has no stored receipt URL; receipt capture is outside PAY-29.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-29 admin CSV export coverage
+
+- Agent: Codex
+- Trigger: PAY-29 requires .NET backend coverage for admin CSV export, non-admin 403, CSV escaping, date range filtering, and paged export behavior.
+- Action: Opened and followed the skill; wrote failing xUnit tests first for the missing function/service methods, then implemented the admin function and service writer until the focused suite passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TestHostEnvironment.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`.
+- Verification evidence: Red run `dotnet test ReplyInMyVoice.sln --filter AdminAccountingRevenueCsv` failed on missing `ExportAccountingRevenueCsv` and `WriteAccountingRevenueCsvAsync`. Green runs: `dotnet test ReplyInMyVoice.sln --filter AdminAccountingRevenueCsv --no-restore` passed 3/3, isolated API host timeout repros passed after moving test-host settings to a module initializer, full `cd backend-dotnet && dotnet test` passed 410/410, and `git diff --check` passed.
+- Limitations: NuGet vulnerability feed checks emitted `NU1900` warnings because `https://api.nuget.org/v3/index.json` was unavailable, but restore/build/test completed with cached packages.
+
+### 2026-06-01 - cloud-architecture-cost-review - PAY-30 multi-currency design
+
+- Agent: Codex
+- Trigger: GitHub issue #398/PAY-30 explicitly requires cloud-architecture-cost-review for multi-currency payment coverage.
+- Action: Opened and followed the skill; reviewed the payment audit, manual setup notes, Azure/Cloudflare backend posture, current Stripe SKU mapping, and PAY-22/PAY-29 reporting briefs. Recommended separate Stripe Prices per SKU per currency, explicit user currency selection with optional geo preselection, and NZD fallback without adding cloud resources or application-side exchange-rate logic.
+- Output artifacts: `docs/multi-currency-plan.md`; `docs/skill-run-log.md`.
+- Verification evidence: `docs/multi-currency-plan.md` records the architecture cost review, approval gates, rejected options, and reporting implications. `cd backend-dotnet && dotnet test` passed 407/407. `git diff --check` passed.
+- Limitations: No exact Stripe fee comparison was performed because PAY-30 does not select a concrete additional currency, quote prices, create Stripe Prices, or provision paid resources. No optional multi-currency implementation was added because the issue did not include owner opt-in.
+
+### 2026-06-01 - system-spec-synthesis - PAY-30 multi-currency implementation-ready plan
+
+- Agent: Codex
+- Trigger: PAY-30 asks for a design document covering future SKU/currency price mapping, currency selection, data persistence, and reconciliation/export behavior.
+- Action: Opened and followed the skill; converted the issue, PAY brief, payment audit, current backend/frontend code, and reporting briefs into an implementation-ready specification with goals, non-goals, current system, proposed architecture, data model, API contracts, rollout, verification, and open questions.
+- Output artifacts: `docs/multi-currency-plan.md`; `docs/skill-run-log.md`.
+- Verification evidence: `docs/multi-currency-plan.md` is non-empty and documents per-currency Stripe price IDs, SKU-to-currency price mapping, user/geo currency selection, existing `RewriteCredit.StripeCurrency` persistence, and PAY-22/PAY-29 grouping by currency. `cd backend-dotnet && dotnet test` passed 407/407. `git diff --check` passed.
+- Limitations: The output is a design/spec artifact only. Backend SKU resolution, frontend currency selection, and two-currency unit coverage remain deferred until owner supplies a concrete currency decision and Stripe price IDs through runtime configuration.
+
+### 2026-06-01 - resilience-test-generation - PAY-31 checkout velocity and refund review signals
+
+- Agent: Codex
+- Trigger: GitHub issue #399/PAY-31 requires purchase-side abuse controls and explicitly names resilience-test-generation for checkout velocity limiting and refund-abuse monitoring tests.
+- Action: Opened and followed the skill; identified checkout-session creation as the critical operation, kept Stripe calls behind a fake billing service, and wrote the failing 429/under-limit API test before adding the limiter.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/CheckoutVelocityLimiter.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/BillingHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `docs/fraud-controls.md`.
+- Verification evidence: Red run failed on missing `CheckoutVelocityLimiter`. Green focused run `cd backend-dotnet && dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~StripeBillingApiTests|FullyQualifiedName~AdminServiceTests"` passed 11/11. Full `cd backend-dotnet && dotnet test` passed 409/409.
+- Limitations: The limiter is process-local and intended as a purchase-side throttle before creating a Stripe Checkout session. Stripe Radar dashboard rules remain owner-configured.
+
+### 2026-06-01 - data-module-review - PAY-31 AdminAuditLog refund review aggregate
+
+- Agent: Codex
+- Trigger: PAY-31 reads refund entries from `AdminAuditLog` and adds admin stats derived from persisted audit data.
+- Action: Opened and followed the skill; reviewed the existing `AdminAuditLog` action/details shape and reused `AdminRefundAuditDetails` parsing without adding tables, migrations, or auto-actions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; `docs/fraud-controls.md`.
+- Verification evidence: Added xUnit coverage for count-threshold and amount-threshold refund review flags computed from persisted audit rows. Focused admin/billing tests passed 11/11; full `cd backend-dotnet && dotnet test` passed 409/409.
+- Limitations: Malformed refund audit details are ignored for the aggregate. The stats are informational and do not suspend, refund, or block a user.
+
+### 2026-06-01 - dotnet-backend-testing - PAY-31 backend tests
+
+- Agent: Codex
+- Trigger: PAY-31 adds C#/.NET backend behavior and requires tests for checkout velocity and refund-review stats.
+- Action: Opened and followed the skill; added WebApplicationFactory coverage for checkout 429 behavior, EF SQLite-backed function coverage for admin stats, and a test-process polling watcher bootstrap to prevent the macOS sandbox FileSystemWatcher host-startup crash.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/TestEnvironmentBootstrap.cs`.
+- Verification evidence: Red run failed on missing checkout limiter/admin stats properties. Green runs: the new checkout test passed 1/1, the new admin stats test passed 1/1, focused admin/billing tests passed 11/11, and full `cd backend-dotnet && dotnet test` passed 409/409.
+- Limitations: Dotnet restore emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but cached restore/build/test succeeded.
+
+### 2026-06-01 - ui-browser-testing - PAY-31 admin refund-review stat surface
+
+- Agent: Codex
+- Trigger: PAY-31 adds a browser-visible admin stats tile for the refund-review aggregate.
+- Action: Opened and followed the skill; updated the admin stats TypeScript contract, dashboard stat tile, and admin Playwright fixture/assertion for the new refund-review count.
+- Output artifacts: `components/admin/admin-dashboard.tsx`; `lib/admin-types.ts`; `tests/e2e/admin.spec.ts`.
+- Verification evidence: `npm run typecheck` passed; `npm run test` passed 298/298; banned-term grep over `app components public lib` returned no matches.
+- Limitations: `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before page assertions because Chromium launch is blocked in this sandbox by `MachPortRendezvousServer` permission denied. A Next dev server started during the attempt, but the sandbox refused permission to terminate its child process afterward.

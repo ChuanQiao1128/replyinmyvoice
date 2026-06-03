@@ -164,6 +164,76 @@ public sealed class QuotaServiceTests
     }
 
     [Fact]
+    public async Task ReserveAsync_concurrent_distinct_requests_on_last_slot_create_one_reservation()
+    {
+        await using var fixture = await FileBackedDbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-05-25T00:01:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 1,
+                UsedCount = 0,
+                ReservedCount = 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var firstService = new QuotaService(fixture.CreateContext);
+        var secondService = new QuotaService(fixture.CreateContext);
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var firstTask = Task.Run(async () =>
+        {
+            await start.Task;
+            return await firstService.ReserveAsync(
+                user.Id,
+                "idem-race-a",
+                "hash-race-a",
+                "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+                "free:lifetime",
+                1,
+                now,
+                TimeSpan.FromMinutes(10));
+        });
+        var secondTask = Task.Run(async () =>
+        {
+            await start.Task;
+            return await secondService.ReserveAsync(
+                user.Id,
+                "idem-race-b",
+                "hash-race-b",
+                "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+                "free:lifetime",
+                1,
+                now,
+                TimeSpan.FromMinutes(10));
+        });
+
+        start.SetResult();
+        var results = await Task.WhenAll(firstTask, secondTask);
+
+        results.Select(x => x.Kind).Should().BeEquivalentTo(
+        [
+            ReserveRewriteResultKind.Created,
+            ReserveRewriteResultKind.QuotaExceeded,
+        ]);
+
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(1);
+        (await db.RewriteAttempts.CountAsync()).Should().Be(1);
+        (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
     public async Task ReserveAsync_uses_valid_credit_when_period_quota_is_full_and_success_keeps_credit_consumed()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -632,5 +702,68 @@ internal sealed class DbFixture : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _connection.DisposeAsync();
+    }
+}
+
+internal sealed class FileBackedDbFixture : IAsyncDisposable
+{
+    private readonly string _databasePath;
+
+    private FileBackedDbFixture(string databasePath)
+    {
+        _databasePath = databasePath;
+    }
+
+    public static async Task<FileBackedDbFixture> CreateAsync()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"replyinmyvoice-quota-race-{Guid.NewGuid():N}.db");
+        var fixture = new FileBackedDbFixture(databasePath);
+        await using var db = fixture.CreateContext();
+        await db.Database.EnsureCreatedAsync();
+        await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+        await db.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=5000;");
+        return fixture;
+    }
+
+    public AppDbContext CreateContext()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite($"Data Source={_databasePath};Default Timeout=5")
+            .EnableSensitiveDataLogging()
+            .Options;
+        return new AppDbContext(options);
+    }
+
+    public async Task<AppUser> CreateUserAsync()
+    {
+        await using var db = CreateContext();
+        var user = new AppUser
+        {
+            ExternalAuthUserId = $"clerk_{Guid.NewGuid():N}",
+            Email = "test@example.com",
+            SubscriptionStatus = SubscriptionStatus.Inactive,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.AppUsers.Add(user);
+        await db.SaveChangesAsync();
+        return user;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        SqliteConnection.ClearAllPools();
+        TryDelete(_databasePath);
+        TryDelete($"{_databasePath}-wal");
+        TryDelete($"{_databasePath}-shm");
+        return ValueTask.CompletedTask;
+    }
+
+    private static void TryDelete(string path)
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
     }
 }

@@ -7,20 +7,27 @@ using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
 using Stripe;
+using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
+Console.Error.WriteLine("TRACE api: builder created");
 
 builder.Services.AddEndpointsApiExplorer();
+Console.Error.WriteLine("TRACE api: endpoints registered");
 builder.Services.AddSwaggerGen();
+Console.Error.WriteLine("TRACE api: swagger registered");
 builder.Services.AddApplicationInsightsTelemetry();
+Console.Error.WriteLine("TRACE api: app insights registered");
 
 builder.Services.AddReplyInMyVoiceInfrastructure(builder.Configuration);
+Console.Error.WriteLine("TRACE api: infrastructure registered");
 
 var app = builder.Build();
+Console.Error.WriteLine("TRACE api: app built");
 
 if (app.Environment.IsDevelopment())
 {
@@ -50,6 +57,28 @@ app.MapGet("/api/me", async (
         cancellationToken);
 
     return Results.Ok(account);
+});
+
+app.MapGet("/api/me/payments", async (
+    HttpRequest httpRequest,
+    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    CancellationToken cancellationToken) =>
+{
+    var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
+    if (string.IsNullOrWhiteSpace(externalUserId))
+    {
+        return Results.Problem(
+            title: "Authentication required",
+            detail: "A valid authenticated user is required.",
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var payments = await accountService.GetPurchaseHistoryAsync(
+        externalUserId,
+        ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+        cancellationToken);
+
+    return Results.Ok(payments);
 });
 
 app.MapPost("/api/rewrite", async (
@@ -267,6 +296,7 @@ app.MapGet("/api/promo/status", async (
 app.MapPost("/api/stripe/checkout", async (
     HttpRequest httpRequest,
     IStripeBillingService billingService,
+    ICheckoutVelocityLimiter checkoutVelocityLimiter,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -288,6 +318,16 @@ app.MapPost("/api/stripe/checkout", async (
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
+        var velocity = checkoutVelocityLimiter.Check(externalUserId);
+        if (!velocity.Allowed)
+        {
+            SetRetryAfter(httpRequest, velocity);
+            return Results.Problem(
+                title: "Checkout rate limit reached",
+                detail: "Too many checkout sessions were requested. Please wait before trying again.",
+                statusCode: StatusCodes.Status429TooManyRequests);
+        }
+
         var url = await billingService.CreateCheckoutSessionUrlAsync(
             externalUserId,
             ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
@@ -305,6 +345,12 @@ app.MapPost("/api/stripe/checkout", async (
     {
         return Results.Problem(
             title: "Billing is not configured",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+    catch (Exception ex) when (IsBillingProviderFailure(ex, cancellationToken))
+    {
+        return Results.Problem(
+            title: "Billing provider request failed",
             statusCode: StatusCodes.Status500InternalServerError);
     }
 });
@@ -560,6 +606,17 @@ static bool SecretsMatch(string expectedSecret, string suppliedSecret)
 static IResult PromoError(string error, int statusCode) =>
     Results.Json(new PromoErrorResponse(error), statusCode: statusCode);
 
+static void SetRetryAfter(HttpRequest request, CheckoutVelocityLimitResult velocity)
+{
+    if (velocity.RetryAfter is not { } retryAfter)
+    {
+        return;
+    }
+
+    var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+    request.HttpContext.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
+}
+
 static string? ResolveExternalUserId(
     HttpRequest request,
     IWebHostEnvironment environment,
@@ -624,6 +681,10 @@ static bool IsProductionEnvironment(
 
 static bool IsProductionEnvironmentName(string? environmentName) =>
     string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
+
+static bool IsBillingProviderFailure(Exception exception, CancellationToken cancellationToken) =>
+    exception is StripeException ||
+    exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
 
 public sealed record RewriteAttemptResponse(
     Guid AttemptId,

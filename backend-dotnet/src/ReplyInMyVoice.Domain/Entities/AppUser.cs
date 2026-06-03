@@ -11,6 +11,8 @@ public sealed class AppUser
     public string? StripeSubscriptionId { get; set; }
     public SubscriptionStatus SubscriptionStatus { get; set; } = SubscriptionStatus.Inactive;
     public DateTimeOffset? CurrentPeriodEnd { get; set; }
+    public DateTimeOffset? PaymentFailedAt { get; set; }
+    public DateTimeOffset? PaymentGraceEndsAt { get; set; }
     public DateTimeOffset? SuspendedAt { get; set; }
     public DateTimeOffset? ConsentAcceptedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -20,4 +22,5 @@ public sealed class AppUser
     public ICollection<UsagePeriod> UsagePeriods { get; } = new List<UsagePeriod>();
     public ICollection<RewriteAttempt> RewriteAttempts { get; } = new List<RewriteAttempt>();
     public ICollection<UsageReservation> UsageReservations { get; } = new List<UsageReservation>();
+    public ICollection<BillingSupportRequest> BillingSupportRequests { get; } = new List<BillingSupportRequest>();
 }
