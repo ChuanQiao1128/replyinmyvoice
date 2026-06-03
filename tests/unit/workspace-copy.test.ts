@@ -82,10 +82,11 @@ describe("rewrite workspace surface copy", () => {
     expect(termsSource).toContain("default 90 days");
   });
 
-  it("keeps the slim quota bar and the paywall aligned with the rewrite-packs model", () => {
+  it("keeps the slim quota bar and buy copy aligned with the rewrite-packs model", () => {
     expect(subscriptionStatusSource).toContain("bg-sky");
     expect(subscriptionStatusSource).toContain("Manage billing");
     expect(subscriptionStatusSource).toContain("Upgrade");
+    expect(subscriptionStatusSource).toContain("Redeem code");
     expect(paywallSource).toContain("Value Pack");
     expect(paywallSource).toContain("NZ$6.90");
     expect(paywallSource).toContain("30 rewrites");
@@ -127,17 +128,34 @@ describe("rewrite workspace surface copy", () => {
     expect(copyBody).toContain("setShowPostCopyNudge(true)");
   });
 
-  it("wires the promo redeem card without exposing the code value", () => {
+  it("always renders the workspace and passes promo state into it", () => {
     expect(appPageSource).toContain("selectAppExperience");
-    expect(appPageSource).toContain("RedeemCodeCard");
     expect(appPageSource).toContain("account.promo");
     expect(appPageSource).toContain("labelForQuotaSource");
+    expect(appPageSource).toContain("promoState={promoState}");
+    expect(appPageSource).toContain("outOfCredits={outOfCredits}");
+    expect(appPageSource).toContain("canRedeem={canRedeem}");
+    expect(appPageSource).toContain("appExperience={appExperience}");
+    expect(appPageSource).not.toContain("return null");
+    expect(appPageSource).not.toContain("<PaywallCard");
+    expect(appPageSource).not.toContain("<RedeemCodeCard");
     expect(appPageSource).not.toContain("ReplyAsHuman2026");
+  });
+
+  it("wires the promo redeem modal without exposing the code value", () => {
+    expect(workspaceSource).toContain("RedeemCodeCard");
+    expect(workspaceSource).toContain("redeemModalOpen");
+    expect(workspaceSource).toContain("You have 0 rewrites. Redeem a trial code or buy a pack.");
+    expect(workspaceSource).toContain("Buy rewrites");
+    expect(workspaceSource).toContain("Your monthly rewrite quota has been used");
 
     expect(redeemCardSource).toContain("NEXT_PUBLIC_TURNSTILE_SITE_KEY");
     expect(redeemCardSource).toContain(
       "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit",
     );
+    expect(redeemCardSource).toContain('role="dialog"');
+    expect(redeemCardSource).toContain("aria-modal");
+    expect(redeemCardSource).toContain("onClose");
     expect(redeemCardSource).toContain('fetch("/api/promo/redeem"');
     expect(redeemCardSource).toContain('fetch("/api/me"');
     expect(redeemCardSource).toContain("router.refresh()");

@@ -7,7 +7,7 @@ import {
 } from "../../lib/promo-app-state";
 
 describe("promo app state", () => {
-  it("shows the redeem card for a new signed-in user with no remaining quota", () => {
+  it("selects an in-workspace redeem banner for a new signed-in user with no quota", () => {
     expect(
       selectAppExperience({
         paid: false,
@@ -19,7 +19,7 @@ describe("promo app state", () => {
         usageExhausted: true,
         usageRemaining: 0,
       }),
-    ).toBe("redeem");
+    ).toBe("needsRedeem");
   });
 
   it("shows the workspace when promo trial credits are available", () => {
@@ -34,10 +34,10 @@ describe("promo app state", () => {
         usageExhausted: false,
         usageRemaining: 3,
       }),
-    ).toBe("workspace");
+    ).toBe("ok");
   });
 
-  it("shows the paywall after a redeemed trial is exhausted", () => {
+  it("selects an in-workspace buy banner after a redeemed trial is exhausted", () => {
     expect(
       selectAppExperience({
         paid: false,
@@ -49,10 +49,10 @@ describe("promo app state", () => {
         usageExhausted: true,
         usageRemaining: 0,
       }),
-    ).toBe("free-paywall");
+    ).toBe("needsBuy");
   });
 
-  it("keeps paid exhausted accounts on the billing-management paywall", () => {
+  it("selects an in-workspace buy banner for paid exhausted accounts", () => {
     expect(
       selectAppExperience({
         paid: true,
@@ -64,7 +64,7 @@ describe("promo app state", () => {
         usageExhausted: true,
         usageRemaining: 0,
       }),
-    ).toBe("paid-paywall");
+    ).toBe("needsBuy");
   });
 
   it("maps PROMO quota sources to trial copy", () => {
