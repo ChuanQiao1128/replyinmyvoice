@@ -8,12 +8,13 @@ import {
   Ban,
   BarChart3,
   CheckCircle2,
+  Copy,
   Eye,
   EyeOff,
   Loader2,
   Pencil,
   Plus,
-  RotateCcw,
+  RefreshCw,
   Save,
   Ticket,
   Users,
@@ -21,7 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   adminPromoCodesFromPayload,
@@ -55,6 +56,21 @@ const statusClasses: Record<AdminPromoStatus, string> = {
   expired: "border-line bg-white text-ink/60",
   pending: "border-gold/25 bg-gold/10 text-gold",
 };
+
+const statusLegendItems: Array<{
+  description: string;
+  status: AdminPromoStatus;
+}> = [
+  { description: "redeemable now", status: "active" },
+  {
+    description: "not yet active (valid-from is in the future)",
+    status: "pending",
+  },
+  { description: "past valid-until", status: "expired" },
+  { description: "global cap reached", status: "exhausted" },
+  { description: "turned off by an admin", status: "disabled" },
+  { description: "soft-deleted and hidden (can be restored).", status: "archived" },
+];
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -127,21 +143,38 @@ function codeFromPayload(payload: unknown) {
   return adminPromoCodesFromPayload({ promoCodes: [payload] })[0] ?? null;
 }
 
-function FieldError({ children }: { children?: string }) {
+function fieldErrorProps(error: string | undefined, errorId: string) {
+  if (!error) {
+    return {};
+  }
+
+  return {
+    "aria-describedby": errorId,
+    "aria-invalid": true,
+  } as const;
+}
+
+function FieldError({ children, id }: { children?: string; id: string }) {
   if (!children) {
     return null;
   }
 
-  return <p className="mt-1 text-xs font-medium text-rust">{children}</p>;
+  return (
+    <p className="mt-1 text-xs font-medium text-rust" id={id}>
+      {children}
+    </p>
+  );
 }
 
 function StatTile({
   icon,
   label,
+  testId,
   value,
 }: {
   icon: ReactNode;
   label: string;
+  testId: string;
   value: string;
 }) {
   return (
@@ -150,7 +183,9 @@ function StatTile({
         {icon}
         {label}
       </div>
-      <div className="text-xl font-semibold text-ink">{value}</div>
+      <div className="text-xl font-semibold text-ink" data-testid={testId}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -195,7 +230,7 @@ function PromoStatsPanel({
     1,
     ...detail.stats.dailyCurve.map((day) => day.redemptions),
   );
-  const activation = `${Math.round(detail.stats.activationRate * 100)}% activation`;
+  const activation = `${Math.round(detail.stats.activationRate * 100)}%`;
 
   return (
     <section className="space-y-4 rounded-lg border border-line bg-white/80 p-5 shadow-crisp">
@@ -219,16 +254,19 @@ function PromoStatsPanel({
         <StatTile
           icon={<Activity className="h-4 w-4" aria-hidden="true" />}
           label="Redemptions"
-          value={`${detail.stats.totalRedemptions} redemptions`}
+          testId="promo-stat-redemptions"
+          value={`${detail.stats.totalRedemptions}`}
         />
         <StatTile
           icon={<Users className="h-4 w-4" aria-hidden="true" />}
-          label="Users"
-          value={`${detail.stats.distinctUsers} distinct users`}
+          label="Distinct users"
+          testId="promo-stat-users"
+          value={`${detail.stats.distinctUsers}`}
         />
         <StatTile
           icon={<BarChart3 className="h-4 w-4" aria-hidden="true" />}
           label="Activation"
+          testId="promo-stat-activation"
           value={activation}
         />
       </div>
@@ -312,6 +350,7 @@ export function PromoCodesAdmin({
   const [fieldErrors, setFieldErrors] = useState<AdminPromoCreateFieldErrors>({});
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
+  const [formSuccessCode, setFormSuccessCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -322,11 +361,10 @@ export function PromoCodesAdmin({
   );
   const [editError, setEditError] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const selectedCode = useMemo(
-    () => codes.find((code) => code.id === selectedId) ?? null,
-    [codes, selectedId],
-  );
   const visibleCodes = useMemo(
     () =>
       showArchived
@@ -339,6 +377,40 @@ export function PromoCodesAdmin({
     [codes],
   );
 
+  const loadDetail = useCallback(async (id: string, isCurrent: () => boolean = () => true) => {
+    setDetailLoading(true);
+    setDetailError("");
+    try {
+      const response = await fetch(`/api/admin/promo-codes/${id}`, {
+        cache: "no-store",
+      });
+      const payload = await readJsonPayload(response);
+      if (!response.ok) {
+        throw new Error("Could not load promo code stats.");
+      }
+
+      const nextDetail = adminPromoDetailFromPayload(payload);
+      if (!nextDetail) {
+        throw new Error("Promo code stats were invalid.");
+      }
+
+      if (isCurrent()) {
+        setDetail(nextDetail);
+      }
+    } catch (error: unknown) {
+      if (isCurrent()) {
+        setDetail(null);
+        setDetailError(
+          error instanceof Error ? error.message : "Could not load promo code stats.",
+        );
+      }
+    } finally {
+      if (isCurrent()) {
+        setDetailLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
@@ -346,42 +418,11 @@ export function PromoCodesAdmin({
     }
 
     let active = true;
-    setDetailLoading(true);
-    setDetailError("");
-    fetch(`/api/admin/promo-codes/${selectedId}`, { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await readJsonPayload(response);
-        if (!response.ok) {
-          throw new Error("Could not load promo code stats.");
-        }
-
-        const nextDetail = adminPromoDetailFromPayload(payload);
-        if (!nextDetail) {
-          throw new Error("Promo code stats were invalid.");
-        }
-
-        if (active) {
-          setDetail(nextDetail);
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setDetail(null);
-          setDetailError(
-            error instanceof Error ? error.message : "Could not load promo code stats.",
-          );
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setDetailLoading(false);
-        }
-      });
-
+    void loadDetail(selectedId, () => active);
     return () => {
       active = false;
     };
-  }, [selectedId]);
+  }, [loadDetail, selectedId]);
 
   async function refreshList() {
     setListLoading(true);
@@ -395,12 +436,17 @@ export function PromoCodesAdmin({
         throw new Error("Could not load promo codes.");
       }
       const nextCodes = adminPromoCodesFromPayload(payload);
+      const nextSelectedId =
+        selectedId && nextCodes.some((code) => code.id === selectedId)
+          ? selectedId
+          : nextCodes[0]?.id ?? null;
       setCodes(nextCodes);
-      setSelectedId((current) =>
-        current && nextCodes.some((code) => code.id === current)
-          ? current
-          : nextCodes[0]?.id ?? null,
-      );
+      setSelectedId(nextSelectedId);
+      if (selectedId && nextSelectedId === selectedId) {
+        await loadDetail(selectedId);
+      } else if (!nextSelectedId) {
+        setDetail(null);
+      }
     } catch (error) {
       setListError(
         error instanceof Error ? error.message : "Could not load promo codes.",
@@ -410,11 +456,48 @@ export function PromoCodesAdmin({
     }
   }
 
+  function clearCardError(id: string) {
+    setCardErrors((current) => {
+      if (!current[id]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function setCardError(id: string, message: string) {
+    setCardErrors((current) => ({ ...current, [id]: message }));
+  }
+
+  async function copyCodeValue(value: string, key: string) {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard ||
+      typeof navigator.clipboard.writeText !== "function"
+    ) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey((current) => (current === key ? null : current));
+      }, 1500);
+    } catch {
+      // Clipboard access can be unavailable in locked-down browsers.
+    }
+  }
+
   function updateField(field: keyof AdminPromoCreateFormValues, value: string) {
     setFormValues((current) => ({ ...current, [field]: value }));
     setFieldErrors((current) => ({ ...current, [field]: undefined }));
     setFormError("");
     setFormSuccess("");
+    setFormSuccessCode("");
   }
 
   async function createCode(event: FormEvent<HTMLFormElement>) {
@@ -424,6 +507,7 @@ export function PromoCodesAdmin({
       setFieldErrors(validation.fieldErrors);
       setFormError("Fix the highlighted fields and try again.");
       setFormSuccess("");
+      setFormSuccessCode("");
       return;
     }
 
@@ -431,6 +515,7 @@ export function PromoCodesAdmin({
     setFieldErrors({});
     setFormError("");
     setFormSuccess("");
+    setFormSuccessCode("");
 
     try {
       const response = await fetch("/api/admin/promo-codes", {
@@ -463,7 +548,10 @@ export function PromoCodesAdmin({
       ]);
       setSelectedId(nextCode.id);
       setFormValues(initialFormValues());
-      setFormSuccess(`${displayCode(nextCode)} created.`);
+      const nextDisplayCode = displayCode(nextCode);
+      setFormSuccess(`${nextDisplayCode} created.`);
+      setFormSuccessCode(nextDisplayCode);
+      void copyCodeValue(nextDisplayCode, `created:${nextDisplayCode}`);
     } catch (error) {
       setFormError(
         error instanceof Error ? error.message : "Could not create that promo code.",
@@ -501,16 +589,17 @@ export function PromoCodesAdmin({
       }
 
       setCodes((current) => replaceCode(current, nextCode));
+      clearCardError(nextCode.id);
       if (selectedId === nextCode.id && detail) {
         setDetail({ ...detail, promoCode: nextCode });
       }
     } catch (error) {
-      setCodes(previousCodes);
-      setListError(
+      const message =
         error instanceof Error
           ? error.message
-          : `Could not ${action} ${displayCode(code)}.`,
-      );
+          : `Could not ${action} ${displayCode(code)}.`;
+      setCodes(previousCodes);
+      setCardError(code.id, message);
     } finally {
       setUpdatingId(null);
     }
@@ -606,6 +695,7 @@ export function PromoCodesAdmin({
     if (editingId === code.id) {
       cancelEdit();
     }
+    setConfirmArchiveId(null);
     setUpdatingId(code.id);
     setListError("");
     setCodes((current) => replaceCode(current, optimisticCode));
@@ -625,16 +715,15 @@ export function PromoCodesAdmin({
       }
 
       setCodes((current) => replaceCode(current, nextCode));
+      clearCardError(nextCode.id);
       if (selectedId === nextCode.id && detail) {
         setDetail({ ...detail, promoCode: nextCode });
       }
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : `Could not archive ${displayCode(code)}.`;
       setCodes(previousCodes);
-      setListError(
-        error instanceof Error
-          ? error.message
-          : `Could not archive ${displayCode(code)}.`,
-      );
+      setCardError(code.id, message);
     } finally {
       setUpdatingId(null);
     }
@@ -667,16 +756,15 @@ export function PromoCodesAdmin({
       }
 
       setCodes((current) => replaceCode(current, nextCode));
+      clearCardError(nextCode.id);
       if (selectedId === nextCode.id && detail) {
         setDetail({ ...detail, promoCode: nextCode });
       }
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : `Could not restore ${displayCode(code)}.`;
       setCodes(previousCodes);
-      setListError(
-        error instanceof Error
-          ? error.message
-          : `Could not restore ${displayCode(code)}.`,
-      );
+      setCardError(code.id, message);
     } finally {
       setUpdatingId(null);
     }
@@ -716,7 +804,7 @@ export function PromoCodesAdmin({
               {listLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
-                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
               )}
               Refresh
             </Button>
@@ -738,13 +826,14 @@ export function PromoCodesAdmin({
                   Code
                 </label>
                 <Input
+                  {...fieldErrorProps(fieldErrors.code, "promo-code-error")}
                   autoComplete="off"
                   id="promo-code"
                   onChange={(event) => updateField("code", event.target.value)}
                   placeholder="SPRING2026"
                   value={formValues.code}
                 />
-                <FieldError>{fieldErrors.code}</FieldError>
+                <FieldError id="promo-code-error">{fieldErrors.code}</FieldError>
               </div>
 
               <div>
@@ -755,13 +844,23 @@ export function PromoCodesAdmin({
                   Display code
                 </label>
                 <Input
+                  {...fieldErrorProps(
+                    fieldErrors.displayCode,
+                    "promo-display-code-error",
+                  )}
                   autoComplete="off"
                   id="promo-display-code"
                   onChange={(event) => updateField("displayCode", event.target.value)}
                   placeholder="SPRING-2026"
                   value={formValues.displayCode}
                 />
-                <FieldError>{fieldErrors.displayCode}</FieldError>
+                <FieldError id="promo-display-code-error">
+                  {fieldErrors.displayCode}
+                </FieldError>
+                <p className="mt-1 text-xs text-ink/55">
+                  Display code is the same code with optional spacing/hyphens for
+                  sharing.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -773,24 +872,29 @@ export function PromoCodesAdmin({
                     Credits
                   </label>
                   <Input
+                    {...fieldErrorProps(fieldErrors.credits, "promo-credits-error")}
                     id="promo-credits"
                     inputMode="numeric"
                     onChange={(event) => updateField("credits", event.target.value)}
                     value={formValues.credits}
                   />
-                  <FieldError>{fieldErrors.credits}</FieldError>
+                  <FieldError id="promo-credits-error">{fieldErrors.credits}</FieldError>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-ink" htmlFor="promo-ttl">
                     TTL days
                   </label>
                   <Input
+                    {...fieldErrorProps(fieldErrors.ttlDays, "promo-ttl-error")}
                     id="promo-ttl"
                     inputMode="numeric"
                     onChange={(event) => updateField("ttlDays", event.target.value)}
                     value={formValues.ttlDays}
                   />
-                  <FieldError>{fieldErrors.ttlDays}</FieldError>
+                  <FieldError id="promo-ttl-error">{fieldErrors.ttlDays}</FieldError>
+                  <p className="mt-1 text-xs text-ink/55">
+                    Days a redeemed code&apos;s credits stay valid.
+                  </p>
                 </div>
               </div>
 
@@ -799,12 +903,13 @@ export function PromoCodesAdmin({
                   Valid from
                 </label>
                 <Input
+                  {...fieldErrorProps(fieldErrors.validFrom, "promo-from-error")}
                   id="promo-from"
                   onChange={(event) => updateField("validFrom", event.target.value)}
                   type="datetime-local"
                   value={formValues.validFrom}
                 />
-                <FieldError>{fieldErrors.validFrom}</FieldError>
+                <FieldError id="promo-from-error">{fieldErrors.validFrom}</FieldError>
               </div>
 
               <div>
@@ -812,12 +917,16 @@ export function PromoCodesAdmin({
                   Valid until
                 </label>
                 <Input
+                  {...fieldErrorProps(fieldErrors.validUntil, "promo-until-error")}
                   id="promo-until"
                   onChange={(event) => updateField("validUntil", event.target.value)}
                   type="datetime-local"
                   value={formValues.validUntil}
                 />
-                <FieldError>{fieldErrors.validUntil}</FieldError>
+                <FieldError id="promo-until-error">{fieldErrors.validUntil}</FieldError>
+                <p className="mt-1 text-xs text-ink/55">
+                  When the code stops being redeemable.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -829,12 +938,16 @@ export function PromoCodesAdmin({
                     Global cap
                   </label>
                   <Input
+                    {...fieldErrorProps(fieldErrors.globalCap, "promo-global-cap-error")}
                     id="promo-global-cap"
                     inputMode="numeric"
                     onChange={(event) => updateField("globalCap", event.target.value)}
+                    placeholder="Unlimited"
                     value={formValues.globalCap}
                   />
-                  <FieldError>{fieldErrors.globalCap}</FieldError>
+                  <FieldError id="promo-global-cap-error">
+                    {fieldErrors.globalCap}
+                  </FieldError>
                 </div>
                 <div>
                   <label
@@ -844,12 +957,18 @@ export function PromoCodesAdmin({
                     Per-user cap
                   </label>
                   <Input
+                    {...fieldErrorProps(
+                      fieldErrors.perUserCap,
+                      "promo-per-user-cap-error",
+                    )}
                     id="promo-per-user-cap"
                     inputMode="numeric"
                     onChange={(event) => updateField("perUserCap", event.target.value)}
                     value={formValues.perUserCap}
                   />
-                  <FieldError>{fieldErrors.perUserCap}</FieldError>
+                  <FieldError id="promo-per-user-cap-error">
+                    {fieldErrors.perUserCap}
+                  </FieldError>
                 </div>
               </div>
 
@@ -859,9 +978,27 @@ export function PromoCodesAdmin({
                 </p>
               ) : null}
               {formSuccess ? (
-                <p className="rounded-md border border-clay/25 bg-mint px-3 py-2 text-sm font-medium text-clay">
-                  {formSuccess}
-                </p>
+                <div className="flex items-center justify-between gap-2 rounded-md border border-clay/25 bg-mint px-3 py-2 text-sm font-medium text-clay">
+                  <span>{formSuccess}</span>
+                  {formSuccessCode ? (
+                    <Button
+                      aria-label={`Copy code ${formSuccessCode}`}
+                      className="min-h-8 shrink-0 px-2 py-1 text-xs"
+                      onClick={() =>
+                        copyCodeValue(formSuccessCode, `created:${formSuccessCode}`)
+                      }
+                      type="button"
+                      variant="secondary"
+                    >
+                      {copiedKey === `created:${formSuccessCode}` ? (
+                        <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <Copy className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      {copiedKey === `created:${formSuccessCode}` ? "Copied" : "Copy"}
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
 
               <Button className="w-full" disabled={creating} type="submit">
@@ -900,15 +1037,21 @@ export function PromoCodesAdmin({
                 <span className="text-sm text-ink/55">{visibleCodes.length} shown</span>
               </div>
             </div>
-            <p
+            <div
               aria-label="Promo code status legend"
-              className="mb-4 text-xs leading-5 text-ink/55"
+              className="mb-4 space-y-2 text-xs text-ink/60"
             >
-              Active = redeemable now · Pending = not yet active (valid-from is in the
-              future) · Expired = past valid-until · Exhausted = global cap reached ·
-              Disabled = turned off by an admin · Archived = soft-deleted and hidden (can
-              be restored).
-            </p>
+              {statusLegendItems.map((item) => (
+                <div className="flex items-center gap-2" key={item.status}>
+                  <span
+                    className={`min-w-20 rounded-full border px-2 py-0.5 text-center font-semibold ${statusClasses[item.status]}`}
+                  >
+                    {statusLabel(item.status)}
+                  </span>
+                  <span>{item.description}</span>
+                </div>
+              ))}
+            </div>
 
             {listError ? (
               <p className="mb-3 rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
@@ -932,6 +1075,7 @@ export function PromoCodesAdmin({
             ) : (
               <div className="space-y-3">
                 {visibleCodes.map((code) => {
+                  const codeDisplay = displayCode(code);
                   const remaining =
                     code.maxRedemptionsGlobal === null
                       ? null
@@ -939,6 +1083,10 @@ export function PromoCodesAdmin({
                   const isArchived = code.status === "archived";
                   const isBusy = updatingId === code.id;
                   const isEditing = editingId === code.id;
+                  const isConfirmingArchive = confirmArchiveId === code.id;
+                  const cardCopyKey = `card:${code.id}`;
+                  const isCopied = copiedKey === cardCopyKey;
+                  const cardError = cardErrors[code.id];
 
                   return (
                     <article
@@ -952,18 +1100,38 @@ export function PromoCodesAdmin({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <h3 className="truncate font-mono text-sm font-semibold text-ink">
-                            {displayCode(code)}
+                            {codeDisplay}
                           </h3>
                           <p className="mt-1 text-xs text-ink/55">
                             {code.creditsGranted} credits · {code.grantTtlDays}-day TTL ·{" "}
                             {code.maxRedemptionsPerUser} per user
                           </p>
                         </div>
-                        <span
-                          className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses[code.status]}`}
-                        >
-                          {statusLabel(code.status)}
-                        </span>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              aria-label={`Copy code ${codeDisplay}`}
+                              className="min-h-8 min-w-8 px-2 py-1 text-xs"
+                              onClick={() => copyCodeValue(codeDisplay, cardCopyKey)}
+                              type="button"
+                              variant="secondary"
+                            >
+                              {isCopied ? (
+                                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                              ) : (
+                                <Copy className="h-4 w-4" aria-hidden="true" />
+                              )}
+                            </Button>
+                            <span
+                              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses[code.status]}`}
+                            >
+                              {statusLabel(code.status)}
+                            </span>
+                          </div>
+                          {isCopied ? (
+                            <span className="text-xs font-semibold text-clay">Copied</span>
+                          ) : null}
+                        </div>
                       </div>
 
                       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-ink/60">
@@ -992,7 +1160,7 @@ export function PromoCodesAdmin({
 
                       <div className="mt-4 grid grid-cols-2 gap-2">
                         <Button
-                          aria-label={`View stats for ${displayCode(code)}`}
+                          aria-label={`View stats for ${codeDisplay}`}
                           className="min-h-9 px-3 py-1.5 text-xs"
                           onClick={() => setSelectedId(code.id)}
                           type="button"
@@ -1003,7 +1171,7 @@ export function PromoCodesAdmin({
                         </Button>
                         {isArchived ? (
                           <Button
-                            aria-label={`Restore ${displayCode(code)}`}
+                            aria-label={`Restore ${codeDisplay}`}
                             className="min-h-9 px-3 py-1.5 text-xs"
                             disabled={isBusy}
                             onClick={() => restoreCode(code)}
@@ -1020,7 +1188,7 @@ export function PromoCodesAdmin({
                         ) : (
                           <>
                             <Button
-                              aria-label={`Edit ${displayCode(code)}`}
+                              aria-label={`Edit ${codeDisplay}`}
                               className="min-h-9 px-3 py-1.5 text-xs"
                               onClick={() => (isEditing ? cancelEdit() : startEdit(code))}
                               type="button"
@@ -1030,7 +1198,7 @@ export function PromoCodesAdmin({
                               Edit
                             </Button>
                             <Button
-                              aria-label={`${code.isActive ? "Disable" : "Enable"} ${displayCode(code)}`}
+                              aria-label={`${code.isActive ? "Disable" : "Enable"} ${codeDisplay}`}
                               className="min-h-9 px-3 py-1.5 text-xs"
                               disabled={isBusy}
                               onClick={() => setCodeActive(code, !code.isActive)}
@@ -1046,20 +1214,59 @@ export function PromoCodesAdmin({
                               )}
                               {code.isActive ? "Disable" : "Enable"}
                             </Button>
-                            <Button
-                              aria-label={`Archive ${displayCode(code)}`}
-                              className="col-span-2 min-h-9 px-3 py-1.5 text-xs"
-                              disabled={isBusy}
-                              onClick={() => archiveCode(code)}
-                              type="button"
-                              variant="secondary"
-                            >
-                              <Archive className="h-4 w-4" aria-hidden="true" />
-                              Archive
-                            </Button>
+                            {isConfirmingArchive ? (
+                              <div className="col-span-2 grid grid-cols-[1fr_auto] gap-2">
+                                <Button
+                                  aria-label={`Archive ${codeDisplay}`}
+                                  className="min-h-9 px-3 py-1.5 text-xs"
+                                  disabled={isBusy}
+                                  onClick={() => archiveCode(code)}
+                                  type="button"
+                                  variant="secondary"
+                                >
+                                  {isBusy ? (
+                                    <Loader2
+                                      className="h-4 w-4 animate-spin"
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <Archive className="h-4 w-4" aria-hidden="true" />
+                                  )}
+                                  Archive?
+                                </Button>
+                                <Button
+                                  aria-label={`Cancel archive ${codeDisplay}`}
+                                  className="min-h-9 px-3 py-1.5 text-xs"
+                                  disabled={isBusy}
+                                  onClick={() => setConfirmArchiveId(null)}
+                                  type="button"
+                                  variant="ghost"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                aria-label={`Archive ${codeDisplay}`}
+                                className="col-span-2 min-h-9 px-3 py-1.5 text-xs"
+                                disabled={isBusy}
+                                onClick={() => setConfirmArchiveId(code.id)}
+                                type="button"
+                                variant="secondary"
+                              >
+                                <Archive className="h-4 w-4" aria-hidden="true" />
+                                Archive
+                              </Button>
+                            )}
                           </>
                         )}
                       </div>
+
+                      {cardError ? (
+                        <p className="mt-3 rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-xs font-medium text-rust">
+                          {cardError}
+                        </p>
+                      ) : null}
 
                       {isEditing && editValues ? (
                         <form
@@ -1078,6 +1285,10 @@ export function PromoCodesAdmin({
                                 Credits
                               </label>
                               <Input
+                                {...fieldErrorProps(
+                                  editFieldErrors.credits,
+                                  "promo-edit-credits-error",
+                                )}
                                 id="promo-edit-credits"
                                 inputMode="numeric"
                                 onChange={(event) =>
@@ -1085,7 +1296,9 @@ export function PromoCodesAdmin({
                                 }
                                 value={editValues.credits}
                               />
-                              <FieldError>{editFieldErrors.credits}</FieldError>
+                              <FieldError id="promo-edit-credits-error">
+                                {editFieldErrors.credits}
+                              </FieldError>
                             </div>
                             <div>
                               <label
@@ -1095,6 +1308,10 @@ export function PromoCodesAdmin({
                                 TTL days
                               </label>
                               <Input
+                                {...fieldErrorProps(
+                                  editFieldErrors.ttlDays,
+                                  "promo-edit-ttl-error",
+                                )}
                                 id="promo-edit-ttl"
                                 inputMode="numeric"
                                 onChange={(event) =>
@@ -1102,7 +1319,9 @@ export function PromoCodesAdmin({
                                 }
                                 value={editValues.ttlDays}
                               />
-                              <FieldError>{editFieldErrors.ttlDays}</FieldError>
+                              <FieldError id="promo-edit-ttl-error">
+                                {editFieldErrors.ttlDays}
+                              </FieldError>
                             </div>
                           </div>
                           <div>
@@ -1113,6 +1332,10 @@ export function PromoCodesAdmin({
                               Valid from
                             </label>
                             <Input
+                              {...fieldErrorProps(
+                                editFieldErrors.validFrom,
+                                "promo-edit-from-error",
+                              )}
                               id="promo-edit-from"
                               onChange={(event) =>
                                 updateEditField("validFrom", event.target.value)
@@ -1120,7 +1343,9 @@ export function PromoCodesAdmin({
                               type="datetime-local"
                               value={editValues.validFrom}
                             />
-                            <FieldError>{editFieldErrors.validFrom}</FieldError>
+                            <FieldError id="promo-edit-from-error">
+                              {editFieldErrors.validFrom}
+                            </FieldError>
                           </div>
                           <div>
                             <label
@@ -1130,6 +1355,10 @@ export function PromoCodesAdmin({
                               Valid until
                             </label>
                             <Input
+                              {...fieldErrorProps(
+                                editFieldErrors.validUntil,
+                                "promo-edit-until-error",
+                              )}
                               id="promo-edit-until"
                               onChange={(event) =>
                                 updateEditField("validUntil", event.target.value)
@@ -1137,7 +1366,9 @@ export function PromoCodesAdmin({
                               type="datetime-local"
                               value={editValues.validUntil}
                             />
-                            <FieldError>{editFieldErrors.validUntil}</FieldError>
+                            <FieldError id="promo-edit-until-error">
+                              {editFieldErrors.validUntil}
+                            </FieldError>
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
@@ -1148,6 +1379,10 @@ export function PromoCodesAdmin({
                                 Global cap
                               </label>
                               <Input
+                                {...fieldErrorProps(
+                                  editFieldErrors.globalCap,
+                                  "promo-edit-global-cap-error",
+                                )}
                                 id="promo-edit-global-cap"
                                 inputMode="numeric"
                                 onChange={(event) =>
@@ -1156,7 +1391,9 @@ export function PromoCodesAdmin({
                                 placeholder="Unlimited"
                                 value={editValues.globalCap}
                               />
-                              <FieldError>{editFieldErrors.globalCap}</FieldError>
+                              <FieldError id="promo-edit-global-cap-error">
+                                {editFieldErrors.globalCap}
+                              </FieldError>
                             </div>
                             <div>
                               <label
@@ -1166,6 +1403,10 @@ export function PromoCodesAdmin({
                                 Per-user cap
                               </label>
                               <Input
+                                {...fieldErrorProps(
+                                  editFieldErrors.perUserCap,
+                                  "promo-edit-per-user-cap-error",
+                                )}
                                 id="promo-edit-per-user-cap"
                                 inputMode="numeric"
                                 onChange={(event) =>
@@ -1173,7 +1414,9 @@ export function PromoCodesAdmin({
                                 }
                                 value={editValues.perUserCap}
                               />
-                              <FieldError>{editFieldErrors.perUserCap}</FieldError>
+                              <FieldError id="promo-edit-per-user-cap-error">
+                                {editFieldErrors.perUserCap}
+                              </FieldError>
                             </div>
                           </div>
                           <div>
@@ -1184,6 +1427,10 @@ export function PromoCodesAdmin({
                               Description
                             </label>
                             <Input
+                              {...fieldErrorProps(
+                                editFieldErrors.description,
+                                "promo-edit-description-error",
+                              )}
                               id="promo-edit-description"
                               onChange={(event) =>
                                 updateEditField("description", event.target.value)
@@ -1191,7 +1438,9 @@ export function PromoCodesAdmin({
                               placeholder="Optional internal note"
                               value={editValues.description}
                             />
-                            <FieldError>{editFieldErrors.description}</FieldError>
+                            <FieldError id="promo-edit-description-error">
+                              {editFieldErrors.description}
+                            </FieldError>
                           </div>
 
                           {editError ? (
@@ -1234,26 +1483,6 @@ export function PromoCodesAdmin({
         </aside>
 
         <div className="space-y-6">
-          <section className="rounded-lg border border-line bg-white/80 p-5 shadow-crisp">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-ink">Selected code</h2>
-                <p className="mt-1 text-sm text-ink/60">
-                  {selectedCode
-                    ? `${displayCode(selectedCode)} · ${selectedCode.redemptionCount} redemptions`
-                    : "No code selected."}
-                </p>
-              </div>
-              {selectedCode ? (
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClasses[selectedCode.status]}`}
-                >
-                  {statusLabel(selectedCode.status)}
-                </span>
-              ) : null}
-            </div>
-          </section>
-
           <PromoStatsPanel
             detail={detail}
             error={detailError}
