@@ -1,11 +1,13 @@
 export type AdminPromoStatus =
   | "active"
+  | "archived"
   | "disabled"
   | "exhausted"
   | "expired"
   | "pending";
 
 export type AdminPromoCode = {
+  archivedAt: string | null;
   code: string;
   createdAt: string;
   creditsGranted: number;
@@ -180,6 +182,7 @@ function promoCodeFromPayload(payload: unknown): AdminPromoCode | null {
   }
 
   const codeResponse = {
+    archivedAt: nullableStringValue(payload, "archivedAt"),
     code,
     createdAt,
     creditsGranted,
@@ -315,9 +318,13 @@ export function derivePromoCodeStatus(
     | "redemptionCount"
     | "validFrom"
     | "validUntil"
-  >,
+  > & { archivedAt?: string | null },
   now = new Date(),
 ): AdminPromoStatus {
+  if (code.archivedAt) {
+    return "archived";
+  }
+
   if (!code.isActive) {
     return "disabled";
   }
@@ -491,4 +498,109 @@ export function fieldErrorsFromAdminError(status: number, payload: unknown) {
   }
 
   return {};
+}
+
+export type AdminPromoEditFormValues = {
+  credits: string;
+  description: string;
+  globalCap: string;
+  perUserCap: string;
+  ttlDays: string;
+  validFrom: string;
+  validUntil: string;
+};
+
+export type AdminPromoEditPayload = {
+  creditsGranted: number;
+  description: string | null;
+  grantTtlDays: number;
+  maxRedemptionsGlobal: number | null;
+  maxRedemptionsPerUser: number;
+  validFrom: string;
+  validUntil: string;
+};
+
+export type AdminPromoEditFieldErrors = Partial<
+  Record<keyof AdminPromoEditFormValues, string>
+>;
+
+export type AdminPromoEditValidationResult =
+  | { fieldErrors: AdminPromoEditFieldErrors; ok: false }
+  | { ok: true; payload: AdminPromoEditPayload };
+
+export function editFormValuesFromCode(
+  code: AdminPromoCode,
+  toLocalDateTimeInput: (date: Date) => string,
+): AdminPromoEditFormValues {
+  return {
+    credits: String(code.creditsGranted),
+    description: code.description ?? "",
+    globalCap: code.maxRedemptionsGlobal === null ? "" : String(code.maxRedemptionsGlobal),
+    perUserCap: String(code.maxRedemptionsPerUser),
+    ttlDays: String(code.grantTtlDays),
+    validFrom: toLocalDateTimeInput(new Date(code.validFrom)),
+    validUntil: toLocalDateTimeInput(new Date(code.validUntil)),
+  };
+}
+
+export function validatePromoEditForm(
+  values: AdminPromoEditFormValues,
+): AdminPromoEditValidationResult {
+  const fieldErrors: AdminPromoEditFieldErrors = {};
+
+  const credits = positiveInteger(values.credits, "Credits");
+  if (credits.error) {
+    fieldErrors.credits = credits.error;
+  }
+
+  const ttlDays = positiveInteger(values.ttlDays, "TTL days");
+  if (ttlDays.error) {
+    fieldErrors.ttlDays = ttlDays.error;
+  }
+
+  const globalCap = values.globalCap.trim()
+    ? positiveInteger(values.globalCap, "Global cap")
+    : { error: null, value: null };
+  if (globalCap.error) {
+    fieldErrors.globalCap = globalCap.error;
+  }
+
+  const perUserCap = positiveInteger(values.perUserCap, "Per-user cap");
+  if (perUserCap.error) {
+    fieldErrors.perUserCap = perUserCap.value !== null && perUserCap.value <= 0
+      ? "Per-user cap must be at least one."
+      : perUserCap.error;
+  } else if (perUserCap.value !== null && perUserCap.value < 1) {
+    fieldErrors.perUserCap = "Per-user cap must be at least one.";
+  }
+
+  const validFrom = dateFromLocalInput(values.validFrom);
+  const validUntil = dateFromLocalInput(values.validUntil);
+  if (!validFrom) {
+    fieldErrors.validFrom = "Valid from is required.";
+  }
+  if (!validUntil) {
+    fieldErrors.validUntil = "Valid until is required.";
+  }
+  if (validFrom && validUntil && validUntil <= validFrom) {
+    fieldErrors.validUntil = "Valid until must be after valid from.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { fieldErrors, ok: false };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      creditsGranted: credits.value ?? 0,
+      // Empty string clears the description; the backend normalizes blank to null.
+      description: values.description.trim(),
+      grantTtlDays: ttlDays.value ?? 0,
+      maxRedemptionsGlobal: globalCap.value,
+      maxRedemptionsPerUser: perUserCap.value ?? 1,
+      validFrom: validFrom?.toISOString() ?? "",
+      validUntil: validUntil?.toISOString() ?? "",
+    },
+  };
 }

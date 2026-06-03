@@ -17,8 +17,10 @@ import {
   GET as GET_DETAIL,
   PATCH,
 } from "../../app/api/admin/promo-codes/[promoCodeId]/route";
+import { POST as ARCHIVE } from "../../app/api/admin/promo-codes/[promoCodeId]/archive/route";
 import { POST as DISABLE } from "../../app/api/admin/promo-codes/[promoCodeId]/disable/route";
 import { POST as ENABLE } from "../../app/api/admin/promo-codes/[promoCodeId]/enable/route";
+import { POST as RESTORE } from "../../app/api/admin/promo-codes/[promoCodeId]/restore/route";
 import { getAzureApiBaseUrl } from "../../lib/azure-api";
 import { getCurrentAccessToken } from "../../lib/entra-auth";
 
@@ -233,6 +235,47 @@ describe("/api/admin/promo-codes proxy routes", () => {
     expect(fetchMock()).toHaveBeenNthCalledWith(
       3,
       `${azureUrl}/api/console/promo-codes/${promoCodeId}/enable`,
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+  });
+
+  it("forwards archive and restore mutations to the matching admin endpoints", async () => {
+    const archivedBody = {
+      archivedAt: "2026-06-04T00:00:00.000Z",
+      id: promoCodeId,
+      isActive: false,
+      status: "archived",
+    };
+    fetchMock()
+      .mockResolvedValueOnce(Response.json(archivedBody, { status: 200 }))
+      .mockResolvedValueOnce(
+        Response.json(
+          { ...archivedBody, archivedAt: null, status: "disabled" },
+          { status: 200 },
+        ),
+      );
+
+    await ARCHIVE(
+      request(`/api/admin/promo-codes/${promoCodeId}/archive`, "POST"),
+      params(),
+    );
+    await RESTORE(
+      request(`/api/admin/promo-codes/${promoCodeId}/restore`, "POST"),
+      params(),
+    );
+
+    expect(fetchMock()).toHaveBeenNthCalledWith(
+      1,
+      `${azureUrl}/api/console/promo-codes/${promoCodeId}/archive`,
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+    expect(fetchMock()).toHaveBeenNthCalledWith(
+      2,
+      `${azureUrl}/api/console/promo-codes/${promoCodeId}/restore`,
       expect.objectContaining({
         method: "POST",
       }),

@@ -2,15 +2,22 @@
 
 import {
   Activity,
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   Ban,
   BarChart3,
   CheckCircle2,
+  Eye,
+  EyeOff,
   Loader2,
+  Pencil,
   Plus,
   RotateCcw,
+  Save,
   Ticket,
   Users,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -20,13 +27,17 @@ import {
   adminPromoCodesFromPayload,
   adminPromoDetailFromPayload,
   derivePromoCodeStatus,
+  editFormValuesFromCode,
   fieldErrorsFromAdminError,
   type AdminPromoCode,
   type AdminPromoCreateFieldErrors,
   type AdminPromoCreateFormValues,
   type AdminPromoDetail,
+  type AdminPromoEditFieldErrors,
+  type AdminPromoEditFormValues,
   type AdminPromoStatus,
   validatePromoCreateForm,
+  validatePromoEditForm,
 } from "../../lib/admin-promo-codes";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -38,6 +49,7 @@ type PromoCodesAdminProps = {
 
 const statusClasses: Record<AdminPromoStatus, string> = {
   active: "border-clay/25 bg-mint text-clay",
+  archived: "border-line bg-paper-deep text-ink/45",
   disabled: "border-line bg-paper-deep text-ink/70",
   exhausted: "border-rust/25 bg-rust/10 text-rust",
   expired: "border-line bg-white text-ink/60",
@@ -302,10 +314,29 @@ export function PromoCodesAdmin({
   const [formSuccess, setFormSuccess] = useState("");
   const [creating, setCreating] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<AdminPromoEditFormValues | null>(null);
+  const [editFieldErrors, setEditFieldErrors] = useState<AdminPromoEditFieldErrors>(
+    {},
+  );
+  const [editError, setEditError] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const selectedCode = useMemo(
     () => codes.find((code) => code.id === selectedId) ?? null,
     [codes, selectedId],
+  );
+  const visibleCodes = useMemo(
+    () =>
+      showArchived
+        ? codes
+        : codes.filter((code) => code.status !== "archived"),
+    [codes, showArchived],
+  );
+  const archivedCount = useMemo(
+    () => codes.filter((code) => code.status === "archived").length,
+    [codes],
   );
 
   useEffect(() => {
@@ -479,6 +510,172 @@ export function PromoCodesAdmin({
         error instanceof Error
           ? error.message
           : `Could not ${action} ${displayCode(code)}.`,
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function startEdit(code: AdminPromoCode) {
+    setEditingId(code.id);
+    setEditValues(editFormValuesFromCode(code, toLocalDateTimeInput));
+    setEditFieldErrors({});
+    setEditError("");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditValues(null);
+    setEditFieldErrors({});
+    setEditError("");
+  }
+
+  function updateEditField(field: keyof AdminPromoEditFormValues, value: string) {
+    setEditValues((current) => (current ? { ...current, [field]: value } : current));
+    setEditFieldErrors((current) => ({ ...current, [field]: undefined }));
+    setEditError("");
+  }
+
+  async function submitEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingId || !editValues) {
+      return;
+    }
+
+    const validation = validatePromoEditForm(editValues);
+    if (!validation.ok) {
+      setEditFieldErrors(validation.fieldErrors);
+      setEditError("Fix the highlighted fields and try again.");
+      return;
+    }
+
+    const targetId = editingId;
+    setEditSaving(true);
+    setEditFieldErrors({});
+    setEditError("");
+
+    try {
+      const response = await fetch(`/api/admin/promo-codes/${targetId}`, {
+        body: JSON.stringify(validation.payload),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = await readJsonPayload(response);
+      if (!response.ok) {
+        const detailMessage =
+          payload &&
+          typeof payload === "object" &&
+          "detail" in payload &&
+          typeof (payload as { detail?: unknown }).detail === "string"
+            ? (payload as { detail: string }).detail
+            : "Could not save those changes.";
+        setEditError(detailMessage);
+        return;
+      }
+
+      const nextCode = codeFromPayload(payload);
+      if (!nextCode) {
+        throw new Error("Update response was invalid.");
+      }
+
+      setCodes((current) => replaceCode(current, nextCode));
+      if (selectedId === nextCode.id && detail) {
+        setDetail({ ...detail, promoCode: nextCode });
+      }
+      cancelEdit();
+    } catch (error) {
+      setEditError(
+        error instanceof Error ? error.message : "Could not save those changes.",
+      );
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function archiveCode(code: AdminPromoCode) {
+    const previousCodes = codes;
+    const optimisticCode: AdminPromoCode = {
+      ...code,
+      archivedAt: new Date().toISOString(),
+      isActive: false,
+      status: "archived",
+    };
+
+    if (editingId === code.id) {
+      cancelEdit();
+    }
+    setUpdatingId(code.id);
+    setListError("");
+    setCodes((current) => replaceCode(current, optimisticCode));
+
+    try {
+      const response = await fetch(`/api/admin/promo-codes/${code.id}/archive`, {
+        method: "POST",
+      });
+      const payload = await readJsonPayload(response);
+      if (!response.ok) {
+        throw new Error(`Could not archive ${displayCode(code)}.`);
+      }
+
+      const nextCode = codeFromPayload(payload);
+      if (!nextCode) {
+        throw new Error("Archive response was invalid.");
+      }
+
+      setCodes((current) => replaceCode(current, nextCode));
+      if (selectedId === nextCode.id && detail) {
+        setDetail({ ...detail, promoCode: nextCode });
+      }
+    } catch (error) {
+      setCodes(previousCodes);
+      setListError(
+        error instanceof Error
+          ? error.message
+          : `Could not archive ${displayCode(code)}.`,
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function restoreCode(code: AdminPromoCode) {
+    const previousCodes = codes;
+    const restored = { ...code, archivedAt: null };
+    const optimisticCode: AdminPromoCode = {
+      ...restored,
+      status: derivePromoCodeStatus(restored),
+    };
+
+    setUpdatingId(code.id);
+    setListError("");
+    setCodes((current) => replaceCode(current, optimisticCode));
+
+    try {
+      const response = await fetch(`/api/admin/promo-codes/${code.id}/restore`, {
+        method: "POST",
+      });
+      const payload = await readJsonPayload(response);
+      if (!response.ok) {
+        throw new Error(`Could not restore ${displayCode(code)}.`);
+      }
+
+      const nextCode = codeFromPayload(payload);
+      if (!nextCode) {
+        throw new Error("Restore response was invalid.");
+      }
+
+      setCodes((current) => replaceCode(current, nextCode));
+      if (selectedId === nextCode.id && detail) {
+        setDetail({ ...detail, promoCode: nextCode });
+      }
+    } catch (error) {
+      setCodes(previousCodes);
+      setListError(
+        error instanceof Error
+          ? error.message
+          : `Could not restore ${displayCode(code)}.`,
       );
     } finally {
       setUpdatingId(null);
@@ -679,12 +876,29 @@ export function PromoCodesAdmin({
           </section>
 
           <section className="rounded-lg border border-line bg-white/80 p-5 shadow-crisp">
-            <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Ticket className="h-5 w-5 text-clay" aria-hidden="true" />
                 <h2 className="text-lg font-semibold text-ink">Codes</h2>
               </div>
-              <span className="text-sm text-ink/55">{codes.length} total</span>
+              <div className="flex items-center gap-3">
+                {archivedCount > 0 ? (
+                  <button
+                    aria-pressed={showArchived}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-clay transition hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                    onClick={() => setShowArchived((value) => !value)}
+                    type="button"
+                  >
+                    {showArchived ? (
+                      <EyeOff className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+                  </button>
+                ) : null}
+                <span className="text-sm text-ink/55">{visibleCodes.length} shown</span>
+              </div>
             </div>
             <p
               aria-label="Promo code status legend"
@@ -692,7 +906,8 @@ export function PromoCodesAdmin({
             >
               Active = redeemable now · Pending = not yet active (valid-from is in the
               future) · Expired = past valid-until · Exhausted = global cap reached ·
-              Disabled = turned off by an admin.
+              Disabled = turned off by an admin · Archived = soft-deleted and hidden (can
+              be restored).
             </p>
 
             {listError ? (
@@ -710,76 +925,309 @@ export function PromoCodesAdmin({
               <p className="rounded-lg border border-dashed border-line bg-paper/60 px-4 py-6 text-sm text-ink/60">
                 No promo codes yet.
               </p>
+            ) : visibleCodes.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-line bg-paper/60 px-4 py-6 text-sm text-ink/60">
+                Every code is archived. Use Show archived to view and restore them.
+              </p>
             ) : (
               <div className="space-y-3">
-                {codes.map((code) => (
-                  <article
-                    className={`rounded-lg border p-4 transition ${
-                      code.id === selectedId
-                        ? "border-clay/35 bg-mint/55"
-                        : "border-line bg-white"
-                    }`}
-                    key={code.id}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h3 className="truncate font-mono text-sm font-semibold text-ink">
-                          {displayCode(code)}
-                        </h3>
-                        <p className="mt-1 text-xs text-ink/55">
-                          {code.redemptionCount} redeemed · {code.creditsGranted} credits ·{" "}
-                          {code.grantTtlDays} days
-                        </p>
-                      </div>
-                      <span
-                        className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses[code.status]}`}
-                      >
-                        {statusLabel(code.status)}
-                      </span>
-                    </div>
+                {visibleCodes.map((code) => {
+                  const remaining =
+                    code.maxRedemptionsGlobal === null
+                      ? null
+                      : Math.max(0, code.maxRedemptionsGlobal - code.redemptionCount);
+                  const isArchived = code.status === "archived";
+                  const isBusy = updatingId === code.id;
+                  const isEditing = editingId === code.id;
 
-                    <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink/60">
-                      <div>
-                        <dt className="font-semibold text-ink/45">Valid from</dt>
-                        <dd>{formatDate(code.validFrom)}</dd>
+                  return (
+                    <article
+                      className={`rounded-lg border p-4 transition ${
+                        code.id === selectedId
+                          ? "border-clay/35 bg-mint/55"
+                          : "border-line bg-white"
+                      }`}
+                      key={code.id}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate font-mono text-sm font-semibold text-ink">
+                            {displayCode(code)}
+                          </h3>
+                          <p className="mt-1 text-xs text-ink/55">
+                            {code.creditsGranted} credits · {code.grantTtlDays}-day TTL ·{" "}
+                            {code.maxRedemptionsPerUser} per user
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses[code.status]}`}
+                        >
+                          {statusLabel(code.status)}
+                        </span>
                       </div>
-                      <div>
-                        <dt className="font-semibold text-ink/45">Valid until</dt>
-                        <dd>{formatDate(code.validUntil)}</dd>
-                      </div>
-                    </dl>
 
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      <Button
-                        aria-label={`View stats for ${displayCode(code)}`}
-                        className="min-h-9 px-3 py-1.5 text-xs"
-                        onClick={() => setSelectedId(code.id)}
-                        type="button"
-                        variant="secondary"
-                      >
-                        <BarChart3 className="h-4 w-4" aria-hidden="true" />
-                        Stats
-                      </Button>
-                      <Button
-                        aria-label={`${code.isActive ? "Disable" : "Enable"} ${displayCode(code)}`}
-                        className="min-h-9 px-3 py-1.5 text-xs"
-                        disabled={updatingId === code.id}
-                        onClick={() => setCodeActive(code, !code.isActive)}
-                        type="button"
-                        variant={code.isActive ? "secondary" : "primary"}
-                      >
-                        {updatingId === code.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : code.isActive ? (
-                          <Ban className="h-4 w-4" aria-hidden="true" />
+                      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-ink/60">
+                        <div>
+                          <dt className="font-semibold text-ink/45">Redeemed</dt>
+                          <dd>
+                            {code.redemptionCount}
+                            {code.maxRedemptionsGlobal === null
+                              ? ""
+                              : ` / ${code.maxRedemptionsGlobal}`}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="font-semibold text-ink/45">Remaining</dt>
+                          <dd>{remaining === null ? "Unlimited" : remaining}</dd>
+                        </div>
+                        <div>
+                          <dt className="font-semibold text-ink/45">Valid from</dt>
+                          <dd>{formatDate(code.validFrom)}</dd>
+                        </div>
+                        <div>
+                          <dt className="font-semibold text-ink/45">Valid until</dt>
+                          <dd>{formatDate(code.validUntil)}</dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <Button
+                          aria-label={`View stats for ${displayCode(code)}`}
+                          className="min-h-9 px-3 py-1.5 text-xs"
+                          onClick={() => setSelectedId(code.id)}
+                          type="button"
+                          variant="secondary"
+                        >
+                          <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                          Stats
+                        </Button>
+                        {isArchived ? (
+                          <Button
+                            aria-label={`Restore ${displayCode(code)}`}
+                            className="min-h-9 px-3 py-1.5 text-xs"
+                            disabled={isBusy}
+                            onClick={() => restoreCode(code)}
+                            type="button"
+                            variant="primary"
+                          >
+                            {isBusy ? (
+                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                            ) : (
+                              <ArchiveRestore className="h-4 w-4" aria-hidden="true" />
+                            )}
+                            Restore
+                          </Button>
                         ) : (
-                          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                          <>
+                            <Button
+                              aria-label={`Edit ${displayCode(code)}`}
+                              className="min-h-9 px-3 py-1.5 text-xs"
+                              onClick={() => (isEditing ? cancelEdit() : startEdit(code))}
+                              type="button"
+                              variant={isEditing ? "primary" : "secondary"}
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                              Edit
+                            </Button>
+                            <Button
+                              aria-label={`${code.isActive ? "Disable" : "Enable"} ${displayCode(code)}`}
+                              className="min-h-9 px-3 py-1.5 text-xs"
+                              disabled={isBusy}
+                              onClick={() => setCodeActive(code, !code.isActive)}
+                              type="button"
+                              variant={code.isActive ? "secondary" : "primary"}
+                            >
+                              {isBusy ? (
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                              ) : code.isActive ? (
+                                <Ban className="h-4 w-4" aria-hidden="true" />
+                              ) : (
+                                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                              )}
+                              {code.isActive ? "Disable" : "Enable"}
+                            </Button>
+                            <Button
+                              aria-label={`Archive ${displayCode(code)}`}
+                              className="col-span-2 min-h-9 px-3 py-1.5 text-xs"
+                              disabled={isBusy}
+                              onClick={() => archiveCode(code)}
+                              type="button"
+                              variant="secondary"
+                            >
+                              <Archive className="h-4 w-4" aria-hidden="true" />
+                              Archive
+                            </Button>
+                          </>
                         )}
-                        {code.isActive ? "Disable" : "Enable"}
-                      </Button>
-                    </div>
-                  </article>
-                ))}
+                      </div>
+
+                      {isEditing && editValues ? (
+                        <form
+                          className="mt-4 space-y-3 rounded-lg border border-clay/25 bg-paper/60 p-4"
+                          onSubmit={submitEdit}
+                        >
+                          <p className="text-xs font-semibold uppercase text-clay">
+                            Edit code
+                          </p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label
+                                className="text-xs font-semibold text-ink"
+                                htmlFor="promo-edit-credits"
+                              >
+                                Credits
+                              </label>
+                              <Input
+                                id="promo-edit-credits"
+                                inputMode="numeric"
+                                onChange={(event) =>
+                                  updateEditField("credits", event.target.value)
+                                }
+                                value={editValues.credits}
+                              />
+                              <FieldError>{editFieldErrors.credits}</FieldError>
+                            </div>
+                            <div>
+                              <label
+                                className="text-xs font-semibold text-ink"
+                                htmlFor="promo-edit-ttl"
+                              >
+                                TTL days
+                              </label>
+                              <Input
+                                id="promo-edit-ttl"
+                                inputMode="numeric"
+                                onChange={(event) =>
+                                  updateEditField("ttlDays", event.target.value)
+                                }
+                                value={editValues.ttlDays}
+                              />
+                              <FieldError>{editFieldErrors.ttlDays}</FieldError>
+                            </div>
+                          </div>
+                          <div>
+                            <label
+                              className="text-xs font-semibold text-ink"
+                              htmlFor="promo-edit-from"
+                            >
+                              Valid from
+                            </label>
+                            <Input
+                              id="promo-edit-from"
+                              onChange={(event) =>
+                                updateEditField("validFrom", event.target.value)
+                              }
+                              type="datetime-local"
+                              value={editValues.validFrom}
+                            />
+                            <FieldError>{editFieldErrors.validFrom}</FieldError>
+                          </div>
+                          <div>
+                            <label
+                              className="text-xs font-semibold text-ink"
+                              htmlFor="promo-edit-until"
+                            >
+                              Valid until
+                            </label>
+                            <Input
+                              id="promo-edit-until"
+                              onChange={(event) =>
+                                updateEditField("validUntil", event.target.value)
+                              }
+                              type="datetime-local"
+                              value={editValues.validUntil}
+                            />
+                            <FieldError>{editFieldErrors.validUntil}</FieldError>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label
+                                className="text-xs font-semibold text-ink"
+                                htmlFor="promo-edit-global-cap"
+                              >
+                                Global cap
+                              </label>
+                              <Input
+                                id="promo-edit-global-cap"
+                                inputMode="numeric"
+                                onChange={(event) =>
+                                  updateEditField("globalCap", event.target.value)
+                                }
+                                placeholder="Unlimited"
+                                value={editValues.globalCap}
+                              />
+                              <FieldError>{editFieldErrors.globalCap}</FieldError>
+                            </div>
+                            <div>
+                              <label
+                                className="text-xs font-semibold text-ink"
+                                htmlFor="promo-edit-per-user-cap"
+                              >
+                                Per-user cap
+                              </label>
+                              <Input
+                                id="promo-edit-per-user-cap"
+                                inputMode="numeric"
+                                onChange={(event) =>
+                                  updateEditField("perUserCap", event.target.value)
+                                }
+                                value={editValues.perUserCap}
+                              />
+                              <FieldError>{editFieldErrors.perUserCap}</FieldError>
+                            </div>
+                          </div>
+                          <div>
+                            <label
+                              className="text-xs font-semibold text-ink"
+                              htmlFor="promo-edit-description"
+                            >
+                              Description
+                            </label>
+                            <Input
+                              id="promo-edit-description"
+                              onChange={(event) =>
+                                updateEditField("description", event.target.value)
+                              }
+                              placeholder="Optional internal note"
+                              value={editValues.description}
+                            />
+                            <FieldError>{editFieldErrors.description}</FieldError>
+                          </div>
+
+                          {editError ? (
+                            <p className="rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-xs font-medium text-rust">
+                              {editError}
+                            </p>
+                          ) : null}
+
+                          <div className="flex gap-2">
+                            <Button
+                              className="min-h-9 flex-1 px-3 py-1.5 text-xs"
+                              disabled={editSaving}
+                              type="submit"
+                            >
+                              {editSaving ? (
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                              ) : (
+                                <Save className="h-4 w-4" aria-hidden="true" />
+                              )}
+                              Save changes
+                            </Button>
+                            <Button
+                              className="min-h-9 px-3 py-1.5 text-xs"
+                              onClick={cancelEdit}
+                              type="button"
+                              variant="secondary"
+                            >
+                              <X className="h-4 w-4" aria-hidden="true" />
+                              Cancel
+                            </Button>
+                          </div>
+                        </form>
+                      ) : null}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>

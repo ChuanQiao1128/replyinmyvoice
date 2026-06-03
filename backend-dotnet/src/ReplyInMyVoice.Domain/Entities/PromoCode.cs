@@ -15,6 +15,7 @@ public sealed class PromoCode
     public int MaxRedemptionsPerUser { get; set; } = 1;
     public int RedemptionCount { get; set; }
     public bool IsActive { get; set; } = true;
+    public DateTimeOffset? ArchivedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public Guid RowVersion { get; set; } = Guid.NewGuid();

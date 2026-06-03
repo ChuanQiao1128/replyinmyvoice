@@ -41,7 +41,8 @@ describe("PromoCodesAdmin", () => {
     expect(markup).toContain("Pending = not yet active (valid-from is in the future)");
     expect(markup).toContain("Expired = past valid-until");
     expect(markup).toContain("Exhausted = global cap reached");
-    expect(markup).toContain("Disabled = turned off by an admin.");
+    expect(markup).toContain("Disabled = turned off by an admin");
+    expect(markup).toContain("Archived = soft-deleted and hidden");
 
     const validFrom = localDateTimeValue(inputValue(markup, "promo-from"));
     const validUntil = localDateTimeValue(inputValue(markup, "promo-until"));

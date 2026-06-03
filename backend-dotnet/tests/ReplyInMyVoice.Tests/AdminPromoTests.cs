@@ -197,6 +197,99 @@ public sealed class AdminPromoTests
         serialized.ToLowerInvariant().Should().NotContain("rawip");
     }
 
+    [Fact]
+    public async Task AdminPromoArchive_SoftDeletesAndDisablesAndAudits()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var promoCode = await SeedPromoCodeAsync(fixture, "ARCHIVEME");
+        var function = CreateFunction(fixture);
+
+        var result = await function.ArchivePromoCode(
+            CreateRequest("admin-owner-oid", "owner@example.com"),
+            promoCode.Id.ToString(),
+            CancellationToken.None);
+
+        var response = result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<AdminPromoCodeResponse>().Subject;
+        response.ArchivedAt.Should().NotBeNull();
+        response.IsActive.Should().BeFalse();
+        response.Status.Should().Be("archived");
+
+        await using var db = fixture.CreateContext();
+        var stored = await db.PromoCodes.SingleAsync();
+        stored.ArchivedAt.Should().NotBeNull();
+        stored.IsActive.Should().BeFalse();
+
+        var audit = await db.AdminAuditLogs.SingleAsync();
+        audit.Action.Should().Be("promo_code_archive");
+        using var details = JsonDocument.Parse(audit.DetailsJson!);
+        details.RootElement.GetProperty("promoCodeId").GetGuid().Should().Be(promoCode.Id);
+        details.RootElement.GetProperty("changedFields")
+            .EnumerateArray()
+            .Select(x => x.GetString())
+            .Should()
+            .Contain(["archivedAt", "isActive"]);
+    }
+
+    [Fact]
+    public async Task AdminPromoRestore_ClearsArchiveButLeavesDisabled()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var promoCode = await SeedPromoCodeAsync(fixture, "RESTOREME");
+        var function = CreateFunction(fixture);
+
+        await function.ArchivePromoCode(
+            CreateRequest("admin-owner-oid", "owner@example.com"),
+            promoCode.Id.ToString(),
+            CancellationToken.None);
+
+        var result = await function.RestorePromoCode(
+            CreateRequest("admin-owner-oid", "owner@example.com"),
+            promoCode.Id.ToString(),
+            CancellationToken.None);
+
+        var response = result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<AdminPromoCodeResponse>().Subject;
+        response.ArchivedAt.Should().BeNull();
+        // Restore deliberately leaves the code disabled so an admin must re-enable it.
+        response.IsActive.Should().BeFalse();
+        response.Status.Should().Be("disabled");
+
+        await using var db = fixture.CreateContext();
+        var stored = await db.PromoCodes.SingleAsync();
+        stored.ArchivedAt.Should().BeNull();
+        stored.IsActive.Should().BeFalse();
+
+        (await db.AdminAuditLogs.CountAsync()).Should().Be(2);
+        (await db.AdminAuditLogs.AnyAsync(x => x.Action == "promo_code_archive")).Should().BeTrue();
+        (await db.AdminAuditLogs.AnyAsync(x => x.Action == "promo_code_restore")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ArchivedPromoCode_CannotBeRedeemed()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var promoCode = await SeedPromoCodeAsync(fixture, "NOREDEEM");
+        var function = CreateFunction(fixture);
+        await function.ArchivePromoCode(
+            CreateRequest("admin-owner-oid", "owner@example.com"),
+            promoCode.Id.ToString(),
+            CancellationToken.None);
+
+        var promoService = new PromoService(fixture.CreateContext);
+        var redeem = await promoService.RedeemAsync(
+            "shopper-oid",
+            "shopper@example.com",
+            "NOREDEEM",
+            trustedClientIp: null,
+            DateTimeOffset.UtcNow);
+
+        // Archiving clears IsActive, so the existing redemption gates reject the code.
+        redeem.Kind.Should().Be(PromoRedeemResultKind.InvalidCode);
+        await using var db = fixture.CreateContext();
+        (await db.PromoCodeRedemptions.CountAsync()).Should().Be(0);
+    }
+
     private static AdminHttpFunctions CreateFunction(DbFixture fixture) =>
         new(BuildConfiguration(), fixture.CreateContext);
 
