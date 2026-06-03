@@ -872,7 +872,7 @@ function browserWindow() {
 }
 
 function getTurnstileSiteKey() {
-  const configuredSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+  const configuredSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "0x4AAAAAADdY3Xy1e6vEJU8E").trim();
   if (configuredSiteKey) {
     return configuredSiteKey;
   }
