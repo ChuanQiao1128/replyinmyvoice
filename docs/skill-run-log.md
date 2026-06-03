@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-04 - ui-browser-testing - PROMO-ADMIN-A quick-win admin UI
+
+- Agent: Codex
+- Trigger: GitHub issue #468 changed the browser-visible `/admin/promo-codes` UI, form hints, card controls, status legend, stats copy, and e2e assertions.
+- Action: Opened and followed the UI/browser testing workflow; updated the focused admin promo component unit test first, observed it fail against the old UI, implemented the scoped frontend-only changes, and updated the non-CI Playwright spec assertions for the new stat test ids.
+- Output artifacts: `components/admin/promo-codes-admin.tsx`; `tests/unit/admin-promo-codes-component.test.ts`; `tests/e2e/admin-promo-codes.spec.ts`.
+- Verification evidence: Focused red run failed on the old legend/placeholder expectations; focused green run passed 2/2; `npm run typecheck` passed; `npm run test` passed 354/354; `npm run build` completed successfully; banned-term grep over `app components public lib` returned no matches.
+- Limitations: Playwright e2e and browser screenshots were not run because the issue brief marked e2e as non-CI and the machine-checkable acceptance did not require browser execution. No backend, API, proxy, migration, secret, deploy, push, or PR operation was performed.
+
 ### 2026-06-03 - data-module-review - promo branch merge migration reconciliation
 
 - Agent: Codex
@@ -3056,3 +3065,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminDeleteUserTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminRouteMetadataTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AdminService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Red run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter AdminDeleteUser` failed on missing delete-user API symbols. Green focused run passed 5/5. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 496/496. Acceptance greps passed; banned-term scans over the diff, backend source/tests, and `app components public lib` returned no matches.
 - Limitations: `dotnet test` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore/build/test completed. Local git commit was blocked because the shared worktree git index lives outside the writable sandbox.
+
+### 2026-06-04 - ui-browser-testing - PROMO-ADMIN-B list-first promo-code admin IA
+
+- Agent: Codex
+- Trigger: PROMO-ADMIN-B changes browser-visible `/admin/promo-codes` layout, create/edit forms, row actions, responsive table behavior, and Playwright admin promo flows.
+- Action: Opened and followed the skill; wrote a failing component test for exported create defaults and table-first markup, then moved the create/edit forms into modal dialogs, moved stats into a right-side drawer, added client-side search/status/sort controls, and updated the focused admin promo Playwright spec for the new modal/drawer flow.
+- Output artifacts: `components/admin/promo-codes-admin.tsx`; `tests/unit/admin-promo-codes-component.test.ts`; `tests/e2e/admin-promo-codes.spec.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run `npm test -- tests/unit/admin-promo-codes-component.test.ts` failed on missing `initialFormValues` export and missing `role="table"`. Focused green run passed 2/2. `npm run typecheck` passed. `npm run test` passed 354/354. `npm run build` passed. Banned-term grep over `app components public lib` returned no matches.
+- Limitations: Focused Playwright run `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/claude-501/ms-playwright npx playwright test tests/e2e/admin-promo-codes.spec.ts --project=promo-chromium` could not execute browser assertions because Chromium launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied. `npm run build` emitted an existing `components/account/account-panel.tsx` hook-dependency warning outside this issue scope.

@@ -361,14 +361,21 @@ test.describe("admin promo codes", () => {
       "href",
       "/admin",
     );
-    await expect(page.getByText("Active = redeemable now")).toBeVisible();
+    const statusLegend = page.getByLabel("Promo code status legend");
+    await expect(statusLegend.getByText("Active", { exact: true })).toBeVisible();
+    await expect(statusLegend.getByText("redeemable now")).toBeVisible();
+    await expect(statusLegend.getByText("Pending", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("Pending = not yet active (valid-from is in the future)"),
+      statusLegend.getByText("not yet active (valid-from is in the future)"),
     ).toBeVisible();
-    await expect(page.getByText("Expired = past valid-until")).toBeVisible();
-    await expect(page.getByText("Exhausted = global cap reached")).toBeVisible();
-    await expect(page.getByText("Disabled = turned off by an admin.")).toBeVisible();
+    await expect(statusLegend.getByText("Expired", { exact: true })).toBeVisible();
+    await expect(statusLegend.getByText("past valid-until")).toBeVisible();
+    await expect(statusLegend.getByText("Exhausted", { exact: true })).toBeVisible();
+    await expect(statusLegend.getByText("global cap reached")).toBeVisible();
+    await expect(statusLegend.getByText("Disabled", { exact: true })).toBeVisible();
+    await expect(statusLegend.getByText("turned off by an admin")).toBeVisible();
 
+    await page.getByRole("button", { name: "New code" }).click();
     const validFrom = localDateTimeValue(
       await page.getByLabel("Valid from").inputValue(),
     );
@@ -388,8 +395,9 @@ test.describe("admin promo codes", () => {
     await page.getByRole("button", { name: "Create code" }).click();
 
     await expect(page.getByText("DEFAULTS2026 created.")).toBeVisible();
-    await expect(page.getByText("Active")).toBeVisible();
-    await expect(page.getByText("Pending")).not.toBeVisible();
+    await expect(page.getByRole("row", { name: /DEFAULTS2026/ })).toContainText(
+      "Active",
+    );
   });
 
   test("admins can create, see duplicate field errors, view stats, and disable", async ({
@@ -402,21 +410,25 @@ test.describe("admin promo codes", () => {
     await page.goto("/admin/promo-codes");
     await expect(page.getByText("No promo codes yet.")).toBeVisible();
 
+    await page.getByRole("button", { name: "New code" }).click();
     await fillCreateForm(page);
     await page.getByRole("button", { name: "Create code" }).click();
     await expect(page.getByText("SPRING-2026")).toBeVisible();
     await expect(page.getByText("Active")).toBeVisible();
 
+    await page.getByRole("button", { name: "New code" }).click();
     await fillCreateForm(page);
     await page.getByRole("button", { name: "Create code" }).click();
     await expect(
       page.getByText("A promo code with that normalized code already exists."),
     ).toBeVisible();
+    await page.getByRole("button", { name: "Close new code form" }).click();
 
     await page.getByRole("button", { name: "View stats for SPRING-2026" }).click();
-    await expect(page.getByText("2 redemptions")).toBeVisible();
-    await expect(page.getByText("2 distinct users")).toBeVisible();
-    await expect(page.getByText("50% activation")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Stats" })).toBeVisible();
+    await expect(page.getByTestId("promo-stat-redemptions")).toHaveText("2");
+    await expect(page.getByTestId("promo-stat-users")).toHaveText("2");
+    await expect(page.getByTestId("promo-stat-activation")).toHaveText("50%");
     await expect(page.getByText("hash_cluster_alpha")).toBeVisible();
     await expect(page.locator("body")).not.toContainText(/\b\d{1,3}(\.\d{1,3}){3}\b/);
 
@@ -430,6 +442,7 @@ test.describe("admin promo codes", () => {
       path: "tests/e2e/screenshots/admin-promo-codes-mobile.png",
     });
 
+    await page.getByRole("button", { name: "Close stats drawer" }).click();
     await page.getByRole("button", { name: "Disable SPRING-2026" }).click();
     await expect(page.getByText("Disabled")).toBeVisible();
 

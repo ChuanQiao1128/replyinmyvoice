@@ -8,20 +8,22 @@ import {
   Ban,
   BarChart3,
   CheckCircle2,
+  Copy,
   Eye,
   EyeOff,
   Loader2,
   Pencil,
   Plus,
-  RotateCcw,
+  RefreshCw,
   Save,
+  Search,
   Ticket,
   Users,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { ReactNode, RefObject } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   adminPromoCodesFromPayload,
@@ -47,6 +49,9 @@ type PromoCodesAdminProps = {
   initialError?: string;
 };
 
+type PromoStatusFilter = "all" | AdminPromoStatus;
+type PromoSortOrder = "newest" | "most-redeemed";
+
 const statusClasses: Record<AdminPromoStatus, string> = {
   active: "border-clay/25 bg-mint text-clay",
   archived: "border-line bg-paper-deep text-ink/45",
@@ -55,6 +60,21 @@ const statusClasses: Record<AdminPromoStatus, string> = {
   expired: "border-line bg-white text-ink/60",
   pending: "border-gold/25 bg-gold/10 text-gold",
 };
+
+const statusLegendItems: Array<{
+  description: string;
+  status: AdminPromoStatus;
+}> = [
+  { description: "redeemable now", status: "active" },
+  {
+    description: "not yet active (valid-from is in the future)",
+    status: "pending",
+  },
+  { description: "past valid-until", status: "expired" },
+  { description: "global cap reached", status: "exhausted" },
+  { description: "turned off by an admin", status: "disabled" },
+  { description: "soft-deleted and hidden (can be restored).", status: "archived" },
+];
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -77,7 +97,7 @@ function toLocalDateTimeInput(date: Date) {
   ].join("");
 }
 
-function initialFormValues(): AdminPromoCreateFormValues {
+export function initialFormValues(): AdminPromoCreateFormValues {
   const now = new Date();
   return {
     code: "",
@@ -111,6 +131,83 @@ function formatDate(value: string) {
   }).format(date);
 }
 
+function dateTimeValue(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function focusableElements(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      [
+        "a[href]",
+        "button:not([disabled])",
+        "input:not([disabled])",
+        "select:not([disabled])",
+        "textarea:not([disabled])",
+        '[tabindex]:not([tabindex="-1"])',
+      ].join(", "),
+    ),
+  );
+}
+
+function useDialogFocus(
+  isOpen: boolean,
+  dialogRef: RefObject<HTMLElement | null>,
+  onClose: () => void,
+) {
+  useEffect(() => {
+    if (!isOpen || typeof document === "undefined") {
+      return;
+    }
+
+    const dialog = dialogRef.current;
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    window.setTimeout(() => {
+      const firstFocusable = dialog ? focusableElements(dialog)[0] : null;
+      (firstFocusable ?? dialog)?.focus();
+    }, 0);
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialog) {
+        return;
+      }
+
+      const focusable = focusableElements(dialog);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [dialogRef, isOpen, onClose]);
+}
+
 async function readJsonPayload(response: Response) {
   try {
     return await response.json();
@@ -127,21 +224,38 @@ function codeFromPayload(payload: unknown) {
   return adminPromoCodesFromPayload({ promoCodes: [payload] })[0] ?? null;
 }
 
-function FieldError({ children }: { children?: string }) {
+function fieldErrorProps(error: string | undefined, errorId: string) {
+  if (!error) {
+    return {};
+  }
+
+  return {
+    "aria-describedby": errorId,
+    "aria-invalid": true,
+  } as const;
+}
+
+function FieldError({ children, id }: { children?: string; id: string }) {
   if (!children) {
     return null;
   }
 
-  return <p className="mt-1 text-xs font-medium text-rust">{children}</p>;
+  return (
+    <p className="mt-1 text-xs font-medium text-rust" id={id}>
+      {children}
+    </p>
+  );
 }
 
 function StatTile({
   icon,
   label,
+  testId,
   value,
 }: {
   icon: ReactNode;
   label: string;
+  testId: string;
   value: string;
 }) {
   return (
@@ -150,7 +264,9 @@ function StatTile({
         {icon}
         {label}
       </div>
-      <div className="text-xl font-semibold text-ink">{value}</div>
+      <div className="text-xl font-semibold text-ink" data-testid={testId}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -195,7 +311,7 @@ function PromoStatsPanel({
     1,
     ...detail.stats.dailyCurve.map((day) => day.redemptions),
   );
-  const activation = `${Math.round(detail.stats.activationRate * 100)}% activation`;
+  const activation = `${Math.round(detail.stats.activationRate * 100)}%`;
 
   return (
     <section className="space-y-4 rounded-lg border border-line bg-white/80 p-5 shadow-crisp">
@@ -219,16 +335,19 @@ function PromoStatsPanel({
         <StatTile
           icon={<Activity className="h-4 w-4" aria-hidden="true" />}
           label="Redemptions"
-          value={`${detail.stats.totalRedemptions} redemptions`}
+          testId="promo-stat-redemptions"
+          value={`${detail.stats.totalRedemptions}`}
         />
         <StatTile
           icon={<Users className="h-4 w-4" aria-hidden="true" />}
-          label="Users"
-          value={`${detail.stats.distinctUsers} distinct users`}
+          label="Distinct users"
+          testId="promo-stat-users"
+          value={`${detail.stats.distinctUsers}`}
         />
         <StatTile
           icon={<BarChart3 className="h-4 w-4" aria-hidden="true" />}
           label="Activation"
+          testId="promo-stat-activation"
           value={activation}
         />
       </div>
@@ -300,18 +419,19 @@ export function PromoCodesAdmin({
   const [codes, setCodes] = useState(initialCodes);
   const [listError, setListError] = useState(initialError);
   const [listLoading, setListLoading] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    initialCodes[0]?.id ?? null,
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AdminPromoDetail | null>(null);
   const [detailError, setDetailError] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [statsDrawerOpen, setStatsDrawerOpen] = useState(false);
   const [formValues, setFormValues] = useState<AdminPromoCreateFormValues>(() =>
     initialFormValues(),
   );
   const [fieldErrors, setFieldErrors] = useState<AdminPromoCreateFieldErrors>({});
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
+  const [formSuccessCode, setFormSuccessCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -322,68 +442,110 @@ export function PromoCodesAdmin({
   );
   const [editError, setEditError] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<PromoStatusFilter>("all");
+  const [sortOrder, setSortOrder] = useState<PromoSortOrder>("newest");
+  const createDialogRef = useRef<HTMLDivElement>(null);
+  const editDialogRef = useRef<HTMLDivElement>(null);
+  const statsDrawerRef = useRef<HTMLDivElement>(null);
 
-  const selectedCode = useMemo(
-    () => codes.find((code) => code.id === selectedId) ?? null,
-    [codes, selectedId],
-  );
-  const visibleCodes = useMemo(
+  const baseVisibleCodes = useMemo(
     () =>
       showArchived
         ? codes
         : codes.filter((code) => code.status !== "archived"),
     [codes, showArchived],
   );
+  const visibleCodes = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    return [...baseVisibleCodes]
+      .filter((code) => {
+        if (statusFilter !== "all" && code.status !== statusFilter) {
+          return false;
+        }
+
+        if (!normalizedSearch) {
+          return true;
+        }
+
+        return [code.code, code.displayCode ?? ""].some((value) =>
+          value.toLowerCase().includes(normalizedSearch),
+        );
+      })
+      .sort((left, right) => {
+        if (sortOrder === "most-redeemed") {
+          const redeemed = right.redemptionCount - left.redemptionCount;
+          return redeemed !== 0
+            ? redeemed
+            : dateTimeValue(right.createdAt) - dateTimeValue(left.createdAt);
+        }
+
+        return dateTimeValue(right.createdAt) - dateTimeValue(left.createdAt);
+      });
+  }, [baseVisibleCodes, searchTerm, sortOrder, statusFilter]);
   const archivedCount = useMemo(
     () => codes.filter((code) => code.status === "archived").length,
     [codes],
   );
+  const isEditModalOpen = Boolean(editingId && editValues);
+  const editingCode = editingId
+    ? codes.find((code) => code.id === editingId) ?? null
+    : null;
+
+  const loadDetail = useCallback(async (id: string, isCurrent: () => boolean = () => true) => {
+    setDetailLoading(true);
+    setDetailError("");
+    try {
+      const response = await fetch(`/api/admin/promo-codes/${id}`, {
+        cache: "no-store",
+      });
+      const payload = await readJsonPayload(response);
+      if (!response.ok) {
+        throw new Error("Could not load promo code stats.");
+      }
+
+      const nextDetail = adminPromoDetailFromPayload(payload);
+      if (!nextDetail) {
+        throw new Error("Promo code stats were invalid.");
+      }
+
+      if (isCurrent()) {
+        setDetail(nextDetail);
+      }
+    } catch (error: unknown) {
+      if (isCurrent()) {
+        setDetail(null);
+        setDetailError(
+          error instanceof Error ? error.message : "Could not load promo code stats.",
+        );
+      }
+    } finally {
+      if (isCurrent()) {
+        setDetailLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    if (!selectedId) {
+    if (!statsDrawerOpen || !selectedId) {
+      if (!selectedId) {
+        setDetail(null);
+      }
       setDetail(null);
       return;
     }
 
     let active = true;
-    setDetailLoading(true);
-    setDetailError("");
-    fetch(`/api/admin/promo-codes/${selectedId}`, { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await readJsonPayload(response);
-        if (!response.ok) {
-          throw new Error("Could not load promo code stats.");
-        }
-
-        const nextDetail = adminPromoDetailFromPayload(payload);
-        if (!nextDetail) {
-          throw new Error("Promo code stats were invalid.");
-        }
-
-        if (active) {
-          setDetail(nextDetail);
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setDetail(null);
-          setDetailError(
-            error instanceof Error ? error.message : "Could not load promo code stats.",
-          );
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setDetailLoading(false);
-        }
-      });
-
+    void loadDetail(selectedId, () => active);
     return () => {
       active = false;
     };
-  }, [selectedId]);
+  }, [loadDetail, selectedId, statsDrawerOpen]);
 
-  async function refreshList() {
+  async function refreshList(preferredSelectedId: string | null = selectedId) {
     setListLoading(true);
     setListError("");
     try {
@@ -395,12 +557,17 @@ export function PromoCodesAdmin({
         throw new Error("Could not load promo codes.");
       }
       const nextCodes = adminPromoCodesFromPayload(payload);
+      const nextSelectedId =
+        preferredSelectedId && nextCodes.some((code) => code.id === preferredSelectedId)
+          ? preferredSelectedId
+          : null;
       setCodes(nextCodes);
-      setSelectedId((current) =>
-        current && nextCodes.some((code) => code.id === current)
-          ? current
-          : nextCodes[0]?.id ?? null,
-      );
+      setSelectedId(nextSelectedId);
+      if (statsDrawerOpen && nextSelectedId) {
+        await loadDetail(nextSelectedId);
+      } else if (!nextSelectedId) {
+        setDetail(null);
+      }
     } catch (error) {
       setListError(
         error instanceof Error ? error.message : "Could not load promo codes.",
@@ -410,11 +577,79 @@ export function PromoCodesAdmin({
     }
   }
 
+  function clearCardError(id: string) {
+    setCardErrors((current) => {
+      if (!current[id]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function setCardError(id: string, message: string) {
+    setCardErrors((current) => ({ ...current, [id]: message }));
+  }
+
+  async function copyCodeValue(value: string, key: string) {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard ||
+      typeof navigator.clipboard.writeText !== "function"
+    ) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey((current) => (current === key ? null : current));
+      }, 1500);
+    } catch {
+      // Clipboard access can be unavailable in locked-down browsers.
+    }
+  }
+
+  const closeCreateModal = useCallback(() => {
+    setCreateModalOpen(false);
+    setFieldErrors({});
+    setFormError("");
+  }, []);
+
+  const closeStatsDrawer = useCallback(() => {
+    setStatsDrawerOpen(false);
+    setDetailError("");
+  }, []);
+
+  function openCreateModal() {
+    cancelEdit();
+    setStatsDrawerOpen(false);
+    setFormValues((current) => (current.code.trim() ? current : initialFormValues()));
+    setFieldErrors({});
+    setFormError("");
+    setCreateModalOpen(true);
+  }
+
+  function openStatsDrawer(code: AdminPromoCode) {
+    cancelEdit();
+    setCreateModalOpen(false);
+    setSelectedId(code.id);
+    setDetailError("");
+    if (detail?.promoCode.id !== code.id) {
+      setDetail(null);
+    }
+    setStatsDrawerOpen(true);
+  }
+
   function updateField(field: keyof AdminPromoCreateFormValues, value: string) {
     setFormValues((current) => ({ ...current, [field]: value }));
     setFieldErrors((current) => ({ ...current, [field]: undefined }));
     setFormError("");
     setFormSuccess("");
+    setFormSuccessCode("");
   }
 
   async function createCode(event: FormEvent<HTMLFormElement>) {
@@ -424,6 +659,7 @@ export function PromoCodesAdmin({
       setFieldErrors(validation.fieldErrors);
       setFormError("Fix the highlighted fields and try again.");
       setFormSuccess("");
+      setFormSuccessCode("");
       return;
     }
 
@@ -431,6 +667,7 @@ export function PromoCodesAdmin({
     setFieldErrors({});
     setFormError("");
     setFormSuccess("");
+    setFormSuccessCode("");
 
     try {
       const response = await fetch("/api/admin/promo-codes", {
@@ -463,7 +700,12 @@ export function PromoCodesAdmin({
       ]);
       setSelectedId(nextCode.id);
       setFormValues(initialFormValues());
-      setFormSuccess(`${displayCode(nextCode)} created.`);
+      const nextDisplayCode = displayCode(nextCode);
+      setFormSuccess(`${nextDisplayCode} created.`);
+      setFormSuccessCode(nextDisplayCode);
+      setCreateModalOpen(false);
+      await refreshList(nextCode.id);
+      void copyCodeValue(nextDisplayCode, `created:${nextDisplayCode}`);
     } catch (error) {
       setFormError(
         error instanceof Error ? error.message : "Could not create that promo code.",
@@ -501,22 +743,26 @@ export function PromoCodesAdmin({
       }
 
       setCodes((current) => replaceCode(current, nextCode));
+      clearCardError(nextCode.id);
       if (selectedId === nextCode.id && detail) {
         setDetail({ ...detail, promoCode: nextCode });
       }
     } catch (error) {
-      setCodes(previousCodes);
-      setListError(
+      const message =
         error instanceof Error
           ? error.message
-          : `Could not ${action} ${displayCode(code)}.`,
-      );
+          : `Could not ${action} ${displayCode(code)}.`;
+      setCodes(previousCodes);
+      setCardError(code.id, message);
     } finally {
       setUpdatingId(null);
     }
   }
 
   function startEdit(code: AdminPromoCode) {
+    setCreateModalOpen(false);
+    setStatsDrawerOpen(false);
+    setSelectedId(code.id);
     setEditingId(code.id);
     setEditValues(editFormValuesFromCode(code, toLocalDateTimeInput));
     setEditFieldErrors({});
@@ -606,6 +852,7 @@ export function PromoCodesAdmin({
     if (editingId === code.id) {
       cancelEdit();
     }
+    setConfirmArchiveId(null);
     setUpdatingId(code.id);
     setListError("");
     setCodes((current) => replaceCode(current, optimisticCode));
@@ -625,16 +872,15 @@ export function PromoCodesAdmin({
       }
 
       setCodes((current) => replaceCode(current, nextCode));
+      clearCardError(nextCode.id);
       if (selectedId === nextCode.id && detail) {
         setDetail({ ...detail, promoCode: nextCode });
       }
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : `Could not archive ${displayCode(code)}.`;
       setCodes(previousCodes);
-      setListError(
-        error instanceof Error
-          ? error.message
-          : `Could not archive ${displayCode(code)}.`,
-      );
+      setCardError(code.id, message);
     } finally {
       setUpdatingId(null);
     }
@@ -667,19 +913,330 @@ export function PromoCodesAdmin({
       }
 
       setCodes((current) => replaceCode(current, nextCode));
+      clearCardError(nextCode.id);
       if (selectedId === nextCode.id && detail) {
         setDetail({ ...detail, promoCode: nextCode });
       }
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : `Could not restore ${displayCode(code)}.`;
       setCodes(previousCodes);
-      setListError(
-        error instanceof Error
-          ? error.message
-          : `Could not restore ${displayCode(code)}.`,
-      );
+      setCardError(code.id, message);
     } finally {
       setUpdatingId(null);
     }
+  }
+
+  useDialogFocus(createModalOpen, createDialogRef, closeCreateModal);
+  useDialogFocus(isEditModalOpen, editDialogRef, cancelEdit);
+  useDialogFocus(statsDrawerOpen, statsDrawerRef, closeStatsDrawer);
+
+  function renderCreateForm() {
+    return (
+      <form className="space-y-4" onSubmit={createCode}>
+        <div>
+          <label className="text-sm font-semibold text-ink" htmlFor="promo-code">
+            Code
+          </label>
+          <Input
+            {...fieldErrorProps(fieldErrors.code, "promo-code-error")}
+            autoComplete="off"
+            id="promo-code"
+            onChange={(event) => updateField("code", event.target.value)}
+            placeholder="SPRING2026"
+            value={formValues.code}
+          />
+          <FieldError id="promo-code-error">{fieldErrors.code}</FieldError>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-ink" htmlFor="promo-display-code">
+            Display code
+          </label>
+          <Input
+            {...fieldErrorProps(fieldErrors.displayCode, "promo-display-code-error")}
+            autoComplete="off"
+            id="promo-display-code"
+            onChange={(event) => updateField("displayCode", event.target.value)}
+            placeholder="SPRING-2026"
+            value={formValues.displayCode}
+          />
+          <FieldError id="promo-display-code-error">
+            {fieldErrors.displayCode}
+          </FieldError>
+          <p className="mt-1 text-xs text-ink/55">
+            Display code is the same code with optional spacing/hyphens for sharing.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="promo-credits">
+              Credits
+            </label>
+            <Input
+              {...fieldErrorProps(fieldErrors.credits, "promo-credits-error")}
+              id="promo-credits"
+              inputMode="numeric"
+              onChange={(event) => updateField("credits", event.target.value)}
+              value={formValues.credits}
+            />
+            <FieldError id="promo-credits-error">{fieldErrors.credits}</FieldError>
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="promo-ttl">
+              TTL days
+            </label>
+            <Input
+              {...fieldErrorProps(fieldErrors.ttlDays, "promo-ttl-error")}
+              id="promo-ttl"
+              inputMode="numeric"
+              onChange={(event) => updateField("ttlDays", event.target.value)}
+              value={formValues.ttlDays}
+            />
+            <FieldError id="promo-ttl-error">{fieldErrors.ttlDays}</FieldError>
+            <p className="mt-1 text-xs text-ink/55">
+              Days a redeemed code&apos;s credits stay valid.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-ink" htmlFor="promo-from">
+            Valid from
+          </label>
+          <Input
+            {...fieldErrorProps(fieldErrors.validFrom, "promo-from-error")}
+            id="promo-from"
+            onChange={(event) => updateField("validFrom", event.target.value)}
+            type="datetime-local"
+            value={formValues.validFrom}
+          />
+          <FieldError id="promo-from-error">{fieldErrors.validFrom}</FieldError>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-ink" htmlFor="promo-until">
+            Valid until
+          </label>
+          <Input
+            {...fieldErrorProps(fieldErrors.validUntil, "promo-until-error")}
+            id="promo-until"
+            onChange={(event) => updateField("validUntil", event.target.value)}
+            type="datetime-local"
+            value={formValues.validUntil}
+          />
+          <FieldError id="promo-until-error">{fieldErrors.validUntil}</FieldError>
+          <p className="mt-1 text-xs text-ink/55">
+            When the code stops being redeemable.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="promo-global-cap">
+              Global cap
+            </label>
+            <Input
+              {...fieldErrorProps(fieldErrors.globalCap, "promo-global-cap-error")}
+              id="promo-global-cap"
+              inputMode="numeric"
+              onChange={(event) => updateField("globalCap", event.target.value)}
+              placeholder="Unlimited"
+              value={formValues.globalCap}
+            />
+            <FieldError id="promo-global-cap-error">{fieldErrors.globalCap}</FieldError>
+          </div>
+          <div>
+            <label
+              className="text-sm font-semibold text-ink"
+              htmlFor="promo-per-user-cap"
+            >
+              Per-user cap
+            </label>
+            <Input
+              {...fieldErrorProps(fieldErrors.perUserCap, "promo-per-user-cap-error")}
+              id="promo-per-user-cap"
+              inputMode="numeric"
+              onChange={(event) => updateField("perUserCap", event.target.value)}
+              value={formValues.perUserCap}
+            />
+            <FieldError id="promo-per-user-cap-error">
+              {fieldErrors.perUserCap}
+            </FieldError>
+          </div>
+        </div>
+
+        {formError ? (
+          <p className="rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
+            {formError}
+          </p>
+        ) : null}
+
+        <Button className="w-full" disabled={creating} type="submit">
+          {creating ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          )}
+          Create code
+        </Button>
+      </form>
+    );
+  }
+
+  function renderEditForm() {
+    if (!editValues) {
+      return null;
+    }
+
+    return (
+      <form className="space-y-4" onSubmit={submitEdit}>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="promo-edit-credits">
+              Credits
+            </label>
+            <Input
+              {...fieldErrorProps(editFieldErrors.credits, "promo-edit-credits-error")}
+              id="promo-edit-credits"
+              inputMode="numeric"
+              onChange={(event) => updateEditField("credits", event.target.value)}
+              value={editValues.credits}
+            />
+            <FieldError id="promo-edit-credits-error">
+              {editFieldErrors.credits}
+            </FieldError>
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="promo-edit-ttl">
+              TTL days
+            </label>
+            <Input
+              {...fieldErrorProps(editFieldErrors.ttlDays, "promo-edit-ttl-error")}
+              id="promo-edit-ttl"
+              inputMode="numeric"
+              onChange={(event) => updateEditField("ttlDays", event.target.value)}
+              value={editValues.ttlDays}
+            />
+            <FieldError id="promo-edit-ttl-error">{editFieldErrors.ttlDays}</FieldError>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-ink" htmlFor="promo-edit-from">
+            Valid from
+          </label>
+          <Input
+            {...fieldErrorProps(editFieldErrors.validFrom, "promo-edit-from-error")}
+            id="promo-edit-from"
+            onChange={(event) => updateEditField("validFrom", event.target.value)}
+            type="datetime-local"
+            value={editValues.validFrom}
+          />
+          <FieldError id="promo-edit-from-error">{editFieldErrors.validFrom}</FieldError>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-ink" htmlFor="promo-edit-until">
+            Valid until
+          </label>
+          <Input
+            {...fieldErrorProps(editFieldErrors.validUntil, "promo-edit-until-error")}
+            id="promo-edit-until"
+            onChange={(event) => updateEditField("validUntil", event.target.value)}
+            type="datetime-local"
+            value={editValues.validUntil}
+          />
+          <FieldError id="promo-edit-until-error">
+            {editFieldErrors.validUntil}
+          </FieldError>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label
+              className="text-sm font-semibold text-ink"
+              htmlFor="promo-edit-global-cap"
+            >
+              Global cap
+            </label>
+            <Input
+              {...fieldErrorProps(editFieldErrors.globalCap, "promo-edit-global-cap-error")}
+              id="promo-edit-global-cap"
+              inputMode="numeric"
+              onChange={(event) => updateEditField("globalCap", event.target.value)}
+              placeholder="Unlimited"
+              value={editValues.globalCap}
+            />
+            <FieldError id="promo-edit-global-cap-error">
+              {editFieldErrors.globalCap}
+            </FieldError>
+          </div>
+          <div>
+            <label
+              className="text-sm font-semibold text-ink"
+              htmlFor="promo-edit-per-user-cap"
+            >
+              Per-user cap
+            </label>
+            <Input
+              {...fieldErrorProps(
+                editFieldErrors.perUserCap,
+                "promo-edit-per-user-cap-error",
+              )}
+              id="promo-edit-per-user-cap"
+              inputMode="numeric"
+              onChange={(event) => updateEditField("perUserCap", event.target.value)}
+              value={editValues.perUserCap}
+            />
+            <FieldError id="promo-edit-per-user-cap-error">
+              {editFieldErrors.perUserCap}
+            </FieldError>
+          </div>
+        </div>
+
+        <div>
+          <label
+            className="text-sm font-semibold text-ink"
+            htmlFor="promo-edit-description"
+          >
+            Description
+          </label>
+          <Input
+            {...fieldErrorProps(editFieldErrors.description, "promo-edit-description-error")}
+            id="promo-edit-description"
+            onChange={(event) => updateEditField("description", event.target.value)}
+            placeholder="Optional internal note"
+            value={editValues.description}
+          />
+          <FieldError id="promo-edit-description-error">
+            {editFieldErrors.description}
+          </FieldError>
+        </div>
+
+        {editError ? (
+          <p className="rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
+            {editError}
+          </p>
+        ) : null}
+
+        <div className="flex gap-2">
+          <Button className="flex-1" disabled={editSaving} type="submit">
+            {editSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Save className="h-4 w-4" aria-hidden="true" />
+            )}
+            Save changes
+          </Button>
+          <Button onClick={cancelEdit} type="button" variant="secondary">
+            <X className="h-4 w-4" aria-hidden="true" />
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
   }
 
   return (
@@ -695,9 +1252,7 @@ export function PromoCodesAdmin({
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                 Back to Admin
               </Link>
-              <p className="text-xs font-semibold uppercase text-clay">
-                Admin
-              </p>
+              <p className="text-xs font-semibold uppercase text-clay">Admin</p>
               <h1 className="mt-2 text-4xl font-semibold tracking-normal text-ink">
                 Promo codes
               </h1>
@@ -709,14 +1264,14 @@ export function PromoCodesAdmin({
             <Button
               className="min-w-28"
               disabled={listLoading}
-              onClick={refreshList}
+              onClick={() => refreshList()}
               type="button"
               variant="secondary"
             >
               {listLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
-                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
               )}
               Refresh
             </Button>
@@ -724,543 +1279,477 @@ export function PromoCodesAdmin({
         </div>
       </section>
 
-      <div className="wrap grid gap-6 py-6 xl:grid-cols-[minmax(20rem,24rem)_1fr]">
-        <aside className="space-y-6">
-          <section className="rounded-lg border border-line bg-white/80 p-5 shadow-crisp">
-            <div className="mb-4 flex items-center gap-2">
-              <Plus className="h-5 w-5 text-clay" aria-hidden="true" />
-              <h2 className="text-lg font-semibold text-ink">New code</h2>
+      <div className="wrap py-6">
+        <section className="space-y-5 rounded-lg border border-line bg-white/80 p-5 shadow-crisp">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Ticket className="h-5 w-5 text-clay" aria-hidden="true" />
+              <h2 className="text-lg font-semibold text-ink">Codes</h2>
+            </div>
+            <Button onClick={openCreateModal} type="button">
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              New code
+            </Button>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_12rem_12rem_auto] lg:items-end">
+            <div>
+              <label className="text-sm font-semibold text-ink" htmlFor="promo-code-search">
+                Search
+              </label>
+              <div className="relative mt-1">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/40"
+                  aria-hidden="true"
+                />
+                <Input
+                  className="pl-9"
+                  id="promo-code-search"
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Code or display code"
+                  type="search"
+                  value={searchTerm}
+                />
+              </div>
             </div>
 
-            <form className="space-y-4" onSubmit={createCode}>
-              <div>
-                <label className="text-sm font-semibold text-ink" htmlFor="promo-code">
-                  Code
-                </label>
-                <Input
-                  autoComplete="off"
-                  id="promo-code"
-                  onChange={(event) => updateField("code", event.target.value)}
-                  placeholder="SPRING2026"
-                  value={formValues.code}
-                />
-                <FieldError>{fieldErrors.code}</FieldError>
-              </div>
+            <div>
+              <label className="text-sm font-semibold text-ink" htmlFor="promo-status-filter">
+                Status
+              </label>
+              <select
+                className="mt-1 min-h-10 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+                id="promo-status-filter"
+                onChange={(event) => setStatusFilter(event.target.value as PromoStatusFilter)}
+                value={statusFilter}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="expired">Expired</option>
+                <option value="exhausted">Exhausted</option>
+                <option value="disabled">Disabled</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
 
-              <div>
-                <label
-                  className="text-sm font-semibold text-ink"
-                  htmlFor="promo-display-code"
+            <div>
+              <label className="text-sm font-semibold text-ink" htmlFor="promo-sort-order">
+                Sort
+              </label>
+              <select
+                className="mt-1 min-h-10 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+                id="promo-sort-order"
+                onChange={(event) => setSortOrder(event.target.value as PromoSortOrder)}
+                value={sortOrder}
+              >
+                <option value="newest">Newest</option>
+                <option value="most-redeemed">Most redeemed</option>
+              </select>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 lg:justify-end">
+              {archivedCount > 0 ? (
+                <button
+                  aria-pressed={showArchived}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-line bg-paper px-3 py-2 text-xs font-semibold text-clay transition hover:bg-paper-deep hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+                  onClick={() => setShowArchived((value) => !value)}
+                  type="button"
                 >
-                  Display code
-                </label>
-                <Input
-                  autoComplete="off"
-                  id="promo-display-code"
-                  onChange={(event) => updateField("displayCode", event.target.value)}
-                  placeholder="SPRING-2026"
-                  value={formValues.displayCode}
-                />
-                <FieldError>{fieldErrors.displayCode}</FieldError>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label
-                    className="text-sm font-semibold text-ink"
-                    htmlFor="promo-credits"
-                  >
-                    Credits
-                  </label>
-                  <Input
-                    id="promo-credits"
-                    inputMode="numeric"
-                    onChange={(event) => updateField("credits", event.target.value)}
-                    value={formValues.credits}
-                  />
-                  <FieldError>{fieldErrors.credits}</FieldError>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-ink" htmlFor="promo-ttl">
-                    TTL days
-                  </label>
-                  <Input
-                    id="promo-ttl"
-                    inputMode="numeric"
-                    onChange={(event) => updateField("ttlDays", event.target.value)}
-                    value={formValues.ttlDays}
-                  />
-                  <FieldError>{fieldErrors.ttlDays}</FieldError>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-ink" htmlFor="promo-from">
-                  Valid from
-                </label>
-                <Input
-                  id="promo-from"
-                  onChange={(event) => updateField("validFrom", event.target.value)}
-                  type="datetime-local"
-                  value={formValues.validFrom}
-                />
-                <FieldError>{fieldErrors.validFrom}</FieldError>
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-ink" htmlFor="promo-until">
-                  Valid until
-                </label>
-                <Input
-                  id="promo-until"
-                  onChange={(event) => updateField("validUntil", event.target.value)}
-                  type="datetime-local"
-                  value={formValues.validUntil}
-                />
-                <FieldError>{fieldErrors.validUntil}</FieldError>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label
-                    className="text-sm font-semibold text-ink"
-                    htmlFor="promo-global-cap"
-                  >
-                    Global cap
-                  </label>
-                  <Input
-                    id="promo-global-cap"
-                    inputMode="numeric"
-                    onChange={(event) => updateField("globalCap", event.target.value)}
-                    value={formValues.globalCap}
-                  />
-                  <FieldError>{fieldErrors.globalCap}</FieldError>
-                </div>
-                <div>
-                  <label
-                    className="text-sm font-semibold text-ink"
-                    htmlFor="promo-per-user-cap"
-                  >
-                    Per-user cap
-                  </label>
-                  <Input
-                    id="promo-per-user-cap"
-                    inputMode="numeric"
-                    onChange={(event) => updateField("perUserCap", event.target.value)}
-                    value={formValues.perUserCap}
-                  />
-                  <FieldError>{fieldErrors.perUserCap}</FieldError>
-                </div>
-              </div>
-
-              {formError ? (
-                <p className="rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
-                  {formError}
-                </p>
+                  {showArchived ? (
+                    <EyeOff className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+                </button>
               ) : null}
-              {formSuccess ? (
-                <p className="rounded-md border border-clay/25 bg-mint px-3 py-2 text-sm font-medium text-clay">
-                  {formSuccess}
-                </p>
-              ) : null}
-
-              <Button className="w-full" disabled={creating} type="submit">
-                {creating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                )}
-                Create code
-              </Button>
-            </form>
-          </section>
-
-          <section className="rounded-lg border border-line bg-white/80 p-5 shadow-crisp">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Ticket className="h-5 w-5 text-clay" aria-hidden="true" />
-                <h2 className="text-lg font-semibold text-ink">Codes</h2>
-              </div>
-              <div className="flex items-center gap-3">
-                {archivedCount > 0 ? (
-                  <button
-                    aria-pressed={showArchived}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-clay transition hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-                    onClick={() => setShowArchived((value) => !value)}
-                    type="button"
-                  >
-                    {showArchived ? (
-                      <EyeOff className="h-4 w-4" aria-hidden="true" />
-                    ) : (
-                      <Eye className="h-4 w-4" aria-hidden="true" />
-                    )}
-                    {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
-                  </button>
-                ) : null}
-                <span className="text-sm text-ink/55">{visibleCodes.length} shown</span>
-              </div>
+              <span className="whitespace-nowrap text-sm text-ink/55">
+                {visibleCodes.length} shown
+              </span>
             </div>
-            <p
-              aria-label="Promo code status legend"
-              className="mb-4 text-xs leading-5 text-ink/55"
-            >
-              Active = redeemable now · Pending = not yet active (valid-from is in the
-              future) · Expired = past valid-until · Exhausted = global cap reached ·
-              Disabled = turned off by an admin · Archived = soft-deleted and hidden (can
-              be restored).
-            </p>
+          </div>
 
-            {listError ? (
-              <p className="mb-3 rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
-                {listError}
-              </p>
-            ) : null}
-
-            {listLoading ? (
-              <div className="flex items-center gap-2 text-sm text-ink/60">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                Loading promo codes
+          <div
+            aria-label="Promo code status legend"
+            className="grid gap-2 text-xs text-ink/60 md:grid-cols-2 lg:grid-cols-3"
+          >
+            {statusLegendItems.map((item) => (
+              <div className="flex items-center gap-2" key={item.status}>
+                <span
+                  className={`min-w-20 rounded-full border px-2 py-0.5 text-center font-semibold ${statusClasses[item.status]}`}
+                >
+                  {statusLabel(item.status)}
+                </span>
+                <span>{item.description}</span>
               </div>
-            ) : codes.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-line bg-paper/60 px-4 py-6 text-sm text-ink/60">
-                No promo codes yet.
-              </p>
-            ) : visibleCodes.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-line bg-paper/60 px-4 py-6 text-sm text-ink/60">
-                Every code is archived. Use Show archived to view and restore them.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {visibleCodes.map((code) => {
-                  const remaining =
-                    code.maxRedemptionsGlobal === null
+            ))}
+          </div>
+
+          {formSuccess ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-clay/25 bg-mint px-3 py-2 text-sm font-medium text-clay">
+              <span>{formSuccess}</span>
+              {formSuccessCode ? (
+                <Button
+                  aria-label={`Copy code ${formSuccessCode}`}
+                  className="min-h-8 shrink-0 px-2 py-1 text-xs"
+                  onClick={() => copyCodeValue(formSuccessCode, `created:${formSuccessCode}`)}
+                  type="button"
+                  variant="secondary"
+                >
+                  {copiedKey === `created:${formSuccessCode}` ? (
+                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Copy className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {copiedKey === `created:${formSuccessCode}` ? "Copied" : "Copy"}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {listError ? (
+            <p className="rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
+              {listError}
+            </p>
+          ) : null}
+
+          {listLoading ? (
+            <div className="flex items-center gap-2 text-sm text-ink/60">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Loading promo codes
+            </div>
+          ) : codes.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-line bg-paper/60 px-4 py-6 text-sm text-ink/60">
+              No promo codes yet.
+            </p>
+          ) : baseVisibleCodes.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-line bg-paper/60 px-4 py-6 text-sm text-ink/60">
+              Every code is archived. Use Show archived to view and restore them.
+            </p>
+          ) : visibleCodes.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-line bg-paper/60 px-4 py-6 text-sm text-ink/60">
+              No promo codes match the current filters.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-line">
+              <table role="table" className="min-w-[64rem] w-full divide-y divide-line text-left text-sm">
+                <thead className="bg-paper text-xs uppercase text-ink/55">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold" scope="col">Code</th>
+                    <th className="px-4 py-3 font-semibold" scope="col">Status</th>
+                    <th className="px-4 py-3 font-semibold" scope="col">Credits / TTL</th>
+                    <th className="px-4 py-3 font-semibold" scope="col">Redeemed / Cap</th>
+                    <th className="px-4 py-3 font-semibold" scope="col">Valid window</th>
+                    <th className="px-4 py-3 font-semibold" scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line bg-white">
+                  {visibleCodes.map((code) => {
+                    const codeDisplay = displayCode(code);
+                    const remaining = code.maxRedemptionsGlobal === null
                       ? null
                       : Math.max(0, code.maxRedemptionsGlobal - code.redemptionCount);
-                  const isArchived = code.status === "archived";
-                  const isBusy = updatingId === code.id;
-                  const isEditing = editingId === code.id;
+                    const isArchived = code.status === "archived";
+                    const isBusy = updatingId === code.id;
+                    const isSelected = selectedId === code.id;
+                    const isConfirmingArchive = confirmArchiveId === code.id;
+                    const rowCopyKey = `row:${code.id}`;
+                    const isCopied = copiedKey === rowCopyKey;
+                    const cardError = cardErrors[code.id];
 
-                  return (
-                    <article
-                      className={`rounded-lg border p-4 transition ${
-                        code.id === selectedId
-                          ? "border-clay/35 bg-mint/55"
-                          : "border-line bg-white"
-                      }`}
-                      key={code.id}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="truncate font-mono text-sm font-semibold text-ink">
-                            {displayCode(code)}
-                          </h3>
-                          <p className="mt-1 text-xs text-ink/55">
-                            {code.creditsGranted} credits · {code.grantTtlDays}-day TTL ·{" "}
-                            {code.maxRedemptionsPerUser} per user
-                          </p>
-                        </div>
-                        <span
-                          className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses[code.status]}`}
-                        >
-                          {statusLabel(code.status)}
-                        </span>
-                      </div>
-
-                      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-ink/60">
-                        <div>
-                          <dt className="font-semibold text-ink/45">Redeemed</dt>
-                          <dd>
-                            {code.redemptionCount}
-                            {code.maxRedemptionsGlobal === null
-                              ? ""
-                              : ` / ${code.maxRedemptionsGlobal}`}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="font-semibold text-ink/45">Remaining</dt>
-                          <dd>{remaining === null ? "Unlimited" : remaining}</dd>
-                        </div>
-                        <div>
-                          <dt className="font-semibold text-ink/45">Valid from</dt>
-                          <dd>{formatDate(code.validFrom)}</dd>
-                        </div>
-                        <div>
-                          <dt className="font-semibold text-ink/45">Valid until</dt>
-                          <dd>{formatDate(code.validUntil)}</dd>
-                        </div>
-                      </dl>
-
-                      <div className="mt-4 grid grid-cols-2 gap-2">
-                        <Button
-                          aria-label={`View stats for ${displayCode(code)}`}
-                          className="min-h-9 px-3 py-1.5 text-xs"
-                          onClick={() => setSelectedId(code.id)}
-                          type="button"
-                          variant="secondary"
-                        >
-                          <BarChart3 className="h-4 w-4" aria-hidden="true" />
-                          Stats
-                        </Button>
-                        {isArchived ? (
-                          <Button
-                            aria-label={`Restore ${displayCode(code)}`}
-                            className="min-h-9 px-3 py-1.5 text-xs"
-                            disabled={isBusy}
-                            onClick={() => restoreCode(code)}
-                            type="button"
-                            variant="primary"
-                          >
-                            {isBusy ? (
-                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                            ) : (
-                              <ArchiveRestore className="h-4 w-4" aria-hidden="true" />
-                            )}
-                            Restore
-                          </Button>
-                        ) : (
-                          <>
+                    return (
+                      <tr
+                        aria-selected={isSelected}
+                        className={isSelected ? "bg-mint/45" : "transition hover:bg-paper/60"}
+                        key={code.id}
+                      >
+                        <td className="px-4 py-4 align-top">
+                          <div className="flex min-w-0 items-start gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate font-mono font-semibold text-ink">
+                                {codeDisplay}
+                              </div>
+                              <div className="mt-1 truncate font-mono text-xs text-ink/45">
+                                {code.code}
+                              </div>
+                            </div>
                             <Button
-                              aria-label={`Edit ${displayCode(code)}`}
-                              className="min-h-9 px-3 py-1.5 text-xs"
-                              onClick={() => (isEditing ? cancelEdit() : startEdit(code))}
-                              type="button"
-                              variant={isEditing ? "primary" : "secondary"}
-                            >
-                              <Pencil className="h-4 w-4" aria-hidden="true" />
-                              Edit
-                            </Button>
-                            <Button
-                              aria-label={`${code.isActive ? "Disable" : "Enable"} ${displayCode(code)}`}
-                              className="min-h-9 px-3 py-1.5 text-xs"
-                              disabled={isBusy}
-                              onClick={() => setCodeActive(code, !code.isActive)}
-                              type="button"
-                              variant={code.isActive ? "secondary" : "primary"}
-                            >
-                              {isBusy ? (
-                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                              ) : code.isActive ? (
-                                <Ban className="h-4 w-4" aria-hidden="true" />
-                              ) : (
-                                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                              )}
-                              {code.isActive ? "Disable" : "Enable"}
-                            </Button>
-                            <Button
-                              aria-label={`Archive ${displayCode(code)}`}
-                              className="col-span-2 min-h-9 px-3 py-1.5 text-xs"
-                              disabled={isBusy}
-                              onClick={() => archiveCode(code)}
+                              aria-label={`Copy code ${codeDisplay}`}
+                              className="min-h-8 min-w-8 shrink-0 px-2 py-1 text-xs"
+                              onClick={() => copyCodeValue(codeDisplay, rowCopyKey)}
                               type="button"
                               variant="secondary"
                             >
-                              <Archive className="h-4 w-4" aria-hidden="true" />
-                              Archive
+                              {isCopied ? (
+                                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                              ) : (
+                                <Copy className="h-4 w-4" aria-hidden="true" />
+                              )}
                             </Button>
-                          </>
-                        )}
-                      </div>
-
-                      {isEditing && editValues ? (
-                        <form
-                          className="mt-4 space-y-3 rounded-lg border border-clay/25 bg-paper/60 p-4"
-                          onSubmit={submitEdit}
-                        >
-                          <p className="text-xs font-semibold uppercase text-clay">
-                            Edit code
-                          </p>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label
-                                className="text-xs font-semibold text-ink"
-                                htmlFor="promo-edit-credits"
-                              >
-                                Credits
-                              </label>
-                              <Input
-                                id="promo-edit-credits"
-                                inputMode="numeric"
-                                onChange={(event) =>
-                                  updateEditField("credits", event.target.value)
-                                }
-                                value={editValues.credits}
-                              />
-                              <FieldError>{editFieldErrors.credits}</FieldError>
-                            </div>
-                            <div>
-                              <label
-                                className="text-xs font-semibold text-ink"
-                                htmlFor="promo-edit-ttl"
-                              >
-                                TTL days
-                              </label>
-                              <Input
-                                id="promo-edit-ttl"
-                                inputMode="numeric"
-                                onChange={(event) =>
-                                  updateEditField("ttlDays", event.target.value)
-                                }
-                                value={editValues.ttlDays}
-                              />
-                              <FieldError>{editFieldErrors.ttlDays}</FieldError>
-                            </div>
                           </div>
-                          <div>
-                            <label
-                              className="text-xs font-semibold text-ink"
-                              htmlFor="promo-edit-from"
+                          {isCopied ? (
+                            <p className="mt-1 text-xs font-semibold text-clay">Copied</p>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-4 align-top">
+                          <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses[code.status]}`}>
+                            {statusLabel(code.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 align-top text-ink/70">
+                          <div className="font-semibold text-ink">{code.creditsGranted} credits</div>
+                          <div className="mt-1 text-xs">{code.grantTtlDays}-day TTL</div>
+                        </td>
+                        <td className="px-4 py-4 align-top text-ink/70">
+                          <div className="font-semibold text-ink">
+                            {code.redemptionCount}
+                            {code.maxRedemptionsGlobal === null ? "" : ` / ${code.maxRedemptionsGlobal}`}
+                          </div>
+                          <div className="mt-1 text-xs">
+                            Remaining: {remaining === null ? "Unlimited" : remaining}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 align-top text-xs text-ink/65">
+                          <div>{formatDate(code.validFrom)}</div>
+                          <div className="mt-1">to {formatDate(code.validUntil)}</div>
+                        </td>
+                        <td className="px-4 py-4 align-top">
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              aria-label={`View stats for ${codeDisplay}`}
+                              className="min-h-9 px-3 py-1.5 text-xs"
+                              onClick={() => openStatsDrawer(code)}
+                              type="button"
+                              variant="secondary"
                             >
-                              Valid from
-                            </label>
-                            <Input
-                              id="promo-edit-from"
-                              onChange={(event) =>
-                                updateEditField("validFrom", event.target.value)
-                              }
-                              type="datetime-local"
-                              value={editValues.validFrom}
-                            />
-                            <FieldError>{editFieldErrors.validFrom}</FieldError>
-                          </div>
-                          <div>
-                            <label
-                              className="text-xs font-semibold text-ink"
-                              htmlFor="promo-edit-until"
-                            >
-                              Valid until
-                            </label>
-                            <Input
-                              id="promo-edit-until"
-                              onChange={(event) =>
-                                updateEditField("validUntil", event.target.value)
-                              }
-                              type="datetime-local"
-                              value={editValues.validUntil}
-                            />
-                            <FieldError>{editFieldErrors.validUntil}</FieldError>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label
-                                className="text-xs font-semibold text-ink"
-                                htmlFor="promo-edit-global-cap"
+                              <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                              Stats
+                            </Button>
+                            {isArchived ? (
+                              <Button
+                                aria-label={`Restore ${codeDisplay}`}
+                                className="min-h-9 px-3 py-1.5 text-xs"
+                                disabled={isBusy}
+                                onClick={() => restoreCode(code)}
+                                type="button"
+                                variant="primary"
                               >
-                                Global cap
-                              </label>
-                              <Input
-                                id="promo-edit-global-cap"
-                                inputMode="numeric"
-                                onChange={(event) =>
-                                  updateEditField("globalCap", event.target.value)
-                                }
-                                placeholder="Unlimited"
-                                value={editValues.globalCap}
-                              />
-                              <FieldError>{editFieldErrors.globalCap}</FieldError>
-                            </div>
-                            <div>
-                              <label
-                                className="text-xs font-semibold text-ink"
-                                htmlFor="promo-edit-per-user-cap"
-                              >
-                                Per-user cap
-                              </label>
-                              <Input
-                                id="promo-edit-per-user-cap"
-                                inputMode="numeric"
-                                onChange={(event) =>
-                                  updateEditField("perUserCap", event.target.value)
-                                }
-                                value={editValues.perUserCap}
-                              />
-                              <FieldError>{editFieldErrors.perUserCap}</FieldError>
-                            </div>
+                                {isBusy ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                ) : (
+                                  <ArchiveRestore className="h-4 w-4" aria-hidden="true" />
+                                )}
+                                Restore
+                              </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  aria-label={`Edit ${codeDisplay}`}
+                                  className="min-h-9 px-3 py-1.5 text-xs"
+                                  onClick={() => startEdit(code)}
+                                  type="button"
+                                  variant="secondary"
+                                >
+                                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  aria-label={`${code.isActive ? "Disable" : "Enable"} ${codeDisplay}`}
+                                  className="min-h-9 px-3 py-1.5 text-xs"
+                                  disabled={isBusy}
+                                  onClick={() => setCodeActive(code, !code.isActive)}
+                                  type="button"
+                                  variant={code.isActive ? "secondary" : "primary"}
+                                >
+                                  {isBusy ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                  ) : code.isActive ? (
+                                    <Ban className="h-4 w-4" aria-hidden="true" />
+                                  ) : (
+                                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                                  )}
+                                  {code.isActive ? "Disable" : "Enable"}
+                                </Button>
+                                {isConfirmingArchive ? (
+                                  <>
+                                    <Button
+                                      aria-label={`Archive ${codeDisplay}`}
+                                      className="min-h-9 px-3 py-1.5 text-xs"
+                                      disabled={isBusy}
+                                      onClick={() => archiveCode(code)}
+                                      type="button"
+                                      variant="secondary"
+                                    >
+                                      {isBusy ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                      ) : (
+                                        <Archive className="h-4 w-4" aria-hidden="true" />
+                                      )}
+                                      Archive?
+                                    </Button>
+                                    <Button
+                                      aria-label={`Cancel archive ${codeDisplay}`}
+                                      className="min-h-9 px-3 py-1.5 text-xs"
+                                      disabled={isBusy}
+                                      onClick={() => setConfirmArchiveId(null)}
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    aria-label={`Archive ${codeDisplay}`}
+                                    className="min-h-9 px-3 py-1.5 text-xs"
+                                    disabled={isBusy}
+                                    onClick={() => setConfirmArchiveId(code.id)}
+                                    type="button"
+                                    variant="secondary"
+                                  >
+                                    <Archive className="h-4 w-4" aria-hidden="true" />
+                                    Archive
+                                  </Button>
+                                )}
+                              </>
+                            )}
                           </div>
-                          <div>
-                            <label
-                              className="text-xs font-semibold text-ink"
-                              htmlFor="promo-edit-description"
-                            >
-                              Description
-                            </label>
-                            <Input
-                              id="promo-edit-description"
-                              onChange={(event) =>
-                                updateEditField("description", event.target.value)
-                              }
-                              placeholder="Optional internal note"
-                              value={editValues.description}
-                            />
-                            <FieldError>{editFieldErrors.description}</FieldError>
-                          </div>
-
-                          {editError ? (
-                            <p className="rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-xs font-medium text-rust">
-                              {editError}
+                          {cardError ? (
+                            <p className="mt-2 rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-xs font-medium text-rust">
+                              {cardError}
                             </p>
                           ) : null}
-
-                          <div className="flex gap-2">
-                            <Button
-                              className="min-h-9 flex-1 px-3 py-1.5 text-xs"
-                              disabled={editSaving}
-                              type="submit"
-                            >
-                              {editSaving ? (
-                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                              ) : (
-                                <Save className="h-4 w-4" aria-hidden="true" />
-                              )}
-                              Save changes
-                            </Button>
-                            <Button
-                              className="min-h-9 px-3 py-1.5 text-xs"
-                              onClick={cancelEdit}
-                              type="button"
-                              variant="secondary"
-                            >
-                              <X className="h-4 w-4" aria-hidden="true" />
-                              Cancel
-                            </Button>
-                          </div>
-                        </form>
-                      ) : null}
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        </aside>
-
-        <div className="space-y-6">
-          <section className="rounded-lg border border-line bg-white/80 p-5 shadow-crisp">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-ink">Selected code</h2>
-                <p className="mt-1 text-sm text-ink/60">
-                  {selectedCode
-                    ? `${displayCode(selectedCode)} · ${selectedCode.redemptionCount} redemptions`
-                    : "No code selected."}
-                </p>
-              </div>
-              {selectedCode ? (
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClasses[selectedCode.status]}`}
-                >
-                  {statusLabel(selectedCode.status)}
-                </span>
-              ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </section>
-
-          <PromoStatsPanel
-            detail={detail}
-            error={detailError}
-            loading={detailLoading}
-          />
-        </div>
+          )}
+        </section>
       </div>
+
+      {createModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeCreateModal();
+            }
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="promo-create-title"
+            aria-modal="true"
+            className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-line bg-white p-5 shadow-crisp focus:outline-none md:p-6"
+            ref={createDialogRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Plus className="h-5 w-5 text-clay" aria-hidden="true" />
+                <h2 className="text-lg font-semibold text-ink" id="promo-create-title">
+                  New code
+                </h2>
+              </div>
+              <Button
+                aria-label="Close new code form"
+                className="min-h-8 min-w-8 px-2 py-1"
+                onClick={closeCreateModal}
+                type="button"
+                variant="ghost"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+            {renderCreateForm()}
+          </section>
+        </div>
+      ) : null}
+
+      {isEditModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              cancelEdit();
+            }
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="promo-edit-title"
+            aria-modal="true"
+            className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-line bg-white p-5 shadow-crisp focus:outline-none md:p-6"
+            ref={editDialogRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Pencil className="h-5 w-5 text-clay" aria-hidden="true" />
+                <h2 className="text-lg font-semibold text-ink" id="promo-edit-title">
+                  Edit {editingCode ? displayCode(editingCode) : "promo code"}
+                </h2>
+              </div>
+              <Button
+                aria-label="Close edit form"
+                className="min-h-8 min-w-8 px-2 py-1"
+                onClick={cancelEdit}
+                type="button"
+                variant="ghost"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+            {renderEditForm()}
+          </section>
+        </div>
+      ) : null}
+
+      {statsDrawerOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-ink/25"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeStatsDrawer();
+            }
+          }}
+          role="presentation"
+        >
+          <aside
+            aria-labelledby="promo-stats-drawer-title"
+            aria-modal="true"
+            className="h-full w-full overflow-y-auto border-l border-line bg-paper p-4 shadow-crisp focus:outline-none sm:max-w-2xl md:p-6"
+            ref={statsDrawerRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase text-clay">Promo code</p>
+                <h2 className="mt-1 text-xl font-semibold text-ink" id="promo-stats-drawer-title">
+                  Stats
+                </h2>
+              </div>
+              <Button
+                aria-label="Close stats drawer"
+                className="min-h-8 min-w-8 px-2 py-1"
+                onClick={closeStatsDrawer}
+                type="button"
+                variant="ghost"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+            <PromoStatsPanel detail={detail} error={detailError} loading={detailLoading} />
+          </aside>
+        </div>
+      ) : null}
     </main>
   );
 }
