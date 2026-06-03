@@ -8,5 +8,5 @@ type RouteContext = {
 
 export async function GET(request: Request, context: RouteContext) {
   const { userId } = await context.params;
-  return forwardAdminGet(request, `/api/admin/users/${encodeURIComponent(userId)}`);
+  return forwardAdminGet(request, `/api/console/users/${encodeURIComponent(userId)}`);
 }
