@@ -9,7 +9,6 @@ import {
   RefreshCw,
   Send,
   Sparkles,
-  Ticket,
   Trash2,
   X,
 } from "lucide-react";
@@ -29,7 +28,7 @@ import {
 import { NatBar } from "../landing/nat-bar";
 import { Button } from "../ui/button";
 import { RedeemCodeCard } from "./redeem-code-card";
-import { openBillingPortal, SubscriptionStatus } from "./subscription-status";
+import { SubscriptionStatus } from "./subscription-status";
 
 const HISTORY_KEY = "rimv.rewrite.history.v1";
 const rewriteAttemptPollLimit = 30;
@@ -264,20 +263,21 @@ function signalDeltaOf(naturalness: Naturalness) {
     : null;
 }
 
-const freeOutOfCreditsMessage =
-  "You have 0 rewrites. Redeem a trial code or buy a pack.";
-const paidOutOfCreditsMessage =
-  "Your monthly rewrite quota has been used for this billing period. Buy a one-time pack to keep going now, or manage billing and come back when your next period starts.";
+function outOfCreditsHint(paid: boolean, canRedeem: boolean) {
+  if (paid) {
+    return "Your monthly rewrite quota has been used for this billing period. Use Manage billing in the bar above.";
+  }
+
+  return canRedeem
+    ? "You're out of rewrites. Use Redeem code or Buy rewrites in the bar above."
+    : "You're out of rewrites. Use Buy rewrites in the bar above.";
+}
 
 function OutOfCreditsNudge({
   canRedeem,
-  onManageBillingClick,
-  onRedeemClick,
   paid,
 }: {
   canRedeem: boolean;
-  onManageBillingClick: () => void;
-  onRedeemClick: () => void;
   paid: boolean;
 }) {
   return (
@@ -285,28 +285,7 @@ function OutOfCreditsNudge({
       <p className="font-semibold text-ink">
         {paid ? "Your monthly limit has been reached." : "No rewrites left."}
       </p>
-      <p className="mt-1 leading-6">
-        {paid ? paidOutOfCreditsMessage : freeOutOfCreditsMessage}
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {canRedeem ? (
-          <Button onClick={onRedeemClick} type="button" variant="secondary">
-            <Ticket className="h-4 w-4" aria-hidden="true" />
-            Redeem code
-          </Button>
-        ) : null}
-        <Link
-          className="inline-flex min-h-10 items-center justify-center rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-paper"
-          href="/pricing"
-        >
-          Buy rewrites
-        </Link>
-        {paid ? (
-          <Button onClick={onManageBillingClick} type="button" variant="secondary">
-            Manage billing
-          </Button>
-        ) : null}
-      </div>
+      <p className="mt-1 leading-6">{outOfCreditsHint(paid, canRedeem)}</p>
     </div>
   );
 }
@@ -661,12 +640,7 @@ export function RewriteWorkspace({
 
               <div className="flex flex-1 flex-col rounded-2xl border border-line/70 bg-white p-4">
                 {showOutOfCreditsNudge ? (
-                  <OutOfCreditsNudge
-                    canRedeem={showRedeemAction}
-                    onManageBillingClick={() => void openBillingPortal()}
-                    onRedeemClick={openRedeemModal}
-                    paid={paid}
-                  />
+                  <OutOfCreditsNudge canRedeem={showRedeemAction} paid={paid} />
                 ) : null}
 
                 {loading ? (

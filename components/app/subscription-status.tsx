@@ -72,7 +72,7 @@ export function SubscriptionStatus({
           ) : (
             <RefreshCcw className="h-4 w-4" aria-hidden="true" />
           )}
-          {paid ? "Manage billing" : "Upgrade"}
+          {paid ? "Manage billing" : "Buy rewrites"}
         </button>
       </div>
     </section>

@@ -367,7 +367,7 @@ test.describe("promo full loop", () => {
     await expect(
       page.getByRole("heading", { name: "Rewrite workspace" }),
     ).toBeVisible();
-    await expect(page.getByText("You have 0 rewrites.")).toBeVisible();
+    await expect(page.getByText("You're out of rewrites.")).toBeVisible();
 
     await page.getByRole("button", { name: "Redeem code" }).first().click();
     await page.getByLabel("Code").fill("TRIAL");
@@ -382,8 +382,9 @@ test.describe("promo full loop", () => {
     await submitRewrite(page, 3);
 
     await page.goto("/app");
-    await expect(page.getByText("You have 0 rewrites.")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Buy rewrites" })).toBeVisible();
+    await expect(page.getByText("You're out of rewrites.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Buy rewrites" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Buy rewrites" })).toHaveCount(0);
     expect(state.rewriteCount).toBe(3);
     expect(state.trialRemaining).toBe(0);
   });
