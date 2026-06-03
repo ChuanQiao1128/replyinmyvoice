@@ -5,6 +5,7 @@ import {
   derivePromoCodeStatus,
   fieldErrorsFromAdminError,
   validatePromoCreateForm,
+  validatePromoEditForm,
 } from "../../lib/admin-promo-codes";
 
 const activeCode = {
@@ -53,6 +54,12 @@ describe("admin promo code helpers", () => {
       }, now),
     ).toBe("exhausted");
     expect(derivePromoCodeStatus({ ...activeCode }, now)).toBe("active");
+    expect(
+      derivePromoCodeStatus(
+        { ...activeCode, archivedAt: "2026-06-10T00:00:00.000Z" },
+        now,
+      ),
+    ).toBe("archived");
   });
 
   it("returns field validation errors before create is submitted", () => {
@@ -99,6 +106,29 @@ describe("admin promo code helpers", () => {
         grantTtlDays: 90,
         maxRedemptionsGlobal: 100,
         maxRedemptionsPerUser: 1,
+      });
+    }
+  });
+
+  it("builds the backend edit payload and treats a blank global cap as unlimited", () => {
+    const result = validatePromoEditForm({
+      credits: "5",
+      description: "VIP launch",
+      globalCap: "",
+      perUserCap: "2",
+      ttlDays: "30",
+      validFrom: "2026-06-01T10:00",
+      validUntil: "2026-07-01T10:00",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payload).toMatchObject({
+        creditsGranted: 5,
+        description: "VIP launch",
+        grantTtlDays: 30,
+        maxRedemptionsGlobal: null,
+        maxRedemptionsPerUser: 2,
       });
     }
   });

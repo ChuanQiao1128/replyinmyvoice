@@ -293,6 +293,97 @@ public sealed class PromoAdminService(Func<AppDbContext> dbContextFactory)
         return AdminPromoMutationResult.Success(ToResponse(promoCode, now));
     }
 
+    public async Task<AdminPromoMutationResult> ArchivePromoCodeAsync(
+        string adminExternalAuthUserId,
+        string? adminEmail,
+        Guid promoCodeId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        await using var db = dbContextFactory();
+        var promoCode = await db.PromoCodes
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == promoCodeId, cancellationToken);
+        if (promoCode is null)
+        {
+            return AdminPromoMutationResult.NotFound("No promo code exists for the requested id.");
+        }
+
+        // Archiving is a soft delete: it hides the code from the default admin list and,
+        // by also clearing IsActive, it is excluded from every redemption/eligibility
+        // check (which all gate on IsActive), so no redemption SQL needs to change.
+        var changedFields = new List<string>();
+        if (promoCode.ArchivedAt is null)
+        {
+            promoCode.ArchivedAt = now;
+            changedFields.Add("archivedAt");
+        }
+
+        if (promoCode.IsActive)
+        {
+            promoCode.IsActive = false;
+            changedFields.Add("isActive");
+        }
+
+        if (changedFields.Count > 0)
+        {
+            promoCode.UpdatedAt = now;
+            promoCode.RowVersion = Guid.NewGuid();
+        }
+
+        AddAudit(
+            db,
+            adminExternalAuthUserId,
+            adminEmail,
+            "promo_code_archive",
+            promoCode.Id,
+            changedFields,
+            now);
+
+        await db.SaveChangesAsync(cancellationToken);
+        return AdminPromoMutationResult.Success(ToResponse(promoCode, now));
+    }
+
+    public async Task<AdminPromoMutationResult> RestorePromoCodeAsync(
+        string adminExternalAuthUserId,
+        string? adminEmail,
+        Guid promoCodeId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        await using var db = dbContextFactory();
+        var promoCode = await db.PromoCodes
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == promoCodeId, cancellationToken);
+        if (promoCode is null)
+        {
+            return AdminPromoMutationResult.NotFound("No promo code exists for the requested id.");
+        }
+
+        // Restore only clears the archive flag. The code stays disabled (IsActive = false)
+        // so an admin must explicitly re-enable it before it can be redeemed again.
+        var changedFields = new List<string>();
+        if (promoCode.ArchivedAt is not null)
+        {
+            promoCode.ArchivedAt = null;
+            promoCode.UpdatedAt = now;
+            promoCode.RowVersion = Guid.NewGuid();
+            changedFields.Add("archivedAt");
+        }
+
+        AddAudit(
+            db,
+            adminExternalAuthUserId,
+            adminEmail,
+            "promo_code_restore",
+            promoCode.Id,
+            changedFields,
+            now);
+
+        await db.SaveChangesAsync(cancellationToken);
+        return AdminPromoMutationResult.Success(ToResponse(promoCode, now));
+    }
+
     private static void ApplyIfChanged<T>(
         T? requested,
         T current,
@@ -347,12 +438,18 @@ public sealed class PromoAdminService(Func<AppDbContext> dbContextFactory)
             promoCode.MaxRedemptionsPerUser,
             promoCode.RedemptionCount,
             promoCode.IsActive,
+            promoCode.ArchivedAt,
             ResolveStatus(promoCode, now),
             promoCode.CreatedAt,
             promoCode.UpdatedAt);
 
     private static string ResolveStatus(PromoCode promoCode, DateTimeOffset now)
     {
+        if (promoCode.ArchivedAt is not null)
+        {
+            return "archived";
+        }
+
         if (!promoCode.IsActive)
         {
             return "disabled";
@@ -567,6 +664,7 @@ public sealed record AdminPromoCodeResponse(
     int MaxRedemptionsPerUser,
     int RedemptionCount,
     bool IsActive,
+    DateTimeOffset? ArchivedAt,
     string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);

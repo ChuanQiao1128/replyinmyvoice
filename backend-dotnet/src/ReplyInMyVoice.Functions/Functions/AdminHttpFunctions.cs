@@ -497,6 +497,22 @@ public sealed class AdminHttpFunctions
         CancellationToken cancellationToken) =>
         await SetPromoCodeActiveAsync(request, promoCodeId, isActive: true, cancellationToken);
 
+    [Function("AdminPromoCodeArchive")]
+    public async Task<IActionResult> ArchivePromoCode(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/promo-codes/{promoCodeId}/archive")]
+        HttpRequest request,
+        string promoCodeId,
+        CancellationToken cancellationToken) =>
+        await ArchiveOrRestorePromoCodeAsync(request, promoCodeId, archive: true, cancellationToken);
+
+    [Function("AdminPromoCodeRestore")]
+    public async Task<IActionResult> RestorePromoCode(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/promo-codes/{promoCodeId}/restore")]
+        HttpRequest request,
+        string promoCodeId,
+        CancellationToken cancellationToken) =>
+        await ArchiveOrRestorePromoCodeAsync(request, promoCodeId, archive: false, cancellationToken);
+
     [Function("AdminGrantCredits")]
     public async Task<IActionResult> GrantCredits(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/users/{userId}/credits")]
@@ -761,6 +777,48 @@ public sealed class AdminHttpFunctions
             isActive,
             DateTimeOffset.UtcNow,
             cancellationToken);
+
+        return MapPromoMutationResult(result);
+    }
+
+    private async Task<IActionResult> ArchiveOrRestorePromoCodeAsync(
+        HttpRequest request,
+        string promoCodeId,
+        bool archive,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (_promoAdminService is null)
+        {
+            return AdminServiceUnavailable();
+        }
+
+        if (!Guid.TryParse(promoCodeId, out var parsedPromoCodeId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid promo code id",
+                "The promo code archive route requires a valid promo code id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = archive
+            ? await _promoAdminService.ArchivePromoCodeAsync(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedPromoCodeId,
+                DateTimeOffset.UtcNow,
+                cancellationToken)
+            : await _promoAdminService.RestorePromoCodeAsync(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedPromoCodeId,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
 
         return MapPromoMutationResult(result);
     }
