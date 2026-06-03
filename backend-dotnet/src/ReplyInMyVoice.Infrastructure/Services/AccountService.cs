@@ -422,7 +422,7 @@ public sealed class AccountService(
         return normalized.Length <= 320 ? normalized : normalized[..320];
     }
 
-    private static bool IsErasedExternalAuthUserId(string externalAuthUserId) =>
+    public static bool IsErasedExternalAuthUserId(string externalAuthUserId) =>
         externalAuthUserId.StartsWith("erased:", StringComparison.Ordinal);
 
     private static string CreateErasedExternalAuthUserId(Guid userId) =>

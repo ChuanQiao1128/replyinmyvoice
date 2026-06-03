@@ -12,7 +12,8 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 public sealed class AdminService(
     Func<AppDbContext> dbContextFactory,
     IStripeRefundClient? stripeRefundClient = null,
-    TaxTurnoverService? taxTurnoverService = null)
+    TaxTurnoverService? taxTurnoverService = null,
+    AccountService? accountService = null)
 {
     public const int RefundReviewCountThreshold = 3;
     public const long RefundReviewAmountThreshold = 2_500;
@@ -25,6 +26,7 @@ public sealed class AdminService(
     private const string AccountingRevenueCsvHeader =
         "date,userRef,sku,amount,currency,paymentIntent,receiptUrl,creditsGranted,creditsConsumed,creditsRemaining";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly AccountService _accountService = accountService ?? new AccountService(dbContextFactory);
     private readonly TaxTurnoverService _taxTurnoverService =
         taxTurnoverService ?? new TaxTurnoverService(dbContextFactory, new ConfigurationBuilder().Build());
 
@@ -551,6 +553,68 @@ public sealed class AdminService(
             request.Amount.Value,
             now,
             expiresAt));
+    }
+
+    public async Task<AdminDeleteUserServiceResult> DeleteUserAsync(
+        string adminExternalAuthUserId,
+        string? adminEmail,
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedAdminExternalAuthUserId = adminExternalAuthUserId.Trim();
+
+        string targetExternalAuthUserId;
+        await using (var lookupDb = dbContextFactory())
+        {
+            var user = await lookupDb.AppUsers
+                .AsNoTracking()
+                .Where(x => x.Id == userId)
+                .Select(x => new
+                {
+                    x.ExternalAuthUserId,
+                })
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (user is null)
+            {
+                return AdminDeleteUserServiceResult.UserNotFound("No user exists for the requested id.");
+            }
+
+            if (AccountService.IsErasedExternalAuthUserId(user.ExternalAuthUserId))
+            {
+                return AdminDeleteUserServiceResult.Forbidden("account already erased");
+            }
+
+            if (string.Equals(
+                    user.ExternalAuthUserId,
+                    normalizedAdminExternalAuthUserId,
+                    StringComparison.Ordinal))
+            {
+                return AdminDeleteUserServiceResult.Forbidden(
+                    "an admin cannot delete their own account from the console");
+            }
+
+            targetExternalAuthUserId = user.ExternalAuthUserId;
+        }
+
+        await _accountService.DeleteAccountAsync(targetExternalAuthUserId, cancellationToken);
+
+        await using var auditDb = dbContextFactory();
+        auditDb.AdminAuditLogs.Add(new AdminAuditLog
+        {
+            AdminExternalAuthUserId = normalizedAdminExternalAuthUserId,
+            AdminEmail = adminEmail?.Trim() ?? string.Empty,
+            Action = "user.delete",
+            TargetUserId = userId,
+            DetailsJson = JsonSerializer.Serialize(
+                new AdminDeleteUserAuditDetails("erased", now),
+                JsonOptions),
+            CreatedAt = now,
+        });
+        await auditDb.SaveChangesAsync(cancellationToken);
+
+        return AdminDeleteUserServiceResult.Success(new AdminDeleteUserResponse(userId, "erased"));
     }
 
     public async Task<AdminSuspensionServiceResult> SetUserSuspensionAsync(
@@ -1231,6 +1295,36 @@ public sealed record AdminCreditGrantAuditDetails(
     DateTimeOffset GrantedAt,
     DateTimeOffset? ExpiresAt,
     string? Reason);
+
+public sealed record AdminDeleteUserResponse(
+    Guid UserId,
+    string Status);
+
+public sealed record AdminDeleteUserServiceResult(
+    AdminDeleteUserResultKind Kind,
+    AdminDeleteUserResponse? Response,
+    string? Detail)
+{
+    public static AdminDeleteUserServiceResult Success(AdminDeleteUserResponse response) =>
+        new(AdminDeleteUserResultKind.Success, response, null);
+
+    public static AdminDeleteUserServiceResult UserNotFound(string detail) =>
+        new(AdminDeleteUserResultKind.UserNotFound, null, detail);
+
+    public static AdminDeleteUserServiceResult Forbidden(string detail) =>
+        new(AdminDeleteUserResultKind.Forbidden, null, detail);
+}
+
+public enum AdminDeleteUserResultKind
+{
+    Success,
+    UserNotFound,
+    Forbidden,
+}
+
+public sealed record AdminDeleteUserAuditDetails(
+    string Status,
+    DateTimeOffset DeletedAt);
 
 public sealed record AdminSuspensionRequest(bool? Suspended);
 
