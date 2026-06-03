@@ -5,7 +5,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const promoCodesPath = "/api/admin/promo-codes";
+const promoCodesPath = "/api/console/promo-codes";
 
 export async function GET() {
   return forwardAdminGet(promoCodesPath);

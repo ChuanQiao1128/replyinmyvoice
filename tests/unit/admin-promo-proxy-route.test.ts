@@ -72,7 +72,7 @@ describe("/api/admin/promo-codes proxy routes", () => {
 
     await expect(response.json()).resolves.toEqual(payload);
     expect(response.status).toBe(200);
-    expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/admin/promo-codes`, {
+    expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/console/promo-codes`, {
       cache: "no-store",
       headers: {
         Authorization: `${authScheme} ${accessValue}`,
@@ -111,7 +111,7 @@ describe("/api/admin/promo-codes proxy routes", () => {
 
     await expect(response.json()).resolves.toEqual(azureBody);
     expect(response.status).toBe(200);
-    expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/admin/promo-codes`, {
+    expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/console/promo-codes`, {
       body: JSON.stringify(createPayload),
       cache: "no-store",
       headers: {
@@ -218,21 +218,21 @@ describe("/api/admin/promo-codes proxy routes", () => {
 
     expect(fetchMock()).toHaveBeenNthCalledWith(
       1,
-      `${azureUrl}/api/admin/promo-codes/${promoCodeId}`,
+      `${azureUrl}/api/console/promo-codes/${promoCodeId}`,
       expect.objectContaining({
         method: "PATCH",
       }),
     );
     expect(fetchMock()).toHaveBeenNthCalledWith(
       2,
-      `${azureUrl}/api/admin/promo-codes/${promoCodeId}/disable`,
+      `${azureUrl}/api/console/promo-codes/${promoCodeId}/disable`,
       expect.objectContaining({
         method: "POST",
       }),
     );
     expect(fetchMock()).toHaveBeenNthCalledWith(
       3,
-      `${azureUrl}/api/admin/promo-codes/${promoCodeId}/enable`,
+      `${azureUrl}/api/console/promo-codes/${promoCodeId}/enable`,
       expect.objectContaining({
         method: "POST",
       }),

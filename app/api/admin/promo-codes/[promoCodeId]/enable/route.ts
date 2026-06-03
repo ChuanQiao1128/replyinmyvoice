@@ -18,7 +18,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   return forwardAdminMutation(
     request,
-    `/api/admin/promo-codes/${promoCodeId}/enable`,
+    `/api/console/promo-codes/${promoCodeId}/enable`,
     "POST",
   );
 }

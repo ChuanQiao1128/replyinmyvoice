@@ -91,7 +91,7 @@ describe("admin API route handlers", () => {
     await expect(response.json()).resolves.toEqual(payload);
     expect(response.status).toBe(200);
     expect(fetchMock()).toHaveBeenCalledWith(
-      `${azureUrl}/api/admin/users?page=2&pageSize=10`,
+      `${azureUrl}/api/console/users?page=2&pageSize=10`,
       {
         cache: "no-store",
         headers: {
@@ -150,7 +150,7 @@ describe("admin API route handlers", () => {
 
     expect(fetchMock()).toHaveBeenNthCalledWith(
       1,
-      `${azureUrl}/api/admin/users/${userId}`,
+      `${azureUrl}/api/console/users/${userId}`,
       {
         cache: "no-store",
         headers: {
@@ -160,7 +160,7 @@ describe("admin API route handlers", () => {
     );
     expect(fetchMock()).toHaveBeenNthCalledWith(
       2,
-      `${azureUrl}/api/admin/users/${userId}/credits`,
+      `${azureUrl}/api/console/users/${userId}/credits`,
       {
         body: JSON.stringify({ amount: 5, reason: "Launch test credit" }),
         cache: "no-store",
@@ -173,7 +173,7 @@ describe("admin API route handlers", () => {
     );
     expect(fetchMock()).toHaveBeenNthCalledWith(
       3,
-      `${azureUrl}/api/admin/users/${userId}/suspension`,
+      `${azureUrl}/api/console/users/${userId}/suspension`,
       {
         body: JSON.stringify({ suspended: true }),
         cache: "no-store",
@@ -186,7 +186,7 @@ describe("admin API route handlers", () => {
     );
     expect(fetchMock()).toHaveBeenNthCalledWith(
       4,
-      `${azureUrl}/api/admin/users/${userId}/refund`,
+      `${azureUrl}/api/console/users/${userId}/refund`,
       {
         body: JSON.stringify({
           amount: 1200,
@@ -238,7 +238,7 @@ describe("admin API route handlers", () => {
 
     expect(fetchMock()).toHaveBeenNthCalledWith(
       1,
-      `${azureUrl}/api/admin/billing-support-requests`,
+      `${azureUrl}/api/console/billing-support-requests`,
       {
         cache: "no-store",
         headers: {
@@ -248,7 +248,7 @@ describe("admin API route handlers", () => {
     );
     expect(fetchMock()).toHaveBeenNthCalledWith(
       2,
-      `${azureUrl}/api/admin/billing-support-requests/${supportRequestId}/resolve`,
+      `${azureUrl}/api/console/billing-support-requests/${supportRequestId}/resolve`,
       {
         body: "",
         cache: "no-store",

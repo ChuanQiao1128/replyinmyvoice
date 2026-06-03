@@ -10,6 +10,6 @@ export async function POST(request: Request, context: RouteContext) {
   const { userId } = await context.params;
   return forwardAdminPost(
     request,
-    `/api/admin/users/${encodeURIComponent(userId)}/suspension`,
+    `/api/console/users/${encodeURIComponent(userId)}/suspension`,
   );
 }

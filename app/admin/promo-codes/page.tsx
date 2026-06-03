@@ -54,7 +54,7 @@ export default async function AdminPromoCodesPage() {
 
   let response: Response;
   try {
-    response = await fetch(`${getAzureApiBaseUrl()}/api/admin/promo-codes`, {
+    response = await fetch(`${getAzureApiBaseUrl()}/api/console/promo-codes`, {
       cache: "no-store",
       headers: {
         Authorization: `Bearer ${accessToken}`,

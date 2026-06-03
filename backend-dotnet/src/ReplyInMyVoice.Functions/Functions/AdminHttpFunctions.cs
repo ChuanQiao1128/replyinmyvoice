@@ -43,7 +43,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminPing")]
     public async Task<IActionResult> Ping(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/ping")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/ping")]
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -61,7 +61,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminUsersList")]
     public async Task<IActionResult> ListUsers(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/users")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/users")]
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -84,7 +84,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminUserDetail")]
     public async Task<IActionResult> GetUserDetail(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/users/{userId}")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/users/{userId}")]
         HttpRequest request,
         string userId,
         CancellationToken cancellationToken)
@@ -122,7 +122,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminStats")]
     public async Task<IActionResult> GetStats(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/stats")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/stats")]
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -143,7 +143,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminBillingSupportRequests")]
     public async Task<IActionResult> ListBillingSupportRequests(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/billing-support-requests")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/billing-support-requests")]
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -164,7 +164,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminResolveBillingSupportRequest")]
     public async Task<IActionResult> ResolveBillingSupportRequest(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/billing-support-requests/{requestId}/resolve")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/billing-support-requests/{requestId}/resolve")]
         HttpRequest request,
         string requestId,
         CancellationToken cancellationToken)
@@ -210,7 +210,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminAccountingRevenueCsv")]
     public async Task<IActionResult> ExportAccountingRevenueCsv(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/accounting/revenue.csv")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/accounting/revenue.csv")]
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -260,7 +260,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminPromoCodesCreate")]
     public async Task<IActionResult> CreatePromoCode(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/promo-codes")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/promo-codes")]
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -308,7 +308,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminPromoCodesList")]
     public async Task<IActionResult> ListPromoCodes(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/promo-codes")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/promo-codes")]
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -329,7 +329,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminPromoCodeDetail")]
     public async Task<IActionResult> GetPromoCodeDetail(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/promo-codes/{promoCodeId}")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/promo-codes/{promoCodeId}")]
         HttpRequest request,
         string promoCodeId,
         CancellationToken cancellationToken)
@@ -370,7 +370,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminPromoCodeUpdate")]
     public async Task<IActionResult> UpdatePromoCode(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "admin/promo-codes/{promoCodeId}")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "console/promo-codes/{promoCodeId}")]
         HttpRequest request,
         string promoCodeId,
         CancellationToken cancellationToken)
@@ -428,7 +428,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminPromoCodeDisable")]
     public async Task<IActionResult> DisablePromoCode(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/promo-codes/{promoCodeId}/disable")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/promo-codes/{promoCodeId}/disable")]
         HttpRequest request,
         string promoCodeId,
         CancellationToken cancellationToken) =>
@@ -436,7 +436,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminPromoCodeEnable")]
     public async Task<IActionResult> EnablePromoCode(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/promo-codes/{promoCodeId}/enable")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/promo-codes/{promoCodeId}/enable")]
         HttpRequest request,
         string promoCodeId,
         CancellationToken cancellationToken) =>
@@ -444,7 +444,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminGrantCredits")]
     public async Task<IActionResult> GrantCredits(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/credits")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/users/{userId}/credits")]
         HttpRequest request,
         string userId,
         CancellationToken cancellationToken)
@@ -516,7 +516,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminSetUserSuspension")]
     public async Task<IActionResult> SetUserSuspension(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/suspension")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/users/{userId}/suspension")]
         HttpRequest request,
         string userId,
         CancellationToken cancellationToken)
@@ -584,7 +584,7 @@ public sealed class AdminHttpFunctions
 
     [Function("AdminIssueRefund")]
     public async Task<IActionResult> IssueRefund(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/users/{userId}/refund")]
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/users/{userId}/refund")]
         HttpRequest request,
         string userId,
         CancellationToken cancellationToken)

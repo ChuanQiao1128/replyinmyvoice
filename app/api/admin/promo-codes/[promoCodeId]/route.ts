@@ -17,7 +17,7 @@ async function promoCodePath(context: RouteContext) {
     return null;
   }
 
-  return `/api/admin/promo-codes/${promoCodeId}`;
+  return `/api/console/promo-codes/${promoCodeId}`;
 }
 
 export async function GET(_request: Request, context: RouteContext) {
