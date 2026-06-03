@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-04 - ui-browser-testing - PROMO-ADMIN-A quick-win admin UI
+
+- Agent: Codex
+- Trigger: GitHub issue #468 changed the browser-visible `/admin/promo-codes` UI, form hints, card controls, status legend, stats copy, and e2e assertions.
+- Action: Opened and followed the UI/browser testing workflow; updated the focused admin promo component unit test first, observed it fail against the old UI, implemented the scoped frontend-only changes, and updated the non-CI Playwright spec assertions for the new stat test ids.
+- Output artifacts: `components/admin/promo-codes-admin.tsx`; `tests/unit/admin-promo-codes-component.test.ts`; `tests/e2e/admin-promo-codes.spec.ts`.
+- Verification evidence: Focused red run failed on the old legend/placeholder expectations; focused green run passed 2/2; `npm run typecheck` passed; `npm run test` passed 354/354; `npm run build` completed successfully; banned-term grep over `app components public lib` returned no matches.
+- Limitations: Playwright e2e and browser screenshots were not run because the issue brief marked e2e as non-CI and the machine-checkable acceptance did not require browser execution. No backend, API, proxy, migration, secret, deploy, push, or PR operation was performed.
+
 ### 2026-06-03 - data-module-review - promo branch merge migration reconciliation
 
 - Agent: Codex
