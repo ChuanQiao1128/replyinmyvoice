@@ -47,3 +47,4 @@ plans/MONEY-MADE.txt
 # delivery-pipeline local state
 .delivery/
 playwright-report/
+.playwright-mcp/

@@ -1,0 +1,31 @@
+# dynamic-delivery-workflow — sample wave.conf (sourced by every script).
+#
+# Copy into your control dir as wave.conf and edit. Launch with:
+#   RIMV_WAVE_CONF="$HOME/.rimv-delivery/<wave>/wave.conf" bash <skill>/scripts/start.sh
+#
+# CONTROL_DIR MUST be off the iCloud-synced Desktop (under $HOME) — a v2 fix for the resurrecting
+# global STOP + sync churn. The repo .git may stay on the Desktop; worktrees go under CONTROL_DIR.
+
+# ---- required ----
+WAVE=payment-wave                                    # short name (notifications + log prefixes)
+REPO=/Users/qc/Desktop/CloudFlare                    # repo working tree (its .git can stay on Desktop)
+GHREPO=ChuanQiao1128/replyinmyvoice                  # owner/name for the gh CLI
+BASE=delivery/payment-wave                           # INTEGRATION branch — NEVER main (preflight refuses the default branch)
+BRANCH_PREFIX=delivery/payment                       # per-issue branch = <BRANCH_PREFIX>/<TAG>-<ISSUE>
+CONTROL_DIR="$HOME/.rimv-delivery/payment-wave"      # OFF the iCloud Desktop
+QUEUE="$CONTROL_DIR/queue.tsv"                        # the TAB-separated issue queue
+BRIEF_DIR=/Users/qc/Desktop/CloudFlare/plans/payment-issues   # per-issue brief markdown lives here
+
+# ---- optional (defaults shown) ----
+ATTEMPTS=3                                            # codex attempts per issue (resume w/ feedback between)
+DEFAULT_TIMEOUT_MIN=40                                # used when a queue row omits TIMEOUT_MIN
+BANNED_TERMS='humanizer|bypass|undetect|detector|evade'   # CI grep guard (project AGENTS.md) — diff-scoped
+BANNED_PATHS='app components public lib'             # paths the banned-term gate scopes to
+DOTNET_DIR=backend-dotnet                            # `dotnet test` root when a backend file changes
+FRONTEND_PATHS='app components lib'                  # changing any of these triggers typecheck + unit tests
+# RIMV_WEBHOOK_URL=https://hooks.slack.com/services/...   # optional extra event push (Slack-compatible {"text":...})
+
+# ---- watchdog tuning (defaults shown) ----
+# SENTINEL_INTERVAL=1200    # health-check cadence (s)
+# SENTINEL_STALE=5400       # heartbeat older than this (s) => driver hung => kill+relaunch (>= max TIMEOUT_MIN*60 + verify)
+# SENTINEL_GRACE=90         # startup grace before the sentinel may relaunch (startup-race guard)
