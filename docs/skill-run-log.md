@@ -2975,3 +2975,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/site-header.tsx`; `tests/unit/site-header.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused red run failed on missing `href="/admin"` for the admin session, focused green run passed 3/3, `npm run typecheck` passed, `npm run test` passed 348/348, and the banned-term grep over `app components public lib` returned no matches.
 - Limitations: No screenshot run was added because the change is a conditional server-rendered nav link with existing styling and no layout/CSS changes.
+
+### 2026-06-03 - ui-browser-testing - PROMO-FIX-02 workspace-first redeem modal
+
+- Agent: Codex
+- Trigger: PROMO-FIX-02 changes the browser-visible `/app` workspace, quota status bar, redeem-code modal, and out-of-credit nudges.
+- Action: Opened and followed the skill; updated focused unit and Playwright acceptance coverage for workspace-first rendering, redeem modal behavior, and inline buy/manage nudges before implementing the frontend-only change.
+- Output artifacts: `app/app/page.tsx`; `components/app/rewrite-workspace.tsx`; `components/app/subscription-status.tsx`; `components/app/redeem-code-card.tsx`; `lib/promo-app-state.ts`; `tests/unit/promo-app-state.test.ts`; `tests/unit/workspace-copy.test.ts`; `tests/e2e/promo-redeem-ui.spec.ts`; `tests/e2e/promo-full-loop.spec.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red unit run failed on the old full-page state/card contracts. Focused green unit run passed 14/14. `npm run typecheck` passed. `npm run test` passed 349/349. Banned-term grep over `app components public lib` returned no matches.
+- Limitations: Focused Playwright run `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/pw-browsers-issue-452 npx playwright test tests/e2e/promo-redeem-ui.spec.ts --project=promo-chromium` could not execute browser assertions because Chromium launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied. Local git commit was also blocked because the shared worktree git index lives outside the writable root.

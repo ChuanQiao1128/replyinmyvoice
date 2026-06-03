@@ -9,12 +9,14 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  Ticket,
   Trash2,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 
+import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import {
   getRewriteAttemptId,
@@ -26,7 +28,8 @@ import {
 } from "../../lib/rewrite-response";
 import { NatBar } from "../landing/nat-bar";
 import { Button } from "../ui/button";
-import { SubscriptionStatus } from "./subscription-status";
+import { RedeemCodeCard } from "./redeem-code-card";
+import { openBillingPortal, SubscriptionStatus } from "./subscription-status";
 
 const HISTORY_KEY = "rimv.rewrite.history.v1";
 const rewriteAttemptPollLimit = 30;
@@ -63,6 +66,11 @@ type Props = {
   remaining: number;
   quota: number;
   planRemaining: number;
+  appExperience: AppExperience;
+  canRedeem: boolean;
+  outOfCredits: boolean;
+  promoState: PromoAccountState;
+  usageExhausted: boolean;
   quotaSources?: QuotaCreditSource[];
 };
 
@@ -256,12 +264,65 @@ function signalDeltaOf(naturalness: Naturalness) {
     : null;
 }
 
+const freeOutOfCreditsMessage =
+  "You have 0 rewrites. Redeem a trial code or buy a pack.";
+const paidOutOfCreditsMessage =
+  "Your monthly rewrite quota has been used for this billing period. Buy a one-time pack to keep going now, or manage billing and come back when your next period starts.";
+
+function OutOfCreditsNudge({
+  canRedeem,
+  onManageBillingClick,
+  onRedeemClick,
+  paid,
+}: {
+  canRedeem: boolean;
+  onManageBillingClick: () => void;
+  onRedeemClick: () => void;
+  paid: boolean;
+}) {
+  return (
+    <div className="mb-4 rounded-2xl border border-clay/25 bg-paper-deep/70 p-3.5 text-left text-sm text-ink/70">
+      <p className="font-semibold text-ink">
+        {paid ? "Your monthly limit has been reached." : "No rewrites left."}
+      </p>
+      <p className="mt-1 leading-6">
+        {paid ? paidOutOfCreditsMessage : freeOutOfCreditsMessage}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {canRedeem ? (
+          <Button onClick={onRedeemClick} type="button" variant="secondary">
+            <Ticket className="h-4 w-4" aria-hidden="true" />
+            Redeem code
+          </Button>
+        ) : null}
+        <Link
+          className="inline-flex min-h-10 items-center justify-center rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-paper"
+          href="/pricing"
+        >
+          Buy rewrites
+        </Link>
+        {paid ? (
+          <Button onClick={onManageBillingClick} type="button" variant="secondary">
+            Manage billing
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function RewriteWorkspace({
+  appExperience,
+  canRedeem,
+  outOfCredits,
   usageLabel,
   subscriptionStatus,
   paid,
   quota,
   planRemaining,
+  promoState,
+  remaining,
+  usageExhausted,
 }: Props) {
   const visiblePlanRemaining = Math.max(Math.min(planRemaining, quota), 0);
   const [draft, setDraft] = useState("");
@@ -278,6 +339,7 @@ export function RewriteWorkspace({
     () => visiblePlanRemaining,
   );
   const [showPostCopyNudge, setShowPostCopyNudge] = useState(false);
+  const [redeemModalOpen, setRedeemModalOpen] = useState(false);
 
   const trimmedDraftLength = draft.trim().length;
   const canSubmit =
@@ -472,6 +534,22 @@ export function RewriteWorkspace({
   const signalRegressed =
     signalDelta !== null && signalDelta < 0 && !outputReadsNatural;
   const showCopyNudge = !paid && showPostCopyNudge && result !== null;
+  const showOutOfCreditsNudge =
+    remaining <= 0 ||
+    outOfCredits ||
+    usageExhausted ||
+    appExperience === "needsRedeem" ||
+    appExperience === "needsBuy";
+  const showRedeemAction =
+    canRedeem && (!promoState.hasRedeemed || promoState.trialRemaining === 0);
+
+  function openRedeemModal() {
+    setRedeemModalOpen(true);
+  }
+
+  function closeRedeemModal() {
+    setRedeemModalOpen(false);
+  }
 
   return (
     <main className="min-h-screen bg-paper text-ink">
@@ -498,6 +576,8 @@ export function RewriteWorkspace({
 
         <div className="mt-5">
           <SubscriptionStatus
+            canRedeem={showRedeemAction}
+            onRedeemClick={openRedeemModal}
             paid={paid}
             status={subscriptionStatus}
             usageLabel={usageLabel}
@@ -580,6 +660,15 @@ export function RewriteWorkspace({
               </div>
 
               <div className="flex flex-1 flex-col rounded-2xl border border-line/70 bg-white p-4">
+                {showOutOfCreditsNudge ? (
+                  <OutOfCreditsNudge
+                    canRedeem={showRedeemAction}
+                    onManageBillingClick={() => void openBillingPortal()}
+                    onRedeemClick={openRedeemModal}
+                    paid={paid}
+                  />
+                ) : null}
+
                 {loading ? (
                   <div className="flex min-h-[16rem] flex-1 flex-col justify-center gap-5">
                     <div className="flex items-center gap-2.5">
@@ -812,6 +901,7 @@ export function RewriteWorkspace({
           )}
         </details>
       </div>
+      <RedeemCodeCard open={redeemModalOpen} onClose={closeRedeemModal} />
     </main>
   );
 }

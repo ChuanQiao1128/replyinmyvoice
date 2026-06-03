@@ -9,11 +9,12 @@ const authSessionSecret = "playwright-auth-session-secret";
 const sessionCookieName = "rimv_session";
 const trialExpiresAt = "2026-08-31T00:00:00.000Z";
 
-type MockAccountState = "new" | "trial" | "exhausted";
+type MockAccountState = "new" | "trial" | "exhausted" | "paidExhausted";
 
 function accountSummary(state: MockAccountState) {
   const trialRemaining = state === "trial" ? 3 : 0;
   const hasRedeemed = state !== "new";
+  const paid = state === "paidExhausted";
 
   return {
     currentPeriodEnd: null,
@@ -25,15 +26,15 @@ function accountSummary(state: MockAccountState) {
       trialExpiresAt: hasRedeemed ? trialExpiresAt : null,
       trialRemaining,
     },
-    subscriptionStatus: "none",
+    subscriptionStatus: paid ? "active" : "none",
     usage: {
       exhausted: trialRemaining <= 0,
       periodEnd: null,
-      periodKey: "free:lifetime",
-      quota: 0,
-      remaining: trialRemaining,
+      periodKey: paid ? "paid:2026-06" : "free:lifetime",
+      quota: paid ? 90 : 0,
+      remaining: paid ? 0 : trialRemaining,
       reserved: 0,
-      scope: "free",
+      scope: paid ? "paid" : "free",
       sources:
         trialRemaining > 0
           ? [
@@ -243,24 +244,32 @@ test.describe("promo redeem UI", () => {
     await closeServer(azureMock);
   });
 
-  test("new signed-in users see the redeem card instead of the paywall", async ({
+  test("new signed-in users land on the workspace with redeem available", async ({
     page,
   }) => {
     await page.goto("/app");
 
     await expect(
-      page.getByRole("heading", { name: "Redeem your code" }),
+      page.getByRole("heading", { name: "Rewrite workspace" }),
     ).toBeVisible();
-    await expect(page.getByText("See plans and buy rewrites")).toHaveCount(0);
-    await expect(page.getByTestId("turnstile-widget")).toContainText(
-      "Verification ready",
+    await expect(page.locator("#roughDraftReply")).toBeVisible();
+    await expect(page.getByText("You have 0 rewrites.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Redeem code" })).toHaveCount(2);
+    await expect(page.getByRole("link", { name: "Buy rewrites" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Redeem your code" })).toHaveCount(
+      0,
     );
   });
 
-  test("redeem success refetches account state and shows trial quota in the workspace", async ({
+  test("redeem success refetches account state and closes the modal", async ({
     page,
   }) => {
     await page.goto("/app");
+    await page.getByRole("button", { name: "Redeem code" }).first().click();
+    await expect(page.getByRole("heading", { name: "Redeem your code" })).toBeVisible();
+    await expect(page.getByTestId("turnstile-widget")).toContainText(
+      "Verification ready",
+    );
     await page.getByLabel("Code").fill("TRIAL");
     await expect(page.getByRole("button", { name: "Redeem" })).toBeEnabled();
     await page.getByRole("button", { name: "Redeem" }).click();
@@ -270,10 +279,14 @@ test.describe("promo redeem UI", () => {
     ).toBeVisible();
     await expect(page.getByText("3 of 3 trial rewrites remaining")).toBeVisible();
     await expect(page.getByText(/expire in \d+ days/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Redeem your code" })).toHaveCount(
+      0,
+    );
   });
 
-  test("redeem errors stay inline on the card", async ({ page }) => {
+  test("redeem errors stay inline in the modal", async ({ page }) => {
     await page.goto("/app");
+    await page.getByRole("button", { name: "Redeem code" }).first().click();
 
     const cases = [
       ["NOPE", "That code is not valid. Check it and try again."],
@@ -295,18 +308,41 @@ test.describe("promo redeem UI", () => {
     state = "exhausted";
     await page.goto("/app");
 
-    await expect(page.getByText("Trial used")).toBeVisible();
-    await expect(page.getByText("See plans and buy rewrites")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Rewrite workspace" }),
+    ).toBeVisible();
+    await expect(page.getByText("You have 0 rewrites.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Buy rewrites" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Redeem your code" })).toHaveCount(
       0,
     );
   });
 
-  test("mobile redeem card has no horizontal overflow and keeps verification visible", async ({
+  test("paid users out of monthly quota see an in-workspace buy and manage nudge", async ({
+    page,
+  }) => {
+    state = "paidExhausted";
+    await page.goto("/app");
+
+    await expect(
+      page.getByRole("heading", { name: "Rewrite workspace" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Your monthly rewrite quota has been used for this billing period."),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Buy rewrites" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Manage billing" })).toHaveCount(2);
+    await expect(page.getByRole("heading", { name: "Your monthly limit has been reached." })).toHaveCount(
+      0,
+    );
+  });
+
+  test("mobile redeem modal has no horizontal overflow and keeps verification visible", async ({
     page,
   }) => {
     await page.setViewportSize({ height: 740, width: 375 });
     await page.goto("/app");
+    await page.getByRole("button", { name: "Redeem code" }).first().click();
 
     await expect(page.getByTestId("turnstile-widget")).toContainText(
       "Verification ready",

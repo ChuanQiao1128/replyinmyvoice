@@ -4,11 +4,7 @@ export type PromoAccountState = {
   trialRemaining: number;
 };
 
-export type AppExperience =
-  | "workspace"
-  | "redeem"
-  | "free-paywall"
-  | "paid-paywall";
+export type AppExperience = "ok" | "needsRedeem" | "needsBuy";
 
 type SelectAppExperienceInput = {
   paid: boolean;
@@ -24,22 +20,22 @@ export function selectAppExperience({
   usageRemaining,
 }: SelectAppExperienceInput): AppExperience {
   if (usageRemaining > 0) {
-    return "workspace";
+    return "ok";
   }
 
   if (paid && usageExhausted) {
-    return "paid-paywall";
+    return "needsBuy";
   }
 
-  if (promo && !promo.hasRedeemed && usageRemaining === 0) {
-    return "redeem";
+  if (!paid && !promo?.hasRedeemed && usageRemaining === 0) {
+    return "needsRedeem";
   }
 
   if (usageExhausted) {
-    return "free-paywall";
+    return "needsBuy";
   }
 
-  return "workspace";
+  return "ok";
 }
 
 export function labelForQuotaSource(source: string, fallback: string) {

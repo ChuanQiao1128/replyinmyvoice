@@ -365,9 +365,11 @@ test.describe("promo full loop", () => {
     await page.getByLabel("Password").fill("long-enough-password");
     await page.getByRole("button", { name: "Continue with email" }).click();
     await expect(
-      page.getByRole("heading", { name: "Redeem your code" }),
+      page.getByRole("heading", { name: "Rewrite workspace" }),
     ).toBeVisible();
+    await expect(page.getByText("You have 0 rewrites.")).toBeVisible();
 
+    await page.getByRole("button", { name: "Redeem code" }).first().click();
     await page.getByLabel("Code").fill("TRIAL");
     await page.getByRole("button", { name: "Redeem" }).click();
     await expect(
@@ -380,8 +382,8 @@ test.describe("promo full loop", () => {
     await submitRewrite(page, 3);
 
     await page.goto("/app");
-    await expect(page.getByText("Trial used")).toBeVisible();
-    await expect(page.getByText("See plans and buy rewrites")).toBeVisible();
+    await expect(page.getByText("You have 0 rewrites.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Buy rewrites" })).toBeVisible();
     expect(state.rewriteCount).toBe(3);
     expect(state.trialRemaining).toBe(0);
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Loader2, ShieldCheck, Ticket } from "lucide-react";
+import { CheckCircle2, Loader2, ShieldCheck, Ticket, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
@@ -35,6 +35,11 @@ type WindowWithTurnstile = Window &
 type PromoRedeemSuccess = {
   creditsGranted?: number;
   expiresAt?: string | null;
+};
+
+type RedeemCodeCardProps = {
+  open?: boolean;
+  onClose?: () => void;
 };
 
 let turnstileScriptPromise: Promise<void> | null = null;
@@ -139,7 +144,7 @@ async function readJsonPayload(response: Response) {
   }
 }
 
-export function RedeemCodeCard() {
+export function RedeemCodeCard({ open = true, onClose }: RedeemCodeCardProps = {}) {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -152,6 +157,22 @@ export function RedeemCodeCard() {
   const siteKey = getTurnstileSiteKey();
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setCode("");
+    setTurnstileToken("");
+    setCaptchaError("");
+    setError("");
+    setSuccess("");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
     const container = turnstileContainerRef.current;
     if (!container) {
       return;
@@ -202,7 +223,7 @@ export function RedeemCodeCard() {
         turnstileWidgetIdRef.current = null;
       }
     };
-  }, [siteKey]);
+  }, [open, siteKey]);
 
   function resetTurnstile() {
     const widgetId = turnstileWidgetIdRef.current;
@@ -266,6 +287,7 @@ export function RedeemCodeCard() {
         `${successPrefix}${expiry ? ` — ${expiry}` : ""}`,
       );
       await refetchAccountSummary();
+      onClose?.();
     } catch {
       setError("Could not redeem that code. Try again.");
       resetTurnstile();
@@ -276,89 +298,116 @@ export function RedeemCodeCard() {
 
   const canSubmit = Boolean(code.trim()) && Boolean(turnstileToken) && !loading;
 
+  if (!open) {
+    return null;
+  }
+
   return (
-    <main className="min-h-screen bg-paper px-4 py-8 text-ink md:px-6 md:py-10">
-      <section className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-        <Card className="p-5 md:p-7">
-          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-md bg-paper-deep text-clay">
-            <Ticket className="h-5 w-5" aria-hidden="true" />
+    <div
+      aria-labelledby="promo-redeem-title"
+      aria-modal="true"
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/35 px-4 py-6 text-ink"
+      role="dialog"
+    >
+      <div className="w-full max-w-3xl">
+        <Card className="grid overflow-hidden p-0 md:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="p-5 md:p-7">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-md bg-paper-deep text-clay">
+                <Ticket className="h-5 w-5" aria-hidden="true" />
+              </div>
+              {onClose ? (
+                <button
+                  aria-label="Close"
+                  className="rounded-md p-1.5 text-ink/45 transition hover:bg-paper hover:text-ink"
+                  onClick={onClose}
+                  type="button"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">
+              Trial code
+            </p>
+            <h1
+              className="mt-3 text-2xl font-semibold md:text-3xl"
+              id="promo-redeem-title"
+            >
+              Redeem your code
+            </h1>
+            <p className="mt-3 max-w-2xl leading-7 text-ink/65">
+              Enter your trial code to unlock 3 rewrites for your workspace.
+            </p>
+
+            <form className="mt-6 max-w-xl space-y-4" onSubmit={submit}>
+              <div>
+                <label
+                  className="text-sm font-semibold text-ink/70"
+                  htmlFor="promo-code"
+                >
+                  Code
+                </label>
+                <Input
+                  autoComplete="one-time-code"
+                  autoFocus
+                  className="mt-2 uppercase tracking-[0.08em]"
+                  id="promo-code"
+                  onChange={(event) => {
+                    setCode(event.target.value);
+                    setError("");
+                    setSuccess("");
+                  }}
+                  placeholder="Enter your code"
+                  type="text"
+                  value={code}
+                />
+              </div>
+
+              <div>
+                <div
+                  className="min-h-[70px] w-full max-w-[300px] overflow-hidden rounded-md border border-line bg-paper"
+                  data-testid="turnstile-widget"
+                  ref={turnstileContainerRef}
+                />
+                {captchaError ? (
+                  <p className="mt-2 text-sm text-red-700">{captchaError}</p>
+                ) : null}
+              </div>
+
+              <Button disabled={!canSubmit} type="submit" variant="clay">
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                )}
+                Redeem
+              </Button>
+
+              <div aria-live="polite">
+                {success ? (
+                  <p className="text-sm font-semibold text-sage">{success}</p>
+                ) : null}
+                {error ? <p className="text-sm text-red-700">{error}</p> : null}
+              </div>
+            </form>
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">
-            Trial code
-          </p>
-          <h1 className="mt-3 text-2xl font-semibold md:text-3xl">
-            Redeem your code
-          </h1>
-          <p className="mt-3 max-w-2xl leading-7 text-ink/65">
-            Enter your trial code to unlock 3 rewrites for your workspace.
-          </p>
 
-          <form className="mt-6 max-w-xl space-y-4" onSubmit={submit}>
-            <div>
-              <label
-                className="text-sm font-semibold text-ink/70"
-                htmlFor="promo-code"
-              >
-                Code
-              </label>
-              <Input
-                autoComplete="one-time-code"
-                className="mt-2 uppercase tracking-[0.08em]"
-                id="promo-code"
-                onChange={(event) => {
-                  setCode(event.target.value);
-                  setError("");
-                  setSuccess("");
-                }}
-                placeholder="Enter your code"
-                type="text"
-                value={code}
-              />
+          <aside className="border-t border-line bg-paper/70 p-5 md:border-l md:border-t-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-mint text-sage">
+              <ShieldCheck className="h-5 w-5" aria-hidden="true" />
             </div>
-
-            <div>
-              <div
-                className="min-h-[70px] w-full max-w-[300px] overflow-hidden rounded-md border border-line bg-paper"
-                data-testid="turnstile-widget"
-                ref={turnstileContainerRef}
-              />
-              {captchaError ? (
-                <p className="mt-2 text-sm text-red-700">{captchaError}</p>
-              ) : null}
-            </div>
-
-            <Button disabled={!canSubmit} type="submit" variant="clay">
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-              )}
-              Redeem
-            </Button>
-
-            <div aria-live="polite">
-              {success ? (
-                <p className="text-sm font-semibold text-sage">{success}</p>
-              ) : null}
-              {error ? <p className="text-sm text-red-700">{error}</p> : null}
-            </div>
-          </form>
+            <p className="mt-4 text-sm font-medium text-ink/60">
+              Reply In My Voice
+            </p>
+            <p className="mt-2 text-2xl font-semibold">Trial rewrites</p>
+            <p className="mt-2 text-sm leading-6 text-ink/60">
+              Trial credits are available after a successful code redemption.
+              Successful rewrites count against the trial balance.
+            </p>
+          </aside>
         </Card>
-
-        <aside className="rounded-lg border border-line bg-white/80 p-5 shadow-crisp lg:sticky lg:top-20">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-mint text-sage">
-            <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <p className="mt-4 text-sm font-medium text-ink/60">
-            Reply In My Voice
-          </p>
-          <p className="mt-2 text-2xl font-semibold">Trial rewrites</p>
-          <p className="mt-2 text-sm leading-6 text-ink/60">
-            Trial credits are available after a successful code redemption.
-            Successful rewrites count against the trial balance.
-          </p>
-        </aside>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
