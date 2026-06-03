@@ -36,6 +36,7 @@ public sealed class AdminRouteMetadataTests
             "console/promo-codes/{promoCodeId}",
             "console/promo-codes/{promoCodeId}/disable",
             "console/promo-codes/{promoCodeId}/enable",
+            "console/users/{userId}",
             "console/users/{userId}/credits",
             "console/users/{userId}/suspension",
             "console/users/{userId}/refund",
