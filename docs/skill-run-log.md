@@ -2966,3 +2966,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/admin/admin-dashboard.tsx`; `lib/admin-types.ts`; `tests/e2e/admin.spec.ts`.
 - Verification evidence: `npm run typecheck` passed; `npm run test` passed 298/298; banned-term grep over `app components public lib` returned no matches.
 - Limitations: `npx playwright test tests/e2e/admin.spec.ts --project=chromium` failed before page assertions because Chromium launch is blocked in this sandbox by `MachPortRendezvousServer` permission denied. A Next dev server started during the attempt, but the sandbox refused permission to terminate its child process afterward.
+
+### 2026-06-03 - ui-browser-testing - PROMO-FIX-01 admin header entry
+
+- Agent: Codex
+- Trigger: PROMO-FIX-01 changes the browser-visible site header navigation for signed-in admins.
+- Action: Opened and followed the skill; added focused server-rendered header coverage for admin, non-admin, and signed-out navigation states, then reused the existing admin session helper in the header.
+- Output artifacts: `components/site-header.tsx`; `tests/unit/site-header.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run failed on missing `href="/admin"` for the admin session, focused green run passed 3/3, `npm run typecheck` passed, `npm run test` passed 348/348, and the banned-term grep over `app components public lib` returned no matches.
+- Limitations: No screenshot run was added because the change is a conditional server-rendered nav link with existing styling and no layout/CSS changes.

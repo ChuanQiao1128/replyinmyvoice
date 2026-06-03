@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { isAdminSession } from "../lib/admin-auth";
 import { getCurrentSession } from "../lib/entra-auth";
 
 export async function SiteHeader() {
@@ -26,6 +27,7 @@ export async function SiteHeader() {
             </>
           ) : (
             <>
+              {isAdminSession(session) ? <Link href="/admin">Admin</Link> : null}
               <a href="/api/auth/logout">Sign out</a>
               <Link href="/app" className="btn btn-primary">
                 Open app <span className="btn-arrow">→</span>
