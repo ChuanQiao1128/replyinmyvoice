@@ -1774,6 +1774,72 @@ section.block {
 }
 /* ── pricing-redesign: trust (PRICE-04 fills) ─────────────── */
 /* ── pricing-redesign: faq (PRICE-03 fills) ───────────────── */
+.pricing-page .pricing-faq-list {
+  align-items: start;
+}
+.pricing-page .pricing-faq-item {
+  overflow: hidden;
+  padding: 0;
+}
+.pricing-page .pricing-faq-item[open] {
+  border-color: color-mix(in oklab, var(--accent-2) 46%, var(--rule));
+  background: color-mix(in oklab, var(--card) 92%, var(--accent-2));
+}
+.pricing-page .pricing-faq-item summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  padding: 18px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+  list-style: none;
+}
+.pricing-page .pricing-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+.pricing-page .pricing-faq-item summary::after {
+  content: "+";
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+.pricing-page .pricing-faq-item[open] summary::after {
+  content: "-";
+  background: var(--accent-2);
+  color: var(--ink);
+  transform: rotate(180deg);
+}
+.pricing-page .pricing-faq-item summary:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent-2) 72%, white);
+  outline-offset: -4px;
+}
+.pricing-page .pricing-faq-answer {
+  margin: 0;
+  padding: 0 18px 18px;
+}
+@media (max-width: 680px) {
+  .pricing-page .pricing-faq-item summary {
+    min-height: 64px;
+    padding: 16px;
+  }
+  .pricing-page .pricing-faq-answer {
+    padding: 0 16px 16px;
+  }
+}
 /* ── end pricing-redesign ─────────────────────────────────── */
 
 /* ── developers page (in-development / roadmap) ─────────────── */
