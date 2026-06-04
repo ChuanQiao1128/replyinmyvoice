@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Supervisor: Claude (read-only) — implementation goes through Codex MCP.
-Goal: get from current code state to **`replyinmyvoice.com` live, taking real NZ$9/month subscriptions**.
+Goal: get from current code state to **`replyinmyvoice.com` live, taking NZD payments through the active pricing model**.
 
 ## Authoritative state (as of 2026-05-21)
 
@@ -37,7 +37,7 @@ Goal: get from current code state to **`replyinmyvoice.com` live, taking real NZ
 - Prisma + Neon Postgres for runtime data
 - **Auth: in transition** — Clerk being replaced by Microsoft Entra External ID + Google federation. Both code paths currently coexist.
 - Stripe integration: checkout + customer portal + webhook handlers for checkout/subscription/invoice events
-- Free quota: 3 lifetime rewrites → paywall → NZ$9/month subscription = 40 rewrites/billing month
+- Trial/rewrite quota: this 2026-05-21 recon captured the pre-packs subscription-era model; current surfaces now use trial-code access plus Quick, Value, and Pro/API rewrite packs.
 - Rewrite engine: fact-extract → scenario card → 3 candidates → Sapling Naturalness Check → quality gate
 - Admin scaffolding: `/admin`, `/admin/rewrites` exist
 - 30+ unit tests in `tests/unit/`, Playwright e2e setup

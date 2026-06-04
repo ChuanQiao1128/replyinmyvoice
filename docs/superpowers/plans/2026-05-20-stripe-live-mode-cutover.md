@@ -17,7 +17,7 @@ Current project scan on 2026-05-20 found:
 - `app/api/stripe/checkout/route.ts` creates a Stripe customer when the local `User.stripeCustomerId` is empty, then creates a subscription Checkout Session.
 - `app/api/stripe/portal/route.ts` opens Stripe Billing Portal for users with a local `stripeCustomerId`.
 - `app/api/stripe/webhook/route.ts` handles `checkout.session.completed`, subscription create/update/delete, `invoice.paid`, and `invoice.payment_failed`.
-- `lib/quota.ts` treats `active`, `trialing`, and `testing` as paid statuses, and paid users get 40 rewrites per Stripe billing period.
+- `lib/quota.ts` treats `active`, `trialing`, and `testing` as paid statuses, and paid users receive the configured paid-period allowance.
 - `prisma/schema.prisma` has `User`, `RewriteUsage`, and `StripeEvent`.
 - `.env.local` currently contains Stripe test-mode keys. `local-env.md` is tracked by Git and must not receive live secrets.
 
@@ -31,8 +31,8 @@ Official Stripe launch constraints:
 
 ## Goals
 
-- Accept real recurring payments for `NZD $9/month`.
-- Keep the product plan at 40 successful rewrites per billing month.
+- Accept payments for the active pricing model.
+- Keep the product plan aligned with the current trial-code, Quick, Value, and Pro/API rewrite-pack model.
 - Ensure paid users become active after live Checkout payment and webhook delivery.
 - Ensure canceled/unpaid/failed-payment states revoke or preserve access according to explicit rules.
 - Avoid mixing sandbox customers/subscriptions with live-mode Stripe API calls.

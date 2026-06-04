@@ -26,7 +26,7 @@ This spec turns the owner's rewrite-packs pricing brief into an implementation-r
 Source inputs (no secret values quoted):
 - GPT Pro brief — SKUs, prices, rewrite counts, UI copy, ledger concepts, webhook rules, campaign codes, tests, acceptance.
 - `docs/architecture-decision-record.md` — C# is the single backend of record; Next.js stays as presentation/BFF; Python analytics deferred.
-- `AGENTS.md` — confirmed product decisions (current: free = 3 lifetime, paid = NZ$9/mo / 40 rewrites; combined input cap 5000 chars), banned marketing terms, deployment gates, secrets policy.
+- `AGENTS.md` — confirmed product decisions (current: trial-code access = 3 rewrites, Quick = NZ$2.50/10, Value = NZ$6.90/30, Pro/API = NZ$19.90/90 monthly; combined input cap 5000 chars), banned marketing terms, deployment gates, secrets policy.
 - Repo reality — a deployed C# billing core on Azure dev already exists (`backend-dotnet/`: `QuotaService`, `UsageReservation`, `StripeBillingService`, `StripeEventService`, `OutboxMessage`, `ExpiredReservationCleanup`); the user-facing rewrite still runs the TS pipeline; data is split Azure SQL + Neon; the working tree is dirty (94 files, 57 stashes on `feat/api-keys`).
 
 **Core reconciliation:** GPT Pro's brief is written in TS/Prisma/Next-API terms (`lib/rewrite-balance.ts`, Prisma models, `/api/campaign/redeem`). Building it that way would add a new pile of TS that ADR-0001 then has to port — directly increasing the "mess" the owner wants gone. Therefore the **billing/packs/ledger/webhook/balance/API logic is implemented in C#/EF Core/Azure SQL**, extending the primitives that already exist. Only the **presentation pieces stay in TS/Next.js**.

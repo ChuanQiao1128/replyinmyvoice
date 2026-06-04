@@ -97,7 +97,7 @@ EVAL_MAX_WALLCLOCK_MINUTES=present
 - Neon `DIRECT_URL`: ok
 - OpenAI model availability: ok
 - Clerk configuration availability: ok
-- Stripe price: ok, `unit_amount=900`, `currency=nzd`, `interval=month`; display as `NZD $9/month`
+- Stripe price: historical single-plan check recorded; current pricing should verify active Quick, Value, and Pro/API price objects for the environment.
 - Stripe webhook availability: ok for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
 - Stripe webhook invoice events: not currently configured in dashboard; implement handlers and document adding `invoice.paid` and `invoice.payment_failed`
 - Sapling `aidetect` availability: ok

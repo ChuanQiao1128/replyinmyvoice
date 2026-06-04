@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-04 - ui-browser-testing - PARITY-01 pricing surface parity
+
+- Agent: Codex
+- Trigger: GitHub issue #495 changed browser-visible pricing UI in the landing pricing block and workspace buy-rewrites dialog.
+- Action: Opened and followed the UI/browser testing workflow; added failing unit coverage for unit-price helper text and stronger Value Pack treatment, implemented the scoped UI parity changes, and attempted local browser verification.
+- Output artifacts: `components/landing/pricing-v2.tsx`; `components/app/buy-rewrites-dialog.tsx`; `app/globals.css`; `tests/unit/pricing-auth-visual-system.test.ts`; `tests/unit/buy-rewrites-dialog.test.ts`; pricing docs cleanup files.
+- Verification evidence: Focused red runs failed on missing unit-price text; focused green runs passed; `npm run typecheck` passed; `npm run test` passed 379/379; source banned-term grep over `app components public lib` returned no matches; fixed-string grep confirmed all three unit-price helper strings in both scoped pricing surfaces.
+- Limitations: Playwright Chromium could not launch in this macOS sandbox because the browser process could not register its Mach service, and the local Next dev server showed watcher `EMFILE` warnings with 404 responses during attempted route checks. No screenshot evidence, deploy, push, PR, live payment action, or secret inspection was performed.
+
 ### 2026-06-04 - ui-browser-testing - PROMO-ADMIN-A quick-win admin UI
 
 - Agent: Codex

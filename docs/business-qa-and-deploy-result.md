@@ -170,7 +170,7 @@ State-machine review found and fixed quota, reservation, and webhook lifecycle g
 - Expired usage reservations now persist as `Expired`, not generic `Released`.
 - Expired cleanup skips rewrite attempts that have already moved to `Processing`, preventing cleanup from releasing quota while a provider call is still in flight.
 - Late provider success can no longer move an expired or released reservation into a successful charged attempt.
-- ASP.NET API paid quota now matches the product rule and Azure Functions path: 40 rewrites per paid billing period.
+- ASP.NET API paid quota matched the then-current paid-period product rule and Azure Functions path.
 - Stripe `customer.subscription.deleted` now maps to `Canceled`, matching the Next/Stripe state semantics instead of collapsing deleted subscriptions into generic `Inactive`.
 - The unused rewrite-attempt `Released` state was removed from the .NET enum; release remains a usage-reservation state, while rewrite attempts terminate as `Succeeded`, `Failed`, or `Expired`.
 

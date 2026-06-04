@@ -52,6 +52,22 @@ function buyButtons(root: unknown) {
   );
 }
 
+function textContent(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map(textContent).join(" ");
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+
+  if (!value || typeof value !== "object" || !("props" in value)) {
+    return "";
+  }
+
+  return textContent((value as ElementLike).props.children);
+}
+
 describe("BuyRewritesDialog pack picker", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -75,6 +91,31 @@ describe("BuyRewritesDialog pack picker", () => {
       "Get Value Pack",
       "Go Pro/API",
     ]);
+  });
+
+  it("shows per-rewrite pricing and stronger popular treatment", async () => {
+    stubCreateElement();
+    const BuyRewritesDialog = await loadDialog();
+
+    const root = BuyRewritesDialog({ open: true, onClose: vi.fn() });
+    const text = textContent(root);
+
+    expect(text).toContain("≈ NZ$0.25 / rewrite");
+    expect(text).toContain("≈ NZ$0.23 / rewrite");
+    expect(text).toContain("≈ NZ$0.22 / rewrite");
+
+    const valuePackArticle = walkElements(root).find(
+      (element) =>
+        element.type === "article" &&
+        textContent(element).includes("Value Pack"),
+    );
+    expect(valuePackArticle?.props.className).toContain("ring-2");
+    expect(valuePackArticle?.props.className).toContain("shadow-sm");
+
+    const popularBadge = walkElements(root).find(
+      (element) => textContent(element) === "Most popular",
+    );
+    expect(popularBadge?.props.className).toContain("uppercase");
   });
 
   it("renders an accessible modal with a close affordance", async () => {

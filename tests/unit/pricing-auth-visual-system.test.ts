@@ -98,6 +98,9 @@ describe("pricing and auth visual system", () => {
       "Redeem a trial code, then buy rewrites as you need them.",
     );
     expect(pricingBlock).toContain("Trial code access");
+    expect(pricingBlock).toContain("≈ NZ$0.25 / rewrite");
+    expect(pricingBlock).toContain("≈ NZ$0.23 / rewrite");
+    expect(pricingBlock).toContain("≈ NZ$0.22 / rewrite");
     expect(footer).toContain(
       "Redeem trial codes · Rewrite packs from NZ$2.50 · Pro/API NZ$19.90/mo",
     );
