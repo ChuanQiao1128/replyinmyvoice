@@ -177,8 +177,8 @@ Finish Google first, then add additional social providers later.
 
 ## Stripe
 
-- Current sandbox price should verify as `unit_amount=900`, `currency=nzd`, `interval=month`.
-- User-facing copy should display `NZD $9/month`.
+- Current consumer pricing copy should match the live packs model: Trial 3 · Quick NZ$2.50/10 · Value NZ$6.90/30 · Pro/API NZ$19.90/90 monthly.
+- Stripe dashboard price checks should verify the active Quick, Value, and Pro/API price objects configured for the current environment.
 - Webhook endpoint currently points to:
   - `https://replyinmyvoice.com/api/stripe/webhook`
 - As of 2026-05-23 this Cloudflare webhook route proxies the raw webhook body and Stripe signature to Azure Functions. If the Stripe dashboard is later changed directly, use the Azure endpoint:

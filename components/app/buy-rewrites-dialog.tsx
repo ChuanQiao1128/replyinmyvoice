@@ -12,6 +12,7 @@ type WorkspacePack = {
   price: string;
   allowance: string;
   term: string;
+  unitPrice: string;
   description: string;
   cta: string;
   badge?: string;
@@ -29,6 +30,7 @@ const workspacePacks: WorkspacePack[] = [
     price: "NZ$2.50",
     allowance: "10 rewrites",
     term: "Valid 90 days",
+    unitPrice: "≈ NZ$0.25 / rewrite",
     description: "The lowest-cost way to start. No subscription, no auto-renew.",
     cta: "Get Quick Pack",
   },
@@ -38,6 +40,7 @@ const workspacePacks: WorkspacePack[] = [
     price: "NZ$6.90",
     allowance: "30 rewrites",
     term: "Valid 90 days",
+    unitPrice: "≈ NZ$0.23 / rewrite",
     description: "Best price per rewrite — most people start here.",
     cta: "Get Value Pack",
     badge: "Most popular",
@@ -49,6 +52,7 @@ const workspacePacks: WorkspacePack[] = [
     price: "NZ$19.90/mo",
     allowance: "90 rewrites/mo",
     term: "Monthly subscription",
+    unitPrice: "≈ NZ$0.22 / rewrite",
     description: "For heavy use and developers. Includes API access.",
     cta: "Go Pro/API",
   },
@@ -130,7 +134,7 @@ export function BuyRewritesDialog({
                 className={
                   "flex flex-col rounded-lg border p-4 " +
                   (pack.highlight
-                    ? "border-sage bg-mint/20"
+                    ? "border-sage bg-mint/25 shadow-sm ring-2 ring-sage/25"
                     : "border-line bg-paper/40")
                 }
                 key={pack.sku}
@@ -138,7 +142,7 @@ export function BuyRewritesDialog({
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold">{pack.name}</p>
                   {pack.badge ? (
-                    <span className="rounded-full bg-sage px-2 py-0.5 text-[11px] font-semibold text-white">
+                    <span className="rounded-full bg-sage px-2 py-0.5 text-[11px] font-semibold uppercase text-white">
                       {pack.badge}
                     </span>
                   ) : null}
@@ -146,6 +150,9 @@ export function BuyRewritesDialog({
                 <p className="mt-2 text-2xl font-semibold">{pack.price}</p>
                 <p className="mt-1 text-sm text-ink/55">
                   {pack.allowance} · {pack.term}
+                </p>
+                <p className="mt-1 font-mono text-[11px] text-ink/50">
+                  {pack.unitPrice}
                 </p>
                 <p className="mt-3 flex-1 text-sm leading-6 text-ink/65">
                   {pack.description}

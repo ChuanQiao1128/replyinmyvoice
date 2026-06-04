@@ -26,7 +26,7 @@
 
 ## 1. Context
 
-Reply In My Voice is a live Next.js app (Cloudflare Worker via OpenNext, Neon Postgres, Entra auth, Stripe, DeepSeek + Sapling) that rewrites a rough draft reply into a clearer, more natural version **while preserving the facts the user supplied**. It currently presents as a single-plan "AI rewrite" tool (Free 3 → NZ$9/mo · 40 rewrites).
+Reply In My Voice is a live Next.js app (Cloudflare Worker via OpenNext, Neon Postgres, Entra auth, Stripe, DeepSeek + Sapling) that rewrites a rough draft reply into a clearer, more natural version **while preserving the facts the user supplied**. It now presents trial-code access plus rewrite packs: Trial 3 · Quick NZ$2.50/10 · Value NZ$6.90/30 · Pro/API NZ$19.90/90 monthly.
 
 **The pivot:** reposition from a generic "AI rewrite" tool to a **reply-decision assistant — the last step before you send a message that matters.** Students are the low-cost **growth wedge**; Pro/API is the **profit pool**. Explicitly **not** an "AI humanizer / bypass-detector / undetectable" product — which also matches the CI guardrail banning `humanizer|bypass|undetect|detector|evade`.
 
@@ -83,18 +83,16 @@ Reply In My Voice is a live Next.js app (Cloudflare Worker via OpenNext, Neon Po
 
 ## 6. Pricing & Packaging
 
-### 6.1 SKUs (numbers PROPOSED — re-confirm at Stripe Price creation; Stripe live **authorized**)
+### 6.1 SKUs (live packs model)
 
 | SKU | Price | Allowance | API | Positioning |
 |---|---|---|---|---|
-| **Free** | NZ$0 | **3 rewrites, lifetime** | ✗ | Try one real message |
-| **Starter** | **NZ$9.90/mo** | **55/mo** | ✗ | Students & everyday replies |
-| **Pro/API** | **NZ$19.90/mo** | **110/mo** | ✓ | Heavy users & developer workflows |
-| **Exam Week Pass** | **NZ$4.90 / 7 days** | **25 (expire 7d)** | ✗ | Deadline weeks, applications |
-| **Top-up** | **NZ$2.50** | **+10** | Pro-priority | Overage; surfaced at exhaustion only |
+| **Trial code access** | NZ$0 | **3 rewrites** | ✗ | Try one real message |
+| **Quick Pack** | **NZ$2.50** | **10 rewrites, valid 90 days** | ✗ | Lowest-cost paid pack |
+| **Value Pack** | **NZ$6.90** | **30 rewrites, valid 90 days** | ✗ | Most popular pack |
+| **Pro/API** | **NZ$19.90/mo** | **90 rewrites/mo** | ✓ | Heavy users & developer workflows |
 
-First-month bonus (PROPOSED): Starter +5, Pro +15.
-Margin rationale (owner): Stripe NZ ≈ 2.65%+NZ$0.30 local / 3.5%+NZ$0.30 intl; GST at NZ$60k turnover; worst-case ≈ NZ$0.10/rewrite. Quotas set below 60/125 to hold ≥30% margin under future GST-inclusive pricing.
+Margin rationale (owner): Stripe NZ ≈ 2.65%+NZ$0.30 local / 3.5%+NZ$0.30 intl; GST at NZ$60k turnover; worst-case ≈ NZ$0.10/rewrite. Pack sizes keep rewrite costs bounded while preserving a low entry price.
 
 ### 6.2 Entitlements
 
@@ -351,7 +349,7 @@ Skills per phase: `data-module-review` + `state-machine-modeling` (P1 schema/lif
 5. **Shared web+API quota pool** (assumption; reconciles M8 per-key quota → rate cap).
 6. **Free = "3 lifetime"** mechanics (assumption: never-reset period key).
 7. **Top-up / referral credit expiry** (assumption: none/long; Exam Pass = 7d).
-8. **Phase 0 pricing copy:** keep "NZ$9/40" until Stripe live, or pre-announce "from NZ$9.90 / plans from…"? (Recommend: soft "from NZ$9.90" only once Stripe prices exist; otherwise leave pricing pages for Phase 1.)
+8. ✅ **DECISION — pricing copy:** use trial-code access plus Quick, Value, and Pro/API rewrite packs.
 
 ---
 

@@ -56,7 +56,7 @@ Also shipping today for developers:
 - Claude Code Skill at `agent-skills/replyinmyvoice-rewrite/`
 - REST API at `/api/v1/rewrite` (B2B subscription tiers)
 
-NZ$9/month for consumer. Free trial. No card up front.
+Trial code access plus rewrite packs from NZ$2.50.
 
 Happy to answer anything about the rewrite engine, signal calibration, or the
 "no bad result" decision. — Chuan
@@ -81,7 +81,7 @@ like you wrote them.
 After 8 months of work on a rewrite engine that won't ship a bad result,
 it's live at https://replyinmyvoice.com
 
-NZ$9/month, free trial, no card up front.
+Trial code access plus rewrite packs from NZ$2.50.
 
 Thread on what's inside ↓
 ```
@@ -181,7 +181,7 @@ Launched: Reply In My Voice (AI email rewrites that don't sound AI) — 8 months
 ```
 Solo founder here. Today I shipped Reply In My Voice — an email rewrite tool
 that runs a quality gate hard enough to refuse output when it isn't good
-enough. NZ$9/month, free trial, no card up front.
+enough. Trial code access plus rewrite packs from NZ$2.50.
 
 **The problem I kept hitting**
 
@@ -210,7 +210,7 @@ re-editing slop because you never see slop.
 - Next.js on Cloudflare Pages (OpenNext) + Cloudflare Workers
 - Neon Postgres + Prisma
 - Entra External ID for auth
-- Stripe Checkout (NZ$9/month subscription)
+- Stripe Checkout for rewrite packs and Pro/API
 - DeepSeek for generation, Sapling for naturalness signal
 
 **What I'm shipping today**
@@ -221,7 +221,7 @@ re-editing slop because you never see slop.
 
 **What I'd love feedback on**
 
-- Pricing: NZ$9/month for ~50 rewrites. Too low? Too high?
+- Pricing: trial-code access plus rewrite packs from NZ$2.50. Too low? Too high?
 - Refusal copy: when the engine declines to ship a rewrite, what should the
   user see? Currently it explains which signals failed.
 - B2B tier shape: I'm planning Starter (1k req/mo) / Pro (10k) / Growth (100k)
@@ -254,7 +254,7 @@ the feature.
 
 Today's launch covers:
 
-→ Consumer product at replyinmyvoice.com (NZ$9/month, free trial)
+→ Consumer product at replyinmyvoice.com (trial-code access plus rewrite packs)
 → Developer platform: MCP server + Claude Code Skill + REST API at
   replyinmyvoice.com/developers
 

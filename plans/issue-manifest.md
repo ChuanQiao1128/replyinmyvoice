@@ -199,7 +199,7 @@ body:
 ### M4-005
 title: M4-005 Pricing page polish
 body:
-> `app/pricing/page.tsx`: NZ$9/month, 40 rewrites, "Cancel anytime", link to ToS + Privacy. No annual plan. No Sapling Pro feature copy.
+> `app/pricing/page.tsx`: Trial 3 · Quick NZ$2.50/10 · Value NZ$6.90/30 · Pro/API NZ$19.90/90 monthly, link to ToS + Privacy. No annual plan. No Sapling Pro feature copy.
 
 ### M4-006
 title: M4-006 Footer with TimeAwake Ltd + support email
@@ -212,9 +212,9 @@ body:
 > `app/privacy/page.tsx`: explain stored content (drafts, rewrites, Naturalness signals, rewrite metadata) for quality improvement; NOT exposed publicly or used in marketing. Plain-English MVP copy. Date the policy.
 
 ### M4-008
-title: M4-008 Terms page for live NZ$9 charges
+title: M4-008 Terms page for live rewrite-pack and Pro/API purchases
 body:
-> `app/terms/page.tsx`: subscription terms, refund policy, dispute process, governing law (NZ), TimeAwake Ltd as operator. Mention quota (40/month), no refund for partial month. Date it.
+> `app/terms/page.tsx`: purchase/subscription terms, refund policy, dispute process, governing law (NZ), TimeAwake Ltd as operator. Mention rewrite-pack expiry and Pro/API monthly reset behavior. Date it.
 
 ### M4-009
 title: M4-009 Add OG image + per-route metadata
@@ -316,7 +316,7 @@ body:
 ### M7-001
 title: M7-001 Real-account live test (with refund)
 body:
-> User-led. Register fresh account → exhaust 3 free rewrites → hit paywall → checkout with personal card → real NZ$9 charge → confirm `paid` quota = 40 → do 1 successful rewrite → refund the test charge from Stripe dashboard. Document timestamps + transaction IDs in `docs/launch-day-report.md`. Codex assists with verification scripts only.
+> User-led. Register fresh account → redeem trial code → exhaust trial rewrites → hit paywall → checkout with personal card for the current lowest-cost paid option → confirm matching rewrite balance → do 1 successful rewrite → refund the test charge from Stripe dashboard. Document timestamps + transaction IDs in `docs/launch-day-report.md`. Codex assists with verification scripts only.
 
 ### M7-002
 title: M7-002 PostHog analytics minimal events

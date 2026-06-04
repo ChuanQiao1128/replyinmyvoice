@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { BuyButton } from "../../components/landing/buy-button";
+import { PricingComparison } from "../../components/landing/pricing-comparison";
+import { PricingFaq } from "../../components/landing/pricing-faq";
+import { PricingTrust } from "../../components/landing/pricing-trust";
 import { SiteHeader } from "../../components/site-header";
 
 export const metadata: Metadata = {
@@ -114,24 +117,18 @@ const focusPack: Pack = {
   cta: "Get Focus Pack",
 };
 
-const includes = [
-  {
-    k: "Tone check",
-    p: "A before/after reference signal on every rewrite — a guide, never a guarantee.",
-  },
-  {
-    k: "Facts preserved",
-    p: "Dates, names, and amounts you mark stay intact through the rewrite.",
-  },
-  {
-    k: "Warm · Direct",
-    p: "Two simple tone presets that shape the reply around your real context.",
-  },
-  {
-    k: "Private history",
-    p: "Recent rewrites stay in your browser only — not saved to our database.",
-  },
-];
+const unitPriceBySku = {
+  quick_pack: "≈ NZ$0.25 / rewrite",
+  value_pack: "≈ NZ$0.23 / rewrite",
+  pro_api: "≈ NZ$0.22 / rewrite",
+  focus_pack: "≈ NZ$0.25 / rewrite",
+} satisfies Record<PaidSku, string>;
+
+function packGroupLabel(pack: Pack) {
+  return pack.term === "Monthly subscription"
+    ? "Monthly subscription"
+    : "One-time packs";
+}
 
 export default function PricingPage() {
   const visiblePacks = isFocusPackEnabled() ? [...packs, focusPack] : packs;
@@ -140,7 +137,7 @@ export default function PricingPage() {
     <main className="rimv">
       <SiteHeader />
       <section className="page">
-        <div className="wrap">
+        <div className="wrap pricing-page">
           <div className="page-head">
             <div className="eyebrow">
               <span className="dot" />
@@ -154,7 +151,7 @@ export default function PricingPage() {
             </p>
           </div>
 
-          <div className="pricing-wrap" style={{ marginTop: 44 }}>
+          <div className="pricing-wrap">
             <div className="plan plan-free">
               <div className="eyebrow">
                 <span className="dot" />
@@ -190,33 +187,56 @@ export default function PricingPage() {
               <h3>Pay only for what you need.</h3>
 
               <div className="pp-packs">
-                {visiblePacks.map((pack) => (
-                  <article
-                    key={pack.sku}
-                    className={"pp-pack" + (pack.highlight ? " pp-pop" : "")}
-                  >
-                    <div className="pp-pack-head">
-                      <div>
-                        <div className="pp-pack-name">
-                          {pack.name}
-                          {pack.badge ? (
-                            <span className="pack-tag">{pack.badge}</span>
-                          ) : null}
+                {visiblePacks.map((pack, index) => {
+                  const groupLabel = packGroupLabel(pack);
+                  const previousPack = visiblePacks[index - 1];
+                  const startsGroup =
+                    index === 0 || packGroupLabel(previousPack) !== groupLabel;
+
+                  return (
+                    <div
+                      className={
+                        "pp-pack-slot" +
+                        (startsGroup && index > 0 ? " pp-pack-slot-break" : "")
+                      }
+                      key={pack.sku}
+                    >
+                      {startsGroup ? (
+                        <div className="pp-pack-group">{groupLabel}</div>
+                      ) : null}
+
+                      <article
+                        className={
+                          "pp-pack" + (pack.highlight ? " pp-pop" : "")
+                        }
+                      >
+                        <div className="pp-pack-head">
+                          <div>
+                            <div className="pp-pack-name">
+                              {pack.name}
+                              {pack.badge ? (
+                                <span className="pack-tag">{pack.badge}</span>
+                              ) : null}
+                            </div>
+                            <div className="pp-pack-sub">
+                              {pack.allowance} · {pack.term}
+                            </div>
+                            <div className="pp-unit-price">
+                              {unitPriceBySku[pack.sku]}
+                            </div>
+                          </div>
+                          <div className="pp-pack-price">{pack.price}</div>
                         </div>
-                        <div className="pp-pack-sub">
-                          {pack.allowance} · {pack.term}
-                        </div>
-                      </div>
-                      <div className="pp-pack-price">{pack.price}</div>
+                        <p className="pp-pack-desc">{pack.description}</p>
+                        <PlanAction
+                          configured={isPriceConfigured(pack.sku)}
+                          sku={pack.sku}
+                          label={pack.cta}
+                        />
+                      </article>
                     </div>
-                    <p className="pp-pack-desc">{pack.description}</p>
-                    <PlanAction
-                      configured={isPriceConfigured(pack.sku)}
-                      sku={pack.sku}
-                      label={pack.cta}
-                    />
-                  </article>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="plan-meta">
@@ -227,15 +247,9 @@ export default function PricingPage() {
             </div>
           </div>
 
-          <div className="pp-includes-head">Every plan includes</div>
-          <div className="pp-includes">
-            {includes.map((item) => (
-              <div className="pp-include" key={item.k}>
-                <div className="k">{item.k}</div>
-                <p>{item.p}</p>
-              </div>
-            ))}
-          </div>
+          <PricingComparison />
+          <PricingTrust />
+          <PricingFaq />
         </div>
       </section>
     </main>

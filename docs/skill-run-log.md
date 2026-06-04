@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-04 - ui-browser-testing - PARITY-01 pricing surface parity
+
+- Agent: Codex
+- Trigger: GitHub issue #495 changed browser-visible pricing UI in the landing pricing block and workspace buy-rewrites dialog.
+- Action: Opened and followed the UI/browser testing workflow; added failing unit coverage for unit-price helper text and stronger Value Pack treatment, implemented the scoped UI parity changes, and attempted local browser verification.
+- Output artifacts: `components/landing/pricing-v2.tsx`; `components/app/buy-rewrites-dialog.tsx`; `app/globals.css`; `tests/unit/pricing-auth-visual-system.test.ts`; `tests/unit/buy-rewrites-dialog.test.ts`; pricing docs cleanup files.
+- Verification evidence: Focused red runs failed on missing unit-price text; focused green runs passed; `npm run typecheck` passed; `npm run test` passed 379/379; source banned-term grep over `app components public lib` returned no matches; fixed-string grep confirmed all three unit-price helper strings in both scoped pricing surfaces.
+- Limitations: Playwright Chromium could not launch in this macOS sandbox because the browser process could not register its Mach service, and the local Next dev server showed watcher `EMFILE` warnings with 404 responses during attempted route checks. No screenshot evidence, deploy, push, PR, live payment action, or secret inspection was performed.
+
 ### 2026-06-04 - ui-browser-testing - PROMO-ADMIN-A quick-win admin UI
 
 - Agent: Codex
@@ -3119,3 +3128,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/app/rewrite-workspace.tsx`; `components/app/subscription-status.tsx`; `components/ui/button.tsx`; `components/ui/textarea.tsx`; `tests/unit/workspace-copy.test.ts`; `tests/unit/workspace-buy-button-checkout-flow.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused red `npm run test -- tests/unit/workspace-copy.test.ts` failed on the old AI Signal empty card, text-link quota actions, and old `max-w-5xl` workspace body. Focused green runs passed for workspace copy, checkout-flow, and visual-system unit coverage. Full `npm run typecheck`, `npm run test`, `npm run build`, and `npm run cf:build` passed. Restricted-copy scan over `app components public lib` returned no matches. `git diff --check` passed.
 - Limitations: Focused promo Playwright specs could not execute browser assertions because Chromium launch is blocked in this macOS sandbox before test code runs. `npm ci` required a writable cache under `/private/tmp`. The shell uses Node v24.9.0 while `package.json` declares `>=22 <23`; npm emitted `EBADENGINE` during install, but typecheck, unit tests, and builds passed. Local `git add`/commit was blocked because this worktree's Git metadata is outside the writable sandbox.
+
+### 2026-06-04 - ui-browser-testing - PRICE-01 pricing page redesign foundation
+
+- Agent: Codex
+- Trigger: PRICE-01 changes browser-visible `/pricing` hero hierarchy, rewrite pack cards, downstream pricing sections, responsive CSS, and page rendering.
+- Action: Opened and followed the project skill; wrote a failing unit test for the pricing foundation slots, unit-price helper lines, group labels, component marker comments, and CSS region before implementing the redesigned pricing page and three downstream component stubs.
+- Output artifacts: `app/pricing/page.tsx`; `app/globals.css`; `components/landing/pricing-comparison.tsx`; `components/landing/pricing-trust.tsx`; `components/landing/pricing-faq.tsx`; `tests/unit/pricing-redesign-page.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run `npm run test -- tests/unit/pricing-redesign-page.test.ts` failed on missing component imports, helper lines, component files, and CSS markers. Focused green run passed 4/4. Final `npm run typecheck` passed. Final `npm run test` passed 378/378. Required restricted-copy scan over `app components public lib` returned no matches. `npm run lint` exited 0 with one unrelated existing warning in `components/account/account-panel.tsx`. `git diff --check` passed. Local dev `curl -fsS http://127.0.0.1:3101/pricing` returned 200 HTML containing the new group labels, unit-price helper lines, and the three downstream sections.
+- Limitations: Chromium Playwright screenshots could not execute because browser launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied; Firefox/WebKit were not installed. The Next dev server emitted repeated `EMFILE` watcher warnings while still serving `/pricing` with HTTP 200. `npm ci` required a writable cache under `/private/tmp`. The shell uses Node v24.9.0 while `package.json` declares `>=22 <23`; npm emitted `EBADENGINE`, but typecheck, tests, and lint completed.
+
+### 2026-06-04 - ui-browser-testing - NAV-01 shared mobile navigation
+
+- Agent: Codex
+- Trigger: NAV-01 changes the browser-visible shared header navigation, narrow-screen link visibility, and mobile menu behavior.
+- Action: Opened and followed the project skill; wrote a failing source/render test for the missing menu affordance and broad mobile link hide before adding a CSS-only `<details>` disclosure, preserving the server-resolved auth branches, and limiting CSS changes to the nav region.
+- Output artifacts: `components/site-header.tsx`; `app/globals.css`; `tests/unit/site-header-mobile-nav.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run `npm run test -- tests/unit/site-header-mobile-nav.test.ts` failed on missing `mobile-nav-menu` header/CSS tokens. Focused green run passed 3/3. Existing header focused run passed 6/6 across `tests/unit/site-header.test.ts` and `tests/unit/site-header-mobile-nav.test.ts`. Final `npm run typecheck` passed. Final `npm run test` passed 381/381. Required restricted substring scan over `app components public lib` returned no matches.
+- Limitations: Local browser assertions could not execute because Playwright Chromium launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied; full Chromium also crashed before page load, and a fresh Firefox install under `/private/tmp` exited before launch. The Next dev server emitted repeated `EMFILE` watcher warnings while reaching ready state. `npm ci` initially hit a root-owned shared npm cache; rerunning with `--cache /private/tmp/npm-cache-issue-494` succeeded. Local `git add`/commit was blocked because this worktree's Git metadata is outside the writable sandbox. The shell uses Node v24.9.0 while `package.json` declares `>=22 <23`; npm emitted `EBADENGINE`, but typecheck and unit tests completed.

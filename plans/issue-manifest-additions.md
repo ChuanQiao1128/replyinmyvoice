@@ -109,7 +109,7 @@ body:
 ### M8-009
 title: M8-009 B2B subscription state machine
 body:
-> Extend `lib/subscription.ts` to track plan tier separately for consumer ($9/mo NZ$9-consumer) vs API tiers. User can have both. `lib/quota.ts` checks the right tier for the request context (session = consumer; API key = B2B tier on the key).
+> Extend `lib/subscription.ts` to track consumer entitlement source separately from API tiers. User can have both. `lib/quota.ts` checks the right tier for the request context (session = consumer; API key = B2B tier on the key).
 
 ### M8-010
 title: M8-010 B2B Stripe webhook handlers (shared endpoint)
