@@ -119,7 +119,9 @@ async function clickButton(label: string, paid = false) {
   expect(button, `${label} button`).toBeDefined();
   expect(button?.props.type).toBe("button");
 
-  const onClick = button?.props.onClick as (() => void | Promise<void>) | undefined;
+  const onClick = button?.props.onClick as
+    | (() => void | Promise<void>)
+    | undefined;
   expect(onClick).toBeTypeOf("function");
   await onClick?.();
 }
@@ -128,7 +130,15 @@ function checkoutFetchCall(fetchMock: ReturnType<typeof vi.fn>) {
   return fetchMock.mock.calls.find((call) => call[0] === "/api/stripe/checkout");
 }
 
-describe("workspace Buy rewrites checkout flow", () => {
+function findDialog(root: ElementLike) {
+  return walkElements(root).find(
+    (element) =>
+      typeof element.type === "function" &&
+      element.type.name === "BuyRewritesDialog",
+  );
+}
+
+describe("workspace Buy rewrites pack picker", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -136,65 +146,32 @@ describe("workspace Buy rewrites checkout flow", () => {
     stateUpdates.error = [];
   });
 
-  it("sends the value pack sku to the checkout proxy and redirects to checkout", async () => {
+  it("opens the pack picker instead of starting one fixed checkout", async () => {
     const assign = vi.fn();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json({ url: "https://checkout.stripe.test/session" }),
-    );
+    const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("window", { location: { assign } });
 
     await clickButton("Buy rewrites");
 
-    expect(azureApiMock.azureApiFetch).not.toHaveBeenCalled();
-    expect(checkoutFetchCall(fetchMock)).toEqual([
-      "/api/stripe/checkout",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ sku: "value_pack" }),
-      },
-    ]);
-    expect(assign).toHaveBeenCalledWith("https://checkout.stripe.test/session");
-    expect(stateUpdates.error).toEqual([""]);
-  });
-
-  it("sends signed-out users to sign in with app as the return route", async () => {
-    const assign = vi.fn();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(null, { status: 401 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("window", { location: { assign } });
-
-    await clickButton("Buy rewrites");
-
-    expect(checkoutFetchCall(fetchMock)).toBeDefined();
-    expect(assign).toHaveBeenCalledWith("/sign-in?redirectTo=%2Fapp");
-    expect(stateUpdates.error).toEqual([""]);
-  });
-
-  it("shows the checkout error inline when the proxy cannot start checkout", async () => {
-    const assign = vi.fn();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json(
-        { error: "Checkout is unavailable right now." },
-        { status: 503 },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("window", { location: { assign } });
-
-    await clickButton("Buy rewrites");
-
+    // Free users no longer jump straight to the value-pack checkout; the picker
+    // opens client-side so they can choose a pack first.
+    expect(checkoutFetchCall(fetchMock)).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(assign).not.toHaveBeenCalled();
-    expect(stateUpdates.error).toEqual([
-      "",
-      "Checkout is unavailable right now.",
-    ]);
-    expect(stateUpdates.loading).toEqual([true, false]);
+    expect(stateUpdates.loading).toContain(true);
+  });
+
+  it("renders the pack picker dialog wired to a close handler", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    vi.stubGlobal("window", { location: { assign: vi.fn() } });
+
+    const root = await renderSubscriptionStatus(false);
+    const dialog = findDialog(root);
+
+    expect(dialog, "BuyRewritesDialog").toBeDefined();
+    expect(dialog?.props.open).toBe(false);
+    expect(dialog?.props.onClose).toBeTypeOf("function");
   });
 
   it("keeps Manage billing wired to the existing portal path", async () => {
@@ -205,8 +182,11 @@ describe("workspace Buy rewrites checkout flow", () => {
 
     await clickButton("Manage billing", true);
 
-    expect(azureApiMock.azureApiFetch).toHaveBeenCalledWith("/api/stripe/portal", {
-      method: "POST",
-    });
+    expect(azureApiMock.azureApiFetch).toHaveBeenCalledWith(
+      "/api/stripe/portal",
+      {
+        method: "POST",
+      },
+    );
   });
 });
