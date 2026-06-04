@@ -495,51 +495,6 @@ function firstStringClaimValue(value: unknown) {
   return null;
 }
 
-function emailDomainDescriptor(value: string) {
-  const atIndex = value.lastIndexOf("@");
-  return atIndex >= 0 && atIndex < value.length - 1
-    ? value.slice(atIndex).toLowerCase()
-    : null;
-}
-
-function claimEmailDescriptor(value: unknown) {
-  if (Array.isArray(value)) {
-    return "[array]";
-  }
-
-  const resolved = nonEmptyString(value);
-  if (!resolved) {
-    return "absent";
-  }
-
-  return emailDomainDescriptor(resolved) ?? "absent";
-}
-
-function resolvedEmailDescriptor(claims: Record<string, unknown>) {
-  const resolved = emailClaim(claims);
-  if (resolved) {
-    return emailDomainDescriptor(resolved);
-  }
-
-  const preferredUsername = stringClaim(claims, "preferred_username");
-  return preferredUsername && isSyntheticEntraUpn(preferredUsername, claims) ? "synthetic" : null;
-}
-
-function logAuthCallbackClaims(claims: Record<string, unknown>) {
-  try {
-    console.info("auth.callback.claims", {
-      keys: Object.keys(claims).sort(),
-      email: claimEmailDescriptor(claims.email),
-      emails: claimEmailDescriptor(claims.emails),
-      preferred_username: claimEmailDescriptor(claims.preferred_username),
-      resolvedEmail: resolvedEmailDescriptor(claims),
-      verified_primary_email: claimEmailDescriptor(claims.verified_primary_email),
-    });
-  } catch {
-    return;
-  }
-}
-
 export function isSyntheticEntraUpn(value: unknown, claims: Record<string, unknown>) {
   const candidate = nonEmptyString(value);
   if (!candidate) {
@@ -760,13 +715,9 @@ export async function createSessionFromTokens(tokens: {
       stringClaim(identityJwt.claims, "iss") ?? "",
     )
   ) {
-    logAuthCallbackClaims(identityJwt.claims);
     baseSession = validateIdTokenClaims(identityJwt.claims);
   } else if (!configuredAuthority && process.env.NODE_ENV === "test") {
     const claims = parseJwtPayload(tokens.idToken);
-    if (claims) {
-      logAuthCallbackClaims(claims);
-    }
     baseSession = claims ? validateIdTokenClaims(claims) : null;
   }
   if (!baseSession) {

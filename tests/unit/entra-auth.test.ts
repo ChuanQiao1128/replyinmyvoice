@@ -414,51 +414,6 @@ describe("Entra auth helpers", () => {
     expect(mockCookieStore.set.mock.calls.some(([name]) => name === sessionCookieName))
       .toBe(true);
   });
-
-  it("logs callback claim descriptors without address or identifier values", async () => {
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
-
-    await createSessionFromTokens({
-      idToken: signedToken({
-        email: "casey@example.com",
-        emails: ["array@example.com"],
-        preferred_username: "entra-user-1@replyinmyvoicecustomers.onmicrosoft.com",
-        verified_primary_email: "verified@gmail.com",
-      }),
-      accessToken: unsignedToken(),
-    });
-
-    const logCall = infoSpy.mock.calls.find(([label]) => label === "auth.callback.claims");
-    expect(logCall).toBeTruthy();
-    const payload = logCall?.[1] as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      email: "@example.com",
-      emails: "[array]",
-      preferred_username: "@replyinmyvoicecustomers.onmicrosoft.com",
-      resolvedEmail: "@example.com",
-      verified_primary_email: "@gmail.com",
-    });
-    expect(payload.keys).toEqual([
-      "aud",
-      "email",
-      "emails",
-      "exp",
-      "iss",
-      "name",
-      "oid",
-      "preferred_username",
-      "scp",
-      "sub",
-      "verified_primary_email",
-    ]);
-
-    const serializedPayload = JSON.stringify(payload);
-    expect(serializedPayload).not.toContain("casey@example.com");
-    expect(serializedPayload).not.toContain("array@example.com");
-    expect(serializedPayload).not.toContain("verified@gmail.com");
-    expect(serializedPayload).not.toContain("entra-user-1");
-    expect(serializedPayload).not.toContain("entra-subject-1");
-  });
 });
 
 describe("Entra bearer token validation", () => {
