@@ -71,6 +71,13 @@ function walkElements(value: unknown): ElementLike[] {
   return [element, ...walkElements(element.props.children)];
 }
 
+function isButtonElement(element: ElementLike) {
+  return (
+    element.type === "button" ||
+    (typeof element.type === "function" && element.type.name === "Button")
+  );
+}
+
 async function renderSubscriptionStatus(paid = false) {
   vi.stubGlobal("React", {
     createElement(
@@ -106,7 +113,7 @@ async function renderSubscriptionStatus(paid = false) {
 async function clickButton(label: string, paid = false) {
   const root = await renderSubscriptionStatus(paid);
   const button = walkElements(root).find(
-    (element) => element.type === "button" && textContent(element).includes(label),
+    (element) => isButtonElement(element) && textContent(element).includes(label),
   );
 
   expect(button, `${label} button`).toBeDefined();
