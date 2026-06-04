@@ -15,11 +15,21 @@ public static class ApiKeyAuthResolver
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        var auth = await ResolveAsync(request, db, now, cancellationToken);
+        return auth.UserId;
+    }
+
+    public static async Task<ApiKeyAuthResult> ResolveAsync(
+        HttpRequest request,
+        AppDbContext db,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
         var token = ResolveBearerToken(request);
         if (string.IsNullOrWhiteSpace(token) ||
             !token.StartsWith(KeyPrefix, StringComparison.Ordinal))
         {
-            return null;
+            return new ApiKeyAuthResult(null, null, 0);
         }
 
         var keyHash = ApiKeyService.ComputeHash(token);
@@ -30,7 +40,7 @@ public static class ApiKeyAuthResolver
             apiKey.RevokedAt is not null ||
             (apiKey.ExpiresAt is not null && apiKey.ExpiresAt <= now))
         {
-            return null;
+            return new ApiKeyAuthResult(null, null, 0);
         }
 
         apiKey.LastUsedAt = now;
@@ -41,9 +51,10 @@ public static class ApiKeyAuthResolver
         catch (DbUpdateException)
         {
             // This timestamp is best-effort and must not block an otherwise valid key.
+            db.Entry(apiKey).State = EntityState.Unchanged;
         }
 
-        return apiKey.UserId;
+        return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute);
     }
 
     private static string? ResolveBearerToken(HttpRequest request)
@@ -54,3 +65,5 @@ public static class ApiKeyAuthResolver
             : null;
     }
 }
+
+public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute);

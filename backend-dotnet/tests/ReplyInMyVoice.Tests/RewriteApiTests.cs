@@ -80,6 +80,54 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call()
+    {
+        const int rateLimitPerMinute = 3;
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_rate_limit",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            rateLimitPerMinute);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        for (var index = 0; index < rateLimitPerMinute; index += 1)
+        {
+            var accepted = await PostV1RewriteAsync(
+                client,
+                token,
+                $"v1-rate-limit-{index}",
+                ValidV1Draft());
+
+            accepted.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        }
+
+        var rejected = await PostV1RewriteAsync(
+            client,
+            token,
+            "v1-rate-limit-rejected",
+            ValidV1Draft());
+
+        rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        await AssertErrorCodeAsync(rejected, "rate_limited");
+
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(rateLimitPerMinute);
+        (await db.UsageReservations.CountAsync()).Should().Be(rateLimitPerMinute);
+        (await db.OutboxMessages.CountAsync()).Should().Be(rateLimitPerMinute);
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UserId.Should().Be(user.Id);
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(rateLimitPerMinute);
+        var usageStatusCodes = await db.ApiKeyUsages
+            .Select(x => x.StatusCode)
+            .ToListAsync();
+        usageStatusCodes.Should().HaveCount(rateLimitPerMinute + 1);
+        usageStatusCodes.Count(x => x == StatusCodes.Status202Accepted).Should().Be(rateLimitPerMinute);
+        usageStatusCodes.Count(x => x == StatusCodes.Status429TooManyRequests).Should().Be(1);
+    }
+
+    [Fact]
     public async Task V1_rewrite_submit_rejects_over_word_or_character_cap_without_reservation()
     {
         var (_, token) = await SeedApiKeyUserAsync(
@@ -226,6 +274,28 @@ public sealed class RewriteApiTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         await AssertErrorCodeAsync(response, "not_found");
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_writes_api_key_usage_row()
+    {
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_usage",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var attempt = await SeedV1AttemptAsync(user.Id, RewriteAttemptStatus.Pending);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await GetV1RewriteResultAsync(client, token, attempt.Id);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = CreateContext();
+        var usage = await db.ApiKeyUsages.SingleAsync();
+        usage.Endpoint.Should().Be("v1/rewrite/{id}");
+        usage.StatusCode.Should().Be(StatusCodes.Status200OK);
+        usage.RequestId.Should().Be(attempt.Id.ToString());
+        usage.LatencyMs.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
@@ -661,7 +731,8 @@ public sealed class RewriteApiTests : IAsyncLifetime
     private async Task<(AppUser User, string Token)> SeedApiKeyUserAsync(
         string externalAuthUserId,
         SubscriptionStatus subscriptionStatus,
-        DateTimeOffset? currentPeriodEnd)
+        DateTimeOffset? currentPeriodEnd,
+        int rateLimitPerMinute = 60)
     {
         Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestApiKeyPepper);
         var now = DateTimeOffset.UtcNow;
@@ -685,6 +756,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
             Name = "V1 integration key",
             KeyHash = ApiKeyService.ComputeHash(token),
             Last4 = token[^4..],
+            RateLimitPerMinute = rateLimitPerMinute,
             CreatedAt = now,
             UpdatedAt = now,
         });
