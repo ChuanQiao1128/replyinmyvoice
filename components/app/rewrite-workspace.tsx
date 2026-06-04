@@ -16,6 +16,12 @@ import Link from "next/link";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 
 import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
+import {
+  clearLegacyRewriteHistory,
+  clearLocalRewriteHistory,
+  readLocalRewriteHistory,
+  writeLocalRewriteHistory,
+} from "../../lib/rewrite-history";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import {
   getRewriteAttemptId,
@@ -30,7 +36,6 @@ import { Button } from "../ui/button";
 import { RedeemCodeCard } from "./redeem-code-card";
 import { SubscriptionStatus } from "./subscription-status";
 
-const HISTORY_KEY = "rimv.rewrite.history.v1";
 const rewriteAttemptPollLimit = 30;
 const rewriteAttemptPollDelayMs = 1500;
 
@@ -59,6 +64,7 @@ type QuotaCreditSource = {
 };
 
 type Props = {
+  rewriteHistoryUserKey: string;
   usageLabel: string;
   subscriptionStatus: string;
   paid: boolean;
@@ -300,6 +306,7 @@ export function RewriteWorkspace({
   quota,
   planRemaining,
   promoState,
+  rewriteHistoryUserKey,
   remaining,
   usageExhausted,
 }: Props) {
@@ -328,12 +335,13 @@ export function RewriteWorkspace({
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(HISTORY_KEY);
+      clearLegacyRewriteHistory();
+      const saved = readLocalRewriteHistory(rewriteHistoryUserKey);
       setHistory(saved ? normalizeHistoryItems(JSON.parse(saved)) : []);
     } catch {
       setHistory([]);
     }
-  }, []);
+  }, [rewriteHistoryUserKey]);
 
   useEffect(() => {
     setFreeRewritesRemaining(visiblePlanRemaining);
@@ -372,7 +380,7 @@ export function RewriteWorkspace({
     };
     const next = [nextItem, ...history].slice(0, 5);
     setHistory(next);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+    writeLocalRewriteHistory(rewriteHistoryUserKey, JSON.stringify(next));
   }
 
   async function submit(event?: FormEvent) {
@@ -472,7 +480,7 @@ export function RewriteWorkspace({
 
   function clearHistory() {
     setHistory([]);
-    localStorage.removeItem(HISTORY_KEY);
+    clearLocalRewriteHistory(rewriteHistoryUserKey);
   }
 
   function restoreHistory(item: HistoryItem) {
