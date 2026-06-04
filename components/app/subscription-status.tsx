@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { azureApiFetch } from "../../lib/client-azure-api";
 import { Button } from "../ui/button";
+import { BuyRewritesDialog } from "./buy-rewrites-dialog";
 
 type Props = {
   status: string;
@@ -13,8 +14,6 @@ type Props = {
   canRedeem: boolean;
   onRedeemClick: () => void;
 };
-
-const workspaceCheckoutSku = "value_pack";
 
 export async function openBillingPortal() {
   const response = await azureApiFetch("/api/stripe/portal", { method: "POST" });
@@ -27,32 +26,6 @@ export async function openBillingPortal() {
   window.location.href = payload.url;
 }
 
-async function openCheckout() {
-  const response = await fetch("/api/stripe/checkout", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ sku: workspaceCheckoutSku }),
-  });
-
-  if (response.status === 401) {
-    window.location.assign(`/sign-in?redirectTo=${encodeURIComponent("/app")}`);
-    return;
-  }
-
-  const payload = (await response.json().catch(() => ({}))) as {
-    url?: string;
-    error?: string;
-  };
-
-  if (!response.ok || !payload.url) {
-    throw new Error(payload.error ?? "Could not start checkout.");
-  }
-
-  window.location.assign(payload.url);
-}
-
 export function SubscriptionStatus({
   status,
   usageLabel,
@@ -62,22 +35,19 @@ export function SubscriptionStatus({
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [buyOpen, setBuyOpen] = useState(false);
 
-  async function handleBillingAction() {
+  async function handleManageBilling() {
     setLoading(true);
     setError("");
 
     try {
-      if (paid) {
-        await openBillingPortal();
-      } else {
-        await openCheckout();
-      }
+      await openBillingPortal();
     } catch (billingError) {
       setError(
         billingError instanceof Error
           ? billingError.message
-          : "Could not start checkout.",
+          : "Could not open billing.",
       );
       setLoading(false);
     }
@@ -113,8 +83,8 @@ export function SubscriptionStatus({
         ) : null}
         <Button
           className="w-full md:w-auto"
-          disabled={loading}
-          onClick={handleBillingAction}
+          disabled={paid && loading}
+          onClick={paid ? handleManageBilling : () => setBuyOpen(true)}
           type="button"
           variant={paid ? "secondary" : "primary"}
         >
@@ -131,6 +101,7 @@ export function SubscriptionStatus({
           {error}
         </p>
       ) : null}
+      <BuyRewritesDialog open={buyOpen} onClose={() => setBuyOpen(false)} />
     </section>
   );
 }
