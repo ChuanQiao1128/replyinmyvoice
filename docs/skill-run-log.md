@@ -45,6 +45,51 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-04 - system-spec-synthesis - API-03 v1 rewrite submit contract
+
+- Agent: Codex
+- Trigger: GitHub issue #505 adds the key-authed `POST /api/v1/rewrite` API contract and async submit behavior.
+- Action: Opened and followed the system-spec workflow; read `AGENTS.md`, `CLAUDE.md`, the issue brief, the v1 API spec, and existing Entra submit code before implementing the scoped contract.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; API test-host mirror in `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; focused integration tests in `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused API-03 tests passed 4/4; full `dotnet test` under `backend-dotnet` passed 519/519.
+- Limitations: This issue only implements submit. The result endpoint, rate limiting, Next.js proxy route, key management UI, and deployment were not changed.
+
+### 2026-06-04 - state-machine-modeling - API-03 rewrite reservation lifecycle
+
+- Agent: Codex
+- Trigger: API-03 creates rewrite attempts, usage reservations, and outbox jobs through an async lifecycle.
+- Action: Opened and followed the state workflow; kept submit in `Pending` reservation state with existing worker-owned finalization/release transitions and mapped only submit errors for rejected requests.
+- Output artifacts: `V1RewriteHttpFunctions.SubmitRewrite`; `/api/v1/rewrite` API test-host route; assertions for `UsageReservationStatus.Pending`, unchanged `UsagePeriod.UsedCount`, and no reservation/outbox on rejects.
+- Verification evidence: Focused API-03 tests passed 4/4; full `dotnet test` under `backend-dotnet` passed 519/519.
+- Limitations: No new persisted states or transition function were added; the existing `RewriteRequestService` and `QuotaService` lifecycle remains the source of truth.
+
+### 2026-06-04 - data-module-review - API-03 quota and API-key persistence
+
+- Agent: Codex
+- Trigger: API-03 reads `AppUser`/`ApiKey`, creates usage reservations through existing services, and writes `ApiKeyUsage` rows.
+- Action: Opened and followed the data-module workflow; reviewed `AppDbContext`, API key entities, usage period/reservation entities, `ApiKeyService`, `ApiKeyAuthResolver`, `RewriteRequestService`, and `QuotaService` invariants before code changes.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Tests assert accepted requests create one pending reservation and one usage log while rejected valid-key requests create no attempt/reservation/outbox; full `dotnet test` passed 519/519.
+- Limitations: No schema or migration changes were needed. Missing or unknown keys cannot write an `ApiKeyUsage` row because there is no valid key foreign key to attach.
+
+### 2026-06-04 - resilience-test-generation - API-03 reject-before-reserve behavior
+
+- Agent: Codex
+- Trigger: API-03 must handle repeated idempotent submit paths, invalid auth, malformed or oversized input, and quota exhaustion without incorrect usage side effects.
+- Action: Opened and followed the resilience workflow; designed deterministic HTTP/SQLite tests around auth failure, over-limit input, quota exhaustion, and successful async reservation.
+- Output artifacts: Four focused xUnit integration tests in `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Red run failed with `404` before implementation; green run passed 4/4 after adding the route and handler; full `dotnet test` passed 519/519.
+- Limitations: No live cloud, payment, AI, email, or production database calls were made. Concurrency stress remains covered by existing quota service tests rather than new API-03 cases.
+
+### 2026-06-04 - dotnet-backend-testing - API-03 v1 rewrite submit integration tests
+
+- Agent: Codex
+- Trigger: API-03 requires C#/.NET integration tests for the new key-authed submit endpoint and persisted reservation state.
+- Action: Opened and followed the .NET backend testing workflow; wrote failing xUnit/WebApplicationFactory tests first, implemented the Functions endpoint plus API test-host mirror, then ran focused and full backend commands.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Http/FunctionHttpResults.cs`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln --filter V1_rewrite_submit` passed 4/4; `dotnet test` under `backend-dotnet` passed 519/519; whitespace check and scoped prohibited-string guards returned clean.
+- Limitations: NuGet vulnerability metadata warnings appeared because the feed was unreachable, but restore/build/test completed from available packages. No push, PR, deploy, live payment action, or secret inspection was performed.
+
 ### 2026-06-04 - ui-browser-testing - PARITY-01 pricing surface parity
 
 - Agent: Codex
