@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -161,6 +162,145 @@ public sealed class V1RewriteHttpFunctions(
             return result;
         }
     }
+
+    [Function("V1GetRewriteResult")]
+    public async Task<IActionResult> GetRewriteResult(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "v1/rewrite/{id:guid}")]
+        HttpRequest request,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var userId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+            request,
+            db,
+            now,
+            cancellationToken);
+
+        if (userId is null)
+        {
+            return FunctionHttpResults.Problem(
+                "A valid API key is required.",
+                "A valid API key is required.",
+                StatusCodes.Status401Unauthorized,
+                "invalid_key");
+        }
+
+        var attempt = await db.RewriteAttempts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == id && x.UserId == userId.Value,
+                cancellationToken);
+
+        if (attempt is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Rewrite result was not found.",
+                "Rewrite result was not found.",
+                StatusCodes.Status404NotFound,
+                "not_found");
+        }
+
+        return MapRewriteResult(attempt);
+    }
+
+    private static IActionResult MapRewriteResult(RewriteAttempt attempt)
+    {
+        if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
+        {
+            return new OkObjectResult(new
+            {
+                id = attempt.Id,
+                status = "processing",
+            });
+        }
+
+        if (attempt.Status == RewriteAttemptStatus.Succeeded &&
+            TryReadSucceededResult(attempt.ResultJson, out var rewrittenText, out var draftSignal, out var rewriteSignal))
+        {
+            return new OkObjectResult(new
+            {
+                id = attempt.Id,
+                status = "succeeded",
+                rewrittenText,
+                signal = new
+                {
+                    draft = draftSignal,
+                    rewrite = rewriteSignal,
+                },
+            });
+        }
+
+        var code = string.IsNullOrWhiteSpace(attempt.ErrorCode)
+            ? "engine_unavailable"
+            : attempt.ErrorCode;
+        return new OkObjectResult(new
+        {
+            id = attempt.Id,
+            status = "failed",
+            error = new
+            {
+                code,
+                message = FailureMessage(attempt),
+            },
+        });
+    }
+
+    private static bool TryReadSucceededResult(
+        string? resultJson,
+        out string rewrittenText,
+        out decimal draftSignal,
+        out decimal rewriteSignal)
+    {
+        rewrittenText = string.Empty;
+        draftSignal = 0;
+        rewriteSignal = 0;
+
+        if (string.IsNullOrWhiteSpace(resultJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(resultJson);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("rewrittenText", out var rewrittenTextElement) ||
+                rewrittenTextElement.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(rewrittenTextElement.GetString()))
+            {
+                return false;
+            }
+
+            if (!root.TryGetProperty("naturalness", out var naturalness) ||
+                naturalness.ValueKind != JsonValueKind.Object ||
+                !TryGetDecimal(naturalness, "draftAiLikePercent", out draftSignal) ||
+                !TryGetDecimal(naturalness, "rewriteAiLikePercent", out rewriteSignal))
+            {
+                return false;
+            }
+
+            rewrittenText = rewrittenTextElement.GetString()!;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetDecimal(JsonElement parent, string propertyName, out decimal value)
+    {
+        value = 0;
+        return parent.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.Number &&
+            property.TryGetDecimal(out value);
+    }
+
+    private static string FailureMessage(RewriteAttempt attempt) =>
+        attempt.Status == RewriteAttemptStatus.Expired
+            ? "The rewrite did not finish in time. Please submit a new request."
+            : "The rewrite could not be completed. Please try again.";
 
     private async Task<Guid?> ResolveApiKeyIdAsync(
         string? bearerToken,

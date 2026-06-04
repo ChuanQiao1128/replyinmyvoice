@@ -3245,3 +3245,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyAuthResolverTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Initial focused run with `--no-restore` stopped on missing fresh-worktree assets; focused red run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter ApiKeyAuthResolverTests` then failed on missing `ApiKeyAuthResolver`. Focused green run passed 6/6.
 - Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and focused tests completed.
+
+### 2026-06-04 - system-spec-synthesis - API-04 v1 rewrite result contract
+
+- Agent: Codex worker
+- Trigger: API-04 implements the key-authenticated `GET /api/v1/rewrite/{id}` result contract from issue #506, the API-04 brief, and `plans/rewrite-api-v1/SPEC.md`.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the API-04 brief, and the v1 API spec sections for result polling and error handling. Converted them into scoped checkpoints: resolve API key to user, query `RewriteAttempt` with `Id` plus `UserId`, map pending/processing/succeeded/failed states into the v1 result body, preserve owner isolation, and leave submit plus worker behavior unchanged.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `plans/decisions-log.md`.
+- Verification evidence: Focused red `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_rewrite_result` failed on missing v1 result behavior. Focused green passed 3/3. `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter RewriteApiTests` passed 19/19. `cd backend-dotnet && dotnet test` passed 522/522.
+- Limitations: No separate spec file was added because the issue and brief were already implementation-ready and the change is a narrow endpoint addition.
+
+### 2026-06-04 - state-machine-modeling - API-04 rewrite attempt result projection
+
+- Agent: Codex worker
+- Trigger: API-04 exposes persisted `RewriteAttemptStatus` values through a public polling endpoint.
+- Action: Opened and followed the skill; modeled the read-only projection as `Pending`/`Processing` -> `processing`, `Succeeded` -> `succeeded` with parsed result data, and `Failed`/`Expired` -> `failed` with a stable error body. The endpoint performs no state transitions and does not mutate worker or quota state.
+- Output artifacts: `V1RewriteHttpFunctions.GetRewriteResult`; ASP.NET v1 mirror route in `Program.cs`; `RewriteApiTests.V1_rewrite_result_maps_pending_succeeded_and_failed_attempts`.
+- Verification evidence: Focused state mapping test failed before implementation with HTTP 404, then passed after the route and mapping helpers were added. Full backend `dotnet test` passed 522/522.
+- Limitations: Illegal transition tests were not added because this endpoint is read-only and delegates lifecycle mutation to the existing worker and quota services.
+
+### 2026-06-04 - data-module-review - API-04 owner-only attempt lookup
+
+- Agent: Codex worker
+- Trigger: API-04 reads `RewriteAttempts` by API-key owner and must not expose another user's attempt.
+- Action: Opened and followed the skill; reviewed `RewriteAttempt`, `ApiKey`, the `ApiKeys.KeyHash` index, `RewriteAttempts` user/idempotency indexes, `ApiKeyAuthResolver`, and existing attempt lookup patterns. Kept the data change to an `AsNoTracking` read filtered by both `Id` and `UserId`; no schema or migration change was needed.
+- Output artifacts: owner-filtered queries in `V1RewriteHttpFunctions.GetRewriteResult` and the ASP.NET v1 mirror route; ownership test in `RewriteApiTests`.
+- Verification evidence: `V1_rewrite_result_returns_not_found_for_attempt_owned_by_another_user` verifies non-owner access returns `404` with the v1 error shape. `cd backend-dotnet && dotnet test` passed 522/522.
+- Limitations: The endpoint does not add retention, deletion, or usage-meter changes; those are outside API-04.
+
+### 2026-06-04 - dotnet-backend-testing - API-04 result polling coverage
+
+- Agent: Codex worker
+- Trigger: API-04 requires xUnit coverage for processing, succeeded, failed, owner-only, and key-auth result polling behavior.
+- Action: Opened and followed the project skill plus the test-driven-development skill; wrote failing tests first in the existing `RewriteApiTests` WebApplicationFactory suite, then implemented the Functions endpoint and the ASP.NET mirror route used by the test host.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`.
+- Verification evidence: Focused red `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_rewrite_result` failed on missing route behavior. Focused green passed 3/3. Rewrite API focused run passed 19/19. Full `cd backend-dotnet && dotnet test` passed 522/522.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all test runs completed.
