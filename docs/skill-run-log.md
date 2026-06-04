@@ -3281,3 +3281,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`.
 - Verification evidence: Focused red `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_rewrite_result` failed on missing route behavior. Focused green passed 3/3. Rewrite API focused run passed 19/19. Full `cd backend-dotnet && dotnet test` passed 522/522.
 - Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all test runs completed.
+
+### 2026-06-04 - state-machine-modeling - API-06 API key revoke lifecycle
+
+- Agent: Codex worker
+- Trigger: API-06 exposes owner-scoped API key creation, listing, and revoke behavior through Entra-authenticated account endpoints.
+- Action: Opened and followed the skill; modeled persisted API key states as active when `RevokedAt` is null, revoked when `RevokedAt` is set, and expired when `ExpiresAt` is in the past. Events covered create, list, owner revoke, other-user revoke, and duplicate owner revoke. The endpoint performs only active-to-revoked mutation through `ApiKeyService.RevokeAsync`; other-user or missing keys return `404` without mutation.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`.
+- Verification evidence: Focused red `dotnet test --filter ApiKeyHttpFunctionsTests` failed on the missing Functions class. Focused green passed 2/2. Full `cd backend-dotnet && dotnet test` passed 524/524.
+- Limitations: The key-authenticated v1 rewrite endpoints and usage endpoints were intentionally left unchanged for other wave issues.
+
+### 2026-06-04 - data-module-review - API-06 API key endpoint data invariants
+
+- Agent: Codex worker
+- Trigger: API-06 reads and mutates persisted `ApiKeys` through an account-management Functions endpoint.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `AppDbContext`, `ApiKeyService`, and existing account auth patterns together. Confirmed no schema change was needed, list/revoke operations stay scoped by canonical `AppUser.Id`, list responses expose only masked display keys, and create responses return plaintext only from the service result without storing it.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`.
+- Verification evidence: `ApiKeyHttpFunctionsTests` verifies create plaintext response, stored hash and last four characters, masked list response without plaintext or hash, owner revoke setting `RevokedAt`, and other-user revoke returning `404`. Full `cd backend-dotnet && dotnet test` passed 524/524.
+- Limitations: No new migration, transaction shape, or collision retry behavior was added because API-06 only adds HTTP access to the existing API key service.
+
+### 2026-06-04 - dotnet-backend-testing - API-06 key CRUD endpoint coverage
+
+- Agent: Codex worker
+- Trigger: API-06 requires xUnit coverage for Entra-authenticated API key create/list/revoke behavior.
+- Action: Opened and followed the project skill; wrote focused xUnit tests first using existing EF SQLite fixtures and header-auth test requests, then implemented `ApiKeyHttpFunctions`. Added a small service tuple extension so the created endpoint can return the persisted `createdAt` value.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`.
+- Verification evidence: Initial focused run failed on missing `ApiKeyHttpFunctions`. Focused backend run passed 2/2 after implementation. Full `cd backend-dotnet && dotnet test` passed 524/524.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all tests completed.

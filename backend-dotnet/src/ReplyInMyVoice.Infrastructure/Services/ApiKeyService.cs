@@ -56,7 +56,7 @@ public sealed class ApiKeyService
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    public async Task<(Guid Id, string Plaintext)> GenerateAsync(
+    public async Task<(Guid Id, string Plaintext, DateTimeOffset CreatedAt)> GenerateAsync(
         Guid userId,
         string name,
         CancellationToken cancellationToken)
@@ -76,7 +76,7 @@ public sealed class ApiKeyService
         await using var db = _dbContextFactory();
         db.ApiKeys.Add(apiKey);
         await db.SaveChangesAsync(cancellationToken);
-        return (apiKey.Id, plaintext);
+        return (apiKey.Id, plaintext, apiKey.CreatedAt);
     }
 
     public async Task<IReadOnlyList<ApiKeySummary>> ListAsync(
