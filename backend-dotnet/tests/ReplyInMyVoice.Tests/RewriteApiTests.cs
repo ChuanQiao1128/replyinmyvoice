@@ -249,6 +249,66 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task V1_usage_returns_account_summary_usage_for_seeded_key_user()
+    {
+        var periodEnd = DateTimeOffset.Parse("2026-07-01T00:00:00Z");
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_usage",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: periodEnd);
+        await using (var seedDb = CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = $"paid:{user.StripeSubscriptionId}:{periodEnd:O}",
+                QuotaLimit = 90,
+                UsedCount = 12,
+                ReservedCount = 3,
+                PeriodEnd = periodEnd,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        var expected = await new AccountService(() => CreateContext())
+            .GetOrCreateAccountSummaryAsync(user.ExternalAuthUserId, user.Email, CancellationToken.None);
+
+        var response = await GetV1UsageAsync(client, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<V1UsageResponse>();
+        body.Should().NotBeNull();
+        body!.Scope.Should().Be(expected.Usage.Scope);
+        body.PeriodKey.Should().Be(expected.Usage.PeriodKey);
+        body.Quota.Should().Be(expected.Usage.Quota);
+        body.Used.Should().Be(expected.Usage.Used);
+        body.Remaining.Should().Be(expected.Usage.Remaining);
+        body.PeriodEnd.Should().Be(periodEnd);
+    }
+
+    [Fact]
+    public async Task V1_usage_rejects_missing_or_invalid_key()
+    {
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var missing = await client.GetAsync("/api/v1/usage");
+        var invalid = await GetV1UsageAsync(client, "rmv_live_unknown_api_key");
+
+        missing.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(missing, "invalid_key");
+        invalid.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(invalid, "invalid_key");
+        await using var db = CreateContext();
+        (await db.UsagePeriods.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task Rewrite_returns_bad_request_when_idempotency_key_is_missing()
     {
         await using var factory = CreateFactory();
@@ -745,6 +805,13 @@ public sealed class RewriteApiTests : IAsyncLifetime
         return client.SendAsync(request);
     }
 
+    private static Task<HttpResponseMessage> GetV1UsageAsync(HttpClient client, string token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/usage");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return client.SendAsync(request);
+    }
+
     private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response)
     {
         var json = await response.Content.ReadAsStringAsync();
@@ -796,3 +863,11 @@ public sealed record RewriteAttemptResponse(
 public sealed record V1RewriteSubmitResponse(
     Guid Id,
     string Status);
+
+public sealed record V1UsageResponse(
+    string Scope,
+    string PeriodKey,
+    int Quota,
+    int Used,
+    int Remaining,
+    DateTimeOffset? PeriodEnd);

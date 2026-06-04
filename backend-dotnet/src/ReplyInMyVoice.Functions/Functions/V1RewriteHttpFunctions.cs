@@ -18,6 +18,7 @@ namespace ReplyInMyVoice.Functions.Functions;
 public sealed class V1RewriteHttpFunctions(
     IConfiguration configuration,
     AppDbContext db,
+    AccountService accountService,
     RewriteRequestService rewriteRequestService)
 {
     private const string EndpointName = "v1/rewrite";
@@ -202,6 +203,54 @@ public sealed class V1RewriteHttpFunctions(
         }
 
         return MapRewriteResult(attempt);
+    }
+
+    [Function("V1GetUsage")]
+    public async Task<IActionResult> GetUsage(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "v1/usage")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var userId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+            request,
+            db,
+            now,
+            cancellationToken);
+
+        if (userId is null)
+        {
+            return FunctionHttpResults.Problem(
+                "A valid API key is required.",
+                "A valid API key is required.",
+                StatusCodes.Status401Unauthorized,
+                "invalid_key");
+        }
+
+        var user = await db.AppUsers
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == userId.Value, cancellationToken);
+        if (user is null)
+        {
+            return FunctionHttpResults.Problem(
+                "A valid API key is required.",
+                "A valid API key is required.",
+                StatusCodes.Status401Unauthorized,
+                "invalid_key");
+        }
+
+        var account = await accountService.GetOrCreateAccountSummaryAsync(
+            user.ExternalAuthUserId,
+            user.Email,
+            cancellationToken);
+
+        return new OkObjectResult(new V1UsageResponse(
+            account.Usage.Scope,
+            account.Usage.PeriodKey,
+            account.Usage.Quota,
+            account.Usage.Used,
+            account.Usage.Remaining,
+            user.CurrentPeriodEnd));
     }
 
     private static IActionResult MapRewriteResult(RewriteAttempt attempt)
@@ -389,3 +438,11 @@ public sealed class V1RewriteHttpFunctions(
         public string? Draft { get; set; }
     }
 }
+
+public sealed record V1UsageResponse(
+    string Scope,
+    string PeriodKey,
+    int Quota,
+    int Used,
+    int Remaining,
+    DateTimeOffset? PeriodEnd);

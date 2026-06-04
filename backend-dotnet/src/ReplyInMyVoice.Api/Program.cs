@@ -318,6 +318,42 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
     return MapV1RewriteResult(attempt);
 });
 
+app.MapGet("/api/v1/usage", async (
+    HttpRequest httpRequest,
+    AppDbContext db,
+    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    CancellationToken cancellationToken) =>
+{
+    var now = DateTimeOffset.UtcNow;
+    var bearerToken = ResolveBearerToken(httpRequest);
+    var auth = await ResolveApiKeyAuthAsync(db, bearerToken, now, cancellationToken);
+    if (auth.UserId is null)
+    {
+        return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
+    }
+
+    var user = await db.AppUsers
+        .AsNoTracking()
+        .SingleOrDefaultAsync(x => x.Id == auth.UserId.Value, cancellationToken);
+    if (user is null)
+    {
+        return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
+    }
+
+    var account = await accountService.GetOrCreateAccountSummaryAsync(
+        user.ExternalAuthUserId,
+        user.Email,
+        cancellationToken);
+
+    return Results.Ok(new V1UsageResponse(
+        account.Usage.Scope,
+        account.Usage.PeriodKey,
+        account.Usage.Quota,
+        account.Usage.Used,
+        account.Usage.Remaining,
+        user.CurrentPeriodEnd));
+});
+
 app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
     Guid attemptId,
     HttpRequest httpRequest,
@@ -1109,6 +1145,14 @@ public sealed record V1RewriteSucceededResponse(
 public sealed record V1RewriteSignal(decimal Draft, decimal Rewrite);
 
 public sealed record V1RewriteFailedResponse(Guid Id, string Status, V1Error Error);
+
+public sealed record V1UsageResponse(
+    string Scope,
+    string PeriodKey,
+    int Quota,
+    int Used,
+    int Remaining,
+    DateTimeOffset? PeriodEnd);
 
 public sealed record V1ErrorResponse(V1Error Error);
 
