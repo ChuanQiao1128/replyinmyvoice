@@ -1492,6 +1492,150 @@ section.block {
   line-height: 1.5;
 }
 
+/* ── pricing-redesign ─────────────────────────────────────── */
+/* (PRICE-01: hero retune, pack cards, unit-price, one-time/subscription grouping) */
+.pricing-page .page-head h1 {
+  font-size: clamp(34px, 4.2vw, 58px);
+  line-height: 1.04;
+  max-width: 15ch;
+}
+.pricing-page .page-head .lede {
+  margin-top: 16px;
+  max-width: 58ch;
+}
+.pricing-page .pricing-wrap {
+  margin-top: 30px;
+  gap: 30px;
+}
+.pricing-page .plan-free,
+.pricing-page .plan-paid {
+  border-radius: 16px;
+  padding: clamp(26px, 3.4vw, 34px);
+}
+.pricing-page .plan-paid {
+  gap: 16px;
+}
+.pricing-page .pp-packs {
+  gap: 14px;
+}
+.pp-pack-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pp-pack-slot-break {
+  border-top: 1px solid rgba(246, 244, 238, 0.16);
+  margin-top: 4px;
+  padding-top: 14px;
+}
+.pp-pack-group {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(246, 244, 238, 0.68);
+}
+.pricing-page .pp-pack {
+  border-radius: 12px;
+  padding: 18px;
+  transition: border-color 0.16s ease, background 0.16s ease,
+    box-shadow 0.16s ease, transform 0.16s ease;
+}
+.pricing-page .pp-pack:hover {
+  background: rgba(246, 244, 238, 0.08);
+  border-color: rgba(246, 244, 238, 0.28);
+  transform: translateY(-1px);
+}
+.pricing-page .pp-pack.pp-pop {
+  border-color: color-mix(in oklab, var(--accent-2) 88%, var(--bg));
+  background: rgba(246, 244, 238, 0.12);
+  box-shadow: 0 16px 34px -24px rgba(44, 148, 104, 0.72),
+    0 0 0 1px rgba(44, 148, 104, 0.24);
+}
+.pricing-page .pp-pack-head {
+  align-items: flex-start;
+}
+.pricing-page .pp-pack-name {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.pricing-page .pack-tag {
+  background: var(--accent-2);
+  color: var(--ink);
+}
+.pp-unit-price {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  color: rgba(246, 244, 238, 0.72);
+}
+.pricing-section {
+  margin-top: 34px;
+}
+.pricing-section-head {
+  margin-bottom: 16px;
+}
+.pricing-section-head h2 {
+  font-size: clamp(24px, 2.3vw, 34px);
+}
+.pricing-comparison-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.pricing-comparison-item,
+.pricing-faq-item {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 18px;
+}
+.pricing-comparison-item span {
+  display: block;
+  font-weight: 500;
+  color: var(--ink);
+}
+.pricing-comparison-item p,
+.pricing-faq-item p {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pricing-trust .pp-includes-head {
+  margin-top: 0;
+}
+.pricing-faq-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.pricing-faq-item h3 {
+  font-size: 17px;
+}
+@media (max-width: 900px) {
+  .pricing-comparison-list,
+  .pricing-faq-list {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 680px) {
+  .pricing-page .page-head h1 {
+    max-width: none;
+  }
+  .pricing-page .pp-pack-head {
+    flex-direction: column;
+  }
+}
+/* ── pricing-redesign: comparison (PRICE-02 fills) ────────── */
+/* ── pricing-redesign: trust (PRICE-04 fills) ─────────────── */
+/* ── pricing-redesign: faq (PRICE-03 fills) ───────────────── */
+/* ── end pricing-redesign ─────────────────────────────────── */
+
 /* ── developers page (in-development / roadmap) ─────────────── */
 
 .dev-badge {
