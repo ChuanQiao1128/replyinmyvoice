@@ -649,7 +649,7 @@ These decisions are no longer open:
 - Keep recent history, but collapse or de-emphasize it by default.
 - Homepage sample Naturalness Check values should come from documented selected runs, not repeated live calls.
 - Add a usage/cost estimate section to `docs/sample-cases.md` with sample character counts and Sapling call counts.
-- Reduce production rewrite input limits to keep OpenAI and Sapling cost bounded for the NZD $9 / 40-rewrite MVP plan.
+- Reduce production rewrite input limits to keep OpenAI and Sapling cost bounded for the active rewrite packs and Pro/API pricing.
 
 ## Workspace Redesign V2 — Supersedes Earlier Quick Context Plan
 
@@ -1057,7 +1057,7 @@ Deployment rule:
 
 Use these defaults in the next development round:
 
-- Pricing remains `NZD $9/month` for now.
+- Pricing follows the active packs model: trial-code access plus Quick, Value, and Pro/API rewrite packs.
 - Do not implement annual checkout in this round.
 - Do not advertise an annual plan unless the Stripe annual price exists.
 - Footer should include: `Operated by TimeAwake Ltd.`
@@ -1403,7 +1403,7 @@ If the bounded production loop cannot produce a passing candidate, fail safely a
 
 ## Cost-Controlled Character Limits — Next Fix
 
-This section records the next development requirement from the 2026-05-21 cost discussion. The current live app still allows roughly 10,000 combined characters across the two visible textareas. That is too wide for the current `NZD $9/month` plan with 40 successful rewrites, because long support replies can trigger multiple OpenAI calls, Sapling draft/final/repair checks, and one strong-model escalation.
+This section records the next development requirement from the 2026-05-21 cost discussion. The current live app still allows roughly 10,000 combined characters across the two visible textareas. That is too wide for the active rewrite packs and Pro/API pricing, because long support replies can trigger multiple OpenAI calls, Sapling draft/final/repair checks, and one strong-model escalation.
 
 ### Product Decision
 
@@ -1769,11 +1769,11 @@ The dashboard should include a simple pricing support panel:
 
 This panel is internal only. It helps decide whether the public plan should be:
 
-- `NZD $9/month` with a lower quota,
+- a lower-priced pack with a lower quota,
 - `NZD $12/month` with about 50 successful rewrites,
 - or `NZD $19/month` with about 100 successful rewrites.
 
-Current public plan decision: `NZD $9/month` includes 40 successful rewrites per billing month.
+Current public pricing decision: trial-code access plus Quick, Value, and Pro/API rewrite packs.
 
 ### Acceptance Criteria
 

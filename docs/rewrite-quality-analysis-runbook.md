@@ -15,7 +15,7 @@ The Rewrite Quality Analysis report is an internal operating tool. It answers fi
 1. Are successful rewrites preserving facts and improving the writing signal?
 2. Which failure reasons are most common?
 3. Which strategy version performs best for quality, cost, and latency?
-4. Are provider costs still compatible with the NZD $9 / 40-rewrite plan?
+4. Are provider costs still compatible with the live rewrite packs and Pro/API pricing?
 5. Should the current strategy be repaired, canaried, rolled back, or left alone?
 
 Do not use this report as public marketing copy. It is evidence for product, support, cost, and rollout decisions.

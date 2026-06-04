@@ -1699,7 +1699,7 @@ Google and Facebook are visible in the Entra-hosted sign-in flow if provider das
 - Do not silently delete old users. Preserve subscription state by linking by email where safe.
 - Do not expose social provider secrets in `.env.example`, docs, logs, or commits.
 - Do not do a real Stripe payment unless the user explicitly asks.
-- Keep the current `NZD $9/month` and `40 rewrites/month` plan unchanged.
+- Keep the active pricing model unchanged; as of the pricing-redesign wave, that is trial-code access plus Quick, Value, and Pro/API rewrite packs.
 - If social login is not visible, the likely cause is Entra user-flow identity provider configuration, not app code.
 - If `email` is absent from Entra tokens, fix Entra token claims before changing app logic.
 - After cutover, create a follow-up cleanup migration to drop `clerkUserId` once there is confidence no rollback is needed.

@@ -1,7 +1,7 @@
 # Commercialization Roadmap — Reply In My Voice
 
 Date: 2026-05-21
-End state: `replyinmyvoice.com` serves the live app, accepts NZ$9/month subscriptions, quality gate enforced, owner rewrite-quality analysis working, API keys available, and MCP distribution verified.
+End state: `replyinmyvoice.com` serves the live app, accepts rewrite-pack and Pro/API payments, quality gate enforced, owner rewrite-quality analysis working, API keys available, and MCP distribution verified.
 Commercial north star: `docs/commercialization-north-star.md`.
 See `plans/commercialization-recon.md` for current state snapshot.
 
@@ -116,10 +116,10 @@ Each issue ≤30 min of codex work, single PR-sized scope. Codex briefs follow t
 - `M4-002` Replace `components/landing/interactive-demo.tsx` samples with measured ones; **no invented names** (Maya/Jordan removed)
 - `M4-003` Rewrite `components/landing/how-it-works.tsx` to match brief's 4 simpler steps
 - `M4-004` Convert `components/landing/faq.tsx` to single-column accordion
-- `M4-005` Pricing page: NZ$9/month / 40 rewrites; NZ-currency display; no annual
+- `M4-005` Pricing page: Trial 3 · Quick NZ$2.50/10 · Value NZ$6.90/30 · Pro/API NZ$19.90/90 monthly; NZ-currency display; no annual
 - `M4-006` Footer: "Operated by TimeAwake Ltd. · info@timeawake.co.nz · Privacy · Terms"
 - `M4-007` Update `app/privacy/page.tsx`: explain stored content (drafts, rewrites, signals, metadata) for quality improvement
-- `M4-008` Update `app/terms/page.tsx`: refund / dispute policy for live NZ$9 charges
+- `M4-008` Update `app/terms/page.tsx`: refund / dispute policy for live rewrite-pack and Pro/API purchases
 - `M4-009` Add OG image + meta description per route
 - `M4-010` Add `app/sitemap.ts` + `app/robots.ts`
 
@@ -129,7 +129,7 @@ Each issue ≤30 min of codex work, single PR-sized scope. Codex briefs follow t
 
 ## M5 — Cost telemetry + Rewrite Quality Analysis
 
-**Why**: Without per-request quality and cost analysis, the owner cannot tell whether the rewrite system is actually improving, whether quality gates are protecting users, which failure modes matter, or whether the NZ$9/40-rewrite plan can run profitably.
+**Why**: Without per-request quality and cost analysis, the owner cannot tell whether the rewrite system is actually improving, whether quality gates are protecting users, which failure modes matter, or whether the live packs model can run profitably.
 
 First version: offline report, not admin UI. Source of truth: `docs/rewrite-quality-analysis-spec.md`.
 
@@ -168,7 +168,7 @@ First version: offline report, not admin UI. Source of truth: `docs/rewrite-qual
 **Why**: Going live with real money requires observability + a real-customer smoke + a path to growth.
 
 ### Issues
-- `M7-001` Real-account live test: register → 3 free rewrites → paywall → live checkout → first NZ$9 charge → rewrite count = 40 → refund test charge → document in `docs/launch-day-report.md`
+- `M7-001` Real-account live test: register → redeem trial code → exhaust trial rewrites → paywall → live checkout for the current lowest-cost paid option → confirm matching rewrite balance → refund test charge → document in `docs/launch-day-report.md`
 - `M7-002` Add PostHog (or GA4) — minimal: page views, signup, rewrite_completed, paywall_hit, checkout_started, subscription_active. No PII in event props.
 - `M7-003` Add Sentry (or Cloudflare logpush) for error monitoring
 - `M7-004` Customer support: confirm `info@timeawake.co.nz` is monitored; add to footer + Stripe receipts

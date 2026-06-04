@@ -63,6 +63,9 @@ export function PricingV2() {
                   <div className="pack-sub">
                     10 rewrites · one-time · valid 90 days
                   </div>
+                  <div className="pack-unit-price">
+                    ≈ NZ$0.25 / rewrite
+                  </div>
                 </div>
                 <div className="pack-price">NZ$2.50</div>
               </div>
@@ -75,6 +78,9 @@ export function PricingV2() {
                   <div className="pack-sub">
                     30 rewrites · one-time · best price per rewrite
                   </div>
+                  <div className="pack-unit-price">
+                    ≈ NZ$0.23 / rewrite
+                  </div>
                 </div>
                 <div className="pack-price">NZ$6.90</div>
               </div>
@@ -84,6 +90,9 @@ export function PricingV2() {
                   <div className="pack-name">Pro/API</div>
                   <div className="pack-sub">
                     90 rewrites / month · includes API access
+                  </div>
+                  <div className="pack-unit-price">
+                    ≈ NZ$0.22 / rewrite
                   </div>
                 </div>
                 <div className="pack-price">
