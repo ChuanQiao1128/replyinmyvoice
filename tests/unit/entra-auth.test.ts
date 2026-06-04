@@ -19,6 +19,7 @@ import {
   buildEntraTokenRequestBody,
   createSessionFromTokens,
   createSignedCookieValue,
+  emailClaim,
   getCurrentAccessToken,
   sessionCookieName,
   validateEntraBearerToken,
@@ -131,11 +132,68 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   delete process.env.AUTH_SESSION_SECRET;
   delete process.env.NEXT_PUBLIC_ENTRA_AUTHORITY;
   delete process.env.NEXT_PUBLIC_ENTRA_CLIENT_ID;
   delete process.env.NEXT_PUBLIC_ENTRA_API_SCOPE;
   delete process.env.NEXT_PUBLIC_APP_URL;
+});
+
+describe("Entra email claim resolution", () => {
+  it("uses the direct email claim before other email-shaped claims", () => {
+    expect(emailClaim({
+      email: "casey@example.com",
+      verified_primary_email: "verified@example.com",
+      emails: ["array@example.com"],
+      preferred_username: "preferred@example.com",
+    })).toBe("casey@example.com");
+  });
+
+  it("uses verified_primary_email as a string when email is absent", () => {
+    expect(emailClaim({
+      verified_primary_email: "verified@example.com",
+      emails: ["array@example.com"],
+      preferred_username: "preferred@example.com",
+    })).toBe("verified@example.com");
+  });
+
+  it("uses the first non-empty verified_primary_email array value when email is absent", () => {
+    expect(emailClaim({
+      verified_primary_email: ["", "verified@example.com"],
+      emails: ["array@example.com"],
+      preferred_username: "preferred@example.com",
+    })).toBe("verified@example.com");
+  });
+
+  it("uses emails array when email and verified_primary_email are absent", () => {
+    expect(emailClaim({
+      emails: ["array@example.com"],
+      preferred_username: "preferred@example.com",
+    })).toBe("array@example.com");
+  });
+
+  it("skips preferred_username when it is an Entra tenant UPN", () => {
+    expect(emailClaim({
+      oid: "4be43284-c453-4307-b7e0-8475e847dd84",
+      preferred_username:
+        "4be43284-c453-4307-b7e0-8475e847dd84@replyinmyvoicecustomers.onmicrosoft.com",
+    })).toBeNull();
+  });
+
+  it("skips preferred_username when its local part matches sub", () => {
+    expect(emailClaim({
+      sub: "entra-subject-1",
+      preferred_username: "entra-subject-1@example.com",
+    })).toBeNull();
+  });
+
+  it("uses a normal preferred_username when earlier claims are absent", () => {
+    expect(emailClaim({
+      sub: "entra-subject-1",
+      preferred_username: "someone@example.com",
+    })).toBe("someone@example.com");
+  });
 });
 
 describe("Entra auth helpers", () => {
@@ -355,6 +413,51 @@ describe("Entra auth helpers", () => {
     });
     expect(mockCookieStore.set.mock.calls.some(([name]) => name === sessionCookieName))
       .toBe(true);
+  });
+
+  it("logs callback claim descriptors without address or identifier values", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    await createSessionFromTokens({
+      idToken: signedToken({
+        email: "casey@example.com",
+        emails: ["array@example.com"],
+        preferred_username: "entra-user-1@replyinmyvoicecustomers.onmicrosoft.com",
+        verified_primary_email: "verified@gmail.com",
+      }),
+      accessToken: unsignedToken(),
+    });
+
+    const logCall = infoSpy.mock.calls.find(([label]) => label === "auth.callback.claims");
+    expect(logCall).toBeTruthy();
+    const payload = logCall?.[1] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      email: "@example.com",
+      emails: "[array]",
+      preferred_username: "@replyinmyvoicecustomers.onmicrosoft.com",
+      resolvedEmail: "@example.com",
+      verified_primary_email: "@gmail.com",
+    });
+    expect(payload.keys).toEqual([
+      "aud",
+      "email",
+      "emails",
+      "exp",
+      "iss",
+      "name",
+      "oid",
+      "preferred_username",
+      "scp",
+      "sub",
+      "verified_primary_email",
+    ]);
+
+    const serializedPayload = JSON.stringify(payload);
+    expect(serializedPayload).not.toContain("casey@example.com");
+    expect(serializedPayload).not.toContain("array@example.com");
+    expect(serializedPayload).not.toContain("verified@gmail.com");
+    expect(serializedPayload).not.toContain("entra-user-1");
+    expect(serializedPayload).not.toContain("entra-subject-1");
   });
 });
 

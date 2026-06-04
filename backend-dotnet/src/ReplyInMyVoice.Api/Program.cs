@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Api;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
@@ -666,10 +667,7 @@ static string? ResolveRequestEmail(
         }
     }
 
-    return request.HttpContext.User.FindFirstValue(ClaimTypes.Email) ??
-        request.HttpContext.User.FindFirstValue("email") ??
-        request.HttpContext.User.FindFirstValue("emails") ??
-        request.HttpContext.User.FindFirstValue("preferred_username");
+    return AuthEmailResolver.ResolveEmailFromClaims(request.HttpContext.User);
 }
 
 static bool IsProductionEnvironment(
