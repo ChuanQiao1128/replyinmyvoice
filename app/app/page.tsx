@@ -6,13 +6,13 @@ import { fetchAzureAccountSummary } from "../../lib/azure-api";
 import {
   labelForQuotaSource,
   selectAppExperience,
+  trialCreditSummary,
   trialExpiryLabel,
 } from "../../lib/promo-app-state";
 
 export const dynamic = "force-dynamic";
 
 const paidStatuses = new Set(["active", "trialing", "testing"]);
-const trialQuota = 3;
 
 export default async function AppPage() {
   const account = await fetchAzureAccountSummary();
@@ -22,13 +22,21 @@ export default async function AppPage() {
   }
 
   const usage = account.usage;
+  const rewriteHistoryUserKey = account.externalAuthUserId || account.userId;
   const paid = usage.scope === "paid" || paidStatuses.has(account.subscriptionStatus);
   const promo = account.promo ?? null;
-  const trialRemaining = Math.max(promo?.trialRemaining ?? 0, 0);
+  const quotaSources = (usage.sources ?? []).map((source) => ({
+    ...source,
+    label: labelForQuotaSource(source.source, source.label),
+  }));
+  const trialCredits = trialCreditSummary(
+    quotaSources,
+    Math.max(promo?.trialRemaining ?? 0, 0),
+  );
   const promoState = {
     hasRedeemed: Boolean(promo?.hasRedeemed),
     trialExpiresAt: promo?.trialExpiresAt ?? null,
-    trialRemaining,
+    trialRemaining: trialCredits.remaining,
   };
   const appExperience = selectAppExperience({
     paid,
@@ -36,26 +44,24 @@ export default async function AppPage() {
     usageExhausted: usage.exhausted,
     usageRemaining: usage.remaining,
   });
-  const quotaSources = (usage.sources ?? []).map((source) => ({
-    ...source,
-    label: labelForQuotaSource(source.source, source.label),
-  }));
   const trialExpiry = trialExpiryLabel(promo?.trialExpiresAt ?? null);
-  const hasTrialCredits = !paid && promo?.hasRedeemed && trialRemaining > 0;
+  const hasTrialCredits = !paid && promo?.hasRedeemed && trialCredits.remaining > 0;
   const usageLabel = paid
     ? `${usage.remaining} of ${usage.quota} rewrites remaining this billing period`
     : hasTrialCredits
-      ? `${trialRemaining} of ${trialQuota} trial rewrites remaining${trialExpiry ? ` - ${trialExpiry}` : ""}`
+      ? `${trialCredits.remaining} of ${trialCredits.granted} trial rewrites remaining${trialExpiry ? ` - ${trialExpiry}` : ""}`
     : `${usage.remaining} of ${usage.quota} rewrite credits remaining`;
-  const workspaceQuota = hasTrialCredits ? trialQuota : usage.quota;
-  const workspacePlanRemaining = hasTrialCredits ? trialRemaining : usage.remaining;
+  const workspaceQuota = hasTrialCredits ? trialCredits.granted : usage.quota;
+  const workspacePlanRemaining = hasTrialCredits
+    ? trialCredits.remaining
+    : usage.remaining;
   const outOfCredits = usage.remaining <= 0 || usage.exhausted;
   const canRedeem =
     !paid && (!promoState.hasRedeemed || promoState.trialRemaining === 0);
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader rewriteHistoryUserKey={rewriteHistoryUserKey} />
       <RewriteWorkspace
         appExperience={appExperience}
         canRedeem={canRedeem}
@@ -66,6 +72,7 @@ export default async function AppPage() {
         quota={workspaceQuota}
         quotaSources={quotaSources}
         remaining={usage.remaining}
+        rewriteHistoryUserKey={rewriteHistoryUserKey}
         usageExhausted={usage.exhausted}
         subscriptionStatus={account.subscriptionStatus}
         usageLabel={usageLabel}

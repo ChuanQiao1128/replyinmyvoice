@@ -19,6 +19,7 @@ import type {
   AzureAccountSummary,
   AzureBillingSupportRequest,
 } from "../../lib/azure-api";
+import { clearLocalRewriteHistory } from "../../lib/rewrite-history";
 import { Button, LinkButton } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
@@ -391,6 +392,9 @@ export function AccountPanel() {
 
   function signOut() {
     setIsSigningOut(true);
+    clearLocalRewriteHistory(
+      readyAccount?.externalAuthUserId || readyAccount?.userId,
+    );
     window.location.assign("/api/auth/logout");
   }
 

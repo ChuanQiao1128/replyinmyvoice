@@ -5,6 +5,10 @@ const workspaceSource = readFileSync(
   new URL("../../components/app/rewrite-workspace.tsx", import.meta.url),
   "utf8",
 );
+const rewriteHistorySource = readFileSync(
+  new URL("../../lib/rewrite-history.ts", import.meta.url),
+  "utf8",
+);
 const subscriptionStatusSource = readFileSync(
   new URL("../../components/app/subscription-status.tsx", import.meta.url),
   "utf8",
@@ -15,6 +19,10 @@ const paywallSource = readFileSync(
 );
 const redeemCardSource = readFileSync(
   new URL("../../components/app/redeem-code-card.tsx", import.meta.url),
+  "utf8",
+);
+const buttonSource = readFileSync(
+  new URL("../../components/ui/button.tsx", import.meta.url),
   "utf8",
 );
 const appPageSource = readFileSync(
@@ -60,16 +68,30 @@ describe("rewrite workspace surface copy", () => {
   });
 
   it("shows the before/after AI Signal with the shared two-tone meter", () => {
+    const aiSignalSource = workspaceSource.slice(
+      workspaceSource.indexOf("{/* AI Signal"),
+      workspaceSource.indexOf("{error ?"),
+    );
+
     expect(workspaceSource).toContain('from "../landing/nat-bar"');
     expect(workspaceSource).toContain("NatBar");
     expect(workspaceSource).toContain("AI Signal");
     expect(workspaceSource).toContain("draftAiLikePercent");
     expect(workspaceSource).toContain("rewriteAiLikePercent");
+    expect(aiSignalSource).toContain(
+      "Run a rewrite to see the AI Signal before and after.",
+    );
+    expect(aiSignalSource).not.toContain("border-dashed");
+    expect(aiSignalSource).not.toContain("py-7");
   });
 
   it("describes rewrite history and retention accurately", () => {
-    expect(workspaceSource).toContain("rimv.rewrite.history.v1");
-    expect(workspaceSource).toContain("Recent rewrites");
+    expect(rewriteHistorySource).toContain("rimv.rewrite.history.v1");
+    expect(rewriteHistorySource).toContain("REWRITE_HISTORY_STORAGE_KEY_PREFIX");
+    expect(workspaceSource).toContain("readLocalRewriteHistory");
+    expect(workspaceSource).toContain("writeLocalRewriteHistory");
+    expect(workspaceSource).toContain("clearLocalRewriteHistory");
+    expect(workspaceSource).toContain("RECENT REWRITES");
     expect(workspaceSource).toContain("By choosing Rewrite");
     expect(workspaceSource).toContain("pasted messages and rewrites");
     expect(workspaceSource).toContain("processed for this request and retained");
@@ -82,8 +104,13 @@ describe("rewrite workspace surface copy", () => {
     expect(termsSource).toContain("default 90 days");
   });
 
-  it("keeps the slim quota bar and buy copy aligned with the rewrite-packs model", () => {
+  it("keeps the quota strip as real buttons aligned with the rewrite-packs model", () => {
+    expect(subscriptionStatusSource).toContain('from "../ui/button"');
+    expect(subscriptionStatusSource).toContain("<Button");
+    expect(subscriptionStatusSource).not.toContain("<button");
     expect(subscriptionStatusSource).toContain("bg-sky");
+    expect(subscriptionStatusSource).toContain("bg-sky/50");
+    expect(subscriptionStatusSource).toContain("rounded-2xl");
     expect(subscriptionStatusSource).toContain("Manage billing");
     expect(subscriptionStatusSource).toContain("Buy rewrites");
     expect(subscriptionStatusSource).not.toContain("Upgrade");
@@ -99,11 +126,34 @@ describe("rewrite workspace surface copy", () => {
     expect(paywallSource).not.toContain("40 rewrites");
   });
 
+  it("uses the commercial workspace design system without old layout artifacts", () => {
+    expect(workspaceSource).toContain("mx-auto w-full max-w-6xl px-5 md:px-8");
+    expect(workspaceSource).toContain('import { Textarea } from "../ui/textarea"');
+    expect(workspaceSource).toContain("<Textarea");
+    expect(workspaceSource).not.toContain("<textarea");
+    expect(workspaceSource).toContain("md:grid-cols-2");
+    expect(workspaceSource).toContain("md:divide-x md:divide-line");
+    expect(workspaceSource).toContain("bg-mint/20");
+    expect(workspaceSource).toContain("grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3");
+    expect(workspaceSource).toContain("Your recent rewrites will appear here.");
+    expect(workspaceSource).not.toContain("<details");
+    expect(workspaceSource).not.toContain("<summary");
+    expect(workspaceSource).not.toContain("max-w-5xl");
+    expect(workspaceSource).not.toContain("rounded-3xl");
+    expect(workspaceSource).not.toContain("rounded-xl");
+    expect(workspaceSource).not.toContain("shadow-crisp");
+    expect(buttonSource).toContain("rounded-lg");
+    expect(buttonSource).toContain("bg-sage");
+  });
+
   it("wires Azure-backed quota and a post-copy upgrade nudge", () => {
     expect(appPageSource).toContain("remaining={usage.remaining}");
     expect(appPageSource).toContain("quota={workspaceQuota}");
     expect(appPageSource).toContain("planRemaining={workspacePlanRemaining}");
     expect(appPageSource).toContain("quotaSources={quotaSources}");
+    expect(appPageSource).toContain("trialCreditSummary");
+    expect(appPageSource).toContain("trialCredits.granted");
+    expect(appPageSource).not.toContain("trialQuota = 3");
     expect(appPageSource).toContain("rewrite credits remaining");
     expect(appPageSource).not.toContain(phrase("free", "rewrites", "remaining"));
     expect(workspaceSource).toContain("quota: number");

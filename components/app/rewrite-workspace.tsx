@@ -16,6 +16,12 @@ import Link from "next/link";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 
 import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
+import {
+  clearLegacyRewriteHistory,
+  clearLocalRewriteHistory,
+  readLocalRewriteHistory,
+  writeLocalRewriteHistory,
+} from "../../lib/rewrite-history";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import {
   getRewriteAttemptId,
@@ -27,10 +33,10 @@ import {
 } from "../../lib/rewrite-response";
 import { NatBar } from "../landing/nat-bar";
 import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import { RedeemCodeCard } from "./redeem-code-card";
 import { SubscriptionStatus } from "./subscription-status";
 
-const HISTORY_KEY = "rimv.rewrite.history.v1";
 const rewriteAttemptPollLimit = 30;
 const rewriteAttemptPollDelayMs = 1500;
 
@@ -59,6 +65,7 @@ type QuotaCreditSource = {
 };
 
 type Props = {
+  rewriteHistoryUserKey: string;
   usageLabel: string;
   subscriptionStatus: string;
   paid: boolean;
@@ -89,7 +96,7 @@ function Eyebrow({
   return (
     <p
       className={`font-mono text-[11px] font-semibold uppercase tracking-[0.18em] ${
-        tone === "accent" ? "text-sage" : "text-ink/45"
+        tone === "accent" ? "text-sage" : "text-ink/50"
       }`}
     >
       {children}
@@ -263,6 +270,31 @@ function signalDeltaOf(naturalness: Naturalness) {
     : null;
 }
 
+function relativeHistoryTime(createdAt: string) {
+  const timestamp = Date.parse(createdAt);
+  if (!Number.isFinite(timestamp)) {
+    return "Recently";
+  }
+
+  const elapsedSeconds = Math.max(Math.floor((Date.now() - timestamp) / 1000), 0);
+  if (elapsedSeconds < 60) {
+    return "Just now";
+  }
+
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}m ago`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours}h ago`;
+  }
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  return `${elapsedDays}d ago`;
+}
+
 function outOfCreditsHint(paid: boolean, canRedeem: boolean) {
   if (paid) {
     return "Your monthly rewrite quota has been used for this billing period. Use Manage billing in the bar above.";
@@ -281,7 +313,7 @@ function OutOfCreditsNudge({
   paid: boolean;
 }) {
   return (
-    <div className="mb-4 rounded-2xl border border-clay/25 bg-paper-deep/70 p-3.5 text-left text-sm text-ink/70">
+    <div className="mb-4 rounded-lg border border-sage/25 bg-paper-deep/70 p-4 text-left text-sm text-ink/70">
       <p className="font-semibold text-ink">
         {paid ? "Your monthly limit has been reached." : "No rewrites left."}
       </p>
@@ -300,6 +332,7 @@ export function RewriteWorkspace({
   quota,
   planRemaining,
   promoState,
+  rewriteHistoryUserKey,
   remaining,
   usageExhausted,
 }: Props) {
@@ -328,12 +361,13 @@ export function RewriteWorkspace({
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(HISTORY_KEY);
+      clearLegacyRewriteHistory();
+      const saved = readLocalRewriteHistory(rewriteHistoryUserKey);
       setHistory(saved ? normalizeHistoryItems(JSON.parse(saved)) : []);
     } catch {
       setHistory([]);
     }
-  }, []);
+  }, [rewriteHistoryUserKey]);
 
   useEffect(() => {
     setFreeRewritesRemaining(visiblePlanRemaining);
@@ -372,7 +406,7 @@ export function RewriteWorkspace({
     };
     const next = [nextItem, ...history].slice(0, 5);
     setHistory(next);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+    writeLocalRewriteHistory(rewriteHistoryUserKey, JSON.stringify(next));
   }
 
   async function submit(event?: FormEvent) {
@@ -472,7 +506,7 @@ export function RewriteWorkspace({
 
   function clearHistory() {
     setHistory([]);
-    localStorage.removeItem(HISTORY_KEY);
+    clearLocalRewriteHistory(rewriteHistoryUserKey);
   }
 
   function restoreHistory(item: HistoryItem) {
@@ -532,28 +566,30 @@ export function RewriteWorkspace({
 
   return (
     <main className="min-h-screen bg-paper text-ink">
-      <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div className="max-w-xl">
-            <p className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-sage">
-              <span className="h-1.5 w-1.5 rounded-full bg-sage" aria-hidden="true" />
-              Workspace
-            </p>
-            <h1 className="mt-3 font-serif text-[2.6rem] leading-[1.05] text-ink md:text-5xl">
+      <div className="mx-auto w-full max-w-6xl px-5 md:px-8 py-8 md:py-10">
+        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="max-w-2xl">
+            <Eyebrow>WORKSPACE</Eyebrow>
+            <h1 className="mt-3 font-serif text-3xl leading-tight text-ink md:text-5xl">
               Rewrite workspace
             </h1>
-            <p className="mt-3 text-sm leading-6 text-ink/55">
+            <p className="mt-3 text-[15px] leading-relaxed text-ink/60">
               Paste a draft. Get a clearer version that keeps your facts — and
               see the AI Signal before and after.
             </p>
           </div>
-          <Button onClick={resetWorkspace} type="button" variant="secondary">
+          <Button
+            className="w-full md:w-auto"
+            onClick={resetWorkspace}
+            type="button"
+            variant="secondary"
+          >
             <FilePlus2 className="h-4 w-4" aria-hidden="true" />
             New draft
           </Button>
         </header>
 
-        <div className="mt-5">
+        <div className="mt-6">
           <SubscriptionStatus
             canRedeem={showRedeemAction}
             onRedeemClick={openRedeemModal}
@@ -563,216 +599,198 @@ export function RewriteWorkspace({
           />
         </div>
 
-        {/* Workspace panel — draft ↔ in-your-voice */}
-        <div className="mt-5 overflow-hidden rounded-3xl border border-line bg-white shadow-soft">
-          <div className="grid md:grid-cols-2 md:divide-x md:divide-line">
-            {/* Draft input */}
-            <form className="flex flex-col p-5 md:p-6" onSubmit={submit}>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <Eyebrow>Your draft</Eyebrow>
-                <span className="font-mono text-[11px] text-ink/40">
-                  {draft.length}/{rewriteInputLimits.roughDraftReply}
-                </span>
-              </div>
-              <textarea
-                className="min-h-[19rem] w-full flex-1 resize-y rounded-2xl border border-line/70 bg-paper/50 px-4 py-3.5 text-[15px] leading-7 text-ink outline-none transition placeholder:text-ink/35 focus:border-clay focus:bg-white focus:ring-4 focus:ring-clay/10"
-                id="roughDraftReply"
-                maxLength={rewriteInputLimits.roughDraftReply}
-                minLength={10}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="Paste the email, message, or note you want to rewrite. The rewrite keeps your facts intact."
-                rows={12}
-                value={draft}
-              />
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <p className="text-xs text-ink/45">
-                  Counts only after quality checks pass.
-                </p>
-                <Button disabled={!canSubmit} type="submit">
-                  {loading ? (
-                    <Loader2
-                      className="h-4 w-4 animate-spin"
-                      aria-hidden="true"
-                    />
+        <div className="mt-6 grid overflow-hidden rounded-2xl bg-white shadow-soft md:grid-cols-2 md:divide-x md:divide-line">
+          <form className="flex flex-col p-5 md:p-6" onSubmit={submit}>
+            <div className="mb-4 flex min-h-11 items-center justify-between gap-3">
+              <Eyebrow>YOUR DRAFT</Eyebrow>
+              <span className="font-mono text-[11px] text-ink/50">
+                {draft.length}/{rewriteInputLimits.roughDraftReply}
+              </span>
+            </div>
+            <Textarea
+              className="min-h-80 flex-1 bg-paper/50 p-4 text-[15px] leading-relaxed focus:bg-white"
+              id="roughDraftReply"
+              maxLength={rewriteInputLimits.roughDraftReply}
+              minLength={10}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Paste the email, message, or note you want to rewrite. The rewrite keeps your facts intact."
+              rows={13}
+              value={draft}
+            />
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-ink/50">
+                Counts only after quality checks pass.
+              </p>
+              <Button className="w-full sm:w-auto" disabled={!canSubmit} type="submit">
+                {loading ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Send className="h-4 w-4" aria-hidden="true" />
+                )}
+                Rewrite
+              </Button>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-ink/50">
+              By choosing Rewrite, you agree that pasted messages and rewrites
+              are processed for this request and retained for up to 90 days by
+              default. Raw content is then removed, and you can delete history
+              items from the workspace.
+            </p>
+          </form>
+
+          <section className="flex flex-col border-t border-line p-5 md:border-t-0 md:p-6">
+            <div className="mb-4 flex min-h-11 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <Eyebrow tone="accent">IN YOUR VOICE</Eyebrow>
+              <div className="flex items-center gap-3">
+                <Button
+                  className="px-3 text-ink/70 hover:bg-paper"
+                  disabled={!result?.rewrittenText}
+                  onClick={() => void copyReply()}
+                  type="button"
+                  variant="ghost"
+                >
+                  {copied ? (
+                    <CopyCheck className="h-4 w-4 text-sage" aria-hidden="true" />
                   ) : (
-                    <Send className="h-4 w-4" aria-hidden="true" />
+                    <Clipboard className="h-4 w-4" aria-hidden="true" />
                   )}
-                  Rewrite
+                  Copy
+                </Button>
+                <Button
+                  className="px-3 text-ink/70 hover:bg-paper"
+                  disabled={!canSubmit}
+                  onClick={() => void submit()}
+                  type="button"
+                  variant="ghost"
+                >
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                  Retry
                 </Button>
               </div>
-              <p className="mt-3 text-xs leading-5 text-ink/45">
-                By choosing Rewrite, you agree that pasted messages and rewrites
-                are processed for this request and retained for up to 90 days by
-                default. Raw content is then removed, and you can delete history
-                items from the workspace.
-              </p>
-            </form>
-
-            {/* Result */}
-            <div className="flex flex-col bg-paper/35 p-5 md:p-6">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <Eyebrow tone="accent">In your voice</Eyebrow>
-                <div className="flex items-center gap-1">
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-ink/70 transition hover:bg-white hover:text-ink disabled:pointer-events-none disabled:opacity-40"
-                    disabled={!result?.rewrittenText}
-                    onClick={() => void copyReply()}
-                    type="button"
-                  >
-                    {copied ? (
-                      <CopyCheck className="h-4 w-4 text-sage" aria-hidden="true" />
-                    ) : (
-                      <Clipboard className="h-4 w-4" aria-hidden="true" />
-                    )}
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold text-ink/70 transition hover:bg-white hover:text-ink disabled:pointer-events-none disabled:opacity-40"
-                    disabled={!canSubmit}
-                    onClick={() => void submit()}
-                    type="button"
-                  >
-                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                    Retry
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-1 flex-col rounded-2xl border border-line/70 bg-white p-4">
-                {showOutOfCreditsNudge ? (
-                  <OutOfCreditsNudge canRedeem={showRedeemAction} paid={paid} />
-                ) : null}
-
-                {loading ? (
-                  <div className="flex min-h-[16rem] flex-1 flex-col justify-center gap-5">
-                    <div className="flex items-center gap-2.5">
-                      <Loader2
-                        className="h-4 w-4 animate-spin text-clay"
-                        aria-hidden="true"
-                      />
-                      <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/60">
-                        Rewriting
-                      </span>
-                    </div>
-                    <ol aria-live="polite" className="space-y-3">
-                      {progressSteps.map((step, index) => (
-                        <li
-                          className={`flex items-center gap-3 text-sm transition ${
-                            index === loadingStepIndex
-                              ? "font-medium text-ink"
-                              : index < loadingStepIndex
-                                ? "text-ink/50"
-                                : "text-ink/30"
-                          }`}
-                          key={step}
-                        >
-                          <span className="flex h-5 w-5 items-center justify-center">
-                            {index < loadingStepIndex ? (
-                              <CheckCircle2
-                                className="h-4 w-4 text-sage"
-                                aria-hidden="true"
-                              />
-                            ) : index === loadingStepIndex ? (
-                              <Loader2
-                                className="h-4 w-4 animate-spin text-clay"
-                                aria-hidden="true"
-                              />
-                            ) : (
-                              <span className="h-1.5 w-1.5 rounded-full bg-line" />
-                            )}
-                          </span>
-                          {step}
-                        </li>
-                      ))}
-                    </ol>
-                    <p className="text-xs text-ink/45">
-                      Keeping your facts intact and checking quality.
-                    </p>
-                  </div>
-                ) : result?.rewrittenText ? (
-                  <div className="min-h-[16rem] whitespace-pre-wrap text-[15px] leading-8 text-ink">
-                    {result.rewrittenText}
-                  </div>
-                ) : qualityFailure ? (
-                  <div className="flex min-h-[16rem] flex-1 flex-col items-center justify-center text-center">
-                    <Sparkles
-                      className="mb-3 h-5 w-5 text-clay"
-                      aria-hidden="true"
-                    />
-                    <p className="font-semibold text-ink">
-                      {titleForQualityFailure(qualityFailure.reason)}
-                    </p>
-                    <p className="mt-1 max-w-md text-xs leading-5 text-ink/55">
-                      {qualityFailure.error}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex min-h-[16rem] flex-1 flex-col items-center justify-center text-center">
-                    <Sparkles
-                      className="mb-3 h-5 w-5 text-ink/25"
-                      aria-hidden="true"
-                    />
-                    <p className="max-w-[15rem] text-sm leading-6 text-ink/40">
-                      Your rewritten reply will appear here, ready to copy.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {showCopyNudge ? (
-                <div className="mt-3 rounded-2xl border border-line bg-mint/70 p-3.5 text-sm text-ink/70">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-ink">
-                        Keep writing in your own voice.
-                      </p>
-                      <p className="mt-1 leading-6">
-                        The Value Pack gives you 30 rewrites for the emails and
-                        messages you actually need to send.
-                      </p>
-                      <p className="mt-1 font-mono text-[11px] text-ink/45">
-                        {freeRewritesRemaining > 0
-                          ? `${freeRewritesRemaining} trial rewrite${freeRewritesRemaining === 1 ? "" : "s"} left after this copy.`
-                          : "That was your last trial rewrite."}
-                      </p>
-                    </div>
-                    <button
-                      aria-label="Dismiss"
-                      className="rounded-md p-1 text-ink/45 transition hover:bg-white hover:text-ink"
-                      onClick={() => setShowPostCopyNudge(false)}
-                      type="button"
-                    >
-                      <X className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </div>
-                  <Link
-                    className="mt-2 inline-flex font-semibold text-sage underline-offset-4 hover:underline"
-                    href="/pricing"
-                  >
-                    See plans
-                  </Link>
-                </div>
-              ) : null}
             </div>
-          </div>
+
+            <div className="flex min-h-80 flex-1 flex-col rounded-lg border border-line/70 bg-mint/20 p-4 md:p-5">
+              {showOutOfCreditsNudge ? (
+                <OutOfCreditsNudge canRedeem={showRedeemAction} paid={paid} />
+              ) : null}
+
+              {loading ? (
+                <div className="flex flex-1 flex-col justify-center gap-5">
+                  <div className="flex items-center gap-3">
+                    <Loader2
+                      className="h-4 w-4 animate-spin text-sage"
+                      aria-hidden="true"
+                    />
+                    <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/60">
+                      Rewriting
+                    </span>
+                  </div>
+                  <ol aria-live="polite" className="space-y-3">
+                    {progressSteps.map((step, index) => (
+                      <li
+                        className={`flex items-center gap-3 text-sm transition ${
+                          index === loadingStepIndex
+                            ? "font-medium text-ink"
+                            : index < loadingStepIndex
+                              ? "text-ink/55"
+                              : "text-ink/35"
+                        }`}
+                        key={step}
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center">
+                          {index < loadingStepIndex ? (
+                            <CheckCircle2
+                              className="h-4 w-4 text-sage"
+                              aria-hidden="true"
+                            />
+                          ) : index === loadingStepIndex ? (
+                            <Loader2
+                              className="h-4 w-4 animate-spin text-sage"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <span className="h-2 w-2 rounded-lg bg-line" />
+                          )}
+                        </span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="text-xs text-ink/50">
+                    Keeping your facts intact and checking quality.
+                  </p>
+                </div>
+              ) : result?.rewrittenText ? (
+                <div className="whitespace-pre-wrap text-[15px] leading-8 text-ink">
+                  {result.rewrittenText}
+                </div>
+              ) : qualityFailure ? (
+                <div className="flex flex-1 flex-col items-center justify-center text-center">
+                  <Sparkles className="mb-3 h-5 w-5 text-sage" aria-hidden="true" />
+                  <p className="font-semibold text-ink">
+                    {titleForQualityFailure(qualityFailure.reason)}
+                  </p>
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-ink/60">
+                    {qualityFailure.error}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center text-center">
+                  <Sparkles className="mb-3 h-5 w-5 text-ink/25" aria-hidden="true" />
+                  <p className="max-w-xs text-sm leading-6 text-ink/45">
+                    Your rewritten reply will appear here, ready to copy.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {showCopyNudge ? (
+              <div className="mt-4 rounded-2xl border border-line bg-mint/70 p-4 text-sm text-ink/70">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-ink">
+                      Keep writing in your own voice.
+                    </p>
+                    <p className="mt-1 leading-6">
+                      The Value Pack gives you 30 rewrites for the emails and
+                      messages you actually need to send.
+                    </p>
+                    <p className="mt-2 font-mono text-[11px] text-ink/50">
+                      {freeRewritesRemaining > 0
+                        ? `${freeRewritesRemaining} trial rewrite${freeRewritesRemaining === 1 ? "" : "s"} left after this copy.`
+                        : "That was your last trial rewrite."}
+                    </p>
+                  </div>
+                  <Button
+                    aria-label="Dismiss"
+                    className="min-h-11 w-11 shrink-0 p-0 text-ink/45 hover:bg-white hover:text-ink"
+                    onClick={() => setShowPostCopyNudge(false)}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </div>
+                <Link
+                  className="mt-3 inline-flex font-semibold text-sage underline-offset-4 hover:underline"
+                  href="/pricing"
+                >
+                  See plans
+                </Link>
+              </div>
+            ) : null}
+          </section>
         </div>
 
         {/* AI Signal — focal before/after band */}
-        <div className="mt-5 rounded-3xl border border-line bg-white p-5 shadow-soft md:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <Eyebrow>AI Signal · before vs after</Eyebrow>
-            {hasSignal ? (
-              <span className="rounded-full bg-mint px-3 py-1 font-mono text-[11px] font-semibold text-sage">
-                {labelForNaturalness(visibleNaturalness)}
-              </span>
-            ) : null}
-          </div>
+        <section className="mt-6 rounded-2xl border border-line bg-white p-5 shadow-soft md:p-6">
           {hasSignal ? (
-            <div className="space-y-3.5">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex min-w-[240px] flex-1">
-                  <NatBar after={rewriteSignal} animate before={draftSignal} />
-                </div>
+            <>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <Eyebrow>AI SIGNAL · BEFORE VS AFTER</Eyebrow>
                 {signalDelta !== null ? (
                   <span
                     className={`rounded-lg px-3 py-2 font-mono text-sm font-semibold ${
@@ -782,6 +800,7 @@ export function RewriteWorkspace({
                           ? "bg-rust/10 text-rust"
                           : "bg-paper-deep text-ink/60"
                     }`}
+                    title={labelForNaturalness(visibleNaturalness)}
                   >
                     {signalDelta > 0
                       ? `−${signalDelta} pts more natural`
@@ -791,89 +810,106 @@ export function RewriteWorkspace({
                   </span>
                 ) : null}
               </div>
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[11px] text-ink/55">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-sm bg-rust" aria-hidden="true" />
-                  Draft {draftSignal}%
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-sm bg-sage" aria-hidden="true" />
-                  Rewrite {rewriteSignal}%
-                </span>
+              <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center">
+                <div className="min-w-0 flex-1 basis-64">
+                  <NatBar after={rewriteSignal} animate before={draftSignal} />
+                </div>
+                <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-ink/60">
+                  <span className="rounded-lg bg-paper-deep px-3 py-2">
+                    Draft {draftSignal}%
+                  </span>
+                  <span className="rounded-lg bg-mint px-3 py-2 text-sage">
+                    Rewrite {rewriteSignal}%
+                  </span>
+                </div>
               </div>
-            </div>
+              <p className="mt-4 text-xs leading-5 text-ink/50">
+                A third-party reference signal — lower reads more natural. It is
+                not a guarantee; review before sending.
+              </p>
+            </>
           ) : (
-            <div className="rounded-2xl border border-dashed border-line bg-paper/40 px-4 py-7 text-center text-sm text-ink/40">
+            <p className="rounded-lg border border-line bg-paper/60 px-4 py-3 text-sm text-ink/55">
               Run a rewrite to see the AI Signal before and after.
-            </div>
+            </p>
           )}
-          <p className="mt-4 text-xs leading-5 text-ink/45">
-            A third-party reference signal — lower reads more natural. It is not
-            a guarantee; review before sending.
-          </p>
-        </div>
+        </section>
 
         {error ? (
-          <p className="mt-5 rounded-xl border border-rust/30 bg-rust/5 px-4 py-3 text-sm text-rust">
+          <p className="mt-6 rounded-lg border border-rust/30 bg-rust/5 px-4 py-3 text-sm text-rust">
             {error}
           </p>
         ) : null}
 
-        {/* Recent rewrites */}
-        <details className="group mt-5 rounded-2xl border border-line bg-white/60 px-5 py-4">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-            <Eyebrow>Recent rewrites</Eyebrow>
-            <span className="font-mono text-[11px] text-ink/40">
-              {history.length ? `${history.length} in history` : "Empty"}
-            </span>
-          </summary>
+        <section className="mt-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <Eyebrow>RECENT REWRITES</Eyebrow>
+              <p className="mt-2 font-mono text-[11px] text-ink/50">
+                {history.length} in history
+              </p>
+            </div>
+            <Button
+              className="w-full px-3 text-ink/55 hover:text-rust sm:w-auto"
+              disabled={!history.length}
+              onClick={clearHistory}
+              type="button"
+              variant="ghost"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              Clear
+            </Button>
+          </div>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {history.length ? (
-            <>
-              <div className="mt-3 flex justify-end">
-                <button
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink/50 transition hover:text-rust"
-                  onClick={clearHistory}
+            history.map((item) => {
+              const delta = signalDeltaOf(item.naturalness);
+              return (
+                <Button
+                  className="min-h-0 w-full flex-col items-stretch justify-start gap-3 rounded-lg border border-line bg-white p-4 text-left text-ink hover:border-sage/40 hover:bg-white"
+                  key={item.createdAt}
+                  onClick={() => restoreHistory(item)}
                   type="button"
+                  variant="ghost"
                 >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  Clear
-                </button>
-              </div>
-              <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
-                {history.map((item) => {
-                  const delta = signalDeltaOf(item.naturalness);
-                  return (
-                    <button
-                      className="rounded-2xl border border-line bg-white p-3.5 text-left transition hover:border-clay/40 hover:shadow-crisp focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/30"
-                      key={item.createdAt}
-                      onClick={() => restoreHistory(item)}
-                      type="button"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-1 text-sm font-medium text-ink">
-                          {historyTitle(item)}
-                        </p>
-                        {delta !== null && delta > 0 ? (
-                          <span className="shrink-0 rounded-md bg-mint px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sage">
-                            −{delta}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-1 line-clamp-2 text-sm leading-6 text-ink/55">
-                        {item.rewrittenText}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="line-clamp-1 text-sm font-semibold text-ink">
+                      {historyTitle(item)}
+                    </p>
+                    {delta !== null ? (
+                      <span
+                        className={`shrink-0 rounded-lg px-2 py-1 font-mono text-[10px] font-semibold ${
+                          delta > 0
+                            ? "bg-mint text-sage"
+                            : delta < 0
+                              ? "bg-rust/10 text-rust"
+                              : "bg-paper-deep text-ink/60"
+                        }`}
+                      >
+                        {delta > 0
+                          ? `−${delta}`
+                          : delta < 0
+                            ? `+${Math.abs(delta)}`
+                            : "0"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="line-clamp-2 text-sm leading-6 text-ink/60">
+                    {item.rewrittenText}
+                  </p>
+                  <p className="font-mono text-[11px] text-ink/45">
+                    {relativeHistoryTime(item.createdAt)}
+                  </p>
+                </Button>
+              );
+            })
           ) : (
-            <p className="mt-3 text-sm text-ink/50">
-              Recent rewrites will appear here after a successful request. Raw
-              content is removed after the retention window.
-            </p>
+            <div className="rounded-lg border border-dashed border-line bg-white p-4 text-sm text-ink/50">
+              Your recent rewrites will appear here.
+            </div>
           )}
-        </details>
+          </div>
+        </section>
       </div>
       <RedeemCodeCard open={redeemModalOpen} onClose={closeRedeemModal} />
     </main>
