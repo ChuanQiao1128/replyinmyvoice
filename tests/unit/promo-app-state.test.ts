@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   labelForQuotaSource,
   selectAppExperience,
+  trialCreditSummary,
   trialExpiryLabel,
 } from "../../lib/promo-app-state";
 
@@ -72,12 +73,82 @@ describe("promo app state", () => {
     expect(labelForQuotaSource("PURCHASE", "Value Pack")).toBe("Value Pack");
   });
 
-  it("formats trial expiry as remaining days", () => {
+  it("formats trial expiry as remaining days with the exact expiry time", () => {
+    const expiresAt = "2026-06-12T00:00:00.000Z";
+    const expectedExactExpiry = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(expiresAt));
+
     expect(
       trialExpiryLabel(
-        "2026-06-12T00:00:00.000Z",
+        expiresAt,
         new Date("2026-06-02T00:00:00.000Z"),
       ),
-    ).toBe("expire in 10 days");
+    ).toBe(`expires in 10 days (expires ${expectedExactExpiry})`);
+  });
+
+  it("sums configured trial grant totals from promo quota sources", () => {
+    expect(
+      trialCreditSummary(
+        [
+          {
+            source: "PROMO",
+            label: "Promo",
+            remaining: 7,
+            limit: 10,
+          },
+          {
+            source: "promo",
+            label: "Trial rewrites",
+            remaining: 2,
+            limit: 5,
+          },
+          {
+            source: "PURCHASE",
+            label: "Value Pack",
+            remaining: 30,
+            limit: 30,
+          },
+        ],
+        9,
+      ),
+    ).toEqual({ granted: 15, remaining: 9 });
+  });
+
+  it("falls back to a denominator that never drops below trial remaining", () => {
+    expect(
+      trialCreditSummary(
+        [
+          {
+            source: "PROMO",
+            label: "Promo",
+            remaining: 10,
+          },
+        ],
+        10,
+      ),
+    ).toEqual({ granted: 10, remaining: 10 });
+  });
+
+  it("uses source remaining for only the promo sources missing grant totals", () => {
+    expect(
+      trialCreditSummary(
+        [
+          {
+            source: "PROMO",
+            label: "Promo",
+            remaining: 7,
+            limit: 10,
+          },
+          {
+            source: "PROMO",
+            label: "Promo",
+            remaining: 2,
+          },
+        ],
+        9,
+      ),
+    ).toEqual({ granted: 12, remaining: 9 });
   });
 });

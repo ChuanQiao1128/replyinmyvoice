@@ -43,6 +43,7 @@ function accountSummary(state: PromoState) {
               expiresAt: trialExpiresAt,
               expiresInDays: 90,
               label: "Promo",
+              limit: 3,
               remaining: state.trialRemaining,
               source: "PROMO",
             },
@@ -376,6 +377,9 @@ test.describe("promo full loop", () => {
       page.getByRole("heading", { name: "Rewrite workspace" }),
     ).toBeVisible();
     await expect(page.getByText("3 of 3 trial rewrites remaining")).toBeVisible();
+    await expect(
+      page.getByText(/expires in \d+ days? \(expires .+\)/),
+    ).toBeVisible();
 
     await submitRewrite(page, 1);
     await submitRewrite(page, 2);
