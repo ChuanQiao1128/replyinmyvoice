@@ -3308,3 +3308,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`.
 - Verification evidence: Initial focused run failed on missing `ApiKeyHttpFunctions`. Focused backend run passed 2/2 after implementation. Full `cd backend-dotnet && dotnet test` passed 524/524.
 - Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all tests completed.
+
+### 2026-06-05 - state-machine-modeling - API-11 terminal rewrite attempt states
+
+- Agent: Codex worker
+- Trigger: API-11 verifies that API-created rewrite attempts do not remain in a nonterminal polling state after worker failure or reservation expiry.
+- Action: Opened and followed the skill; modeled `RewriteAttempt` transitions as `Pending` to `Processing` to `Succeeded`, `Failed`, or `Expired`, with `Failed` and `Expired` projected to the v1 `failed` result body. Confirmed `UsageReservation` transitions release or expire quota without incrementing used quota.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter "FullyQualifiedName~RewriteApiTests.V1_rewrite_result_maps_expired_api_attempt_to_failed_without_charging_usage|FullyQualifiedName~RewriteApiTests.V1_rewrite_provider_failure_sets_api_attempt_failed_without_charging_usage"` passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No production transition helper was added because the existing quota and worker paths already implement the needed transitions.
+
+### 2026-06-05 - data-module-review - API-11 reservation accounting invariants
+
+- Agent: Codex worker
+- Trigger: API-11 verifies persisted quota reservation and attempt state for API-originated expiry and provider failure paths.
+- Action: Opened and followed the skill; reviewed `RewriteAttempt`, `UsageReservation`, `UsagePeriod`, `QuotaService.ReleaseExpiredReservationsAsync`, `QuotaService.ReleaseAsync`, `RewriteRequestService.CreateAttemptAsync`, and `RewriteJobProcessor.ProcessAsync`. Added assertions for `UsedCount`, `ReservedCount`, reservation status, attempt status, and error code.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused API terminal-state tests passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No schema or migration change was needed.
+
+### 2026-06-05 - resilience-test-generation - API-11 expiry and provider failure coverage
+
+- Agent: Codex worker
+- Trigger: API-11 tests recovery from a worker that never runs and a provider failure, preserving the no-charge invariant.
+- Action: Opened and followed the skill; chose WebApplicationFactory integration tests with local SQLite persistence and deterministic provider fake. Covered API submit followed by TTL sweep, and API submit followed by worker processing with a failing provider result.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused terminal-state test command passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: Live cloud queues and external providers were not contacted; tests use in-process services and local SQLite.
+
+### 2026-06-05 - dotnet-backend-testing - API-11 v1 terminal-state tests
+
+- Agent: Codex worker
+- Trigger: API-11 adds xUnit coverage for terminal state and no-charge behavior in the .NET rewrite API.
+- Action: Opened and followed the project skill; added two tests to the existing `RewriteApiTests` WebApplicationFactory suite so the assertions exercise the v1 submit and poll surface plus persisted quota state.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused test command passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: Focused tests passed on the existing implementation, so no production code was changed.
