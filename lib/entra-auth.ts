@@ -463,18 +463,124 @@ function parseJwt(token: string) {
 }
 
 function stringClaim(claims: Record<string, unknown>, name: string) {
-  const value = claims[name];
-  return typeof value === "string" && value.trim() ? value : null;
+  return nonEmptyString(claims[name]);
 }
 
-function emailClaim(claims: Record<string, unknown>) {
-  const direct = stringClaim(claims, "email") ?? stringClaim(claims, "preferred_username");
+function nonEmptyString(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function firstStringClaimValue(value: unknown) {
+  const direct = nonEmptyString(value);
   if (direct) {
     return direct;
   }
 
-  const emails = claims.emails;
-  return Array.isArray(emails) && typeof emails[0] === "string" ? emails[0] : null;
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  for (const candidate of value) {
+    const resolved = nonEmptyString(candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return null;
+}
+
+function emailDomainDescriptor(value: string) {
+  const atIndex = value.lastIndexOf("@");
+  return atIndex >= 0 && atIndex < value.length - 1
+    ? value.slice(atIndex).toLowerCase()
+    : null;
+}
+
+function claimEmailDescriptor(value: unknown) {
+  if (Array.isArray(value)) {
+    return "[array]";
+  }
+
+  const resolved = nonEmptyString(value);
+  if (!resolved) {
+    return "absent";
+  }
+
+  return emailDomainDescriptor(resolved) ?? "absent";
+}
+
+function resolvedEmailDescriptor(claims: Record<string, unknown>) {
+  const resolved = emailClaim(claims);
+  if (resolved) {
+    return emailDomainDescriptor(resolved);
+  }
+
+  const preferredUsername = stringClaim(claims, "preferred_username");
+  return preferredUsername && isSyntheticEntraUpn(preferredUsername, claims) ? "synthetic" : null;
+}
+
+function logAuthCallbackClaims(claims: Record<string, unknown>) {
+  try {
+    console.info("auth.callback.claims", {
+      keys: Object.keys(claims).sort(),
+      email: claimEmailDescriptor(claims.email),
+      emails: claimEmailDescriptor(claims.emails),
+      preferred_username: claimEmailDescriptor(claims.preferred_username),
+      resolvedEmail: resolvedEmailDescriptor(claims),
+      verified_primary_email: claimEmailDescriptor(claims.verified_primary_email),
+    });
+  } catch {
+    return;
+  }
+}
+
+export function isSyntheticEntraUpn(value: unknown, claims: Record<string, unknown>) {
+  const candidate = nonEmptyString(value);
+  if (!candidate) {
+    return false;
+  }
+
+  const atIndex = candidate.indexOf("@");
+  if (atIndex <= 0 || atIndex >= candidate.length - 1) {
+    return false;
+  }
+
+  const localPart = candidate.slice(0, atIndex).toLowerCase();
+  const domain = candidate.slice(atIndex + 1).toLowerCase();
+  if (domain.endsWith(".onmicrosoft.com")) {
+    return true;
+  }
+
+  const claimIds = [stringClaim(claims, "sub"), stringClaim(claims, "oid")];
+  return claimIds.some((claimId) => claimId?.toLowerCase() === localPart);
+}
+
+export function emailClaim(claims: Record<string, unknown>) {
+  const direct = stringClaim(claims, "email");
+  if (direct) {
+    return direct;
+  }
+
+  const verifiedPrimaryEmail = firstStringClaimValue(claims.verified_primary_email);
+  if (verifiedPrimaryEmail) {
+    return verifiedPrimaryEmail;
+  }
+
+  const emails = firstStringClaimValue(claims.emails);
+  if (emails) {
+    return emails;
+  }
+
+  const preferredUsername = stringClaim(claims, "preferred_username");
+  return preferredUsername && !isSyntheticEntraUpn(preferredUsername, claims)
+    ? preferredUsername
+    : null;
 }
 
 function claimIncludes(value: unknown, expected: string) {
@@ -654,9 +760,13 @@ export async function createSessionFromTokens(tokens: {
       stringClaim(identityJwt.claims, "iss") ?? "",
     )
   ) {
+    logAuthCallbackClaims(identityJwt.claims);
     baseSession = validateIdTokenClaims(identityJwt.claims);
   } else if (!configuredAuthority && process.env.NODE_ENV === "test") {
     const claims = parseJwtPayload(tokens.idToken);
+    if (claims) {
+      logAuthCallbackClaims(claims);
+    }
     baseSession = claims ? validateIdTokenClaims(claims) : null;
   }
   if (!baseSession) {
