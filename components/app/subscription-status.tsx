@@ -1,4 +1,7 @@
+"use client";
+
 import { CreditCard, RefreshCcw, Ticket } from "lucide-react";
+import { useState } from "react";
 
 import { azureApiFetch } from "../../lib/client-azure-api";
 
@@ -9,6 +12,8 @@ type Props = {
   canRedeem: boolean;
   onRedeemClick: () => void;
 };
+
+const workspaceCheckoutSku = "value_pack";
 
 export async function openBillingPortal() {
   const response = await azureApiFetch("/api/stripe/portal", { method: "POST" });
@@ -22,14 +27,29 @@ export async function openBillingPortal() {
 }
 
 async function openCheckout() {
-  const response = await azureApiFetch("/api/stripe/checkout", { method: "POST" });
-  const payload = (await response.json()) as { url?: string; error?: string };
+  const response = await fetch("/api/stripe/checkout", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ sku: workspaceCheckoutSku }),
+  });
 
-  if (!response.ok || !payload.url) {
-    throw new Error(payload.error ?? "Could not open checkout.");
+  if (response.status === 401) {
+    window.location.assign(`/sign-in?redirectTo=${encodeURIComponent("/app")}`);
+    return;
   }
 
-  window.location.href = payload.url;
+  const payload = (await response.json().catch(() => ({}))) as {
+    url?: string;
+    error?: string;
+  };
+
+  if (!response.ok || !payload.url) {
+    throw new Error(payload.error ?? "Could not start checkout.");
+  }
+
+  window.location.assign(payload.url);
 }
 
 export function SubscriptionStatus({
@@ -39,6 +59,29 @@ export function SubscriptionStatus({
   canRedeem,
   onRedeemClick,
 }: Props) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleBillingAction() {
+    setLoading(true);
+    setError("");
+
+    try {
+      if (paid) {
+        await openBillingPortal();
+      } else {
+        await openCheckout();
+      }
+    } catch (billingError) {
+      setError(
+        billingError instanceof Error
+          ? billingError.message
+          : "Could not start checkout.",
+      );
+      setLoading(false);
+    }
+  }
+
   return (
     <section className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 rounded-xl border border-line bg-sky/60 px-4 py-2.5">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -64,7 +107,8 @@ export function SubscriptionStatus({
         ) : null}
         <button
           className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink/65 underline-offset-4 transition hover:text-ink hover:underline"
-          onClick={() => void (paid ? openBillingPortal() : openCheckout())}
+          disabled={loading}
+          onClick={handleBillingAction}
           type="button"
         >
           {paid ? (
@@ -75,6 +119,11 @@ export function SubscriptionStatus({
           {paid ? "Manage billing" : "Buy rewrites"}
         </button>
       </div>
+      {error ? (
+        <p className="basis-full text-sm font-medium text-clay" role="alert">
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }
