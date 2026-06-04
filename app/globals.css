@@ -218,11 +218,88 @@ select {
   font-size: 14px;
   color: var(--ink-2);
 }
+.nav-inline-links {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+}
 .nav-links a {
   text-decoration: none;
 }
 .nav-links a:not(.btn):hover {
   color: var(--ink);
+}
+.mobile-nav-menu {
+  display: none;
+  position: relative;
+}
+.mobile-nav-trigger {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--rule-2);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.mobile-nav-trigger::-webkit-details-marker {
+  display: none;
+}
+.mobile-nav-trigger::marker {
+  content: "";
+}
+.mobile-nav-trigger:hover {
+  background: rgba(17, 21, 15, 0.05);
+}
+.mobile-nav-trigger-mark {
+  display: inline-block;
+  font-family: var(--mono);
+  transition: transform 0.15s ease;
+}
+.mobile-nav-menu[open] .mobile-nav-trigger-mark {
+  transform: rotate(45deg);
+}
+.mobile-nav-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 220px;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mobile-nav-panel a {
+  padding: 10px 12px;
+  border-radius: 7px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.mobile-nav-panel a:hover {
+  background: var(--bg-2);
+  color: var(--ink);
+}
+.mobile-nav-panel .mobile-nav-cta {
+  margin-top: 4px;
+  background: var(--ink);
+  color: var(--bg);
+  text-align: center;
+  font-weight: 500;
+}
+.mobile-nav-panel .mobile-nav-cta:hover {
+  background: var(--accent);
+  color: #fff;
 }
 
 .btn {
@@ -2349,6 +2426,30 @@ section.block {
   .wrap {
     padding: 0 24px;
   }
+  .nav-inner {
+    gap: 12px;
+  }
+  .brand {
+    min-width: 0;
+  }
+  .brand span:not(.brand-mark) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .nav-links {
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .nav-inline-links {
+    display: none;
+  }
+  .mobile-nav-menu {
+    display: block;
+  }
+  .nav-primary-cta {
+    padding: 10px 13px;
+  }
   .usecases,
   .student-situations,
   .student-reasons,
@@ -2360,7 +2461,27 @@ section.block {
   .uc-feature {
     grid-column: auto;
   }
-  .nav-links a:not(.btn) {
+}
+@media (max-width: 440px) {
+  .wrap {
+    padding: 0 16px;
+  }
+  .nav-inner {
+    gap: 8px;
+  }
+  .brand span:not(.brand-mark) {
+    display: none;
+  }
+  .nav-links {
+    gap: 8px;
+  }
+  .mobile-nav-trigger {
+    padding: 9px 10px;
+  }
+  .nav-primary-cta {
+    padding: 10px 12px;
+  }
+  .nav-primary-cta .btn-arrow {
     display: none;
   }
 }
