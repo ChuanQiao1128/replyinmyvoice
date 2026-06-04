@@ -149,6 +149,106 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task V1_rewrite_result_maps_pending_succeeded_and_failed_attempts()
+    {
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_states",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var pending = await SeedV1AttemptAsync(user.Id, RewriteAttemptStatus.Pending);
+        var succeeded = await SeedV1AttemptAsync(
+            user.Id,
+            RewriteAttemptStatus.Succeeded,
+            resultJson: """
+                {
+                  "rewrittenText": "Hi Sam - the report is still being checked, and I will send a clear update soon.",
+                  "naturalness": {
+                    "draftAiLikePercent": 78,
+                    "rewriteAiLikePercent": 24
+                  }
+                }
+                """);
+        var failed = await SeedV1AttemptAsync(
+            user.Id,
+            RewriteAttemptStatus.Failed,
+            errorCode: "provider_timeout");
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var pendingResponse = await GetV1RewriteResultAsync(client, token, pending.Id);
+        var succeededResponse = await GetV1RewriteResultAsync(client, token, succeeded.Id);
+        var failedResponse = await GetV1RewriteResultAsync(client, token, failed.Id);
+
+        pendingResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var pendingJson = await ReadJsonAsync(pendingResponse))
+        {
+            pendingJson.RootElement.GetProperty("id").GetGuid().Should().Be(pending.Id);
+            pendingJson.RootElement.GetProperty("status").GetString().Should().Be("processing");
+        }
+
+        succeededResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var succeededJson = await ReadJsonAsync(succeededResponse))
+        {
+            succeededJson.RootElement.GetProperty("id").GetGuid().Should().Be(succeeded.Id);
+            succeededJson.RootElement.GetProperty("status").GetString().Should().Be("succeeded");
+            succeededJson.RootElement.GetProperty("rewrittenText").GetString().Should().Be(
+                "Hi Sam - the report is still being checked, and I will send a clear update soon.");
+            var signal = succeededJson.RootElement.GetProperty("signal");
+            signal.GetProperty("draft").GetInt32().Should().Be(78);
+            signal.GetProperty("rewrite").GetInt32().Should().Be(24);
+        }
+
+        failedResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var failedJson = await ReadJsonAsync(failedResponse))
+        {
+            failedJson.RootElement.GetProperty("id").GetGuid().Should().Be(failed.Id);
+            failedJson.RootElement.GetProperty("status").GetString().Should().Be("failed");
+            failedJson.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_timeout");
+        }
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_returns_not_found_for_attempt_owned_by_another_user()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_owner",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var (otherUser, _) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_other",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var otherAttempt = await SeedV1AttemptAsync(otherUser.Id, RewriteAttemptStatus.Succeeded);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await GetV1RewriteResultAsync(client, token, otherAttempt.Id);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await AssertErrorCodeAsync(response, "not_found");
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_rejects_missing_or_invalid_key()
+    {
+        var (user, _) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_auth",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var attempt = await SeedV1AttemptAsync(user.Id, RewriteAttemptStatus.Pending);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var missing = await client.GetAsync($"/api/v1/rewrite/{attempt.Id}");
+        var invalid = await GetV1RewriteResultAsync(client, "rmv_live_unknown_api_key", attempt.Id);
+
+        missing.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(missing, "invalid_key");
+        invalid.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(invalid, "invalid_key");
+    }
+
+    [Fact]
     public async Task Rewrite_returns_bad_request_when_idempotency_key_is_missing()
     {
         await using var factory = CreateFactory();
@@ -592,6 +692,34 @@ public sealed class RewriteApiTests : IAsyncLifetime
         return (user, token);
     }
 
+    private async Task<RewriteAttempt> SeedV1AttemptAsync(
+        Guid userId,
+        RewriteAttemptStatus status,
+        string? resultJson = null,
+        string? errorCode = null)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await using var db = CreateContext();
+        var attempt = new RewriteAttempt
+        {
+            UserId = userId,
+            IdempotencyKey = $"v1-result-{Guid.NewGuid():N}",
+            RequestHash = Guid.NewGuid().ToString("N"),
+            RequestJson = "{\"roughDraftReply\":\"Please send a clear update.\"}",
+            Status = status,
+            ResultJson = resultJson,
+            ErrorCode = errorCode,
+            CreatedAt = now,
+            CompletedAt = status is RewriteAttemptStatus.Succeeded or RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired
+                ? now
+                : null,
+            ExpiresAt = now.AddMinutes(15),
+        };
+        db.RewriteAttempts.Add(attempt);
+        await db.SaveChangesAsync();
+        return attempt;
+    }
+
     private static Task<HttpResponseMessage> PostV1RewriteAsync(
         HttpClient client,
         string token,
@@ -605,6 +733,22 @@ public sealed class RewriteApiTests : IAsyncLifetime
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         request.Headers.Add("Idempotency-Key", idempotencyKey);
         return client.SendAsync(request);
+    }
+
+    private static Task<HttpResponseMessage> GetV1RewriteResultAsync(
+        HttpClient client,
+        string token,
+        Guid id)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/rewrite/{id}");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return client.SendAsync(request);
+    }
+
+    private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response)
+    {
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonDocument.Parse(json);
     }
 
     private static async Task AssertErrorCodeAsync(HttpResponseMessage response, string expectedCode)

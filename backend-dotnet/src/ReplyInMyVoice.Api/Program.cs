@@ -290,6 +290,34 @@ app.MapPost("/api/v1/rewrite", async (
         result.AttemptId.ToString());
 });
 
+app.MapGet("/api/v1/rewrite/{id:guid}", async (
+    Guid id,
+    HttpRequest httpRequest,
+    AppDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var now = DateTimeOffset.UtcNow;
+    var bearerToken = ResolveBearerToken(httpRequest);
+    var auth = await ResolveApiKeyAuthAsync(db, bearerToken, now, cancellationToken);
+    if (auth.UserId is null)
+    {
+        return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
+    }
+
+    var attempt = await db.RewriteAttempts
+        .AsNoTracking()
+        .SingleOrDefaultAsync(
+            x => x.Id == id && x.UserId == auth.UserId.Value,
+            cancellationToken);
+
+    if (attempt is null)
+    {
+        return V1Error("not_found", "Rewrite result was not found.", StatusCodes.Status404NotFound);
+    }
+
+    return MapV1RewriteResult(attempt);
+});
+
 app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
     Guid attemptId,
     HttpRequest httpRequest,
@@ -771,6 +799,88 @@ static async Task TryWriteV1ApiKeyUsageAsync(
 static IResult V1Error(string code, string message, int statusCode) =>
     Results.Json(new V1ErrorResponse(new V1Error(code, message)), statusCode: statusCode);
 
+static IResult MapV1RewriteResult(RewriteAttempt attempt)
+{
+    if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
+    {
+        return Results.Ok(new V1RewriteProcessingResponse(attempt.Id, "processing"));
+    }
+
+    if (attempt.Status == RewriteAttemptStatus.Succeeded &&
+        TryReadV1SucceededResult(attempt.ResultJson, out var rewrittenText, out var draftSignal, out var rewriteSignal))
+    {
+        return Results.Ok(new V1RewriteSucceededResponse(
+            attempt.Id,
+            "succeeded",
+            rewrittenText,
+            new V1RewriteSignal(draftSignal, rewriteSignal)));
+    }
+
+    var code = string.IsNullOrWhiteSpace(attempt.ErrorCode)
+        ? "engine_unavailable"
+        : attempt.ErrorCode;
+    return Results.Ok(new V1RewriteFailedResponse(
+        attempt.Id,
+        "failed",
+        new V1Error(code, V1FailureMessage(attempt))));
+}
+
+static bool TryReadV1SucceededResult(
+    string? resultJson,
+    out string rewrittenText,
+    out decimal draftSignal,
+    out decimal rewriteSignal)
+{
+    rewrittenText = string.Empty;
+    draftSignal = 0;
+    rewriteSignal = 0;
+
+    if (string.IsNullOrWhiteSpace(resultJson))
+    {
+        return false;
+    }
+
+    try
+    {
+        using var document = JsonDocument.Parse(resultJson);
+        var root = document.RootElement;
+        if (!root.TryGetProperty("rewrittenText", out var rewrittenTextElement) ||
+            rewrittenTextElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(rewrittenTextElement.GetString()))
+        {
+            return false;
+        }
+
+        if (!root.TryGetProperty("naturalness", out var naturalness) ||
+            naturalness.ValueKind != JsonValueKind.Object ||
+            !TryGetDecimal(naturalness, "draftAiLikePercent", out draftSignal) ||
+            !TryGetDecimal(naturalness, "rewriteAiLikePercent", out rewriteSignal))
+        {
+            return false;
+        }
+
+        rewrittenText = rewrittenTextElement.GetString()!;
+        return true;
+    }
+    catch (JsonException)
+    {
+        return false;
+    }
+}
+
+static bool TryGetDecimal(JsonElement parent, string propertyName, out decimal value)
+{
+    value = 0;
+    return parent.TryGetProperty(propertyName, out var property) &&
+        property.ValueKind == JsonValueKind.Number &&
+        property.TryGetDecimal(out value);
+}
+
+static string V1FailureMessage(RewriteAttempt attempt) =>
+    attempt.Status == RewriteAttemptStatus.Expired
+        ? "The rewrite did not finish in time. Please submit a new request."
+        : "The rewrite could not be completed. Please try again.";
+
 static string? ResolveBearerToken(HttpRequest request)
 {
     var authorization = request.Headers.Authorization.ToString();
@@ -987,6 +1097,18 @@ public sealed record PromoErrorResponse(string Error);
 public sealed record V1RewriteSubmitRequest(string? Draft);
 
 public sealed record V1RewriteSubmitResponse(Guid Id, string Status);
+
+public sealed record V1RewriteProcessingResponse(Guid Id, string Status);
+
+public sealed record V1RewriteSucceededResponse(
+    Guid Id,
+    string Status,
+    string RewrittenText,
+    V1RewriteSignal Signal);
+
+public sealed record V1RewriteSignal(decimal Draft, decimal Rewrite);
+
+public sealed record V1RewriteFailedResponse(Guid Id, string Status, V1Error Error);
 
 public sealed record V1ErrorResponse(V1Error Error);
 
