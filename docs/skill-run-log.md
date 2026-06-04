@@ -3308,3 +3308,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`.
 - Verification evidence: Initial focused run failed on missing `ApiKeyHttpFunctions`. Focused backend run passed 2/2 after implementation. Full `cd backend-dotnet && dotnet test` passed 524/524.
 - Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all tests completed.
+
+### 2026-06-05 - ui-browser-testing - API-07 developer key manager UI
+
+- Agent: Codex worker
+- Trigger: API-07 adds browser-visible signed-in portal UI, navigation, form submission, copy action, loading/error states, and revoke confirmation for API key management.
+- Action: Opened and followed the project skill; identified the visible flow, added source-contract coverage first, implemented the signed-in `/developers/keys` page and client key panel, and verified the local route with signed and signed-out HTTP requests.
+- Output artifacts: `app/developers/keys/page.tsx`; `components/developers/api-keys-panel.tsx`; `components/site-header.tsx`; `tests/unit/developer-keys-ui.test.ts`; `tests/unit/site-header.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red `npm run test -- tests/unit/developer-keys-ui.test.ts tests/unit/site-header.test.ts` failed on missing page/link, then passed after implementation. `npm run typecheck` passed. `npm run test` passed 400/400. Banned-term grep over `app components public lib` returned no matches. Local dev server route check returned `307` to `/sign-in` when signed out and signed-in HTML contained the key manager, create form, one-time notice, and signed-in nav link.
+- Limitations: Playwright screenshot/interaction verification could not run because both cached Chromium and system Chrome were blocked by the macOS sandbox before page load. The first dev-server attempt also hit file-watch `EMFILE` warnings due a generated npm cache; removing that cache and restarting with `WATCHPACK_POLLING=true` restored route serving.
