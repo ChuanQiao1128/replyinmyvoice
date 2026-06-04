@@ -42,6 +42,7 @@ function accountSummary(state: MockAccountState) {
                 expiresAt: trialExpiresAt,
                 expiresInDays: 90,
                 label: "Promo",
+                limit: 3,
                 remaining: trialRemaining,
                 source: "PROMO",
               },
@@ -289,7 +290,9 @@ test.describe("promo redeem UI", () => {
       page.getByRole("heading", { name: "Rewrite workspace" }),
     ).toBeVisible();
     await expect(page.getByText("3 of 3 trial rewrites remaining")).toBeVisible();
-    await expect(page.getByText(/expire in \d+ days/)).toBeVisible();
+    await expect(
+      page.getByText(/expires in \d+ days? \(expires .+\)/),
+    ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Redeem your code" })).toHaveCount(
       0,
     );

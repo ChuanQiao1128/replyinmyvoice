@@ -104,6 +104,9 @@ describe("rewrite workspace surface copy", () => {
     expect(appPageSource).toContain("quota={workspaceQuota}");
     expect(appPageSource).toContain("planRemaining={workspacePlanRemaining}");
     expect(appPageSource).toContain("quotaSources={quotaSources}");
+    expect(appPageSource).toContain("trialCreditSummary");
+    expect(appPageSource).toContain("trialCredits.granted");
+    expect(appPageSource).not.toContain("trialQuota = 3");
     expect(appPageSource).toContain("rewrite credits remaining");
     expect(appPageSource).not.toContain(phrase("free", "rewrites", "remaining"));
     expect(workspaceSource).toContain("quota: number");

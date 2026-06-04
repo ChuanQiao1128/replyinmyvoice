@@ -16,6 +16,10 @@ export type AzureAccountUsage = {
 export type AzureQuotaCreditSource = {
   source: string;
   label: string;
+  used?: number;
+  limit?: number | null;
+  quota?: number | null;
+  reserved?: number;
   remaining: number;
   expiresAt: string | null;
   expiresInDays: number | null;
