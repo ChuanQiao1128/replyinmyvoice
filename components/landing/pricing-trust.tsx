@@ -1,3 +1,5 @@
+import React from "react";
+
 const includes = [
   {
     k: "Tone check",
@@ -15,6 +17,14 @@ const includes = [
     k: "Private history",
     p: "Recent rewrites stay in your browser only — not saved to our database.",
   },
+];
+
+const reassuranceItems = [
+  "No card needed to try",
+  "Packs don't auto-renew",
+  "Cancel Pro/API anytime",
+  "Secure checkout via Stripe",
+  "History stays in your browser",
 ];
 
 export function PricingTrust() {
@@ -35,6 +45,17 @@ export function PricingTrust() {
           </div>
         ))}
       </div>
+      <ul className="pp-reassurance" aria-label="Pricing reassurance">
+        {reassuranceItems.map((item) => (
+          <li className="pp-reassurance-item" key={item}>
+            {item}
+          </li>
+        ))}
+      </ul>
+      <p className="pp-credibility">
+        <strong>Replies that still sound like you.</strong> Built for teacher,
+        sales, workplace, and client replies. Operated by TimeAwake Ltd.
+      </p>
     </section>
   );
 }
