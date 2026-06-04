@@ -3182,3 +3182,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`; API key EF model and migration files; `docs/skill-run-log.md`.
 - Verification evidence: Initial red run `dotnet test --filter ApiKeyServiceTests` failed on missing `ApiKeyService`. A focused run exposed SQLite `DateTimeOffset` ordering, fixed by materializing owner rows before in-memory ordering. Final focused run passed 4/4. Final `dotnet build` passed. Final `dotnet test` passed 509/509. Restricted substring scan over `app components public lib` returned no matches.
 - Limitations: `dotnet` commands emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore/build/test completed. `dotnet ef` reported local tool version 8.0.8 versus runtime 8.0.19 and still generated the migration. Local `git add`/commit was blocked because this worktree's Git metadata is outside the writable sandbox.
+
+### 2026-06-04 - data-module-review - API-02 ApiKeyAuthResolver lookup
+
+- Agent: Codex worker
+- Trigger: API-02 adds a Functions auth helper that reads `ApiKeys` by the existing unique `KeyHash` and updates successful key usage metadata.
+- Action: Opened and followed the project skill; reviewed `ApiKey`, `AppDbContext` key indexes, `ApiKeyService.ComputeHash`, and the resolver lookup/update path. Confirmed the change adds no schema or migration, keeps plaintext out of storage, rejects revoked/expired rows before mutation, and updates only `LastUsedAt` after a valid lookup.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyAuthResolverTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet` completed; output was broad/noisy and did not identify a new API-key resolver data issue. Focused resolver tests passed 6/6 with persisted `LastUsedAt` verification.
+- Limitations: The scan reports many existing quota/idempotency signals across the backend and is not specific to this two-file change.
+
+### 2026-06-04 - dotnet-backend-testing - API-02 ApiKeyAuthResolver coverage
+
+- Agent: Codex worker
+- Trigger: API-02 requires new xUnit coverage for valid, unknown, revoked, expired, missing-header, and non-live-prefix API key auth outcomes.
+- Action: Opened and followed the project skill; wrote focused xUnit tests first using the existing EF SQLite `DbFixture` and `DefaultHttpContext`, then implemented the static resolver helper in the Functions auth namespace.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyAuthResolverTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Initial focused run with `--no-restore` stopped on missing fresh-worktree assets; focused red run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter ApiKeyAuthResolverTests` then failed on missing `ApiKeyAuthResolver`. Focused green run passed 6/6.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and focused tests completed.
