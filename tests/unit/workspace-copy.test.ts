@@ -5,6 +5,10 @@ const workspaceSource = readFileSync(
   new URL("../../components/app/rewrite-workspace.tsx", import.meta.url),
   "utf8",
 );
+const rewriteHistorySource = readFileSync(
+  new URL("../../lib/rewrite-history.ts", import.meta.url),
+  "utf8",
+);
 const subscriptionStatusSource = readFileSync(
   new URL("../../components/app/subscription-status.tsx", import.meta.url),
   "utf8",
@@ -68,7 +72,11 @@ describe("rewrite workspace surface copy", () => {
   });
 
   it("describes rewrite history and retention accurately", () => {
-    expect(workspaceSource).toContain("rimv.rewrite.history.v1");
+    expect(rewriteHistorySource).toContain("rimv.rewrite.history.v1");
+    expect(rewriteHistorySource).toContain("REWRITE_HISTORY_STORAGE_KEY_PREFIX");
+    expect(workspaceSource).toContain("readLocalRewriteHistory");
+    expect(workspaceSource).toContain("writeLocalRewriteHistory");
+    expect(workspaceSource).toContain("clearLocalRewriteHistory");
     expect(workspaceSource).toContain("Recent rewrites");
     expect(workspaceSource).toContain("By choosing Rewrite");
     expect(workspaceSource).toContain("pasted messages and rewrites");

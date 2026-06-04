@@ -22,6 +22,7 @@ export default async function AppPage() {
   }
 
   const usage = account.usage;
+  const rewriteHistoryUserKey = account.externalAuthUserId || account.userId;
   const paid = usage.scope === "paid" || paidStatuses.has(account.subscriptionStatus);
   const promo = account.promo ?? null;
   const quotaSources = (usage.sources ?? []).map((source) => ({
@@ -60,7 +61,7 @@ export default async function AppPage() {
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader rewriteHistoryUserKey={rewriteHistoryUserKey} />
       <RewriteWorkspace
         appExperience={appExperience}
         canRedeem={canRedeem}
@@ -71,6 +72,7 @@ export default async function AppPage() {
         quota={workspaceQuota}
         quotaSources={quotaSources}
         remaining={usage.remaining}
+        rewriteHistoryUserKey={rewriteHistoryUserKey}
         usageExhausted={usage.exhausted}
         subscriptionStatus={account.subscriptionStatus}
         usageLabel={usageLabel}

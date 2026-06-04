@@ -2,8 +2,13 @@ import Link from "next/link";
 
 import { isAdminSession } from "../lib/admin-auth";
 import { getCurrentSession } from "../lib/entra-auth";
+import { SignOutLink } from "./sign-out-link";
 
-export async function SiteHeader() {
+type Props = {
+  rewriteHistoryUserKey?: string;
+};
+
+export async function SiteHeader({ rewriteHistoryUserKey }: Props = {}) {
   const session = await getCurrentSession();
 
   return (
@@ -28,7 +33,9 @@ export async function SiteHeader() {
           ) : (
             <>
               {isAdminSession(session) ? <Link href="/admin">Admin</Link> : null}
-              <a href="/api/auth/logout">Sign out</a>
+              <SignOutLink
+                rewriteHistoryUserKey={rewriteHistoryUserKey ?? session.sub}
+              />
               <Link href="/app" className="btn btn-primary">
                 Open app <span className="btn-arrow">→</span>
               </Link>
