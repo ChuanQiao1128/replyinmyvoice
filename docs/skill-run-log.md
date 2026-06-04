@@ -3146,3 +3146,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/site-header.tsx`; `app/globals.css`; `tests/unit/site-header-mobile-nav.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused red run `npm run test -- tests/unit/site-header-mobile-nav.test.ts` failed on missing `mobile-nav-menu` header/CSS tokens. Focused green run passed 3/3. Existing header focused run passed 6/6 across `tests/unit/site-header.test.ts` and `tests/unit/site-header-mobile-nav.test.ts`. Final `npm run typecheck` passed. Final `npm run test` passed 381/381. Required restricted substring scan over `app components public lib` returned no matches.
 - Limitations: Local browser assertions could not execute because Playwright Chromium launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied; full Chromium also crashed before page load, and a fresh Firefox install under `/private/tmp` exited before launch. The Next dev server emitted repeated `EMFILE` watcher warnings while reaching ready state. `npm ci` initially hit a root-owned shared npm cache; rerunning with `--cache /private/tmp/npm-cache-issue-494` succeeded. Local `git add`/commit was blocked because this worktree's Git metadata is outside the writable sandbox. The shell uses Node v24.9.0 while `package.json` declares `>=22 <23`; npm emitted `EBADENGINE`, but typecheck and unit tests completed.
+
+### 2026-06-04 - system-spec-synthesis - API-01 API key service contract
+
+- Agent: Codex
+- Trigger: API-01 changes an API-key data model and service contract from issue #503 plus `plans/rewrite-api-v1/SPEC.md`.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the API-01 brief, and the rewrite API spec data/key-format sections. Converted the requirements into scoped checkpoints: add nullable `ApiKey.Last4`, keep plaintext reveal-once, hash with runtime `API_KEY_PEPPER`, list only masked summaries, owner-only revoke, register the infrastructure service, and avoid auth resolver/routes.
+- Output artifacts: Implementation checkpoints reflected in `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`, EF model/migration files, and `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`.
+- Verification evidence: Focused red `dotnet test --filter ApiKeyServiceTests` failed on missing `ApiKeyService`; focused green passed 4/4; final `dotnet build` passed; final `dotnet test` passed 509/509.
+- Limitations: No separate spec file was added because the issue and brief were already implementation-ready and the requested scope was a narrow prerequisite service.
+
+### 2026-06-04 - state-machine-modeling - API-01 API key revoke lifecycle
+
+- Agent: Codex
+- Trigger: API-01 adds revoke behavior for persisted API keys with active/revoked lifecycle semantics.
+- Action: Opened and followed the skill; modeled API-key state as active when `RevokedAt` is null and revoked when `RevokedAt` is set. Events covered create key, list keys, owner revoke, non-owner revoke attempt, and duplicate owner revoke. Invariants: plaintext is never stored; `KeyHash` remains unique; `Last4` is nullable display metadata; non-owner revoke does not mutate; revoked timestamp is not rewritten by duplicate revoke.
+- Output artifacts: `ApiKeyService.GenerateAsync`, `ListAsync`, and `RevokeAsync`; `ApiKeyServiceTests.RevokeAsync_sets_revoked_at_for_owner_and_returns_false_for_non_owner`.
+- Verification evidence: Focused service tests passed 4/4 after implementation; final `dotnet test` passed 509/509.
+- Limitations: API-key auth resolution, expiry handling, and rate-limit state are intentionally deferred to later API wave issues.
+
+### 2026-06-04 - data-module-review - API-01 ApiKey Last4 persistence
+
+- Agent: Codex
+- Trigger: API-01 changes EF Core entity mapping, adds a nullable `ApiKeys.Last4` column, and introduces a data access service that mutates `ApiKeys`.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `AppDbContext`, existing unique `KeyHash` index, service factory patterns, and generated migration output. Confirmed the migration is additive/nullable only, preserves existing rows, keeps the existing `KeyHash` uniqueness invariant, and scopes list/revoke queries by `UserId`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260604111210_AddApiKeyLast4.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260604111210_AddApiKeyLast4.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`.
+- Verification evidence: `dotnet ef migrations add AddApiKeyLast4` completed; migration body adds nullable `nvarchar(4)` `Last4` and drops it on rollback; final `dotnet build` passed; final `dotnet test` passed 509/509.
+- Limitations: The service does not add collision retry logic around the unique hash index because the issue did not request it and the generated key has high entropy.
+
+### 2026-06-04 - dotnet-backend-testing - API-01 ApiKeyService coverage
+
+- Agent: Codex
+- Trigger: API-01 requires new xUnit tests for API key generation, hashing, masked listing, and revoke ownership.
+- Action: Opened and followed the project skill; wrote failing service tests first using the existing EF SQLite `DbFixture`, then implemented `ApiKeyService`, the nullable display column, DI registration, and the EF migration. Used the existing lowest test level that proves persisted state and service behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`; API key EF model and migration files; `docs/skill-run-log.md`.
+- Verification evidence: Initial red run `dotnet test --filter ApiKeyServiceTests` failed on missing `ApiKeyService`. A focused run exposed SQLite `DateTimeOffset` ordering, fixed by materializing owner rows before in-memory ordering. Final focused run passed 4/4. Final `dotnet build` passed. Final `dotnet test` passed 509/509. Restricted substring scan over `app components public lib` returned no matches.
+- Limitations: `dotnet` commands emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore/build/test completed. `dotnet ef` reported local tool version 8.0.8 versus runtime 8.0.19 and still generated the migration. Local `git add`/commit was blocked because this worktree's Git metadata is outside the writable sandbox.

@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
             return () => new AppDbContext(options);
         });
         services.AddScoped<AccountService>();
+        services.AddScoped<ApiKeyService>();
         services.AddScoped<QuotaService>();
         services.AddScoped<PromoService>();
         services.AddScoped<RewriteRequestService>();
