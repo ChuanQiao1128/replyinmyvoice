@@ -8,11 +8,17 @@ using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
 using Stripe;
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+
+const string V1RewriteEndpointName = "v1/rewrite";
+const int V1MinimumDraftLength = 10;
+const int V1MaximumDraftWords = 300;
+const int V1MaximumDraftCharacters = 2400;
 
 var builder = WebApplication.CreateBuilder(args);
 Console.Error.WriteLine("TRACE api: builder created");
@@ -156,6 +162,132 @@ app.MapPost("/api/rewrite", async (
     return result.Status == RewriteAttemptStatus.Succeeded
         ? Results.Ok(response)
         : Results.Accepted($"/api/rewrite-attempts/{result.AttemptId}", response);
+});
+
+app.MapPost("/api/v1/rewrite", async (
+    HttpRequest httpRequest,
+    AppDbContext db,
+    RewriteRequestService rewriteRequestService,
+    CancellationToken cancellationToken) =>
+{
+    var stopwatch = Stopwatch.StartNew();
+    var now = DateTimeOffset.UtcNow;
+    var bearerToken = ResolveBearerToken(httpRequest);
+    var auth = await ResolveApiKeyAuthAsync(db, bearerToken, now, cancellationToken);
+    if (auth.UserId is null)
+    {
+        return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
+    }
+
+    V1RewriteSubmitRequest? body;
+    try
+    {
+        body = await ReadV1RewriteSubmitRequestAsync(httpRequest, cancellationToken);
+    }
+    catch (JsonException)
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("invalid_request", "Request body must be valid JSON.", StatusCodes.Status400BadRequest),
+            StatusCodes.Status400BadRequest,
+            stopwatch,
+            now,
+            cancellationToken);
+    }
+
+    var draft = body?.Draft?.Trim();
+    if (string.IsNullOrWhiteSpace(draft) || draft.Length < V1MinimumDraftLength)
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("invalid_request", "A draft of at least 10 characters is required.", StatusCodes.Status400BadRequest),
+            StatusCodes.Status400BadRequest,
+            stopwatch,
+            now,
+            cancellationToken);
+    }
+
+    if (draft.Length > V1MaximumDraftCharacters || CountWords(draft) > V1MaximumDraftWords)
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("input_too_long", "Draft must be 300 words or fewer and no more than 2400 characters.", StatusCodes.Status400BadRequest),
+            StatusCodes.Status400BadRequest,
+            stopwatch,
+            now,
+            cancellationToken);
+    }
+
+    var user = await db.AppUsers
+        .AsNoTracking()
+        .SingleOrDefaultAsync(x => x.Id == auth.UserId.Value, cancellationToken);
+    if (user is null)
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized),
+            StatusCodes.Status401Unauthorized,
+            stopwatch,
+            now,
+            cancellationToken);
+    }
+
+    var idempotencyKey = httpRequest.Headers["Idempotency-Key"].ToString();
+    if (string.IsNullOrWhiteSpace(idempotencyKey))
+    {
+        idempotencyKey = Guid.NewGuid().ToString("D");
+    }
+
+    var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user, builder.Configuration);
+    var result = await rewriteRequestService.CreateAttemptAsync(
+        user.Id,
+        idempotencyKey,
+        new RewriteRequest(null, draft, null, null, null, null, "warm"),
+        plan.PeriodKey,
+        plan.QuotaLimit,
+        now,
+        cancellationToken);
+
+    if (result.Kind == ReserveRewriteResultKind.QuotaExceeded)
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("quota_exhausted", "No rewrite quota remains for the current period.", StatusCodes.Status402PaymentRequired),
+            StatusCodes.Status402PaymentRequired,
+            stopwatch,
+            now,
+            cancellationToken);
+    }
+
+    if (result.Kind == ReserveRewriteResultKind.Conflict)
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("idempotency_conflict", "The idempotency key was reused with a different draft.", StatusCodes.Status409Conflict),
+            StatusCodes.Status409Conflict,
+            stopwatch,
+            now,
+            cancellationToken,
+            result.AttemptId.ToString());
+    }
+
+    return await CompleteV1Async(
+        db,
+        auth.ApiKeyId,
+        Results.Accepted(
+            $"/api/v1/rewrite/{result.AttemptId}",
+            new V1RewriteSubmitResponse(result.AttemptId, "processing")),
+        StatusCodes.Status202Accepted,
+        stopwatch,
+        now,
+        cancellationToken,
+        result.AttemptId.ToString());
 });
 
 app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
@@ -530,6 +662,148 @@ static async Task<PromoRedeemRequest?> ReadPromoRedeemRequestAsync(
         new JsonSerializerOptions(JsonSerializerDefaults.Web));
 }
 
+static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
+    AppDbContext db,
+    string? bearerToken,
+    DateTimeOffset now,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(bearerToken) ||
+        !bearerToken.StartsWith("rmv_live_", StringComparison.Ordinal))
+    {
+        return new ApiKeyAuthResult(null, null);
+    }
+
+    var keyHash = ApiKeyService.ComputeHash(bearerToken);
+    var apiKey = await db.ApiKeys
+        .SingleOrDefaultAsync(x => x.KeyHash == keyHash, cancellationToken);
+
+    if (apiKey is null ||
+        apiKey.RevokedAt is not null ||
+        (apiKey.ExpiresAt is not null && apiKey.ExpiresAt <= now))
+    {
+        return new ApiKeyAuthResult(null, null);
+    }
+
+    apiKey.LastUsedAt = now;
+    try
+    {
+        await db.SaveChangesAsync(cancellationToken);
+    }
+    catch (DbUpdateException)
+    {
+        db.Entry(apiKey).State = EntityState.Unchanged;
+    }
+
+    return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id);
+}
+
+static async Task<V1RewriteSubmitRequest?> ReadV1RewriteSubmitRequestAsync(
+    HttpRequest request,
+    CancellationToken cancellationToken)
+{
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync(cancellationToken);
+    if (string.IsNullOrWhiteSpace(body))
+    {
+        return null;
+    }
+
+    return JsonSerializer.Deserialize<V1RewriteSubmitRequest>(
+        body,
+        new JsonSerializerOptions(JsonSerializerDefaults.Web));
+}
+
+static async Task<IResult> CompleteV1Async(
+    AppDbContext db,
+    Guid? apiKeyId,
+    IResult result,
+    int statusCode,
+    Stopwatch stopwatch,
+    DateTimeOffset now,
+    CancellationToken cancellationToken,
+    string? requestId = null)
+{
+    stopwatch.Stop();
+    await TryWriteV1ApiKeyUsageAsync(
+        db,
+        apiKeyId,
+        requestId ?? Guid.NewGuid().ToString("D"),
+        statusCode,
+        (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
+        now,
+        cancellationToken);
+    return result;
+}
+
+static async Task TryWriteV1ApiKeyUsageAsync(
+    AppDbContext db,
+    Guid? apiKeyId,
+    string requestId,
+    int statusCode,
+    int latencyMs,
+    DateTimeOffset now,
+    CancellationToken cancellationToken)
+{
+    if (apiKeyId is null)
+    {
+        return;
+    }
+
+    try
+    {
+        db.ApiKeyUsages.Add(new ApiKeyUsage
+        {
+            ApiKeyId = apiKeyId.Value,
+            RequestId = requestId,
+            Endpoint = V1RewriteEndpointName,
+            StatusCode = statusCode,
+            LatencyMs = latencyMs,
+            CreatedAt = now,
+        });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+    catch (Exception)
+    {
+    }
+}
+
+static IResult V1Error(string code, string message, int statusCode) =>
+    Results.Json(new V1ErrorResponse(new V1Error(code, message)), statusCode: statusCode);
+
+static string? ResolveBearerToken(HttpRequest request)
+{
+    var authorization = request.Headers.Authorization.ToString();
+    return authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+        ? authorization["Bearer ".Length..].Trim()
+        : null;
+}
+
+static int CountWords(string value)
+{
+    var count = 0;
+    var inWord = false;
+
+    foreach (var character in value)
+    {
+        if (char.IsWhiteSpace(character))
+        {
+            inWord = false;
+            continue;
+        }
+
+        if (inWord)
+        {
+            continue;
+        }
+
+        count += 1;
+        inWord = true;
+    }
+
+    return count;
+}
+
 static async Task<IResult> MapPromoRedeemResultAsync(
     PromoRedeemResult result,
     string externalUserId,
@@ -709,5 +983,15 @@ public sealed record PromoStatusResponse(
     DateTimeOffset? TrialExpiresAt);
 
 public sealed record PromoErrorResponse(string Error);
+
+public sealed record V1RewriteSubmitRequest(string? Draft);
+
+public sealed record V1RewriteSubmitResponse(Guid Id, string Status);
+
+public sealed record V1ErrorResponse(V1Error Error);
+
+public sealed record V1Error(string Code, string Message);
+
+public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId);
 
 public partial class Program;
