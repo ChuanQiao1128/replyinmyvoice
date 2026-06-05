@@ -52,12 +52,24 @@ describe("/api/v1/usage proxy route", () => {
       scope: "paid",
       used: 12,
     };
-    fetchMock().mockResolvedValueOnce(Response.json(payload, { status: 200 }));
+    fetchMock().mockResolvedValueOnce(
+      Response.json(payload, {
+        headers: {
+          "X-RateLimit-Limit": "60",
+          "X-RateLimit-Remaining": "57",
+          "X-RateLimit-Reset": "1812345678",
+        },
+        status: 200,
+      }),
+    );
 
     const response = await GET(request());
 
     await expect(response.json()).resolves.toEqual(payload);
     expect(response.status).toBe(200);
+    expect(response.headers.get("X-RateLimit-Limit")).toBe("60");
+    expect(response.headers.get("X-RateLimit-Remaining")).toBe("57");
+    expect(response.headers.get("X-RateLimit-Reset")).toBe("1812345678");
     expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/v1/usage`, {
       cache: "no-store",
       headers: {
