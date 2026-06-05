@@ -55,6 +55,7 @@ public static class ServiceCollectionExtensions
         });
         services.AddScoped<AccountService>();
         services.AddScoped<ApiKeyService>();
+        services.AddScoped<ApiKeyUsageQueryService>();
         services.AddScoped<QuotaService>();
         services.AddScoped<PromoService>();
         services.AddScoped<RewriteRequestService>();
