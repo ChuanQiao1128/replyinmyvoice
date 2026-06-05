@@ -20,6 +20,7 @@ function accountSummary(state: MockAccountState) {
     currentPeriodEnd: null,
     email: "promo-user@example.test",
     externalAuthUserId: "promo-user",
+    paymentGraceEndsAt: null,
     promo: {
       eligible: !hasRedeemed,
       hasRedeemed,

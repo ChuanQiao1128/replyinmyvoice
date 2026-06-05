@@ -676,6 +676,78 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
+    public async Task ProcessPaymentGraceRemindersAsync_SendsMidGraceReminderOnceForPastDueOnly()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var dueUser = await fixture.CreateUserAsync();
+        var activeUser = await fixture.CreateUserAsync();
+        var alreadyRemindedUser = await fixture.CreateUserAsync();
+        var earlyUser = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-05-26T00:25:00Z");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedDueUser = await seedDb.AppUsers.SingleAsync(x => x.Id == dueUser.Id);
+            storedDueUser.Email = "due@example.com";
+            storedDueUser.StripeSubscriptionId = "sub_due";
+            storedDueUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedDueUser.PaymentFailedAt = now.AddDays(-5);
+            storedDueUser.PaymentGraceEndsAt = now.AddDays(2);
+
+            var storedActiveUser = await seedDb.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
+            storedActiveUser.Email = "active@example.com";
+            storedActiveUser.StripeSubscriptionId = "sub_active";
+            storedActiveUser.SubscriptionStatus = SubscriptionStatus.Active;
+            storedActiveUser.PaymentFailedAt = now.AddDays(-5);
+            storedActiveUser.PaymentGraceEndsAt = now.AddDays(2);
+
+            var storedAlreadyRemindedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == alreadyRemindedUser.Id);
+            storedAlreadyRemindedUser.Email = "reminded@example.com";
+            storedAlreadyRemindedUser.StripeSubscriptionId = "sub_reminded";
+            storedAlreadyRemindedUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedAlreadyRemindedUser.PaymentFailedAt = now.AddDays(-5);
+            storedAlreadyRemindedUser.PaymentGraceEndsAt = now.AddDays(2);
+            storedAlreadyRemindedUser.PaymentGraceReminderSentAt = now.AddDays(-1);
+
+            var storedEarlyUser = await seedDb.AppUsers.SingleAsync(x => x.Id == earlyUser.Id);
+            storedEarlyUser.Email = "early@example.com";
+            storedEarlyUser.StripeSubscriptionId = "sub_early";
+            storedEarlyUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedEarlyUser.PaymentFailedAt = now.AddDays(-4);
+            storedEarlyUser.PaymentGraceEndsAt = now.AddDays(3);
+
+            await seedDb.SaveChangesAsync();
+        }
+
+        var notifications = new RecordingNotificationService();
+        var billing = new FakeDunningStripeBillingService("https://billing.test/portal");
+        var service = new StripeEventService(
+            fixture.CreateContext,
+            notificationService: notifications,
+            stripeBillingService: billing);
+
+        var first = await service.ProcessPaymentGraceRemindersAsync(now);
+        var replay = await service.ProcessPaymentGraceRemindersAsync(now.AddMinutes(1));
+
+        first.Should().Be(1);
+        replay.Should().Be(0);
+
+        await using var db = fixture.CreateContext();
+        var updatedDueUser = await db.AppUsers.SingleAsync(x => x.Id == dueUser.Id);
+        updatedDueUser.PaymentGraceReminderSentAt.Should().Be(now);
+
+        var unchangedActiveUser = await db.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
+        unchangedActiveUser.PaymentGraceReminderSentAt.Should().BeNull();
+
+        notifications.Messages.Should().ContainSingle();
+        notifications.Messages[0].TemplateName.Should().Be("payment-grace-reminder");
+        notifications.Messages[0].Recipient.Email.Should().Be("due@example.com");
+        notifications.Messages[0].Model.Should().BeOfType<PaymentGraceReminderNotificationModel>()
+            .Which.BillingPortalUrl.Should().Be("https://billing.test/portal");
+        billing.PortalRequests.Should().Equal(dueUser.ExternalAuthUserId);
+    }
+
+    [Fact]
     public async Task ProcessWebhookEventAsync_InvoicePaymentSucceededAfterFailureClearsGraceAndSendsRecoveredNotificationOnce()
     {
         await using var fixture = await DbFixture.CreateAsync();

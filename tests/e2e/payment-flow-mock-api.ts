@@ -21,6 +21,7 @@ type RequestUser = {
 
 const freeQuota = 3;
 const quickPackRewrites = 10;
+const pastDueGraceEndsAt = "2026-06-12T00:00:00.000Z";
 const users = new Map<string, UserState>();
 const processedEvents = new Set<string>();
 
@@ -92,6 +93,39 @@ function getOrCreateUser(user: RequestUser) {
 }
 
 function accountSummary(user: RequestUser) {
+  if (user.sub === "pastdue-user") {
+    return {
+      currentPeriodEnd: "2026-06-30T00:00:00.000Z",
+      email: user.email,
+      externalAuthUserId: user.sub,
+      paymentGraceEndsAt: pastDueGraceEndsAt,
+      subscriptionStatus: "PastDue",
+      usage: {
+        exhausted: false,
+        periodEnd: "2026-06-30T00:00:00.000Z",
+        periodKey: "paid:sub_pastdue:2026-06-30T00:00:00.000Z",
+        quota: 90,
+        remaining: 84,
+        reserved: 0,
+        scope: "paid",
+        sources: [
+          {
+            expiresAt: null,
+            expiresInDays: null,
+            label: "Included rewrites",
+            quota: 90,
+            remaining: 84,
+            reserved: 0,
+            source: "paid",
+            used: 6,
+          },
+        ],
+        used: 6,
+      },
+      userId: user.sub,
+    };
+  }
+
   const state = getOrCreateUser(user);
   const creditRemaining = state.credits.reduce(
     (total, credit) =>
@@ -104,6 +138,7 @@ function accountSummary(user: RequestUser) {
     currentPeriodEnd: null,
     email: state.email,
     externalAuthUserId: user.sub,
+    paymentGraceEndsAt: null,
     subscriptionStatus: "Inactive",
     usage: {
       exhausted: quota <= 0,
@@ -312,6 +347,19 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
       getOrCreateUser(user);
       json(response, 200, {
         url: "https://checkout.stripe.com/c/pay/cs_test_playwright_quick_pack",
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/stripe/portal") {
+      const user = userFromAuthorization(request);
+      if (!user) {
+        problem(response, 401, "Authentication required.");
+        return;
+      }
+      getOrCreateUser(user);
+      json(response, 200, {
+        url: "https://billing.stripe.com/session/test_portal",
       });
       return;
     }

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { DeveloperDashboard } from "../../../components/developers/developer-dashboard";
 import { SiteHeader } from "../../../components/site-header";
-import { getCurrentSession } from "../../../lib/entra-auth";
+import { fetchAzureAccountSummary } from "../../../lib/azure-api";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +14,9 @@ export const metadata: Metadata = {
 };
 
 export default async function DeveloperApiKeysPage() {
-  const session = await getCurrentSession();
+  const account = await fetchAzureAccountSummary();
 
-  if (!session) {
+  if (!account) {
     redirect("/sign-in");
   }
 
@@ -25,7 +25,10 @@ export default async function DeveloperApiKeysPage() {
       <SiteHeader />
       <main className="rimv">
         <section className="wrap py-10 sm:py-14">
-          <DeveloperDashboard />
+          <DeveloperDashboard
+            paymentGraceEndsAt={account.paymentGraceEndsAt}
+            subscriptionStatus={account.subscriptionStatus}
+          />
         </section>
       </main>
     </>

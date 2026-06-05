@@ -37,6 +37,7 @@ export type AzureAccountSummary = {
   externalAuthUserId: string;
   email: string | null;
   subscriptionStatus: string;
+  paymentGraceEndsAt: string | null;
   currentPeriodEnd: string | null;
   usage: AzureAccountUsage;
   promo?: AzurePromoSummary | null;

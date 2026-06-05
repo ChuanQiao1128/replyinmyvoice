@@ -13,6 +13,7 @@ public sealed class AppUser
     public DateTimeOffset? CurrentPeriodEnd { get; set; }
     public DateTimeOffset? PaymentFailedAt { get; set; }
     public DateTimeOffset? PaymentGraceEndsAt { get; set; }
+    public DateTimeOffset? PaymentGraceReminderSentAt { get; set; }
     public DateTimeOffset? SuspendedAt { get; set; }
     public DateTimeOffset? ConsentAcceptedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
