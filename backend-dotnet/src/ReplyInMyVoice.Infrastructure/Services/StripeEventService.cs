@@ -187,6 +187,7 @@ public sealed class StripeEventService
 
             foreach (var user in expiredUsers)
             {
+                EnqueueCancelStripeSubscription(postCommitActions, user);
                 user.SubscriptionStatus = SubscriptionStatus.Inactive;
                 ClearPaymentGrace(user);
                 user.UpdatedAt = now;
@@ -823,6 +824,20 @@ public sealed class StripeEventService
             cancellationToken));
     }
 
+    private void EnqueueCancelStripeSubscription(
+        List<Func<CancellationToken, Task>> postCommitActions,
+        AppUser user)
+    {
+        if (stripeBillingService is null || string.IsNullOrWhiteSpace(user.StripeSubscriptionId))
+        {
+            return;
+        }
+
+        var stripeSubscriptionId = user.StripeSubscriptionId;
+        postCommitActions.Add(cancellationToken =>
+            stripeBillingService.CancelSubscriptionAsync(stripeSubscriptionId, cancellationToken));
+    }
+
     private void EnqueuePaymentRecoveredNotification(
         List<Func<CancellationToken, Task>> postCommitActions,
         AppUser user)
@@ -1076,7 +1091,7 @@ public sealed class StripeEventService
             "active" => SubscriptionStatus.Active,
             "trialing" => SubscriptionStatus.Trialing,
             "past_due" => SubscriptionStatus.PastDue,
-            "canceled" => SubscriptionStatus.Canceled,
+            "canceled" => SubscriptionStatus.Inactive,
             "unpaid" or
             "incomplete" or
             "incomplete_expired" or

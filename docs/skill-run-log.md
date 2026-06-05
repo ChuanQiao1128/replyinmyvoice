@@ -3587,3 +3587,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/StripeInvoice.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
 - Verification evidence: Focused command `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ProcessWebhookEventAsync_InvoicePaidUpsertsInvoiceAndPaymentFailedUpdatesSameRow` passed 1/1 after initially failing as expected. Full `cd backend-dotnet && dotnet test` passed 533/533. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
 - Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed.
+
+### 2026-06-05 - state-machine-modeling - P2-04 payment grace expiry lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 changes subscription, payment grace, and quota lifecycle transitions.
+- Action: Opened and followed the skill. State list: `Active`, `Trialing`, and `Testing` project paid quota; `PastDue` keeps paid quota during grace; `Inactive` projects the free baseline; `Canceled` remains the explicit subscription-deleted/account-delete state. Event list: `invoice.payment_failed`, `invoice.payment_succeeded`, `customer.subscription.updated` with terminal dunning statuses, `customer.subscription.deleted`, and the scheduled payment-grace expiry timer. Transition table: `PastDue` + expired grace -> `Inactive` + clear grace + cancel Stripe subscription; `PastDue` + still in grace -> no change; paid states + timer -> no change; updated `unpaid`/`canceled` -> `Inactive` + clear grace; deleted -> `Canceled`. Invariants: expired grace cannot keep paid quota, terminal updated statuses clear grace, duplicate timer runs do not downgrade or cancel again, and subscription deletion behavior remains separate.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run failed on missing cancel and updated `canceled` terminalization, then focused green run passed 30/30. Full `cd backend-dotnet && dotnet test` passed 537/537. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: No new transition helper or enum value was added because the existing service owns these transitions.
+
+### 2026-06-05 - data-module-review - P2-04 AppUser billing state persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 changes persisted `AppUser` subscription status, payment grace fields, and quota projection.
+- Action: Opened and followed the skill; reviewed `AppUser`, `AppDbContext`, `AccountService.GetUsagePlan`, `StripeEventService`, and related tests. Confirmed no schema or migration change was needed. Ran `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 40 .`; the bounded scan returned existing broad quota/idempotency signals and no scoped blocking finding for this change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/IStripeBillingService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: The updated xUnit service test asserts downgraded status, cleared grace fields, free quota projection, unchanged active/in-grace users, and exactly one fake cancel request. Full `cd backend-dotnet && dotnet test` passed 537/537; `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: No production migration was applied locally because the persistence shape did not change.
+
+### 2026-06-05 - resilience-test-generation - P2-04 retry-safe grace expiry and terminal dunning
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 touches payment-provider retry cleanup, webhook replay behavior, and recovery from an expired payment grace state.
+- Action: Opened and followed the skill; identified the critical operation as scheduled `PastDue` expiry plus post-commit Stripe subscription cancel. Dependency boundaries: EF Core database, Azure timer runtime, Stripe billing abstraction, notification post-commit actions, and webhook event replay. Failure matrix focus: duplicate timer run, active user not eligible, still-in-grace user not eligible, terminal subscription update replay, and no live Stripe network in tests. Implemented deterministic fake billing assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PaymentGraceExpiryFunction.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run failed for the intended missing behaviors; focused green run passed 30/30. Full `cd backend-dotnet && dotnet test` passed 537/537; `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: A Stripe cancel provider failure is handled by the existing post-commit action runner, but this issue's acceptance did not require a new explicit cancel-failure test.
+
+### 2026-06-05 - dotnet-backend-testing - P2-04 grace expiry xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 requires xUnit coverage for expired grace downgrade, free-baseline quota projection, unchanged non-expired users, and fake Stripe cancel invocation.
+- Action: Opened and followed the project skill plus test-first workflow; updated the existing `StripeEventServiceTests` SQLite service suite and fake billing service. The red run failed because the cancel request was missing and updated `canceled` still persisted as `Canceled`; after implementation, the focused service suite passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/IStripeBillingService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PaymentGraceExpiryFunction.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter FullyQualifiedName~StripeEventServiceTests` failed red with 2 expected failures, then passed 30/30 after implementation. Full `cd backend-dotnet && dotnet test` passed 537/537. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed.
+
+### 2026-06-05 - cloud-architecture-cost-review - P2-04 Azure Functions timer cost check
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 adds a scheduled Azure Functions timer.
+- Action: Opened and followed the skill; reviewed `docs/manual-setup.md`, `docs/next-development-brief.md`, and `docs/dotnet-azure-full-run-result.md`. Selected option: reuse the existing Azure Functions consumption runtime with one daily timer trigger. Rejected options: new App Service, new always-on worker, new queue, or new Azure resource. No exact pricing lookup was needed because no exact price was quoted and no new resource was created.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PaymentGraceExpiryFunction.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test` passed 537/537; `cd backend-dotnet && dotnet build` succeeded with 0 errors. No `az`, deploy, provision, or live payment command was run.
+- Limitations: This was a local architecture/cost check only; no live Azure timer smoke was run because the supervisor owns deployment.

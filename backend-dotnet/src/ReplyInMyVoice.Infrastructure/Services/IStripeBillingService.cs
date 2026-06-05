@@ -11,4 +11,8 @@ public interface IStripeBillingService
     Task<string> CreatePortalSessionUrlAsync(
         string externalAuthUserId,
         CancellationToken cancellationToken);
+
+    Task CancelSubscriptionAsync(
+        string stripeSubscriptionId,
+        CancellationToken cancellationToken);
 }
