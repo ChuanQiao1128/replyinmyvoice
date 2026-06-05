@@ -62,6 +62,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RewriteJobProcessor>();
         services.AddScoped<OutboxDispatcherService>();
         services.AddScoped<ExpiredReservationCleanupService>();
+        services.AddScoped<RetentionService>();
         services.AddScoped<CreditExpiryReminderService>();
         services.AddScoped<StripeReconciliationService>();
         services.AddScoped<StripeEventService>();
