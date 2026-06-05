@@ -3371,3 +3371,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
 - Verification evidence: Focused red submit test failed with `202` instead of `429`; focused red result usage test failed with no `ApiKeyUsage` row. Focused green run passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
 - Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all tests completed.
+
+### 2026-06-05 - system-spec-synthesis - API-09 v1 usage contract check
+
+- Agent: Codex worker
+- Trigger: API-09 adds the key-authenticated `GET /api/v1/usage` contract from issue #511, the API-09 brief, and `plans/rewrite-api-v1/SPEC.md`.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the API-09 brief, and the v1 API spec. Checked the implementation checkpoints: key auth, response shape `{ scope, periodKey, quota, used, remaining, periodEnd }`, quota values sourced from `AccountService.GetOrCreateAccountSummaryAsync`, missing or invalid key returning `401`, and a Next proxy route that forwards caller authorization without site-session auth.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `app/api/v1/usage/route.ts`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `tests/unit/v1-usage-route.test.ts`.
+- Verification evidence: Focused backend red run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_usage` failed with missing-route `404`s, then focused green passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526; `npm run typecheck` passed; `npm run test` passed 398/398; restricted-term scan over `app components public lib` returned no matches.
+- Limitations: No separate spec file was added because the existing wave spec and issue brief already define the narrow API contract.
+
+### 2026-06-05 - state-machine-modeling - API-09 usage read projection
+
+- Agent: Codex worker
+- Trigger: API-09 reads quota state for a key owner and must not alter usage, reservation, or rewrite-attempt lifecycles.
+- Action: Opened and followed the skill. State list: API key active, revoked, expired; usage period current or absent. Event list: usage read with valid key, missing key, invalid key, revoked/expired key. Transition table: valid read keeps API key and usage period states unchanged while updating only best-effort key last-used metadata through the existing resolver; auth failures return `401` with no quota or reservation mutation. Invariants: endpoint reports the same account summary quota, used, and remaining numbers as the website path; rejected reads create no `UsagePeriod` or `UsageReservation`; no rewrite job or reservation is created. Illegal transitions: a read must not reserve quota, consume quota, create attempts, or expose another user's counters.
+- Output artifacts: `V1_usage_returns_account_summary_usage_for_seeded_key_user`; `V1_usage_rejects_missing_or_invalid_key`; v1 usage routes in the ASP.NET and Functions hosts.
+- Verification evidence: Focused state test failed before implementation with `404`, then passed. Full backend tests passed 526/526.
+- Limitations: No lifecycle transition helper was added because API-09 is a read-only projection over existing account and key state.
+
+### 2026-06-05 - data-module-review - API-09 account usage data invariants
+
+- Agent: Codex worker
+- Trigger: API-09 reads `ApiKeys`, `AppUsers`, and account usage counters for a public v1 endpoint.
+- Action: Opened and followed the skill; reviewed the existing API key lookup, account summary service, `UsagePeriod` counters, and rewrite credit inclusion path. Kept the change read-only for usage tables, filtered the key owner through the existing auth resolver in Functions, and reused `AccountService.GetOrCreateAccountSummaryAsync` so quota, used, and remaining values are not recomputed separately.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: New integration test seeds a paid usage period with used and reserved counts, then asserts the v1 response equals `AccountService` summary values. Missing and invalid key test asserts `401` and no usage-period or reservation rows. Full backend tests passed 526/526.
+- Limitations: No schema, migration, transaction, or index changes were needed.
+
+### 2026-06-05 - dotnet-backend-testing - API-09 usage endpoint coverage
+
+- Agent: Codex worker
+- Trigger: API-09 requires xUnit/integration coverage that the v1 usage endpoint returns the backend usage math and rejects missing or invalid keys.
+- Action: Opened and followed the project skill plus the test-first workflow; added failing tests in the existing `RewriteApiTests` WebApplicationFactory suite, verified the missing route failure, then implemented the ASP.NET mirror route and the Azure Functions route.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: Focused red `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_usage` failed on `404`; focused green passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all test runs completed.
