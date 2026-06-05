@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-05 - ui-browser-testing - P2-07 usage dashboard UI
+
+- Agent: Codex worker
+- Trigger: GitHub issue #529 changes the browser-visible `/developers/keys` developer portal into a tabbed dashboard with a new Usage tab, responsive summary cards, an SVG chart, remaining quota, and recent calls.
+- Action: Opened and followed the project skill; added a failing source-contract test for the dashboard shell, same-origin usage routes, and dependency-free accessible chart; implemented the tab shell and Usage panel; attempted desktop and mobile Playwright verification with a local signed session and mocked same-origin usage responses.
+- Output artifacts: `app/developers/keys/page.tsx`; `components/developers/developer-dashboard.tsx`; `components/developers/usage-panel.tsx`; `components/developers/usage-bar-chart.tsx`; `tests/unit/developer-keys-ui.test.ts`.
+- Verification evidence: Focused red run failed on the missing dashboard and usage files, then focused green run passed 7/7. `npm run typecheck` passed. `npm run test` passed 416/416. The scoped source policy grep over `app components public lib` returned no matches. `package.json` and `package-lock.json` diffs were empty.
+- Limitations: Playwright browser verification could not capture screenshots because Chromium failed to launch in the macOS sandbox while registering its Mach service. Local `npm ci` was blocked by cache ownership, so verification used the existing complete dependency install via a temporary symlink that was removed afterward. Local git commit was blocked because this worktree's Git metadata is outside the writable sandbox. No push, PR, deploy, live payment action, or secret inspection was performed.
+
 ### 2026-06-05 - system-spec-synthesis - P2-02 API usage endpoints
 
 - Agent: Codex
