@@ -1,0 +1,11 @@
+API-01	503	API-01-apikey-service.md
+API-02	504	API-02-apikey-auth-resolver.md
+API-03	505	API-03-v1-rewrite-submit.md
+API-04	506	API-04-v1-rewrite-result.md
+API-05	507	API-05-next-public-routes.md
+API-06	508	API-06-keys-crud-endpoints.md
+API-07	509	API-07-keys-management-ui.md
+API-08	510	API-08-rate-limit.md
+API-09	511	API-09-v1-usage.md
+API-10	512	API-10-idempotency.md
+API-11	513	API-11-terminal-state.md
