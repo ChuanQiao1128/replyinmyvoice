@@ -3641,3 +3641,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PaymentGraceExpiryFunction.cs`; `docs/skill-run-log.md`.
 - Verification evidence: `cd backend-dotnet && dotnet test` passed 537/537; `cd backend-dotnet && dotnet build` succeeded with 0 errors. No `az`, deploy, provision, or live payment command was run.
 - Limitations: This was a local architecture/cost check only; no live Azure timer smoke was run because the supervisor owns deployment.
+
+### 2026-06-05 - ui-browser-testing - P2-09 developers page redesign
+
+- Agent: Codex worker
+- Trigger: GitHub issue #530 changes the browser-visible `/developers` page, API docs layout, CTA path, and header discovery expectations.
+- Action: Opened and followed the skill; identified `/developers` as the user-visible flow. Attempted in-app Browser verification, then Playwright desktop/mobile verification after the in-app Browser was unavailable. Replaced the stale developer page with async v1 API docs and added scoped responsive styles. Added source-level Vitest coverage for the documented async endpoints, key CTA, errors, rate limits, idempotency, paid quota, 30-day retention, and stale-string removal.
+- Output artifacts: `app/developers/page.tsx`; `app/globals.css`; `tests/unit/developers-page.test.ts`; `tests/unit/pricing-auth-visual-system.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused `npm run test -- tests/unit/developers-page.test.ts tests/unit/pricing-auth-visual-system.test.ts` passed 5/5 after failing red on the stale page. `npm run typecheck` passed. Full `npm run test` passed 417/417. The issue greps for banned copy and stale `/developers` strings returned no matches. `npm run build` passed and listed `/developers` as a static route. `next start --port 3001` served `/developers` with HTTP 200, and rendered HTML checks found all required API docs with no stale strings.
+- Limitations: The in-app Browser was unavailable in this session. Headless Chromium launch failed under the macOS sandbox, and WebKit/Firefox were not installed in the shared Playwright cache, so no desktop/mobile screenshot inspection was completed. `next dev --port 3000` hit local `EMFILE` watch warnings and returned 404 for all routes in this symlinked dependency setup; production `next start` verified the built route instead. The sandbox denied signals to the lingering port-3000 dev process.
