@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-05 - state-machine-modeling - P2-06 rewrite attempt retention purge
+
+- Agent: Codex worker
+- Trigger: GitHub issue #532 changes `RewriteAttempt` lifecycle handling by adding a scheduled purge over attempts with persisted statuses.
+- Action: Opened and followed the project skill. State list: `Pending`, `Processing`, `Succeeded`, `Failed`, `Expired`. Event list: rewrite lifecycle events remain owned by existing services; the new internal command is the daily retention purge tick. Transition table: terminal attempts older than 30 days stay in the same status while payload fields are nulled; terminal attempts inside the 30-day window stay unchanged; non-terminal attempts stay unchanged. Invariants: no attempt row deletion, no idempotency key or request hash mutation, no quota or billing mutation, no terminal status rewrite, and no payload scrub for in-flight attempts. Illegal transitions: purge must not touch `Pending` or `Processing`, delete rows, or move attempts between statuses.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RetentionService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RetentionPurgeFunction.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RetentionServiceTests.cs`; `plans/rewrite-api-v1/scheduled-jobs.md`.
+- Verification evidence: Focused red run failed because the old 90-day default scrubbed 0 rows; focused green run passed 3/3 retention tests; `cd backend-dotnet && dotnet test` passed 538/538; `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: No new persisted source state was added; source scoping is documented as a P2-06 deviation because `RewriteAttempt` has no API-vs-website source flag.
+
+### 2026-06-05 - data-module-review - P2-06 retention persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #532 changes EF-backed mutation of `RewriteAttempt.RequestJson`, `RewriteAttempt.ResultJson`, and `RowVersion`.
+- Action: Opened and followed the project skill; reviewed `RewriteAttempt`, `AppDbContext` mapping, existing retention service/tests, timer Functions, DI registration, and ran the project data-risk scan with `python3`. Findings: no schema migration is needed because `RequestJson` is already nullable in EF; the main persistence gap is the absent attempt source flag. Open question resolved by brief: purge all terminal attempts by age when source cannot be distinguished. Suggested test: prove old terminal rows scrub payloads while newer and non-terminal rows remain intact.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RetentionService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RetentionServiceTests.cs`; `plans/rewrite-api-v1/scheduled-jobs.md`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py backend-dotnet --limit 80` completed; focused and full backend tests passed; `git diff --check` returned clean.
+- Limitations: No production database query plan or migration smoke was run because this change adds no schema/index migration and does not contact production data.
+
+### 2026-06-05 - dotnet-backend-testing - P2-06 retention xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #532 requires xUnit coverage for the purge method and backend `dotnet test` / `dotnet build` gates.
+- Action: Opened and followed the project skill plus TDD workflow; added the failing service-level xUnit test first, confirmed the red failure, implemented the 30-day terminal-only purge, and ran focused then full backend verification.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RetentionServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RetentionService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RetentionPurgeFunction.cs`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter Retention` initially failed on `Expected scrubbed to be 3, but found 0`; after implementation it passed 3/3. `cd backend-dotnet && dotnet test` passed 538/538. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: NuGet vulnerability metadata lookup emitted `NU1900` warnings because package-feed metadata was unavailable. Local git commit was blocked by sandbox permissions on the parent worktree Git metadata; no push, PR, deploy, live payment action, or secret inspection was performed.
+
 ### 2026-06-05 - ui-browser-testing - P2-07 usage dashboard UI
 
 - Agent: Codex worker

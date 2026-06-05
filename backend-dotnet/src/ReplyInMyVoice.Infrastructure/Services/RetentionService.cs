@@ -5,7 +5,7 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class RetentionService(Func<AppDbContext> dbContextFactory)
 {
-    public const int DefaultRetentionDays = 90;
+    public const int DefaultRetentionDays = 30;
 
     public async Task<int> ScrubExpiredRawContentAsync(
         DateTimeOffset now,
@@ -21,6 +21,10 @@ public sealed class RetentionService(Func<AppDbContext> dbContextFactory)
         var cutoff = now.AddDays(-retentionDays);
         var rawContentQuery = db.RewriteAttempts
             .AsTracking()
+            .Where(x =>
+                x.Status == Domain.Enums.RewriteAttemptStatus.Succeeded ||
+                x.Status == Domain.Enums.RewriteAttemptStatus.Failed ||
+                x.Status == Domain.Enums.RewriteAttemptStatus.Expired)
             .Where(x => x.RequestJson != null || x.ResultJson != null);
         var attempts = db.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite"
             ? (await rawContentQuery.ToListAsync(cancellationToken))
