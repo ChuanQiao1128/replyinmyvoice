@@ -16,6 +16,7 @@ using System.Text;
 using System.Text.Json;
 
 const string V1RewriteEndpointName = "v1/rewrite";
+const string V1RewriteResultEndpointName = "v1/rewrite/{id}";
 const int V1MinimumDraftLength = 10;
 const int V1MaximumDraftWords = 300;
 const int V1MaximumDraftCharacters = 2400;
@@ -179,6 +180,24 @@ app.MapPost("/api/v1/rewrite", async (
         return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
     }
 
+    if (auth.ApiKeyId is not null &&
+        await IsV1RateLimitedAsync(
+            db,
+            auth.ApiKeyId.Value,
+            auth.RateLimitPerMinute,
+            now,
+            cancellationToken))
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("rate_limited", "Request limit reached. Please retry later.", StatusCodes.Status429TooManyRequests),
+            StatusCodes.Status429TooManyRequests,
+            stopwatch,
+            now,
+            cancellationToken);
+    }
+
     V1RewriteSubmitRequest? body;
     try
     {
@@ -296,12 +315,33 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
     AppDbContext db,
     CancellationToken cancellationToken) =>
 {
+    var stopwatch = Stopwatch.StartNew();
     var now = DateTimeOffset.UtcNow;
     var bearerToken = ResolveBearerToken(httpRequest);
     var auth = await ResolveApiKeyAuthAsync(db, bearerToken, now, cancellationToken);
     if (auth.UserId is null)
     {
         return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
+    }
+
+    if (auth.ApiKeyId is not null &&
+        await IsV1RateLimitedAsync(
+            db,
+            auth.ApiKeyId.Value,
+            auth.RateLimitPerMinute,
+            now,
+            cancellationToken))
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("rate_limited", "Request limit reached. Please retry later.", StatusCodes.Status429TooManyRequests),
+            StatusCodes.Status429TooManyRequests,
+            stopwatch,
+            now,
+            cancellationToken,
+            id.ToString(),
+            V1RewriteResultEndpointName);
     }
 
     var attempt = await db.RewriteAttempts
@@ -312,10 +352,28 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
 
     if (attempt is null)
     {
-        return V1Error("not_found", "Rewrite result was not found.", StatusCodes.Status404NotFound);
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("not_found", "Rewrite result was not found.", StatusCodes.Status404NotFound),
+            StatusCodes.Status404NotFound,
+            stopwatch,
+            now,
+            cancellationToken,
+            id.ToString(),
+            V1RewriteResultEndpointName);
     }
 
-    return MapV1RewriteResult(attempt);
+    return await CompleteV1Async(
+        db,
+        auth.ApiKeyId,
+        MapV1RewriteResult(attempt),
+        StatusCodes.Status200OK,
+        stopwatch,
+        now,
+        cancellationToken,
+        id.ToString(),
+        V1RewriteResultEndpointName);
 });
 
 app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
@@ -699,7 +757,7 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
     if (string.IsNullOrWhiteSpace(bearerToken) ||
         !bearerToken.StartsWith("rmv_live_", StringComparison.Ordinal))
     {
-        return new ApiKeyAuthResult(null, null);
+        return new ApiKeyAuthResult(null, null, 0);
     }
 
     var keyHash = ApiKeyService.ComputeHash(bearerToken);
@@ -710,7 +768,7 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
         apiKey.RevokedAt is not null ||
         (apiKey.ExpiresAt is not null && apiKey.ExpiresAt <= now))
     {
-        return new ApiKeyAuthResult(null, null);
+        return new ApiKeyAuthResult(null, null, 0);
     }
 
     apiKey.LastUsedAt = now;
@@ -723,7 +781,42 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
         db.Entry(apiKey).State = EntityState.Unchanged;
     }
 
-    return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id);
+    return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute);
+}
+
+static async Task<bool> IsV1RateLimitedAsync(
+    AppDbContext db,
+    Guid apiKeyId,
+    int rateLimitPerMinute,
+    DateTimeOffset now,
+    CancellationToken cancellationToken)
+{
+    if (rateLimitPerMinute <= 0)
+    {
+        return true;
+    }
+
+    var windowStart = now.AddMinutes(-1);
+    var usageQuery = db.ApiKeyUsages
+        .AsNoTracking()
+        .Where(x => x.ApiKeyId == apiKeyId);
+
+    if (string.Equals(
+            db.Database.ProviderName,
+            "Microsoft.EntityFrameworkCore.Sqlite",
+            StringComparison.OrdinalIgnoreCase))
+    {
+        var createdAtValues = await usageQuery
+            .Select(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+        return createdAtValues.Count(x => x >= windowStart) >= rateLimitPerMinute;
+    }
+
+    var recentCallCount = await usageQuery.CountAsync(
+        x => x.CreatedAt >= windowStart,
+        cancellationToken);
+
+    return recentCallCount >= rateLimitPerMinute;
 }
 
 static async Task<V1RewriteSubmitRequest?> ReadV1RewriteSubmitRequestAsync(
@@ -750,13 +843,15 @@ static async Task<IResult> CompleteV1Async(
     Stopwatch stopwatch,
     DateTimeOffset now,
     CancellationToken cancellationToken,
-    string? requestId = null)
+    string? requestId = null,
+    string endpoint = V1RewriteEndpointName)
 {
     stopwatch.Stop();
     await TryWriteV1ApiKeyUsageAsync(
         db,
         apiKeyId,
         requestId ?? Guid.NewGuid().ToString("D"),
+        endpoint,
         statusCode,
         (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
         now,
@@ -768,6 +863,7 @@ static async Task TryWriteV1ApiKeyUsageAsync(
     AppDbContext db,
     Guid? apiKeyId,
     string requestId,
+    string endpoint,
     int statusCode,
     int latencyMs,
     DateTimeOffset now,
@@ -784,7 +880,7 @@ static async Task TryWriteV1ApiKeyUsageAsync(
         {
             ApiKeyId = apiKeyId.Value,
             RequestId = requestId,
-            Endpoint = V1RewriteEndpointName,
+            Endpoint = endpoint,
             StatusCode = statusCode,
             LatencyMs = latencyMs,
             CreatedAt = now,
@@ -1114,6 +1210,6 @@ public sealed record V1ErrorResponse(V1Error Error);
 
 public sealed record V1Error(string Code, string Message);
 
-public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId);
+public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute);
 
 public partial class Program;

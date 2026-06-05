@@ -3326,3 +3326,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/developers/keys/page.tsx`; `components/developers/api-keys-panel.tsx`; `components/site-header.tsx`; `tests/unit/developer-keys-ui.test.ts`; `tests/unit/site-header.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused red `npm run test -- tests/unit/developer-keys-ui.test.ts tests/unit/site-header.test.ts` failed on missing page/link, then passed after implementation. `npm run typecheck` passed. `npm run test` passed 400/400. Banned-term grep over `app components public lib` returned no matches. Local dev server route check returned `307` to `/sign-in` when signed out and signed-in HTML contained the key manager, create form, one-time notice, and signed-in nav link.
 - Limitations: Playwright screenshot/interaction verification could not run because both cached Chromium and system Chrome were blocked by the macOS sandbox before page load. The first dev-server attempt also hit file-watch `EMFILE` warnings due a generated npm cache; removing that cache and restarting with `WATCHPACK_POLLING=true` restored route serving.
+
+### 2026-06-05 - system-spec-synthesis - API-08 v1 per-key RPM contract
+
+- Agent: Codex worker
+- Trigger: API-08 implements the v1 API rate-limit and usage-log contract from issue #510, the API-08 brief, and `plans/rewrite-api-v1/SPEC.md`.
+- Action: Opened and followed the skill; converted the issue and spec into scoped checkpoints: resolve the concrete API key row, check the key's recent `ApiKeyUsage` rows before reservation, return the v1 `rate_limited` error shape on `429`, log one usage row for valid-key v1 calls, and leave the Entra website path unchanged.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused red run for `V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call` failed with the fourth request returning `202` instead of `429`; focused green run later passed 2/2 new API-08 tests. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No standalone spec file was added because the issue body and brief were already implementation-ready.
+
+### 2026-06-05 - resilience-test-generation - API-08 rate-limit rejection behavior
+
+- Agent: Codex worker
+- Trigger: API-08 changes and tests rate-limit behavior and must preserve quota/reservation invariants under repeated calls.
+- Action: Opened and followed the skill; defined the critical invariant as `429` being uncharged and reservation-free while still writing one usage row. Chose the existing WebApplicationFactory plus EF SQLite integration level because it proves HTTP status, persisted usage rows, reservations, outbox messages, and quota counters together.
+- Output artifacts: `RewriteApiTests.V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call`; rate-window checks in `Program.cs` and `V1RewriteHttpFunctions.cs`.
+- Verification evidence: The regression failed before implementation with `202` on the over-limit call, then passed after the pre-reservation window check. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: The test covers sequential requests inside one process; no concurrent RPM race test was added because the spec explicitly excludes an in-flight cap and the issue acceptance is sequential.
+
+### 2026-06-05 - state-machine-modeling - API-08 submit and usage lifecycle
+
+- Agent: Codex worker
+- Trigger: API-08 changes the submit lifecycle around rate-limit rejection, usage rows, quota reservation, and result polling.
+- Action: Opened and followed the skill; modeled the relevant lifecycle as valid API key request -> recent-call check -> validation or quota/idempotency outcome -> optional reservation -> exactly one usage row for valid-key v1 calls. The illegal transition covered is over-limit submit creating a `RewriteAttempt`, `UsageReservation`, or outbox message.
+- Output artifacts: `V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call`; `V1_rewrite_result_writes_api_key_usage_row`; pre-reservation rate checks in the v1 submit paths.
+- Verification evidence: The new submit lifecycle test asserts the over-limit call returns `429`, `RewriteAttempts`, `UsageReservations`, and `OutboxMessages` stay at the allowed-call count, `UsedCount` remains `0`, and the `429` call is logged. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: Existing worker finalization states were not changed or retested beyond the full suite because API-08 only gates before reservation.
+
+### 2026-06-05 - data-module-review - API-08 ApiKeyUsage RPM window
+
+- Agent: Codex worker
+- Trigger: API-08 reads and writes `ApiKeyUsage` rows and relies on persisted `ApiKey.RateLimitPerMinute`.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `ApiKeyUsage`, `AppDbContext` indexes, the v1 auth resolver, and usage logging paths. Kept the change schema-free, used the existing `{ ApiKeyId, CreatedAt }` index for non-SQLite providers, and added a SQLite-only timestamp comparison branch because EF SQLite cannot translate `DateTimeOffset` window predicates.
+- Output artifacts: `ApiKeyAuthResolver.ResolveAsync`; `IsV1RateLimitedAsync`; `IsRateLimitedAsync`; API-08 integration tests.
+- Verification evidence: Focused tests first exposed the missing rate check, then exposed the SQLite `DateTimeOffset` query translation issue. After the provider-aware branch, focused tests passed 2/2 and full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No migration was added. The SQLite branch loads the current key's timestamps client-side only in tests/local SQLite; production-style providers keep database-side filtering.
+
+### 2026-06-05 - dotnet-backend-testing - API-08 xUnit integration coverage
+
+- Agent: Codex worker
+- Trigger: API-08 requires xUnit/integration coverage for `RateLimitPerMinute + 1` submit calls and per-call usage rows.
+- Action: Opened and followed the project skill plus test-driven-development; added failing tests first in the existing `RewriteApiTests` WebApplicationFactory suite, then implemented the route/function changes and reran focused plus full backend checks.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: Focused red submit test failed with `202` instead of `429`; focused red result usage test failed with no `ApiKeyUsage` row. Focused green run passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all tests completed.
