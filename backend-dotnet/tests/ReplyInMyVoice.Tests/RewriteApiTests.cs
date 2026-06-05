@@ -17,6 +17,7 @@ using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Services;
 
@@ -325,6 +326,79 @@ public sealed class RewriteApiTests : IAsyncLifetime
             failedJson.RootElement.GetProperty("status").GetString().Should().Be("failed");
             failedJson.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_timeout");
         }
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_maps_expired_api_attempt_to_failed_without_charging_usage()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_expired",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        var submit = await PostV1RewriteAsync(client, token, "v1-expired-terminal", ValidV1Draft());
+        var body = await submit.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        body.Should().NotBeNull();
+        var quota = new QuotaService(CreateContext);
+
+        var released = await quota.ReleaseExpiredReservationsAsync(DateTimeOffset.UtcNow.AddMinutes(16));
+        var result = await GetV1RewriteResultAsync(client, token, body!.Id);
+
+        released.Should().Be(1);
+        await using (var db = CreateContext())
+        {
+            var period = await db.UsagePeriods.SingleAsync();
+            period.UsedCount.Should().Be(0);
+            period.ReservedCount.Should().Be(0);
+            (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
+            var attempt = await db.RewriteAttempts.SingleAsync();
+            attempt.Status.Should().Be(RewriteAttemptStatus.Expired);
+            attempt.ErrorCode.Should().Be("reservation_expired");
+        }
+
+        result.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = await ReadJsonAsync(result);
+        json.RootElement.GetProperty("id").GetGuid().Should().Be(body.Id);
+        json.RootElement.GetProperty("status").GetString().Should().Be("failed");
+        json.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("reservation_expired");
+    }
+
+    [Fact]
+    public async Task V1_rewrite_provider_failure_sets_api_attempt_failed_without_charging_usage()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_provider_failure",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        var submit = await PostV1RewriteAsync(client, token, "v1-provider-failure", ValidV1Draft());
+        var body = await submit.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        body.Should().NotBeNull();
+        var provider = new FakeRewriteProvider(new RewriteProviderResult(null, false, "provider_failed"));
+        var processor = new RewriteJobProcessor(CreateContext, provider);
+
+        await processor.ProcessAsync(new RewriteJob(body!.Id), CancellationToken.None);
+        var result = await GetV1RewriteResultAsync(client, token, body.Id);
+
+        provider.CallCount.Should().Be(1);
+        await using (var db = CreateContext())
+        {
+            var period = await db.UsagePeriods.SingleAsync();
+            period.UsedCount.Should().Be(0);
+            period.ReservedCount.Should().Be(0);
+            (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Released);
+            var attempt = await db.RewriteAttempts.SingleAsync();
+            attempt.Status.Should().Be(RewriteAttemptStatus.Failed);
+            attempt.ErrorCode.Should().Be("provider_failed");
+        }
+
+        result.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = await ReadJsonAsync(result);
+        json.RootElement.GetProperty("id").GetGuid().Should().Be(body.Id);
+        json.RootElement.GetProperty("status").GetString().Should().Be("failed");
+        json.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_failed");
     }
 
     [Fact]
