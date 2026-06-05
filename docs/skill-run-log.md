@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-05 - system-spec-synthesis - P2-02 API usage endpoints
+
+- Agent: Codex
+- Trigger: GitHub issue #536 adds the portal API usage summary, series, and recent endpoint contracts across Azure Functions and Next pass-through routes.
+- Action: Opened and followed the project skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, `plans/rewrite-api-v1/phase2-issues/P2-02-usage-endpoints.md`, and existing account/API-key route patterns before implementation.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiUsageHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageQueryService.cs`; `app/api/me/api-usage/summary/route.ts`; `app/api/me/api-usage/series/route.ts`; `app/api/me/api-usage/recent/route.ts`; focused backend and frontend tests.
+- Verification evidence: Focused usage tests passed 3/3; `cd backend-dotnet && dotnet test` passed 536/536; `npm run typecheck` passed; `npm run test` passed 413/413.
+- Limitations: No deploy, push, PR, live payment action, production database check, or secret inspection was performed.
+
+### 2026-06-05 - data-module-review - P2-02 API usage aggregation
+
+- Agent: Codex
+- Trigger: The issue adds an EF-backed read service over `ApiKeyUsage`, `ApiKey`, `AppUser`, and account usage summary data.
+- Action: Opened and followed the project skill; ran the data-risk scan against `backend-dotnet/src`, reviewed the existing indexes and API-key ownership relationship, and kept the change read-only with no schema or migration.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageQueryService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageQueryServiceTests.cs`.
+- Verification evidence: The service test seeds two users and multiple keys, verifies ownership isolation, status aggregation, quota values from `AccountService`, recent ordering, and Pacific/Auckland local-day bucketing; full backend suite passed 536/536.
+- Limitations: Aggregation is computed on demand from existing event rows; no rollup table, migration, or production query-plan check was added.
+
+### 2026-06-05 - dotnet-backend-testing - P2-02 usage endpoint tests
+
+- Agent: Codex
+- Trigger: The issue requires xUnit coverage for C# usage aggregation and adds Azure Functions endpoints.
+- Action: Opened and followed the project skill plus TDD workflow; wrote the failing query-service test first, confirmed the red compile failure, implemented the service and Functions endpoints, then added focused Functions tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageQueryServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiUsageHttpFunctionsTests.cs`; backend implementation files.
+- Verification evidence: Red run failed on missing `ApiKeyUsageQueryService` and response records; focused green run passed 3/3; `cd backend-dotnet && dotnet test` passed 536/536.
+- Limitations: NuGet vulnerability metadata lookup emitted `NU1900` warnings because package-feed metadata was unavailable, but restore/build/test completed. Local git commit was blocked by sandbox permissions on the parent worktree Git metadata.
+
 ### 2026-06-05 - dotnet-backend-testing - API-05 to API-11 integration merge
 
 - Agent: Codex
