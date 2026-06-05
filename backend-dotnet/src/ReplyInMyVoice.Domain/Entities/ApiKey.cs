@@ -6,6 +6,7 @@ public sealed class ApiKey
     public Guid UserId { get; set; }
     public AppUser? User { get; set; }
     public required string KeyHash { get; set; }
+    public string? Last4 { get; set; }
     public required string Name { get; set; }
     public string PlanTier { get; set; } = "free";
     public string Scope { get; set; } = "[]";

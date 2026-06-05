@@ -35,6 +35,7 @@ export async function SiteHeader({ rewriteHistoryUserKey }: Props = {}) {
               <Link href="/sign-in">Sign in</Link>
             ) : (
               <>
+                <Link href="/developers/keys">API keys</Link>
                 {isAdmin ? <Link href="/admin">Admin</Link> : null}
                 <SignOutLink rewriteHistoryUserKey={signOutUserKey} />
               </>
@@ -59,6 +60,7 @@ export async function SiteHeader({ rewriteHistoryUserKey }: Props = {}) {
                 </>
               ) : (
                 <>
+                  <Link href="/developers/keys">API keys</Link>
                   {isAdmin ? <Link href="/admin">Admin</Link> : null}
                   <SignOutLink rewriteHistoryUserKey={signOutUserKey} />
                   <Link href="/app" className="mobile-nav-cta">

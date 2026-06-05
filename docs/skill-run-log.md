@@ -45,6 +45,105 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-05 - dotnet-backend-testing - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The integration merged C# API route changes and xUnit coverage for public v1 rewrite submit, result, usage, rate-limit, idempotency, and terminal-state behavior.
+- Action: Opened and followed the project skill; preserved every merged `RewriteApiTests` v1 method, kept distinct test names, combined API-08 per-key settings with API-10 stable hash seeding, and ran the full backend gate.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; merge commits in the writable integration Git metadata.
+- Verification evidence: `cd backend-dotnet && dotnet test --nologo` passed 532/532.
+- Limitations: NuGet vulnerability metadata warnings appeared because the feed lookup was unavailable. Git writes to the original worktree metadata were blocked by the sandbox, so merges were committed using a temporary writable `GIT_DIR` while updating this worktree's files.
+
+### 2026-06-05 - resilience-test-generation - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The merged branches cover repeated public v1 submit requests, per-key rate limits, idempotency conflict behavior, no-charge terminal states, and usage/reservation invariants.
+- Action: Opened and followed the project skill; resolved test unions so duplicate submit, over-limit submit, expired attempts, and provider-failure paths all remain covered without disabling or weakening tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: `dotnet test --nologo` passed 532/532; `npm run test` passed 408/408.
+- Limitations: No live cloud queue, payment, AI, writing-signal, or production database endpoint was contacted.
+
+### 2026-06-05 - state-machine-modeling - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The integration touches public v1 rewrite attempt polling, usage reservation states, idempotent submit state, over-limit rejection, expired attempts, and provider-failure terminal projection.
+- Action: Opened and followed the project skill; checked that submit, result polling, usage read projection, rate-limit rejection, duplicate submit, expired attempt, and provider-failure tests all remain present after conflict resolution.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: V1 test method list includes submit success, rate limit, same-key same-draft idempotency, same-key different-draft conflict, result states, expired result, provider failure, usage summary, and auth rejection cases; full backend test gate passed 532/532.
+- Limitations: No new lifecycle enum, transition helper, schema, or migration was added.
+
+### 2026-06-05 - data-module-review - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The integration reconciles persisted `ApiKeyUsage`, `RewriteAttempt`, `UsageReservation`, `UsagePeriod`, API key lookup, and account usage summary behavior.
+- Action: Opened and followed the project skill; preserved API-08's persisted usage window and API-09's usage read path, kept API-10's stable API-key hash seeding, and confirmed no schema or migration conflict was introduced.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: `dotnet test --nologo` passed 532/532 with assertions covering persisted usage rows, reservations, outbox counts, quota counters, and usage summary values.
+- Limitations: This was an integration review of existing branch changes; no migration command or production database check was run.
+
+### 2026-06-05 - ui-browser-testing - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The integration merged browser-visible Next.js routes and developer key-management UI from API-05, API-07, and API-09.
+- Action: Opened and followed the project skill; preserved the `/developers/keys` page, developer key panel, header link, public rewrite proxy routes, usage proxy route, and related unit tests.
+- Output artifacts: `app/api/v1/rewrite/route.ts`; `app/api/v1/rewrite/[id]/route.ts`; `app/api/v1/usage/route.ts`; `app/developers/keys/page.tsx`; `components/developers/api-keys-panel.tsx`; `components/site-header.tsx`; frontend unit tests.
+- Verification evidence: `npm run typecheck` passed; `npm run test` passed 408/408.
+- Limitations: Browser screenshots and Playwright E2E were not run because the user-requested gates were typecheck and unit tests for this mechanical integration.
+
+### 2026-06-04 - system-spec-synthesis - API-05 Next public rewrite proxy routes
+
+- Agent: Codex
+- Trigger: GitHub issue #507 adds the public Next.js `POST /api/v1/rewrite` and `GET /api/v1/rewrite/{id}` proxy contract for caller-supplied API authorization.
+- Action: Opened and followed the system-spec workflow; read `AGENTS.md`, `CLAUDE.md`, the API-05 brief, the v1 API spec, and existing proxy/helper routes before implementing the scoped Next routes.
+- Output artifacts: `app/api/v1/rewrite/route.ts`; `app/api/v1/rewrite/[id]/route.ts`; `tests/unit/public-rewrite-api-route.test.ts`.
+- Verification evidence: Focused route test first failed on the missing module, then passed 5/5 after implementation; `npm run typecheck` passed; `npm run test` passed 400/400; source policy grep over `app components public lib` returned no matches; `app/api/rewrite/route.ts` diff was empty.
+- Limitations: No backend, billing, secret, deployment, push, or PR changes were made. Local git commit was blocked because the worktree Git metadata is outside the writable sandbox.
+
+### 2026-06-04 - system-spec-synthesis - API-03 v1 rewrite submit contract
+
+- Agent: Codex
+- Trigger: GitHub issue #505 adds the key-authed `POST /api/v1/rewrite` API contract and async submit behavior.
+- Action: Opened and followed the system-spec workflow; read `AGENTS.md`, `CLAUDE.md`, the issue brief, the v1 API spec, and existing Entra submit code before implementing the scoped contract.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; API test-host mirror in `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; focused integration tests in `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused API-03 tests passed 4/4; full `dotnet test` under `backend-dotnet` passed 519/519.
+- Limitations: This issue only implements submit. The result endpoint, rate limiting, Next.js proxy route, key management UI, and deployment were not changed.
+
+### 2026-06-04 - state-machine-modeling - API-03 rewrite reservation lifecycle
+
+- Agent: Codex
+- Trigger: API-03 creates rewrite attempts, usage reservations, and outbox jobs through an async lifecycle.
+- Action: Opened and followed the state workflow; kept submit in `Pending` reservation state with existing worker-owned finalization/release transitions and mapped only submit errors for rejected requests.
+- Output artifacts: `V1RewriteHttpFunctions.SubmitRewrite`; `/api/v1/rewrite` API test-host route; assertions for `UsageReservationStatus.Pending`, unchanged `UsagePeriod.UsedCount`, and no reservation/outbox on rejects.
+- Verification evidence: Focused API-03 tests passed 4/4; full `dotnet test` under `backend-dotnet` passed 519/519.
+- Limitations: No new persisted states or transition function were added; the existing `RewriteRequestService` and `QuotaService` lifecycle remains the source of truth.
+
+### 2026-06-04 - data-module-review - API-03 quota and API-key persistence
+
+- Agent: Codex
+- Trigger: API-03 reads `AppUser`/`ApiKey`, creates usage reservations through existing services, and writes `ApiKeyUsage` rows.
+- Action: Opened and followed the data-module workflow; reviewed `AppDbContext`, API key entities, usage period/reservation entities, `ApiKeyService`, `ApiKeyAuthResolver`, `RewriteRequestService`, and `QuotaService` invariants before code changes.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Tests assert accepted requests create one pending reservation and one usage log while rejected valid-key requests create no attempt/reservation/outbox; full `dotnet test` passed 519/519.
+- Limitations: No schema or migration changes were needed. Missing or unknown keys cannot write an `ApiKeyUsage` row because there is no valid key foreign key to attach.
+
+### 2026-06-04 - resilience-test-generation - API-03 reject-before-reserve behavior
+
+- Agent: Codex
+- Trigger: API-03 must handle repeated idempotent submit paths, invalid auth, malformed or oversized input, and quota exhaustion without incorrect usage side effects.
+- Action: Opened and followed the resilience workflow; designed deterministic HTTP/SQLite tests around auth failure, over-limit input, quota exhaustion, and successful async reservation.
+- Output artifacts: Four focused xUnit integration tests in `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Red run failed with `404` before implementation; green run passed 4/4 after adding the route and handler; full `dotnet test` passed 519/519.
+- Limitations: No live cloud, payment, AI, email, or production database calls were made. Concurrency stress remains covered by existing quota service tests rather than new API-03 cases.
+
+### 2026-06-04 - dotnet-backend-testing - API-03 v1 rewrite submit integration tests
+
+- Agent: Codex
+- Trigger: API-03 requires C#/.NET integration tests for the new key-authed submit endpoint and persisted reservation state.
+- Action: Opened and followed the .NET backend testing workflow; wrote failing xUnit/WebApplicationFactory tests first, implemented the Functions endpoint plus API test-host mirror, then ran focused and full backend commands.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Http/FunctionHttpResults.cs`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln --filter V1_rewrite_submit` passed 4/4; `dotnet test` under `backend-dotnet` passed 519/519; whitespace check and scoped prohibited-string guards returned clean.
+- Limitations: NuGet vulnerability metadata warnings appeared because the feed was unreachable, but restore/build/test completed from available packages. No push, PR, deploy, live payment action, or secret inspection was performed.
+
 ### 2026-06-04 - ui-browser-testing - PARITY-01 pricing surface parity
 
 - Agent: Codex
@@ -3146,3 +3245,282 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/site-header.tsx`; `app/globals.css`; `tests/unit/site-header-mobile-nav.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused red run `npm run test -- tests/unit/site-header-mobile-nav.test.ts` failed on missing `mobile-nav-menu` header/CSS tokens. Focused green run passed 3/3. Existing header focused run passed 6/6 across `tests/unit/site-header.test.ts` and `tests/unit/site-header-mobile-nav.test.ts`. Final `npm run typecheck` passed. Final `npm run test` passed 381/381. Required restricted substring scan over `app components public lib` returned no matches.
 - Limitations: Local browser assertions could not execute because Playwright Chromium launch is blocked in this macOS sandbox by `MachPortRendezvousServer` permission denied; full Chromium also crashed before page load, and a fresh Firefox install under `/private/tmp` exited before launch. The Next dev server emitted repeated `EMFILE` watcher warnings while reaching ready state. `npm ci` initially hit a root-owned shared npm cache; rerunning with `--cache /private/tmp/npm-cache-issue-494` succeeded. Local `git add`/commit was blocked because this worktree's Git metadata is outside the writable sandbox. The shell uses Node v24.9.0 while `package.json` declares `>=22 <23`; npm emitted `EBADENGINE`, but typecheck and unit tests completed.
+
+### 2026-06-04 - system-spec-synthesis - API-01 API key service contract
+
+- Agent: Codex
+- Trigger: API-01 changes an API-key data model and service contract from issue #503 plus `plans/rewrite-api-v1/SPEC.md`.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the API-01 brief, and the rewrite API spec data/key-format sections. Converted the requirements into scoped checkpoints: add nullable `ApiKey.Last4`, keep plaintext reveal-once, hash with runtime `API_KEY_PEPPER`, list only masked summaries, owner-only revoke, register the infrastructure service, and avoid auth resolver/routes.
+- Output artifacts: Implementation checkpoints reflected in `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`, EF model/migration files, and `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`.
+- Verification evidence: Focused red `dotnet test --filter ApiKeyServiceTests` failed on missing `ApiKeyService`; focused green passed 4/4; final `dotnet build` passed; final `dotnet test` passed 509/509.
+- Limitations: No separate spec file was added because the issue and brief were already implementation-ready and the requested scope was a narrow prerequisite service.
+
+### 2026-06-04 - state-machine-modeling - API-01 API key revoke lifecycle
+
+- Agent: Codex
+- Trigger: API-01 adds revoke behavior for persisted API keys with active/revoked lifecycle semantics.
+- Action: Opened and followed the skill; modeled API-key state as active when `RevokedAt` is null and revoked when `RevokedAt` is set. Events covered create key, list keys, owner revoke, non-owner revoke attempt, and duplicate owner revoke. Invariants: plaintext is never stored; `KeyHash` remains unique; `Last4` is nullable display metadata; non-owner revoke does not mutate; revoked timestamp is not rewritten by duplicate revoke.
+- Output artifacts: `ApiKeyService.GenerateAsync`, `ListAsync`, and `RevokeAsync`; `ApiKeyServiceTests.RevokeAsync_sets_revoked_at_for_owner_and_returns_false_for_non_owner`.
+- Verification evidence: Focused service tests passed 4/4 after implementation; final `dotnet test` passed 509/509.
+- Limitations: API-key auth resolution, expiry handling, and rate-limit state are intentionally deferred to later API wave issues.
+
+### 2026-06-04 - data-module-review - API-01 ApiKey Last4 persistence
+
+- Agent: Codex
+- Trigger: API-01 changes EF Core entity mapping, adds a nullable `ApiKeys.Last4` column, and introduces a data access service that mutates `ApiKeys`.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `AppDbContext`, existing unique `KeyHash` index, service factory patterns, and generated migration output. Confirmed the migration is additive/nullable only, preserves existing rows, keeps the existing `KeyHash` uniqueness invariant, and scopes list/revoke queries by `UserId`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260604111210_AddApiKeyLast4.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260604111210_AddApiKeyLast4.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`.
+- Verification evidence: `dotnet ef migrations add AddApiKeyLast4` completed; migration body adds nullable `nvarchar(4)` `Last4` and drops it on rollback; final `dotnet build` passed; final `dotnet test` passed 509/509.
+- Limitations: The service does not add collision retry logic around the unique hash index because the issue did not request it and the generated key has high entropy.
+
+### 2026-06-04 - dotnet-backend-testing - API-01 ApiKeyService coverage
+
+- Agent: Codex
+- Trigger: API-01 requires new xUnit tests for API key generation, hashing, masked listing, and revoke ownership.
+- Action: Opened and followed the project skill; wrote failing service tests first using the existing EF SQLite `DbFixture`, then implemented `ApiKeyService`, the nullable display column, DI registration, and the EF migration. Used the existing lowest test level that proves persisted state and service behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`; API key EF model and migration files; `docs/skill-run-log.md`.
+- Verification evidence: Initial red run `dotnet test --filter ApiKeyServiceTests` failed on missing `ApiKeyService`. A focused run exposed SQLite `DateTimeOffset` ordering, fixed by materializing owner rows before in-memory ordering. Final focused run passed 4/4. Final `dotnet build` passed. Final `dotnet test` passed 509/509. Restricted substring scan over `app components public lib` returned no matches.
+- Limitations: `dotnet` commands emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore/build/test completed. `dotnet ef` reported local tool version 8.0.8 versus runtime 8.0.19 and still generated the migration. Local `git add`/commit was blocked because this worktree's Git metadata is outside the writable sandbox.
+
+### 2026-06-04 - data-module-review - API-02 ApiKeyAuthResolver lookup
+
+- Agent: Codex worker
+- Trigger: API-02 adds a Functions auth helper that reads `ApiKeys` by the existing unique `KeyHash` and updates successful key usage metadata.
+- Action: Opened and followed the project skill; reviewed `ApiKey`, `AppDbContext` key indexes, `ApiKeyService.ComputeHash`, and the resolver lookup/update path. Confirmed the change adds no schema or migration, keeps plaintext out of storage, rejects revoked/expired rows before mutation, and updates only `LastUsedAt` after a valid lookup.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyAuthResolverTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet` completed; output was broad/noisy and did not identify a new API-key resolver data issue. Focused resolver tests passed 6/6 with persisted `LastUsedAt` verification.
+- Limitations: The scan reports many existing quota/idempotency signals across the backend and is not specific to this two-file change.
+
+### 2026-06-04 - dotnet-backend-testing - API-02 ApiKeyAuthResolver coverage
+
+- Agent: Codex worker
+- Trigger: API-02 requires new xUnit coverage for valid, unknown, revoked, expired, missing-header, and non-live-prefix API key auth outcomes.
+- Action: Opened and followed the project skill; wrote focused xUnit tests first using the existing EF SQLite `DbFixture` and `DefaultHttpContext`, then implemented the static resolver helper in the Functions auth namespace.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyAuthResolverTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Initial focused run with `--no-restore` stopped on missing fresh-worktree assets; focused red run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter ApiKeyAuthResolverTests` then failed on missing `ApiKeyAuthResolver`. Focused green run passed 6/6.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and focused tests completed.
+
+### 2026-06-04 - system-spec-synthesis - API-04 v1 rewrite result contract
+
+- Agent: Codex worker
+- Trigger: API-04 implements the key-authenticated `GET /api/v1/rewrite/{id}` result contract from issue #506, the API-04 brief, and `plans/rewrite-api-v1/SPEC.md`.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the API-04 brief, and the v1 API spec sections for result polling and error handling. Converted them into scoped checkpoints: resolve API key to user, query `RewriteAttempt` with `Id` plus `UserId`, map pending/processing/succeeded/failed states into the v1 result body, preserve owner isolation, and leave submit plus worker behavior unchanged.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `plans/decisions-log.md`.
+- Verification evidence: Focused red `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_rewrite_result` failed on missing v1 result behavior. Focused green passed 3/3. `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter RewriteApiTests` passed 19/19. `cd backend-dotnet && dotnet test` passed 522/522.
+- Limitations: No separate spec file was added because the issue and brief were already implementation-ready and the change is a narrow endpoint addition.
+
+### 2026-06-04 - state-machine-modeling - API-04 rewrite attempt result projection
+
+- Agent: Codex worker
+- Trigger: API-04 exposes persisted `RewriteAttemptStatus` values through a public polling endpoint.
+- Action: Opened and followed the skill; modeled the read-only projection as `Pending`/`Processing` -> `processing`, `Succeeded` -> `succeeded` with parsed result data, and `Failed`/`Expired` -> `failed` with a stable error body. The endpoint performs no state transitions and does not mutate worker or quota state.
+- Output artifacts: `V1RewriteHttpFunctions.GetRewriteResult`; ASP.NET v1 mirror route in `Program.cs`; `RewriteApiTests.V1_rewrite_result_maps_pending_succeeded_and_failed_attempts`.
+- Verification evidence: Focused state mapping test failed before implementation with HTTP 404, then passed after the route and mapping helpers were added. Full backend `dotnet test` passed 522/522.
+- Limitations: Illegal transition tests were not added because this endpoint is read-only and delegates lifecycle mutation to the existing worker and quota services.
+
+### 2026-06-04 - data-module-review - API-04 owner-only attempt lookup
+
+- Agent: Codex worker
+- Trigger: API-04 reads `RewriteAttempts` by API-key owner and must not expose another user's attempt.
+- Action: Opened and followed the skill; reviewed `RewriteAttempt`, `ApiKey`, the `ApiKeys.KeyHash` index, `RewriteAttempts` user/idempotency indexes, `ApiKeyAuthResolver`, and existing attempt lookup patterns. Kept the data change to an `AsNoTracking` read filtered by both `Id` and `UserId`; no schema or migration change was needed.
+- Output artifacts: owner-filtered queries in `V1RewriteHttpFunctions.GetRewriteResult` and the ASP.NET v1 mirror route; ownership test in `RewriteApiTests`.
+- Verification evidence: `V1_rewrite_result_returns_not_found_for_attempt_owned_by_another_user` verifies non-owner access returns `404` with the v1 error shape. `cd backend-dotnet && dotnet test` passed 522/522.
+- Limitations: The endpoint does not add retention, deletion, or usage-meter changes; those are outside API-04.
+
+### 2026-06-04 - dotnet-backend-testing - API-04 result polling coverage
+
+- Agent: Codex worker
+- Trigger: API-04 requires xUnit coverage for processing, succeeded, failed, owner-only, and key-auth result polling behavior.
+- Action: Opened and followed the project skill plus the test-driven-development skill; wrote failing tests first in the existing `RewriteApiTests` WebApplicationFactory suite, then implemented the Functions endpoint and the ASP.NET mirror route used by the test host.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`.
+- Verification evidence: Focused red `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_rewrite_result` failed on missing route behavior. Focused green passed 3/3. Rewrite API focused run passed 19/19. Full `cd backend-dotnet && dotnet test` passed 522/522.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all test runs completed.
+
+### 2026-06-04 - state-machine-modeling - API-06 API key revoke lifecycle
+
+- Agent: Codex worker
+- Trigger: API-06 exposes owner-scoped API key creation, listing, and revoke behavior through Entra-authenticated account endpoints.
+- Action: Opened and followed the skill; modeled persisted API key states as active when `RevokedAt` is null, revoked when `RevokedAt` is set, and expired when `ExpiresAt` is in the past. Events covered create, list, owner revoke, other-user revoke, and duplicate owner revoke. The endpoint performs only active-to-revoked mutation through `ApiKeyService.RevokeAsync`; other-user or missing keys return `404` without mutation.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`.
+- Verification evidence: Focused red `dotnet test --filter ApiKeyHttpFunctionsTests` failed on the missing Functions class. Focused green passed 2/2. Full `cd backend-dotnet && dotnet test` passed 524/524.
+- Limitations: The key-authenticated v1 rewrite endpoints and usage endpoints were intentionally left unchanged for other wave issues.
+
+### 2026-06-04 - data-module-review - API-06 API key endpoint data invariants
+
+- Agent: Codex worker
+- Trigger: API-06 reads and mutates persisted `ApiKeys` through an account-management Functions endpoint.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `AppDbContext`, `ApiKeyService`, and existing account auth patterns together. Confirmed no schema change was needed, list/revoke operations stay scoped by canonical `AppUser.Id`, list responses expose only masked display keys, and create responses return plaintext only from the service result without storing it.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`.
+- Verification evidence: `ApiKeyHttpFunctionsTests` verifies create plaintext response, stored hash and last four characters, masked list response without plaintext or hash, owner revoke setting `RevokedAt`, and other-user revoke returning `404`. Full `cd backend-dotnet && dotnet test` passed 524/524.
+- Limitations: No new migration, transaction shape, or collision retry behavior was added because API-06 only adds HTTP access to the existing API key service.
+
+### 2026-06-04 - dotnet-backend-testing - API-06 key CRUD endpoint coverage
+
+- Agent: Codex worker
+- Trigger: API-06 requires xUnit coverage for Entra-authenticated API key create/list/revoke behavior.
+- Action: Opened and followed the project skill; wrote focused xUnit tests first using existing EF SQLite fixtures and header-auth test requests, then implemented `ApiKeyHttpFunctions`. Added a small service tuple extension so the created endpoint can return the persisted `createdAt` value.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`.
+- Verification evidence: Initial focused run failed on missing `ApiKeyHttpFunctions`. Focused backend run passed 2/2 after implementation. Full `cd backend-dotnet && dotnet test` passed 524/524.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all tests completed.
+
+### 2026-06-05 - ui-browser-testing - API-07 developer key manager UI
+
+- Agent: Codex worker
+- Trigger: API-07 adds browser-visible signed-in portal UI, navigation, form submission, copy action, loading/error states, and revoke confirmation for API key management.
+- Action: Opened and followed the project skill; identified the visible flow, added source-contract coverage first, implemented the signed-in `/developers/keys` page and client key panel, and verified the local route with signed and signed-out HTTP requests.
+- Output artifacts: `app/developers/keys/page.tsx`; `components/developers/api-keys-panel.tsx`; `components/site-header.tsx`; `tests/unit/developer-keys-ui.test.ts`; `tests/unit/site-header.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red `npm run test -- tests/unit/developer-keys-ui.test.ts tests/unit/site-header.test.ts` failed on missing page/link, then passed after implementation. `npm run typecheck` passed. `npm run test` passed 400/400. Banned-term grep over `app components public lib` returned no matches. Local dev server route check returned `307` to `/sign-in` when signed out and signed-in HTML contained the key manager, create form, one-time notice, and signed-in nav link.
+- Limitations: Playwright screenshot/interaction verification could not run because both cached Chromium and system Chrome were blocked by the macOS sandbox before page load. The first dev-server attempt also hit file-watch `EMFILE` warnings due a generated npm cache; removing that cache and restarting with `WATCHPACK_POLLING=true` restored route serving.
+
+### 2026-06-05 - system-spec-synthesis - API-08 v1 per-key RPM contract
+
+- Agent: Codex worker
+- Trigger: API-08 implements the v1 API rate-limit and usage-log contract from issue #510, the API-08 brief, and `plans/rewrite-api-v1/SPEC.md`.
+- Action: Opened and followed the skill; converted the issue and spec into scoped checkpoints: resolve the concrete API key row, check the key's recent `ApiKeyUsage` rows before reservation, return the v1 `rate_limited` error shape on `429`, log one usage row for valid-key v1 calls, and leave the Entra website path unchanged.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused red run for `V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call` failed with the fourth request returning `202` instead of `429`; focused green run later passed 2/2 new API-08 tests. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No standalone spec file was added because the issue body and brief were already implementation-ready.
+
+### 2026-06-05 - resilience-test-generation - API-08 rate-limit rejection behavior
+
+- Agent: Codex worker
+- Trigger: API-08 changes and tests rate-limit behavior and must preserve quota/reservation invariants under repeated calls.
+- Action: Opened and followed the skill; defined the critical invariant as `429` being uncharged and reservation-free while still writing one usage row. Chose the existing WebApplicationFactory plus EF SQLite integration level because it proves HTTP status, persisted usage rows, reservations, outbox messages, and quota counters together.
+- Output artifacts: `RewriteApiTests.V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call`; rate-window checks in `Program.cs` and `V1RewriteHttpFunctions.cs`.
+- Verification evidence: The regression failed before implementation with `202` on the over-limit call, then passed after the pre-reservation window check. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: The test covers sequential requests inside one process; no concurrent RPM race test was added because the spec explicitly excludes an in-flight cap and the issue acceptance is sequential.
+
+### 2026-06-05 - state-machine-modeling - API-08 submit and usage lifecycle
+
+- Agent: Codex worker
+- Trigger: API-08 changes the submit lifecycle around rate-limit rejection, usage rows, quota reservation, and result polling.
+- Action: Opened and followed the skill; modeled the relevant lifecycle as valid API key request -> recent-call check -> validation or quota/idempotency outcome -> optional reservation -> exactly one usage row for valid-key v1 calls. The illegal transition covered is over-limit submit creating a `RewriteAttempt`, `UsageReservation`, or outbox message.
+- Output artifacts: `V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call`; `V1_rewrite_result_writes_api_key_usage_row`; pre-reservation rate checks in the v1 submit paths.
+- Verification evidence: The new submit lifecycle test asserts the over-limit call returns `429`, `RewriteAttempts`, `UsageReservations`, and `OutboxMessages` stay at the allowed-call count, `UsedCount` remains `0`, and the `429` call is logged. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: Existing worker finalization states were not changed or retested beyond the full suite because API-08 only gates before reservation.
+
+### 2026-06-05 - data-module-review - API-08 ApiKeyUsage RPM window
+
+- Agent: Codex worker
+- Trigger: API-08 reads and writes `ApiKeyUsage` rows and relies on persisted `ApiKey.RateLimitPerMinute`.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `ApiKeyUsage`, `AppDbContext` indexes, the v1 auth resolver, and usage logging paths. Kept the change schema-free, used the existing `{ ApiKeyId, CreatedAt }` index for non-SQLite providers, and added a SQLite-only timestamp comparison branch because EF SQLite cannot translate `DateTimeOffset` window predicates.
+- Output artifacts: `ApiKeyAuthResolver.ResolveAsync`; `IsV1RateLimitedAsync`; `IsRateLimitedAsync`; API-08 integration tests.
+- Verification evidence: Focused tests first exposed the missing rate check, then exposed the SQLite `DateTimeOffset` query translation issue. After the provider-aware branch, focused tests passed 2/2 and full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No migration was added. The SQLite branch loads the current key's timestamps client-side only in tests/local SQLite; production-style providers keep database-side filtering.
+
+### 2026-06-05 - dotnet-backend-testing - API-08 xUnit integration coverage
+
+- Agent: Codex worker
+- Trigger: API-08 requires xUnit/integration coverage for `RateLimitPerMinute + 1` submit calls and per-call usage rows.
+- Action: Opened and followed the project skill plus test-driven-development; added failing tests first in the existing `RewriteApiTests` WebApplicationFactory suite, then implemented the route/function changes and reran focused plus full backend checks.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: Focused red submit test failed with `202` instead of `429`; focused red result usage test failed with no `ApiKeyUsage` row. Focused green run passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all tests completed.
+
+### 2026-06-05 - system-spec-synthesis - API-09 v1 usage contract check
+
+- Agent: Codex worker
+- Trigger: API-09 adds the key-authenticated `GET /api/v1/usage` contract from issue #511, the API-09 brief, and `plans/rewrite-api-v1/SPEC.md`.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the API-09 brief, and the v1 API spec. Checked the implementation checkpoints: key auth, response shape `{ scope, periodKey, quota, used, remaining, periodEnd }`, quota values sourced from `AccountService.GetOrCreateAccountSummaryAsync`, missing or invalid key returning `401`, and a Next proxy route that forwards caller authorization without site-session auth.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `app/api/v1/usage/route.ts`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `tests/unit/v1-usage-route.test.ts`.
+- Verification evidence: Focused backend red run `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_usage` failed with missing-route `404`s, then focused green passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526; `npm run typecheck` passed; `npm run test` passed 398/398; restricted-term scan over `app components public lib` returned no matches.
+- Limitations: No separate spec file was added because the existing wave spec and issue brief already define the narrow API contract.
+
+### 2026-06-05 - state-machine-modeling - API-09 usage read projection
+
+- Agent: Codex worker
+- Trigger: API-09 reads quota state for a key owner and must not alter usage, reservation, or rewrite-attempt lifecycles.
+- Action: Opened and followed the skill. State list: API key active, revoked, expired; usage period current or absent. Event list: usage read with valid key, missing key, invalid key, revoked/expired key. Transition table: valid read keeps API key and usage period states unchanged while updating only best-effort key last-used metadata through the existing resolver; auth failures return `401` with no quota or reservation mutation. Invariants: endpoint reports the same account summary quota, used, and remaining numbers as the website path; rejected reads create no `UsagePeriod` or `UsageReservation`; no rewrite job or reservation is created. Illegal transitions: a read must not reserve quota, consume quota, create attempts, or expose another user's counters.
+- Output artifacts: `V1_usage_returns_account_summary_usage_for_seeded_key_user`; `V1_usage_rejects_missing_or_invalid_key`; v1 usage routes in the ASP.NET and Functions hosts.
+- Verification evidence: Focused state test failed before implementation with `404`, then passed. Full backend tests passed 526/526.
+- Limitations: No lifecycle transition helper was added because API-09 is a read-only projection over existing account and key state.
+
+### 2026-06-05 - data-module-review - API-09 account usage data invariants
+
+- Agent: Codex worker
+- Trigger: API-09 reads `ApiKeys`, `AppUsers`, and account usage counters for a public v1 endpoint.
+- Action: Opened and followed the skill; reviewed the existing API key lookup, account summary service, `UsagePeriod` counters, and rewrite credit inclusion path. Kept the change read-only for usage tables, filtered the key owner through the existing auth resolver in Functions, and reused `AccountService.GetOrCreateAccountSummaryAsync` so quota, used, and remaining values are not recomputed separately.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: New integration test seeds a paid usage period with used and reserved counts, then asserts the v1 response equals `AccountService` summary values. Missing and invalid key test asserts `401` and no usage-period or reservation rows. Full backend tests passed 526/526.
+- Limitations: No schema, migration, transaction, or index changes were needed.
+
+### 2026-06-05 - dotnet-backend-testing - API-09 usage endpoint coverage
+
+- Agent: Codex worker
+- Trigger: API-09 requires xUnit/integration coverage that the v1 usage endpoint returns the backend usage math and rejects missing or invalid keys.
+- Action: Opened and followed the project skill plus the test-first workflow; added failing tests in the existing `RewriteApiTests` WebApplicationFactory suite, verified the missing route failure, then implemented the ASP.NET mirror route and the Azure Functions route.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: Focused red `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_usage` failed on `404`; focused green passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all test runs completed.
+
+### 2026-06-05 - resilience-test-generation - API-10 duplicate submit idempotency
+
+- Agent: Codex worker
+- Trigger: API-10 tests repeated public v1 submit requests and idempotency conflict handling.
+- Action: Opened and followed the skill; identified the critical invariant as one persisted rewrite attempt, one usage reservation, and one outbox job for repeated same-key/same-body submit requests, with same-key/different-body returning `409` and no extra reservation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~V1_rewrite_submit_same_idempotency"` passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: The scope was duplicate request handling only; no retry, queue, worker, or external service behavior was changed.
+
+### 2026-06-05 - state-machine-modeling - API-10 submit reservation lifecycle
+
+- Agent: Codex worker
+- Trigger: API-10 verifies the submit path around `RewriteAttempt` and `UsageReservation` lifecycle states.
+- Action: Opened and followed the skill; modeled the tested path as new submit -> `Pending` attempt plus `Pending` reservation, duplicate same-key/same-body submit -> existing `Pending` attempt projection, and same-key/different-body submit -> conflict with no state mutation. Invariants: accepted duplicate returns the original id, reserved count remains one, used count remains zero until worker success, and no second outbox job is created.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: New v1 tests assert HTTP status, same id, `RewriteAttempts.Count == 1`, `UsageReservations.Count == 1`, `OutboxMessages.Count == 1`, `UsedCount == 0`, and `ReservedCount == 1`. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No new transition function or enum was added because the existing quota service already owns lifecycle mutation and API-10 only required endpoint-level verification.
+
+### 2026-06-05 - data-module-review - API-10 reservation persistence invariant
+
+- Agent: Codex worker
+- Trigger: API-10 verifies persisted idempotency behavior across `RewriteAttempts`, `UsageReservations`, `UsagePeriods`, and outbox records.
+- Action: Opened and followed the skill; reviewed `RewriteRequestService.CreateAttemptAsync`, `QuotaService.ReserveAsync`, the v1 submit route, and existing API tests together. Confirmed no schema or `QuotaService` semantic change was needed. Added tests that assert final persisted counts and counters, not only response codes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused API-10 tests passed 2/2 after fixture stabilization. Mixed `dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~V1_rewrite_submit_same_idempotency|FullyQualifiedName~ApiKey"` passed 14/14. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: The v1 test fixture now seeds equivalent hashes for the known test API-key hash settings because related API-key test classes mutate a process-wide setting during parallel runs.
+
+### 2026-06-05 - dotnet-backend-testing - API-10 v1 submit integration coverage
+
+- Agent: Codex worker
+- Trigger: API-10 requires xUnit/integration coverage for public v1 submit idempotency behavior.
+- Action: Opened and followed the project skill; added two WebApplicationFactory integration tests in the existing `RewriteApiTests` suite. The first repeats the same `Idempotency-Key` and draft and asserts the same response id plus one persisted attempt/reservation. The second reuses the same key with a different draft and asserts `409 idempotency_conflict` plus no duplicate reservation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused API-10 run passed 2/2. A mixed API-key run initially reproduced a parallel test fixture issue, then passed 14/14 after seeding stable test hashes. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore/build/test completed. Production endpoint code was left unchanged because the new integration tests passed against the existing idempotency wiring.
+
+### 2026-06-05 - state-machine-modeling - API-11 terminal rewrite attempt states
+
+- Agent: Codex worker
+- Trigger: API-11 verifies that API-created rewrite attempts do not remain in a nonterminal polling state after worker failure or reservation expiry.
+- Action: Opened and followed the skill; modeled `RewriteAttempt` transitions as `Pending` to `Processing` to `Succeeded`, `Failed`, or `Expired`, with `Failed` and `Expired` projected to the v1 `failed` result body. Confirmed `UsageReservation` transitions release or expire quota without incrementing used quota.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter "FullyQualifiedName~RewriteApiTests.V1_rewrite_result_maps_expired_api_attempt_to_failed_without_charging_usage|FullyQualifiedName~RewriteApiTests.V1_rewrite_provider_failure_sets_api_attempt_failed_without_charging_usage"` passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No production transition helper was added because the existing quota and worker paths already implement the needed transitions.
+
+### 2026-06-05 - data-module-review - API-11 reservation accounting invariants
+
+- Agent: Codex worker
+- Trigger: API-11 verifies persisted quota reservation and attempt state for API-originated expiry and provider failure paths.
+- Action: Opened and followed the skill; reviewed `RewriteAttempt`, `UsageReservation`, `UsagePeriod`, `QuotaService.ReleaseExpiredReservationsAsync`, `QuotaService.ReleaseAsync`, `RewriteRequestService.CreateAttemptAsync`, and `RewriteJobProcessor.ProcessAsync`. Added assertions for `UsedCount`, `ReservedCount`, reservation status, attempt status, and error code.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused API terminal-state tests passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No schema or migration change was needed.
+
+### 2026-06-05 - resilience-test-generation - API-11 expiry and provider failure coverage
+
+- Agent: Codex worker
+- Trigger: API-11 tests recovery from a worker that never runs and a provider failure, preserving the no-charge invariant.
+- Action: Opened and followed the skill; chose WebApplicationFactory integration tests with local SQLite persistence and deterministic provider fake. Covered API submit followed by TTL sweep, and API submit followed by worker processing with a failing provider result.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused terminal-state test command passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: Live cloud queues and external providers were not contacted; tests use in-process services and local SQLite.
+
+### 2026-06-05 - dotnet-backend-testing - API-11 v1 terminal-state tests
+
+- Agent: Codex worker
+- Trigger: API-11 adds xUnit coverage for terminal state and no-charge behavior in the .NET rewrite API.
+- Action: Opened and followed the project skill; added two tests to the existing `RewriteApiTests` WebApplicationFactory suite so the assertions exercise the v1 submit and poll surface plus persisted quota state.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused test command passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: Focused tests passed on the existing implementation, so no production code was changed.

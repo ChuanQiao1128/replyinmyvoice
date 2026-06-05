@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
@@ -15,12 +17,23 @@ using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
+using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
 
 public sealed class RewriteApiTests : IAsyncLifetime
 {
+    private const string TestApiKeyPepper = "rewrite-api-v1-test-pepper";
+    private static readonly string?[] ApiKeyPepperVariants =
+    [
+        TestApiKeyPepper,
+        "api-key-service-test-pepper",
+        "api-key-http-functions-test-pepper",
+        null,
+    ];
+
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
 
     static RewriteApiTests()
@@ -40,6 +53,475 @@ public sealed class RewriteApiTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await _connection.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_with_valid_key_reserves_usage_and_returns_processing_id()
+    {
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_submit",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await PostV1RewriteAsync(client, token, "v1-submit-success", ValidV1Draft());
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var body = await response.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        body.Should().NotBeNull();
+        body!.Id.Should().NotBeEmpty();
+        body.Status.Should().Be("processing");
+        response.Headers.Location?.ToString().Should().Be($"/api/v1/rewrite/{body.Id}");
+
+        await using var db = CreateContext();
+        var reservation = await db.UsageReservations.SingleAsync();
+        reservation.UserId.Should().Be(user.Id);
+        reservation.RewriteAttemptId.Should().Be(body.Id);
+        reservation.Status.Should().Be(UsageReservationStatus.Pending);
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UserId.Should().Be(user.Id);
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(1);
+        var usage = await db.ApiKeyUsages.SingleAsync();
+        usage.Endpoint.Should().Be("v1/rewrite");
+        usage.StatusCode.Should().Be(StatusCodes.Status202Accepted);
+        usage.RequestId.Should().Be(body.Id.ToString());
+        usage.LatencyMs.Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call()
+    {
+        const int rateLimitPerMinute = 3;
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_rate_limit",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            rateLimitPerMinute);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        for (var index = 0; index < rateLimitPerMinute; index += 1)
+        {
+            var accepted = await PostV1RewriteAsync(
+                client,
+                token,
+                $"v1-rate-limit-{index}",
+                ValidV1Draft());
+
+            accepted.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        }
+
+        var rejected = await PostV1RewriteAsync(
+            client,
+            token,
+            "v1-rate-limit-rejected",
+            ValidV1Draft());
+
+        rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        await AssertErrorCodeAsync(rejected, "rate_limited");
+
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(rateLimitPerMinute);
+        (await db.UsageReservations.CountAsync()).Should().Be(rateLimitPerMinute);
+        (await db.OutboxMessages.CountAsync()).Should().Be(rateLimitPerMinute);
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UserId.Should().Be(user.Id);
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(rateLimitPerMinute);
+        var usageStatusCodes = await db.ApiKeyUsages
+            .Select(x => x.StatusCode)
+            .ToListAsync();
+        usageStatusCodes.Should().HaveCount(rateLimitPerMinute + 1);
+        usageStatusCodes.Count(x => x == StatusCodes.Status202Accepted).Should().Be(rateLimitPerMinute);
+        usageStatusCodes.Count(x => x == StatusCodes.Status429TooManyRequests).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_same_idempotency_key_and_same_draft_returns_same_id_without_duplicate_reservation()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_idempotent_same",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        const string idempotencyKey = "v1-submit-same-draft";
+        var draft = ValidV1Draft();
+
+        var first = await PostV1RewriteAsync(client, token, idempotencyKey, draft);
+        var second = await PostV1RewriteAsync(client, token, idempotencyKey, draft);
+
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        second.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var firstBody = await first.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        var secondBody = await second.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        firstBody.Should().NotBeNull();
+        secondBody.Should().NotBeNull();
+        secondBody!.Id.Should().Be(firstBody!.Id);
+        secondBody.Status.Should().Be("processing");
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(1);
+        (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_same_idempotency_key_and_different_draft_returns_conflict_without_duplicate_reservation()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_idempotent_conflict",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        const string idempotencyKey = "v1-submit-different-draft";
+
+        var first = await PostV1RewriteAsync(client, token, idempotencyKey, ValidV1Draft());
+        var second = await PostV1RewriteAsync(
+            client,
+            token,
+            idempotencyKey,
+            "Please tell the client the report has moved to final review and I will share notes tomorrow.");
+
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        await AssertErrorCodeAsync(second, "idempotency_conflict");
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(1);
+        (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_rejects_over_word_or_character_cap_without_reservation()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_too_long",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        var wordHeavyDraft = string.Join(" ", Enumerable.Repeat("word", 301));
+        var characterHeavyDraft = new string('a', 2401);
+
+        var wordResponse = await PostV1RewriteAsync(client, token, "v1-too-many-words", wordHeavyDraft);
+        var characterResponse = await PostV1RewriteAsync(client, token, "v1-too-many-characters", characterHeavyDraft);
+
+        wordResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        await AssertErrorCodeAsync(wordResponse, "input_too_long");
+        characterResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        await AssertErrorCodeAsync(characterResponse, "input_too_long");
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(0);
+        (await db.ApiKeyUsages.CountAsync()).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_rejects_missing_or_invalid_key_without_reservation()
+    {
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var missing = await client.PostAsJsonAsync("/api/v1/rewrite", new { draft = ValidV1Draft() });
+        var invalid = await PostV1RewriteAsync(client, "rmv_live_unknown_api_key", "v1-invalid-key", ValidV1Draft());
+
+        missing.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(missing, "invalid_key");
+        invalid.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(invalid, "invalid_key");
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.ApiKeyUsages.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_returns_quota_exhausted_without_reservation_when_no_quota_or_credit()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_no_quota",
+            SubscriptionStatus.Inactive,
+            currentPeriodEnd: null);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await PostV1RewriteAsync(client, token, "v1-no-quota", ValidV1Draft());
+
+        response.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
+        await AssertErrorCodeAsync(response, "quota_exhausted");
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(0);
+        (await db.UsagePeriods.CountAsync()).Should().Be(0);
+        var usage = await db.ApiKeyUsages.SingleAsync();
+        usage.Endpoint.Should().Be("v1/rewrite");
+        usage.StatusCode.Should().Be(StatusCodes.Status402PaymentRequired);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_maps_pending_succeeded_and_failed_attempts()
+    {
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_states",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var pending = await SeedV1AttemptAsync(user.Id, RewriteAttemptStatus.Pending);
+        var succeeded = await SeedV1AttemptAsync(
+            user.Id,
+            RewriteAttemptStatus.Succeeded,
+            resultJson: """
+                {
+                  "rewrittenText": "Hi Sam - the report is still being checked, and I will send a clear update soon.",
+                  "naturalness": {
+                    "draftAiLikePercent": 78,
+                    "rewriteAiLikePercent": 24
+                  }
+                }
+                """);
+        var failed = await SeedV1AttemptAsync(
+            user.Id,
+            RewriteAttemptStatus.Failed,
+            errorCode: "provider_timeout");
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var pendingResponse = await GetV1RewriteResultAsync(client, token, pending.Id);
+        var succeededResponse = await GetV1RewriteResultAsync(client, token, succeeded.Id);
+        var failedResponse = await GetV1RewriteResultAsync(client, token, failed.Id);
+
+        pendingResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var pendingJson = await ReadJsonAsync(pendingResponse))
+        {
+            pendingJson.RootElement.GetProperty("id").GetGuid().Should().Be(pending.Id);
+            pendingJson.RootElement.GetProperty("status").GetString().Should().Be("processing");
+        }
+
+        succeededResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var succeededJson = await ReadJsonAsync(succeededResponse))
+        {
+            succeededJson.RootElement.GetProperty("id").GetGuid().Should().Be(succeeded.Id);
+            succeededJson.RootElement.GetProperty("status").GetString().Should().Be("succeeded");
+            succeededJson.RootElement.GetProperty("rewrittenText").GetString().Should().Be(
+                "Hi Sam - the report is still being checked, and I will send a clear update soon.");
+            var signal = succeededJson.RootElement.GetProperty("signal");
+            signal.GetProperty("draft").GetInt32().Should().Be(78);
+            signal.GetProperty("rewrite").GetInt32().Should().Be(24);
+        }
+
+        failedResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var failedJson = await ReadJsonAsync(failedResponse))
+        {
+            failedJson.RootElement.GetProperty("id").GetGuid().Should().Be(failed.Id);
+            failedJson.RootElement.GetProperty("status").GetString().Should().Be("failed");
+            failedJson.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_timeout");
+        }
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_maps_expired_api_attempt_to_failed_without_charging_usage()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_expired",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        var submit = await PostV1RewriteAsync(client, token, "v1-expired-terminal", ValidV1Draft());
+        var body = await submit.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        body.Should().NotBeNull();
+        var quota = new QuotaService(CreateContext);
+
+        var released = await quota.ReleaseExpiredReservationsAsync(DateTimeOffset.UtcNow.AddMinutes(16));
+        var result = await GetV1RewriteResultAsync(client, token, body!.Id);
+
+        released.Should().Be(1);
+        await using (var db = CreateContext())
+        {
+            var period = await db.UsagePeriods.SingleAsync();
+            period.UsedCount.Should().Be(0);
+            period.ReservedCount.Should().Be(0);
+            (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
+            var attempt = await db.RewriteAttempts.SingleAsync();
+            attempt.Status.Should().Be(RewriteAttemptStatus.Expired);
+            attempt.ErrorCode.Should().Be("reservation_expired");
+        }
+
+        result.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = await ReadJsonAsync(result);
+        json.RootElement.GetProperty("id").GetGuid().Should().Be(body.Id);
+        json.RootElement.GetProperty("status").GetString().Should().Be("failed");
+        json.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("reservation_expired");
+    }
+
+    [Fact]
+    public async Task V1_rewrite_provider_failure_sets_api_attempt_failed_without_charging_usage()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_provider_failure",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        var submit = await PostV1RewriteAsync(client, token, "v1-provider-failure", ValidV1Draft());
+        var body = await submit.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        body.Should().NotBeNull();
+        var provider = new FakeRewriteProvider(new RewriteProviderResult(null, false, "provider_failed"));
+        var processor = new RewriteJobProcessor(CreateContext, provider);
+
+        await processor.ProcessAsync(new RewriteJob(body!.Id), CancellationToken.None);
+        var result = await GetV1RewriteResultAsync(client, token, body.Id);
+
+        provider.CallCount.Should().Be(1);
+        await using (var db = CreateContext())
+        {
+            var period = await db.UsagePeriods.SingleAsync();
+            period.UsedCount.Should().Be(0);
+            period.ReservedCount.Should().Be(0);
+            (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Released);
+            var attempt = await db.RewriteAttempts.SingleAsync();
+            attempt.Status.Should().Be(RewriteAttemptStatus.Failed);
+            attempt.ErrorCode.Should().Be("provider_failed");
+        }
+
+        result.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = await ReadJsonAsync(result);
+        json.RootElement.GetProperty("id").GetGuid().Should().Be(body.Id);
+        json.RootElement.GetProperty("status").GetString().Should().Be("failed");
+        json.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_failed");
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_returns_not_found_for_attempt_owned_by_another_user()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_owner",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var (otherUser, _) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_other",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var otherAttempt = await SeedV1AttemptAsync(otherUser.Id, RewriteAttemptStatus.Succeeded);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await GetV1RewriteResultAsync(client, token, otherAttempt.Id);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await AssertErrorCodeAsync(response, "not_found");
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_writes_api_key_usage_row()
+    {
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_usage",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var attempt = await SeedV1AttemptAsync(user.Id, RewriteAttemptStatus.Pending);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await GetV1RewriteResultAsync(client, token, attempt.Id);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = CreateContext();
+        var usage = await db.ApiKeyUsages.SingleAsync();
+        usage.Endpoint.Should().Be("v1/rewrite/{id}");
+        usage.StatusCode.Should().Be(StatusCodes.Status200OK);
+        usage.RequestId.Should().Be(attempt.Id.ToString());
+        usage.LatencyMs.Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_result_rejects_missing_or_invalid_key()
+    {
+        var (user, _) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_auth",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var attempt = await SeedV1AttemptAsync(user.Id, RewriteAttemptStatus.Pending);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var missing = await client.GetAsync($"/api/v1/rewrite/{attempt.Id}");
+        var invalid = await GetV1RewriteResultAsync(client, "rmv_live_unknown_api_key", attempt.Id);
+
+        missing.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(missing, "invalid_key");
+        invalid.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(invalid, "invalid_key");
+    }
+
+    [Fact]
+    public async Task V1_usage_returns_account_summary_usage_for_seeded_key_user()
+    {
+        var periodEnd = DateTimeOffset.Parse("2026-07-01T00:00:00Z");
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_usage",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: periodEnd);
+        await using (var seedDb = CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = $"paid:{user.StripeSubscriptionId}:{periodEnd:O}",
+                QuotaLimit = 90,
+                UsedCount = 12,
+                ReservedCount = 3,
+                PeriodEnd = periodEnd,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        var expected = await new AccountService(() => CreateContext())
+            .GetOrCreateAccountSummaryAsync(user.ExternalAuthUserId, user.Email, CancellationToken.None);
+
+        var response = await GetV1UsageAsync(client, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<V1UsageResponse>();
+        body.Should().NotBeNull();
+        body!.Scope.Should().Be(expected.Usage.Scope);
+        body.PeriodKey.Should().Be(expected.Usage.PeriodKey);
+        body.Quota.Should().Be(expected.Usage.Quota);
+        body.Used.Should().Be(expected.Usage.Used);
+        body.Remaining.Should().Be(expected.Usage.Remaining);
+        body.PeriodEnd.Should().Be(periodEnd);
+    }
+
+    [Fact]
+    public async Task V1_usage_rejects_missing_or_invalid_key()
+    {
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var missing = await client.GetAsync("/api/v1/usage");
+        var invalid = await GetV1UsageAsync(client, "rmv_live_unknown_api_key");
+
+        missing.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(missing, "invalid_key");
+        invalid.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertErrorCodeAsync(invalid, "invalid_key");
+        await using var db = CreateContext();
+        (await db.UsagePeriods.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
     }
 
     [Fact]
@@ -452,6 +934,132 @@ public sealed class RewriteApiTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    private async Task<(AppUser User, string Token)> SeedApiKeyUserAsync(
+        string externalAuthUserId,
+        SubscriptionStatus subscriptionStatus,
+        DateTimeOffset? currentPeriodEnd,
+        int rateLimitPerMinute = 60)
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestApiKeyPepper);
+        var now = DateTimeOffset.UtcNow;
+        var token = $"rmv_live_{externalAuthUserId}_token";
+        await using var db = CreateContext();
+        var user = new AppUser
+        {
+            ExternalAuthUserId = externalAuthUserId,
+            Email = $"{externalAuthUserId}@example.com",
+            StripeCustomerId = subscriptionStatus == SubscriptionStatus.Inactive ? null : $"cus_{externalAuthUserId}",
+            StripeSubscriptionId = subscriptionStatus == SubscriptionStatus.Inactive ? null : $"sub_{externalAuthUserId}",
+            SubscriptionStatus = subscriptionStatus,
+            CurrentPeriodEnd = currentPeriodEnd,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.AppUsers.Add(user);
+        var seenHashes = new HashSet<string>(StringComparer.Ordinal);
+        var keyIndex = 0;
+        foreach (var pepper in ApiKeyPepperVariants)
+        {
+            var keyHash = ComputeApiKeyHash(token, pepper);
+            if (!seenHashes.Add(keyHash))
+            {
+                continue;
+            }
+
+            db.ApiKeys.Add(new ApiKey
+            {
+                User = user,
+                Name = keyIndex == 0 ? "V1 integration key" : $"V1 integration key {keyIndex}",
+                KeyHash = keyHash,
+                Last4 = token[^4..],
+                RateLimitPerMinute = rateLimitPerMinute,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            keyIndex += 1;
+        }
+        await db.SaveChangesAsync();
+        return (user, token);
+    }
+
+    private async Task<RewriteAttempt> SeedV1AttemptAsync(
+        Guid userId,
+        RewriteAttemptStatus status,
+        string? resultJson = null,
+        string? errorCode = null)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await using var db = CreateContext();
+        var attempt = new RewriteAttempt
+        {
+            UserId = userId,
+            IdempotencyKey = $"v1-result-{Guid.NewGuid():N}",
+            RequestHash = Guid.NewGuid().ToString("N"),
+            RequestJson = "{\"roughDraftReply\":\"Please send a clear update.\"}",
+            Status = status,
+            ResultJson = resultJson,
+            ErrorCode = errorCode,
+            CreatedAt = now,
+            CompletedAt = status is RewriteAttemptStatus.Succeeded or RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired
+                ? now
+                : null,
+            ExpiresAt = now.AddMinutes(15),
+        };
+        db.RewriteAttempts.Add(attempt);
+        await db.SaveChangesAsync();
+        return attempt;
+    }
+
+    private static Task<HttpResponseMessage> PostV1RewriteAsync(
+        HttpClient client,
+        string token,
+        string idempotencyKey,
+        string draft)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/rewrite")
+        {
+            Content = JsonContent.Create(new { draft }),
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("Idempotency-Key", idempotencyKey);
+        return client.SendAsync(request);
+    }
+
+    private static Task<HttpResponseMessage> GetV1RewriteResultAsync(
+        HttpClient client,
+        string token,
+        Guid id)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/rewrite/{id}");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return client.SendAsync(request);
+    }
+
+    private static Task<HttpResponseMessage> GetV1UsageAsync(HttpClient client, string token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/usage");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return client.SendAsync(request);
+    }
+
+    private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response)
+    {
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonDocument.Parse(json);
+    }
+
+    private static async Task AssertErrorCodeAsync(HttpResponseMessage response, string expectedCode)
+    {
+        var json = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(json);
+        document.RootElement
+            .GetProperty("error")
+            .GetProperty("code")
+            .GetString()
+            .Should()
+            .Be(expectedCode);
+    }
+
     private static Task<HttpResponseMessage> PostRewriteAsync(HttpClient client, string idempotencyKey)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/rewrite")
@@ -471,6 +1079,18 @@ public sealed class RewriteApiTests : IAsyncLifetime
             "The report is still being checked.",
             "No promised timeline.",
             "warm");
+
+    private static string ValidV1Draft() =>
+        "Please let the client know the report is still being checked and I will send a clear update soon.";
+
+    private static string ComputeApiKeyHash(string plaintext, string? pepper)
+    {
+        var material = string.IsNullOrWhiteSpace(pepper)
+            ? plaintext
+            : string.Concat(pepper, plaintext);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
 }
 
 public sealed record RewriteAttemptResponse(
@@ -478,3 +1098,15 @@ public sealed record RewriteAttemptResponse(
     string Status,
     string? ResultJson,
     string? ErrorCode);
+
+public sealed record V1RewriteSubmitResponse(
+    Guid Id,
+    string Status);
+
+public sealed record V1UsageResponse(
+    string Scope,
+    string PeriodKey,
+    int Quota,
+    int Used,
+    int Remaining,
+    DateTimeOffset? PeriodEnd);
