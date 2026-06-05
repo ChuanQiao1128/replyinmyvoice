@@ -94,6 +94,8 @@ describe("developer key management UI source", () => {
     expect(usageSource).toContain('"/api/me/api-usage/summary"');
     expect(usageSource).toContain('"/api/me/api-usage/series?days=30"');
     expect(usageSource).toContain('"/api/me/api-usage/recent?limit=50"');
+    expect(usageSource).toContain('"/api/me/api-usage/export?limit=1000"');
+    expect(usageSource).toContain("Export CSV");
     expect(usageSource).toContain('cache: "no-store"');
     expect(usageSource).toContain("Today");
     expect(usageSource).toContain("Yesterday");

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Clock3, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, Clock3, Download, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button, LinkButton } from "../ui/button";
@@ -284,19 +284,30 @@ export function UsagePanel() {
               API activity.
             </p>
           </div>
-          <Button
-            disabled={usageState.status === "loading"}
-            onClick={() => void refreshUsage()}
-            type="button"
-            variant="secondary"
-          >
-            {usageState.status === "loading" ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            )}
-            Refresh
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <a
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper sm:w-auto"
+              download
+              href="/api/me/api-usage/export?limit=1000"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Export CSV
+            </a>
+            <Button
+              className="w-full sm:w-auto"
+              disabled={usageState.status === "loading"}
+              onClick={() => void refreshUsage()}
+              type="button"
+              variant="secondary"
+            >
+              {usageState.status === "loading" ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              )}
+              Refresh
+            </Button>
+          </div>
         </div>
       </section>
 
