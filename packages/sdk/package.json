@@ -1,0 +1,26 @@
+{
+  "name": "@replyinmyvoice/api",
+  "version": "0.1.0",
+  "description": "Official TypeScript client for the Reply In My Voice API.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "README.md",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
