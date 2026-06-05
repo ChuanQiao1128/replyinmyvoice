@@ -45,6 +45,69 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-05 - state-machine-modeling - P2-06 rewrite attempt retention purge
+
+- Agent: Codex worker
+- Trigger: GitHub issue #532 changes `RewriteAttempt` lifecycle handling by adding a scheduled purge over attempts with persisted statuses.
+- Action: Opened and followed the project skill. State list: `Pending`, `Processing`, `Succeeded`, `Failed`, `Expired`. Event list: rewrite lifecycle events remain owned by existing services; the new internal command is the daily retention purge tick. Transition table: terminal attempts older than 30 days stay in the same status while payload fields are nulled; terminal attempts inside the 30-day window stay unchanged; non-terminal attempts stay unchanged. Invariants: no attempt row deletion, no idempotency key or request hash mutation, no quota or billing mutation, no terminal status rewrite, and no payload scrub for in-flight attempts. Illegal transitions: purge must not touch `Pending` or `Processing`, delete rows, or move attempts between statuses.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RetentionService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RetentionPurgeFunction.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RetentionServiceTests.cs`; `plans/rewrite-api-v1/scheduled-jobs.md`.
+- Verification evidence: Focused red run failed because the old 90-day default scrubbed 0 rows; focused green run passed 3/3 retention tests; `cd backend-dotnet && dotnet test` passed 538/538; `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: No new persisted source state was added; source scoping is documented as a P2-06 deviation because `RewriteAttempt` has no API-vs-website source flag.
+
+### 2026-06-05 - data-module-review - P2-06 retention persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #532 changes EF-backed mutation of `RewriteAttempt.RequestJson`, `RewriteAttempt.ResultJson`, and `RowVersion`.
+- Action: Opened and followed the project skill; reviewed `RewriteAttempt`, `AppDbContext` mapping, existing retention service/tests, timer Functions, DI registration, and ran the project data-risk scan with `python3`. Findings: no schema migration is needed because `RequestJson` is already nullable in EF; the main persistence gap is the absent attempt source flag. Open question resolved by brief: purge all terminal attempts by age when source cannot be distinguished. Suggested test: prove old terminal rows scrub payloads while newer and non-terminal rows remain intact.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RetentionService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RetentionServiceTests.cs`; `plans/rewrite-api-v1/scheduled-jobs.md`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py backend-dotnet --limit 80` completed; focused and full backend tests passed; `git diff --check` returned clean.
+- Limitations: No production database query plan or migration smoke was run because this change adds no schema/index migration and does not contact production data.
+
+### 2026-06-05 - dotnet-backend-testing - P2-06 retention xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #532 requires xUnit coverage for the purge method and backend `dotnet test` / `dotnet build` gates.
+- Action: Opened and followed the project skill plus TDD workflow; added the failing service-level xUnit test first, confirmed the red failure, implemented the 30-day terminal-only purge, and ran focused then full backend verification.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RetentionServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RetentionService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RetentionPurgeFunction.cs`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter Retention` initially failed on `Expected scrubbed to be 3, but found 0`; after implementation it passed 3/3. `cd backend-dotnet && dotnet test` passed 538/538. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: NuGet vulnerability metadata lookup emitted `NU1900` warnings because package-feed metadata was unavailable. Local git commit was blocked by sandbox permissions on the parent worktree Git metadata; no push, PR, deploy, live payment action, or secret inspection was performed.
+
+### 2026-06-05 - ui-browser-testing - P2-07 usage dashboard UI
+
+- Agent: Codex worker
+- Trigger: GitHub issue #529 changes the browser-visible `/developers/keys` developer portal into a tabbed dashboard with a new Usage tab, responsive summary cards, an SVG chart, remaining quota, and recent calls.
+- Action: Opened and followed the project skill; added a failing source-contract test for the dashboard shell, same-origin usage routes, and dependency-free accessible chart; implemented the tab shell and Usage panel; attempted desktop and mobile Playwright verification with a local signed session and mocked same-origin usage responses.
+- Output artifacts: `app/developers/keys/page.tsx`; `components/developers/developer-dashboard.tsx`; `components/developers/usage-panel.tsx`; `components/developers/usage-bar-chart.tsx`; `tests/unit/developer-keys-ui.test.ts`.
+- Verification evidence: Focused red run failed on the missing dashboard and usage files, then focused green run passed 7/7. `npm run typecheck` passed. `npm run test` passed 416/416. The scoped source policy grep over `app components public lib` returned no matches. `package.json` and `package-lock.json` diffs were empty.
+- Limitations: Playwright browser verification could not capture screenshots because Chromium failed to launch in the macOS sandbox while registering its Mach service. Local `npm ci` was blocked by cache ownership, so verification used the existing complete dependency install via a temporary symlink that was removed afterward. Local git commit was blocked because this worktree's Git metadata is outside the writable sandbox. No push, PR, deploy, live payment action, or secret inspection was performed.
+
+### 2026-06-05 - system-spec-synthesis - P2-02 API usage endpoints
+
+- Agent: Codex
+- Trigger: GitHub issue #536 adds the portal API usage summary, series, and recent endpoint contracts across Azure Functions and Next pass-through routes.
+- Action: Opened and followed the project skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, `plans/rewrite-api-v1/phase2-issues/P2-02-usage-endpoints.md`, and existing account/API-key route patterns before implementation.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiUsageHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageQueryService.cs`; `app/api/me/api-usage/summary/route.ts`; `app/api/me/api-usage/series/route.ts`; `app/api/me/api-usage/recent/route.ts`; focused backend and frontend tests.
+- Verification evidence: Focused usage tests passed 3/3; `cd backend-dotnet && dotnet test` passed 536/536; `npm run typecheck` passed; `npm run test` passed 413/413.
+- Limitations: No deploy, push, PR, live payment action, production database check, or secret inspection was performed.
+
+### 2026-06-05 - data-module-review - P2-02 API usage aggregation
+
+- Agent: Codex
+- Trigger: The issue adds an EF-backed read service over `ApiKeyUsage`, `ApiKey`, `AppUser`, and account usage summary data.
+- Action: Opened and followed the project skill; ran the data-risk scan against `backend-dotnet/src`, reviewed the existing indexes and API-key ownership relationship, and kept the change read-only with no schema or migration.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageQueryService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageQueryServiceTests.cs`.
+- Verification evidence: The service test seeds two users and multiple keys, verifies ownership isolation, status aggregation, quota values from `AccountService`, recent ordering, and Pacific/Auckland local-day bucketing; full backend suite passed 536/536.
+- Limitations: Aggregation is computed on demand from existing event rows; no rollup table, migration, or production query-plan check was added.
+
+### 2026-06-05 - dotnet-backend-testing - P2-02 usage endpoint tests
+
+- Agent: Codex
+- Trigger: The issue requires xUnit coverage for C# usage aggregation and adds Azure Functions endpoints.
+- Action: Opened and followed the project skill plus TDD workflow; wrote the failing query-service test first, confirmed the red compile failure, implemented the service and Functions endpoints, then added focused Functions tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageQueryServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiUsageHttpFunctionsTests.cs`; backend implementation files.
+- Verification evidence: Red run failed on missing `ApiKeyUsageQueryService` and response records; focused green run passed 3/3; `cd backend-dotnet && dotnet test` passed 536/536.
+- Limitations: NuGet vulnerability metadata lookup emitted `NU1900` warnings because package-feed metadata was unavailable, but restore/build/test completed. Local git commit was blocked by sandbox permissions on the parent worktree Git metadata.
+
 ### 2026-06-05 - dotnet-backend-testing - API-05 to API-11 integration merge
 
 - Agent: Codex
@@ -3524,3 +3587,155 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Focused test command passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
 - Limitations: Focused tests passed on the existing implementation, so no production code was changed.
+
+### 2026-06-05 - data-module-review - P2-01 Stripe invoice persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #527 adds an EF Core entity, migration, webhook upsert path, foreign key, and invoice id idempotency invariant.
+- Action: Opened and followed the skill; reviewed `AppDbContext`, `StripeEventService`, existing `StripeEvent` and `RewriteCredit` patterns, migration output, and final persisted-state assertions. Ran `scan_data_risks.py --limit 40 .`; the bounded scan produced existing broad persistence signals and no new blocking finding for this scoped table.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/StripeInvoice.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260605092351_AddStripeInvoice.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260605092351_AddStripeInvoice.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: New focused test passed 1/1 after the implementation. Full `cd backend-dotnet && dotnet test` passed 533/533. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched. No production data migration was applied locally.
+
+### 2026-06-05 - state-machine-modeling - P2-01 invoice webhook row lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #527 changes webhook lifecycle persistence for Stripe invoice status updates.
+- Action: Opened and followed the skill. State list: `draft`, `open`, `paid`, `void`, `uncollectible` as mirrored from Stripe invoice status. Event list: `invoice.finalized`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`, and duplicate delivery of an already processed event id. Transition table: finalized creates or updates the row to the payload status or `open`; paid/payment_succeeded creates or updates to payload status or `paid`; payment_failed updates the same row to the payload status while existing dunning behavior sets the user to `PastDue`; duplicate processed event id makes no row change. Invariants: one row per invoice id, row owner resolved from the local Stripe customer/subscription mapping, same event id is skipped by `StripeEvents`, later distinct invoice events may update the same invoice row, and checkout credit/quota behavior remains separate. Illegal transitions: missing invoice id or missing local user does not create an orphan invoice row; processed duplicate event ids cannot overwrite the existing row. Persistence implications: `StripeInvoices.Id` is the primary key, `UserId` is a cascade FK, and `(UserId, CreatedAt)` supports user-scoped history reads. Test checklist: insert from `invoice.paid`, duplicate event replay leaves one row, later `invoice.payment_failed` updates status and attempt count on that row.
+- Output artifacts: same P2-01 code and test files listed in the data-module-review entry.
+- Verification evidence: The new xUnit test asserts the transition checklist and persisted fields. Full `cd backend-dotnet && dotnet test` passed 533/533.
+- Limitations: This issue does not add the future billing-history read endpoint or UI.
+
+### 2026-06-05 - resilience-test-generation - P2-01 invoice webhook replay coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #527 acceptance requires duplicate webhook replay safety and update behavior for later invoice events.
+- Action: Opened and followed the skill; identified the critical operation as webhook invoice persistence inside the existing serializable event transaction. Failure matrix focus: duplicate event id, partial persistence guarded by the transaction, unmatched local user, malformed missing invoice id, and later distinct invoice event update. Implemented the lowest-level test as an xUnit service persistence test with local SQLite and no live Stripe calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: Focused red run failed on missing `StripeInvoices` surface; focused green run passed 1/1. Full `cd backend-dotnet && dotnet test` passed 533/533.
+- Limitations: Concurrent duplicate invoice delivery was not separately simulated because existing `StripeEvents` processing already owns event-id dedupe and this issue only adds invoice-row upsert behavior.
+
+### 2026-06-05 - dotnet-backend-testing - P2-01 invoice webhook xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #527 requires xUnit coverage in `backend-dotnet/tests/ReplyInMyVoice.Tests/` for invoice upsert, replay, and update behavior.
+- Action: Opened and followed the project skill plus test-first workflow; added `ProcessWebhookEventAsync_InvoicePaidUpsertsInvoiceAndPaymentFailedUpdatesSameRow` to the existing `StripeEventServiceTests` SQLite service suite, verified the test failed before the entity/DbSet existed, then implemented the minimal model and service code to pass.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/StripeInvoice.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: Focused command `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ProcessWebhookEventAsync_InvoicePaidUpsertsInvoiceAndPaymentFailedUpdatesSameRow` passed 1/1 after initially failing as expected. Full `cd backend-dotnet && dotnet test` passed 533/533. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed.
+
+### 2026-06-05 - state-machine-modeling - P2-04 payment grace expiry lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 changes subscription, payment grace, and quota lifecycle transitions.
+- Action: Opened and followed the skill. State list: `Active`, `Trialing`, and `Testing` project paid quota; `PastDue` keeps paid quota during grace; `Inactive` projects the free baseline; `Canceled` remains the explicit subscription-deleted/account-delete state. Event list: `invoice.payment_failed`, `invoice.payment_succeeded`, `customer.subscription.updated` with terminal dunning statuses, `customer.subscription.deleted`, and the scheduled payment-grace expiry timer. Transition table: `PastDue` + expired grace -> `Inactive` + clear grace + cancel Stripe subscription; `PastDue` + still in grace -> no change; paid states + timer -> no change; updated `unpaid`/`canceled` -> `Inactive` + clear grace; deleted -> `Canceled`. Invariants: expired grace cannot keep paid quota, terminal updated statuses clear grace, duplicate timer runs do not downgrade or cancel again, and subscription deletion behavior remains separate.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run failed on missing cancel and updated `canceled` terminalization, then focused green run passed 30/30. Full `cd backend-dotnet && dotnet test` passed 537/537. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: No new transition helper or enum value was added because the existing service owns these transitions.
+
+### 2026-06-05 - data-module-review - P2-04 AppUser billing state persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 changes persisted `AppUser` subscription status, payment grace fields, and quota projection.
+- Action: Opened and followed the skill; reviewed `AppUser`, `AppDbContext`, `AccountService.GetUsagePlan`, `StripeEventService`, and related tests. Confirmed no schema or migration change was needed. Ran `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 40 .`; the bounded scan returned existing broad quota/idempotency signals and no scoped blocking finding for this change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/IStripeBillingService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: The updated xUnit service test asserts downgraded status, cleared grace fields, free quota projection, unchanged active/in-grace users, and exactly one fake cancel request. Full `cd backend-dotnet && dotnet test` passed 537/537; `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: No production migration was applied locally because the persistence shape did not change.
+
+### 2026-06-05 - resilience-test-generation - P2-04 retry-safe grace expiry and terminal dunning
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 touches payment-provider retry cleanup, webhook replay behavior, and recovery from an expired payment grace state.
+- Action: Opened and followed the skill; identified the critical operation as scheduled `PastDue` expiry plus post-commit Stripe subscription cancel. Dependency boundaries: EF Core database, Azure timer runtime, Stripe billing abstraction, notification post-commit actions, and webhook event replay. Failure matrix focus: duplicate timer run, active user not eligible, still-in-grace user not eligible, terminal subscription update replay, and no live Stripe network in tests. Implemented deterministic fake billing assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PaymentGraceExpiryFunction.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red run failed for the intended missing behaviors; focused green run passed 30/30. Full `cd backend-dotnet && dotnet test` passed 537/537; `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: A Stripe cancel provider failure is handled by the existing post-commit action runner, but this issue's acceptance did not require a new explicit cancel-failure test.
+
+### 2026-06-05 - dotnet-backend-testing - P2-04 grace expiry xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 requires xUnit coverage for expired grace downgrade, free-baseline quota projection, unchanged non-expired users, and fake Stripe cancel invocation.
+- Action: Opened and followed the project skill plus test-first workflow; updated the existing `StripeEventServiceTests` SQLite service suite and fake billing service. The red run failed because the cancel request was missing and updated `canceled` still persisted as `Canceled`; after implementation, the focused service suite passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeBillingApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/IStripeBillingService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PaymentGraceExpiryFunction.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter FullyQualifiedName~StripeEventServiceTests` failed red with 2 expected failures, then passed 30/30 after implementation. Full `cd backend-dotnet && dotnet test` passed 537/537. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed.
+
+### 2026-06-05 - cloud-architecture-cost-review - P2-04 Azure Functions timer cost check
+
+- Agent: Codex worker
+- Trigger: GitHub issue #528 adds a scheduled Azure Functions timer.
+- Action: Opened and followed the skill; reviewed `docs/manual-setup.md`, `docs/next-development-brief.md`, and `docs/dotnet-azure-full-run-result.md`. Selected option: reuse the existing Azure Functions consumption runtime with one daily timer trigger. Rejected options: new App Service, new always-on worker, new queue, or new Azure resource. No exact pricing lookup was needed because no exact price was quoted and no new resource was created.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PaymentGraceExpiryFunction.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test` passed 537/537; `cd backend-dotnet && dotnet build` succeeded with 0 errors. No `az`, deploy, provision, or live payment command was run.
+- Limitations: This was a local architecture/cost check only; no live Azure timer smoke was run because the supervisor owns deployment.
+### 2026-06-05 - resilience-test-generation - P2-10 v1 rate-limit headers
+
+- Agent: Codex worker
+- Trigger: P2-10 changes and tests per-key rate-limit behavior and `429` response metadata for `/api/v1/*`.
+- Action: Opened and followed the skill; identified the invariant as one existing `ApiKeyUsages` minute-window source used for both the limit decision and response headers. Added failing assertions for successful v1 submit headers and the rate-limited submit response before implementation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red `dotnet test --filter "FullyQualifiedName~V1_rewrite_submit_with_valid_key_reserves_usage_and_returns_processing_id|FullyQualifiedName~V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call"` failed on missing headers, then passed 2/2 after implementation. Full `cd backend-dotnet && dotnet test` passed 532/532.
+- Limitations: No live cloud runtime or external provider was contacted; the test uses the existing in-process API host and SQLite fixture.
+
+### 2026-06-05 - data-module-review - P2-10 rate-limit window source
+
+- Agent: Codex worker
+- Trigger: P2-10 requires response headers computed from the same stored window data the limiter already uses, without adding another store or changing quota math.
+- Action: Opened and followed the skill; reviewed `ApiKeyUsage`, the v1 limiter helpers, and the v1 completion paths together. Replaced the boolean limiter query with a window metadata query over `ApiKeyUsages` and reused that result for headers and `429` decisions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `docs/skill-run-log.md`.
+- Verification evidence: New integration assertions check persisted API-key usage rows still exist for accepted and rejected v1 submit calls. Full `cd backend-dotnet && dotnet test` passed 532/532.
+- Limitations: No schema, migration, quota, billing, or price behavior changed. The `/api/v1/usage` route now participates in the same per-key window and usage log so its headers come from the same source.
+
+### 2026-06-05 - dotnet-backend-testing - P2-10 v1 header integration tests
+
+- Agent: Codex worker
+- Trigger: P2-10 acceptance requires xUnit/integration coverage for `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After` on v1 success and rate-limit responses.
+- Action: Opened and followed the project skill; added header assertions to the existing `RewriteApiTests` WebApplicationFactory suite and kept the assertions tied to response status plus persisted usage state.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused backend header tests passed 2/2. Full `cd backend-dotnet && dotnet test` passed 532/532.
+- Limitations: Existing integration coverage exercises the ASP.NET API host; the Azure Functions host was compiled by the full backend test run and updated with matching header logic.
+
+### 2026-06-05 - ui-browser-testing - P2-09 developers page redesign
+
+- Agent: Codex worker
+- Trigger: GitHub issue #530 changes the browser-visible `/developers` page, API docs layout, CTA path, and header discovery expectations.
+- Action: Opened and followed the skill; identified `/developers` as the user-visible flow. Attempted in-app Browser verification, then Playwright desktop/mobile verification after the in-app Browser was unavailable. Replaced the stale developer page with async v1 API docs and added scoped responsive styles. Added source-level Vitest coverage for the documented async endpoints, key CTA, errors, rate limits, idempotency, paid quota, 30-day retention, and stale-string removal.
+- Output artifacts: `app/developers/page.tsx`; `app/globals.css`; `tests/unit/developers-page.test.ts`; `tests/unit/pricing-auth-visual-system.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused `npm run test -- tests/unit/developers-page.test.ts tests/unit/pricing-auth-visual-system.test.ts` passed 5/5 after failing red on the stale page. `npm run typecheck` passed. Full `npm run test` passed 417/417. The issue greps for banned copy and stale `/developers` strings returned no matches. `npm run build` passed and listed `/developers` as a static route. `next start --port 3001` served `/developers` with HTTP 200, and rendered HTML checks found all required API docs with no stale strings.
+- Limitations: The in-app Browser was unavailable in this session. Headless Chromium launch failed under the macOS sandbox, and WebKit/Firefox were not installed in the shared Playwright cache, so no desktop/mobile screenshot inspection was completed. `next dev --port 3000` hit local `EMFILE` watch warnings and returned 404 for all routes in this symlinked dependency setup; production `next start` verified the built route instead. The sandbox denied signals to the lingering port-3000 dev process.
+
+### 2026-06-05 - system-spec-synthesis - P2-03 billing history endpoint
+
+- Agent: Codex worker
+- Trigger: GitHub issue #531 and `plans/rewrite-api-v1/phase2-issues/P2-03-billing-history-endpoint.md` require a new user-scoped API contract that merges pack purchases, subscription invoices, and refunds.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the P2-03 brief, `plans/rewrite-api-v1/PHASE-2-SPEC.md` BILLH-02 lines, existing account routes, `AccountService`, `StripeInvoice`, `RewriteCredit`, and proxy patterns. Implementation spec summary: context is the P2-01 `StripeInvoice` table plus existing purchase history; goal is a unified newest-first read model; non-goals are webhook, schema, payment, or UI changes; API contract is `GET /api/me/billing/history` returning `type`, `date`, `description`, `amount`, `currency`, `status`, `receiptUrl`, and `hostedInvoiceUrl`; security requires Entra auth and user-id filtering; verification requires xUnit ownership/order/amount assertions plus Next proxy tests and typecheck.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `app/api/me/billing/history/route.ts`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `tests/unit/account-api.test.ts`.
+- Verification evidence: Focused red backend run failed on missing `GetBillingHistoryAsync` and `GetBillingHistory`; focused green `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter BillingHistory` passed 3/3; full `cd backend-dotnet && dotnet test` passed 540/540; `npm run typecheck` passed; `npm run test` passed 419/419.
+- Limitations: Refund dates are projected from the adjusted purchase credit row because the current persisted refund credit state does not store a separate refund timestamp.
+
+### 2026-06-05 - data-module-review - P2-03 billing history read model
+
+- Agent: Codex worker
+- Trigger: GitHub issue #531 changes account-service data access over `RewriteCredit` and `StripeInvoice` for billing history.
+- Action: Opened and followed the skill; reviewed owned tables/entities (`RewriteCredits`, `StripeInvoices`, `AppUsers`) and service read paths. Findings: no schema/migration change required; history reads filter by canonical `UserId`; pack rows reuse `GetPurchaseHistoryAsync`; subscription rows expose only invoice URLs and normalized invoice fields; refund rows are inferred only from purchase credits where `OriginalAmountGranted` exceeds `AmountGranted`; no card data is selected.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`.
+- Verification evidence: The new service test seeds user A and user B with packs, invoices, and a refund-adjusted purchase credit, then asserts newest-first dates, ownership isolation, amounts, currency, statuses, receipt URL, and hosted invoice URL. Full `cd backend-dotnet && dotnet test` passed 540/540.
+- Limitations: No data-risk scan script was run for this read-only endpoint because no persistence model or migration changed.
+
+### 2026-06-05 - state-machine-modeling - P2-03 invoice and refund status projection
+
+- Agent: Codex worker
+- Trigger: GitHub issue #531 reviews subscription invoice statuses and refund-adjusted purchase credits in a user-facing history endpoint.
+- Action: Opened and followed the skill. State list: subscription invoice status is the persisted Stripe invoice `Status`; pack rows are projected as `paid`; inferred refund rows are projected as terminal `refunded`. Event list: no new events; existing webhook processing creates/updates `StripeInvoice` and adjusts purchase credits on `charge.refunded`. Transition table: none added by this issue; the endpoint maps current persisted state to a read model. Invariants: the endpoint must not mutate status, must not create billing rows, must not expose another user's rows, and must keep payment-provider lifecycle behavior separate from history rendering. Illegal transitions: unauthenticated requests return 401, and user B rows cannot appear in user A history.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`.
+- Verification evidence: Focused `BillingHistory` xUnit tests passed 3/3; full `cd backend-dotnet && dotnet test` passed 540/540.
+- Limitations: This issue did not add a transition helper because it only projects existing states.
+
+### 2026-06-05 - dotnet-backend-testing - P2-03 billing history xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #531 requires xUnit coverage for seeded pack purchases, `StripeInvoice` rows, a refund, sorting, ownership isolation, and amount/currency correctness.
+- Action: Opened and followed the project skill plus test-first workflow. Added service-level SQLite coverage in `AccountServiceTests` and endpoint/auth coverage in `AccountApiTests`. The initial focused run failed before implementation because `AccountService.GetBillingHistoryAsync` and `AccountHttpFunctions.GetBillingHistory` did not exist; after implementation the focused suite passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`.
+- Verification evidence: `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter BillingHistory` passed 3/3; full `cd backend-dotnet && dotnet test` passed 540/540.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.

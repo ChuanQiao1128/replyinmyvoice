@@ -104,6 +104,7 @@ async function renderSubscriptionStatus(paid = false) {
       status: paid ? "Active" : "Inactive",
       usageLabel: paid ? "80 rewrites left" : "3 rewrites left",
       paid,
+      paymentGraceEndsAt: null,
       canRedeem: false,
       onRedeemClick: vi.fn(),
     }),

@@ -23,6 +23,7 @@ using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
 
+[Collection("ApiKeyPepper")]
 public sealed class RewriteApiTests : IAsyncLifetime
 {
     private const string TestApiKeyPepper = "rewrite-api-v1-test-pepper";
@@ -73,6 +74,11 @@ public sealed class RewriteApiTests : IAsyncLifetime
         body!.Id.Should().NotBeEmpty();
         body.Status.Should().Be("processing");
         response.Headers.Location?.ToString().Should().Be($"/api/v1/rewrite/{body.Id}");
+        GetRequiredHeader(response, "X-RateLimit-Limit").Should().Be("60");
+        GetRequiredHeader(response, "X-RateLimit-Remaining").Should().Be("59");
+        long.Parse(GetRequiredHeader(response, "X-RateLimit-Reset"))
+            .Should()
+            .BeGreaterThan(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
         await using var db = CreateContext();
         var reservation = await db.UsageReservations.SingleAsync();
@@ -111,6 +117,11 @@ public sealed class RewriteApiTests : IAsyncLifetime
                 ValidV1Draft());
 
             accepted.StatusCode.Should().Be(HttpStatusCode.Accepted);
+            GetRequiredHeader(accepted, "X-RateLimit-Limit").Should().Be(rateLimitPerMinute.ToString());
+            GetRequiredHeader(accepted, "X-RateLimit-Remaining").Should().Be((rateLimitPerMinute - index - 1).ToString());
+            long.Parse(GetRequiredHeader(accepted, "X-RateLimit-Reset"))
+                .Should()
+                .BeGreaterThan(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }
 
         var rejected = await PostV1RewriteAsync(
@@ -121,6 +132,12 @@ public sealed class RewriteApiTests : IAsyncLifetime
 
         rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
         await AssertErrorCodeAsync(rejected, "rate_limited");
+        GetRequiredHeader(rejected, "X-RateLimit-Limit").Should().Be(rateLimitPerMinute.ToString());
+        GetRequiredHeader(rejected, "X-RateLimit-Remaining").Should().Be("0");
+        long.Parse(GetRequiredHeader(rejected, "X-RateLimit-Reset"))
+            .Should()
+            .BeGreaterThan(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        int.Parse(GetRequiredHeader(rejected, "Retry-After")).Should().BeGreaterThan(0);
 
         await using var db = CreateContext();
         (await db.RewriteAttempts.CountAsync()).Should().Be(rateLimitPerMinute);
@@ -1058,6 +1075,12 @@ public sealed class RewriteApiTests : IAsyncLifetime
             .GetString()
             .Should()
             .Be(expectedCode);
+    }
+
+    private static string GetRequiredHeader(HttpResponseMessage response, string name)
+    {
+        response.Headers.TryGetValues(name, out var values).Should().BeTrue();
+        return values!.Single();
     }
 
     private static Task<HttpResponseMessage> PostRewriteAsync(HttpClient client, string idempotencyKey)

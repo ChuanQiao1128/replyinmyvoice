@@ -168,6 +168,42 @@ public sealed class AccountServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetOrCreateAccountSummary_exposes_payment_grace_deadline_for_past_due_account()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.Parse("2026-06-05T00:00:00Z");
+        var graceEndsAt = now.AddDays(2);
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-past-due",
+                Email = "pastdue@example.com",
+                StripeSubscriptionId = "sub_past_due",
+                SubscriptionStatus = SubscriptionStatus.PastDue,
+                PaymentFailedAt = now.AddDays(-5),
+                PaymentGraceEndsAt = graceEndsAt,
+                CreatedAt = now.AddDays(-10),
+                UpdatedAt = now.AddDays(-5),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var summary = await service.GetOrCreateAccountSummaryAsync(
+            "entra-past-due",
+            "pastdue@example.com",
+            CancellationToken.None);
+
+        summary.SubscriptionStatus.Should().Be("PastDue");
+        summary.PaymentGraceEndsAt.Should().Be(graceEndsAt);
+        summary.Usage.Scope.Should().Be("paid");
+    }
+
+    [Fact]
     public async Task GetOrCreateAccountSummary_includes_valid_rewrite_credits_and_ignores_expired_credits()
     {
         var userId = Guid.NewGuid();
@@ -520,6 +556,184 @@ public sealed class AccountServiceTests : IAsyncLifetime
         payments.Should().ContainSingle();
         payments[0].Sku.Should().Be("quick_pack");
         payments[0].Remaining.Should().Be(9);
+    }
+
+    [Fact]
+    public async Task BillingHistoryMergesPacksInvoicesAndRefundsForCallerOnly()
+    {
+        var callerUserId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        var now = DateTimeOffset.Parse("2026-06-05T00:00:00Z");
+        var callerRefundedPackDate = now.AddHours(10);
+        var callerOlderPackDate = now.AddDays(-3);
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.AddRange(
+                new AppUser
+                {
+                    Id = callerUserId,
+                    ExternalAuthUserId = "entra-billing-caller",
+                    Email = "caller@example.com",
+                    SubscriptionStatus = SubscriptionStatus.Active,
+                    StripeSubscriptionId = "sub_caller",
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = otherUserId,
+                    ExternalAuthUserId = "entra-billing-other",
+                    Email = "other@example.com",
+                    SubscriptionStatus = SubscriptionStatus.Active,
+                    StripeSubscriptionId = "sub_other",
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            db.RewriteCredits.AddRange(
+                new RewriteCredit
+                {
+                    UserId = callerUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 20,
+                    OriginalAmountGranted = 20,
+                    AmountConsumed = 2,
+                    GrantedAt = callerOlderPackDate,
+                    ExpiresAt = callerOlderPackDate.AddDays(90),
+                    StripePaymentIntentId = "pi_caller_old_pack",
+                    StripeSku = "starter_pack",
+                    StripeAmountTotal = 1500,
+                    StripeCurrency = "nzd",
+                    StripeReceiptUrl = "https://pay.stripe.test/receipts/starter",
+                },
+                new RewriteCredit
+                {
+                    UserId = callerUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 5,
+                    OriginalAmountGranted = 10,
+                    AmountConsumed = 1,
+                    GrantedAt = callerRefundedPackDate,
+                    ExpiresAt = callerRefundedPackDate.AddDays(90),
+                    StripePaymentIntentId = "pi_caller_refunded_pack",
+                    StripeSku = "quick_pack",
+                    StripeAmountTotal = 1200,
+                    StripeCurrency = "nzd",
+                    StripeReceiptUrl = "https://pay.stripe.test/receipts/quick",
+                },
+                new RewriteCredit
+                {
+                    UserId = otherUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 3,
+                    OriginalAmountGranted = 10,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddHours(11),
+                    StripePaymentIntentId = "pi_other_refunded_pack",
+                    StripeSku = "other_pack",
+                    StripeAmountTotal = 900,
+                    StripeCurrency = "usd",
+                    StripeReceiptUrl = "https://pay.stripe.test/receipts/other",
+                });
+            db.StripeInvoices.AddRange(
+                new StripeInvoice
+                {
+                    Id = "in_caller_latest",
+                    UserId = callerUserId,
+                    SubscriptionId = "sub_caller",
+                    Status = "paid",
+                    AmountDue = 900,
+                    AmountPaid = 900,
+                    Currency = "nzd",
+                    PeriodStart = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+                    PeriodEnd = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+                    HostedInvoiceUrl = "https://invoice.stripe.test/caller/latest",
+                    CreatedAt = now.AddHours(12),
+                    UpdatedAt = now.AddHours(12),
+                },
+                new StripeInvoice
+                {
+                    Id = "in_caller_open",
+                    UserId = callerUserId,
+                    SubscriptionId = "sub_caller",
+                    Status = "open",
+                    AmountDue = 900,
+                    AmountPaid = 0,
+                    Currency = "nzd",
+                    PeriodStart = DateTimeOffset.Parse("2026-05-01T00:00:00Z"),
+                    PeriodEnd = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+                    HostedInvoiceUrl = "https://invoice.stripe.test/caller/open",
+                    CreatedAt = now.AddDays(-1),
+                    UpdatedAt = now.AddDays(-1),
+                },
+                new StripeInvoice
+                {
+                    Id = "in_other_latest",
+                    UserId = otherUserId,
+                    SubscriptionId = "sub_other",
+                    Status = "paid",
+                    AmountDue = 1900,
+                    AmountPaid = 1900,
+                    Currency = "usd",
+                    PeriodStart = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+                    PeriodEnd = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+                    HostedInvoiceUrl = "https://invoice.stripe.test/other/latest",
+                    CreatedAt = now.AddHours(13),
+                    UpdatedAt = now.AddHours(13),
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var history = await service.GetBillingHistoryAsync(
+            "entra-billing-caller",
+            "caller@example.com",
+            CancellationToken.None);
+
+        history.Should().HaveCount(5);
+        history.Select(x => x.Date).Should().BeInDescendingOrder();
+        history.Should().ContainSingle(x =>
+            x.Type == "subscription" &&
+            x.Date == now.AddHours(12) &&
+            x.Description == "Subscription invoice 2026-06-01 - 2026-07-01" &&
+            x.Amount == 900 &&
+            x.Currency == "nzd" &&
+            x.Status == "paid" &&
+            x.HostedInvoiceUrl == "https://invoice.stripe.test/caller/latest" &&
+            x.ReceiptUrl == null);
+        history.Should().ContainSingle(x =>
+            x.Type == "subscription" &&
+            x.Description == "Subscription invoice 2026-05-01 - 2026-06-01" &&
+            x.Amount == 900 &&
+            x.Status == "open");
+        history.Should().ContainSingle(x =>
+            x.Type == "pack" &&
+            x.Date == callerRefundedPackDate &&
+            x.Description == "quick_pack" &&
+            x.Amount == 1200 &&
+            x.Currency == "nzd" &&
+            x.Status == "paid" &&
+            x.ReceiptUrl == "https://pay.stripe.test/receipts/quick" &&
+            x.HostedInvoiceUrl == null);
+        history.Should().ContainSingle(x =>
+            x.Type == "pack" &&
+            x.Description == "starter_pack" &&
+            x.Amount == 1500 &&
+            x.Currency == "nzd" &&
+            x.Status == "paid");
+        history.Should().ContainSingle(x =>
+            x.Type == "refund" &&
+            x.Date == callerRefundedPackDate &&
+            x.Description == "Refund for quick_pack" &&
+            x.Amount == -600 &&
+            x.Currency == "nzd" &&
+            x.Status == "refunded" &&
+            x.ReceiptUrl == null &&
+            x.HostedInvoiceUrl == null);
+        history.Should().NotContain(x =>
+            x.Currency == "usd" ||
+            x.Description.Contains("other", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

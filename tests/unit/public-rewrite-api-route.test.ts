@@ -92,7 +92,16 @@ describe("/api/v1/rewrite Next proxy routes", () => {
   it("forwards submit requests with the caller bearer value", async () => {
     const backendBody = { id: rewriteId, status: "processing" };
     const body = JSON.stringify({ draft: "Please send the update tomorrow." });
-    fetchMock().mockResolvedValueOnce(Response.json(backendBody, { status: 202 }));
+    fetchMock().mockResolvedValueOnce(
+      Response.json(backendBody, {
+        headers: {
+          "X-RateLimit-Limit": "60",
+          "X-RateLimit-Remaining": "59",
+          "X-RateLimit-Reset": "1812345678",
+        },
+        status: 202,
+      }),
+    );
 
     const response = await POST(
       request("/api/v1/rewrite", {
@@ -119,6 +128,43 @@ describe("/api/v1/rewrite Next proxy routes", () => {
     });
     expect(headers.get("Authorization")).toBe(authorization);
     expect(headers.get("Content-Type")).toBe("application/json");
+    expect(response.headers.get("X-RateLimit-Limit")).toBe("60");
+    expect(response.headers.get("X-RateLimit-Remaining")).toBe("59");
+    expect(response.headers.get("X-RateLimit-Reset")).toBe("1812345678");
+  });
+
+  it("forwards submit rate-limit rejection headers from the backend", async () => {
+    const backendBody = { error: { code: "rate_limited", message: "Request limit reached." } };
+    const body = JSON.stringify({ draft: "Please send the update tomorrow." });
+    fetchMock().mockResolvedValueOnce(
+      Response.json(backendBody, {
+        headers: {
+          "Retry-After": "42",
+          "X-RateLimit-Limit": "3",
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": "1812345678",
+        },
+        status: 429,
+      }),
+    );
+
+    const response = await POST(
+      request("/api/v1/rewrite", {
+        body,
+        headers: {
+          authorization,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual(backendBody);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("42");
+    expect(response.headers.get("X-RateLimit-Limit")).toBe("3");
+    expect(response.headers.get("X-RateLimit-Remaining")).toBe("0");
+    expect(response.headers.get("X-RateLimit-Reset")).toBe("1812345678");
   });
 
   it("surfaces backend auth rejection for result requests without credentials", async () => {
@@ -156,7 +202,16 @@ describe("/api/v1/rewrite Next proxy routes", () => {
       rewrittenText: "I can send the update tomorrow.",
       status: "succeeded",
     };
-    fetchMock().mockResolvedValueOnce(Response.json(backendBody, { status: 200 }));
+    fetchMock().mockResolvedValueOnce(
+      Response.json(backendBody, {
+        headers: {
+          "X-RateLimit-Limit": "60",
+          "X-RateLimit-Remaining": "58",
+          "X-RateLimit-Reset": "1812345678",
+        },
+        status: 200,
+      }),
+    );
 
     const response = await GET(
       request(`/api/v1/rewrite/${rewriteId}`, {
@@ -177,5 +232,8 @@ describe("/api/v1/rewrite Next proxy routes", () => {
     expect(url).toBe(`${azureUrl}/api/v1/rewrite/${rewriteId}`);
     expect(init.cache).toBe("no-store");
     expect(headers.get("Authorization")).toBe(authorization);
+    expect(response.headers.get("X-RateLimit-Limit")).toBe("60");
+    expect(response.headers.get("X-RateLimit-Remaining")).toBe("58");
+    expect(response.headers.get("X-RateLimit-Reset")).toBe("1812345678");
   });
 });

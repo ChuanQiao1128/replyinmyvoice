@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { ApiKeysPanel } from "../../../components/developers/api-keys-panel";
+import { DeveloperDashboard } from "../../../components/developers/developer-dashboard";
 import { SiteHeader } from "../../../components/site-header";
-import { getCurrentSession } from "../../../lib/entra-auth";
+import { fetchAzureAccountSummary } from "../../../lib/azure-api";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "API keys",
-  description: "Create and revoke Reply In My Voice API keys for your account.",
+  title: "Developer dashboard",
+  description:
+    "Manage API keys, usage, and billing for your Reply In My Voice developer account.",
 };
 
 export default async function DeveloperApiKeysPage() {
-  const session = await getCurrentSession();
+  const account = await fetchAzureAccountSummary();
 
-  if (!session) {
+  if (!account) {
     redirect("/sign-in");
   }
 
@@ -24,7 +25,10 @@ export default async function DeveloperApiKeysPage() {
       <SiteHeader />
       <main className="rimv">
         <section className="wrap py-10 sm:py-14">
-          <ApiKeysPanel />
+          <DeveloperDashboard
+            paymentGraceEndsAt={account.paymentGraceEndsAt}
+            subscriptionStatus={account.subscriptionStatus}
+          />
         </section>
       </main>
     </>

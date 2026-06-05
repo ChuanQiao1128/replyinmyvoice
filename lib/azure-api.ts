@@ -37,6 +37,7 @@ export type AzureAccountSummary = {
   externalAuthUserId: string;
   email: string | null;
   subscriptionStatus: string;
+  paymentGraceEndsAt: string | null;
   currentPeriodEnd: string | null;
   usage: AzureAccountUsage;
   promo?: AzurePromoSummary | null;
@@ -51,6 +52,17 @@ export type AzureAccountPayment = {
   date: string;
   expiry: string | null;
   remaining: number;
+};
+
+export type AzureBillingHistoryItem = {
+  type: "pack" | "subscription" | "refund" | "dispute" | string;
+  date: string;
+  description: string | null;
+  amount: number | null;
+  currency: string | null;
+  status: string | null;
+  receiptUrl?: string | null;
+  hostedInvoiceUrl?: string | null;
 };
 
 export type AzureBillingSupportRequest = {

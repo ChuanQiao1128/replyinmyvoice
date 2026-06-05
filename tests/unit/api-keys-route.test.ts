@@ -14,6 +14,7 @@ vi.mock("../../lib/entra-auth", () => entraAuthMock);
 
 import { GET, POST, dynamic } from "../../app/api/keys/route";
 import { DELETE } from "../../app/api/keys/[id]/route";
+import { POST as ROTATE } from "../../app/api/keys/[id]/rotate/route";
 import { getAzureApiBaseUrl } from "../../lib/azure-api";
 import { getCurrentAccessToken } from "../../lib/entra-auth";
 
@@ -64,6 +65,11 @@ describe("/api/keys proxy routes", () => {
         createdAt: "2026-06-04T00:00:00Z",
         id: keyId,
         lastUsedAt: null,
+        last30dUsage: {
+          calls: 2,
+          failed: 1,
+          succeeded: 1,
+        },
         maskedKey: "rmv_live_****abcd",
         name: "Server key",
         revokedAt: null,
@@ -142,6 +148,34 @@ describe("/api/keys proxy routes", () => {
       },
       method: "DELETE",
     });
+  });
+
+  it("forwards same-origin key rotation with the current bearer value", async () => {
+    const azureBody = {
+      createdAt: "2026-06-04T00:00:00Z",
+      id: "22222222-2222-4222-8222-222222222222",
+      key: "rmv_live_rotated_plaintext_once",
+      name: "Server key",
+    };
+    fetchMock().mockResolvedValueOnce(Response.json(azureBody, { status: 201 }));
+
+    const response = await ROTATE(
+      request(`/api/keys/${keyId}/rotate`, "POST"),
+      context(),
+    );
+
+    await expect(response.json()).resolves.toEqual(azureBody);
+    expect(response.status).toBe(201);
+    expect(fetchMock()).toHaveBeenCalledWith(
+      `${azureUrl}/api/keys/${keyId}/rotate`,
+      {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessValue}`,
+        },
+        method: "POST",
+      },
+    );
   });
 
   it("returns 401 when no access token is available", async () => {

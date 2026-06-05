@@ -10,6 +10,58 @@ namespace ReplyInMyVoice.Tests;
 public sealed class RetentionServiceTests
 {
     [Fact]
+    public async Task RetentionScrubsTerminalPayloadsAfterThirtyDaysOnly()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-05T00:00:00Z");
+        var oldSucceededId = Guid.NewGuid();
+        var oldFailedId = Guid.NewGuid();
+        var oldExpiredId = Guid.NewGuid();
+        var oldPendingId = Guid.NewGuid();
+        var oldProcessingId = Guid.NewGuid();
+        var freshSucceededId = Guid.NewGuid();
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteAttempts.AddRange(
+                Attempt(oldSucceededId, user.Id, "old-succeeded", RewriteAttemptStatus.Succeeded, now.AddDays(-31)),
+                Attempt(oldFailedId, user.Id, "old-failed", RewriteAttemptStatus.Failed, now.AddDays(-31)),
+                Attempt(oldExpiredId, user.Id, "old-expired", RewriteAttemptStatus.Expired, now.AddDays(-31)),
+                Attempt(oldPendingId, user.Id, "old-pending", RewriteAttemptStatus.Pending, now.AddDays(-31)),
+                Attempt(oldProcessingId, user.Id, "old-processing", RewriteAttemptStatus.Processing, now.AddDays(-31)),
+                Attempt(freshSucceededId, user.Id, "fresh-succeeded", RewriteAttemptStatus.Succeeded, now.AddDays(-29)));
+            await seedDb.SaveChangesAsync();
+        }
+
+        var retention = new RetentionService(fixture.CreateContext);
+
+        var scrubbed = await retention.ScrubExpiredRawContentAsync(now, cancellationToken: CancellationToken.None);
+
+        scrubbed.Should().Be(3);
+        await using var verifyDb = fixture.CreateContext();
+        (await verifyDb.RewriteAttempts.CountAsync()).Should().Be(6);
+
+        foreach (var attemptId in new[] { oldSucceededId, oldFailedId, oldExpiredId })
+        {
+            var attempt = await verifyDb.RewriteAttempts.SingleAsync(x => x.Id == attemptId);
+            attempt.RequestJson.Should().BeNull();
+            attempt.ResultJson.Should().BeNull();
+            attempt.Status.Should().BeOneOf(
+                RewriteAttemptStatus.Succeeded,
+                RewriteAttemptStatus.Failed,
+                RewriteAttemptStatus.Expired);
+        }
+
+        foreach (var attemptId in new[] { oldPendingId, oldProcessingId, freshSucceededId })
+        {
+            var attempt = await verifyDb.RewriteAttempts.SingleAsync(x => x.Id == attemptId);
+            attempt.RequestJson.Should().Contain("raw draft");
+            attempt.ResultJson.Should().Contain("raw result");
+        }
+    }
+
+    [Fact]
     public async Task RetentionScrubsRawAfterTtl()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -96,5 +148,29 @@ public sealed class RetentionServiceTests
         var updatedUser = await verifyDb.AppUsers.SingleAsync(x => x.Id == user.Id);
         updatedUser.ConsentAcceptedAt.Should().Be(now);
         updatedUser.UpdatedAt.Should().Be(now);
+    }
+
+    private static RewriteAttempt Attempt(
+        Guid id,
+        Guid userId,
+        string key,
+        RewriteAttemptStatus status,
+        DateTimeOffset createdAt)
+    {
+        return new RewriteAttempt
+        {
+            Id = id,
+            UserId = userId,
+            IdempotencyKey = key,
+            RequestHash = $"{key}-hash",
+            RequestJson = $"{{\"roughDraftReply\":\"{key} raw draft\"}}",
+            ResultJson = $"{{\"rewrittenText\":\"{key} raw result\"}}",
+            Status = status,
+            CreatedAt = createdAt,
+            CompletedAt = status is RewriteAttemptStatus.Succeeded or RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired
+                ? createdAt.AddMinutes(1)
+                : null,
+            ExpiresAt = createdAt.AddMinutes(15),
+        };
     }
 }

@@ -8,9 +8,10 @@ using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
 
+[Collection("ApiKeyPepper")]
 public sealed class ApiKeyAuthResolverTests
 {
-    private const string TestPepper = "api-key-service-test-pepper";
+    private const string TestPepper = "api-key-test-pepper";
 
     [Fact]
     public async Task ResolveUserIdAsync_returns_user_id_for_active_key_and_updates_last_used_at()

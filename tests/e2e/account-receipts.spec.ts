@@ -5,6 +5,7 @@ function accountPayload() {
     currentPeriodEnd: null,
     email: "buyer@example.test",
     externalAuthUserId: "external-buyer-1",
+    paymentGraceEndsAt: null,
     subscriptionStatus: "inactive",
     usage: {
       exhausted: false,

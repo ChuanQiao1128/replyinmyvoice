@@ -609,23 +609,43 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
-    public async Task ProcessExpiredPaymentGraceAsync_DowngradesAndSendsPausedNotificationOnce()
+    public async Task ProcessExpiredPaymentGraceAsync_DowngradesExpiredGraceOnlyAndCancelsStripeSubscription()
     {
         await using var fixture = await DbFixture.CreateAsync();
-        var user = await fixture.CreateUserAsync();
+        var expiredGraceUser = await fixture.CreateUserAsync();
+        var activeUser = await fixture.CreateUserAsync();
+        var inGraceUser = await fixture.CreateUserAsync();
         var now = DateTimeOffset.Parse("2026-05-26T00:20:00Z");
         await using (var seedDb = fixture.CreateContext())
         {
-            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
-            storedUser.Email = "customer@example.com";
-            storedUser.SubscriptionStatus = SubscriptionStatus.PastDue;
-            storedUser.PaymentFailedAt = now.AddDays(-3);
-            storedUser.PaymentGraceEndsAt = now.AddSeconds(-1);
+            var storedExpiredGraceUser = await seedDb.AppUsers.SingleAsync(x => x.Id == expiredGraceUser.Id);
+            storedExpiredGraceUser.Email = "customer@example.com";
+            storedExpiredGraceUser.StripeSubscriptionId = "sub_expired_grace";
+            storedExpiredGraceUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedExpiredGraceUser.PaymentFailedAt = now.AddDays(-3);
+            storedExpiredGraceUser.PaymentGraceEndsAt = now.AddSeconds(-1);
+
+            var storedActiveUser = await seedDb.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
+            storedActiveUser.StripeSubscriptionId = "sub_active";
+            storedActiveUser.SubscriptionStatus = SubscriptionStatus.Active;
+            storedActiveUser.PaymentFailedAt = null;
+            storedActiveUser.PaymentGraceEndsAt = null;
+
+            var storedInGraceUser = await seedDb.AppUsers.SingleAsync(x => x.Id == inGraceUser.Id);
+            storedInGraceUser.StripeSubscriptionId = "sub_still_in_grace";
+            storedInGraceUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedInGraceUser.PaymentFailedAt = now.AddDays(-1);
+            storedInGraceUser.PaymentGraceEndsAt = now.AddDays(2);
+
             await seedDb.SaveChangesAsync();
         }
 
         var notifications = new RecordingNotificationService();
-        var service = new StripeEventService(fixture.CreateContext, notificationService: notifications);
+        var billing = new FakeDunningStripeBillingService("https://billing.test/portal");
+        var service = new StripeEventService(
+            fixture.CreateContext,
+            notificationService: notifications,
+            stripeBillingService: billing);
 
         var first = await service.ProcessExpiredPaymentGraceAsync(now);
         var replay = await service.ProcessExpiredPaymentGraceAsync(now.AddSeconds(1));
@@ -634,15 +654,97 @@ public sealed class StripeEventServiceTests
         replay.Should().Be(0);
 
         await using var db = fixture.CreateContext();
-        var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
-        updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Inactive);
-        updatedUser.PaymentFailedAt.Should().BeNull();
-        updatedUser.PaymentGraceEndsAt.Should().BeNull();
-        AccountService.GetUsagePlan(updatedUser).Scope.Should().Be("free");
+        var updatedExpiredGraceUser = await db.AppUsers.SingleAsync(x => x.Id == expiredGraceUser.Id);
+        updatedExpiredGraceUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Inactive);
+        updatedExpiredGraceUser.PaymentFailedAt.Should().BeNull();
+        updatedExpiredGraceUser.PaymentGraceEndsAt.Should().BeNull();
+        AccountService.GetUsagePlan(updatedExpiredGraceUser).Scope.Should().Be("free");
+
+        var unchangedActiveUser = await db.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
+        unchangedActiveUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Active);
+        AccountService.GetUsagePlan(unchangedActiveUser).Scope.Should().Be("paid");
+
+        var unchangedInGraceUser = await db.AppUsers.SingleAsync(x => x.Id == inGraceUser.Id);
+        unchangedInGraceUser.SubscriptionStatus.Should().Be(SubscriptionStatus.PastDue);
+        unchangedInGraceUser.PaymentGraceEndsAt.Should().Be(now.AddDays(2));
+        AccountService.GetUsagePlan(unchangedInGraceUser).Scope.Should().Be("paid");
 
         notifications.Messages.Should().ContainSingle();
         notifications.Messages[0].TemplateName.Should().Be("subscription-paused");
         notifications.Messages[0].Recipient.Email.Should().Be("customer@example.com");
+        billing.CancelRequests.Should().Equal("sub_expired_grace");
+    }
+
+    [Fact]
+    public async Task ProcessPaymentGraceRemindersAsync_SendsMidGraceReminderOnceForPastDueOnly()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var dueUser = await fixture.CreateUserAsync();
+        var activeUser = await fixture.CreateUserAsync();
+        var alreadyRemindedUser = await fixture.CreateUserAsync();
+        var earlyUser = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-05-26T00:25:00Z");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedDueUser = await seedDb.AppUsers.SingleAsync(x => x.Id == dueUser.Id);
+            storedDueUser.Email = "due@example.com";
+            storedDueUser.StripeSubscriptionId = "sub_due";
+            storedDueUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedDueUser.PaymentFailedAt = now.AddDays(-5);
+            storedDueUser.PaymentGraceEndsAt = now.AddDays(2);
+
+            var storedActiveUser = await seedDb.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
+            storedActiveUser.Email = "active@example.com";
+            storedActiveUser.StripeSubscriptionId = "sub_active";
+            storedActiveUser.SubscriptionStatus = SubscriptionStatus.Active;
+            storedActiveUser.PaymentFailedAt = now.AddDays(-5);
+            storedActiveUser.PaymentGraceEndsAt = now.AddDays(2);
+
+            var storedAlreadyRemindedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == alreadyRemindedUser.Id);
+            storedAlreadyRemindedUser.Email = "reminded@example.com";
+            storedAlreadyRemindedUser.StripeSubscriptionId = "sub_reminded";
+            storedAlreadyRemindedUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedAlreadyRemindedUser.PaymentFailedAt = now.AddDays(-5);
+            storedAlreadyRemindedUser.PaymentGraceEndsAt = now.AddDays(2);
+            storedAlreadyRemindedUser.PaymentGraceReminderSentAt = now.AddDays(-1);
+
+            var storedEarlyUser = await seedDb.AppUsers.SingleAsync(x => x.Id == earlyUser.Id);
+            storedEarlyUser.Email = "early@example.com";
+            storedEarlyUser.StripeSubscriptionId = "sub_early";
+            storedEarlyUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedEarlyUser.PaymentFailedAt = now.AddDays(-4);
+            storedEarlyUser.PaymentGraceEndsAt = now.AddDays(3);
+
+            await seedDb.SaveChangesAsync();
+        }
+
+        var notifications = new RecordingNotificationService();
+        var billing = new FakeDunningStripeBillingService("https://billing.test/portal");
+        var service = new StripeEventService(
+            fixture.CreateContext,
+            notificationService: notifications,
+            stripeBillingService: billing);
+
+        var first = await service.ProcessPaymentGraceRemindersAsync(now);
+        var replay = await service.ProcessPaymentGraceRemindersAsync(now.AddMinutes(1));
+
+        first.Should().Be(1);
+        replay.Should().Be(0);
+
+        await using var db = fixture.CreateContext();
+        var updatedDueUser = await db.AppUsers.SingleAsync(x => x.Id == dueUser.Id);
+        updatedDueUser.PaymentGraceReminderSentAt.Should().Be(now);
+
+        var unchangedActiveUser = await db.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
+        unchangedActiveUser.PaymentGraceReminderSentAt.Should().BeNull();
+
+        notifications.Messages.Should().ContainSingle();
+        notifications.Messages[0].TemplateName.Should().Be("payment-grace-reminder");
+        notifications.Messages[0].Recipient.Email.Should().Be("due@example.com");
+        notifications.Messages[0].Model.Should().BeOfType<PaymentGraceReminderNotificationModel>()
+            .Which.BillingPortalUrl.Should().Be("https://billing.test/portal");
+        billing.PortalRequests.Should().Equal(dueUser.ExternalAuthUserId);
     }
 
     [Fact]
@@ -705,17 +807,161 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
-    public async Task ProcessWebhookEventAsync_TerminalSubscriptionStatusFromGraceDowngradesAndSendsPausedNotificationOnce()
+    public async Task ProcessWebhookEventAsync_InvoicePaidUpsertsInvoiceAndPaymentFailedUpdatesSameRow()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
+            storedUser.StripeCustomerId = "cus_invoice_history";
+            storedUser.StripeSubscriptionId = "sub_invoice_history";
+            storedUser.SubscriptionStatus = SubscriptionStatus.Active;
+            await seedDb.SaveChangesAsync();
+        }
+
+        var service = new StripeEventService(fixture.CreateContext);
+        var paidNow = DateTimeOffset.Parse("2026-06-05T01:00:00Z");
+        const string paidBody = """
+        {
+          "id": "evt_invoice_paid_history",
+          "type": "invoice.paid",
+          "data": {
+            "object": {
+              "id": "in_history",
+              "customer": "cus_invoice_history",
+              "subscription": "sub_invoice_history",
+              "status": "paid",
+              "amount_due": 900,
+              "amount_paid": 900,
+              "currency": "nzd",
+              "period_start": 1770000000,
+              "period_end": 1772592000,
+              "attempt_count": 1,
+              "hosted_invoice_url": "https://billing.test/in_history",
+              "invoice_pdf": "https://billing.test/in_history.pdf"
+            }
+          }
+        }
+        """;
+        const string replayBody = """
+        {
+          "id": "evt_invoice_paid_history",
+          "type": "invoice.paid",
+          "data": {
+            "object": {
+              "id": "in_history",
+              "customer": "cus_invoice_history",
+              "subscription": "sub_invoice_history",
+              "status": "open",
+              "amount_due": 900,
+              "amount_paid": 1,
+              "currency": "nzd",
+              "attempt_count": 99
+            }
+          }
+        }
+        """;
+
+        var first = await service.ProcessWebhookEventAsync(
+            "evt_invoice_paid_history",
+            "invoice.paid",
+            paidBody,
+            paidNow);
+        var duplicate = await service.ProcessWebhookEventAsync(
+            "evt_invoice_paid_history",
+            "invoice.paid",
+            replayBody,
+            paidNow.AddSeconds(1));
+
+        first.Should().BeTrue();
+        duplicate.Should().BeFalse();
+
+        await using (var verifyDb = fixture.CreateContext())
+        {
+            var invoice = await verifyDb.StripeInvoices.SingleAsync(x => x.Id == "in_history");
+            invoice.UserId.Should().Be(user.Id);
+            invoice.SubscriptionId.Should().Be("sub_invoice_history");
+            invoice.Status.Should().Be("paid");
+            invoice.AmountDue.Should().Be(900);
+            invoice.AmountPaid.Should().Be(900);
+            invoice.Currency.Should().Be("nzd");
+            invoice.PeriodStart.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1770000000));
+            invoice.PeriodEnd.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1772592000));
+            invoice.AttemptCount.Should().Be(1);
+            invoice.NextPaymentAttempt.Should().BeNull();
+            invoice.HostedInvoiceUrl.Should().Be("https://billing.test/in_history");
+            invoice.InvoicePdf.Should().Be("https://billing.test/in_history.pdf");
+            invoice.CreatedAt.Should().Be(paidNow);
+            invoice.UpdatedAt.Should().Be(paidNow);
+            invoice.RowVersion.Should().NotBeEmpty();
+            (await verifyDb.StripeInvoices.CountAsync()).Should().Be(1);
+        }
+
+        var failedNow = DateTimeOffset.Parse("2026-06-05T01:05:00Z");
+        const string failedBody = """
+        {
+          "id": "evt_invoice_failed_history",
+          "type": "invoice.payment_failed",
+          "data": {
+            "object": {
+              "id": "in_history",
+              "customer": "cus_invoice_history",
+              "subscription": "sub_invoice_history",
+              "status": "open",
+              "amount_due": 900,
+              "amount_paid": 0,
+              "currency": "nzd",
+              "period_start": 1770000000,
+              "period_end": 1772592000,
+              "attempt_count": 2,
+              "next_payment_attempt": 1773200000,
+              "hosted_invoice_url": "https://billing.test/in_history",
+              "invoice_pdf": "https://billing.test/in_history.pdf"
+            }
+          }
+        }
+        """;
+
+        var failed = await service.ProcessWebhookEventAsync(
+            "evt_invoice_failed_history",
+            "invoice.payment_failed",
+            failedBody,
+            failedNow);
+
+        failed.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var updatedInvoice = await db.StripeInvoices.SingleAsync(x => x.Id == "in_history");
+        updatedInvoice.Status.Should().Be("open");
+        updatedInvoice.AmountPaid.Should().Be(0);
+        updatedInvoice.AttemptCount.Should().Be(2);
+        updatedInvoice.NextPaymentAttempt.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1773200000));
+        updatedInvoice.CreatedAt.Should().Be(paidNow);
+        updatedInvoice.UpdatedAt.Should().Be(failedNow);
+        (await db.StripeInvoices.CountAsync()).Should().Be(1);
+
+        var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
+        updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.PastDue);
+    }
+
+    [Theory]
+    [InlineData("unpaid")]
+    [InlineData("canceled")]
+    public async Task ProcessWebhookEventAsync_TerminalSubscriptionStatusFromGraceDowngradesAndSendsPausedNotificationOnce(
+        string stripeStatus)
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
         var now = DateTimeOffset.Parse("2026-05-26T00:40:00Z");
+        var customerId = $"cus_subscription_terminal_{stripeStatus}";
+        var subscriptionId = $"sub_subscription_terminal_{stripeStatus}";
         await using (var seedDb = fixture.CreateContext())
         {
             var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
             storedUser.Email = "customer@example.com";
-            storedUser.StripeCustomerId = "cus_subscription_terminal";
-            storedUser.StripeSubscriptionId = "sub_subscription_terminal";
+            storedUser.StripeCustomerId = customerId;
+            storedUser.StripeSubscriptionId = subscriptionId;
             storedUser.SubscriptionStatus = SubscriptionStatus.PastDue;
             storedUser.PaymentFailedAt = now.AddDays(-1);
             storedUser.PaymentGraceEndsAt = now.AddDays(1);
@@ -724,15 +970,15 @@ public sealed class StripeEventServiceTests
 
         var notifications = new RecordingNotificationService();
         var service = new StripeEventService(fixture.CreateContext, notificationService: notifications);
-        const string rawBody = """
+        var rawBody = $$"""
         {
-          "id": "evt_subscription_terminal",
+          "id": "evt_subscription_terminal_{{stripeStatus}}",
           "type": "customer.subscription.updated",
           "data": {
             "object": {
-              "id": "sub_subscription_terminal",
-              "customer": "cus_subscription_terminal",
-              "status": "unpaid",
+              "id": "{{subscriptionId}}",
+              "customer": "{{customerId}}",
+              "status": "{{stripeStatus}}",
               "current_period_end": 1780000300
             }
           }
@@ -740,12 +986,12 @@ public sealed class StripeEventServiceTests
         """;
 
         var first = await service.ProcessWebhookEventAsync(
-            "evt_subscription_terminal",
+            $"evt_subscription_terminal_{stripeStatus}",
             "customer.subscription.updated",
             rawBody,
             now);
         var replay = await service.ProcessWebhookEventAsync(
-            "evt_subscription_terminal",
+            $"evt_subscription_terminal_{stripeStatus}",
             "customer.subscription.updated",
             rawBody,
             now.AddSeconds(1));
@@ -1455,6 +1701,16 @@ public sealed class StripeEventServiceTests
         {
             PortalRequests.Add(externalAuthUserId);
             return Task.FromResult(portalUrl);
+        }
+
+        public List<string> CancelRequests { get; } = [];
+
+        public Task CancelSubscriptionAsync(
+            string stripeSubscriptionId,
+            CancellationToken cancellationToken)
+        {
+            CancelRequests.Add(stripeSubscriptionId);
+            return Task.CompletedTask;
         }
     }
 

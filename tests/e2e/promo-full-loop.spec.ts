@@ -22,6 +22,7 @@ function accountSummary(state: PromoState) {
     currentPeriodEnd: null,
     email: "casey@example.test",
     externalAuthUserId: "promo-user",
+    paymentGraceEndsAt: null,
     promo: {
       eligible: !state.redeemed,
       hasRedeemed: state.redeemed,

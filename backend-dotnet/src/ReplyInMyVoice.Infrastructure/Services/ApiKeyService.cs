@@ -84,6 +84,8 @@ public sealed class ApiKeyService
         CancellationToken cancellationToken)
     {
         await using var db = _dbContextFactory();
+        var now = DateTimeOffset.UtcNow;
+        var usageStart = now.AddDays(-30);
         var rows = await db.ApiKeys
             .AsNoTracking()
             .Where(x => x.UserId == userId)
@@ -97,6 +99,44 @@ public sealed class ApiKeyService
                 x.RevokedAt,
             })
             .ToListAsync(cancellationToken);
+        var keyIds = rows.Select(x => x.Id).ToArray();
+        var usageByKeyId = new Dictionary<Guid, ApiUsageCount>();
+        if (keyIds.Length > 0)
+        {
+            var usageQuery = db.ApiKeyUsages
+                .AsNoTracking()
+                .Where(x => keyIds.Contains(x.ApiKeyId));
+            var filtersDatesInMemory = string.Equals(
+                db.Database.ProviderName,
+                "Microsoft.EntityFrameworkCore.Sqlite",
+                StringComparison.OrdinalIgnoreCase);
+            if (!filtersDatesInMemory)
+            {
+                usageQuery = usageQuery.Where(x => x.CreatedAt >= usageStart && x.CreatedAt <= now);
+            }
+
+            var usageRows = await usageQuery
+                .Select(x => new
+                {
+                    x.ApiKeyId,
+                    x.CreatedAt,
+                    x.StatusCode,
+                })
+                .ToListAsync(cancellationToken);
+            var countedRows = filtersDatesInMemory
+                ? usageRows.Where(x => x.CreatedAt >= usageStart && x.CreatedAt <= now)
+                : usageRows;
+            usageByKeyId = countedRows
+                .GroupBy(x => x.ApiKeyId)
+                .ToDictionary(
+                    x => x.Key,
+                    x =>
+                    {
+                        var calls = x.Count();
+                        var succeeded = x.Count(row => row.StatusCode is 200 or 202);
+                        return new ApiUsageCount(calls, succeeded, calls - succeeded);
+                    });
+        }
 
         return rows
             .OrderByDescending(x => x.CreatedAt)
@@ -106,8 +146,55 @@ public sealed class ApiKeyService
                 MaskKey(x.Last4),
                 x.LastUsedAt,
                 x.CreatedAt,
-                x.RevokedAt))
+                x.RevokedAt,
+                usageByKeyId.GetValueOrDefault(x.Id, new ApiUsageCount(0, 0, 0))))
             .ToList();
+    }
+
+    public async Task<ApiKeyRotationResult?> RotateAsync(
+        Guid userId,
+        Guid keyId,
+        CancellationToken cancellationToken)
+    {
+        await using var db = _dbContextFactory();
+        var apiKey = await db.ApiKeys
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == keyId && x.UserId == userId,
+                cancellationToken);
+
+        if (apiKey is null || apiKey.RevokedAt is not null)
+        {
+            return null;
+        }
+
+        var plaintext = GeneratePlaintext();
+        var now = DateTimeOffset.UtcNow;
+        apiKey.RevokedAt = now;
+        apiKey.UpdatedAt = now;
+        apiKey.RowVersion = Guid.NewGuid();
+
+        var replacement = new ApiKey
+        {
+            UserId = userId,
+            Name = apiKey.Name,
+            KeyHash = ComputeHash(plaintext),
+            Last4 = plaintext[^4..],
+            PlanTier = apiKey.PlanTier,
+            Scope = apiKey.Scope,
+            RateLimitPerMinute = apiKey.RateLimitPerMinute,
+            MonthlyQuota = apiKey.MonthlyQuota,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        db.ApiKeys.Add(replacement);
+        await db.SaveChangesAsync(cancellationToken);
+        return new ApiKeyRotationResult(
+            replacement.Id,
+            replacement.Name,
+            plaintext,
+            replacement.CreatedAt);
     }
 
     public async Task<bool> RevokeAsync(
@@ -173,4 +260,11 @@ public sealed record ApiKeySummary(
     string MaskedKey,
     DateTimeOffset? LastUsedAt,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? RevokedAt);
+    DateTimeOffset? RevokedAt,
+    ApiUsageCount Last30dUsage);
+
+public sealed record ApiKeyRotationResult(
+    Guid Id,
+    string Name,
+    string Plaintext,
+    DateTimeOffset CreatedAt);

@@ -230,6 +230,94 @@ public sealed class AccountApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task BillingHistory_returns_pack_subscription_and_refund_rows()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.Parse("2026-06-05T00:00:00Z");
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra_billing_history",
+                Email = "buyer@example.com",
+                SubscriptionStatus = SubscriptionStatus.Active,
+                StripeSubscriptionId = "sub_history",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = userId,
+                Source = "PURCHASE",
+                AmountGranted = 5,
+                OriginalAmountGranted = 10,
+                AmountConsumed = 0,
+                GrantedAt = DateTimeOffset.Parse("2026-06-04T10:00:00Z"),
+                ExpiresAt = DateTimeOffset.Parse("2026-09-04T10:00:00Z"),
+                StripePaymentIntentId = "pi_billing_history_pack",
+                StripeSku = "quick_pack",
+                StripeAmountTotal = 1200,
+                StripeCurrency = "nzd",
+                StripeReceiptUrl = "https://pay.stripe.test/receipts/history-pack",
+            });
+            db.StripeInvoices.Add(new StripeInvoice
+            {
+                Id = "in_billing_history",
+                UserId = userId,
+                SubscriptionId = "sub_history",
+                Status = "paid",
+                AmountDue = 900,
+                AmountPaid = 900,
+                Currency = "nzd",
+                PeriodStart = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+                PeriodEnd = DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+                HostedInvoiceUrl = "https://invoice.stripe.test/history",
+                CreatedAt = DateTimeOffset.Parse("2026-06-05T10:00:00Z"),
+                UpdatedAt = DateTimeOffset.Parse("2026-06-05T10:00:00Z"),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "entra_billing_history");
+        client.DefaultRequestHeaders.Add("X-User-Email", "buyer@example.com");
+
+        var response = await client.GetAsync("/api/me/billing/history");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<IReadOnlyList<BillingHistoryResponse>>();
+        body.Should().NotBeNull();
+        body.Should().HaveCount(3);
+        body![0].Type.Should().Be("subscription");
+        body[0].Amount.Should().Be(900);
+        body[0].HostedInvoiceUrl.Should().Be("https://invoice.stripe.test/history");
+        body.Should().ContainSingle(x =>
+            x.Type == "pack" &&
+            x.Amount == 1200 &&
+            x.Currency == "nzd" &&
+            x.ReceiptUrl == "https://pay.stripe.test/receipts/history-pack");
+        body.Should().ContainSingle(x =>
+            x.Type == "refund" &&
+            x.Amount == -600 &&
+            x.Status == "refunded");
+    }
+
+    [Fact]
+    public async Task BillingHistory_function_requires_authentication()
+    {
+        var function = CreateAccountFunction(new RecordingNotificationEmailProvider());
+
+        var result = await function.GetBillingHistory(
+            new DefaultHttpContext().Request,
+            CancellationToken.None);
+
+        var problem = result.Should().BeOfType<ObjectResult>().Subject;
+        problem.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+    }
+
+    [Fact]
     public async Task Me_includes_promo_block_and_trial_credit_label()
     {
         var userId = Guid.NewGuid();
@@ -513,4 +601,14 @@ public sealed class AccountApiTests : IAsyncLifetime
         DateTimeOffset? Expiry,
         int Remaining,
         string? ReceiptUrl);
+
+    private sealed record BillingHistoryResponse(
+        string Type,
+        DateTimeOffset Date,
+        string Description,
+        long? Amount,
+        string? Currency,
+        string Status,
+        string? ReceiptUrl,
+        string? HostedInvoiceUrl);
 }

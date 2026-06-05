@@ -111,7 +111,7 @@ A previously-unrelated developer can, with no help from us:
 - **Zero website regression:** the existing same-origin `/api/rewrite` path and copy contract tests stay green.
 - **Banned-term gate:** `grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib` clean before any merge.
 - **No over-promising:** outward copy markets natural/concise/faithful only.
-- **Secrets at runtime:** new env (`API_KEY_PEPPER`) validated in-handler, set on **both** Worker vars and the Functions app settings; never printed/committed.
+- **Secrets at runtime:** `API_KEY_PEPPER` validated in-handler; it is consumed by the C# backend only, so it is set on the Functions app settings **only** — never in `wrangler.jsonc` `vars` (committed plaintext). Set live on prod 2026-06-05. Never printed/committed.
 - **Never `main` directly:** integration branch → Phase Gate → owner approval → `main` (auto-deploys prod).
 
 ---

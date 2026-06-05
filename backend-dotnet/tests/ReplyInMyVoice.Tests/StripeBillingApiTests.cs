@@ -233,6 +233,11 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
 
         return Task.FromResult("https://billing.test/portal");
     }
+
+    public Task CancelSubscriptionAsync(
+        string stripeSubscriptionId,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
 }
 
 public sealed record BillingUrlResponse(string Url);
