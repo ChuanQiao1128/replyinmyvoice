@@ -609,23 +609,43 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
-    public async Task ProcessExpiredPaymentGraceAsync_DowngradesAndSendsPausedNotificationOnce()
+    public async Task ProcessExpiredPaymentGraceAsync_DowngradesExpiredGraceOnlyAndCancelsStripeSubscription()
     {
         await using var fixture = await DbFixture.CreateAsync();
-        var user = await fixture.CreateUserAsync();
+        var expiredGraceUser = await fixture.CreateUserAsync();
+        var activeUser = await fixture.CreateUserAsync();
+        var inGraceUser = await fixture.CreateUserAsync();
         var now = DateTimeOffset.Parse("2026-05-26T00:20:00Z");
         await using (var seedDb = fixture.CreateContext())
         {
-            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
-            storedUser.Email = "customer@example.com";
-            storedUser.SubscriptionStatus = SubscriptionStatus.PastDue;
-            storedUser.PaymentFailedAt = now.AddDays(-3);
-            storedUser.PaymentGraceEndsAt = now.AddSeconds(-1);
+            var storedExpiredGraceUser = await seedDb.AppUsers.SingleAsync(x => x.Id == expiredGraceUser.Id);
+            storedExpiredGraceUser.Email = "customer@example.com";
+            storedExpiredGraceUser.StripeSubscriptionId = "sub_expired_grace";
+            storedExpiredGraceUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedExpiredGraceUser.PaymentFailedAt = now.AddDays(-3);
+            storedExpiredGraceUser.PaymentGraceEndsAt = now.AddSeconds(-1);
+
+            var storedActiveUser = await seedDb.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
+            storedActiveUser.StripeSubscriptionId = "sub_active";
+            storedActiveUser.SubscriptionStatus = SubscriptionStatus.Active;
+            storedActiveUser.PaymentFailedAt = null;
+            storedActiveUser.PaymentGraceEndsAt = null;
+
+            var storedInGraceUser = await seedDb.AppUsers.SingleAsync(x => x.Id == inGraceUser.Id);
+            storedInGraceUser.StripeSubscriptionId = "sub_still_in_grace";
+            storedInGraceUser.SubscriptionStatus = SubscriptionStatus.PastDue;
+            storedInGraceUser.PaymentFailedAt = now.AddDays(-1);
+            storedInGraceUser.PaymentGraceEndsAt = now.AddDays(2);
+
             await seedDb.SaveChangesAsync();
         }
 
         var notifications = new RecordingNotificationService();
-        var service = new StripeEventService(fixture.CreateContext, notificationService: notifications);
+        var billing = new FakeDunningStripeBillingService("https://billing.test/portal");
+        var service = new StripeEventService(
+            fixture.CreateContext,
+            notificationService: notifications,
+            stripeBillingService: billing);
 
         var first = await service.ProcessExpiredPaymentGraceAsync(now);
         var replay = await service.ProcessExpiredPaymentGraceAsync(now.AddSeconds(1));
@@ -634,15 +654,25 @@ public sealed class StripeEventServiceTests
         replay.Should().Be(0);
 
         await using var db = fixture.CreateContext();
-        var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
-        updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Inactive);
-        updatedUser.PaymentFailedAt.Should().BeNull();
-        updatedUser.PaymentGraceEndsAt.Should().BeNull();
-        AccountService.GetUsagePlan(updatedUser).Scope.Should().Be("free");
+        var updatedExpiredGraceUser = await db.AppUsers.SingleAsync(x => x.Id == expiredGraceUser.Id);
+        updatedExpiredGraceUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Inactive);
+        updatedExpiredGraceUser.PaymentFailedAt.Should().BeNull();
+        updatedExpiredGraceUser.PaymentGraceEndsAt.Should().BeNull();
+        AccountService.GetUsagePlan(updatedExpiredGraceUser).Scope.Should().Be("free");
+
+        var unchangedActiveUser = await db.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
+        unchangedActiveUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Active);
+        AccountService.GetUsagePlan(unchangedActiveUser).Scope.Should().Be("paid");
+
+        var unchangedInGraceUser = await db.AppUsers.SingleAsync(x => x.Id == inGraceUser.Id);
+        unchangedInGraceUser.SubscriptionStatus.Should().Be(SubscriptionStatus.PastDue);
+        unchangedInGraceUser.PaymentGraceEndsAt.Should().Be(now.AddDays(2));
+        AccountService.GetUsagePlan(unchangedInGraceUser).Scope.Should().Be("paid");
 
         notifications.Messages.Should().ContainSingle();
         notifications.Messages[0].TemplateName.Should().Be("subscription-paused");
         notifications.Messages[0].Recipient.Email.Should().Be("customer@example.com");
+        billing.CancelRequests.Should().Equal("sub_expired_grace");
     }
 
     [Fact]
@@ -843,18 +873,23 @@ public sealed class StripeEventServiceTests
         updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.PastDue);
     }
 
-    [Fact]
-    public async Task ProcessWebhookEventAsync_TerminalSubscriptionStatusFromGraceDowngradesAndSendsPausedNotificationOnce()
+    [Theory]
+    [InlineData("unpaid")]
+    [InlineData("canceled")]
+    public async Task ProcessWebhookEventAsync_TerminalSubscriptionStatusFromGraceDowngradesAndSendsPausedNotificationOnce(
+        string stripeStatus)
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
         var now = DateTimeOffset.Parse("2026-05-26T00:40:00Z");
+        var customerId = $"cus_subscription_terminal_{stripeStatus}";
+        var subscriptionId = $"sub_subscription_terminal_{stripeStatus}";
         await using (var seedDb = fixture.CreateContext())
         {
             var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
             storedUser.Email = "customer@example.com";
-            storedUser.StripeCustomerId = "cus_subscription_terminal";
-            storedUser.StripeSubscriptionId = "sub_subscription_terminal";
+            storedUser.StripeCustomerId = customerId;
+            storedUser.StripeSubscriptionId = subscriptionId;
             storedUser.SubscriptionStatus = SubscriptionStatus.PastDue;
             storedUser.PaymentFailedAt = now.AddDays(-1);
             storedUser.PaymentGraceEndsAt = now.AddDays(1);
@@ -863,15 +898,15 @@ public sealed class StripeEventServiceTests
 
         var notifications = new RecordingNotificationService();
         var service = new StripeEventService(fixture.CreateContext, notificationService: notifications);
-        const string rawBody = """
+        var rawBody = $$"""
         {
-          "id": "evt_subscription_terminal",
+          "id": "evt_subscription_terminal_{{stripeStatus}}",
           "type": "customer.subscription.updated",
           "data": {
             "object": {
-              "id": "sub_subscription_terminal",
-              "customer": "cus_subscription_terminal",
-              "status": "unpaid",
+              "id": "{{subscriptionId}}",
+              "customer": "{{customerId}}",
+              "status": "{{stripeStatus}}",
               "current_period_end": 1780000300
             }
           }
@@ -879,12 +914,12 @@ public sealed class StripeEventServiceTests
         """;
 
         var first = await service.ProcessWebhookEventAsync(
-            "evt_subscription_terminal",
+            $"evt_subscription_terminal_{stripeStatus}",
             "customer.subscription.updated",
             rawBody,
             now);
         var replay = await service.ProcessWebhookEventAsync(
-            "evt_subscription_terminal",
+            $"evt_subscription_terminal_{stripeStatus}",
             "customer.subscription.updated",
             rawBody,
             now.AddSeconds(1));
@@ -1594,6 +1629,16 @@ public sealed class StripeEventServiceTests
         {
             PortalRequests.Add(externalAuthUserId);
             return Task.FromResult(portalUrl);
+        }
+
+        public List<string> CancelRequests { get; } = [];
+
+        public Task CancelSubscriptionAsync(
+            string stripeSubscriptionId,
+            CancellationToken cancellationToken)
+        {
+            CancelRequests.Add(stripeSubscriptionId);
+            return Task.CompletedTask;
         }
     }
 
