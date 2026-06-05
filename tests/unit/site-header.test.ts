@@ -63,6 +63,15 @@ describe("SiteHeader", () => {
     expect(html).not.toContain(">Admin</a>");
   });
 
+  it("shows the API key manager to signed-in users", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(userSession);
+
+    const html = await renderHeader();
+
+    expect(html).toContain('href="/developers/keys"');
+    expect(html).toContain(">API keys</a>");
+  });
+
   it("hides the admin nav link from signed-out visitors", async () => {
     vi.mocked(getCurrentSession).mockResolvedValue(null);
 
