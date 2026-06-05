@@ -62,6 +62,29 @@ public sealed class AccountHttpFunctions(
         return new OkObjectResult(payments);
     }
 
+    [Function("GetBillingHistory")]
+    public async Task<IActionResult> GetBillingHistory(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "me/billing/history")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Authentication required",
+                "A valid authenticated user is required.",
+                StatusCodes.Status401Unauthorized);
+        }
+
+        var history = await accountService.GetBillingHistoryAsync(
+            authUser.ExternalAuthUserId,
+            authUser.Email,
+            cancellationToken);
+
+        return new OkObjectResult(history);
+    }
+
     [Function("GetBillingSupportRequests")]
     public async Task<IActionResult> GetBillingSupportRequests(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "billing-support-requests")]
