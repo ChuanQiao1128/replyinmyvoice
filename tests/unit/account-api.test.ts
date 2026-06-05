@@ -260,7 +260,7 @@ describe("/api/me/billing/history route handler", () => {
     ];
     fetchMock().mockResolvedValueOnce(Response.json(history, { status: 200 }));
 
-    const response = await billingHistoryGet();
+    const response = await billingHistoryGet(request("GET"));
 
     await expect(response.json()).resolves.toEqual(history);
     expect(response.status).toBe(200);
@@ -275,7 +275,7 @@ describe("/api/me/billing/history route handler", () => {
   it("returns 401 when no access token is available", async () => {
     vi.mocked(getCurrentAccessToken).mockResolvedValueOnce(null);
 
-    const response = await billingHistoryGet();
+    const response = await billingHistoryGet(request("GET"));
 
     await expect(response.json()).resolves.toEqual({
       error: "Authentication required.",
