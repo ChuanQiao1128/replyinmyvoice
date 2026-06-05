@@ -23,6 +23,7 @@ using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
 
+[Collection("ApiKeyPepper")]
 public sealed class RewriteApiTests : IAsyncLifetime
 {
     private const string TestApiKeyPepper = "rewrite-api-v1-test-pepper";
