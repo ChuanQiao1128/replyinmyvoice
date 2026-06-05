@@ -3524,3 +3524,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Focused test command passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
 - Limitations: Focused tests passed on the existing implementation, so no production code was changed.
+
+### 2026-06-05 - data-module-review - P2-01 Stripe invoice persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #527 adds an EF Core entity, migration, webhook upsert path, foreign key, and invoice id idempotency invariant.
+- Action: Opened and followed the skill; reviewed `AppDbContext`, `StripeEventService`, existing `StripeEvent` and `RewriteCredit` patterns, migration output, and final persisted-state assertions. Ran `scan_data_risks.py --limit 40 .`; the bounded scan produced existing broad persistence signals and no new blocking finding for this scoped table.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/StripeInvoice.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260605092351_AddStripeInvoice.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260605092351_AddStripeInvoice.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
+- Verification evidence: New focused test passed 1/1 after the implementation. Full `cd backend-dotnet && dotnet test` passed 533/533. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched. No production data migration was applied locally.
+
+### 2026-06-05 - state-machine-modeling - P2-01 invoice webhook row lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #527 changes webhook lifecycle persistence for Stripe invoice status updates.
+- Action: Opened and followed the skill. State list: `draft`, `open`, `paid`, `void`, `uncollectible` as mirrored from Stripe invoice status. Event list: `invoice.finalized`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`, and duplicate delivery of an already processed event id. Transition table: finalized creates or updates the row to the payload status or `open`; paid/payment_succeeded creates or updates to payload status or `paid`; payment_failed updates the same row to the payload status while existing dunning behavior sets the user to `PastDue`; duplicate processed event id makes no row change. Invariants: one row per invoice id, row owner resolved from the local Stripe customer/subscription mapping, same event id is skipped by `StripeEvents`, later distinct invoice events may update the same invoice row, and checkout credit/quota behavior remains separate. Illegal transitions: missing invoice id or missing local user does not create an orphan invoice row; processed duplicate event ids cannot overwrite the existing row. Persistence implications: `StripeInvoices.Id` is the primary key, `UserId` is a cascade FK, and `(UserId, CreatedAt)` supports user-scoped history reads. Test checklist: insert from `invoice.paid`, duplicate event replay leaves one row, later `invoice.payment_failed` updates status and attempt count on that row.
+- Output artifacts: same P2-01 code and test files listed in the data-module-review entry.
+- Verification evidence: The new xUnit test asserts the transition checklist and persisted fields. Full `cd backend-dotnet && dotnet test` passed 533/533.
+- Limitations: This issue does not add the future billing-history read endpoint or UI.
+
+### 2026-06-05 - resilience-test-generation - P2-01 invoice webhook replay coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #527 acceptance requires duplicate webhook replay safety and update behavior for later invoice events.
+- Action: Opened and followed the skill; identified the critical operation as webhook invoice persistence inside the existing serializable event transaction. Failure matrix focus: duplicate event id, partial persistence guarded by the transaction, unmatched local user, malformed missing invoice id, and later distinct invoice event update. Implemented the lowest-level test as an xUnit service persistence test with local SQLite and no live Stripe calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: Focused red run failed on missing `StripeInvoices` surface; focused green run passed 1/1. Full `cd backend-dotnet && dotnet test` passed 533/533.
+- Limitations: Concurrent duplicate invoice delivery was not separately simulated because existing `StripeEvents` processing already owns event-id dedupe and this issue only adds invoice-row upsert behavior.
+
+### 2026-06-05 - dotnet-backend-testing - P2-01 invoice webhook xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #527 requires xUnit coverage in `backend-dotnet/tests/ReplyInMyVoice.Tests/` for invoice upsert, replay, and update behavior.
+- Action: Opened and followed the project skill plus test-first workflow; added `ProcessWebhookEventAsync_InvoicePaidUpsertsInvoiceAndPaymentFailedUpdatesSameRow` to the existing `StripeEventServiceTests` SQLite service suite, verified the test failed before the entity/DbSet existed, then implemented the minimal model and service code to pass.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/StripeInvoice.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/StripeEventService.cs`.
+- Verification evidence: Focused command `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ProcessWebhookEventAsync_InvoicePaidUpsertsInvoiceAndPaymentFailedUpdatesSameRow` passed 1/1 after initially failing as expected. Full `cd backend-dotnet && dotnet test` passed 533/533. `cd backend-dotnet && dotnet build` succeeded with 0 errors.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed.
