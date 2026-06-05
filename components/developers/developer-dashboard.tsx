@@ -4,6 +4,7 @@ import { BarChart3, CreditCard, KeyRound } from "lucide-react";
 import { useId, useState } from "react";
 
 import { ApiKeysPanel } from "./api-keys-panel";
+import { BillingPanel } from "./billing-panel";
 import { UsagePanel } from "./usage-panel";
 
 type DashboardTab = "keys" | "usage" | "billing";
@@ -131,22 +132,7 @@ export function DeveloperDashboard() {
         id={`${tabGroupId}-billing-panel`}
         role="tabpanel"
       >
-        {activeTab === "billing" ? (
-          <div className="rounded-lg border border-line bg-white/80 p-6 shadow-soft sm:p-8">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-sky text-sage">
-                <CreditCard className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-2xl">Billing</h2>
-                <p className="mt-2 max-w-2xl text-sm text-ink/65">
-                  Billing history, receipts, and plan management will appear
-                  here.
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        {activeTab === "billing" ? <BillingPanel /> : null}
       </section>
     </div>
   );

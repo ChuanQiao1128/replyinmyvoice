@@ -53,6 +53,17 @@ export type AzureAccountPayment = {
   remaining: number;
 };
 
+export type AzureBillingHistoryItem = {
+  type: "pack" | "subscription" | "refund" | "dispute" | string;
+  date: string;
+  description: string | null;
+  amount: number | null;
+  currency: string | null;
+  status: string | null;
+  receiptUrl?: string | null;
+  hostedInvoiceUrl?: string | null;
+};
+
 export type AzureBillingSupportRequest = {
   id: string;
   userId: string;
