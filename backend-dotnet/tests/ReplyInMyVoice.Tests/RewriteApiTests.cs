@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
@@ -23,6 +25,14 @@ namespace ReplyInMyVoice.Tests;
 public sealed class RewriteApiTests : IAsyncLifetime
 {
     private const string TestApiKeyPepper = "rewrite-api-v1-test-pepper";
+    private static readonly string?[] ApiKeyPepperVariants =
+    [
+        TestApiKeyPepper,
+        "api-key-service-test-pepper",
+        "api-key-http-functions-test-pepper",
+        null,
+    ];
+
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
 
     static RewriteApiTests()
@@ -125,6 +135,68 @@ public sealed class RewriteApiTests : IAsyncLifetime
         usageStatusCodes.Should().HaveCount(rateLimitPerMinute + 1);
         usageStatusCodes.Count(x => x == StatusCodes.Status202Accepted).Should().Be(rateLimitPerMinute);
         usageStatusCodes.Count(x => x == StatusCodes.Status429TooManyRequests).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_same_idempotency_key_and_same_draft_returns_same_id_without_duplicate_reservation()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_idempotent_same",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        const string idempotencyKey = "v1-submit-same-draft";
+        var draft = ValidV1Draft();
+
+        var first = await PostV1RewriteAsync(client, token, idempotencyKey, draft);
+        var second = await PostV1RewriteAsync(client, token, idempotencyKey, draft);
+
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        second.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var firstBody = await first.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        var secondBody = await second.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        firstBody.Should().NotBeNull();
+        secondBody.Should().NotBeNull();
+        secondBody!.Id.Should().Be(firstBody!.Id);
+        secondBody.Status.Should().Be("processing");
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(1);
+        (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_same_idempotency_key_and_different_draft_returns_conflict_without_duplicate_reservation()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_idempotent_conflict",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        const string idempotencyKey = "v1-submit-different-draft";
+
+        var first = await PostV1RewriteAsync(client, token, idempotencyKey, ValidV1Draft());
+        var second = await PostV1RewriteAsync(
+            client,
+            token,
+            idempotencyKey,
+            "Please tell the client the report has moved to final review and I will share notes tomorrow.");
+
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        await AssertErrorCodeAsync(second, "idempotency_conflict");
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(1);
+        (await db.UsageReservations.CountAsync()).Should().Be(1);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(1);
     }
 
     [Fact]
@@ -810,16 +882,28 @@ public sealed class RewriteApiTests : IAsyncLifetime
             UpdatedAt = now,
         };
         db.AppUsers.Add(user);
-        db.ApiKeys.Add(new ApiKey
+        var seenHashes = new HashSet<string>(StringComparer.Ordinal);
+        var keyIndex = 0;
+        foreach (var pepper in ApiKeyPepperVariants)
         {
-            User = user,
-            Name = "V1 integration key",
-            KeyHash = ApiKeyService.ComputeHash(token),
-            Last4 = token[^4..],
-            RateLimitPerMinute = rateLimitPerMinute,
-            CreatedAt = now,
-            UpdatedAt = now,
-        });
+            var keyHash = ComputeApiKeyHash(token, pepper);
+            if (!seenHashes.Add(keyHash))
+            {
+                continue;
+            }
+
+            db.ApiKeys.Add(new ApiKey
+            {
+                User = user,
+                Name = keyIndex == 0 ? "V1 integration key" : $"V1 integration key {keyIndex}",
+                KeyHash = keyHash,
+                Last4 = token[^4..],
+                RateLimitPerMinute = rateLimitPerMinute,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            keyIndex += 1;
+        }
         await db.SaveChangesAsync();
         return (user, token);
     }
@@ -924,6 +1008,15 @@ public sealed class RewriteApiTests : IAsyncLifetime
 
     private static string ValidV1Draft() =>
         "Please let the client know the report is still being checked and I will send a clear update soon.";
+
+    private static string ComputeApiKeyHash(string plaintext, string? pepper)
+    {
+        var material = string.IsNullOrWhiteSpace(pepper)
+            ? plaintext
+            : string.Concat(pepper, plaintext);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
 }
 
 public sealed record RewriteAttemptResponse(

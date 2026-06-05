@@ -3407,3 +3407,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
 - Verification evidence: Focused red `dotnet test backend-dotnet/ReplyInMyVoice.sln --filter V1_usage` failed on `404`; focused green passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
 - Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore and all test runs completed.
+
+### 2026-06-05 - resilience-test-generation - API-10 duplicate submit idempotency
+
+- Agent: Codex worker
+- Trigger: API-10 tests repeated public v1 submit requests and idempotency conflict handling.
+- Action: Opened and followed the skill; identified the critical invariant as one persisted rewrite attempt, one usage reservation, and one outbox job for repeated same-key/same-body submit requests, with same-key/different-body returning `409` and no extra reservation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~V1_rewrite_submit_same_idempotency"` passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: The scope was duplicate request handling only; no retry, queue, worker, or external service behavior was changed.
+
+### 2026-06-05 - state-machine-modeling - API-10 submit reservation lifecycle
+
+- Agent: Codex worker
+- Trigger: API-10 verifies the submit path around `RewriteAttempt` and `UsageReservation` lifecycle states.
+- Action: Opened and followed the skill; modeled the tested path as new submit -> `Pending` attempt plus `Pending` reservation, duplicate same-key/same-body submit -> existing `Pending` attempt projection, and same-key/different-body submit -> conflict with no state mutation. Invariants: accepted duplicate returns the original id, reserved count remains one, used count remains zero until worker success, and no second outbox job is created.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: New v1 tests assert HTTP status, same id, `RewriteAttempts.Count == 1`, `UsageReservations.Count == 1`, `OutboxMessages.Count == 1`, `UsedCount == 0`, and `ReservedCount == 1`. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: No new transition function or enum was added because the existing quota service already owns lifecycle mutation and API-10 only required endpoint-level verification.
+
+### 2026-06-05 - data-module-review - API-10 reservation persistence invariant
+
+- Agent: Codex worker
+- Trigger: API-10 verifies persisted idempotency behavior across `RewriteAttempts`, `UsageReservations`, `UsagePeriods`, and outbox records.
+- Action: Opened and followed the skill; reviewed `RewriteRequestService.CreateAttemptAsync`, `QuotaService.ReserveAsync`, the v1 submit route, and existing API tests together. Confirmed no schema or `QuotaService` semantic change was needed. Added tests that assert final persisted counts and counters, not only response codes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused API-10 tests passed 2/2 after fixture stabilization. Mixed `dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~V1_rewrite_submit_same_idempotency|FullyQualifiedName~ApiKey"` passed 14/14. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: The v1 test fixture now seeds equivalent hashes for the known test API-key hash settings because related API-key test classes mutate a process-wide setting during parallel runs.
+
+### 2026-06-05 - dotnet-backend-testing - API-10 v1 submit integration coverage
+
+- Agent: Codex worker
+- Trigger: API-10 requires xUnit/integration coverage for public v1 submit idempotency behavior.
+- Action: Opened and followed the project skill; added two WebApplicationFactory integration tests in the existing `RewriteApiTests` suite. The first repeats the same `Idempotency-Key` and draft and asserts the same response id plus one persisted attempt/reservation. The second reuses the same key with a different draft and asserts `409 idempotency_conflict` plus no duplicate reservation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused API-10 run passed 2/2. A mixed API-key run initially reproduced a parallel test fixture issue, then passed 14/14 after seeding stable test hashes. Full `cd backend-dotnet && dotnet test` passed 526/526.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched, but restore/build/test completed. Production endpoint code was left unchanged because the new integration tests passed against the existing idempotency wiring.
