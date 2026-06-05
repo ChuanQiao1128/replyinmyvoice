@@ -14,9 +14,10 @@ using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
 
+[Collection("ApiKeyPepper")]
 public sealed class ApiKeyHttpFunctionsTests
 {
-    private const string TestPepper = "api-key-http-functions-test-pepper";
+    private const string TestPepper = "api-key-test-pepper";
 
     [Fact]
     public async Task CreateKey_returns_plaintext_once_and_list_returns_masked_keys()
@@ -97,6 +98,55 @@ public sealed class ApiKeyHttpFunctionsTests
         await using var db = fixture.CreateContext();
         var stored = await db.ApiKeys.SingleAsync(x => x.Id == generated.Id);
         stored.RevokedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task RotateKey_returns_plaintext_replacement_and_revokes_only_owner_key()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await SeedUserAsync(fixture, "entra-key-rotate-owner");
+        await SeedUserAsync(fixture, "entra-key-rotate-other");
+        var apiKeyService = new ApiKeyService(fixture.CreateContext);
+        var generated = await apiKeyService.GenerateAsync(
+            owner.Id,
+            "Server key",
+            CancellationToken.None);
+        var functions = CreateFunctions(fixture.CreateContext);
+
+        var otherResult = await functions.RotateApiKey(
+            CreateRequest("entra-key-rotate-other", "other@example.com"),
+            generated.Id,
+            CancellationToken.None);
+
+        otherResult.Should().BeOfType<NotFoundResult>();
+        await using (var unchangedDb = fixture.CreateContext())
+        {
+            var unchanged = await unchangedDb.ApiKeys.SingleAsync(x => x.Id == generated.Id);
+            unchanged.RevokedAt.Should().BeNull();
+        }
+
+        var ownerResult = await functions.RotateApiKey(
+            CreateRequest("entra-key-rotate-owner", "owner@example.com"),
+            generated.Id,
+            CancellationToken.None);
+
+        var created = ownerResult.Should().BeOfType<CreatedResult>().Subject;
+        created.StatusCode.Should().Be((int)HttpStatusCode.Created);
+        var body = created.Value.Should().BeOfType<ApiKeyCreateResponse>().Subject;
+        body.Id.Should().NotBe(generated.Id);
+        body.Name.Should().Be("Server key");
+        body.Key.Should().StartWith("rmv_live_");
+
+        await using var db = fixture.CreateContext();
+        var oldKey = await db.ApiKeys.SingleAsync(x => x.Id == generated.Id);
+        var newKey = await db.ApiKeys.SingleAsync(x => x.Id == body.Id);
+        oldKey.RevokedAt.Should().NotBeNull();
+        newKey.RevokedAt.Should().BeNull();
+        newKey.KeyHash.Should().Be(ApiKeyService.ComputeHash(body.Key));
+
+        var responseJson = JsonSerializer.Serialize(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        responseJson.Should().NotContain(ApiKeyService.ComputeHash(body.Key));
     }
 
     private static ApiKeyHttpFunctions CreateFunctions(Func<AppDbContext> createContext) =>

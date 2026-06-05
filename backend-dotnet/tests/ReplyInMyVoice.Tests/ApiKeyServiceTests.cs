@@ -1,12 +1,16 @@
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
 
+[Collection("ApiKeyPepper")]
 public sealed class ApiKeyServiceTests
 {
-    private const string TestPepper = "api-key-service-test-pepper";
+    private const string TestPepper = "api-key-test-pepper";
 
     [Fact]
     public async Task GenerateAsync_returns_plaintext_once_and_stores_hash_and_last4()
@@ -94,4 +98,123 @@ public sealed class ApiKeyServiceTests
         var stored = await db.ApiKeys.SingleAsync(x => x.Id == generated.Id);
         stored.RevokedAt.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task RotateAsync_creates_new_active_key_and_revokes_old_key_for_owner()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await fixture.CreateUserAsync();
+        var nonOwner = await fixture.CreateUserAsync();
+        var service = new ApiKeyService(fixture.CreateContext);
+        var generated = await service.GenerateAsync(owner.Id, "Server key", CancellationToken.None);
+
+        var nonOwnerResult = await service.RotateAsync(nonOwner.Id, generated.Id, CancellationToken.None);
+
+        nonOwnerResult.Should().BeNull();
+        await using (var unchangedDb = fixture.CreateContext())
+        {
+            var unchanged = await unchangedDb.ApiKeys.SingleAsync(x => x.Id == generated.Id);
+            unchanged.RevokedAt.Should().BeNull();
+        }
+
+        var rotated = await service.RotateAsync(owner.Id, generated.Id, CancellationToken.None);
+
+        rotated.Should().NotBeNull();
+        rotated!.Name.Should().Be("Server key");
+        rotated.Id.Should().NotBe(generated.Id);
+        rotated.Plaintext.Should().StartWith("rmv_live_");
+        rotated.Plaintext.Should().NotBe(generated.Plaintext);
+
+        await using (var db = fixture.CreateContext())
+        {
+            var oldKey = await db.ApiKeys.SingleAsync(x => x.Id == generated.Id);
+            var newKey = await db.ApiKeys.SingleAsync(x => x.Id == rotated.Id);
+
+            oldKey.RevokedAt.Should().NotBeNull();
+            newKey.RevokedAt.Should().BeNull();
+            newKey.Name.Should().Be(oldKey.Name);
+            newKey.KeyHash.Should().Be(ApiKeyService.ComputeHash(rotated.Plaintext));
+            newKey.KeyHash.Should().NotBe(rotated.Plaintext);
+            newKey.Last4.Should().Be(rotated.Plaintext[^4..]);
+        }
+
+        await using (var authDb = fixture.CreateContext())
+        {
+            var oldRequest = CreateBearerRequest(generated.Plaintext);
+            var newRequest = CreateBearerRequest(rotated.Plaintext);
+            var now = DateTimeOffset.UtcNow;
+
+            var oldUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+                oldRequest,
+                authDb,
+                now,
+                CancellationToken.None);
+            var newUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+                newRequest,
+                authDb,
+                now,
+                CancellationToken.None);
+
+            oldUserId.Should().BeNull();
+            newUserId.Should().Be(owner.Id);
+        }
+    }
+
+    [Fact]
+    public async Task ListAsync_includes_per_key_last_30_day_usage_for_owned_keys()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await fixture.CreateUserAsync();
+        var other = await fixture.CreateUserAsync();
+        var service = new ApiKeyService(fixture.CreateContext);
+        var ownerPrimary = await service.GenerateAsync(owner.Id, "Primary", CancellationToken.None);
+        var ownerSecondary = await service.GenerateAsync(owner.Id, "Secondary", CancellationToken.None);
+        var otherKey = await service.GenerateAsync(other.Id, "Other", CancellationToken.None);
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = fixture.CreateContext())
+        {
+            db.ApiKeyUsages.AddRange(
+                Usage(ownerPrimary.Id, "owner-primary-ok", 200, now.AddDays(-1)),
+                Usage(ownerPrimary.Id, "owner-primary-accepted", 202, now.AddDays(-2)),
+                Usage(ownerPrimary.Id, "owner-primary-failed", 500, now.AddDays(-3)),
+                Usage(ownerPrimary.Id, "owner-primary-old", 200, now.AddDays(-31)),
+                Usage(ownerSecondary.Id, "owner-secondary-ok", 200, now.AddDays(-4)),
+                Usage(otherKey.Id, "other-ok", 200, now.AddDays(-1)));
+            await db.SaveChangesAsync();
+        }
+
+        var summaries = await service.ListAsync(owner.Id, CancellationToken.None);
+
+        summaries.Should().HaveCount(2);
+        var primary = summaries.Single(x => x.Id == ownerPrimary.Id);
+        var secondary = summaries.Single(x => x.Id == ownerSecondary.Id);
+
+        primary.Last30dUsage.Should().Be(new ApiUsageCount(3, 2, 1));
+        secondary.Last30dUsage.Should().Be(new ApiUsageCount(1, 1, 0));
+        summaries.Select(x => x.Id).Should().NotContain(otherKey.Id);
+    }
+
+    private static HttpRequest CreateBearerRequest(string token)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Authorization = $"Bearer {token}";
+        return context.Request;
+    }
+
+    private static ApiKeyUsage Usage(
+        Guid apiKeyId,
+        string requestId,
+        int statusCode,
+        DateTimeOffset createdAt) =>
+        new()
+        {
+            ApiKeyId = apiKeyId,
+            RequestId = requestId,
+            Endpoint = "v1/rewrite",
+            StatusCode = statusCode,
+            CreatedAt = createdAt,
+        };
 }

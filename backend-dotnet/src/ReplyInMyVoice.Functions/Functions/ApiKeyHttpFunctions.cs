@@ -88,10 +88,41 @@ public sealed class ApiKeyHttpFunctions(
                 x.MaskedKey,
                 x.LastUsedAt,
                 x.CreatedAt,
-                x.RevokedAt))
+                x.RevokedAt,
+                x.Last30dUsage))
             .ToArray();
 
         return new OkObjectResult(response);
+    }
+
+    [Function("RotateApiKey")]
+    public async Task<IActionResult> RotateApiKey(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "keys/{id:guid}/rotate")]
+        HttpRequest request,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return AuthenticationRequired();
+        }
+
+        var user = await accountService.GetOrCreateUserAsync(
+            authUser.ExternalAuthUserId,
+            authUser.Email,
+            cancellationToken);
+        var rotated = await apiKeyService.RotateAsync(user.Id, id, cancellationToken);
+
+        return rotated is null
+            ? new NotFoundResult()
+            : new CreatedResult(
+                $"/api/keys/{rotated.Id}",
+                new ApiKeyCreateResponse(
+                    rotated.Id,
+                    rotated.Name,
+                    rotated.Plaintext,
+                    rotated.CreatedAt));
     }
 
     [Function("RevokeApiKey")]
@@ -157,4 +188,5 @@ public sealed record ApiKeyListResponse(
     string MaskedKey,
     DateTimeOffset? LastUsedAt,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? RevokedAt);
+    DateTimeOffset? RevokedAt,
+    ApiUsageCount Last30dUsage);

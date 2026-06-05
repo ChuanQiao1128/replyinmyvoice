@@ -21,9 +21,16 @@ type ApiKey = {
   createdAt: string;
   id: string;
   lastUsedAt: string | null;
+  last30dUsage: ApiUsageCount;
   maskedKey: string;
   name: string;
   revokedAt: string | null;
+};
+
+type ApiUsageCount = {
+  calls: number;
+  failed: number;
+  succeeded: number;
 };
 
 type CreatedApiKey = {
@@ -102,11 +109,28 @@ function statusClassName(key: ApiKey) {
     : "border-sage/25 bg-sky text-sage";
 }
 
+function emptyUsage(): ApiUsageCount {
+  return {
+    calls: 0,
+    failed: 0,
+    succeeded: 0,
+  };
+}
+
+function usageDetailLabel(usage: ApiUsageCount) {
+  if (usage.calls === 0) {
+    return "No calls";
+  }
+
+  return `${usage.succeeded} ok / ${usage.failed} failed`;
+}
+
 function createdKeyListItem(created: CreatedApiKey): ApiKey {
   return {
     createdAt: created.createdAt,
     id: created.id,
     lastUsedAt: null,
+    last30dUsage: emptyUsage(),
     maskedKey: fallbackMaskedKey(created.key),
     name: created.name,
     revokedAt: null,
@@ -124,6 +148,9 @@ export function ApiKeysPanel() {
   const [keyToRevoke, setKeyToRevoke] = useState<ApiKey | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
   const [isRevoking, setIsRevoking] = useState(false);
+  const [keyToRotate, setKeyToRotate] = useState<ApiKey | null>(null);
+  const [rotateError, setRotateError] = useState<string | null>(null);
+  const [isRotating, setIsRotating] = useState(false);
 
   const refreshKeys = useCallback(async () => {
     setKeysState({ status: "loading" });
@@ -271,6 +298,93 @@ export function ApiKeysPanel() {
 
     setKeyToRevoke(null);
     setRevokeError(null);
+  }
+
+  function closeRotateDialog() {
+    if (isRotating) {
+      return;
+    }
+
+    setKeyToRotate(null);
+    setRotateError(null);
+  }
+
+  async function rotateKey() {
+    if (!keyToRotate || isRotating) {
+      return;
+    }
+
+    const key = keyToRotate;
+    setIsRotating(true);
+    setRotateError(null);
+    setCreateNotice(null);
+    setCreateError(null);
+    setCopyNotice(null);
+
+    let rotated: CreatedApiKey | null = null;
+
+    try {
+      const response = await fetch(
+        `/api/keys/${encodeURIComponent(key.id)}/rotate`,
+        {
+          cache: "no-store",
+          method: "POST",
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign("/sign-in");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          (await readJsonError(response)) ?? "Could not rotate this key.",
+        );
+      }
+
+      rotated = (await response.json()) as CreatedApiKey;
+      setRevealedKey(rotated);
+      setCreateNotice("Key rotated. Copy the new key before leaving this page.");
+      setKeyToRotate(null);
+      setRotateError(null);
+
+      const revokedAt = new Date().toISOString();
+      setKeysState((current) => {
+        if (current.status !== "ready" || !rotated) {
+          return current;
+        }
+
+        return {
+          keys: [
+            createdKeyListItem(rotated),
+            ...current.keys.map((currentKey) =>
+              currentKey.id === key.id
+                ? { ...currentKey, revokedAt }
+                : currentKey,
+            ),
+          ],
+          status: "ready",
+        };
+      });
+
+      try {
+        const keys = await loadKeys();
+        setKeysState({ keys, status: "ready" });
+      } catch {
+        setCreateError(
+          "Key rotated, but the list did not refresh. Copy the key now, then reload.",
+        );
+      }
+    } catch (error) {
+      if (!rotated) {
+        setRotateError(
+          error instanceof Error ? error.message : "Could not rotate this key.",
+        );
+      }
+    } finally {
+      setIsRotating(false);
+    }
   }
 
   async function revokeKey() {
@@ -486,9 +600,10 @@ export function ApiKeysPanel() {
                     <th className="px-4 py-3 font-semibold">Name</th>
                     <th className="px-4 py-3 font-semibold">Key</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">30-day calls</th>
                     <th className="px-4 py-3 font-semibold">Last used</th>
                     <th className="px-4 py-3 font-semibold">Created</th>
-                    <th className="px-4 py-3 font-semibold">Action</th>
+                    <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -512,25 +627,49 @@ export function ApiKeysPanel() {
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-4 py-4">
+                        <div className="inline-flex min-w-20 flex-col rounded-md border border-line bg-paper px-3 py-2">
+                          <span className="font-semibold text-ink">
+                            {key.last30dUsage.calls}
+                          </span>
+                          <span className="text-xs text-ink/55">
+                            {usageDetailLabel(key.last30dUsage)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4">
                         {formatDateTime(key.lastUsedAt, "Never")}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4">
                         {formatDateTime(key.createdAt)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4">
-                        <Button
-                          className="border-rust/30 text-rust hover:bg-rust/5"
-                          disabled={Boolean(key.revokedAt)}
-                          onClick={() => {
-                            setKeyToRevoke(key);
-                            setRevokeError(null);
-                          }}
-                          type="button"
-                          variant="secondary"
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          Revoke
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            disabled={Boolean(key.revokedAt)}
+                            onClick={() => {
+                              setKeyToRotate(key);
+                              setRotateError(null);
+                            }}
+                            type="button"
+                            variant="secondary"
+                          >
+                            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                            Rotate
+                          </Button>
+                          <Button
+                            className="border-rust/30 text-rust hover:bg-rust/5"
+                            disabled={Boolean(key.revokedAt)}
+                            onClick={() => {
+                              setKeyToRevoke(key);
+                              setRevokeError(null);
+                            }}
+                            type="button"
+                            variant="secondary"
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            Revoke
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -591,6 +730,57 @@ export function ApiKeysPanel() {
           </LinkButton>
         </Card>
       </aside>
+
+      {keyToRotate ? (
+        <div
+          aria-labelledby="rotate-api-key-title"
+          aria-modal="true"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-ink/35 p-4"
+          role="dialog"
+        >
+          <div className="w-full max-w-lg rounded-lg border border-line bg-paper p-6 shadow-soft">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-sky text-sage">
+                <RefreshCw className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h2 id="rotate-api-key-title" className="text-2xl">
+                  Rotate {keyToRotate.name}?
+                </h2>
+                <p className="mt-2 text-sm text-ink/65">
+                  This creates a replacement key and revokes the current key.
+                  Copy the new key before leaving this page.
+                </p>
+              </div>
+            </div>
+
+            {rotateError ? (
+              <p className="mt-4 text-sm font-semibold text-rust">
+                {rotateError}
+              </p>
+            ) : null}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                disabled={isRotating}
+                onClick={closeRotateDialog}
+                type="button"
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+              <Button disabled={isRotating} onClick={() => void rotateKey()} type="button">
+                {isRotating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isRotating ? "Rotating..." : "Confirm rotate"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {keyToRevoke ? (
         <div

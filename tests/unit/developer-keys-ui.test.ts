@@ -34,9 +34,11 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain('fetch("/api/keys"');
     expect(panelSource).toContain('method: "POST"');
     expect(panelSource).toContain('method: "DELETE"');
+    expect(panelSource).toContain("/rotate");
     expect(panelSource).toContain("encodeURIComponent(key.id)");
     expect(panelSource).toContain("maskedKey");
     expect(panelSource).toContain("lastUsedAt");
+    expect(panelSource).toContain("last30dUsage");
     expect(panelSource).toContain("revokedAt");
     expect(panelSource).not.toContain("localStorage");
     expect(panelSource).not.toContain("sessionStorage");
@@ -48,7 +50,9 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain("Create key");
     expect(panelSource).toContain("Copy key");
     expect(panelSource).toContain("you won't see this again");
+    expect(panelSource).toContain("Rotate");
     expect(panelSource).toContain("Revoke");
+    expect(panelSource).toContain("30-day calls");
     expect(panelSource).toContain("Confirm revoke");
     expect(panelSource).toContain("setRevealedKey(null)");
   });
