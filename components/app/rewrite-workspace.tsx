@@ -68,6 +68,7 @@ type Props = {
   rewriteHistoryUserKey: string;
   usageLabel: string;
   subscriptionStatus: string;
+  paymentGraceEndsAt: string | null;
   paid: boolean;
   remaining: number;
   quota: number;
@@ -328,6 +329,7 @@ export function RewriteWorkspace({
   outOfCredits,
   usageLabel,
   subscriptionStatus,
+  paymentGraceEndsAt,
   paid,
   quota,
   planRemaining,
@@ -594,6 +596,7 @@ export function RewriteWorkspace({
             canRedeem={showRedeemAction}
             onRedeemClick={openRedeemModal}
             paid={paid}
+            paymentGraceEndsAt={paymentGraceEndsAt}
             status={subscriptionStatus}
             usageLabel={usageLabel}
           />

@@ -18,9 +18,12 @@ describe("developer key management UI source", () => {
       'from "../../../components/developers/developer-dashboard"',
     );
     expect(pageSource).toContain('from "../../../components/site-header"');
+    expect(pageSource).toContain('from "../../../lib/azure-api"');
     expect(pageSource).toContain('export const dynamic = "force-dynamic"');
+    expect(pageSource).toContain("fetchAzureAccountSummary");
     expect(pageSource).toContain("<SiteHeader");
     expect(pageSource).toContain("<DeveloperDashboard");
+    expect(pageSource).toContain("paymentGraceEndsAt={account.paymentGraceEndsAt}");
     expect(pageSource).not.toContain("getAzureApiBaseUrl");
     expect(pageSource).not.toContain("getCurrentAccessToken");
   });
@@ -63,6 +66,7 @@ describe("developer key management UI source", () => {
     const dashboardSource = source(dashboardPath);
 
     expect(dashboardSource).toContain('import { ApiKeysPanel } from "./api-keys-panel"');
+    expect(dashboardSource).toContain('import { PastDueBanner } from "../app/past-due-banner"');
     expect(dashboardSource).toContain('import { UsagePanel } from "./usage-panel"');
     expect(dashboardSource).toContain('"keys"');
     expect(dashboardSource).toContain('"usage"');
@@ -72,6 +76,8 @@ describe("developer key management UI source", () => {
     expect(dashboardSource).toContain("Billing");
     expect(dashboardSource).toContain("<ApiKeysPanel");
     expect(dashboardSource).toContain("<UsagePanel");
+    expect(dashboardSource).toContain("<PastDueBanner");
+    expect(dashboardSource).toContain('subscriptionStatus === "PastDue"');
   });
 
   it("loads usage data from the same-origin account API routes", () => {

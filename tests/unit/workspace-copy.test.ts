@@ -13,6 +13,10 @@ const subscriptionStatusSource = readFileSync(
   new URL("../../components/app/subscription-status.tsx", import.meta.url),
   "utf8",
 );
+const pastDueBannerSource = readFileSync(
+  new URL("../../components/app/past-due-banner.tsx", import.meta.url),
+  "utf8",
+);
 const paywallSource = readFileSync(
   new URL("../../components/app/paywall-card.tsx", import.meta.url),
   "utf8",
@@ -124,6 +128,17 @@ describe("rewrite workspace surface copy", () => {
     expect(paywallSource).not.toContain("Exam Week Pass");
     expect(paywallSource).not.toContain("NZD $9/month");
     expect(paywallSource).not.toContain("40 rewrites");
+  });
+
+  it("shows a non-blocking PastDue grace banner with billing portal action", () => {
+    expect(appPageSource).toContain("paymentGraceEndsAt={account.paymentGraceEndsAt}");
+    expect(appPageSource).toContain('account.subscriptionStatus === "PastDue"');
+    expect(subscriptionStatusSource).toContain("PastDueBanner");
+    expect(pastDueBannerSource).toContain("Payment failed");
+    expect(pastDueBannerSource).toContain("update your payment method by");
+    expect(pastDueBannerSource).toContain("to keep your plan");
+    expect(pastDueBannerSource).toContain("Manage billing");
+    expect(pastDueBannerSource).toContain("openBillingPortal");
   });
 
   it("uses the commercial workspace design system without old layout artifacts", () => {

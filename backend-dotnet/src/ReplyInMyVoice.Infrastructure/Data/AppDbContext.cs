@@ -57,6 +57,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.SubscriptionStatus).HasConversion<string>().HasMaxLength(40);
             entity.Property(x => x.PaymentFailedAt).IsRequired(false);
             entity.Property(x => x.PaymentGraceEndsAt).IsRequired(false);
+            entity.Property(x => x.PaymentGraceReminderSentAt).IsRequired(false);
             entity.Property(x => x.SuspendedAt).IsRequired(false);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
         });

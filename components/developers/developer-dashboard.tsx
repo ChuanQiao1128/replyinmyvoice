@@ -3,6 +3,7 @@
 import { BarChart3, CreditCard, KeyRound } from "lucide-react";
 import { useId, useState } from "react";
 
+import { PastDueBanner } from "../app/past-due-banner";
 import { ApiKeysPanel } from "./api-keys-panel";
 import { UsagePanel } from "./usage-panel";
 
@@ -34,12 +35,24 @@ const tabs: {
   },
 ];
 
-export function DeveloperDashboard() {
+type Props = {
+  paymentGraceEndsAt: string | null;
+  subscriptionStatus: string;
+};
+
+export function DeveloperDashboard({
+  paymentGraceEndsAt,
+  subscriptionStatus,
+}: Props) {
   const [activeTab, setActiveTab] = useState<DashboardTab>("keys");
   const tabGroupId = useId();
 
   return (
     <div className="space-y-6">
+      {subscriptionStatus === "PastDue" ? (
+        <PastDueBanner paymentGraceEndsAt={paymentGraceEndsAt} />
+      ) : null}
+
       <section className="rounded-lg border border-line bg-white/80 p-6 shadow-soft sm:p-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 space-y-3">

@@ -65,6 +65,7 @@ describe("/api/me route handler", () => {
   it("forwards GET to Azure with the current auth value", async () => {
     const summary = {
       email: "casey@example.com",
+      paymentGraceEndsAt: null,
       subscriptionStatus: "active",
       usage: {
         exhausted: false,

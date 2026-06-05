@@ -13,9 +13,18 @@ public sealed class PaymentGraceExpiryFunction(
         [TimerTrigger("0 0 14 * * *")] TimerInfo timer,
         CancellationToken cancellationToken)
     {
-        var count = await stripeEvents.ProcessExpiredPaymentGraceAsync(
-            DateTimeOffset.UtcNow,
+        var now = DateTimeOffset.UtcNow;
+        var reminderCount = await stripeEvents.ProcessPaymentGraceRemindersAsync(
+            now,
             cancellationToken);
+        var count = await stripeEvents.ProcessExpiredPaymentGraceAsync(
+            now,
+            cancellationToken);
+
+        if (reminderCount > 0)
+        {
+            logger.LogInformation("Sent {Count} payment grace reminder notification(s).", reminderCount);
+        }
 
         if (count > 0)
         {

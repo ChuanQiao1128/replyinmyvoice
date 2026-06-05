@@ -156,6 +156,7 @@ public sealed class AccountService(
             user.ExternalAuthUserId,
             user.Email,
             user.SubscriptionStatus.ToString(),
+            user.PaymentGraceEndsAt,
             new AccountUsageSummary(
                 usagePlan.Scope,
                 usagePlan.PeriodKey,
@@ -567,6 +568,7 @@ public sealed record AccountSummary(
     string ExternalAuthUserId,
     string? Email,
     string SubscriptionStatus,
+    DateTimeOffset? PaymentGraceEndsAt,
     AccountUsageSummary Usage,
     AccountPromoSummary Promo);
 

@@ -168,6 +168,42 @@ public sealed class AccountServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetOrCreateAccountSummary_exposes_payment_grace_deadline_for_past_due_account()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.Parse("2026-06-05T00:00:00Z");
+        var graceEndsAt = now.AddDays(2);
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-past-due",
+                Email = "pastdue@example.com",
+                StripeSubscriptionId = "sub_past_due",
+                SubscriptionStatus = SubscriptionStatus.PastDue,
+                PaymentFailedAt = now.AddDays(-5),
+                PaymentGraceEndsAt = graceEndsAt,
+                CreatedAt = now.AddDays(-10),
+                UpdatedAt = now.AddDays(-5),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var summary = await service.GetOrCreateAccountSummaryAsync(
+            "entra-past-due",
+            "pastdue@example.com",
+            CancellationToken.None);
+
+        summary.SubscriptionStatus.Should().Be("PastDue");
+        summary.PaymentGraceEndsAt.Should().Be(graceEndsAt);
+        summary.Usage.Scope.Should().Be("paid");
+    }
+
+    [Fact]
     public async Task GetOrCreateAccountSummary_includes_valid_rewrite_credits_and_ignores_expired_credits()
     {
         var userId = Guid.NewGuid();

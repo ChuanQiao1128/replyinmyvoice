@@ -23,7 +23,8 @@ export default async function AppPage() {
 
   const usage = account.usage;
   const rewriteHistoryUserKey = account.externalAuthUserId || account.userId;
-  const paid = usage.scope === "paid" || paidStatuses.has(account.subscriptionStatus);
+  const pastDue = account.subscriptionStatus === "PastDue";
+  const paid = usage.scope === "paid" || paidStatuses.has(account.subscriptionStatus) || pastDue;
   const promo = account.promo ?? null;
   const quotaSources = (usage.sources ?? []).map((source) => ({
     ...source,
@@ -74,6 +75,7 @@ export default async function AppPage() {
         remaining={usage.remaining}
         rewriteHistoryUserKey={rewriteHistoryUserKey}
         usageExhausted={usage.exhausted}
+        paymentGraceEndsAt={account.paymentGraceEndsAt}
         subscriptionStatus={account.subscriptionStatus}
         usageLabel={usageLabel}
       />

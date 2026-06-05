@@ -31,6 +31,34 @@ public static class NotificationTemplates
                 """);
         });
 
+    public static readonly NotificationTemplate<PaymentGraceReminderNotificationModel> PaymentGraceReminder = new(
+        "payment-grace-reminder",
+        model =>
+        {
+            var name = SafeName(model.CustomerName);
+            var supportEmail = SafeEmail(model.SupportEmail);
+            var billingPortalUrl = SafeUrl(model.BillingPortalUrl);
+            var graceEndsOn = model.PaymentGraceEndsAtUtc.ToString("yyyy-MM-dd");
+
+            return new RenderedNotification(
+                "Update your payment method to keep your plan",
+                $"""
+                Hi {name},
+
+                Your Reply In My Voice plan is still in its payment grace window.
+
+                Please update your payment method by {graceEndsOn} to keep your plan: {billingPortalUrl}
+
+                If you have questions, contact {supportEmail}.
+                """,
+                $"""
+                <p>Hi {Html(name)},</p>
+                <p>Your Reply In My Voice plan is still in its payment grace window.</p>
+                <p>Please update your payment method by {Html(graceEndsOn)} to keep your plan: <a href="{HtmlAttribute(billingPortalUrl)}">billing settings</a>.</p>
+                <p>If you have questions, contact <a href="mailto:{HtmlAttribute(supportEmail)}">{Html(supportEmail)}</a>.</p>
+                """);
+        });
+
     public static readonly NotificationTemplate<CreditExpiringNotificationModel> CreditExpiring = new(
         "credit-expiring",
         model =>
@@ -229,6 +257,12 @@ public sealed record FailedPaymentNotificationModel(
     string CustomerName,
     string SupportEmail,
     string BillingPortalUrl);
+
+public sealed record PaymentGraceReminderNotificationModel(
+    string CustomerName,
+    string SupportEmail,
+    string BillingPortalUrl,
+    DateTimeOffset PaymentGraceEndsAtUtc);
 
 public sealed record CreditExpiringNotificationModel(
     string CustomerName,

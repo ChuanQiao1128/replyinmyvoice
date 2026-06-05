@@ -12,6 +12,8 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 public sealed class StripeEventService
 {
     private const int DefaultPaymentGraceDays = 7;
+    private const int PaymentGraceReminderElapsedDays = 5;
+    private const int PaymentGraceReminderRemainingDays = 2;
     private const string SupportEmail = "info@timeawake.co.nz";
 
     private readonly Func<AppDbContext> dbContextFactory;
@@ -197,6 +199,43 @@ public sealed class StripeEventService
 
             await db.SaveChangesAsync(cancellationToken);
             return expiredUsers.Count;
+        }, cancellationToken);
+
+        if (processedCount > 0)
+        {
+            await RunPostCommitActionsAsync(postCommitActions, cancellationToken);
+        }
+
+        return processedCount;
+    }
+
+    public async Task<int> ProcessPaymentGraceRemindersAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        var postCommitActions = new List<Func<CancellationToken, Task>>();
+        var processedCount = await ExecuteInTransactionAsync(async db =>
+        {
+            var graceUsers = await db.AppUsers
+                .AsTracking()
+                .Where(x => x.SubscriptionStatus == SubscriptionStatus.PastDue &&
+                    x.PaymentGraceEndsAt != null &&
+                    x.PaymentGraceReminderSentAt == null)
+                .ToListAsync(cancellationToken);
+            var reminderUsers = graceUsers
+                .Where(x => ShouldSendPaymentGraceReminder(x, now))
+                .ToList();
+
+            foreach (var user in reminderUsers)
+            {
+                user.PaymentGraceReminderSentAt = now;
+                user.UpdatedAt = now;
+                user.RowVersion = Guid.NewGuid();
+                EnqueuePaymentGraceReminderNotification(postCommitActions, user);
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            return reminderUsers.Count;
         }, cancellationToken);
 
         if (processedCount > 0)
@@ -483,6 +522,7 @@ public sealed class StripeEventService
         user.SubscriptionStatus = SubscriptionStatus.PastDue;
         user.PaymentFailedAt = now;
         user.PaymentGraceEndsAt = ResolvePaymentGraceEndsAt(stripeObject, user.CurrentPeriodEnd, now);
+        user.PaymentGraceReminderSentAt = null;
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
         EnqueueFailedPaymentNotification(postCommitActions, user);
@@ -824,6 +864,31 @@ public sealed class StripeEventService
             cancellationToken));
     }
 
+    private void EnqueuePaymentGraceReminderNotification(
+        List<Func<CancellationToken, Task>> postCommitActions,
+        AppUser user)
+    {
+        if (notificationService is null ||
+            string.IsNullOrWhiteSpace(user.Email) ||
+            user.PaymentGraceEndsAt is null)
+        {
+            return;
+        }
+
+        var recipient = CreateRecipient(user);
+        var externalAuthUserId = user.ExternalAuthUserId;
+        var graceEndsAt = user.PaymentGraceEndsAt.Value;
+        postCommitActions.Add(async cancellationToken =>
+        {
+            var billingPortalUrl = await ResolveBillingPortalUrlAsync(externalAuthUserId, cancellationToken);
+            await notificationService.SendAsync(
+                NotificationTemplates.PaymentGraceReminder,
+                recipient,
+                new PaymentGraceReminderNotificationModel("there", SupportEmail, billingPortalUrl, graceEndsAt),
+                cancellationToken);
+        });
+    }
+
     private void EnqueueCancelStripeSubscription(
         List<Func<CancellationToken, Task>> postCommitActions,
         AppUser user)
@@ -887,6 +952,21 @@ public sealed class StripeEventService
     {
         user.PaymentFailedAt = null;
         user.PaymentGraceEndsAt = null;
+        user.PaymentGraceReminderSentAt = null;
+    }
+
+    private static bool ShouldSendPaymentGraceReminder(AppUser user, DateTimeOffset now)
+    {
+        if (user.PaymentGraceEndsAt is null || user.PaymentGraceEndsAt <= now)
+        {
+            return false;
+        }
+
+        var reminderAt = user.PaymentFailedAt is { } failedAt && failedAt < user.PaymentGraceEndsAt
+            ? failedAt.AddDays(PaymentGraceReminderElapsedDays)
+            : user.PaymentGraceEndsAt.Value.AddDays(-PaymentGraceReminderRemainingDays);
+
+        return reminderAt <= now;
     }
 
     private static DateTimeOffset ResolvePaymentGraceEndsAt(
