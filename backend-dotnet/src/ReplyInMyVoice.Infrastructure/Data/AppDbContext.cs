@@ -10,6 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RewriteAttempt> RewriteAttempts => Set<RewriteAttempt>();
     public DbSet<UsageReservation> UsageReservations => Set<UsageReservation>();
     public DbSet<StripeEvent> StripeEvents => Set<StripeEvent>();
+    public DbSet<StripeInvoice> StripeInvoices => Set<StripeInvoice>();
     public DbSet<StripeReconciliationRun> StripeReconciliationRuns => Set<StripeReconciliationRun>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<RewriteCredit> RewriteCredits => Set<RewriteCredit>();
@@ -128,6 +129,23 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.LastError).HasMaxLength(1000);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
             entity.HasIndex(x => new { x.Status, x.LockedUntil });
+        });
+
+        modelBuilder.Entity<StripeInvoice>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.UserId, x.CreatedAt });
+            entity.Property(x => x.Id).HasMaxLength(160);
+            entity.Property(x => x.SubscriptionId).HasMaxLength(160);
+            entity.Property(x => x.Status).HasMaxLength(40);
+            entity.Property(x => x.Currency).HasMaxLength(12);
+            entity.Property(x => x.HostedInvoiceUrl).HasMaxLength(2048);
+            entity.Property(x => x.InvoicePdf).HasMaxLength(2048);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<StripeReconciliationRun>(entity =>

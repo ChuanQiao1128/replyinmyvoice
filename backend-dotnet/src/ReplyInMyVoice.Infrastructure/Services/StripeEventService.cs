@@ -421,6 +421,11 @@ public sealed class StripeEventService
             return await SyncInvoicePaymentSucceededAsync(db, stripeObject, now, postCommitActions, cancellationToken);
         }
 
+        if (type is "invoice.paid" or "invoice.finalized")
+        {
+            return await SyncStripeInvoiceAsync(db, type, stripeObject, now, cancellationToken);
+        }
+
         if (type == "charge.refunded")
         {
             return await RevokeRefundedChargeCreditsAsync(db, stripeObject, cancellationToken);
@@ -458,6 +463,18 @@ public sealed class StripeEventService
         if (user is null)
         {
             return $"No matching user for Stripe invoice payment_failed customer {customerId ?? "unknown"} subscription {subscriptionId ?? "unknown"}.";
+        }
+
+        var invoiceSyncFailure = await UpsertStripeInvoiceAsync(
+            db,
+            user,
+            "invoice.payment_failed",
+            stripeObject,
+            now,
+            cancellationToken);
+        if (invoiceSyncFailure is not null)
+        {
+            return invoiceSyncFailure;
         }
 
         user.StripeCustomerId = customerId ?? user.StripeCustomerId;
@@ -506,6 +523,18 @@ public sealed class StripeEventService
             return $"No matching user for Stripe invoice payment_succeeded customer {customerId ?? "unknown"} subscription {subscriptionId ?? "unknown"}.";
         }
 
+        var invoiceSyncFailure = await UpsertStripeInvoiceAsync(
+            db,
+            user,
+            "invoice.payment_succeeded",
+            stripeObject,
+            now,
+            cancellationToken);
+        if (invoiceSyncFailure is not null)
+        {
+            return invoiceSyncFailure;
+        }
+
         if (!HasPaymentGrace(user))
         {
             return null;
@@ -526,6 +555,29 @@ public sealed class StripeEventService
         }
 
         return null;
+    }
+
+    private async Task<string?> SyncStripeInvoiceAsync(
+        AppDbContext db,
+        string type,
+        JsonElement stripeObject,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var customerId = GetString(stripeObject, "customer");
+        var subscriptionId = GetInvoiceSubscriptionId(stripeObject);
+        if (string.IsNullOrWhiteSpace(customerId) && string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return null;
+        }
+
+        var user = await FindInvoiceUserAsync(db, customerId, subscriptionId, cancellationToken);
+        if (user is null)
+        {
+            return $"No matching user for Stripe {type} customer {customerId ?? "unknown"} subscription {subscriptionId ?? "unknown"}.";
+        }
+
+        return await UpsertStripeInvoiceAsync(db, user, type, stripeObject, now, cancellationToken);
     }
 
     private async Task<string?> SyncSubscriptionObjectAsync(
@@ -642,6 +694,76 @@ public sealed class StripeEventService
             });
         }
 
+        return null;
+    }
+
+    private static async Task<AppUser?> FindInvoiceUserAsync(
+        AppDbContext db,
+        string? customerId,
+        string? subscriptionId,
+        CancellationToken cancellationToken) =>
+        await db.AppUsers
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => (!string.IsNullOrWhiteSpace(customerId) && x.StripeCustomerId == customerId) ||
+                    (!string.IsNullOrWhiteSpace(subscriptionId) && x.StripeSubscriptionId == subscriptionId),
+                cancellationToken);
+
+    private static async Task<string?> UpsertStripeInvoiceAsync(
+        AppDbContext db,
+        AppUser user,
+        string type,
+        JsonElement stripeObject,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var invoiceId = GetString(stripeObject, "id");
+        if (string.IsNullOrWhiteSpace(invoiceId))
+        {
+            return "Stripe invoice event missing invoice id.";
+        }
+
+        var invoice = await db.StripeInvoices
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == invoiceId, cancellationToken);
+        if (invoice is null)
+        {
+            invoice = new StripeInvoice
+            {
+                Id = invoiceId,
+                UserId = user.Id,
+                Status = ResolveStripeInvoiceStatus(stripeObject, type),
+                AmountDue = GetLong(stripeObject, "amount_due") ?? 0,
+                AmountPaid = GetLong(stripeObject, "amount_paid") ?? 0,
+                Currency = GetString(stripeObject, "currency") ?? string.Empty,
+                SubscriptionId = GetInvoiceSubscriptionId(stripeObject),
+                PeriodStart = GetInvoicePeriodDate(stripeObject, "period_start", "start"),
+                PeriodEnd = GetInvoicePeriodDate(stripeObject, "period_end", "end"),
+                AttemptCount = GetInt32(stripeObject, "attempt_count"),
+                NextPaymentAttempt = GetUnixDateTime(stripeObject, "next_payment_attempt"),
+                HostedInvoiceUrl = GetString(stripeObject, "hosted_invoice_url"),
+                InvoicePdf = GetString(stripeObject, "invoice_pdf"),
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.StripeInvoices.Add(invoice);
+            return null;
+        }
+
+        invoice.UserId = user.Id;
+        invoice.SubscriptionId = GetInvoiceSubscriptionId(stripeObject);
+        invoice.Status = ResolveStripeInvoiceStatus(stripeObject, type);
+        invoice.AmountDue = GetLong(stripeObject, "amount_due") ?? 0;
+        invoice.AmountPaid = GetLong(stripeObject, "amount_paid") ?? 0;
+        invoice.Currency = GetString(stripeObject, "currency") ?? string.Empty;
+        invoice.PeriodStart = GetInvoicePeriodDate(stripeObject, "period_start", "start");
+        invoice.PeriodEnd = GetInvoicePeriodDate(stripeObject, "period_end", "end");
+        invoice.AttemptCount = GetInt32(stripeObject, "attempt_count");
+        invoice.NextPaymentAttempt = GetUnixDateTime(stripeObject, "next_payment_attempt");
+        invoice.HostedInvoiceUrl = GetString(stripeObject, "hosted_invoice_url");
+        invoice.InvoicePdf = GetString(stripeObject, "invoice_pdf");
+        invoice.UpdatedAt = now;
+        invoice.RowVersion = Guid.NewGuid();
         return null;
     }
 
@@ -1022,6 +1144,17 @@ public sealed class StripeEventService
         };
     }
 
+    private static int GetInt32(JsonElement element, string propertyName)
+    {
+        var value = GetLong(element, propertyName);
+        if (value is null)
+        {
+            return 0;
+        }
+
+        return (int)Math.Clamp(value.Value, int.MinValue, int.MaxValue);
+    }
+
     private static bool? GetBool(JsonElement element, string propertyName)
     {
         if (!element.TryGetProperty(propertyName, out var value))
@@ -1053,6 +1186,60 @@ public sealed class StripeEventService
         };
 
         return seconds is null ? null : DateTimeOffset.FromUnixTimeSeconds(seconds.Value);
+    }
+
+    private static string ResolveStripeInvoiceStatus(JsonElement stripeObject, string type)
+    {
+        var status = GetString(stripeObject, "status");
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            return status;
+        }
+
+        return type switch
+        {
+            "invoice.paid" or "invoice.payment_succeeded" => "paid",
+            "invoice.payment_failed" or "invoice.finalized" => "open",
+            _ => "open",
+        };
+    }
+
+    private static DateTimeOffset? GetInvoicePeriodDate(
+        JsonElement stripeObject,
+        string topLevelPropertyName,
+        string nestedPropertyName)
+    {
+        var topLevelDate = GetUnixDateTime(stripeObject, topLevelPropertyName);
+        if (topLevelDate is not null)
+        {
+            return topLevelDate;
+        }
+
+        if (!stripeObject.TryGetProperty("lines", out var lines) ||
+            lines.ValueKind != JsonValueKind.Object ||
+            !lines.TryGetProperty("data", out var data) ||
+            data.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var line in data.EnumerateArray())
+        {
+            if (line.ValueKind != JsonValueKind.Object ||
+                !line.TryGetProperty("period", out var period) ||
+                period.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var date = GetUnixDateTime(period, nestedPropertyName);
+            if (date is not null)
+            {
+                return date;
+            }
+        }
+
+        return null;
     }
 
     private static DateTimeOffset? GetSubscriptionPeriodEnd(JsonElement stripeObject)

@@ -705,6 +705,145 @@ public sealed class StripeEventServiceTests
     }
 
     [Fact]
+    public async Task ProcessWebhookEventAsync_InvoicePaidUpsertsInvoiceAndPaymentFailedUpdatesSameRow()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var storedUser = await seedDb.AppUsers.SingleAsync(x => x.Id == user.Id);
+            storedUser.StripeCustomerId = "cus_invoice_history";
+            storedUser.StripeSubscriptionId = "sub_invoice_history";
+            storedUser.SubscriptionStatus = SubscriptionStatus.Active;
+            await seedDb.SaveChangesAsync();
+        }
+
+        var service = new StripeEventService(fixture.CreateContext);
+        var paidNow = DateTimeOffset.Parse("2026-06-05T01:00:00Z");
+        const string paidBody = """
+        {
+          "id": "evt_invoice_paid_history",
+          "type": "invoice.paid",
+          "data": {
+            "object": {
+              "id": "in_history",
+              "customer": "cus_invoice_history",
+              "subscription": "sub_invoice_history",
+              "status": "paid",
+              "amount_due": 900,
+              "amount_paid": 900,
+              "currency": "nzd",
+              "period_start": 1770000000,
+              "period_end": 1772592000,
+              "attempt_count": 1,
+              "hosted_invoice_url": "https://billing.test/in_history",
+              "invoice_pdf": "https://billing.test/in_history.pdf"
+            }
+          }
+        }
+        """;
+        const string replayBody = """
+        {
+          "id": "evt_invoice_paid_history",
+          "type": "invoice.paid",
+          "data": {
+            "object": {
+              "id": "in_history",
+              "customer": "cus_invoice_history",
+              "subscription": "sub_invoice_history",
+              "status": "open",
+              "amount_due": 900,
+              "amount_paid": 1,
+              "currency": "nzd",
+              "attempt_count": 99
+            }
+          }
+        }
+        """;
+
+        var first = await service.ProcessWebhookEventAsync(
+            "evt_invoice_paid_history",
+            "invoice.paid",
+            paidBody,
+            paidNow);
+        var duplicate = await service.ProcessWebhookEventAsync(
+            "evt_invoice_paid_history",
+            "invoice.paid",
+            replayBody,
+            paidNow.AddSeconds(1));
+
+        first.Should().BeTrue();
+        duplicate.Should().BeFalse();
+
+        await using (var verifyDb = fixture.CreateContext())
+        {
+            var invoice = await verifyDb.StripeInvoices.SingleAsync(x => x.Id == "in_history");
+            invoice.UserId.Should().Be(user.Id);
+            invoice.SubscriptionId.Should().Be("sub_invoice_history");
+            invoice.Status.Should().Be("paid");
+            invoice.AmountDue.Should().Be(900);
+            invoice.AmountPaid.Should().Be(900);
+            invoice.Currency.Should().Be("nzd");
+            invoice.PeriodStart.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1770000000));
+            invoice.PeriodEnd.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1772592000));
+            invoice.AttemptCount.Should().Be(1);
+            invoice.NextPaymentAttempt.Should().BeNull();
+            invoice.HostedInvoiceUrl.Should().Be("https://billing.test/in_history");
+            invoice.InvoicePdf.Should().Be("https://billing.test/in_history.pdf");
+            invoice.CreatedAt.Should().Be(paidNow);
+            invoice.UpdatedAt.Should().Be(paidNow);
+            invoice.RowVersion.Should().NotBeEmpty();
+            (await verifyDb.StripeInvoices.CountAsync()).Should().Be(1);
+        }
+
+        var failedNow = DateTimeOffset.Parse("2026-06-05T01:05:00Z");
+        const string failedBody = """
+        {
+          "id": "evt_invoice_failed_history",
+          "type": "invoice.payment_failed",
+          "data": {
+            "object": {
+              "id": "in_history",
+              "customer": "cus_invoice_history",
+              "subscription": "sub_invoice_history",
+              "status": "open",
+              "amount_due": 900,
+              "amount_paid": 0,
+              "currency": "nzd",
+              "period_start": 1770000000,
+              "period_end": 1772592000,
+              "attempt_count": 2,
+              "next_payment_attempt": 1773200000,
+              "hosted_invoice_url": "https://billing.test/in_history",
+              "invoice_pdf": "https://billing.test/in_history.pdf"
+            }
+          }
+        }
+        """;
+
+        var failed = await service.ProcessWebhookEventAsync(
+            "evt_invoice_failed_history",
+            "invoice.payment_failed",
+            failedBody,
+            failedNow);
+
+        failed.Should().BeTrue();
+
+        await using var db = fixture.CreateContext();
+        var updatedInvoice = await db.StripeInvoices.SingleAsync(x => x.Id == "in_history");
+        updatedInvoice.Status.Should().Be("open");
+        updatedInvoice.AmountPaid.Should().Be(0);
+        updatedInvoice.AttemptCount.Should().Be(2);
+        updatedInvoice.NextPaymentAttempt.Should().Be(DateTimeOffset.FromUnixTimeSeconds(1773200000));
+        updatedInvoice.CreatedAt.Should().Be(paidNow);
+        updatedInvoice.UpdatedAt.Should().Be(failedNow);
+        (await db.StripeInvoices.CountAsync()).Should().Be(1);
+
+        var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
+        updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.PastDue);
+    }
+
+    [Fact]
     public async Task ProcessWebhookEventAsync_TerminalSubscriptionStatusFromGraceDowngradesAndSendsPausedNotificationOnce()
     {
         await using var fixture = await DbFixture.CreateAsync();
