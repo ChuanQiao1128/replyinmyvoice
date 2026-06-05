@@ -73,19 +73,13 @@ describe("pricing and auth visual system", () => {
     );
   });
 
-  it("keeps landing and developer CTAs focused on trial-code redemption", () => {
+  it("keeps landing CTAs focused on trial-code redemption and developer CTA on keys", () => {
     const hero = source("components/landing/hero.tsx");
     const closingCta = source("components/landing/closing-cta.tsx");
     const pricingBlock = source("components/landing/pricing-v2.tsx");
     const footer = source("components/site-footer.tsx");
     const developersPage = source("app/developers/page.tsx");
-    const promoSurfaces = [
-      hero,
-      closingCta,
-      pricingBlock,
-      footer,
-      developersPage,
-    ].join("\n");
+    const promoSurfaces = [hero, closingCta, pricingBlock, footer].join("\n");
 
     expect(hero).toContain('{ v: "Trial code", l: "redeem for 3 rewrites" }');
     expect(hero).toContain(
@@ -104,7 +98,9 @@ describe("pricing and auth visual system", () => {
     expect(footer).toContain(
       "Redeem trial codes · Rewrite packs from NZ$2.50 · Pro/API NZ$19.90/mo",
     );
-    expect(developersPage).toContain(
+    expect(developersPage).toContain('href="/developers/keys"');
+    expect(developersPage).toContain("Get your API key");
+    expect(developersPage).not.toContain(
       "Trial codes unlock 3 rewrites to try the engine",
     );
 
