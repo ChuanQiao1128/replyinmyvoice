@@ -3703,3 +3703,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/developers/page.tsx`; `app/globals.css`; `tests/unit/developers-page.test.ts`; `tests/unit/pricing-auth-visual-system.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused `npm run test -- tests/unit/developers-page.test.ts tests/unit/pricing-auth-visual-system.test.ts` passed 5/5 after failing red on the stale page. `npm run typecheck` passed. Full `npm run test` passed 417/417. The issue greps for banned copy and stale `/developers` strings returned no matches. `npm run build` passed and listed `/developers` as a static route. `next start --port 3001` served `/developers` with HTTP 200, and rendered HTML checks found all required API docs with no stale strings.
 - Limitations: The in-app Browser was unavailable in this session. Headless Chromium launch failed under the macOS sandbox, and WebKit/Firefox were not installed in the shared Playwright cache, so no desktop/mobile screenshot inspection was completed. `next dev --port 3000` hit local `EMFILE` watch warnings and returned 404 for all routes in this symlinked dependency setup; production `next start` verified the built route instead. The sandbox denied signals to the lingering port-3000 dev process.
+
+### 2026-06-05 - system-spec-synthesis - P2-03 billing history endpoint
+
+- Agent: Codex worker
+- Trigger: GitHub issue #531 and `plans/rewrite-api-v1/phase2-issues/P2-03-billing-history-endpoint.md` require a new user-scoped API contract that merges pack purchases, subscription invoices, and refunds.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the P2-03 brief, `plans/rewrite-api-v1/PHASE-2-SPEC.md` BILLH-02 lines, existing account routes, `AccountService`, `StripeInvoice`, `RewriteCredit`, and proxy patterns. Implementation spec summary: context is the P2-01 `StripeInvoice` table plus existing purchase history; goal is a unified newest-first read model; non-goals are webhook, schema, payment, or UI changes; API contract is `GET /api/me/billing/history` returning `type`, `date`, `description`, `amount`, `currency`, `status`, `receiptUrl`, and `hostedInvoiceUrl`; security requires Entra auth and user-id filtering; verification requires xUnit ownership/order/amount assertions plus Next proxy tests and typecheck.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `app/api/me/billing/history/route.ts`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `tests/unit/account-api.test.ts`.
+- Verification evidence: Focused red backend run failed on missing `GetBillingHistoryAsync` and `GetBillingHistory`; focused green `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter BillingHistory` passed 3/3; full `cd backend-dotnet && dotnet test` passed 540/540; `npm run typecheck` passed; `npm run test` passed 419/419.
+- Limitations: Refund dates are projected from the adjusted purchase credit row because the current persisted refund credit state does not store a separate refund timestamp.
+
+### 2026-06-05 - data-module-review - P2-03 billing history read model
+
+- Agent: Codex worker
+- Trigger: GitHub issue #531 changes account-service data access over `RewriteCredit` and `StripeInvoice` for billing history.
+- Action: Opened and followed the skill; reviewed owned tables/entities (`RewriteCredits`, `StripeInvoices`, `AppUsers`) and service read paths. Findings: no schema/migration change required; history reads filter by canonical `UserId`; pack rows reuse `GetPurchaseHistoryAsync`; subscription rows expose only invoice URLs and normalized invoice fields; refund rows are inferred only from purchase credits where `OriginalAmountGranted` exceeds `AmountGranted`; no card data is selected.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`.
+- Verification evidence: The new service test seeds user A and user B with packs, invoices, and a refund-adjusted purchase credit, then asserts newest-first dates, ownership isolation, amounts, currency, statuses, receipt URL, and hosted invoice URL. Full `cd backend-dotnet && dotnet test` passed 540/540.
+- Limitations: No data-risk scan script was run for this read-only endpoint because no persistence model or migration changed.
+
+### 2026-06-05 - state-machine-modeling - P2-03 invoice and refund status projection
+
+- Agent: Codex worker
+- Trigger: GitHub issue #531 reviews subscription invoice statuses and refund-adjusted purchase credits in a user-facing history endpoint.
+- Action: Opened and followed the skill. State list: subscription invoice status is the persisted Stripe invoice `Status`; pack rows are projected as `paid`; inferred refund rows are projected as terminal `refunded`. Event list: no new events; existing webhook processing creates/updates `StripeInvoice` and adjusts purchase credits on `charge.refunded`. Transition table: none added by this issue; the endpoint maps current persisted state to a read model. Invariants: the endpoint must not mutate status, must not create billing rows, must not expose another user's rows, and must keep payment-provider lifecycle behavior separate from history rendering. Illegal transitions: unauthenticated requests return 401, and user B rows cannot appear in user A history.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`.
+- Verification evidence: Focused `BillingHistory` xUnit tests passed 3/3; full `cd backend-dotnet && dotnet test` passed 540/540.
+- Limitations: This issue did not add a transition helper because it only projects existing states.
+
+### 2026-06-05 - dotnet-backend-testing - P2-03 billing history xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #531 requires xUnit coverage for seeded pack purchases, `StripeInvoice` rows, a refund, sorting, ownership isolation, and amount/currency correctness.
+- Action: Opened and followed the project skill plus test-first workflow. Added service-level SQLite coverage in `AccountServiceTests` and endpoint/auth coverage in `AccountApiTests`. The initial focused run failed before implementation because `AccountService.GetBillingHistoryAsync` and `AccountHttpFunctions.GetBillingHistory` did not exist; after implementation the focused suite passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`.
+- Verification evidence: `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter BillingHistory` passed 3/3; full `cd backend-dotnet && dotnet test` passed 540/540.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.

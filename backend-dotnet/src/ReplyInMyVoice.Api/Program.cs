@@ -90,6 +90,28 @@ app.MapGet("/api/me/payments", async (
     return Results.Ok(payments);
 });
 
+app.MapGet("/api/me/billing/history", async (
+    HttpRequest httpRequest,
+    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    CancellationToken cancellationToken) =>
+{
+    var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
+    if (string.IsNullOrWhiteSpace(externalUserId))
+    {
+        return Results.Problem(
+            title: "Authentication required",
+            detail: "A valid authenticated user is required.",
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var history = await accountService.GetBillingHistoryAsync(
+        externalUserId,
+        ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+        cancellationToken);
+
+    return Results.Ok(history);
+});
+
 app.MapPost("/api/rewrite", async (
     HttpRequest httpRequest,
     [FromBody] RewriteRequest request,

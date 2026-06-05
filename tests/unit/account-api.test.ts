@@ -19,6 +19,10 @@ import {
   dynamic as paymentsDynamic,
 } from "../../app/api/me/payments/route";
 import {
+  GET as billingHistoryGet,
+  dynamic as billingHistoryDynamic,
+} from "../../app/api/me/billing/history/route";
+import {
   GET as billingSupportGet,
   POST as billingSupportPost,
 } from "../../app/api/billing-support-requests/route";
@@ -225,5 +229,57 @@ describe("/api/me/payments route handler", () => {
         Authorization: `${authScheme} ${accessValue}`,
       },
     });
+  });
+});
+
+describe("/api/me/billing/history route handler", () => {
+  it("is dynamic", () => {
+    expect(billingHistoryDynamic).toBe("force-dynamic");
+  });
+
+  it("forwards GET to Azure billing history with the current auth value", async () => {
+    const history = [
+      {
+        amount: 900,
+        currency: "nzd",
+        date: "2026-06-05T10:00:00Z",
+        description: "Subscription invoice 2026-06-01 - 2026-07-01",
+        hostedInvoiceUrl: "https://invoice.stripe.test/history",
+        status: "paid",
+        type: "subscription",
+      },
+      {
+        amount: -600,
+        currency: "nzd",
+        date: "2026-06-04T10:00:00Z",
+        description: "Refund for quick_pack",
+        status: "refunded",
+        type: "refund",
+      },
+    ];
+    fetchMock().mockResolvedValueOnce(Response.json(history, { status: 200 }));
+
+    const response = await billingHistoryGet();
+
+    await expect(response.json()).resolves.toEqual(history);
+    expect(response.status).toBe(200);
+    expect(fetchMock()).toHaveBeenCalledWith(`${azureUrl}/api/me/billing/history`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `${authScheme} ${accessValue}`,
+      },
+    });
+  });
+
+  it("returns 401 when no access token is available", async () => {
+    vi.mocked(getCurrentAccessToken).mockResolvedValueOnce(null);
+
+    const response = await billingHistoryGet();
+
+    await expect(response.json()).resolves.toEqual({
+      error: "Authentication required.",
+    });
+    expect(response.status).toBe(401);
+    expect(fetchMock()).not.toHaveBeenCalled();
   });
 });

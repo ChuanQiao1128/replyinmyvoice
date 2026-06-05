@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Entities;
@@ -208,6 +209,91 @@ public sealed class AccountService(
                 x.GrantedAt,
                 x.ExpiresAt,
                 Math.Max(x.AmountGranted - x.AmountConsumed, 0)))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<AccountBillingHistoryItem>> GetBillingHistoryAsync(
+        string externalAuthUserId,
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        var purchases = await GetPurchaseHistoryAsync(externalAuthUserId, email, cancellationToken);
+        var user = await FindUserAsync(externalAuthUserId, cancellationToken);
+        if (user is null)
+        {
+            return Array.Empty<AccountBillingHistoryItem>();
+        }
+
+        await using var db = dbContextFactory();
+        var invoices = await db.StripeInvoices
+            .AsNoTracking()
+            .Where(x => x.UserId == user.Id)
+            .Select(x => new
+            {
+                x.Status,
+                x.AmountDue,
+                x.AmountPaid,
+                x.Currency,
+                x.PeriodStart,
+                x.PeriodEnd,
+                x.HostedInvoiceUrl,
+                x.CreatedAt,
+            })
+            .ToListAsync(cancellationToken);
+
+        var refundedCredits = await db.RewriteCredits
+            .AsNoTracking()
+            .Where(x =>
+                x.UserId == user.Id &&
+                x.Source == "PURCHASE" &&
+                x.OriginalAmountGranted != null &&
+                x.OriginalAmountGranted > x.AmountGranted)
+            .Select(x => new
+            {
+                x.StripeSku,
+                x.StripeAmountTotal,
+                x.StripeCurrency,
+                x.GrantedAt,
+                x.AmountGranted,
+                x.OriginalAmountGranted,
+            })
+            .ToListAsync(cancellationToken);
+
+        var history = new List<AccountBillingHistoryItem>();
+
+        history.AddRange(purchases.Select(x => new AccountBillingHistoryItem(
+            "pack",
+            x.Date,
+            string.IsNullOrWhiteSpace(x.Sku) ? "Credit pack" : x.Sku!,
+            x.Amount,
+            x.Currency,
+            "paid",
+            x.ReceiptUrl,
+            null)));
+
+        history.AddRange(invoices.Select(x => new AccountBillingHistoryItem(
+            "subscription",
+            x.CreatedAt,
+            FormatSubscriptionInvoiceDescription(x.PeriodStart, x.PeriodEnd),
+            x.AmountPaid > 0 ? x.AmountPaid : x.AmountDue,
+            x.Currency,
+            x.Status,
+            null,
+            x.HostedInvoiceUrl)));
+
+        history.AddRange(refundedCredits.Select(x => new AccountBillingHistoryItem(
+            "refund",
+            x.GrantedAt,
+            FormatRefundDescription(x.StripeSku),
+            CalculateRefundAmount(x.StripeAmountTotal, x.OriginalAmountGranted, x.AmountGranted),
+            x.StripeCurrency,
+            "refunded",
+            null,
+            null)));
+
+        return history
+            .OrderByDescending(x => x.Date)
+            .ThenBy(x => x.Type, StringComparer.Ordinal)
             .ToList();
     }
 
@@ -443,6 +529,35 @@ public sealed class AccountService(
 
     private static string LabelForCreditSource(string source) =>
         source == "PROMO" ? "Trial rewrites" : source;
+
+    private static string FormatSubscriptionInvoiceDescription(DateTimeOffset? periodStart, DateTimeOffset? periodEnd)
+    {
+        if (periodStart is not null && periodEnd is not null)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"Subscription invoice {periodStart.Value:yyyy-MM-dd} - {periodEnd.Value:yyyy-MM-dd}");
+        }
+
+        return "Subscription invoice";
+    }
+
+    private static string FormatRefundDescription(string? sku) =>
+        string.IsNullOrWhiteSpace(sku) ? "Pack refund" : $"Refund for {sku}";
+
+    private static long? CalculateRefundAmount(long? originalAmount, int? originalGranted, int currentGranted)
+    {
+        if (originalAmount is not > 0 || originalGranted is not > 0 || currentGranted >= originalGranted.Value)
+        {
+            return null;
+        }
+
+        var refundedCredits = originalGranted.Value - currentGranted;
+        var amount = Math.Round(
+            originalAmount.Value * refundedCredits / (decimal)originalGranted.Value,
+            MidpointRounding.AwayFromZero);
+        return -(long)amount;
+    }
 }
 
 internal sealed record DeleteAccountLookup(string? StripeSubscriptionId);
@@ -492,5 +607,15 @@ public sealed record AccountPayment(
     DateTimeOffset Date,
     DateTimeOffset? Expiry,
     int Remaining);
+
+public sealed record AccountBillingHistoryItem(
+    string Type,
+    DateTimeOffset Date,
+    string Description,
+    long? Amount,
+    string? Currency,
+    string Status,
+    string? ReceiptUrl,
+    string? HostedInvoiceUrl);
 
 public sealed record AccountUsagePlan(string Scope, string PeriodKey, int QuotaLimit);
