@@ -3524,3 +3524,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
 - Verification evidence: Focused test command passed 2/2. Full `cd backend-dotnet && dotnet test` passed 526/526.
 - Limitations: Focused tests passed on the existing implementation, so no production code was changed.
+
+### 2026-06-05 - resilience-test-generation - P2-10 v1 rate-limit headers
+
+- Agent: Codex worker
+- Trigger: P2-10 changes and tests per-key rate-limit behavior and `429` response metadata for `/api/v1/*`.
+- Action: Opened and followed the skill; identified the invariant as one existing `ApiKeyUsages` minute-window source used for both the limit decision and response headers. Added failing assertions for successful v1 submit headers and the rate-limited submit response before implementation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red `dotnet test --filter "FullyQualifiedName~V1_rewrite_submit_with_valid_key_reserves_usage_and_returns_processing_id|FullyQualifiedName~V1_rewrite_submit_enforces_per_key_rate_limit_without_reservation_for_rejected_call"` failed on missing headers, then passed 2/2 after implementation. Full `cd backend-dotnet && dotnet test` passed 532/532.
+- Limitations: No live cloud runtime or external provider was contacted; the test uses the existing in-process API host and SQLite fixture.
+
+### 2026-06-05 - data-module-review - P2-10 rate-limit window source
+
+- Agent: Codex worker
+- Trigger: P2-10 requires response headers computed from the same stored window data the limiter already uses, without adding another store or changing quota math.
+- Action: Opened and followed the skill; reviewed `ApiKeyUsage`, the v1 limiter helpers, and the v1 completion paths together. Replaced the boolean limiter query with a window metadata query over `ApiKeyUsages` and reused that result for headers and `429` decisions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `docs/skill-run-log.md`.
+- Verification evidence: New integration assertions check persisted API-key usage rows still exist for accepted and rejected v1 submit calls. Full `cd backend-dotnet && dotnet test` passed 532/532.
+- Limitations: No schema, migration, quota, billing, or price behavior changed. The `/api/v1/usage` route now participates in the same per-key window and usage log so its headers come from the same source.
+
+### 2026-06-05 - dotnet-backend-testing - P2-10 v1 header integration tests
+
+- Agent: Codex worker
+- Trigger: P2-10 acceptance requires xUnit/integration coverage for `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After` on v1 success and rate-limit responses.
+- Action: Opened and followed the project skill; added header assertions to the existing `RewriteApiTests` WebApplicationFactory suite and kept the assertions tied to response status plus persisted usage state.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused backend header tests passed 2/2. Full `cd backend-dotnet && dotnet test` passed 532/532.
+- Limitations: Existing integration coverage exercises the ASP.NET API host; the Azure Functions host was compiled by the full backend test run and updated with matching header logic.

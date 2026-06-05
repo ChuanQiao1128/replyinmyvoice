@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getAzureApiBaseUrl } from "../../../../../lib/azure-api";
+import { copyV1ResponseHeaders } from "../../../../../lib/v1-response-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ async function forwardFunctionsResponse(response: Response) {
   if (contentType) {
     headers.set("Content-Type", contentType);
   }
+  copyV1ResponseHeaders(response.headers, headers);
 
   return new NextResponse(await response.text(), {
     headers,
