@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-04 - system-spec-synthesis - API-05 Next public rewrite proxy routes
+
+- Agent: Codex
+- Trigger: GitHub issue #507 adds the public Next.js `POST /api/v1/rewrite` and `GET /api/v1/rewrite/{id}` proxy contract for caller-supplied API authorization.
+- Action: Opened and followed the system-spec workflow; read `AGENTS.md`, `CLAUDE.md`, the API-05 brief, the v1 API spec, and existing proxy/helper routes before implementing the scoped Next routes.
+- Output artifacts: `app/api/v1/rewrite/route.ts`; `app/api/v1/rewrite/[id]/route.ts`; `tests/unit/public-rewrite-api-route.test.ts`.
+- Verification evidence: Focused route test first failed on the missing module, then passed 5/5 after implementation; `npm run typecheck` passed; `npm run test` passed 400/400; source policy grep over `app components public lib` returned no matches; `app/api/rewrite/route.ts` diff was empty.
+- Limitations: No backend, billing, secret, deployment, push, or PR changes were made. Local git commit was blocked because the worktree Git metadata is outside the writable sandbox.
+
 ### 2026-06-04 - system-spec-synthesis - API-03 v1 rewrite submit contract
 
 - Agent: Codex
