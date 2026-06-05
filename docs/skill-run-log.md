@@ -45,6 +45,51 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-05 - dotnet-backend-testing - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The integration merged C# API route changes and xUnit coverage for public v1 rewrite submit, result, usage, rate-limit, idempotency, and terminal-state behavior.
+- Action: Opened and followed the project skill; preserved every merged `RewriteApiTests` v1 method, kept distinct test names, combined API-08 per-key settings with API-10 stable hash seeding, and ran the full backend gate.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; merge commits in the writable integration Git metadata.
+- Verification evidence: `cd backend-dotnet && dotnet test --nologo` passed 532/532.
+- Limitations: NuGet vulnerability metadata warnings appeared because the feed lookup was unavailable. Git writes to the original worktree metadata were blocked by the sandbox, so merges were committed using a temporary writable `GIT_DIR` while updating this worktree's files.
+
+### 2026-06-05 - resilience-test-generation - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The merged branches cover repeated public v1 submit requests, per-key rate limits, idempotency conflict behavior, no-charge terminal states, and usage/reservation invariants.
+- Action: Opened and followed the project skill; resolved test unions so duplicate submit, over-limit submit, expired attempts, and provider-failure paths all remain covered without disabling or weakening tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: `dotnet test --nologo` passed 532/532; `npm run test` passed 408/408.
+- Limitations: No live cloud queue, payment, AI, writing-signal, or production database endpoint was contacted.
+
+### 2026-06-05 - state-machine-modeling - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The integration touches public v1 rewrite attempt polling, usage reservation states, idempotent submit state, over-limit rejection, expired attempts, and provider-failure terminal projection.
+- Action: Opened and followed the project skill; checked that submit, result polling, usage read projection, rate-limit rejection, duplicate submit, expired attempt, and provider-failure tests all remain present after conflict resolution.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: V1 test method list includes submit success, rate limit, same-key same-draft idempotency, same-key different-draft conflict, result states, expired result, provider failure, usage summary, and auth rejection cases; full backend test gate passed 532/532.
+- Limitations: No new lifecycle enum, transition helper, schema, or migration was added.
+
+### 2026-06-05 - data-module-review - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The integration reconciles persisted `ApiKeyUsage`, `RewriteAttempt`, `UsageReservation`, `UsagePeriod`, API key lookup, and account usage summary behavior.
+- Action: Opened and followed the project skill; preserved API-08's persisted usage window and API-09's usage read path, kept API-10's stable API-key hash seeding, and confirmed no schema or migration conflict was introduced.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Auth/ApiKeyAuthResolver.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: `dotnet test --nologo` passed 532/532 with assertions covering persisted usage rows, reservations, outbox counts, quota counters, and usage summary values.
+- Limitations: This was an integration review of existing branch changes; no migration command or production database check was run.
+
+### 2026-06-05 - ui-browser-testing - API-05 to API-11 integration merge
+
+- Agent: Codex
+- Trigger: The integration merged browser-visible Next.js routes and developer key-management UI from API-05, API-07, and API-09.
+- Action: Opened and followed the project skill; preserved the `/developers/keys` page, developer key panel, header link, public rewrite proxy routes, usage proxy route, and related unit tests.
+- Output artifacts: `app/api/v1/rewrite/route.ts`; `app/api/v1/rewrite/[id]/route.ts`; `app/api/v1/usage/route.ts`; `app/developers/keys/page.tsx`; `components/developers/api-keys-panel.tsx`; `components/site-header.tsx`; frontend unit tests.
+- Verification evidence: `npm run typecheck` passed; `npm run test` passed 408/408.
+- Limitations: Browser screenshots and Playwright E2E were not run because the user-requested gates were typecheck and unit tests for this mechanical integration.
+
 ### 2026-06-04 - system-spec-synthesis - API-05 Next public rewrite proxy routes
 
 - Agent: Codex
