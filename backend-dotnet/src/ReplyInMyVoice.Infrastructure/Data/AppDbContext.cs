@@ -410,7 +410,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(x => x.RewriteAttempt)
                 .WithMany()
                 .HasForeignKey(x => x.RewriteAttemptId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<AdminAuditLog>(entity =>

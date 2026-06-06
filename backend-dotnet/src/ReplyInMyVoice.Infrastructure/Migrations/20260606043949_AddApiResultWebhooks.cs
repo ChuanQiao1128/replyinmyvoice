@@ -59,7 +59,7 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         column: x => x.RewriteAttemptId,
                         principalTable: "RewriteAttempts",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.NoAction);
                 });
 
             migrationBuilder.CreateIndex(

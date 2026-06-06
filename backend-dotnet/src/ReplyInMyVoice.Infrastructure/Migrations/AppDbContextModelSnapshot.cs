@@ -1860,7 +1860,7 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.HasOne("ReplyInMyVoice.Domain.Entities.RewriteAttempt", "RewriteAttempt")
                         .WithMany()
                         .HasForeignKey("RewriteAttemptId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("ApiKey");
