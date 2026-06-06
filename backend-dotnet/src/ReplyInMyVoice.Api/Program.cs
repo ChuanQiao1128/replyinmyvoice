@@ -21,6 +21,19 @@ const string V1UsageEndpointName = "v1/usage";
 const int V1MinimumDraftLength = 10;
 const int V1MaximumDraftWords = 300;
 const int V1MaximumDraftCharacters = 2400;
+const string V1SandboxAttemptPrefix = "test:";
+const string V1SandboxUsagePeriodKey = "test:sandbox";
+const string V1SandboxResultJson = """
+    {
+      "rewrittenText": "Sandbox example: thanks for the update. I will review the details and follow up shortly.",
+      "changeSummary": [],
+      "riskNotes": [],
+      "naturalness": {
+        "draftAiLikePercent": 76,
+        "rewriteAiLikePercent": 18
+      }
+    }
+    """;
 
 var builder = WebApplication.CreateBuilder(args);
 Console.Error.WriteLine("TRACE api: builder created");
@@ -296,6 +309,47 @@ app.MapPost("/api/v1/rewrite", async (
         idempotencyKey = Guid.NewGuid().ToString("D");
     }
 
+    if (auth.IsTest)
+    {
+        var sandboxResult = await CreateV1SandboxAttemptAsync(
+            db,
+            user.Id,
+            auth.ApiKeyId!.Value,
+            idempotencyKey,
+            draft,
+            now,
+            cancellationToken);
+
+        if (sandboxResult.IsConflict)
+        {
+            return await CompleteV1Async(
+                db,
+                auth.ApiKeyId,
+                V1Error("idempotency_conflict", "The idempotency key was reused with a different draft.", StatusCodes.Status409Conflict),
+                StatusCodes.Status409Conflict,
+                stopwatch,
+                now,
+                cancellationToken,
+                sandboxResult.AttemptId.ToString(),
+                response: httpRequest.HttpContext.Response,
+                rateLimitWindow: rateLimitWindow);
+        }
+
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            Results.Accepted(
+                $"/api/v1/rewrite/{sandboxResult.AttemptId}",
+                new V1RewriteSubmitResponse(sandboxResult.AttemptId, "processing")),
+            StatusCodes.Status202Accepted,
+            stopwatch,
+            now,
+            cancellationToken,
+            sandboxResult.AttemptId.ToString(),
+            response: httpRequest.HttpContext.Response,
+            rateLimitWindow: rateLimitWindow);
+    }
+
     var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user, builder.Configuration);
     var result = await rewriteRequestService.CreateAttemptAsync(
         user.Id,
@@ -395,7 +449,7 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
             x => x.Id == id && x.UserId == auth.UserId.Value,
             cancellationToken);
 
-    if (attempt is null)
+    if (attempt is null || (auth.IsTest && !IsV1SandboxAttempt(attempt)))
     {
         return await CompleteV1Async(
             db,
@@ -455,6 +509,27 @@ app.MapGet("/api/v1/usage", async (
             auth.ApiKeyId,
             V1Error("rate_limited", "Request limit reached. Please retry later.", StatusCodes.Status429TooManyRequests),
             StatusCodes.Status429TooManyRequests,
+            stopwatch,
+            now,
+            cancellationToken,
+            endpoint: V1UsageEndpointName,
+            response: httpRequest.HttpContext.Response,
+            rateLimitWindow: rateLimitWindow);
+    }
+
+    if (auth.IsTest)
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            Results.Ok(new V1UsageResponse(
+                "test",
+                V1SandboxUsagePeriodKey,
+                0,
+                0,
+                0,
+                null)),
+            StatusCodes.Status200OK,
             stopwatch,
             now,
             cancellationToken,
@@ -884,7 +959,7 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
     CancellationToken cancellationToken)
 {
     if (string.IsNullOrWhiteSpace(bearerToken) ||
-        !bearerToken.StartsWith("rmv_live_", StringComparison.Ordinal))
+        !HasKnownApiKeyPrefix(bearerToken))
     {
         return new ApiKeyAuthResult(null, null, 0);
     }
@@ -910,8 +985,12 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
         db.Entry(apiKey).State = EntityState.Unchanged;
     }
 
-    return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute);
+    return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute, apiKey.IsTest);
 }
+
+static bool HasKnownApiKeyPrefix(string token) =>
+    token.StartsWith("rmv_live_", StringComparison.Ordinal) ||
+    token.StartsWith("rmv_test_", StringComparison.Ordinal);
 
 static async Task<V1RateLimitWindow> GetV1RateLimitWindowAsync(
     AppDbContext db,
@@ -1066,6 +1145,64 @@ static async Task TryWriteV1ApiKeyUsageAsync(
 
 static IResult V1Error(string code, string message, int statusCode) =>
     Results.Json(new V1ErrorResponse(new V1Error(code, message)), statusCode: statusCode);
+
+static async Task<V1SandboxAttemptResult> CreateV1SandboxAttemptAsync(
+    AppDbContext db,
+    Guid userId,
+    Guid apiKeyId,
+    string idempotencyKey,
+    string draft,
+    DateTimeOffset now,
+    CancellationToken cancellationToken)
+{
+    var sandboxIdempotencyKey = BuildV1SandboxIdempotencyKey(apiKeyId, idempotencyKey);
+    var requestHash = ComputeV1Sha256(draft);
+    var existingAttempt = await db.RewriteAttempts
+        .AsNoTracking()
+        .SingleOrDefaultAsync(
+            x => x.UserId == userId && x.IdempotencyKey == sandboxIdempotencyKey,
+            cancellationToken);
+
+    if (existingAttempt is not null)
+    {
+        return string.Equals(existingAttempt.RequestHash, requestHash, StringComparison.Ordinal)
+            ? new V1SandboxAttemptResult(existingAttempt.Id, IsConflict: false)
+            : new V1SandboxAttemptResult(existingAttempt.Id, IsConflict: true);
+    }
+
+    var rewriteRequest = new RewriteRequest(null, draft, null, null, null, null, "warm");
+    var attempt = new RewriteAttempt
+    {
+        UserId = userId,
+        IdempotencyKey = sandboxIdempotencyKey,
+        RequestHash = requestHash,
+        RequestJson = JsonSerializer.Serialize(rewriteRequest),
+        Status = RewriteAttemptStatus.Succeeded,
+        ResultJson = V1SandboxResultJson,
+        CreatedAt = now,
+        CompletedAt = now,
+        ExpiresAt = now.AddMinutes(15),
+    };
+
+    db.RewriteAttempts.Add(attempt);
+    await db.SaveChangesAsync(cancellationToken);
+
+    return new V1SandboxAttemptResult(attempt.Id, IsConflict: false);
+}
+
+static bool IsV1SandboxAttempt(RewriteAttempt attempt) =>
+    attempt.Status == RewriteAttemptStatus.Succeeded &&
+    attempt.IdempotencyKey.StartsWith(V1SandboxAttemptPrefix, StringComparison.Ordinal) &&
+    string.Equals(attempt.ResultJson, V1SandboxResultJson, StringComparison.Ordinal);
+
+static string BuildV1SandboxIdempotencyKey(Guid apiKeyId, string idempotencyKey) =>
+    string.Concat(V1SandboxAttemptPrefix, apiKeyId.ToString("N"), ":", ComputeV1Sha256(idempotencyKey));
+
+static string ComputeV1Sha256(string value)
+{
+    var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+    return Convert.ToHexString(hash).ToLowerInvariant();
+}
 
 static IResult MapV1RewriteResult(RewriteAttempt attempt)
 {
@@ -1390,7 +1527,9 @@ public sealed record V1ErrorResponse(V1Error Error);
 
 public sealed record V1Error(string Code, string Message);
 
-public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute);
+public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute, bool IsTest = false);
+
+public sealed record V1SandboxAttemptResult(Guid AttemptId, bool IsConflict);
 
 public sealed record V1RateLimitWindow(int Limit, int Calls, DateTimeOffset ResetAt)
 {

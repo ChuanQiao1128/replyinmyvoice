@@ -35,6 +35,37 @@ public sealed class ApiKeyServiceTests
         stored.KeyHash.Should().NotBe(result.Plaintext);
         stored.KeyHash.Should().Be(ApiKeyService.ComputeHash(result.Plaintext));
         stored.Last4.Should().Be(result.Plaintext[^4..]);
+        stored.IsTest.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_can_create_test_keys_and_list_marks_them_as_test()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new ApiKeyService(fixture.CreateContext);
+
+        var result = await service.GenerateAsync(
+            user.Id,
+            "Sandbox client",
+            CancellationToken.None,
+            isTest: true);
+
+        result.Plaintext.Should().StartWith("rmv_test_");
+
+        await using var db = fixture.CreateContext();
+        var stored = await db.ApiKeys.SingleAsync(x => x.Id == result.Id);
+        stored.IsTest.Should().BeTrue();
+        stored.KeyHash.Should().Be(ApiKeyService.ComputeHash(result.Plaintext));
+        stored.Last4.Should().Be(result.Plaintext[^4..]);
+
+        var summaries = await service.ListAsync(user.Id, CancellationToken.None);
+
+        var summary = summaries.Should().ContainSingle().Subject;
+        summary.IsTest.Should().BeTrue();
+        summary.MaskedKey.Should().StartWith("rmv_test_");
+        summary.MaskedKey.Should().EndWith(stored.Last4!);
     }
 
     [Fact]
@@ -68,6 +99,7 @@ public sealed class ApiKeyServiceTests
         summary.Name.Should().Be("Mobile client");
         summary.MaskedKey.Should().StartWith("rmv_live_");
         summary.MaskedKey.Should().EndWith(stored.Last4!);
+        summary.IsTest.Should().BeFalse();
         summary.ToString().Should().NotContain(generated.Plaintext);
         summary.ToString().Should().NotContain(stored.KeyHash);
     }

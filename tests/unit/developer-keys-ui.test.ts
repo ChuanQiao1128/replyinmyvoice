@@ -40,6 +40,8 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain("lastUsedAt");
     expect(panelSource).toContain("last30dUsage");
     expect(panelSource).toContain("revokedAt");
+    expect(panelSource).toContain("isTest");
+    expect(panelSource).toContain("test: isTest");
     expect(panelSource).not.toContain("localStorage");
     expect(panelSource).not.toContain("sessionStorage");
   });
@@ -48,6 +50,8 @@ describe("developer key management UI source", () => {
     const panelSource = source("components/developers/api-keys-panel.tsx");
 
     expect(panelSource).toContain("Create key");
+    expect(panelSource).toContain("Create test key");
+    expect(panelSource).toContain('aria-label="Test key"');
     expect(panelSource).toContain("Copy key");
     expect(panelSource).toContain("you won't see this again");
     expect(panelSource).toContain("Rotate");

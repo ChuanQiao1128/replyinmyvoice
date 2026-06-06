@@ -11,9 +11,9 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class ApiKeyService
 {
-    private const string KeyPrefix = "rmv_live_";
+    private const string LiveKeyPrefix = "rmv_live_";
+    private const string TestKeyPrefix = "rmv_test_";
     private const string Base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    private static readonly string MaskPrefix = $"{KeyPrefix}\u2022\u2022\u2022\u2022";
     private static int s_missingPepperWarningLogged;
     private static ILogger<ApiKeyService>? s_logger;
 
@@ -59,9 +59,10 @@ public sealed class ApiKeyService
     public async Task<(Guid Id, string Plaintext, DateTimeOffset CreatedAt)> GenerateAsync(
         Guid userId,
         string name,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isTest = false)
     {
-        var plaintext = GeneratePlaintext();
+        var plaintext = GeneratePlaintext(isTest);
         var now = DateTimeOffset.UtcNow;
         var apiKey = new ApiKey
         {
@@ -69,6 +70,7 @@ public sealed class ApiKeyService
             Name = name,
             KeyHash = ComputeHash(plaintext),
             Last4 = plaintext[^4..],
+            IsTest = isTest,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -94,6 +96,7 @@ public sealed class ApiKeyService
                 x.Id,
                 x.Name,
                 x.Last4,
+                x.IsTest,
                 x.LastUsedAt,
                 x.CreatedAt,
                 x.RevokedAt,
@@ -143,7 +146,8 @@ public sealed class ApiKeyService
             .Select(x => new ApiKeySummary(
                 x.Id,
                 x.Name,
-                MaskKey(x.Last4),
+                MaskKey(x.Last4, x.IsTest),
+                x.IsTest,
                 x.LastUsedAt,
                 x.CreatedAt,
                 x.RevokedAt,
@@ -168,7 +172,7 @@ public sealed class ApiKeyService
             return null;
         }
 
-        var plaintext = GeneratePlaintext();
+        var plaintext = GeneratePlaintext(apiKey.IsTest);
         var now = DateTimeOffset.UtcNow;
         apiKey.RevokedAt = now;
         apiKey.UpdatedAt = now;
@@ -180,6 +184,7 @@ public sealed class ApiKeyService
             Name = apiKey.Name,
             KeyHash = ComputeHash(plaintext),
             Last4 = plaintext[^4..],
+            IsTest = apiKey.IsTest,
             PlanTier = apiKey.PlanTier,
             Scope = apiKey.Scope,
             RateLimitPerMinute = apiKey.RateLimitPerMinute,
@@ -194,7 +199,8 @@ public sealed class ApiKeyService
             replacement.Id,
             replacement.Name,
             plaintext,
-            replacement.CreatedAt);
+            replacement.CreatedAt,
+            replacement.IsTest);
     }
 
     public async Task<bool> RevokeAsync(
@@ -225,11 +231,11 @@ public sealed class ApiKeyService
         return true;
     }
 
-    private static string GeneratePlaintext()
+    private static string GeneratePlaintext(bool isTest)
     {
         Span<byte> randomBytes = stackalloc byte[32];
         RandomNumberGenerator.Fill(randomBytes);
-        return KeyPrefix + ToBase62(randomBytes);
+        return (isTest ? TestKeyPrefix : LiveKeyPrefix) + ToBase62(randomBytes);
     }
 
     private static string ToBase62(ReadOnlySpan<byte> bytes)
@@ -251,13 +257,15 @@ public sealed class ApiKeyService
         return new string(buffer[position..]);
     }
 
-    private static string MaskKey(string? last4) => string.Concat(MaskPrefix, last4 ?? string.Empty);
+    private static string MaskKey(string? last4, bool isTest) =>
+        string.Concat(isTest ? TestKeyPrefix : LiveKeyPrefix, "\u2022\u2022\u2022\u2022", last4 ?? string.Empty);
 }
 
 public sealed record ApiKeySummary(
     Guid Id,
     string Name,
     string MaskedKey,
+    bool IsTest,
     DateTimeOffset? LastUsedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset? RevokedAt,
@@ -267,4 +275,5 @@ public sealed record ApiKeyRotationResult(
     Guid Id,
     string Name,
     string Plaintext,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IsTest);

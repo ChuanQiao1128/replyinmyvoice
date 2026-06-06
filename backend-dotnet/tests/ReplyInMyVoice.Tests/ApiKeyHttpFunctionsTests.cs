@@ -35,6 +35,7 @@ public sealed class ApiKeyHttpFunctionsTests
         var createBody = created.Value.Should().BeOfType<ApiKeyCreateResponse>().Subject;
         createBody.Name.Should().Be("Primary API key");
         createBody.Key.Should().StartWith("rmv_live_");
+        createBody.IsTest.Should().BeFalse();
 
         await using (var db = fixture.CreateContext())
         {
@@ -42,6 +43,7 @@ public sealed class ApiKeyHttpFunctionsTests
             stored.KeyHash.Should().Be(ApiKeyService.ComputeHash(createBody.Key));
             stored.KeyHash.Should().NotBe(createBody.Key);
             stored.Last4.Should().Be(createBody.Key[^4..]);
+            stored.IsTest.Should().BeFalse();
         }
 
         var listResult = await functions.ListApiKeys(
@@ -56,11 +58,49 @@ public sealed class ApiKeyHttpFunctionsTests
         item.Name.Should().Be("Primary API key");
         item.MaskedKey.Should().StartWith("rmv_live_");
         item.MaskedKey.Should().EndWith(createBody.Key[^4..]);
+        item.IsTest.Should().BeFalse();
         item.RevokedAt.Should().BeNull();
 
         var listJson = JsonSerializer.Serialize(listBody, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         listJson.Should().NotContain(createBody.Key);
         listJson.Should().NotContain(ApiKeyService.ComputeHash(createBody.Key));
+    }
+
+    [Fact]
+    public async Task CreateKey_can_create_test_key_and_list_labels_it()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var functions = CreateFunctions(fixture.CreateContext);
+
+        var createResult = await functions.CreateApiKey(
+            CreateRequest("entra-test-key-owner", "owner@example.com", new { name = "Sandbox client", test = true }),
+            CancellationToken.None);
+
+        var created = createResult.Should().BeOfType<CreatedResult>().Subject;
+        var createBody = created.Value.Should().BeOfType<ApiKeyCreateResponse>().Subject;
+        createBody.Name.Should().Be("Sandbox client");
+        createBody.Key.Should().StartWith("rmv_test_");
+        createBody.IsTest.Should().BeTrue();
+
+        await using (var db = fixture.CreateContext())
+        {
+            var stored = await db.ApiKeys.SingleAsync(x => x.Id == createBody.Id);
+            stored.IsTest.Should().BeTrue();
+            stored.KeyHash.Should().Be(ApiKeyService.ComputeHash(createBody.Key));
+            stored.Last4.Should().Be(createBody.Key[^4..]);
+        }
+
+        var listResult = await functions.ListApiKeys(
+            CreateRequest("entra-test-key-owner", "owner@example.com"),
+            CancellationToken.None);
+
+        var ok = listResult.Should().BeOfType<OkObjectResult>().Subject;
+        var listBody = ok.Value.Should().BeAssignableTo<IReadOnlyList<ApiKeyListResponse>>().Subject;
+        var item = listBody.Should().ContainSingle().Subject;
+        item.IsTest.Should().BeTrue();
+        item.MaskedKey.Should().StartWith("rmv_test_");
+        item.MaskedKey.Should().EndWith(createBody.Key[^4..]);
     }
 
     [Fact]
@@ -137,12 +177,14 @@ public sealed class ApiKeyHttpFunctionsTests
         body.Id.Should().NotBe(generated.Id);
         body.Name.Should().Be("Server key");
         body.Key.Should().StartWith("rmv_live_");
+        body.IsTest.Should().BeFalse();
 
         await using var db = fixture.CreateContext();
         var oldKey = await db.ApiKeys.SingleAsync(x => x.Id == generated.Id);
         var newKey = await db.ApiKeys.SingleAsync(x => x.Id == body.Id);
         oldKey.RevokedAt.Should().NotBeNull();
         newKey.RevokedAt.Should().BeNull();
+        newKey.IsTest.Should().BeFalse();
         newKey.KeyHash.Should().Be(ApiKeyService.ComputeHash(body.Key));
 
         var responseJson = JsonSerializer.Serialize(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));

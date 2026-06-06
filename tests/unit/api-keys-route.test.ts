@@ -90,12 +90,13 @@ describe("/api/keys proxy routes", () => {
   });
 
   it("forwards same-origin key creation with the current bearer value", async () => {
-    const createPayload = { name: "Server key" };
+    const createPayload = { name: "Sandbox client", test: true };
     const azureBody = {
       createdAt: "2026-06-04T00:00:00Z",
       id: keyId,
-      key: "rmv_live_plaintext_once",
-      name: "Server key",
+      isTest: true,
+      key: "rmv_test_plaintext_once",
+      name: "Sandbox client",
     };
     fetchMock().mockResolvedValueOnce(Response.json(azureBody, { status: 201 }));
 

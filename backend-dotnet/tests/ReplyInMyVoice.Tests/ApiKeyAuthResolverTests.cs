@@ -38,6 +38,31 @@ public sealed class ApiKeyAuthResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_returns_test_key_flag_for_active_test_key()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var token = "rmv_test_valid_resolver_key";
+        var now = DateTimeOffset.Parse("2026-06-04T12:00:00Z");
+
+        await SeedApiKeyAsync(fixture, user.Id, token, isTest: true);
+        await using var db = fixture.CreateContext();
+        var request = CreateRequest(token);
+
+        var resolved = await ApiKeyAuthResolver.ResolveAsync(
+            request,
+            db,
+            now,
+            CancellationToken.None);
+
+        resolved.UserId.Should().Be(user.Id);
+        resolved.IsTest.Should().BeTrue();
+        var stored = await db.ApiKeys.SingleAsync();
+        stored.LastUsedAt.Should().Be(now);
+    }
+
+    [Fact]
     public async Task ResolveUserIdAsync_returns_null_for_unknown_token()
     {
         Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
@@ -129,13 +154,13 @@ public sealed class ApiKeyAuthResolverTests
     }
 
     [Fact]
-    public async Task ResolveUserIdAsync_returns_null_for_non_live_token_prefix()
+    public async Task ResolveUserIdAsync_returns_null_for_unknown_token_prefix()
     {
         Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
         await using var fixture = await DbFixture.CreateAsync();
         var now = DateTimeOffset.Parse("2026-06-04T12:00:00Z");
         await using var db = fixture.CreateContext();
-        var request = CreateRequest("rmv_test_resolver_key");
+        var request = CreateRequest("rmv_preview_resolver_key");
 
         var resolvedUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
             request,
@@ -151,7 +176,8 @@ public sealed class ApiKeyAuthResolverTests
         Guid userId,
         string token,
         DateTimeOffset? expiresAt = null,
-        DateTimeOffset? revokedAt = null)
+        DateTimeOffset? revokedAt = null,
+        bool isTest = false)
     {
         var now = DateTimeOffset.Parse("2026-06-04T11:00:00Z");
         await using var db = fixture.CreateContext();
@@ -161,6 +187,7 @@ public sealed class ApiKeyAuthResolverTests
             Name = "Resolver key",
             KeyHash = ApiKeyService.ComputeHash(token),
             Last4 = token[^4..],
+            IsTest = isTest,
             ExpiresAt = expiresAt,
             RevokedAt = revokedAt,
             CreatedAt = now,

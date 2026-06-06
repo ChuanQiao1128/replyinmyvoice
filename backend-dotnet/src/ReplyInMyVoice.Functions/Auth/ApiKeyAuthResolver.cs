@@ -7,7 +7,8 @@ namespace ReplyInMyVoice.Functions.Auth;
 
 public static class ApiKeyAuthResolver
 {
-    private const string KeyPrefix = "rmv_live_";
+    private const string LiveKeyPrefix = "rmv_live_";
+    private const string TestKeyPrefix = "rmv_test_";
 
     public static async Task<Guid?> ResolveUserIdAsync(
         HttpRequest request,
@@ -27,7 +28,7 @@ public static class ApiKeyAuthResolver
     {
         var token = ResolveBearerToken(request);
         if (string.IsNullOrWhiteSpace(token) ||
-            !token.StartsWith(KeyPrefix, StringComparison.Ordinal))
+            !HasKnownPrefix(token))
         {
             return new ApiKeyAuthResult(null, null, 0);
         }
@@ -54,8 +55,12 @@ public static class ApiKeyAuthResolver
             db.Entry(apiKey).State = EntityState.Unchanged;
         }
 
-        return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute);
+        return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute, apiKey.IsTest);
     }
+
+    private static bool HasKnownPrefix(string token) =>
+        token.StartsWith(LiveKeyPrefix, StringComparison.Ordinal) ||
+        token.StartsWith(TestKeyPrefix, StringComparison.Ordinal);
 
     private static string? ResolveBearerToken(HttpRequest request)
     {
@@ -66,4 +71,4 @@ public static class ApiKeyAuthResolver
     }
 }
 
-public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute);
+public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute, bool IsTest = false);

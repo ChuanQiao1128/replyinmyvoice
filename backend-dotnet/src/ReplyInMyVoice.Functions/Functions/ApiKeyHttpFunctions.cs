@@ -53,7 +53,8 @@ public sealed class ApiKeyHttpFunctions(
             authUser.ExternalAuthUserId,
             authUser.Email,
             cancellationToken);
-        var generated = await apiKeyService.GenerateAsync(user.Id, name, cancellationToken);
+        var isTest = body?.Test == true;
+        var generated = await apiKeyService.GenerateAsync(user.Id, name, cancellationToken, isTest);
 
         return new CreatedResult(
             $"/api/keys/{generated.Id}",
@@ -61,7 +62,8 @@ public sealed class ApiKeyHttpFunctions(
                 generated.Id,
                 name,
                 generated.Plaintext,
-                generated.CreatedAt));
+                generated.CreatedAt,
+                isTest));
     }
 
     [Function("ListApiKeys")]
@@ -86,6 +88,7 @@ public sealed class ApiKeyHttpFunctions(
                 x.Id,
                 x.Name,
                 x.MaskedKey,
+                x.IsTest,
                 x.LastUsedAt,
                 x.CreatedAt,
                 x.RevokedAt,
@@ -122,7 +125,8 @@ public sealed class ApiKeyHttpFunctions(
                     rotated.Id,
                     rotated.Name,
                     rotated.Plaintext,
-                    rotated.CreatedAt));
+                    rotated.CreatedAt,
+                    rotated.IsTest));
     }
 
     [Function("RevokeApiKey")]
@@ -174,18 +178,20 @@ public sealed class ApiKeyHttpFunctions(
             StatusCodes.Status400BadRequest);
 }
 
-public sealed record ApiKeyCreateRequest(string? Name);
+public sealed record ApiKeyCreateRequest(string? Name, bool Test = false);
 
 public sealed record ApiKeyCreateResponse(
     Guid Id,
     string Name,
     string Key,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IsTest);
 
 public sealed record ApiKeyListResponse(
     Guid Id,
     string Name,
     string MaskedKey,
+    bool IsTest,
     DateTimeOffset? LastUsedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset? RevokedAt,

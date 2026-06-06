@@ -3766,3 +3766,66 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/developers/page.tsx`; `app/developers/terms/page.tsx`; `app/developers/acceptable-use/page.tsx`; `app/developers/data/page.tsx`; `tests/unit/developers-page.test.ts`; `docs/skill-run-log.md`.
 - Verification evidence: Focused red `npm test -- tests/unit/developers-page.test.ts` failed on missing legal links and missing route files, then passed 2/2 after implementation. `npm run typecheck` passed. Full `npm run test` passed 429/429. `npm run lint` completed with 0 errors and 1 unrelated existing warning. The restricted vocabulary scan over `app components public lib` returned no matches. `next dev` served all four local routes with HTTP 200 and expected rendered strings.
 - Limitations: The in-app Browser target was unavailable in this session. Local Chromium launch was blocked by macOS sandbox process permissions, and alternate Playwright engines were not installed, so screenshot inspection was not completed. `next dev` used port 3001 because port 3000 was already occupied and emitted local `EMFILE` file-watch warnings while still compiling and serving the checked routes.
+
+### 2026-06-06 - system-spec-synthesis - SBX-01 sandbox API test keys
+
+- Agent: Codex worker
+- Trigger: GitHub issue #556 and `plans/rewrite-api-v1/adv-issues/SBX-01-sandbox-test-keys.md` change the v1 API contract, key data model, and developer key creation flow.
+- Action: Opened and followed the skill; produced an implementation spec in-session. Context: live API keys use `rmv_live_` with peppered SHA-256 hashes, v1 submit reserves quota and writes outbox, and key UI proxies to Azure Functions. Goals: add `rmv_test_` keys, keep auth hashing unchanged, return deterministic sandbox submit/poll/usage responses, keep rate limits, and avoid quota/outbox/engine side effects. Non-goals: payment, deployment, live-key weakening, provider calls, and broad API refactors. Verification plan: xUnit sandbox/live regressions, EF migration, Next source tests, typecheck, full unit tests, and restricted-term scan.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260606040825_AddApiKeyIsTest.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `components/developers/api-keys-panel.tsx`; related tests.
+- Verification evidence: Focused backend red run failed on missing `IsTest` and sandbox contracts, focused green passed 48/48. Full `cd backend-dotnet && dotnet test` passed 552/552. `npm run typecheck` passed. Full `npm run test` passed 448/448. Restricted-term scans returned no matches.
+- Limitations: No separate spec document was created because the issue brief was already implementation-ready and the supervisor asked for issue-only delivery.
+
+### 2026-06-06 - state-machine-modeling - SBX-01 v1 sandbox attempt lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #556 changes the v1 rewrite submit-to-poll lifecycle for a new key type.
+- Action: Opened and followed the skill. State list: live submit remains `Pending` via quota reservation and outbox; sandbox submit persists an immediately `Succeeded` attempt with a namespaced test idempotency key; poll returns `processing`, `succeeded`, `failed`, or `not_found` according to attempt state and key type. Events: authenticated submit, duplicate submit, conflicting duplicate submit, owner-scoped poll, usage query, revoked/expired auth. Transition table: test submit -> persisted succeeded sandbox attempt with no reservation/outbox; duplicate same draft -> same attempt id; duplicate different draft -> conflict; test poll of non-test attempt -> not found; live poll of test attempt -> not found; revoked/expired -> 401.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: `RewriteApiTests` asserts sandbox submit->poll success, sandbox usage scope, unchanged `UsagePeriod` and credits, no `UsageReservation`, no outbox, no provider-call rows, live success charging exactly one use, and revoked/expired live keys returning 401. Full backend tests passed 552/552.
+- Limitations: A dedicated attempt type column was not added; sandbox attempts are identified by the internal namespaced idempotency key to keep scope limited to SBX-01.
+
+### 2026-06-06 - data-module-review - SBX-01 ApiKey IsTest persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #556 adds a persisted `ApiKey.IsTest` boolean and changes API-key creation/listing data contracts.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `AppDbContext`, EF migrations, `ApiKeyService`, auth lookup, `UsagePeriod`, `UsageReservation`, outbox, API usage logs, and tests. Ran the bundled data-risk scan over `backend-dotnet`; it returned broad existing quota/idempotency signals and no scoped blocker. Added a non-null `IsTest` column with default `false`; existing rows remain live keys. Confirmed the hash lookup remains unique on `KeyHash`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260606040825_AddApiKeyIsTest.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyService.cs`.
+- Verification evidence: xUnit coverage asserts generated live keys store `IsTest=false`, generated test keys store `IsTest=true`, summaries expose the flag, test v1 flow leaves `UsagePeriod` and credits unchanged, and live success still finalizes exactly one reservation. Full backend tests passed 552/552.
+- Limitations: The initial EF CLI command timed out through the design-time host but eventually produced the migration pair; a manual fallback migration was deleted before completion.
+
+### 2026-06-06 - resilience-test-generation - SBX-01 quota/outbox/provider side-effect guard
+
+- Agent: Codex worker
+- Trigger: GitHub issue #556 requires the sandbox key path to avoid quota consumption, outbox enqueue, engine calls, and charge-like side effects while rate limiting remains active.
+- Action: Opened and followed the skill; failure matrix focused on duplicate idempotency key, conflicting duplicate draft, missing/revoked/expired auth, quota-exhausted live users, rate-limit source reuse, and provider side effects. Implemented deterministic local xUnit assertions rather than external provider calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`.
+- Verification evidence: The sandbox test asserts no `UsageReservation`, no outbox row, no `RewriteProviderCall`, unchanged `UsagePeriod`, unchanged credit consumption, and logged API usage rows for submit/poll/usage. Existing and new live-path tests assert reservation and finalization still work. Full backend tests passed 552/552.
+- Limitations: No live queue, worker, provider, payment, or cloud smoke was run; the local database side-effect checks prove the sandbox path never creates the job source that would invoke the worker.
+
+### 2026-06-06 - dotnet-backend-testing - SBX-01 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #556 requires xUnit coverage for test-key submit->poll, zero quota effect, no outbox/engine call, live path unchanged, and revoked/expired auth.
+- Action: Opened and followed the skill plus test-first workflow. Added failing tests in `ApiKeyServiceTests`, `ApiKeyAuthResolverTests`, `ApiKeyHttpFunctionsTests`, and `RewriteApiTests`; the red run failed on missing `IsTest` and sandbox contracts. Implemented the minimal production changes, then reran focused and full backend tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyAuthResolverTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter "ApiKeyServiceTests|ApiKeyAuthResolverTests|ApiKeyHttpFunctionsTests|RewriteApiTests"` passed 48/48 after implementation. Full `cd backend-dotnet && dotnet test` passed 552/552.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.
+
+### 2026-06-06 - ui-browser-testing - SBX-01 developer key UI
+
+- Agent: Codex worker
+- Trigger: GitHub issue #556 changes browser-visible developer API key creation and listing UI.
+- Action: Opened and followed the skill; identified `/developers/keys` key management as the affected flow. Added source-level Vitest coverage for forwarding `{ test: true }`, `isTest` response/list handling, a `Create test key` control, and accessible `Test key` badges. Updated the React component to show test keys with `rmv_test_` masked fallback and a visible `Test` badge.
+- Output artifacts: `components/developers/api-keys-panel.tsx`; `tests/unit/api-keys-route.test.ts`; `tests/unit/developer-keys-ui.test.ts`.
+- Verification evidence: Focused `npm run test -- tests/unit/api-keys-route.test.ts tests/unit/developer-keys-ui.test.ts` passed 14/14 after implementation. `npm run typecheck` passed. Full `npm run test` passed 448/448. Restricted-term scans over `app components public lib` and changed backend source/tests returned no matches.
+- Limitations: No browser screenshot run was completed; the key manager is an authenticated dashboard surface and this issue's machine acceptance required typecheck and unit tests.
+
+### 2026-06-06 - verification-before-completion - SBX-01 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #556 after implementation and test runs.
+- Action: Opened and followed the skill; checked the working tree file list, confirmed generated migration files are included, reviewed the recorded command evidence, and avoided completion claims until the verification outputs were available.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: `git status --short` showed only the SBX-01 implementation/test/log files and the two new EF migration files. Previously run acceptance gates passed: focused backend xUnit 48/48, `RewriteApiTests` 30/30, full backend xUnit 552/552, focused key UI Vitest 14/14, `npm run typecheck`, full Vitest 448/448, `git diff --check`, and restricted vocabulary scans.
+- Limitations: No local commit was created because writing the worktree git index lock was blocked by filesystem permissions outside the writable worktree.
