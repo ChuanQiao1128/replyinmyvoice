@@ -24,6 +24,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RewriteProviderCall> RewriteProviderCalls => Set<RewriteProviderCall>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsage> ApiKeyUsages => Set<ApiKeyUsage>();
+    public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
     public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
     public DbSet<PromoCodeRedemption> PromoCodeRedemptions => Set<PromoCodeRedemption>();
@@ -362,8 +363,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.PlanTier);
             entity.Property(x => x.KeyHash).HasMaxLength(200);
             entity.Property(x => x.Last4).HasMaxLength(4).IsRequired(false);
+            entity.Property(x => x.IsTest).HasDefaultValue(false);
             entity.Property(x => x.Name).HasMaxLength(200);
             entity.Property(x => x.PlanTier).HasMaxLength(40);
+            entity.Property(x => x.WebhookUrl).HasMaxLength(2048);
+            entity.Property(x => x.WebhookSecret).HasMaxLength(200);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
             entity.HasOne(x => x.User)
                 .WithMany()
@@ -384,6 +388,28 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(x => x.ApiKey)
                 .WithMany(x => x.ApiKeyUsages)
                 .HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WebhookDelivery>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ApiKeyId, x.RewriteAttemptId }).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            entity.HasIndex(x => new { x.Status, x.LockedUntil });
+            entity.HasIndex(x => x.RewriteAttemptId);
+            entity.Property(x => x.Url).HasMaxLength(2048);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.LockedBy).HasMaxLength(160);
+            entity.Property(x => x.LastError).HasMaxLength(1000);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.ApiKey)
+                .WithMany(x => x.WebhookDeliveries)
+                .HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.RewriteAttempt)
+                .WithMany()
+                .HasForeignKey(x => x.RewriteAttemptId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

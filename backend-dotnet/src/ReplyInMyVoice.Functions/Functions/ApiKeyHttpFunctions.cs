@@ -53,7 +53,8 @@ public sealed class ApiKeyHttpFunctions(
             authUser.ExternalAuthUserId,
             authUser.Email,
             cancellationToken);
-        var generated = await apiKeyService.GenerateAsync(user.Id, name, cancellationToken);
+        var isTest = body?.Test == true;
+        var generated = await apiKeyService.GenerateAsync(user.Id, name, cancellationToken, isTest);
 
         return new CreatedResult(
             $"/api/keys/{generated.Id}",
@@ -61,7 +62,8 @@ public sealed class ApiKeyHttpFunctions(
                 generated.Id,
                 name,
                 generated.Plaintext,
-                generated.CreatedAt));
+                generated.CreatedAt,
+                isTest));
     }
 
     [Function("ListApiKeys")]
@@ -86,9 +88,11 @@ public sealed class ApiKeyHttpFunctions(
                 x.Id,
                 x.Name,
                 x.MaskedKey,
+                x.IsTest,
                 x.LastUsedAt,
                 x.CreatedAt,
                 x.RevokedAt,
+                x.WebhookUrl,
                 x.Last30dUsage))
             .ToArray();
 
@@ -122,7 +126,8 @@ public sealed class ApiKeyHttpFunctions(
                     rotated.Id,
                     rotated.Name,
                     rotated.Plaintext,
-                    rotated.CreatedAt));
+                    rotated.CreatedAt,
+                    rotated.IsTest));
     }
 
     [Function("RevokeApiKey")]
@@ -147,6 +152,70 @@ public sealed class ApiKeyHttpFunctions(
         return revoked ? new NoContentResult() : new NotFoundResult();
     }
 
+    [Function("SetApiKeyWebhook")]
+    public async Task<IActionResult> SetApiKeyWebhook(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "keys/{id:guid}/webhook")]
+        HttpRequest request,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return AuthenticationRequired();
+        }
+
+        ApiKeyWebhookRequest? body;
+        try
+        {
+            body = await ReadWebhookRequestAsync(request, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return InvalidRequest("Request body must be valid JSON.");
+        }
+
+        if (!ApiKeyService.TryNormalizeWebhookUrl(body?.WebhookUrl, out var webhookUrl))
+        {
+            return InvalidRequest("Webhook URL must be an absolute HTTP or HTTPS URL.");
+        }
+
+        var user = await accountService.GetOrCreateUserAsync(
+            authUser.ExternalAuthUserId,
+            authUser.Email,
+            cancellationToken);
+        var updated = await apiKeyService.SetWebhookAsync(user.Id, id, webhookUrl, cancellationToken);
+
+        return updated is null
+            ? new NotFoundResult()
+            : new OkObjectResult(new ApiKeyWebhookResponse(
+                updated.Id,
+                updated.WebhookUrl,
+                updated.WebhookSecret));
+    }
+
+    [Function("ClearApiKeyWebhook")]
+    public async Task<IActionResult> ClearApiKeyWebhook(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "keys/{id:guid}/webhook")]
+        HttpRequest request,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return AuthenticationRequired();
+        }
+
+        var user = await accountService.GetOrCreateUserAsync(
+            authUser.ExternalAuthUserId,
+            authUser.Email,
+            cancellationToken);
+        var cleared = await apiKeyService.ClearWebhookAsync(user.Id, id, cancellationToken);
+
+        return cleared ? new NoContentResult() : new NotFoundResult();
+    }
+
     private static async Task<ApiKeyCreateRequest?> ReadCreateRequestAsync(
         HttpRequest request,
         CancellationToken cancellationToken)
@@ -159,6 +228,20 @@ public sealed class ApiKeyHttpFunctions(
         }
 
         return JsonSerializer.Deserialize<ApiKeyCreateRequest>(body, JsonOptions);
+    }
+
+    private static async Task<ApiKeyWebhookRequest?> ReadWebhookRequestAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(request.Body);
+        var body = await reader.ReadToEndAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<ApiKeyWebhookRequest>(body, JsonOptions);
     }
 
     private static IActionResult AuthenticationRequired() =>
@@ -174,19 +257,29 @@ public sealed class ApiKeyHttpFunctions(
             StatusCodes.Status400BadRequest);
 }
 
-public sealed record ApiKeyCreateRequest(string? Name);
+public sealed record ApiKeyCreateRequest(string? Name, bool Test = false);
+
+public sealed record ApiKeyWebhookRequest(string? WebhookUrl);
 
 public sealed record ApiKeyCreateResponse(
     Guid Id,
     string Name,
     string Key,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IsTest);
 
 public sealed record ApiKeyListResponse(
     Guid Id,
     string Name,
     string MaskedKey,
+    bool IsTest,
     DateTimeOffset? LastUsedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset? RevokedAt,
+    string? WebhookUrl,
     ApiUsageCount Last30dUsage);
+
+public sealed record ApiKeyWebhookResponse(
+    Guid Id,
+    string WebhookUrl,
+    string WebhookSecret);

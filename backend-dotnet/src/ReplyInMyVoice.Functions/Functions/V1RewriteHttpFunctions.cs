@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +30,19 @@ public sealed class V1RewriteHttpFunctions(
     private const int MinimumDraftLength = 10;
     private const int MaximumDraftWords = 300;
     private const int MaximumDraftCharacters = 2400;
+    private const string SandboxAttemptPrefix = "test:";
+    private const string SandboxUsagePeriodKey = "test:sandbox";
+    private const string SandboxResultJson = """
+        {
+          "rewrittenText": "Sandbox example: thanks for the update. I will review the details and follow up shortly.",
+          "changeSummary": [],
+          "riskNotes": [],
+          "naturalness": {
+            "draftAiLikePercent": 76,
+            "rewriteAiLikePercent": 18
+          }
+        }
+        """;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -112,6 +127,36 @@ public sealed class V1RewriteHttpFunctions(
         if (string.IsNullOrWhiteSpace(idempotencyKey))
         {
             idempotencyKey = Guid.NewGuid().ToString("D");
+        }
+
+        if (auth.IsTest)
+        {
+            var sandboxResult = await CreateSandboxAttemptAsync(
+                user.Id,
+                auth.ApiKeyId!.Value,
+                idempotencyKey,
+                draft,
+                now,
+                cancellationToken);
+
+            if (sandboxResult.IsConflict)
+            {
+                return await CompleteAsync(
+                    Error("idempotency_conflict", "The idempotency key was reused with a different draft.", StatusCodes.Status409Conflict),
+                    StatusCodes.Status409Conflict,
+                    sandboxResult.AttemptId.ToString());
+            }
+
+            return await CompleteAsync(
+                FunctionHttpResults.Accepted(
+                    $"/api/v1/rewrite/{sandboxResult.AttemptId}",
+                    new
+                    {
+                        id = sandboxResult.AttemptId,
+                        status = "processing",
+                    }),
+                StatusCodes.Status202Accepted,
+                sandboxResult.AttemptId.ToString());
         }
 
         var rewriteRequest = new RewriteRequest(
@@ -236,7 +281,7 @@ public sealed class V1RewriteHttpFunctions(
                 x => x.Id == id && x.UserId == auth.UserId.Value,
                 cancellationToken);
 
-        if (attempt is null)
+        if (attempt is null || (auth.IsTest && !IsSandboxAttempt(attempt)))
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
@@ -308,6 +353,26 @@ public sealed class V1RewriteHttpFunctions(
                     StatusCodes.Status429TooManyRequests,
                     "rate_limited"),
                 StatusCodes.Status429TooManyRequests,
+                stopwatch,
+                now,
+                cancellationToken,
+                UsageEndpointName,
+                response: request.HttpContext.Response,
+                rateLimitWindow: rateLimitWindow);
+        }
+
+        if (auth.IsTest)
+        {
+            return await CompleteWithUsageAsync(
+                auth.ApiKeyId,
+                new OkObjectResult(new V1UsageResponse(
+                    "test",
+                    SandboxUsagePeriodKey,
+                    0,
+                    0,
+                    0,
+                    null)),
+                StatusCodes.Status200OK,
                 stopwatch,
                 now,
                 cancellationToken,
@@ -400,6 +465,70 @@ public sealed class V1RewriteHttpFunctions(
                 message = FailureMessage(attempt),
             },
         });
+    }
+
+    private async Task<SandboxAttemptResult> CreateSandboxAttemptAsync(
+        Guid userId,
+        Guid apiKeyId,
+        string idempotencyKey,
+        string draft,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var sandboxIdempotencyKey = BuildSandboxIdempotencyKey(apiKeyId, idempotencyKey);
+        var requestHash = ComputeSha256(draft);
+        var existingAttempt = await db.RewriteAttempts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.UserId == userId && x.IdempotencyKey == sandboxIdempotencyKey,
+                cancellationToken);
+
+        if (existingAttempt is not null)
+        {
+            return string.Equals(existingAttempt.RequestHash, requestHash, StringComparison.Ordinal)
+                ? new SandboxAttemptResult(existingAttempt.Id, IsConflict: false)
+                : new SandboxAttemptResult(existingAttempt.Id, IsConflict: true);
+        }
+
+        var rewriteRequest = new RewriteRequest(
+            null,
+            draft,
+            null,
+            null,
+            null,
+            null,
+            "warm");
+        var attempt = new RewriteAttempt
+        {
+            UserId = userId,
+            IdempotencyKey = sandboxIdempotencyKey,
+            RequestHash = requestHash,
+            RequestJson = JsonSerializer.Serialize(rewriteRequest),
+            Status = RewriteAttemptStatus.Succeeded,
+            ResultJson = SandboxResultJson,
+            CreatedAt = now,
+            CompletedAt = now,
+            ExpiresAt = now.AddMinutes(15),
+        };
+
+        db.RewriteAttempts.Add(attempt);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return new SandboxAttemptResult(attempt.Id, IsConflict: false);
+    }
+
+    private static bool IsSandboxAttempt(RewriteAttempt attempt) =>
+        attempt.Status == RewriteAttemptStatus.Succeeded &&
+        attempt.IdempotencyKey.StartsWith(SandboxAttemptPrefix, StringComparison.Ordinal) &&
+        string.Equals(attempt.ResultJson, SandboxResultJson, StringComparison.Ordinal);
+
+    private static string BuildSandboxIdempotencyKey(Guid apiKeyId, string idempotencyKey) =>
+        string.Concat(SandboxAttemptPrefix, apiKeyId.ToString("N"), ":", ComputeSha256(idempotencyKey));
+
+    private static string ComputeSha256(string value)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private static bool TryReadSucceededResult(
@@ -635,6 +764,8 @@ public sealed class V1RewriteHttpFunctions(
     {
         public string? Draft { get; set; }
     }
+
+    private sealed record SandboxAttemptResult(Guid AttemptId, bool IsConflict);
 }
 
 public sealed record V1UsageResponse(

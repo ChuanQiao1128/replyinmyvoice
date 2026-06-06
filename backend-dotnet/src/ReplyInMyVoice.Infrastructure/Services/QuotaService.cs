@@ -11,7 +11,8 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class QuotaService(
     Func<AppDbContext> dbContextFactory,
-    ILogger<QuotaService>? logger = null)
+    ILogger<QuotaService>? logger = null,
+    IWebhookDeliveryEnqueuer? webhookDeliveryEnqueuer = null)
 {
     private const int ExpiredReservationSweepBatchSize = 500;
     private const int ReservationRaceMaxAttempts = 3;
@@ -200,7 +201,7 @@ public sealed class QuotaService(
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        await ExecuteInTransactionAsync(async db =>
+        var transitioned = await ExecuteInTransactionAsync(async db =>
         {
             var attempt = await db.RewriteAttempts
                 .AsTracking()
@@ -219,13 +220,13 @@ public sealed class QuotaService(
             if (attempt.Status == RewriteAttemptStatus.Succeeded &&
                 reservation.Status == UsageReservationStatus.Finalized)
             {
-                return;
+                return false;
             }
 
             if (reservation.Status != UsageReservationStatus.Pending ||
                 attempt.Status is RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired)
             {
-                return;
+                return false;
             }
 
             if (reservation.Status == UsageReservationStatus.Pending)
@@ -250,7 +251,13 @@ public sealed class QuotaService(
             attempt.RowVersion = Guid.NewGuid();
 
             await db.SaveChangesAsync(cancellationToken);
+            return true;
         }, cancellationToken);
+
+        if (transitioned)
+        {
+            await TryEnqueueWebhookDeliveryAsync(attemptId, now, cancellationToken);
+        }
     }
 
     public async Task<bool> MarkProcessingAsync(
@@ -340,6 +347,10 @@ public sealed class QuotaService(
         }, cancellationToken);
 
         LogReservationRelease(releaseLog);
+        if (releaseLog.AttemptTransitioned)
+        {
+            await TryEnqueueWebhookDeliveryAsync(attemptId, now, cancellationToken);
+        }
     }
 
     public async Task<int> ReleaseExpiredReservationsAsync(
@@ -409,6 +420,10 @@ public sealed class QuotaService(
             foreach (var releaseLog in releaseLogs)
             {
                 LogReservationRelease(releaseLog);
+                if (releaseLog.AttemptTransitioned)
+                {
+                    await TryEnqueueWebhookDeliveryAsync(releaseLog.AttemptId, now, cancellationToken);
+                }
             }
 
             releasedCount += releaseLogs.Count;
@@ -473,6 +488,32 @@ public sealed class QuotaService(
             releaseLog.ReservationReleased,
             releaseLog.AttemptTransitioned,
             releaseLog.ReservationSource);
+    }
+
+    private async Task TryEnqueueWebhookDeliveryAsync(
+        Guid attemptId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (webhookDeliveryEnqueuer is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await webhookDeliveryEnqueuer.EnqueueForTerminalAttemptAsync(
+                attemptId,
+                now,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogWarning(
+                ex,
+                "Webhook delivery enqueue failed for attempt {AttemptId}; rewrite state was already finalized.",
+                attemptId);
+        }
     }
 
     private async Task<TResult> ExecuteInTransactionAsync<TResult>(

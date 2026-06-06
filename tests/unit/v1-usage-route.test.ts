@@ -6,9 +6,20 @@ const { azureApiMock } = vi.hoisted(() => ({
   },
 }));
 
+const { apiObservabilityMock } = vi.hoisted(() => ({
+  apiObservabilityMock: {
+    captureApiEvent: vi.fn(),
+  },
+}));
+
 vi.mock("../../lib/azure-api", () => azureApiMock);
+vi.mock("../../lib/api-observability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/api-observability")>()),
+  captureApiEvent: apiObservabilityMock.captureApiEvent,
+}));
 
 import { GET, dynamic } from "../../app/api/v1/usage/route";
+import { captureApiEvent } from "../../lib/api-observability";
 import { getAzureApiBaseUrl } from "../../lib/azure-api";
 
 const appUrl = "https://replyinmyvoice.com";
@@ -31,6 +42,7 @@ function request(origin = "https://client.example.test") {
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
+  vi.mocked(captureApiEvent).mockReset().mockResolvedValue([]);
   vi.mocked(getAzureApiBaseUrl).mockReset().mockReturnValue(azureUrl);
 });
 
@@ -76,14 +88,34 @@ describe("/api/v1/usage proxy route", () => {
         Authorization: apiAuthorization,
       },
     });
+    expect(captureApiEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: "GET /api/v1/usage",
+        latencyMs: expect.any(Number),
+        statusCode: 200,
+      }),
+    );
   });
 
   it("does not require the caller to be same-origin", async () => {
-    fetchMock().mockResolvedValueOnce(Response.json({ error: "invalid_key" }, { status: 401 }));
+    fetchMock().mockResolvedValueOnce(
+      Response.json(
+        { error: { code: "invalid_key", message: "A valid API key is required." } },
+        { status: 401 },
+      ),
+    );
 
     const response = await GET(request("https://external-client.example.test"));
 
     expect(response.status).toBe(401);
     expect(fetchMock()).toHaveBeenCalledTimes(1);
+    expect(captureApiEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: "GET /api/v1/usage",
+        errorCode: "invalid_key",
+        latencyMs: expect.any(Number),
+        statusCode: 401,
+      }),
+    );
   });
 });

@@ -11,9 +11,9 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class ApiKeyService
 {
-    private const string KeyPrefix = "rmv_live_";
+    private const string LiveKeyPrefix = "rmv_live_";
+    private const string TestKeyPrefix = "rmv_test_";
     private const string Base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    private static readonly string MaskPrefix = $"{KeyPrefix}\u2022\u2022\u2022\u2022";
     private static int s_missingPepperWarningLogged;
     private static ILogger<ApiKeyService>? s_logger;
 
@@ -59,9 +59,10 @@ public sealed class ApiKeyService
     public async Task<(Guid Id, string Plaintext, DateTimeOffset CreatedAt)> GenerateAsync(
         Guid userId,
         string name,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isTest = false)
     {
-        var plaintext = GeneratePlaintext();
+        var plaintext = GeneratePlaintext(isTest);
         var now = DateTimeOffset.UtcNow;
         var apiKey = new ApiKey
         {
@@ -69,6 +70,7 @@ public sealed class ApiKeyService
             Name = name,
             KeyHash = ComputeHash(plaintext),
             Last4 = plaintext[^4..],
+            IsTest = isTest,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -94,9 +96,11 @@ public sealed class ApiKeyService
                 x.Id,
                 x.Name,
                 x.Last4,
+                x.IsTest,
                 x.LastUsedAt,
                 x.CreatedAt,
                 x.RevokedAt,
+                x.WebhookUrl,
             })
             .ToListAsync(cancellationToken);
         var keyIds = rows.Select(x => x.Id).ToArray();
@@ -143,10 +147,12 @@ public sealed class ApiKeyService
             .Select(x => new ApiKeySummary(
                 x.Id,
                 x.Name,
-                MaskKey(x.Last4),
+                MaskKey(x.Last4, x.IsTest),
+                x.IsTest,
                 x.LastUsedAt,
                 x.CreatedAt,
                 x.RevokedAt,
+                x.WebhookUrl,
                 usageByKeyId.GetValueOrDefault(x.Id, new ApiUsageCount(0, 0, 0))))
             .ToList();
     }
@@ -168,7 +174,7 @@ public sealed class ApiKeyService
             return null;
         }
 
-        var plaintext = GeneratePlaintext();
+        var plaintext = GeneratePlaintext(apiKey.IsTest);
         var now = DateTimeOffset.UtcNow;
         apiKey.RevokedAt = now;
         apiKey.UpdatedAt = now;
@@ -180,10 +186,13 @@ public sealed class ApiKeyService
             Name = apiKey.Name,
             KeyHash = ComputeHash(plaintext),
             Last4 = plaintext[^4..],
+            IsTest = apiKey.IsTest,
             PlanTier = apiKey.PlanTier,
             Scope = apiKey.Scope,
             RateLimitPerMinute = apiKey.RateLimitPerMinute,
             MonthlyQuota = apiKey.MonthlyQuota,
+            WebhookUrl = apiKey.WebhookUrl,
+            WebhookSecret = apiKey.WebhookSecret,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -194,7 +203,8 @@ public sealed class ApiKeyService
             replacement.Id,
             replacement.Name,
             plaintext,
-            replacement.CreatedAt);
+            replacement.CreatedAt,
+            replacement.IsTest);
     }
 
     public async Task<bool> RevokeAsync(
@@ -225,11 +235,100 @@ public sealed class ApiKeyService
         return true;
     }
 
-    private static string GeneratePlaintext()
+    public async Task<ApiKeyWebhookResult?> SetWebhookAsync(
+        Guid userId,
+        Guid keyId,
+        string webhookUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!TryNormalizeWebhookUrl(webhookUrl, out var normalizedUrl))
+        {
+            throw new ArgumentException("Webhook URL must be an absolute HTTP or HTTPS URL.", nameof(webhookUrl));
+        }
+
+        await using var db = _dbContextFactory();
+        var apiKey = await db.ApiKeys
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == keyId && x.UserId == userId,
+                cancellationToken);
+
+        if (apiKey is null || apiKey.RevokedAt is not null)
+        {
+            return null;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var webhookSecret = GenerateWebhookSecret();
+        apiKey.WebhookUrl = normalizedUrl;
+        apiKey.WebhookSecret = webhookSecret;
+        apiKey.UpdatedAt = now;
+        apiKey.RowVersion = Guid.NewGuid();
+        await db.SaveChangesAsync(cancellationToken);
+
+        return new ApiKeyWebhookResult(apiKey.Id, normalizedUrl, webhookSecret);
+    }
+
+    public async Task<bool> ClearWebhookAsync(
+        Guid userId,
+        Guid keyId,
+        CancellationToken cancellationToken)
+    {
+        await using var db = _dbContextFactory();
+        var apiKey = await db.ApiKeys
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == keyId && x.UserId == userId,
+                cancellationToken);
+
+        if (apiKey is null)
+        {
+            return false;
+        }
+
+        if (apiKey.WebhookUrl is not null || apiKey.WebhookSecret is not null)
+        {
+            apiKey.WebhookUrl = null;
+            apiKey.WebhookSecret = null;
+            apiKey.UpdatedAt = DateTimeOffset.UtcNow;
+            apiKey.RowVersion = Guid.NewGuid();
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return true;
+    }
+
+    private static string GeneratePlaintext(bool isTest)
     {
         Span<byte> randomBytes = stackalloc byte[32];
         RandomNumberGenerator.Fill(randomBytes);
-        return KeyPrefix + ToBase62(randomBytes);
+        return (isTest ? TestKeyPrefix : LiveKeyPrefix) + ToBase62(randomBytes);
+    }
+
+    public static bool TryNormalizeWebhookUrl(string? value, out string normalizedUrl)
+    {
+        normalizedUrl = string.Empty;
+        var trimmed = value?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.Length > 2048)
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return false;
+        }
+
+        normalizedUrl = uri.ToString();
+        return true;
+    }
+
+    private static string GenerateWebhookSecret()
+    {
+        Span<byte> randomBytes = stackalloc byte[32];
+        RandomNumberGenerator.Fill(randomBytes);
+        return Convert.ToHexString(randomBytes).ToLowerInvariant();
     }
 
     private static string ToBase62(ReadOnlySpan<byte> bytes)
@@ -251,20 +350,29 @@ public sealed class ApiKeyService
         return new string(buffer[position..]);
     }
 
-    private static string MaskKey(string? last4) => string.Concat(MaskPrefix, last4 ?? string.Empty);
+    private static string MaskKey(string? last4, bool isTest) =>
+        string.Concat(isTest ? TestKeyPrefix : LiveKeyPrefix, "\u2022\u2022\u2022\u2022", last4 ?? string.Empty);
 }
 
 public sealed record ApiKeySummary(
     Guid Id,
     string Name,
     string MaskedKey,
+    bool IsTest,
     DateTimeOffset? LastUsedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset? RevokedAt,
+    string? WebhookUrl,
     ApiUsageCount Last30dUsage);
 
 public sealed record ApiKeyRotationResult(
     Guid Id,
     string Name,
     string Plaintext,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool IsTest);
+
+public sealed record ApiKeyWebhookResult(
+    Guid Id,
+    string WebhookUrl,
+    string WebhookSecret);

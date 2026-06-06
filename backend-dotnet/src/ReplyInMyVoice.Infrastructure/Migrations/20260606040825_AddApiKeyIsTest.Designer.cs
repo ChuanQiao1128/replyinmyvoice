@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ReplyInMyVoice.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using ReplyInMyVoice.Infrastructure.Data;
 namespace ReplyInMyVoice.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260606040825_AddApiKeyIsTest")]
+    partial class AddApiKeyIsTest
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -130,14 +133,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("WebhookSecret")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("WebhookUrl")
-                        .HasMaxLength(2048)
-                        .HasColumnType("nvarchar(2048)");
 
                     b.HasKey("Id");
 
@@ -1586,75 +1581,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.ToTable("UsageReservations");
                 });
 
-            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.WebhookDelivery", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("ApiKeyId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("AttemptCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset?>("DeliveredAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset?>("LastAttemptAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("LastError")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("LockedBy")
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
-                    b.Property<DateTimeOffset?>("LockedUntil")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("MaxAttempts")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("NextAttemptAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("RewriteAttemptId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("RowVersion")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("Url")
-                        .IsRequired()
-                        .HasMaxLength(2048)
-                        .HasColumnType("nvarchar(2048)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RewriteAttemptId");
-
-                    b.HasIndex("ApiKeyId", "RewriteAttemptId")
-                        .IsUnique();
-
-                    b.HasIndex("Status", "LockedUntil");
-
-                    b.HasIndex("Status", "NextAttemptAt");
-
-                    b.ToTable("WebhookDeliveries");
-                });
-
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.ApiKey", b =>
                 {
                     b.HasOne("ReplyInMyVoice.Domain.Entities.AppUser", "User")
@@ -1849,30 +1775,9 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.WebhookDelivery", b =>
-                {
-                    b.HasOne("ReplyInMyVoice.Domain.Entities.ApiKey", "ApiKey")
-                        .WithMany("WebhookDeliveries")
-                        .HasForeignKey("ApiKeyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("ReplyInMyVoice.Domain.Entities.RewriteAttempt", "RewriteAttempt")
-                        .WithMany()
-                        .HasForeignKey("RewriteAttemptId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ApiKey");
-
-                    b.Navigation("RewriteAttempt");
-                });
-
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.ApiKey", b =>
                 {
                     b.Navigation("ApiKeyUsages");
-
-                    b.Navigation("WebhookDeliveries");
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.AppUser", b =>

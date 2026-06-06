@@ -15,6 +15,10 @@ vi.mock("../../lib/entra-auth", () => entraAuthMock);
 import { GET, POST, dynamic } from "../../app/api/keys/route";
 import { DELETE } from "../../app/api/keys/[id]/route";
 import { POST as ROTATE } from "../../app/api/keys/[id]/rotate/route";
+import {
+  DELETE as CLEAR_WEBHOOK,
+  POST as WEBHOOK,
+} from "../../app/api/keys/[id]/webhook/route";
 import { getAzureApiBaseUrl } from "../../lib/azure-api";
 import { getCurrentAccessToken } from "../../lib/entra-auth";
 
@@ -90,12 +94,13 @@ describe("/api/keys proxy routes", () => {
   });
 
   it("forwards same-origin key creation with the current bearer value", async () => {
-    const createPayload = { name: "Server key" };
+    const createPayload = { name: "Sandbox client", test: true };
     const azureBody = {
       createdAt: "2026-06-04T00:00:00Z",
       id: keyId,
-      key: "rmv_live_plaintext_once",
-      name: "Server key",
+      isTest: true,
+      key: "rmv_test_plaintext_once",
+      name: "Sandbox client",
     };
     fetchMock().mockResolvedValueOnce(Response.json(azureBody, { status: 201 }));
 
@@ -174,6 +179,58 @@ describe("/api/keys proxy routes", () => {
           Authorization: `Bearer ${accessValue}`,
         },
         method: "POST",
+      },
+    );
+  });
+
+  it("forwards same-origin webhook updates with the current bearer value", async () => {
+    const payload = { webhookUrl: "https://listener.example.test/rewrite" };
+    const azureBody = {
+      id: keyId,
+      webhookSecret: "unit-webhook-signing-value",
+      webhookUrl: payload.webhookUrl,
+    };
+    fetchMock().mockResolvedValueOnce(Response.json(azureBody, { status: 200 }));
+
+    const response = await WEBHOOK(
+      request(`/api/keys/${keyId}/webhook`, "POST", payload),
+      context(),
+    );
+
+    await expect(response.json()).resolves.toEqual(azureBody);
+    expect(response.status).toBe(200);
+    expect(fetchMock()).toHaveBeenCalledWith(
+      `${azureUrl}/api/keys/${keyId}/webhook`,
+      {
+        body: JSON.stringify(payload),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessValue}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+  });
+
+  it("forwards same-origin webhook clear requests with the current bearer value", async () => {
+    fetchMock().mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    const response = await CLEAR_WEBHOOK(
+      request(`/api/keys/${keyId}/webhook`, "DELETE"),
+      context(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(fetchMock()).toHaveBeenCalledWith(
+      `${azureUrl}/api/keys/${keyId}/webhook`,
+      {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessValue}`,
+        },
+        method: "DELETE",
       },
     );
   });
