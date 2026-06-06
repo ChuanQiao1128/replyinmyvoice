@@ -1,7 +1,12 @@
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using System.Data.Common;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -84,8 +89,95 @@ public sealed class ApiKeyUsageQueryServiceTests
         recent.Select(x => x.CreatedAt).Should().BeInDescendingOrder();
     }
 
+    [Fact]
+    public async Task Summary_and_series_queries_bound_usage_rows_by_window_start_and_clamp_days()
+    {
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var commands = new CommandCaptureInterceptor();
+
+        AppDbContext CreateContext()
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite(connection)
+                .AddInterceptors(commands)
+                .Options;
+            return new AppDbContext(options);
+        }
+
+        var now = DateTimeOffset.Parse("2026-06-05T12:00:00+12:00");
+        var user = new AppUser
+        {
+            ExternalAuthUserId = "clerk_usage_window",
+            Email = "usage-window@example.com",
+            SubscriptionStatus = SubscriptionStatus.Inactive,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        await using (var db = CreateContext())
+        {
+            await db.Database.EnsureCreatedAsync();
+            db.AppUsers.Add(user);
+            var key = AddKey(db, user.Id, "window key", "3333", now);
+            db.ApiKeyUsages.AddRange(
+                Usage(key.Id, "req-window-today", "/api/v1/rewrite", 200, 100, now),
+                Usage(key.Id, "req-window-old", "/api/v1/rewrite", 200, 100, now.AddDays(-100)));
+            await db.SaveChangesAsync();
+        }
+
+        var accountService = new AccountService(
+            CreateContext,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["FREE_BASELINE_REWRITES"] = "3",
+                })
+                .Build());
+        var service = new ApiKeyUsageQueryService(CreateContext, accountService);
+
+        commands.Clear();
+        var summary = await service.GetSummaryAsync(
+            user.ExternalAuthUserId,
+            user.Email,
+            now,
+            CancellationToken.None);
+        var series = await service.GetSeriesAsync(user.Id, now, 999, CancellationToken.None);
+
+        summary.Last30dCalls.Should().Be(1);
+        series.Should().HaveCount(90);
+        series.Sum(x => x.Calls).Should().Be(1);
+        commands.CommandTexts.Should().Contain(commandText => HasApiUsageCreatedAtLowerBound(commandText));
+    }
+
+    [Fact]
+    public async Task Recent_query_ignores_rows_outside_default_window()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = fixture.CreateContext())
+        {
+            var key = AddKey(db, user.Id, "recent key", "4444", now);
+            db.ApiKeyUsages.AddRange(
+                Usage(key.Id, "req-recent-current", "/api/v1/rewrite", 200, 100, now.AddMinutes(-1)),
+                Usage(key.Id, "req-recent-old", "/api/v1/rewrite", 200, 100, now.AddDays(-100)));
+            await db.SaveChangesAsync();
+        }
+
+        var accountService = new AccountService(fixture.CreateContext);
+        var service = new ApiKeyUsageQueryService(fixture.CreateContext, accountService);
+
+        var recent = await service.GetRecentAsync(user.Id, 10, CancellationToken.None);
+
+        var item = recent.Should().ContainSingle().Subject;
+        item.Endpoint.Should().Be("/api/v1/rewrite");
+        item.CreatedAt.Should().BeAfter(now.AddDays(-2));
+    }
+
     private static ApiKey AddKey(
-        ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
+        AppDbContext db,
         Guid userId,
         string name,
         string last4,
@@ -120,4 +212,37 @@ public sealed class ApiKeyUsageQueryServiceTests
             LatencyMs = latencyMs,
             CreatedAt = createdAt,
         };
+
+    private static bool HasApiUsageCreatedAtLowerBound(string commandText) =>
+        commandText.Contains("ApiKeyUsages", StringComparison.Ordinal) &&
+        commandText.Contains("CreatedAt", StringComparison.Ordinal) &&
+        commandText.Contains(">=", StringComparison.Ordinal);
+
+    private sealed class CommandCaptureInterceptor : DbCommandInterceptor
+    {
+        private readonly List<string> _commandTexts = new();
+
+        public IReadOnlyList<string> CommandTexts => _commandTexts;
+
+        public void Clear() => _commandTexts.Clear();
+
+        public override InterceptionResult<DbDataReader> ReaderExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result)
+        {
+            _commandTexts.Add(command.CommandText);
+            return base.ReaderExecuting(command, eventData, result);
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            _commandTexts.Add(command.CommandText);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
 }

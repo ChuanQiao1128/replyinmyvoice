@@ -467,7 +467,7 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
             x => x.Id == id && x.UserId == auth.UserId.Value,
             cancellationToken);
 
-    if (attempt is null || (auth.IsTest && !IsV1SandboxAttempt(attempt)))
+    if (attempt is null || IsV1SandboxAttempt(attempt) != auth.IsTest)
     {
         return await CompleteV1Async(
             db,

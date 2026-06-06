@@ -48,7 +48,12 @@ public sealed class ApiUsageHttpFunctions(
             authUser.ExternalAuthUserId,
             authUser.Email,
             cancellationToken);
-        var days = ParsePositiveQueryInt(request, "days", 30);
+        var days = ParseBoundedQueryInt(
+            request,
+            "days",
+            30,
+            1,
+            ApiKeyUsageQueryService.MaxUsageWindowDays);
         var series = await apiKeyUsageQueryService.GetSeriesAsync(
             account.Id,
             days,
@@ -88,6 +93,19 @@ public sealed class ApiUsageHttpFunctions(
         var rawValue = request.Query[name].ToString();
         return int.TryParse(rawValue, out var parsed) && parsed > 0
             ? parsed
+            : defaultValue;
+    }
+
+    private static int ParseBoundedQueryInt(
+        HttpRequest request,
+        string name,
+        int defaultValue,
+        int minValue,
+        int maxValue)
+    {
+        var rawValue = request.Query[name].ToString();
+        return int.TryParse(rawValue, out var parsed)
+            ? Math.Clamp(parsed, minValue, maxValue)
             : defaultValue;
     }
 

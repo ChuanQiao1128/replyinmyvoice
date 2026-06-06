@@ -92,6 +92,8 @@ public sealed class AccountService(
             .ToList();
         var creditRemaining = activeCredits
             .Sum(x => Math.Max(x.AmountGranted - x.AmountConsumed, 0));
+        var creditUsed = activeCredits
+            .Sum(x => Math.Max(x.AmountConsumed, 0));
         var activePromoCredits = activeCredits
             .Where(x => x.Source == "PROMO")
             .ToList();
@@ -125,6 +127,8 @@ public sealed class AccountService(
             now <= x.ValidUntil &&
             (x.MaxRedemptionsGlobal is null || x.RedemptionCount < x.MaxRedemptionsGlobal));
         var remaining = periodRemaining + creditRemaining;
+        var totalUsed = used + creditUsed;
+        var quota = totalUsed + reserved + remaining;
         var sources = new List<AccountUsageSource>
         {
             new(
@@ -160,8 +164,8 @@ public sealed class AccountService(
             new AccountUsageSummary(
                 usagePlan.Scope,
                 usagePlan.PeriodKey,
-                usagePlan.QuotaLimit + creditRemaining,
-                used,
+                quota,
+                totalUsed,
                 reserved,
                 remaining,
                 remaining <= 0)

@@ -96,6 +96,27 @@ public sealed class ApiUsageHttpFunctionsTests
         item.KeyLast4.Should().Be("1111");
     }
 
+    [Fact]
+    public async Task Usage_series_clamps_days_query_to_supported_window()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var functions = CreateFunctions(fixture.CreateContext);
+
+        var tooLargeResult = await functions.GetApiUsageSeries(
+            CreateRequest("entra-usage-window", "usage-window@example.com", "?days=500"),
+            CancellationToken.None);
+        var zeroResult = await functions.GetApiUsageSeries(
+            CreateRequest("entra-usage-window", "usage-window@example.com", "?days=0"),
+            CancellationToken.None);
+
+        var tooLargeSeries = tooLargeResult.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeAssignableTo<IReadOnlyList<ApiUsageSeriesPoint>>().Subject;
+        var zeroSeries = zeroResult.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeAssignableTo<IReadOnlyList<ApiUsageSeriesPoint>>().Subject;
+        tooLargeSeries.Should().HaveCount(90);
+        zeroSeries.Should().ContainSingle();
+    }
+
     private static ApiUsageHttpFunctions CreateFunctions(Func<AppDbContext> createContext)
     {
         var accountService = new AccountService(createContext);

@@ -651,6 +651,47 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task V1_rewrite_result_returns_not_found_for_same_user_attempt_in_other_key_environment()
+    {
+        var (user, liveToken) = await SeedApiKeyUserAsync(
+            "clerk_v1_result_environment",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        var testToken = await SeedApiKeyForExistingUserAsync(
+            user.Id,
+            "rmv_test_clerk_v1_result_environment_token",
+            isTest: true);
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var sandboxSubmit = await PostV1RewriteAsync(
+            client,
+            testToken,
+            "v1-result-environment-sandbox",
+            ValidV1Draft());
+        var liveSubmit = await PostV1RewriteAsync(
+            client,
+            liveToken,
+            "v1-result-environment-live",
+            ValidV1Draft());
+        var sandboxBody = await sandboxSubmit.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        var liveBody = await liveSubmit.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+
+        sandboxSubmit.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        liveSubmit.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        sandboxBody.Should().NotBeNull();
+        liveBody.Should().NotBeNull();
+
+        var liveReadsSandbox = await GetV1RewriteResultAsync(client, liveToken, sandboxBody!.Id);
+        var testReadsLive = await GetV1RewriteResultAsync(client, testToken, liveBody!.Id);
+
+        liveReadsSandbox.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await AssertErrorCodeAsync(liveReadsSandbox, "not_found");
+        testReadsLive.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await AssertErrorCodeAsync(testReadsLive, "not_found");
+    }
+
+    [Fact]
     public async Task V1_rewrite_result_writes_api_key_usage_row()
     {
         var (user, token) = await SeedApiKeyUserAsync(
@@ -1215,6 +1256,39 @@ public sealed class RewriteApiTests : IAsyncLifetime
         }
         await db.SaveChangesAsync();
         return (user, token);
+    }
+
+    private async Task<string> SeedApiKeyForExistingUserAsync(Guid userId, string token, bool isTest)
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestApiKeyPepper);
+        var now = DateTimeOffset.UtcNow;
+        await using var db = CreateContext();
+        var seenHashes = new HashSet<string>(StringComparer.Ordinal);
+        var keyIndex = 0;
+        foreach (var pepper in ApiKeyPepperVariants)
+        {
+            var keyHash = ComputeApiKeyHash(token, pepper);
+            if (!seenHashes.Add(keyHash))
+            {
+                continue;
+            }
+
+            db.ApiKeys.Add(new ApiKey
+            {
+                UserId = userId,
+                Name = keyIndex == 0 ? "Additional V1 key" : $"Additional V1 key {keyIndex}",
+                KeyHash = keyHash,
+                Last4 = token[^4..],
+                IsTest = isTest,
+                RateLimitPerMinute = 60,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            keyIndex += 1;
+        }
+
+        await db.SaveChangesAsync();
+        return token;
     }
 
     private async Task<RewriteAttempt> SeedV1AttemptAsync(

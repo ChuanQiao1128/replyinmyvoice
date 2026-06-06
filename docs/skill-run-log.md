@@ -3945,3 +3945,39 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: Fresh `cd backend-dotnet && dotnet test` passed 566/566. `git diff --check` passed. Changed-file blocked-copy scan returned no matches. `git status --short` showed only the six RFX-01 modified files.
 - Limitations: Local commit creation failed because the git worktree index lock is outside the writable sandbox at `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-562/index.lock`.
+
+### 2026-06-06 - state-machine-modeling - RFX-02 usage accounting and v1 result environment boundary
+
+- Agent: Codex worker
+- Trigger: GitHub issue #563 / RFX-02 changes quota accounting, usage windows, and v1 attempt result visibility across live and test API key environments.
+- Action: Opened and followed the skill. State list: free period quota, paid period quota, active credit balance, pending period reservation, credit consumed balance, live API key result read, test API key result read. Events: account summary requested, period reservation created/finalized, credit-backed reservation created/released, usage series requested, recent usage requested, v1 result polled. Transition table: free/paid period usage contributes to period used/reserved; active credit consumption contributes to aggregate used and credit remaining; series/recent queries enter a bounded `1..90` day window; live result reads can see only live attempts; test result reads can see only test attempts. Invariants: `quota - used - reserved == remaining`; remaining never negative; credit remaining is preserved when old period usage exists; cross-environment result reads return not found.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageQueryService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; related xUnit tests.
+- Verification evidence: Focused backend filter for `AccountServiceTests|ApiKeyUsageQueryServiceTests|ApiUsageHttpFunctionsTests|RewriteApiTests` passed 58/58. Full `cd backend-dotnet && dotnet test` passed 571/571. `npm run typecheck` passed.
+- Limitations: Credit reservations are still represented by the existing `RewriteCredit.AmountConsumed` model; no schema change was made.
+
+### 2026-06-06 - data-module-review - RFX-02 usage counters and API usage query bounds
+
+- Agent: Codex worker
+- Trigger: RFX-02 changes usage counters, credit accounting, EF query shape, and API key usage persistence reads.
+- Action: Opened and followed the skill; reviewed `AccountService`, `QuotaService`, `ApiKeyUsageQueryService`, `ApiKeyUsage`, `ApiKey`, and existing SQLite test fixtures together. Findings: no migration required; aggregate account usage could be made coherent without changing the response contract; SQLite cannot translate `DateTimeOffset` lower-bound LINQ filters, so the bounded usage read uses parameterized SQL for the user/key/date join and composes projections afterward; recent rows are limited to the same 90-day safety window.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageQueryService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminCreditAdjustTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageQueryServiceTests.cs`.
+- Verification evidence: New command-capture xUnit coverage asserts the API usage query includes a `CreatedAt >=` lower bound. Full `cd backend-dotnet && dotnet test` passed 571/571. `git diff --check` passed.
+- Limitations: The query-bound proof is local SQLite/EF coverage plus SQL text capture; no production database query plan was captured.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-02 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: RFX-02 acceptance requires xUnit coverage for usage invariant across free/paid/credit, bounded API usage windows, and live/test result isolation.
+- Action: Opened and followed the project skill plus test-first workflow. Added failing tests first, confirmed red failures for credit aggregate math, unbounded `days`, recent rows outside the window, missing query lower bound, and live-key reads of test attempts. Implemented minimal backend fixes, then updated existing account/admin credit tests to the new coherent aggregate definition.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminCreditAdjustTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageQueryServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiUsageHttpFunctionsTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Red run failed for the intended RFX-02 behaviors before production edits. Focused backend filter passed 58/58 after implementation. Full `cd backend-dotnet && dotnet test` passed 571/571.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.
+
+### 2026-06-06 - verification-before-completion - RFX-02 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #563 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands after implementation before completion claims. Checked full backend tests, frontend typecheck, source-only restricted-copy scan, diff whitespace, and worktree status.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Fresh `cd backend-dotnet && dotnet test` passed 571/571. `npm run typecheck` passed after restoring `node_modules` with `npm ci --cache /private/tmp/rfx-02-563-npm-cache`. Source-only restricted-copy scan over `app components public lib backend-dotnet/src backend-dotnet/tests` returned no matches when excluding generated output. `git diff --check` passed.
+- Limitations: Initial `npm run typecheck` failed because `node_modules` was absent; initial `npm ci` failed on an unwritable supervisor npm cache, so the install was rerun with a writable temp cache. npm also warned this shell uses Node 24 while the project declares Node 22.

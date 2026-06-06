@@ -291,7 +291,7 @@ public sealed class V1RewriteHttpFunctions(
                 x => x.Id == id && x.UserId == auth.UserId.Value,
                 cancellationToken);
 
-        if (attempt is null || (auth.IsTest && !IsSandboxAttempt(attempt)))
+        if (attempt is null || IsSandboxAttempt(attempt) != auth.IsTest)
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
