@@ -4053,3 +4053,57 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: Focused webhook/API key/infrastructure filter passed 34/34. Full `cd backend-dotnet && dotnet test` passed 583/583. Restricted-copy scans over touched files, backend source/tests, and `app components public lib` returned no matches.
 - Limitations: Local commit creation failed because the git worktree index lock is outside the writable sandbox at `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-565/index.lock`. No push, PR, deploy, production database migration, or live webhook call was run.
+
+### 2026-06-06 - system-spec-synthesis - RFX-05 webhook reliability scope
+
+- Agent: Codex worker
+- Trigger: GitHub issue #566 / RFX-05 changes webhook job lifecycle, event contract headers, retry behavior, and EF Core origin persistence.
+- Action: Opened and followed the skill; converted the issue body, RFX-05 brief, AGENTS.md constraints, and cross-review notes into a scoped implementation spec covering context, goals, non-goals, current system, data model, job contract, state handling, security/privacy, rollout, verification, and open questions.
+- Output artifacts: Concise working spec in the session update; implementation checkpoints executed in `WebhookDispatcherService`, `WebhookDeliveryService`, `RewriteAttempt`, `QuotaService`, v1 submit handlers, EF migration, and xUnit coverage.
+- Verification evidence: Focused RFX-05 filter passed 59/59. Full `cd backend-dotnet && dotnet build` passed. Full `cd backend-dotnet && dotnet test` passed 586/586.
+- Limitations: No deployment, push, PR, production database migration, or live webhook call was run.
+
+### 2026-06-06 - state-machine-modeling - RFX-05 webhook delivery lifecycle
+
+- Agent: Codex worker
+- Trigger: RFX-05 adds an in-flight webhook delivery state and terminal poison-row behavior.
+- Action: Opened and followed the skill; modeled `WebhookDelivery` states as `Pending`, `InProgress`, `Delivered`, and `Failed`; transitions are due claim, send success, retryable send failure, max-attempt failure, and stale in-progress recovery after lease expiry. Invariants checked: terminal states are not due-claimed, in-flight rows are not reclaimed during the timer edge, retries clear locks, and poison rows become terminal at the retry limit.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Enums/WebhookDeliveryStatus.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDispatcherService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`.
+- Verification evidence: `DispatchDueAsync_does_not_claim_delivery_again_on_next_timer_tick_while_send_is_running` passed; `DispatchDueAsync_terminalizes_delivery_when_attempt_data_is_missing` passed; focused RFX-05 filter passed 59/59.
+- Limitations: Lease recovery is covered by service-level tests with deterministic fakes; no live receiver was called.
+
+### 2026-06-06 - data-module-review - RFX-05 API key origin persistence
+
+- Agent: Codex worker
+- Trigger: RFX-05 changes EF Core persistence by adding the source API key to `RewriteAttempt` and changing webhook enqueue lookup invariants.
+- Action: Opened and followed the skill; reviewed `RewriteAttempt`, `ApiKey`, `ApiKeyUsage`, `WebhookDelivery`, `UsageReservation`, AppDbContext mappings, generated migration, v1 submit paths, and enqueue service together. Findings addressed: source-of-truth origin must live on the attempt, website attempts keep null origin, webhook delivery FK remains non-cascading, and usage analytics rows are no longer required to enqueue terminal API attempts.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteAttempt.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260606084307_AddRewriteAttemptApiKeyId.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDeliveryService.cs`.
+- Verification evidence: Generated migration adds nullable `RewriteAttempts.ApiKeyId`, `IX_RewriteAttempts_ApiKeyId`, and `FK_RewriteAttempts_ApiKeys_ApiKeyId` with `NoAction`. `FinalizeSuccessAsync_enqueues_webhook_delivery_from_persisted_api_key_id_without_usage_row` passed. Full backend build and tests passed.
+- Limitations: Existing rows are left with null origin and therefore do not enqueue new webhook deliveries retroactively.
+
+### 2026-06-06 - resilience-test-generation - RFX-05 webhook delivery failure matrix
+
+- Agent: Codex worker
+- Trigger: RFX-05 changes webhook timeouts, leases, retry races, poison delivery handling, and signed request replay-bounding.
+- Action: Opened and followed the skill; built deterministic tests for slow receiver in-flight protection, missing required data at max attempts, persisted-origin enqueue without usage analytics, non-API no-enqueue behavior, and timestamp-covered signatures. Implemented serialization/race retry around claim transactions using the same bounded retry style as other persistence race paths.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; dispatcher retry code in `WebhookDispatcherService`.
+- Verification evidence: Initial focused run failed at the missing `InProgress` state. After implementation, focused RFX-05 filter passed 59/59 and full `cd backend-dotnet && dotnet test` passed 586/586.
+- Limitations: Serialization retry is covered by code path and full test suite, not by a SQL Server deadlock harness.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-05 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: RFX-05 acceptance requires xUnit coverage for slow delivery claim behavior, poison terminal state, persisted API key origin, API-only webhook enqueue, and timestamp-covered signing.
+- Action: Opened and followed the skill plus test-first workflow. Added focused xUnit tests before implementation in existing backend test classes, watched the focused run fail on the missing lifecycle state, then implemented the minimum backend changes and reran focused and full backend suites.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter "WebhookDispatcherServiceTests|QuotaServiceTests|RewriteApiTests"` passed 59/59. Full `cd backend-dotnet && dotnet test` passed 586/586. Full `cd backend-dotnet && dotnet build` passed with 0 warnings and 0 errors.
+- Limitations: The EF tooling `migrations list` command timed out while checking database status because no local SQL Server is reachable; the generated migration still compiles and was verified by build/test.
+
+### 2026-06-06 - verification-before-completion - RFX-05 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #566 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked focused RFX-05 xUnit coverage, full backend build, full backend tests, project UI copy scan, and changed-line restricted-copy scan.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Focused RFX-05 filter passed 59/59. `cd backend-dotnet && dotnet build` passed. `cd backend-dotnet && dotnet test` passed 586/586. Restricted-copy scans over `app components public lib` and changed lines returned no matches.
+- Limitations: No push, PR, deploy, production database migration, or live webhook call was run.

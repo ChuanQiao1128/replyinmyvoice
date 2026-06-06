@@ -24,23 +24,15 @@ public sealed class WebhookDeliveryService(
         CancellationToken cancellationToken = default)
     {
         await using var db = dbContextFactory();
-        var requestId = attemptId.ToString();
-        var query = db.ApiKeyUsages
+        var attempt = await db.RewriteAttempts
             .AsNoTracking()
             .Include(x => x.ApiKey)
-            .Where(x => x.RequestId == requestId);
+            .SingleOrDefaultAsync(x => x.Id == attemptId, cancellationToken);
 
-        var usage = db.Database.IsSqlite()
-            ? (await query.ToListAsync(cancellationToken))
-                .OrderBy(x => x.CreatedAt)
-                .FirstOrDefault()
-            : await query
-                .OrderBy(x => x.CreatedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-        if (usage?.ApiKey is null ||
-            string.IsNullOrWhiteSpace(usage.ApiKey.WebhookUrl) ||
-            string.IsNullOrWhiteSpace(usage.ApiKey.WebhookSecret))
+        if (attempt?.ApiKeyId is not { } apiKeyId ||
+            attempt.ApiKey is null ||
+            string.IsNullOrWhiteSpace(attempt.ApiKey.WebhookUrl) ||
+            string.IsNullOrWhiteSpace(attempt.ApiKey.WebhookSecret))
         {
             return;
         }
@@ -48,7 +40,7 @@ public sealed class WebhookDeliveryService(
         var exists = await db.WebhookDeliveries
             .AsNoTracking()
             .AnyAsync(
-                x => x.ApiKeyId == usage.ApiKeyId && x.RewriteAttemptId == attemptId,
+                x => x.ApiKeyId == apiKeyId && x.RewriteAttemptId == attemptId,
                 cancellationToken);
         if (exists)
         {
@@ -57,9 +49,9 @@ public sealed class WebhookDeliveryService(
 
         db.WebhookDeliveries.Add(new WebhookDelivery
         {
-            ApiKeyId = usage.ApiKeyId,
+            ApiKeyId = apiKeyId,
             RewriteAttemptId = attemptId,
-            Url = usage.ApiKey.WebhookUrl,
+            Url = attempt.ApiKey.WebhookUrl,
             Status = WebhookDeliveryStatus.Pending,
             AttemptCount = 0,
             MaxAttempts = 5,
@@ -76,7 +68,7 @@ public sealed class WebhookDeliveryService(
             logger?.LogInformation(
                 "Webhook delivery already exists for attempt {AttemptId} and API key {ApiKeyId}.",
                 attemptId,
-                usage.ApiKeyId);
+                apiKeyId);
         }
     }
 

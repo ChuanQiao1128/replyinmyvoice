@@ -94,6 +94,8 @@ public sealed class RewriteApiTests : IAsyncLifetime
         usage.StatusCode.Should().Be(StatusCodes.Status202Accepted);
         usage.RequestId.Should().Be(body.Id.ToString());
         usage.LatencyMs.Should().BeGreaterThanOrEqualTo(0);
+        var attempt = await db.RewriteAttempts.SingleAsync();
+        GetAttemptApiKeyId(db, attempt).Should().Be(usage.ApiKeyId);
     }
 
     [Fact]
@@ -1373,6 +1375,13 @@ public sealed class RewriteApiTests : IAsyncLifetime
     {
         response.Headers.TryGetValues(name, out var values).Should().BeTrue();
         return values!.Single();
+    }
+
+    private static Guid? GetAttemptApiKeyId(AppDbContext db, RewriteAttempt attempt)
+    {
+        var entityType = db.Model.FindEntityType(typeof(RewriteAttempt));
+        entityType!.FindProperty("ApiKeyId").Should().NotBeNull();
+        return db.Entry(attempt).Property<Guid?>("ApiKeyId").CurrentValue;
     }
 
     private static Task<HttpResponseMessage> PostRewriteAsync(HttpClient client, string idempotencyKey)

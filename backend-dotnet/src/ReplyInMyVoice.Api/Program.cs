@@ -403,7 +403,8 @@ app.MapPost("/api/v1/rewrite", async (
         plan.PeriodKey,
         plan.QuotaLimit,
         now,
-        cancellationToken);
+        cancellationToken,
+        auth.ApiKeyId);
 
     if (result.Kind == ReserveRewriteResultKind.QuotaExceeded)
     {
@@ -1200,6 +1201,7 @@ static async Task<V1SandboxAttemptResult> CreateV1SandboxAttemptAsync(
         IdempotencyKey = sandboxIdempotencyKey,
         RequestHash = requestHash,
         RequestJson = JsonSerializer.Serialize(rewriteRequest),
+        ApiKeyId = apiKeyId,
         Status = RewriteAttemptStatus.Succeeded,
         ResultJson = V1SandboxResultJson,
         CreatedAt = now,

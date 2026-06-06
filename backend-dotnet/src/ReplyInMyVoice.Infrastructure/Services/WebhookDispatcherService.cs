@@ -1,9 +1,11 @@
 using System.Data;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Entities;
@@ -15,7 +17,10 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 public sealed record WebhookSendRequest(
     string Url,
     string RawBody,
-    string Signature);
+    string Signature,
+    string Timestamp,
+    Guid DeliveryId,
+    Guid EventId);
 
 public sealed record WebhookSendResult(int StatusCode)
 {
@@ -45,6 +50,10 @@ public sealed class HttpWebhookDeliverySender(HttpClient httpClient) : IWebhookD
             Content = new StringContent(request.RawBody, Encoding.UTF8, "application/json"),
         };
         httpRequest.Headers.Add("X-RIMV-Signature", request.Signature);
+        httpRequest.Headers.Add("X-RIMV-Timestamp", request.Timestamp);
+        httpRequest.Headers.Add("X-RIMV-Delivery-Id", request.DeliveryId.ToString("D"));
+        httpRequest.Headers.Add("X-RIMV-Event-Id", request.EventId.ToString("D"));
+        httpRequest.Headers.Add("Idempotency-Key", request.DeliveryId.ToString("D"));
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using var response = await httpClient.SendAsync(
@@ -60,6 +69,9 @@ public sealed class WebhookDispatcherService(
     IWebhookDeliverySender sender,
     ILogger<WebhookDispatcherService>? logger = null)
 {
+    private const int ClaimRaceMaxAttempts = 5;
+    private static readonly TimeSpan ClaimLease = TimeSpan.FromSeconds(45);
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -76,7 +88,7 @@ public sealed class WebhookDispatcherService(
         {
             try
             {
-                var request = BuildRequest(delivery);
+                var request = BuildRequest(delivery, now);
                 var result = await sender.SendAsync(request, cancellationToken);
                 if (result.IsSuccessStatusCode)
                 {
@@ -119,6 +131,35 @@ public sealed class WebhookDispatcherService(
         int batchSize,
         CancellationToken cancellationToken)
     {
+        for (var attempt = 1; attempt <= ClaimRaceMaxAttempts; attempt += 1)
+        {
+            try
+            {
+                return await ClaimDueDeliveriesCoreAsync(now, lockedBy, batchSize, cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < ClaimRaceMaxAttempts)
+            {
+                await DelayClaimRaceRetryAsync(attempt, cancellationToken);
+            }
+            catch (DbUpdateException ex) when (attempt < ClaimRaceMaxAttempts && IsClaimRaceException(ex))
+            {
+                await DelayClaimRaceRetryAsync(attempt, cancellationToken);
+            }
+            catch (SqliteException ex) when (attempt < ClaimRaceMaxAttempts && IsDatabaseBusy(ex))
+            {
+                await DelayClaimRaceRetryAsync(attempt, cancellationToken);
+            }
+        }
+
+        return await ClaimDueDeliveriesCoreAsync(now, lockedBy, batchSize, cancellationToken);
+    }
+
+    private async Task<List<WebhookDelivery>> ClaimDueDeliveriesCoreAsync(
+        DateTimeOffset now,
+        string lockedBy,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
         return await ExecuteInTransactionAsync(async db =>
         {
             List<WebhookDelivery> deliveries;
@@ -126,7 +167,7 @@ public sealed class WebhookDispatcherService(
                 .AsTracking()
                 .Include(x => x.ApiKey)
                 .Include(x => x.RewriteAttempt)
-                .Where(x => x.Status == WebhookDeliveryStatus.Pending);
+                .Where(x => x.Status == WebhookDeliveryStatus.Pending || x.Status == WebhookDeliveryStatus.InProgress);
 
             if (db.Database.IsSqlite())
             {
@@ -149,8 +190,9 @@ public sealed class WebhookDispatcherService(
 
             foreach (var delivery in deliveries)
             {
+                delivery.Status = WebhookDeliveryStatus.InProgress;
                 delivery.LockedBy = lockedBy;
-                delivery.LockedUntil = now.AddSeconds(30);
+                delivery.LockedUntil = now.Add(ClaimLease);
                 delivery.LastAttemptAt = now;
                 delivery.RowVersion = Guid.NewGuid();
             }
@@ -160,7 +202,7 @@ public sealed class WebhookDispatcherService(
         }, cancellationToken);
     }
 
-    private WebhookSendRequest BuildRequest(WebhookDelivery delivery)
+    private WebhookSendRequest BuildRequest(WebhookDelivery delivery, DateTimeOffset now)
     {
         if (delivery.ApiKey is null ||
             string.IsNullOrWhiteSpace(delivery.ApiKey.WebhookSecret) ||
@@ -175,10 +217,14 @@ public sealed class WebhookDispatcherService(
         }
 
         var rawBody = BuildRawBody(delivery.RewriteAttempt);
+        var timestamp = now.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
         return new WebhookSendRequest(
             normalizedUrl,
             rawBody,
-            ComputeSignature(delivery.ApiKey.WebhookSecret, rawBody));
+            ComputeSignature(delivery.ApiKey.WebhookSecret, timestamp, rawBody),
+            timestamp,
+            delivery.Id,
+            delivery.RewriteAttemptId);
     }
 
     private static string BuildRawBody(RewriteAttempt attempt)
@@ -265,11 +311,11 @@ public sealed class WebhookDispatcherService(
             ? "The rewrite did not finish in time. Please submit a new request."
             : "The rewrite could not be completed. Please try again.";
 
-    private static string ComputeSignature(string signingValue, string rawBody)
+    private static string ComputeSignature(string signingValue, string timestamp, string rawBody)
     {
         var hash = HMACSHA256.HashData(
             Encoding.UTF8.GetBytes(signingValue),
-            Encoding.UTF8.GetBytes(rawBody));
+            Encoding.UTF8.GetBytes($"{timestamp}.{rawBody}"));
         return $"sha256={Convert.ToHexString(hash).ToLowerInvariant()}";
     }
 
@@ -345,6 +391,23 @@ public sealed class WebhookDispatcherService(
             return result;
         });
     }
+
+    private static Task DelayClaimRaceRetryAsync(int attempt, CancellationToken cancellationToken) =>
+        Task.Delay(TimeSpan.FromMilliseconds(10 * attempt), cancellationToken);
+
+    private static bool IsClaimRaceException(DbUpdateException exception)
+    {
+        var message = exception.ToString();
+        return IsDatabaseBusy(exception) ||
+            message.Contains("serialization", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("deadlock", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("3960", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDatabaseBusy(Exception exception) =>
+        exception is SqliteException { SqliteErrorCode: 5 or 6 } ||
+        exception.ToString().Contains("database is locked", StringComparison.OrdinalIgnoreCase) ||
+        exception.ToString().Contains("database table is locked", StringComparison.OrdinalIgnoreCase);
 
     private sealed record WebhookPayload(
         Guid Id,
