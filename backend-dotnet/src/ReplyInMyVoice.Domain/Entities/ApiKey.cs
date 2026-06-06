@@ -25,5 +25,6 @@ public sealed class ApiKey
     public Guid RowVersion { get; set; } = Guid.NewGuid();
 
     public ICollection<ApiKeyUsage> ApiKeyUsages { get; } = new List<ApiKeyUsage>();
+    public ICollection<ApiKeyRateLimitWindow> RateLimitWindows { get; } = new List<ApiKeyRateLimitWindow>();
     public ICollection<WebhookDelivery> WebhookDeliveries { get; } = new List<WebhookDelivery>();
 }

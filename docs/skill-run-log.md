@@ -3981,3 +3981,39 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: Fresh `cd backend-dotnet && dotnet test` passed 571/571. `npm run typecheck` passed after restoring `node_modules` with `npm ci --cache /private/tmp/rfx-02-563-npm-cache`. Source-only restricted-copy scan over `app components public lib backend-dotnet/src backend-dotnet/tests` returned no matches when excluding generated output. `git diff --check` passed.
 - Limitations: Initial `npm run typecheck` failed because `node_modules` was absent; initial `npm ci` failed on an unwritable supervisor npm cache, so the install was rerun with a writable temp cache. npm also warned this shell uses Node 24 while the project declares Node 22.
+
+### 2026-06-06 - data-module-review - RFX-03 API rate-limit counters and RequestId index
+
+- Agent: Codex worker
+- Trigger: GitHub issue #564 / RFX-03 changes EF Core persistence for API key usage lookup indexing and introduces a persisted per-key fixed-window rate-limit counter.
+- Action: Opened and followed the skill; reviewed `ApiKeyUsage`, `ApiKey`, `RewriteAttempt.IdempotencyKey`, AppDbContext mappings, generated migration output, and V1 submit/result/usage mutation paths together. Invariants checked: rate-limit decisions no longer depend on best-effort `ApiKeyUsage` analytics rows; limiter write failure fails closed; over-length idempotency keys cannot reach `RewriteAttempt` persistence; `ApiKeyUsage.RequestId` gets a plain lookup index; the migration adds only one direct FK from `ApiKeyRateLimitWindows` to `ApiKeys`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKeyRateLimitWindow.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyRateLimiter.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260606080828_AddApiRateLimitWindowsAndUsageRequestIdIndex.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`.
+- Verification evidence: Generated migration contains `IX_ApiKeyUsages_RequestId`, unique `IX_ApiKeyRateLimitWindows_ApiKeyId_WindowStart`, and no second cascade path to `RewriteAttempts`. Focused `V1RewriteRateLimitTests` passed 4/4. Full `cd backend-dotnet && dotnet test` passed 575/575. `cd backend-dotnet && dotnet build` passed.
+- Limitations: `ApiKeyUsage.RequestId` was intentionally indexed but not made unique because usage rows are analytics/audit records and duplicate logical IDs can occur across retries or endpoint classes; no production migration was applied.
+
+### 2026-06-06 - resilience-test-generation - RFX-03 concurrent rate-limit and fail-closed coverage
+
+- Agent: Codex worker
+- Trigger: RFX-03 changes rate-limit enforcement under concurrent public API submits and failure handling when limiter/usage persistence fails.
+- Action: Opened and followed the skill; built a failure matrix covering concurrent submits, duplicate/racing counter creation, usage analytics write failure, limiter unavailable, malformed/over-length idempotency input, and quota side effects. Implemented deterministic SQLite xUnit coverage with a trigger that rejects every `ApiKeyUsages` insert to prove rate limiting does not depend on those rows.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRateLimitTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyRateLimiter.cs`; V1 submit/result/usage handler updates in `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs` and `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: Focused test `V1_rewrite_submit_enforces_per_key_rate_limit_under_concurrent_usage_write_failures` accepted exactly 2 of 10 concurrent requests at a limit of 2, returned `429 rate_limited` for the rest, created exactly 2 attempts/reservations/outbox messages, and left `ApiKeyUsages` empty due the trigger. `V1_rewrite_submit_fails_closed_when_rate_limiter_is_unavailable` returned `503 rate_limit_unavailable` with no attempt/reservation/outbox.
+- Limitations: The concurrency proof uses file-backed SQLite WAL in tests; SQL Server behavior is backed by serializable transactions, a unique counter-window index, concurrency-token retries, and build-verified EF SQL Server mappings.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-03 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: RFX-03 acceptance requires xUnit coverage for concurrent rate limits, fail-closed limiter behavior, over-length `Idempotency-Key`, and the migration index.
+- Action: Opened and followed the project skill plus test-first workflow. Added `V1RewriteRateLimitTests` before production code. The first focused run failed at compile time because `IApiKeyRateLimiter` / `ApiKeyRateLimitResult` did not exist; after implementation, the focused class failed only on the missing migration index; after EF migration generation, the focused class passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRateLimitTests.cs`.
+- Verification evidence: Focused `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter V1RewriteRateLimitTests --no-restore` passed 4/4. Existing `RewriteApiTests` passed 32/32. Full `cd backend-dotnet && dotnet test` passed 575/575.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed successfully.
+
+### 2026-06-06 - verification-before-completion - RFX-03 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #564 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked focused RFX-03 tests, existing V1 rewrite API tests, full backend build, full backend test suite, and banned-term scans.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Focused `V1RewriteRateLimitTests` passed 4/4. Existing `RewriteApiTests` passed 32/32. `cd backend-dotnet && dotnet build` passed. `cd backend-dotnet && dotnet test` passed 575/575. Targeted `npm run test -- tests/unit/openapi-spec.test.ts` passed 3/3 after `npm ci --cache /private/tmp/rfx-03-564-npm-cache`. Banned-term scans over `app components public lib` and changed files returned no matches.
+- Limitations: The first EF migration command took the default host-factory timeout before returning; it still generated the migration successfully. `npm ci` reported existing audit findings and a Node 24 runtime warning against the repo's Node 22 engine. No push, PR, deploy, or production database migration was run.
