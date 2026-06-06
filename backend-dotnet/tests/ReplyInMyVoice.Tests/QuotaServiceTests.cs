@@ -146,6 +146,130 @@ public sealed class QuotaServiceTests
     }
 
     [Fact]
+    public async Task FinalizeSuccessAsync_enqueues_pending_webhook_delivery_for_api_attempt_with_url()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(
+            fixture.CreateContext,
+            webhookDeliveryEnqueuer: new WebhookDeliveryService(fixture.CreateContext));
+        var reservation = await service.ReserveAsync(
+            user.Id,
+            "idem-webhook-success",
+            "hash-webhook-success",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(10));
+        var apiKey = await SeedWebhookApiKeyAsync(fixture, user.Id);
+        await SeedApiKeyUsageAsync(fixture, apiKey.Id, reservation.AttemptId);
+
+        await service.FinalizeSuccessAsync(
+            reservation.AttemptId,
+            "{\"rewrittenText\":\"Hi there\",\"naturalness\":{\"draftAiLikePercent\":78,\"rewriteAiLikePercent\":24},\"changeSummary\":[],\"riskNotes\":[]}",
+            DateTimeOffset.Parse("2026-06-06T01:00:00Z"));
+
+        await using var db = fixture.CreateContext();
+        var delivery = await db.WebhookDeliveries.SingleAsync();
+        delivery.ApiKeyId.Should().Be(apiKey.Id);
+        delivery.RewriteAttemptId.Should().Be(reservation.AttemptId);
+        delivery.Url.Should().Be(apiKey.WebhookUrl);
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Pending);
+        delivery.AttemptCount.Should().Be(0);
+        delivery.DeliveredAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task FinalizeSuccessAsync_does_not_enqueue_webhook_delivery_for_website_attempt()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(
+            fixture.CreateContext,
+            webhookDeliveryEnqueuer: new WebhookDeliveryService(fixture.CreateContext));
+        var reservation = await service.ReserveAsync(
+            user.Id,
+            "idem-website-success",
+            "hash-website-success",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(10));
+
+        await service.FinalizeSuccessAsync(
+            reservation.AttemptId,
+            "{\"rewrittenText\":\"Hi there\",\"naturalness\":{\"draftAiLikePercent\":78,\"rewriteAiLikePercent\":24},\"changeSummary\":[],\"riskNotes\":[]}",
+            DateTimeOffset.Parse("2026-06-06T01:00:00Z"));
+
+        await using var db = fixture.CreateContext();
+        (await db.WebhookDeliveries.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_enqueues_failed_webhook_delivery_for_api_attempt_with_url()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(
+            fixture.CreateContext,
+            webhookDeliveryEnqueuer: new WebhookDeliveryService(fixture.CreateContext));
+        var reservation = await service.ReserveAsync(
+            user.Id,
+            "idem-webhook-fail",
+            "hash-webhook-fail",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(10));
+        var apiKey = await SeedWebhookApiKeyAsync(fixture, user.Id);
+        await SeedApiKeyUsageAsync(fixture, apiKey.Id, reservation.AttemptId);
+
+        await service.ReleaseAsync(
+            reservation.AttemptId,
+            "provider_failed",
+            DateTimeOffset.Parse("2026-06-06T01:00:00Z"));
+
+        await using var db = fixture.CreateContext();
+        var delivery = await db.WebhookDeliveries.SingleAsync();
+        delivery.ApiKeyId.Should().Be(apiKey.Id);
+        delivery.RewriteAttemptId.Should().Be(reservation.AttemptId);
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Pending);
+    }
+
+    [Fact]
+    public async Task FinalizeSuccessAsync_still_succeeds_when_webhook_enqueue_fails()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var service = new QuotaService(
+            fixture.CreateContext,
+            webhookDeliveryEnqueuer: new ThrowingWebhookDeliveryEnqueuer());
+        var reservation = await service.ReserveAsync(
+            user.Id,
+            "idem-webhook-enqueue-fails",
+            "hash-webhook-enqueue-fails",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(10));
+
+        await service.FinalizeSuccessAsync(
+            reservation.AttemptId,
+            "{\"rewrittenText\":\"Hi there\",\"naturalness\":{\"draftAiLikePercent\":78,\"rewriteAiLikePercent\":24},\"changeSummary\":[],\"riskNotes\":[]}",
+            DateTimeOffset.Parse("2026-06-06T01:00:00Z"));
+
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(1);
+        period.ReservedCount.Should().Be(0);
+        (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Succeeded);
+    }
+
+    [Fact]
     public async Task ReserveAsync_rejects_second_distinct_request_when_only_one_quota_slot_remains()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -653,6 +777,51 @@ public sealed class QuotaServiceTests
         (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Expired);
         (await db.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Expired);
     }
+
+    private static async Task<ApiKey> SeedWebhookApiKeyAsync(DbFixture fixture, Guid userId)
+    {
+        await using var db = fixture.CreateContext();
+        var key = new ApiKey
+        {
+            UserId = userId,
+            Name = "Webhook key",
+            KeyHash = Guid.NewGuid().ToString("N"),
+            Last4 = "abcd",
+            WebhookUrl = "https://listener.example.test/rewrite",
+            WebhookSecret = new string('a', 64),
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.ApiKeys.Add(key);
+        await db.SaveChangesAsync();
+        return key;
+    }
+
+    private static async Task SeedApiKeyUsageAsync(
+        DbFixture fixture,
+        Guid apiKeyId,
+        Guid attemptId)
+    {
+        await using var db = fixture.CreateContext();
+        db.ApiKeyUsages.Add(new ApiKeyUsage
+        {
+            ApiKeyId = apiKeyId,
+            RequestId = attemptId.ToString(),
+            Endpoint = "v1/rewrite",
+            StatusCode = 202,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
+}
+
+internal sealed class ThrowingWebhookDeliveryEnqueuer : IWebhookDeliveryEnqueuer
+{
+    public Task EnqueueForTerminalAttemptAsync(
+        Guid attemptId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default) =>
+        throw new InvalidOperationException("webhook enqueue failed");
 }
 
 internal sealed class DbFixture : IAsyncDisposable

@@ -36,7 +36,12 @@ public sealed class RewriteJobProcessor(
     public async Task ProcessAsync(RewriteJob job, CancellationToken cancellationToken)
     {
         using var scope = BeginAttemptScope(job.AttemptId);
-        var quotaService = new QuotaService(dbContextFactory, loggerFactory?.CreateLogger<QuotaService>());
+        var quotaService = new QuotaService(
+            dbContextFactory,
+            loggerFactory?.CreateLogger<QuotaService>(),
+            new WebhookDeliveryService(
+                dbContextFactory,
+                loggerFactory?.CreateLogger<WebhookDeliveryService>()));
         var now = DateTimeOffset.UtcNow;
         RewriteRequest request;
 

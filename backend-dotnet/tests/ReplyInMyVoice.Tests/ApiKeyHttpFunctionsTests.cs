@@ -149,6 +149,106 @@ public sealed class ApiKeyHttpFunctionsTests
         responseJson.Should().NotContain(ApiKeyService.ComputeHash(body.Key));
     }
 
+    [Fact]
+    public async Task SetWebhookUrl_generates_signing_value_once_and_list_returns_url_only()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await SeedUserAsync(fixture, "entra-key-webhook-owner");
+        var apiKeyService = new ApiKeyService(fixture.CreateContext);
+        var generated = await apiKeyService.GenerateAsync(
+            owner.Id,
+            "Server key",
+            CancellationToken.None);
+        var functions = CreateFunctions(fixture.CreateContext);
+
+        var setResult = await functions.SetApiKeyWebhook(
+            CreateRequest(
+                "entra-key-webhook-owner",
+                "owner@example.com",
+                new { webhookUrl = "https://listener.example.test/rewrite" }),
+            generated.Id,
+            CancellationToken.None);
+
+        var ok = setResult.Should().BeOfType<OkObjectResult>().Subject;
+        var setBody = ok.Value.Should().BeOfType<ApiKeyWebhookResponse>().Subject;
+        setBody.Id.Should().Be(generated.Id);
+        setBody.WebhookUrl.Should().Be("https://listener.example.test/rewrite");
+        setBody.WebhookSecret.Should().NotBeNullOrWhiteSpace();
+
+        await using (var db = fixture.CreateContext())
+        {
+            var stored = await db.ApiKeys.SingleAsync(x => x.Id == generated.Id);
+            stored.WebhookUrl.Should().Be("https://listener.example.test/rewrite");
+            stored.WebhookSecret.Should().Be(setBody.WebhookSecret);
+        }
+
+        var listResult = await functions.ListApiKeys(
+            CreateRequest("entra-key-webhook-owner", "owner@example.com"),
+            CancellationToken.None);
+
+        var listBody = listResult
+            .Should()
+            .BeOfType<OkObjectResult>()
+            .Subject
+            .Value
+            .Should()
+            .BeAssignableTo<IReadOnlyList<ApiKeyListResponse>>()
+            .Subject;
+        var item = listBody.Should().ContainSingle().Subject;
+        item.WebhookUrl.Should().Be("https://listener.example.test/rewrite");
+
+        var listJson = JsonSerializer.Serialize(listBody, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        listJson.Should().NotContain(setBody.WebhookSecret);
+    }
+
+    [Fact]
+    public async Task ClearWebhook_removes_url_and_signing_value_for_owner_only()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await SeedUserAsync(fixture, "entra-key-webhook-clear-owner");
+        await SeedUserAsync(fixture, "entra-key-webhook-clear-other");
+        var apiKeyService = new ApiKeyService(fixture.CreateContext);
+        var generated = await apiKeyService.GenerateAsync(
+            owner.Id,
+            "Server key",
+            CancellationToken.None);
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var key = await seedDb.ApiKeys.SingleAsync(x => x.Id == generated.Id);
+            key.WebhookUrl = "https://listener.example.test/rewrite";
+            key.WebhookSecret = "unit-webhook-signing-value";
+            await seedDb.SaveChangesAsync();
+        }
+
+        var functions = CreateFunctions(fixture.CreateContext);
+
+        var otherResult = await functions.ClearApiKeyWebhook(
+            CreateRequest("entra-key-webhook-clear-other", "other@example.com"),
+            generated.Id,
+            CancellationToken.None);
+
+        otherResult.Should().BeOfType<NotFoundResult>();
+        await using (var unchangedDb = fixture.CreateContext())
+        {
+            var unchanged = await unchangedDb.ApiKeys.SingleAsync(x => x.Id == generated.Id);
+            unchanged.WebhookUrl.Should().Be("https://listener.example.test/rewrite");
+            unchanged.WebhookSecret.Should().Be("unit-webhook-signing-value");
+        }
+
+        var ownerResult = await functions.ClearApiKeyWebhook(
+            CreateRequest("entra-key-webhook-clear-owner", "owner@example.com"),
+            generated.Id,
+            CancellationToken.None);
+
+        ownerResult.Should().BeOfType<NoContentResult>();
+        await using var db = fixture.CreateContext();
+        var stored = await db.ApiKeys.SingleAsync(x => x.Id == generated.Id);
+        stored.WebhookUrl.Should().BeNull();
+        stored.WebhookSecret.Should().BeNull();
+    }
+
     private static ApiKeyHttpFunctions CreateFunctions(Func<AppDbContext> createContext) =>
         new(
             BuildConfiguration(),

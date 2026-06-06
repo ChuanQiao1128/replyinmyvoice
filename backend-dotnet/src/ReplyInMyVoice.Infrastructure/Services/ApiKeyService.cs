@@ -97,6 +97,7 @@ public sealed class ApiKeyService
                 x.LastUsedAt,
                 x.CreatedAt,
                 x.RevokedAt,
+                x.WebhookUrl,
             })
             .ToListAsync(cancellationToken);
         var keyIds = rows.Select(x => x.Id).ToArray();
@@ -147,6 +148,7 @@ public sealed class ApiKeyService
                 x.LastUsedAt,
                 x.CreatedAt,
                 x.RevokedAt,
+                x.WebhookUrl,
                 usageByKeyId.GetValueOrDefault(x.Id, new ApiUsageCount(0, 0, 0))))
             .ToList();
     }
@@ -184,6 +186,8 @@ public sealed class ApiKeyService
             Scope = apiKey.Scope,
             RateLimitPerMinute = apiKey.RateLimitPerMinute,
             MonthlyQuota = apiKey.MonthlyQuota,
+            WebhookUrl = apiKey.WebhookUrl,
+            WebhookSecret = apiKey.WebhookSecret,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -225,11 +229,100 @@ public sealed class ApiKeyService
         return true;
     }
 
+    public async Task<ApiKeyWebhookResult?> SetWebhookAsync(
+        Guid userId,
+        Guid keyId,
+        string webhookUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!TryNormalizeWebhookUrl(webhookUrl, out var normalizedUrl))
+        {
+            throw new ArgumentException("Webhook URL must be an absolute HTTP or HTTPS URL.", nameof(webhookUrl));
+        }
+
+        await using var db = _dbContextFactory();
+        var apiKey = await db.ApiKeys
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == keyId && x.UserId == userId,
+                cancellationToken);
+
+        if (apiKey is null || apiKey.RevokedAt is not null)
+        {
+            return null;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var webhookSecret = GenerateWebhookSecret();
+        apiKey.WebhookUrl = normalizedUrl;
+        apiKey.WebhookSecret = webhookSecret;
+        apiKey.UpdatedAt = now;
+        apiKey.RowVersion = Guid.NewGuid();
+        await db.SaveChangesAsync(cancellationToken);
+
+        return new ApiKeyWebhookResult(apiKey.Id, normalizedUrl, webhookSecret);
+    }
+
+    public async Task<bool> ClearWebhookAsync(
+        Guid userId,
+        Guid keyId,
+        CancellationToken cancellationToken)
+    {
+        await using var db = _dbContextFactory();
+        var apiKey = await db.ApiKeys
+            .AsTracking()
+            .SingleOrDefaultAsync(
+                x => x.Id == keyId && x.UserId == userId,
+                cancellationToken);
+
+        if (apiKey is null)
+        {
+            return false;
+        }
+
+        if (apiKey.WebhookUrl is not null || apiKey.WebhookSecret is not null)
+        {
+            apiKey.WebhookUrl = null;
+            apiKey.WebhookSecret = null;
+            apiKey.UpdatedAt = DateTimeOffset.UtcNow;
+            apiKey.RowVersion = Guid.NewGuid();
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return true;
+    }
+
     private static string GeneratePlaintext()
     {
         Span<byte> randomBytes = stackalloc byte[32];
         RandomNumberGenerator.Fill(randomBytes);
         return KeyPrefix + ToBase62(randomBytes);
+    }
+
+    public static bool TryNormalizeWebhookUrl(string? value, out string normalizedUrl)
+    {
+        normalizedUrl = string.Empty;
+        var trimmed = value?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.Length > 2048)
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return false;
+        }
+
+        normalizedUrl = uri.ToString();
+        return true;
+    }
+
+    private static string GenerateWebhookSecret()
+    {
+        Span<byte> randomBytes = stackalloc byte[32];
+        RandomNumberGenerator.Fill(randomBytes);
+        return Convert.ToHexString(randomBytes).ToLowerInvariant();
     }
 
     private static string ToBase62(ReadOnlySpan<byte> bytes)
@@ -261,6 +354,7 @@ public sealed record ApiKeySummary(
     DateTimeOffset? LastUsedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset? RevokedAt,
+    string? WebhookUrl,
     ApiUsageCount Last30dUsage);
 
 public sealed record ApiKeyRotationResult(
@@ -268,3 +362,8 @@ public sealed record ApiKeyRotationResult(
     string Name,
     string Plaintext,
     DateTimeOffset CreatedAt);
+
+public sealed record ApiKeyWebhookResult(
+    Guid Id,
+    string WebhookUrl,
+    string WebhookSecret);

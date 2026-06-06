@@ -5,11 +5,14 @@ import {
   CheckCircle2,
   Clipboard,
   KeyRound,
+  Link2,
   Loader2,
   Plus,
   RefreshCw,
+  Save,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -25,6 +28,7 @@ type ApiKey = {
   maskedKey: string;
   name: string;
   revokedAt: string | null;
+  webhookUrl: string | null;
 };
 
 type ApiUsageCount = {
@@ -38,6 +42,13 @@ type CreatedApiKey = {
   id: string;
   key: string;
   name: string;
+};
+
+type RevealedWebhookSecret = {
+  keyId: string;
+  keyName: string;
+  secret: string;
+  webhookUrl: string;
 };
 
 type KeysState =
@@ -134,6 +145,7 @@ function createdKeyListItem(created: CreatedApiKey): ApiKey {
     maskedKey: fallbackMaskedKey(created.key),
     name: created.name,
     revokedAt: null,
+    webhookUrl: null,
   };
 }
 
@@ -151,6 +163,13 @@ export function ApiKeysPanel() {
   const [keyToRotate, setKeyToRotate] = useState<ApiKey | null>(null);
   const [rotateError, setRotateError] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
+  const [webhookDrafts, setWebhookDrafts] = useState<Record<string, string>>({});
+  const [webhookErrors, setWebhookErrors] = useState<Record<string, string>>({});
+  const [webhookSavingId, setWebhookSavingId] = useState<string | null>(null);
+  const [webhookClearingId, setWebhookClearingId] = useState<string | null>(null);
+  const [revealedWebhookSecret, setRevealedWebhookSecret] =
+    useState<RevealedWebhookSecret | null>(null);
+  const [webhookCopyNotice, setWebhookCopyNotice] = useState<string | null>(null);
 
   const refreshKeys = useCallback(async () => {
     setKeysState({ status: "loading" });
@@ -288,6 +307,213 @@ export function ApiKeysPanel() {
       setCopyNotice("Copied.");
     } catch {
       setCopyNotice("Copy failed. Select the key and copy it manually.");
+    }
+  }
+
+  async function copyWebhookSecret() {
+    if (!revealedWebhookSecret) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(revealedWebhookSecret.secret);
+      setWebhookCopyNotice("Copied.");
+    } catch {
+      setWebhookCopyNotice("Copy failed. Select the value and copy it manually.");
+    }
+  }
+
+  function webhookDraftFor(key: ApiKey) {
+    return webhookDrafts[key.id] ?? key.webhookUrl ?? "";
+  }
+
+  function updateWebhookDraft(keyId: string, value: string) {
+    setWebhookDrafts((current) => ({
+      ...current,
+      [keyId]: value,
+    }));
+    setWebhookErrors((current) => {
+      const next = { ...current };
+      delete next[keyId];
+      return next;
+    });
+  }
+
+  function updateKeyWebhook(keyId: string, webhookUrl: string | null) {
+    setKeysState((current) => {
+      if (current.status !== "ready") {
+        return current;
+      }
+
+      return {
+        keys: current.keys.map((key) =>
+          key.id === keyId ? { ...key, webhookUrl } : key,
+        ),
+        status: "ready",
+      };
+    });
+  }
+
+  function validateWebhookUrl(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return null;
+      }
+
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveWebhook(key: ApiKey) {
+    if (webhookSavingId || webhookClearingId) {
+      return;
+    }
+
+    const webhookUrl = validateWebhookUrl(webhookDraftFor(key));
+    if (!webhookUrl) {
+      setWebhookErrors((current) => ({
+        ...current,
+        [key.id]: "Enter a valid webhook URL.",
+      }));
+      return;
+    }
+
+    setWebhookSavingId(key.id);
+    setWebhookCopyNotice(null);
+    setRevealedWebhookSecret(null);
+    setWebhookErrors((current) => {
+      const next = { ...current };
+      delete next[key.id];
+      return next;
+    });
+
+    try {
+      const response = await fetch(
+        `/api/keys/${encodeURIComponent(key.id)}/webhook`,
+        {
+          body: JSON.stringify({ webhookUrl }),
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign("/sign-in");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          (await readJsonError(response)) ?? "Could not save this webhook.",
+        );
+      }
+
+      const body = (await response.json()) as {
+        webhookSecret: string;
+        webhookUrl: string;
+      };
+      updateKeyWebhook(key.id, body.webhookUrl);
+      setWebhookDrafts((current) => ({
+        ...current,
+        [key.id]: body.webhookUrl,
+      }));
+      setRevealedWebhookSecret({
+        keyId: key.id,
+        keyName: key.name,
+        secret: body.webhookSecret,
+        webhookUrl: body.webhookUrl,
+      });
+
+      try {
+        const keys = await loadKeys();
+        setKeysState({ keys, status: "ready" });
+      } catch {
+        setWebhookErrors((current) => ({
+          ...current,
+          [key.id]: "Webhook saved, but the list did not refresh. Reload if it looks stale.",
+        }));
+      }
+    } catch (error) {
+      setWebhookErrors((current) => ({
+        ...current,
+        [key.id]:
+          error instanceof Error ? error.message : "Could not save this webhook.",
+      }));
+    } finally {
+      setWebhookSavingId(null);
+    }
+  }
+
+  async function clearWebhook(key: ApiKey) {
+    if (webhookSavingId || webhookClearingId) {
+      return;
+    }
+
+    setWebhookClearingId(key.id);
+    setWebhookCopyNotice(null);
+    setWebhookErrors((current) => {
+      const next = { ...current };
+      delete next[key.id];
+      return next;
+    });
+
+    try {
+      const response = await fetch(
+        `/api/keys/${encodeURIComponent(key.id)}/webhook`,
+        {
+          cache: "no-store",
+          method: "DELETE",
+        },
+      );
+
+      if (response.status === 401) {
+        window.location.assign("/sign-in");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          (await readJsonError(response)) ?? "Could not clear this webhook.",
+        );
+      }
+
+      updateKeyWebhook(key.id, null);
+      setWebhookDrafts((current) => ({
+        ...current,
+        [key.id]: "",
+      }));
+      setRevealedWebhookSecret((current) =>
+        current?.keyId === key.id ? null : current,
+      );
+
+      try {
+        const keys = await loadKeys();
+        setKeysState({ keys, status: "ready" });
+      } catch {
+        setWebhookErrors((current) => ({
+          ...current,
+          [key.id]: "Webhook cleared. Reload if the list looks stale.",
+        }));
+      }
+    } catch (error) {
+      setWebhookErrors((current) => ({
+        ...current,
+        [key.id]:
+          error instanceof Error ? error.message : "Could not clear this webhook.",
+      }));
+    } finally {
+      setWebhookClearingId(null);
     }
   }
 
@@ -538,6 +764,55 @@ export function ApiKeysPanel() {
           </section>
         ) : null}
 
+        {revealedWebhookSecret ? (
+          <section
+            aria-labelledby="webhook-secret-title"
+            className="rounded-lg border border-sage/25 bg-white p-6 shadow-soft sm:p-8"
+          >
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-1 h-5 w-5 text-sage" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <h2 id="webhook-secret-title" className="text-2xl">
+                  Webhook saved
+                </h2>
+                <p className="mt-2 text-sm text-ink/65">
+                  Copy this signing secret for {revealedWebhookSecret.keyName}.
+                  It is shown once.
+                </p>
+                <div className="mt-4 rounded-md border border-line bg-paper px-4 py-3">
+                  <code className="block break-all font-mono text-sm text-ink">
+                    {revealedWebhookSecret.secret}
+                  </code>
+                </div>
+                <p className="mt-2 break-all text-xs text-ink/55">
+                  {revealedWebhookSecret.webhookUrl}
+                </p>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Button onClick={() => void copyWebhookSecret()} type="button">
+                    <Clipboard className="h-4 w-4" aria-hidden="true" />
+                    Copy signing secret
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setRevealedWebhookSecret(null);
+                      setWebhookCopyNotice(null);
+                    }}
+                    type="button"
+                    variant="secondary"
+                  >
+                    Done
+                  </Button>
+                  {webhookCopyNotice ? (
+                    <p className="text-sm font-semibold text-sage">
+                      {webhookCopyNotice}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         <section
           aria-labelledby="api-key-list-title"
           className="rounded-lg border border-line bg-white/80 p-6 shadow-soft sm:p-8"
@@ -603,6 +878,7 @@ export function ApiKeysPanel() {
                     <th className="px-4 py-3 font-semibold">30-day calls</th>
                     <th className="px-4 py-3 font-semibold">Last used</th>
                     <th className="px-4 py-3 font-semibold">Created</th>
+                    <th className="px-4 py-3 font-semibold">Webhook</th>
                     <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
@@ -641,6 +917,80 @@ export function ApiKeysPanel() {
                       </td>
                       <td className="whitespace-nowrap px-4 py-4">
                         {formatDateTime(key.createdAt)}
+                      </td>
+                      <td className="min-w-[360px] px-4 py-4">
+                        <div className="grid gap-2">
+                          <label
+                            className="sr-only"
+                            htmlFor={`webhook-url-${key.id}`}
+                          >
+                            Webhook URL
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              autoComplete="off"
+                              className="min-w-[210px]"
+                              disabled={Boolean(key.revokedAt)}
+                              id={`webhook-url-${key.id}`}
+                              maxLength={2048}
+                              onChange={(event) =>
+                                updateWebhookDraft(key.id, event.target.value)
+                              }
+                              placeholder="https://example.com/rewrite"
+                              value={webhookDraftFor(key)}
+                            />
+                            <Button
+                              disabled={
+                                Boolean(key.revokedAt) ||
+                                webhookSavingId === key.id ||
+                                webhookClearingId === key.id
+                              }
+                              onClick={() => void saveWebhook(key)}
+                              type="button"
+                              variant="secondary"
+                            >
+                              {webhookSavingId === key.id ? (
+                                <Loader2
+                                  className="h-4 w-4 animate-spin"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <Save className="h-4 w-4" aria-hidden="true" />
+                              )}
+                              Save
+                            </Button>
+                            <Button
+                              disabled={
+                                Boolean(key.revokedAt) ||
+                                !key.webhookUrl ||
+                                webhookSavingId === key.id ||
+                                webhookClearingId === key.id
+                              }
+                              onClick={() => void clearWebhook(key)}
+                              type="button"
+                              variant="secondary"
+                            >
+                              {webhookClearingId === key.id ? (
+                                <Loader2
+                                  className="h-4 w-4 animate-spin"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <X className="h-4 w-4" aria-hidden="true" />
+                              )}
+                              Clear webhook
+                            </Button>
+                          </div>
+                          <p className="flex items-center gap-1 text-xs text-ink/55">
+                            <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            {key.webhookUrl ? "Webhook configured" : "No webhook URL"}
+                          </p>
+                          {webhookErrors[key.id] ? (
+                            <p className="text-xs font-semibold text-rust">
+                              {webhookErrors[key.id]}
+                            </p>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-4">
                         <div className="flex gap-2">
