@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getAzureApiBaseUrl } from "../../../../lib/azure-api";
 import { getCurrentAccessToken } from "../../../../lib/entra-auth";
-import { jsonError } from "../../../../lib/http";
+import { jsonError, requireSameOrigin } from "../../../../lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,12 @@ async function forwardAzureResponse(response: Response) {
   });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const originError = requireSameOrigin(request);
+  if (originError) {
+    return originError;
+  }
+
   const accessToken = await getCurrentAccessToken();
   if (!accessToken) {
     return jsonError("Authentication required.", 401);

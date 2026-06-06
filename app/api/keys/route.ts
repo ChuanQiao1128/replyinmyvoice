@@ -31,7 +31,12 @@ async function currentAuthorizationHeader() {
   return accessToken ? `Bearer ${accessToken}` : null;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const originError = requireSameOrigin(request);
+  if (originError) {
+    return originError;
+  }
+
   const authorization = await currentAuthorizationHeader();
   if (!authorization) {
     return jsonError("Authentication required.", 401);

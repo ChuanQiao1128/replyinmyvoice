@@ -34,10 +34,10 @@ const azureUrl = "https://rimv-api.example.test";
 const accessValue = "unit-auth-value";
 const authScheme = "Bearer";
 
-function request(method: "DELETE" | "GET") {
-  return new Request(`${appUrl}/api/me`, {
+function request(method: "DELETE" | "GET", path = "/api/me", origin = appUrl) {
+  return new Request(`${appUrl}${path}`, {
     headers: {
-      origin: appUrl,
+      origin,
     },
     method,
   });
@@ -81,7 +81,7 @@ describe("/api/me route handler", () => {
     };
     fetchMock().mockResolvedValueOnce(Response.json(summary, { status: 200 }));
 
-    const response = await getAccount();
+    const response = await getAccount(request("GET"));
 
     await expect(response.json()).resolves.toEqual(summary);
     expect(response.status).toBe(200);
@@ -115,12 +115,22 @@ describe("/api/me route handler", () => {
   it("returns 401 when no access token is available", async () => {
     vi.mocked(getCurrentAccessToken).mockResolvedValueOnce(null);
 
-    const response = await getAccount();
+    const response = await getAccount(request("GET"));
 
     await expect(response.json()).resolves.toEqual({
       error: "Authentication required.",
     });
     expect(response.status).toBe(401);
+    expect(fetchMock()).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-origin account reads before auth or forwarding", async () => {
+    const response = await getAccount(
+      request("GET", "/api/me", "https://attacker.example.test"),
+    );
+
+    expect(response.status).toBe(403);
+    expect(getCurrentAccessToken).not.toHaveBeenCalled();
     expect(fetchMock()).not.toHaveBeenCalled();
   });
 
@@ -138,7 +148,7 @@ describe("/api/me route handler", () => {
     ];
     fetchMock().mockResolvedValueOnce(Response.json(payments, { status: 200 }));
 
-    const response = await paymentsGet();
+    const response = await paymentsGet(request("GET", "/api/me/payments"));
 
     await expect(response.json()).resolves.toEqual(payments);
     expect(response.status).toBe(200);
@@ -220,7 +230,7 @@ describe("/api/me/payments route handler", () => {
     ];
     fetchMock().mockResolvedValueOnce(Response.json(payments, { status: 200 }));
 
-    const response = await getPayments();
+    const response = await getPayments(request("GET", "/api/me/payments"));
 
     await expect(response.json()).resolves.toEqual(payments);
     expect(response.status).toBe(200);
@@ -230,6 +240,16 @@ describe("/api/me/payments route handler", () => {
         Authorization: `${authScheme} ${accessValue}`,
       },
     });
+  });
+
+  it("rejects cross-origin payment reads before auth or forwarding", async () => {
+    const response = await getPayments(
+      request("GET", "/api/me/payments", "https://attacker.example.test"),
+    );
+
+    expect(response.status).toBe(403);
+    expect(getCurrentAccessToken).not.toHaveBeenCalled();
+    expect(fetchMock()).not.toHaveBeenCalled();
   });
 });
 

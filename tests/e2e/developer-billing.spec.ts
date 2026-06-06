@@ -103,6 +103,14 @@ test("developer billing tab renders mocked history and opens the portal route", 
   page,
 }) => {
   let portalCalled = false;
+  let exportCalled = false;
+  await page.route("**/api/me/billing/export", async (route) => {
+    exportCalled = true;
+    await route.fulfill({
+      body: "date,type,description\n2026-06-01T09:00:00Z,pack,Quick Pack",
+      contentType: "text/csv",
+    });
+  });
   await page.route("**/api/stripe/portal", async (route) => {
     portalCalled = true;
     await route.fulfill({
@@ -126,10 +134,11 @@ test("developer billing tab renders mocked history and opens the portal route", 
   await expect(page.getByText("72 of 90 rewrites remaining")).toBeVisible();
   await expect(page.getByText("Quick Pack")).toBeVisible();
   await expect(page.getByText("Pro/API invoice for June")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Export CSV" })).toHaveAttribute(
-    "href",
-    "/api/me/billing/export",
-  );
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("billing-history.csv");
+  await expect.poll(() => exportCalled).toBe(true);
   await expect(page.getByRole("link", { name: "View receipt" })).toHaveAttribute(
     "href",
     "https://payments.example.test/receipt/quick-pack",

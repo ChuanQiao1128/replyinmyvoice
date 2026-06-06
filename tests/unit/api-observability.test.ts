@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { captureApiEvent } from "../../lib/api-observability";
+const { cloudflareMock } = vi.hoisted(() => ({
+  cloudflareMock: {
+    getCloudflareContext: vi.fn(),
+  },
+}));
+
+vi.mock("@opennextjs/cloudflare", () => cloudflareMock);
+
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { captureApiEvent, scheduleApiEvent } from "../../lib/api-observability";
 
 const originalPostHogApiKey = process.env.POSTHOG_API_KEY;
 const originalPostHogHost = process.env.POSTHOG_HOST;
@@ -15,6 +24,7 @@ beforeEach(() => {
   delete process.env.POSTHOG_HOST;
   delete process.env.SENTRY_DSN;
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+  vi.mocked(getCloudflareContext).mockReset();
 });
 
 afterEach(() => {
@@ -106,6 +116,35 @@ describe("api observability", () => {
         request_id: "req_unit_123",
         status_code: 503,
       },
+    });
+  });
+
+  it("schedules api telemetry through the Cloudflare waitUntil context", async () => {
+    process.env.POSTHOG_API_KEY = "ph_unit_key";
+    process.env.POSTHOG_HOST = "https://posthog.example.test";
+    const waitUntil = vi.fn();
+    vi.mocked(getCloudflareContext).mockReturnValue({
+      ctx: {
+        waitUntil,
+      },
+    } as never);
+
+    scheduleApiEvent({
+      endpoint: "GET /api/v1/usage",
+      latencyMs: 12,
+      requestId: "req_unit_wait",
+      statusCode: 200,
+    });
+
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    const scheduled = waitUntil.mock.calls[0][0] as Promise<unknown>;
+    await scheduled;
+    expect(fetchMock()).toHaveBeenCalledWith("https://posthog.example.test/capture/", {
+      body: expect.stringContaining('"request_id":"req_unit_wait"'),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
     });
   });
 });

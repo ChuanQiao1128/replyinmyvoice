@@ -17,6 +17,7 @@ import type {
   AzureAccountSummary,
   AzureBillingHistoryItem,
 } from "../../lib/azure-api";
+import { downloadCsvFile } from "../../lib/client-csv-download";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 
@@ -227,6 +228,26 @@ export function BillingHistoryTable({
 }: {
   history: AzureBillingHistoryItem[];
 }) {
+  const [exportState, setExportState] = useState<
+    { status: "idle" | "loading" } | { message: string; status: "error" }
+  >({ status: "idle" });
+  const exportBillingHistory = useCallback(async () => {
+    setExportState({ status: "loading" });
+
+    try {
+      await downloadCsvFile({
+        filename: "billing-history.csv",
+        path: "/api/me/billing/export",
+      });
+      setExportState({ status: "idle" });
+    } catch (error) {
+      setExportState({
+        message: error instanceof Error ? error.message : "Could not export CSV.",
+        status: "error",
+      });
+    }
+  }, []);
+
   return (
     <section
       aria-labelledby="developer-billing-history-title"
@@ -246,14 +267,25 @@ export function BillingHistoryTable({
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
-          <a
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper sm:w-auto"
-            download
-            href="/api/me/billing/export"
+          <Button
+            className="w-full sm:w-auto"
+            disabled={exportState.status === "loading"}
+            onClick={() => void exportBillingHistory()}
+            type="button"
+            variant="secondary"
           >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            Export CSV
-          </a>
+            {exportState.status === "loading" ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Download className="h-4 w-4" aria-hidden="true" />
+            )}
+            {exportState.status === "loading" ? "Exporting..." : "Export CSV"}
+          </Button>
+          {exportState.status === "error" ? (
+            <p className="max-w-xs text-xs font-semibold text-rust" role="alert">
+              {exportState.message}
+            </p>
+          ) : null}
           {history.length > 0 ? (
             <span className="rounded-full border border-line bg-paper px-3 py-1 text-xs font-semibold text-ink/55">
               {history.length} {history.length === 1 ? "record" : "records"}

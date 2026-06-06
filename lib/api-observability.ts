@@ -1,3 +1,5 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+
 type ApiObservabilityEnv = {
   NODE_ENV?: string;
   POSTHOG_API_KEY?: string;
@@ -49,6 +51,23 @@ export async function captureApiEvent(
   }
 
   return Promise.all(tasks);
+}
+
+export function scheduleApiEvent(
+  input: ApiEventInput,
+  env: ApiObservabilityEnv = process.env,
+) {
+  const task = captureApiEvent(input, env).catch((error: unknown) => {
+    console.debug("API observability event failed.", debugError(error));
+    return [];
+  });
+
+  try {
+    getCloudflareContext().ctx.waitUntil(task);
+  } catch (error) {
+    console.debug("Cloudflare waitUntil unavailable for API observability.", debugError(error));
+    void task;
+  }
 }
 
 export function parseApiErrorCode(body: string): string | undefined {
@@ -240,6 +259,10 @@ function normalizeError(error: unknown, input: ApiEventInput) {
     message: `API request failed with status ${input.statusCode}${code}`,
     name: "Error",
   };
+}
+
+function debugError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function sanitizeProperties(properties: ApiEventProperties): Record<string, ApiPropertyValue> {
