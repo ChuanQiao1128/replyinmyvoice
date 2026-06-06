@@ -26,6 +26,7 @@ export interface RewriteResultResponse {
 }
 
 export interface RewriteOptions {
+  idempotencyKey?: string;
   pollIntervalMs?: number;
   timeoutMs?: number;
 }
@@ -40,11 +41,11 @@ export interface UsageResponse {
   quota: number;
   used: number;
   remaining: number;
-  periodEnd: string;
+  periodEnd: string | null;
 }
 
 export interface RimvClient {
-  submitRewrite(draft: string): Promise<SubmitRewriteResponse>;
+  submitRewrite(draft: string, opts?: RewriteOptions): Promise<SubmitRewriteResponse>;
   getRewrite(id: string): Promise<RewriteResultResponse>;
   rewrite(draft: string, opts?: RewriteOptions): Promise<RewriteSuccess>;
   getUsage(): Promise<UsageResponse>;
@@ -89,15 +90,29 @@ export function createClient({ apiKey, baseUrl = DEFAULT_BASE_URL }: CreateClien
     return body as T;
   }
 
-  async function submitRewrite(draft: string): Promise<SubmitRewriteResponse> {
-    return request<SubmitRewriteResponse>("/api/v1/rewrite", {
+  async function submitRewrite(
+    draft: string,
+    opts: RewriteOptions = {},
+  ): Promise<SubmitRewriteResponse> {
+    const headers: Record<string, string> = {
+      ...authHeaders,
+      "Content-Type": "application/json",
+    };
+    if (opts.idempotencyKey) {
+      headers["Idempotency-Key"] = opts.idempotencyKey;
+    }
+
+    const body = await request<unknown>("/api/v1/rewrite", {
       body: JSON.stringify({ draft }),
-      headers: {
-        ...authHeaders,
-        "Content-Type": "application/json",
-      },
+      headers,
       method: "POST",
     });
+
+    if (!isSubmitRewriteResponse(body)) {
+      throw invalidResponseError("Rewrite submit response was missing required fields.");
+    }
+
+    return body;
   }
 
   async function getRewrite(id: string): Promise<RewriteResultResponse> {
@@ -108,12 +123,14 @@ export function createClient({ apiKey, baseUrl = DEFAULT_BASE_URL }: CreateClien
   }
 
   async function rewrite(draft: string, opts: RewriteOptions = {}): Promise<RewriteSuccess> {
-    const pollIntervalMs = normalizeDuration(opts.pollIntervalMs, DEFAULT_POLL_INTERVAL_MS);
+    const pollIntervalMs = normalizePollInterval(opts.pollIntervalMs);
     const timeoutMs = normalizeDuration(opts.timeoutMs, DEFAULT_TIMEOUT_MS);
     const startedAt = Date.now();
-    const { id } = await submitRewrite(draft);
+    const { id } = await submitRewrite(draft, opts);
 
     for (;;) {
+      await waitForNextPoll(startedAt, timeoutMs, pollIntervalMs);
+
       const result = await getRewrite(id);
 
       if (result.status === "succeeded") {
@@ -132,22 +149,15 @@ export function createClient({ apiKey, baseUrl = DEFAULT_BASE_URL }: CreateClien
       }
 
       if (result.status === "failed") {
+        if (!result.error?.code || !result.error.message) {
+          throw invalidResponseError("Rewrite response was missing required fields.");
+        }
+
         throw new RimvApiError({
-          code: result.error?.code ?? "rewrite_failed",
-          message: result.error?.message ?? "Rewrite request failed.",
+          code: result.error.code,
+          message: result.error.message,
           status: 200,
         });
-      }
-
-      const elapsedMs = Date.now() - startedAt;
-      if (elapsedMs >= timeoutMs) {
-        throw timeoutError();
-      }
-
-      await sleep(Math.min(pollIntervalMs, timeoutMs - elapsedMs));
-
-      if (Date.now() - startedAt >= timeoutMs) {
-        throw timeoutError();
       }
     }
   }
@@ -178,6 +188,27 @@ function normalizeDuration(value: number | undefined, fallback: number): number 
   }
 
   return value;
+}
+
+function normalizePollInterval(value: number | undefined): number {
+  return Math.max(1, normalizeDuration(value, DEFAULT_POLL_INTERVAL_MS));
+}
+
+async function waitForNextPoll(
+  startedAt: number,
+  timeoutMs: number,
+  pollIntervalMs: number,
+): Promise<void> {
+  const elapsedMs = Date.now() - startedAt;
+  if (elapsedMs >= timeoutMs) {
+    throw timeoutError();
+  }
+
+  await sleep(Math.min(pollIntervalMs, timeoutMs - elapsedMs));
+
+  if (Date.now() - startedAt >= timeoutMs) {
+    throw timeoutError();
+  }
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -227,6 +258,24 @@ function isErrorResponseBody(body: unknown): body is { error: Partial<ApiErrorPa
     typeof (body as ErrorResponseBody).error === "object" &&
     (body as ErrorResponseBody).error !== null
   );
+}
+
+function isSubmitRewriteResponse(body: unknown): body is SubmitRewriteResponse {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    typeof (body as SubmitRewriteResponse).id === "string" &&
+    (body as SubmitRewriteResponse).id.trim().length > 0 &&
+    typeof (body as SubmitRewriteResponse).status === "string"
+  );
+}
+
+function invalidResponseError(message: string): RimvApiError {
+  return new RimvApiError({
+    code: "invalid_response",
+    message,
+    status: 200,
+  });
 }
 
 function timeoutError(): RimvApiError {

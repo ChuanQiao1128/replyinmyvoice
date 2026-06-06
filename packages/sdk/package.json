@@ -1,6 +1,6 @@
 {
   "name": "replyinmyvoice-api",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Official TypeScript client for the Reply In My Voice API.",
   "license": "MIT",
   "type": "module",
@@ -14,6 +14,7 @@
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md"
   ],
   "scripts": {

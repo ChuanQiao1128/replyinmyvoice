@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createClient, RimvApiError } from "../../packages/sdk/src/index";
+import { createClient, RimvApiError, type UsageResponse } from "../../packages/sdk/src/index";
 
 const apiKey = "rmv_live_unit_test_key";
 const baseUrl = "https://api.example.test";
@@ -34,12 +34,13 @@ afterEach(() => {
 describe("Reply In My Voice TypeScript SDK", () => {
   it("submits a rewrite and polls until the request succeeds", async () => {
     vi.useFakeTimers();
+    const rewriteId = "8f14e45f-ea4d-4f62-9d22-4f134b7f4c40";
     fetchMock()
-      .mockResolvedValueOnce(jsonResponse({ id: "rewrite_123", status: "processing" }, 202))
-      .mockResolvedValueOnce(jsonResponse({ id: "rewrite_123", status: "processing" }))
+      .mockResolvedValueOnce(jsonResponse({ id: rewriteId, status: "processing" }, 202))
+      .mockResolvedValueOnce(jsonResponse({ id: rewriteId, status: "processing" }))
       .mockResolvedValueOnce(
         jsonResponse({
-          id: "rewrite_123",
+          id: rewriteId,
           rewrittenText: "I can send a warmer update about the delayed shipment.",
           signal: { draft: 72, rewrite: 24 },
           status: "succeeded",
@@ -52,6 +53,7 @@ describe("Reply In My Voice TypeScript SDK", () => {
       timeoutMs: 2_000,
     });
 
+    await vi.advanceTimersByTimeAsync(250);
     await vi.advanceTimersByTimeAsync(250);
 
     await expect(resultPromise).resolves.toEqual({
@@ -67,18 +69,89 @@ describe("Reply In My Voice TypeScript SDK", () => {
       },
       method: "POST",
     });
-    expect(fetchMock()).toHaveBeenNthCalledWith(2, `${baseUrl}/api/v1/rewrite/rewrite_123`, {
+    expect(fetchMock()).toHaveBeenNthCalledWith(2, `${baseUrl}/api/v1/rewrite/${rewriteId}`, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
       method: "GET",
     });
-    expect(fetchMock()).toHaveBeenNthCalledWith(3, `${baseUrl}/api/v1/rewrite/rewrite_123`, {
+    expect(fetchMock()).toHaveBeenNthCalledWith(3, `${baseUrl}/api/v1/rewrite/${rewriteId}`, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
       method: "GET",
     });
+  });
+
+  it("sends an idempotency key on submit when provided", async () => {
+    const idempotencyKey = "request-2026-06-06-001";
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({
+        id: "8f14e45f-ea4d-4f62-9d22-4f134b7f4c40",
+        status: "processing",
+      }),
+    );
+
+    const client = createClient({ apiKey, baseUrl });
+
+    await expect(client.submitRewrite(draft, { idempotencyKey })).resolves.toEqual({
+      id: "8f14e45f-ea4d-4f62-9d22-4f134b7f4c40",
+      status: "processing",
+    });
+    expect(fetchMock()).toHaveBeenCalledWith(`${baseUrl}/api/v1/rewrite`, {
+      body: JSON.stringify({ draft }),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      method: "POST",
+    });
+  });
+
+  it("throws RimvApiError when submit response is missing an id", async () => {
+    fetchMock().mockResolvedValueOnce(jsonResponse({ status: "processing" }, 202));
+
+    const client = createClient({ apiKey, baseUrl });
+
+    await expectRimvApiError(client.rewrite(draft), {
+      code: "invalid_response",
+      message: "Rewrite submit response was missing required fields.",
+      status: 200,
+    });
+    expect(fetchMock()).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the poll interval before the first status request", async () => {
+    vi.useFakeTimers();
+    const rewriteId = "4d7707a4-9f0f-42d2-8f1f-f6d8d9a1b234";
+    fetchMock()
+      .mockResolvedValueOnce(jsonResponse({ id: rewriteId, status: "processing" }, 202))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: rewriteId,
+          rewrittenText: "I can send a warmer update about the delayed shipment.",
+          signal: { draft: 72, rewrite: 24 },
+          status: "succeeded",
+        }),
+      );
+
+    const client = createClient({ apiKey, baseUrl });
+    const resultPromise = client.rewrite(draft, {
+      pollIntervalMs: 250,
+      timeoutMs: 2_000,
+    });
+
+    await vi.advanceTimersByTimeAsync(249);
+    expect(fetchMock()).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(resultPromise).resolves.toEqual({
+      rewrittenText: "I can send a warmer update about the delayed shipment.",
+      signal: { draft: 72, rewrite: 24 },
+    });
+    expect(fetchMock()).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -98,15 +171,16 @@ describe("Reply In My Voice TypeScript SDK", () => {
   });
 
   it("throws RimvApiError when the rewrite job reports failure", async () => {
+    const rewriteId = "b6acbb70-0585-4a31-8c19-5875a71bb295";
     fetchMock()
-      .mockResolvedValueOnce(jsonResponse({ id: "rewrite_failed", status: "processing" }, 202))
+      .mockResolvedValueOnce(jsonResponse({ id: rewriteId, status: "processing" }, 202))
       .mockResolvedValueOnce(
         jsonResponse({
           error: {
             code: "quality_unavailable",
             message: "The rewrite could not be completed.",
           },
-          id: "rewrite_failed",
+          id: rewriteId,
           status: "failed",
         }),
       );
@@ -122,10 +196,11 @@ describe("Reply In My Voice TypeScript SDK", () => {
 
   it("throws RimvApiError when polling times out", async () => {
     vi.useFakeTimers();
+    const rewriteId = "55f6778a-b430-4863-9841-9ec07a4d9ebe";
     fetchMock()
-      .mockResolvedValueOnce(jsonResponse({ id: "rewrite_timeout", status: "processing" }, 202))
+      .mockResolvedValueOnce(jsonResponse({ id: rewriteId, status: "processing" }, 202))
       .mockImplementation(() =>
-        Promise.resolve(jsonResponse({ id: "rewrite_timeout", status: "processing" })),
+        Promise.resolve(jsonResponse({ id: rewriteId, status: "processing" })),
       );
 
     const client = createClient({ apiKey, baseUrl });
@@ -145,8 +220,8 @@ describe("Reply In My Voice TypeScript SDK", () => {
   });
 
   it("reads account usage with bearer authorization", async () => {
-    const usage = {
-      periodEnd: "2026-07-01T00:00:00Z",
+    const usage: UsageResponse = {
+      periodEnd: null,
       quota: 90,
       remaining: 78,
       scope: "paid",
