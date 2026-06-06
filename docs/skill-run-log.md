@@ -4187,3 +4187,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/api/v1/rewrite/route.ts`; `app/api/v1/rewrite/[id]/route.ts`; `app/api/v1/usage/route.ts`; `lib/api-observability.ts`; `tests/unit/public-rewrite-api-route.test.ts`; `tests/unit/v1-usage-route.test.ts`; `tests/unit/api-observability.test.ts`.
 - Verification evidence: Red focused run failed on thrown upstream errors and missing scheduler. After implementation, focused v1 proxy and observability tests passed. Full `npm run test` passed 462/462 before the Playwright expectation update.
 - Limitations: No retry behavior was added; RFX-07 only required deterministic 502 wrapping and non-blocking telemetry scheduling. No live Azure, PostHog, or Sentry call was run.
+
+### 2026-06-06 - cloud-architecture-cost-review - RFX-09 SQL Server CI migration gate
+
+- Agent: Codex worker
+- Trigger: RFX-09 changes the `dotnet-azure` CI/CD deploy gate for EF Core migrations and SQL Server validation.
+- Action: Opened and followed the project skill; compared an ephemeral SQL Server service container with the fallback idempotent-script/static-check option and rejected production Azure SQL for CI validation.
+- Output artifacts: `.github/workflows/dotnet-azure.yml`; `docs/ci-sqlserver-migration-gate.md`.
+- Verification evidence: Selected `mcr.microsoft.com/mssql/server:2022-latest` service container with no new paid resource and no production SQL connection. `deploy.needs` now requires both `build-test` and `sqlserver-migration`.
+- Limitations: Exact provider pricing was not checked because no paid cloud resource or exact cost estimate was introduced; the cost impact is GitHub Actions runner time and container pull time only.
+
+### 2026-06-06 - system-spec-synthesis - RFX-09 implementation contract
+
+- Agent: Codex worker
+- Trigger: RFX-09 converts the cross-review finding and GitHub issue into an implementation-ready CI gate and documentation contract.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue brief, `CROSS-REVIEW.md`, `dotnet-azure.yml`, Azure readiness docs, and the EF design-time context path, then wrote the gate specification.
+- Output artifacts: `docs/ci-sqlserver-migration-gate.md`; `.github/workflows/dotnet-azure.yml`.
+- Verification evidence: The spec records context, goals, non-goals, architecture, data model impact, job contract, error handling, security/privacy, rollout, verification, and open questions.
+- Limitations: No separate broad architecture handoff was needed because the scope is a single workflow gate and docs note.
+
+### 2026-06-06 - data-module-review - RFX-09 EF migration process coverage
+
+- Agent: Codex worker
+- Trigger: RFX-09 reviews EF Core migration safety and the gap caused by SQLite `EnsureCreated` test fixtures not exercising SQL Server migrations.
+- Action: Opened and followed the skill; reviewed `AppDbContextDesignTimeFactory`, `AppDbContext`, EF package setup, migrations location, and the current workflow migration command. No entity, migration, or runtime data-access changes were made.
+- Output artifacts: `docs/ci-sqlserver-migration-gate.md`; `.github/workflows/dotnet-azure.yml`.
+- Verification evidence: The workflow gate applies the current migration chain to an empty SQL Server database through `ConnectionStrings__DefaultConnection`; the docs note records findings and suggested tests.
+- Limitations: Local Docker daemon was unavailable, so the actual SQL Server container run is delegated to GitHub Actions; local EF script generation was used as a compile-time migration check.
+
+### 2026-06-06 - verification-before-completion - RFX-09 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #569 after CI gate implementation.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked backend tests, frontend typecheck, EF migration script generation, workflow YAML syntax, diff whitespace, banned-term scans, and local Docker availability.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test` passed 592/592. `npm run typecheck` passed after `npm ci --cache ./.npm-cache`. `dotnet ef migrations script --idempotent --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj --startup-project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj --context AppDbContext --output /tmp/rfx09-migrations-infra-final.sql` exited 0 and wrote a 2,142-line script. Workflow YAML parsed successfully with Ruby Psych. `git diff --check` passed. Project and changed-file banned-term scans returned no matches.
+- Limitations: Docker client is installed, but `docker info` cannot connect to the local daemon; no local SQL Server container migration update was run. The GitHub Actions job is the first full container-backed execution of the new gate.
