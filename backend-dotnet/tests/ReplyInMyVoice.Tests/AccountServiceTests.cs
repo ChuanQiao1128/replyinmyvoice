@@ -333,6 +333,119 @@ public sealed class AccountServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetOrCreateAccountSummary_reports_coherent_usage_totals_for_free_paid_and_credit_accounts()
+    {
+        var freeUserId = Guid.NewGuid();
+        var paidUserId = Guid.NewGuid();
+        var creditUserId = Guid.NewGuid();
+        var paidPeriodEnd = DateTimeOffset.Parse("2026-07-01T00:00:00Z");
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.AddRange(
+                new AppUser
+                {
+                    Id = freeUserId,
+                    ExternalAuthUserId = "entra-invariant-free",
+                    Email = "invariant-free@example.com",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = paidUserId,
+                    ExternalAuthUserId = "entra-invariant-paid",
+                    Email = "invariant-paid@example.com",
+                    StripeSubscriptionId = "sub_invariant_paid",
+                    SubscriptionStatus = SubscriptionStatus.Active,
+                    CurrentPeriodEnd = paidPeriodEnd,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = creditUserId,
+                    ExternalAuthUserId = "entra-invariant-credit",
+                    Email = "invariant-credit@example.com",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            db.UsagePeriods.AddRange(
+                new UsagePeriod
+                {
+                    UserId = freeUserId,
+                    PeriodKey = "free:lifetime",
+                    QuotaLimit = 3,
+                    UsedCount = 1,
+                    ReservedCount = 1,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new UsagePeriod
+                {
+                    UserId = paidUserId,
+                    PeriodKey = $"paid:sub_invariant_paid:{paidPeriodEnd:O}",
+                    QuotaLimit = 90,
+                    UsedCount = 12,
+                    ReservedCount = 3,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new UsagePeriod
+                {
+                    UserId = creditUserId,
+                    PeriodKey = "free:lifetime",
+                    QuotaLimit = 0,
+                    UsedCount = 1,
+                    ReservedCount = 0,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = creditUserId,
+                Source = "PROMO",
+                AmountGranted = 3,
+                AmountConsumed = 1,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var configuredService = new AccountService(
+            CreateContext,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["FREE_BASELINE_REWRITES"] = "3",
+                })
+                .Build());
+        var defaultService = new AccountService(CreateContext);
+
+        var free = await configuredService.GetOrCreateAccountSummaryAsync(
+            "entra-invariant-free",
+            "invariant-free@example.com",
+            CancellationToken.None);
+        var paid = await configuredService.GetOrCreateAccountSummaryAsync(
+            "entra-invariant-paid",
+            "invariant-paid@example.com",
+            CancellationToken.None);
+        var credit = await defaultService.GetOrCreateAccountSummaryAsync(
+            "entra-invariant-credit",
+            "invariant-credit@example.com",
+            CancellationToken.None);
+
+        AssertUsageInvariant(free.Usage);
+        AssertUsageInvariant(paid.Usage);
+        AssertUsageInvariant(credit.Usage);
+        credit.Usage.Remaining.Should().Be(2);
+    }
+
+    [Fact]
     public async Task GetOrCreateAccountSummary_exposes_payment_grace_deadline_for_past_due_account()
     {
         var userId = Guid.NewGuid();
@@ -425,8 +538,8 @@ public sealed class AccountServiceTests : IAsyncLifetime
             CancellationToken.None);
 
         summary.Usage.Scope.Should().Be("free");
-        summary.Usage.Quota.Should().Be(3);
-        summary.Usage.Used.Should().Be(3);
+        summary.Usage.Quota.Should().Be(13);
+        summary.Usage.Used.Should().Be(10);
         summary.Usage.Reserved.Should().Be(0);
         summary.Usage.Remaining.Should().Be(3);
         summary.Usage.Exhausted.Should().BeFalse();
@@ -572,7 +685,8 @@ public sealed class AccountServiceTests : IAsyncLifetime
             CancellationToken.None);
 
         summary.Usage.Remaining.Should().Be(2);
-        summary.Usage.Quota.Should().Be(2);
+        summary.Usage.Quota.Should().Be(3);
+        summary.Usage.Used.Should().Be(1);
         summary.Promo.HasRedeemed.Should().BeTrue();
         summary.Promo.Eligible.Should().BeFalse();
         summary.Promo.TrialRemaining.Should().Be(2);
@@ -1180,6 +1294,12 @@ public sealed class AccountServiceTests : IAsyncLifetime
             .ReplaceService<IExecutionStrategyFactory, TestExecutionStrategyFactory>()
             .Options;
         return new AppDbContext(options);
+    }
+
+    private static void AssertUsageInvariant(AccountUsageSummary usage)
+    {
+        (usage.Quota - usage.Used - usage.Reserved).Should().Be(usage.Remaining);
+        usage.Remaining.Should().BeGreaterThanOrEqualTo(0);
     }
 
     private sealed class TestExecutionStrategyFactory(

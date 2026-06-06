@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
@@ -7,6 +8,9 @@ public sealed class ApiKeyUsageQueryService(
     Func<AppDbContext> dbContextFactory,
     AccountService accountService)
 {
+    private const int MinUsageWindowDays = 1;
+    public const int MaxUsageWindowDays = 90;
+
     // Business reporting days are bucketed in the product's Pacific/Auckland time zone.
     private static readonly TimeZoneInfo BusinessTimeZone =
         TimeZoneInfo.FindSystemTimeZoneById("Pacific/Auckland");
@@ -31,7 +35,11 @@ public sealed class ApiKeyUsageQueryService(
         var yesterday = today.AddDays(-1);
         var monthStart = new DateOnly(today.Year, today.Month, 1);
         var last30Start = today.AddDays(-29);
-        var rows = await LoadUsageRowsAsync(account.Id, cancellationToken);
+        var summaryStart = monthStart < last30Start ? monthStart : last30Start;
+        var rows = await LoadUsageRowsAsync(
+            account.Id,
+            ToBusinessDateStartUtc(summaryStart),
+            cancellationToken);
         var eligibleRows = rows
             .Where(x => x.CreatedAt <= now)
             .Select(x => new LocalUsageRow(ToBusinessDate(x.CreatedAt), x.StatusCode))
@@ -62,10 +70,13 @@ public sealed class ApiKeyUsageQueryService(
         int days,
         CancellationToken cancellationToken)
     {
-        var boundedDays = Math.Max(days, 1);
+        var boundedDays = ClampUsageWindowDays(days);
         var today = ToBusinessDate(now);
         var start = today.AddDays(-(boundedDays - 1));
-        var rows = await LoadUsageRowsAsync(userId, cancellationToken);
+        var rows = await LoadUsageRowsAsync(
+            userId,
+            ToBusinessDateStartUtc(start),
+            cancellationToken);
         var eligibleRows = rows
             .Where(x => x.CreatedAt <= now)
             .Select(x => new LocalUsageRow(ToBusinessDate(x.CreatedAt), x.StatusCode))
@@ -91,18 +102,31 @@ public sealed class ApiKeyUsageQueryService(
         int limit,
         CancellationToken cancellationToken)
     {
+        return await GetRecentAsync(userId, DateTimeOffset.UtcNow, limit, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ApiUsageRecentItem>> GetRecentAsync(
+        Guid userId,
+        DateTimeOffset now,
+        int limit,
+        CancellationToken cancellationToken)
+    {
         var boundedLimit = limit <= 0 ? 50 : Math.Min(limit, 200);
+        var windowStart = ToBusinessDateStartUtc(
+            ToBusinessDate(now).AddDays(-(MaxUsageWindowDays - 1)));
         await using var db = dbContextFactory();
-        var query = db.ApiKeyUsages
-            .AsNoTracking()
-            .Where(x => x.ApiKey != null && x.ApiKey.UserId == userId)
-            .Select(x => new RecentUsageRow(
-                x.Id,
-                x.CreatedAt,
-                x.Endpoint,
-                x.StatusCode,
-                x.LatencyMs,
-                x.ApiKey!.Last4));
+        var query = ApiUsageWindowQuery(db, userId, windowStart)
+            .Join(
+                db.ApiKeys.AsNoTracking(),
+                usage => usage.ApiKeyId,
+                key => key.Id,
+                (usage, key) => new RecentUsageRow(
+                    usage.Id,
+                    usage.CreatedAt,
+                    usage.Endpoint,
+                    usage.StatusCode,
+                    usage.LatencyMs,
+                    key.Last4));
 
         if (string.Equals(
                 db.Database.ProviderName,
@@ -133,15 +157,28 @@ public sealed class ApiKeyUsageQueryService(
 
     private async Task<IReadOnlyList<UsageRow>> LoadUsageRowsAsync(
         Guid userId,
+        DateTimeOffset windowStart,
         CancellationToken cancellationToken)
     {
         await using var db = dbContextFactory();
-        return await db.ApiKeyUsages
-            .AsNoTracking()
-            .Where(x => x.ApiKey != null && x.ApiKey.UserId == userId)
+        return await ApiUsageWindowQuery(db, userId, windowStart)
             .Select(x => new UsageRow(x.CreatedAt, x.StatusCode))
             .ToListAsync(cancellationToken);
     }
+
+    private static IQueryable<ApiKeyUsage> ApiUsageWindowQuery(
+        AppDbContext db,
+        Guid userId,
+        DateTimeOffset windowStart) =>
+        db.ApiKeyUsages
+            .FromSqlInterpolated($"""
+                SELECT u.*
+                FROM ApiKeyUsages AS u
+                INNER JOIN ApiKeys AS k ON u.ApiKeyId = k.Id
+                WHERE k.UserId = {userId}
+                  AND u.CreatedAt >= {windowStart}
+                """)
+            .AsNoTracking();
 
     private async Task<DateTimeOffset?> GetCurrentPeriodEndAsync(
         Guid userId,
@@ -160,6 +197,16 @@ public sealed class ApiKeyUsageQueryService(
         var local = TimeZoneInfo.ConvertTime(value, BusinessTimeZone);
         return DateOnly.FromDateTime(local.Date);
     }
+
+    private static DateTimeOffset ToBusinessDateStartUtc(DateOnly date)
+    {
+        var localDateTime = date.ToDateTime(TimeOnly.MinValue);
+        var offset = BusinessTimeZone.GetUtcOffset(localDateTime);
+        return new DateTimeOffset(localDateTime, offset).ToUniversalTime();
+    }
+
+    public static int ClampUsageWindowDays(int days) =>
+        Math.Clamp(days, MinUsageWindowDays, MaxUsageWindowDays);
 
     private static ApiUsageCount CountForDay(
         IReadOnlyList<LocalUsageRow> rows,
