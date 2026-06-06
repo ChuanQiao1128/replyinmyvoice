@@ -13,10 +13,14 @@ function escapeCsvCell(value: unknown) {
     return "";
   }
 
-  const text = String(value);
-  if (!/[",\r\n]/.test(text)) {
+  const text = neutralizeSpreadsheetFormula(String(value));
+  if (!/[",\r\n\t]/.test(text)) {
     return text;
   }
 
   return `"${text.replaceAll('"', '""')}"`;
+}
+
+function neutralizeSpreadsheetFormula(value: string) {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }

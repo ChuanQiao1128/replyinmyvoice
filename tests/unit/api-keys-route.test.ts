@@ -81,7 +81,7 @@ describe("/api/keys proxy routes", () => {
     ];
     fetchMock().mockResolvedValueOnce(Response.json(payload, { status: 200 }));
 
-    const response = await GET();
+    const response = await GET(request("/api/keys", "GET"));
 
     await expect(response.json()).resolves.toEqual(payload);
     expect(response.status).toBe(200);
@@ -238,12 +238,22 @@ describe("/api/keys proxy routes", () => {
   it("returns 401 when no access token is available", async () => {
     vi.mocked(getCurrentAccessToken).mockResolvedValueOnce(null);
 
-    const response = await GET();
+    const response = await GET(request("/api/keys", "GET"));
 
     await expect(response.json()).resolves.toEqual({
       error: "Authentication required.",
     });
     expect(response.status).toBe(401);
+    expect(fetchMock()).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-origin key list requests before auth or forwarding", async () => {
+    const response = await GET(
+      request("/api/keys", "GET", undefined, "https://attacker.example.test"),
+    );
+
+    expect(response.status).toBe(403);
+    expect(getCurrentAccessToken).not.toHaveBeenCalled();
     expect(fetchMock()).not.toHaveBeenCalled();
   });
 });

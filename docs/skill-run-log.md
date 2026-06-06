@@ -4152,3 +4152,21 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: `ApiKeyServiceTests` passed 18/18. `RewriteJobProcessorTests` passed 8/8. Exact `cd backend-dotnet && dotnet build` passed. Exact `cd backend-dotnet && dotnet test` passed 592/592. Restricted substring scan over `app components public lib backend-dotnet/src backend-dotnet/tests` returned no matches.
 - Limitations: An initial parallel focused test run hit Functions worker build artifact races; sequential focused tests and exact full backend commands later passed. No push, PR, deploy, production database migration, or live provider call was run.
+
+### 2026-06-06 - ui-browser-testing - RFX-07 developer export controls
+
+- Agent: Codex worker
+- Trigger: GitHub issue #568 / RFX-07 changes browser-visible developer Usage and Billing CSV export controls, loading/error states, and same-origin API reads.
+- Action: Opened and followed the skill; identified the user-visible export flows, added a client CSV download helper test, updated component source assertions for fetch/blob export wiring, converted export links to buttons with loading/error states, and updated the developer billing Playwright expectation to the new button/download behavior.
+- Output artifacts: `components/developers/usage-panel.tsx`; `components/developers/billing-panel.tsx`; `lib/client-csv-download.ts`; `tests/unit/client-csv-download.test.ts`; `tests/unit/developer-keys-ui.test.ts`; `tests/unit/developer-billing-panel.test.ts`; `tests/e2e/developer-billing.spec.ts`.
+- Verification evidence: Focused unit run for export/client/component tests passed 61/61. Full `npm run test` passed 462/462 before the Playwright expectation update. Focused Playwright command `npx playwright test tests/e2e/developer-billing.spec.ts --project=chromium` was attempted for real-browser coverage.
+- Limitations: The focused Playwright run hung during local server startup with no reporter output and the sandbox blocked process inspection/termination. No deploy, push, PR, or live payment action was run.
+
+### 2026-06-06 - resilience-test-generation - RFX-07 v1 proxy failure handling
+
+- Agent: Codex worker
+- Trigger: GitHub issue #568 / RFX-07 changes tests for v1 proxy backend fetch failures and telemetry delivery scheduling.
+- Action: Opened and followed the skill; identified the Azure proxy boundary and failure invariant: failed upstream fetches must not surface framework 500s and telemetry must be scheduled without blocking the response. Added deterministic route tests for submit, result, and usage proxy failures returning the documented error shape with HTTP 502.
+- Output artifacts: `app/api/v1/rewrite/route.ts`; `app/api/v1/rewrite/[id]/route.ts`; `app/api/v1/usage/route.ts`; `lib/api-observability.ts`; `tests/unit/public-rewrite-api-route.test.ts`; `tests/unit/v1-usage-route.test.ts`; `tests/unit/api-observability.test.ts`.
+- Verification evidence: Red focused run failed on thrown upstream errors and missing scheduler. After implementation, focused v1 proxy and observability tests passed. Full `npm run test` passed 462/462 before the Playwright expectation update.
+- Limitations: No retry behavior was added; RFX-07 only required deterministic 502 wrapping and non-blocking telemetry scheduling. No live Azure, PostHog, or Sentry call was run.

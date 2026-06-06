@@ -8,18 +8,18 @@ const { azureApiMock } = vi.hoisted(() => ({
 
 const { apiObservabilityMock } = vi.hoisted(() => ({
   apiObservabilityMock: {
-    captureApiEvent: vi.fn(),
+    scheduleApiEvent: vi.fn(),
   },
 }));
 
 vi.mock("../../lib/azure-api", () => azureApiMock);
 vi.mock("../../lib/api-observability", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/api-observability")>()),
-  captureApiEvent: apiObservabilityMock.captureApiEvent,
+  scheduleApiEvent: apiObservabilityMock.scheduleApiEvent,
 }));
 
 import { GET, dynamic } from "../../app/api/v1/usage/route";
-import { captureApiEvent } from "../../lib/api-observability";
+import { scheduleApiEvent } from "../../lib/api-observability";
 import { getAzureApiBaseUrl } from "../../lib/azure-api";
 
 const appUrl = "https://replyinmyvoice.com";
@@ -42,7 +42,7 @@ function request(origin = "https://client.example.test") {
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
-  vi.mocked(captureApiEvent).mockReset().mockResolvedValue([]);
+  vi.mocked(scheduleApiEvent).mockReset();
   vi.mocked(getAzureApiBaseUrl).mockReset().mockReturnValue(azureUrl);
 });
 
@@ -88,7 +88,7 @@ describe("/api/v1/usage proxy route", () => {
         Authorization: apiAuthorization,
       },
     });
-    expect(captureApiEvent).toHaveBeenCalledWith(
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: "GET /api/v1/usage",
         latencyMs: expect.any(Number),
@@ -109,12 +109,35 @@ describe("/api/v1/usage proxy route", () => {
 
     expect(response.status).toBe(401);
     expect(fetchMock()).toHaveBeenCalledTimes(1);
-    expect(captureApiEvent).toHaveBeenCalledWith(
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: "GET /api/v1/usage",
         errorCode: "invalid_key",
         latencyMs: expect.any(Number),
         statusCode: 401,
+      }),
+    );
+  });
+
+  it("returns a documented proxy error when usage forwarding fails", async () => {
+    fetchMock().mockRejectedValueOnce(new Error("upstream offline"));
+
+    const response = await GET(request());
+
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "proxy_request_failed",
+        message: "The API service could not be reached. Please try again.",
+      },
+    });
+    expect(response.status).toBe(502);
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: "GET /api/v1/usage",
+        error: expect.any(Error),
+        errorCode: "proxy_request_failed",
+        latencyMs: expect.any(Number),
+        statusCode: 502,
       }),
     );
   });

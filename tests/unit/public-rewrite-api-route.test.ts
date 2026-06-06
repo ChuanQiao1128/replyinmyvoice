@@ -8,14 +8,14 @@ const { azureApiMock } = vi.hoisted(() => ({
 
 const { apiObservabilityMock } = vi.hoisted(() => ({
   apiObservabilityMock: {
-    captureApiEvent: vi.fn(),
+    scheduleApiEvent: vi.fn(),
   },
 }));
 
 vi.mock("../../lib/azure-api", () => azureApiMock);
 vi.mock("../../lib/api-observability", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/api-observability")>()),
-  captureApiEvent: apiObservabilityMock.captureApiEvent,
+  scheduleApiEvent: apiObservabilityMock.scheduleApiEvent,
 }));
 
 import { POST, dynamic as submitDynamic } from "../../app/api/v1/rewrite/route";
@@ -23,7 +23,7 @@ import {
   GET,
   dynamic as resultDynamic,
 } from "../../app/api/v1/rewrite/[id]/route";
-import { captureApiEvent } from "../../lib/api-observability";
+import { scheduleApiEvent } from "../../lib/api-observability";
 import { getAzureApiBaseUrl } from "../../lib/azure-api";
 
 const appUrl = "https://replyinmyvoice.com";
@@ -51,7 +51,7 @@ function request(path: string, init: RequestInit) {
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
-  vi.mocked(captureApiEvent).mockReset().mockResolvedValue([]);
+  vi.mocked(scheduleApiEvent).mockReset();
   vi.mocked(getAzureApiBaseUrl).mockReset().mockReturnValue(azureUrl);
 });
 
@@ -99,7 +99,7 @@ describe("/api/v1/rewrite Next proxy routes", () => {
     });
     expect(headers.get("Authorization")).toBeNull();
     expect(headers.get("Content-Type")).toBe("application/json");
-    expect(captureApiEvent).toHaveBeenCalledWith(
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: "POST /api/v1/rewrite",
         errorCode: "invalid_key",
@@ -151,7 +151,7 @@ describe("/api/v1/rewrite Next proxy routes", () => {
     expect(response.headers.get("X-RateLimit-Limit")).toBe("60");
     expect(response.headers.get("X-RateLimit-Remaining")).toBe("59");
     expect(response.headers.get("X-RateLimit-Reset")).toBe("1812345678");
-    expect(captureApiEvent).toHaveBeenCalledWith(
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: "POST /api/v1/rewrite",
         latencyMs: expect.any(Number),
@@ -192,7 +192,7 @@ describe("/api/v1/rewrite Next proxy routes", () => {
     expect(response.headers.get("X-RateLimit-Limit")).toBe("3");
     expect(response.headers.get("X-RateLimit-Remaining")).toBe("0");
     expect(response.headers.get("X-RateLimit-Reset")).toBe("1812345678");
-    expect(captureApiEvent).toHaveBeenCalledWith(
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: "POST /api/v1/rewrite",
         errorCode: "rate_limited",
@@ -229,7 +229,7 @@ describe("/api/v1/rewrite Next proxy routes", () => {
     expect(url).toBe(`${azureUrl}/api/v1/rewrite/${rewriteId}`);
     expect(init.cache).toBe("no-store");
     expect(headers.get("Authorization")).toBeNull();
-    expect(captureApiEvent).toHaveBeenCalledWith(
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: "GET /api/v1/rewrite/{id}",
         errorCode: "invalid_key",
@@ -278,11 +278,74 @@ describe("/api/v1/rewrite Next proxy routes", () => {
     expect(response.headers.get("X-RateLimit-Limit")).toBe("60");
     expect(response.headers.get("X-RateLimit-Remaining")).toBe("58");
     expect(response.headers.get("X-RateLimit-Reset")).toBe("1812345678");
-    expect(captureApiEvent).toHaveBeenCalledWith(
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: "GET /api/v1/rewrite/{id}",
         latencyMs: expect.any(Number),
         statusCode: 200,
+      }),
+    );
+  });
+
+  it("returns a documented proxy error when submit forwarding fails", async () => {
+    fetchMock().mockRejectedValueOnce(new Error("upstream offline"));
+
+    const response = await POST(
+      request("/api/v1/rewrite", {
+        body: JSON.stringify({ draft: "Please send the update tomorrow." }),
+        headers: {
+          authorization,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "proxy_request_failed",
+        message: "The API service could not be reached. Please try again.",
+      },
+    });
+    expect(response.status).toBe(502);
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: "POST /api/v1/rewrite",
+        error: expect.any(Error),
+        errorCode: "proxy_request_failed",
+        latencyMs: expect.any(Number),
+        statusCode: 502,
+      }),
+    );
+  });
+
+  it("returns a documented proxy error when result forwarding fails", async () => {
+    fetchMock().mockRejectedValueOnce(new Error("upstream offline"));
+
+    const response = await GET(
+      request(`/api/v1/rewrite/${rewriteId}`, {
+        headers: {
+          authorization,
+        },
+        method: "GET",
+      }),
+      { params: Promise.resolve({ id: rewriteId }) },
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "proxy_request_failed",
+        message: "The API service could not be reached. Please try again.",
+      },
+    });
+    expect(response.status).toBe(502);
+    expect(scheduleApiEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: "GET /api/v1/rewrite/{id}",
+        error: expect.any(Error),
+        errorCode: "proxy_request_failed",
+        latencyMs: expect.any(Number),
+        statusCode: 502,
       }),
     );
   });

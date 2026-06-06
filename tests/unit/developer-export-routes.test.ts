@@ -81,6 +81,32 @@ describe("CSV export serialization", () => {
       ].join("\n"),
     );
   });
+
+  it("prefixes spreadsheet formula cells before quoting", () => {
+    const csv = serializeCsv(
+      ["name", "value"],
+      [
+        { name: "=sum", value: "=1+1" },
+        { name: "+plus", value: "+4412345" },
+        { name: "-minus", value: "-10" },
+        { name: "@mention", value: "@cmd" },
+        { name: "tab", value: "\tcalc" },
+        { name: "return", value: "\rcalc" },
+      ],
+    );
+
+    expect(csv).toBe(
+      [
+        "name,value",
+        "'=sum,'=1+1",
+        "'+plus,'+4412345",
+        "'-minus,'-10",
+        "'@mention,'@cmd",
+        "tab,\"'\tcalc\"",
+        "return,\"'\rcalc\"",
+      ].join("\n"),
+    );
+  });
 });
 
 describe("/api/me CSV export routes", () => {
