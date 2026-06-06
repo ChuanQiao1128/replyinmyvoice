@@ -4,6 +4,7 @@ import {
   AlertCircle,
   CalendarClock,
   CreditCard,
+  Download,
   ExternalLink,
   FileText,
   Loader2,
@@ -244,11 +245,21 @@ export function BillingHistoryTable({
             Packs, subscription invoices, and refund records from your account.
           </p>
         </div>
-        {history.length > 0 ? (
-          <span className="rounded-full border border-line bg-paper px-3 py-1 text-xs font-semibold text-ink/55">
-            {history.length} {history.length === 1 ? "record" : "records"}
-          </span>
-        ) : null}
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+          <a
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper sm:w-auto"
+            download
+            href="/api/me/billing/export"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Export CSV
+          </a>
+          {history.length > 0 ? (
+            <span className="rounded-full border border-line bg-paper px-3 py-1 text-xs font-semibold text-ink/55">
+              {history.length} {history.length === 1 ? "record" : "records"}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {history.length === 0 ? (

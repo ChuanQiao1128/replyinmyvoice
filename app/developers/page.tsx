@@ -201,6 +201,9 @@ export default function DevelopersPage() {
               <a href="#quickstart" className="btn btn-ghost btn-lg">
                 Quickstart
               </a>
+              <a href="/api/v1/openapi.json" className="btn btn-ghost btn-lg">
+                OpenAPI specification
+              </a>
             </div>
           </div>
 
@@ -523,6 +526,53 @@ export default function DevelopersPage() {
                   <code>signal</code> appears only on a succeeded response. It is
                   an informational naturalness reference, may evolve over time,
                   and is not a guarantee. Lower values read more natural.
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section className="dev-section" aria-labelledby="legal-heading">
+            <div className="pp-includes-head" id="legal-heading">
+              Legal
+            </div>
+            <div className="card-grid">
+              <article className="v2card">
+                <h3>API Terms of Use</h3>
+                <p>
+                  Draft API terms covering eligibility, key security, paid
+                  quota, metering, service limits, and account changes.
+                </p>
+                <p>
+                  <Link href="/developers/terms" className="dev-text-link">
+                    Read the draft page
+                  </Link>
+                </p>
+              </article>
+              <article className="v2card">
+                <h3>Acceptable Use Policy</h3>
+                <p>
+                  Draft API usage rules for responsible content, system load,
+                  access sharing, and customer obligations.
+                </p>
+                <p>
+                  <Link
+                    href="/developers/acceptable-use"
+                    className="dev-text-link"
+                  >
+                    Read the draft page
+                  </Link>
+                </p>
+              </article>
+              <article className="v2card">
+                <h3>Data & Retention</h3>
+                <p>
+                  Draft data notes covering RewriteAttempt storage, the bounded
+                  30-day retention window, deletion, and processors.
+                </p>
+                <p>
+                  <Link href="/developers/data" className="dev-text-link">
+                    Read the draft page
+                  </Link>
                 </p>
               </article>
             </div>

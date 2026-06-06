@@ -45,6 +45,24 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-06 - system-spec-synthesis - GA-04 usage and billing CSV export
+
+- Agent: Codex worker
+- Trigger: GitHub issue #550 adds two same-origin export API contracts for developer dashboard usage and billing data.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the GA-04 issue body, `plans/rewrite-api-v1/ga-issues/GA-04-usage-billing-csv-export.md`, sibling `/api/me/*` proxy routes, developer dashboard panels, and unit test patterns. Implementation spec summary: goals are dependency-free CSV exports for existing user-scoped Azure JSON data; non-goals are payment-provider changes, new data stores, existing JSON endpoint changes, and user-id query forwarding; API contracts are `GET /api/me/api-usage/export?limit=` with limit capped at 1000 and `GET /api/me/billing/export`; security requires same-origin checks plus current Entra token forwarding; verification requires serializer, route, UI source, typecheck, unit suite, lint, and restricted-term scan.
+- Output artifacts: `lib/csv-export.ts`; `app/api/me/api-usage/export/route.ts`; `app/api/me/billing/export/route.ts`; `tests/unit/developer-export-routes.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused export tests first failed on missing route modules, then passed 8/8 after implementation. `npm run typecheck` passed. `npm run test` passed 436/436.
+- Limitations: This was a local implementation spec and verification pass only; no Azure backend, payment-provider, deployment, push, or PR action was run.
+
+### 2026-06-06 - ui-browser-testing - GA-04 developer dashboard export controls
+
+- Agent: Codex worker
+- Trigger: GitHub issue #550 adds browser-visible `Export CSV` controls to the Usage and Billing tabs.
+- Action: Opened and followed the skill; identified `/developers/keys` Usage and Billing tabs as the affected user-visible flow. Added source-level UI assertions for the new same-origin export links, added a focused Playwright assertion to the existing developer billing spec, and attempted browser execution. Kept controls compact, icon-led, and aligned with the existing dashboard button styling.
+- Output artifacts: `components/developers/usage-panel.tsx`; `components/developers/billing-panel.tsx`; `tests/unit/developer-keys-ui.test.ts`; `tests/unit/developer-billing-panel.test.ts`; `tests/e2e/developer-billing.spec.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused UI tests first failed on missing export links, then passed with the export controls present. Combined focused route/UI suite passed 20/20. `npm run typecheck` passed. `npm run test` passed 436/436. `npm run lint` exited 0 with one pre-existing warning in `components/account/account-panel.tsx`. Restricted-term scan over `app`, `components`, `public`, and `lib` returned no matches.
+- Limitations: The repo Playwright command for `tests/e2e/developer-billing.spec.ts --project=chromium` hung during multi-server startup and had to be treated as inconclusive; the sandbox denied process termination for the local servers it started. A direct Playwright Chromium launch through the Node REPL failed with macOS sandbox permission errors, so no screenshot inspection was completed in this worker run.
+
 ### 2026-06-05 - state-machine-modeling - P2-06 rewrite attempt retention purge
 
 - Agent: Codex worker
@@ -3739,3 +3757,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`.
 - Verification evidence: `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter BillingHistory` passed 3/3; full `cd backend-dotnet && dotnet test` passed 540/540.
 - Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.
+
+### 2026-06-06 - ui-browser-testing - GA-03 API legal and data pages
+
+- Agent: Codex worker
+- Trigger: GitHub issue #549 changes browser-visible `/developers` navigation and adds three developer legal/data pages.
+- Action: Opened and followed the project skill; identified `/developers`, `/developers/terms`, `/developers/acceptable-use`, and `/developers/data` as the user-visible routes. Added source-level Vitest coverage for links, default-exported route files, draft status, operator/domain copy, quota/metering wording, acceptable-use obligations, and data-retention wording. Added the three static pages using the existing developer page classes.
+- Output artifacts: `app/developers/page.tsx`; `app/developers/terms/page.tsx`; `app/developers/acceptable-use/page.tsx`; `app/developers/data/page.tsx`; `tests/unit/developers-page.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused red `npm test -- tests/unit/developers-page.test.ts` failed on missing legal links and missing route files, then passed 2/2 after implementation. `npm run typecheck` passed. Full `npm run test` passed 429/429. `npm run lint` completed with 0 errors and 1 unrelated existing warning. The restricted vocabulary scan over `app components public lib` returned no matches. `next dev` served all four local routes with HTTP 200 and expected rendered strings.
+- Limitations: The in-app Browser target was unavailable in this session. Local Chromium launch was blocked by macOS sandbox process permissions, and alternate Playwright engines were not installed, so screenshot inspection was not completed. `next dev` used port 3001 because port 3000 was already occupied and emitted local `EMFILE` file-watch warnings while still compiling and serving the checked routes.

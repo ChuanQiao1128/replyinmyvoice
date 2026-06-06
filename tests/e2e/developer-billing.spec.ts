@@ -126,6 +126,10 @@ test("developer billing tab renders mocked history and opens the portal route", 
   await expect(page.getByText("72 of 90 rewrites remaining")).toBeVisible();
   await expect(page.getByText("Quick Pack")).toBeVisible();
   await expect(page.getByText("Pro/API invoice for June")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Export CSV" })).toHaveAttribute(
+    "href",
+    "/api/me/billing/export",
+  );
   await expect(page.getByRole("link", { name: "View receipt" })).toHaveAttribute(
     "href",
     "https://payments.example.test/receipt/quick-pack",

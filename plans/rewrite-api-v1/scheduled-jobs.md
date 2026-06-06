@@ -25,3 +25,4 @@ Cron format: Azure Functions NCRONTAB, with the seconds field first.
 ## Deviations
 
 - `RewriteAttempt` does not currently carry a persisted source flag that distinguishes API-originated attempts from website-originated attempts. The retention purge therefore applies the 30-day payload scrub to all terminal attempts older than 30 days, as allowed by P2-06, and leaves non-terminal `Pending` and `Processing` attempts untouched.
+- P2-06 replaced the former 90-day `ContentRetentionTimerFunction` (`ScrubExpiredRewriteContent`) with the 30-day `RetentionPurgeFunction` above. The legacy `REWRITE_CONTENT_RETENTION_DAYS` app setting is therefore **no longer consumed by a scheduled job** (`RetentionService.ScrubExpiredRawContentAsync` remains available but is not timer-wired); the effective content-retention window is now the 30-day purge.
