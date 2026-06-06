@@ -117,17 +117,6 @@
           },
           "401": {
             "description": "Missing, malformed, revoked, expired, or unknown API key.",
-            "headers": {
-              "X-RateLimit-Limit": {
-                "$ref": "#/components/headers/RateLimitLimit"
-              },
-              "X-RateLimit-Remaining": {
-                "$ref": "#/components/headers/RateLimitRemaining"
-              },
-              "X-RateLimit-Reset": {
-                "$ref": "#/components/headers/RateLimitReset"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -285,13 +274,13 @@
                 "examples": {
                   "processing": {
                     "value": {
-                      "id": "rw_123",
+                      "id": "8f14e45f-ea4d-4f62-9d22-4f134b7f4c40",
                       "status": "processing"
                     }
                   },
                   "succeeded": {
                     "value": {
-                      "id": "rw_123",
+                      "id": "8f14e45f-ea4d-4f62-9d22-4f134b7f4c40",
                       "status": "succeeded",
                       "rewrittenText": "Hi Sam, thanks for your patience. Your order is running a little behind and ships next week.",
                       "signal": {
@@ -302,10 +291,10 @@
                   },
                   "failed": {
                     "value": {
-                      "id": "rw_123",
+                      "id": "8f14e45f-ea4d-4f62-9d22-4f134b7f4c40",
                       "status": "failed",
                       "error": {
-                        "code": "rewrite_failed",
+                        "code": "engine_unavailable",
                         "message": "The rewrite could not be completed."
                       }
                     }
@@ -316,17 +305,6 @@
           },
           "401": {
             "description": "Missing, malformed, revoked, expired, or unknown API key.",
-            "headers": {
-              "X-RateLimit-Limit": {
-                "$ref": "#/components/headers/RateLimitLimit"
-              },
-              "X-RateLimit-Remaining": {
-                "$ref": "#/components/headers/RateLimitRemaining"
-              },
-              "X-RateLimit-Reset": {
-                "$ref": "#/components/headers/RateLimitReset"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -432,17 +410,6 @@
           },
           "401": {
             "description": "Missing, malformed, revoked, expired, or unknown API key.",
-            "headers": {
-              "X-RateLimit-Limit": {
-                "$ref": "#/components/headers/RateLimitLimit"
-              },
-              "X-RateLimit-Remaining": {
-                "$ref": "#/components/headers/RateLimitRemaining"
-              },
-              "X-RateLimit-Reset": {
-                "$ref": "#/components/headers/RateLimitReset"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -518,7 +485,7 @@
         "schema": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 255
+          "maxLength": 120
         }
       },
       "RewriteId": {
@@ -528,7 +495,7 @@
         "description": "Rewrite job id returned by POST /api/v1/rewrite.",
         "schema": {
           "type": "string",
-          "minLength": 1
+          "format": "uuid"
         }
       }
     },
@@ -537,7 +504,7 @@
         "description": "Relative polling URL for the accepted rewrite job.",
         "schema": {
           "type": "string",
-          "example": "/api/v1/rewrite/rw_123"
+          "example": "/api/v1/rewrite/8f14e45f-ea4d-4f62-9d22-4f134b7f4c40"
         }
       },
       "RateLimitLimit": {
@@ -579,13 +546,10 @@
         "required": [
           "draft"
         ],
-        "additionalProperties": false,
         "properties": {
           "draft": {
             "type": "string",
-            "minLength": 10,
-            "maxLength": 2400,
-            "description": "Draft text to rewrite. Must be at least 10 characters, at most 300 words, and at most 2400 characters."
+            "description": "Draft text to rewrite. After trimming whitespace, it must be at least 10 characters, at most 300 words, and at most 2400 characters. Unknown request properties are ignored."
           }
         }
       },
@@ -598,7 +562,8 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "status": {
             "type": "string",
@@ -619,7 +584,12 @@
           }
         ],
         "discriminator": {
-          "propertyName": "status"
+          "propertyName": "status",
+          "mapping": {
+            "processing": "#/components/schemas/RewriteProcessing",
+            "succeeded": "#/components/schemas/RewriteSucceeded",
+            "failed": "#/components/schemas/RewriteFailed"
+          }
         }
       },
       "RewriteProcessing": {
@@ -631,7 +601,8 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "status": {
             "type": "string",
@@ -650,7 +621,8 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "status": {
             "type": "string",
@@ -674,7 +646,8 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "status": {
             "type": "string",
@@ -750,7 +723,10 @@
             "minimum": 0
           },
           "periodEnd": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         }

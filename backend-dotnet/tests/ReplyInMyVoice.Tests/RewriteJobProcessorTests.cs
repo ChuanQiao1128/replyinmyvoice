@@ -216,6 +216,37 @@ public sealed class RewriteJobProcessorTests
         attempt.Status.Should().Be(RewriteAttemptStatus.Failed);
         attempt.ErrorCode.Should().Be("provider_timeout");
     }
+
+    [Fact]
+    public async Task ProcessAsync_releases_reservation_when_provider_throws()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var quota = new QuotaService(fixture.CreateContext);
+        var reservedAttempt = await quota.ReserveAsync(
+            user.Id,
+            "idem-worker-provider-throw",
+            "hash",
+            "{\"roughDraftReply\":\"Thanks for your message. I will reply soon.\",\"tone\":\"warm\"}",
+            "free:lifetime",
+            3,
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromMinutes(10));
+        var provider = new ThrowingRewriteProvider(new InvalidOperationException("provider failed"));
+        var processor = new RewriteJobProcessor(fixture.CreateContext, provider);
+
+        await processor.ProcessAsync(new RewriteJob(reservedAttempt.AttemptId), CancellationToken.None);
+
+        provider.CallCount.Should().Be(1);
+        await using var db = fixture.CreateContext();
+        var period = await db.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(0);
+        period.ReservedCount.Should().Be(0);
+        (await db.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Released);
+        var attempt = await db.RewriteAttempts.SingleAsync();
+        attempt.Status.Should().Be(RewriteAttemptStatus.Failed);
+        attempt.ErrorCode.Should().Be("provider_failed");
+    }
 }
 
 internal sealed class FakeRewriteProvider(RewriteProviderResult result) : IRewriteProvider

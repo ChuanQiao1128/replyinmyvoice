@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 
 import {
-  captureApiEvent,
   parseApiErrorCode,
   readApiRequestId,
+  scheduleApiEvent,
 } from "../../../../lib/api-observability";
 import { getAzureApiBaseUrl } from "../../../../lib/azure-api";
 import { copyV1ResponseHeaders } from "../../../../lib/v1-response-headers";
@@ -11,6 +11,12 @@ import { copyV1ResponseHeaders } from "../../../../lib/v1-response-headers";
 export const dynamic = "force-dynamic";
 
 const endpoint = "GET /api/v1/usage";
+const proxyRequestFailedBody = {
+  error: {
+    code: "proxy_request_failed",
+    message: "The API service could not be reached. Please try again.",
+  },
+};
 
 async function forwardAzureResponse(response: Response, startedAtMs: number) {
   const headers = new Headers();
@@ -21,7 +27,7 @@ async function forwardAzureResponse(response: Response, startedAtMs: number) {
   copyV1ResponseHeaders(response.headers, headers);
 
   const responseText = await response.text();
-  void captureApiEvent({
+  scheduleApiEvent({
     endpoint,
     errorCode: response.status >= 400 ? parseApiErrorCode(responseText) : undefined,
     latencyMs: Date.now() - startedAtMs,
@@ -51,13 +57,13 @@ export async function GET(request: Request) {
 
     return forwardAzureResponse(response, startedAtMs);
   } catch (error) {
-    void captureApiEvent({
+    scheduleApiEvent({
       endpoint,
       error,
       errorCode: "proxy_request_failed",
       latencyMs: Date.now() - startedAtMs,
-      statusCode: 500,
+      statusCode: 502,
     });
-    throw error;
+    return NextResponse.json(proxyRequestFailedBody, { status: 502 });
   }
 }

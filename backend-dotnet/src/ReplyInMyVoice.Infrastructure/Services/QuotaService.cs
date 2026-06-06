@@ -31,7 +31,8 @@ public sealed class QuotaService(
         int quotaLimit,
         DateTimeOffset now,
         TimeSpan reservationTtl,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? apiKeyId = null)
     {
         for (var attempt = 1; attempt <= ReservationRaceMaxAttempts; attempt++)
         {
@@ -46,6 +47,7 @@ public sealed class QuotaService(
                     quotaLimit,
                     now,
                     reservationTtl,
+                    apiKeyId,
                     cancellationToken);
             }
             catch (DbUpdateConcurrencyException) when (attempt < ReservationRaceMaxAttempts)
@@ -71,6 +73,7 @@ public sealed class QuotaService(
             quotaLimit,
             now,
             reservationTtl,
+            apiKeyId,
             cancellationToken);
     }
 
@@ -83,6 +86,7 @@ public sealed class QuotaService(
         int quotaLimit,
         DateTimeOffset now,
         TimeSpan reservationTtl,
+        Guid? apiKeyId,
         CancellationToken cancellationToken)
     {
         return await ExecuteInTransactionAsync(async db =>
@@ -139,6 +143,7 @@ public sealed class QuotaService(
                 IdempotencyKey = idempotencyKey,
                 RequestHash = requestHash,
                 RequestJson = requestJson,
+                ApiKeyId = apiKeyId,
                 Status = RewriteAttemptStatus.Pending,
                 CreatedAt = now,
                 ExpiresAt = now.Add(reservationTtl),

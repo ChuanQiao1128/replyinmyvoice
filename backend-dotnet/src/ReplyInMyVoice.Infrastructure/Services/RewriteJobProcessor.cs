@@ -132,11 +132,31 @@ public sealed class RewriteJobProcessor(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            var failureFinishedAt = DateTimeOffset.UtcNow;
+            const string failureErrorCode = "provider_failed";
             logger?.LogError(
                 ex,
                 "Rewrite provider threw for attempt {AttemptId}.",
                 job.AttemptId);
-            throw;
+            await WriteCostLogAsync(
+                job.AttemptId,
+                request,
+                null,
+                providerCallCapture.Calls,
+                "failed",
+                failureErrorCode,
+                rewriteStartedAt,
+                failureFinishedAt,
+                cancellationToken);
+            await ExecuteAttemptMutationAsync(
+                job.AttemptId,
+                () => quotaService.ReleaseAsync(
+                    job.AttemptId,
+                    failureErrorCode,
+                    failureFinishedAt,
+                    cancellationToken),
+                cancellationToken);
+            return;
         }
 
         var rewriteFinishedAt = DateTimeOffset.UtcNow;

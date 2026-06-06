@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, LinkButton } from "../ui/button";
 import { Card } from "../ui/card";
 import { UsageBarChart, type UsageSeriesPoint } from "./usage-bar-chart";
+import { downloadCsvFile } from "../../lib/client-csv-download";
 
 type UsageBucket = {
   calls: number;
@@ -207,6 +208,9 @@ function SummaryCard({
 
 export function UsagePanel() {
   const [usageState, setUsageState] = useState<UsageState>({ status: "loading" });
+  const [exportState, setExportState] = useState<
+    { status: "idle" | "loading" } | { message: string; status: "error" }
+  >({ status: "idle" });
 
   const refreshUsage = useCallback(async () => {
     setUsageState({ status: "loading" });
@@ -217,6 +221,23 @@ export function UsagePanel() {
     } catch (error) {
       setUsageState({
         message: error instanceof Error ? error.message : "Could not load usage.",
+        status: "error",
+      });
+    }
+  }, []);
+
+  const exportUsage = useCallback(async () => {
+    setExportState({ status: "loading" });
+
+    try {
+      await downloadCsvFile({
+        filename: "api-usage.csv",
+        path: "/api/me/api-usage/export?limit=1000",
+      });
+      setExportState({ status: "idle" });
+    } catch (error) {
+      setExportState({
+        message: error instanceof Error ? error.message : "Could not export CSV.",
         status: "error",
       });
     }
@@ -284,29 +305,42 @@ export function UsagePanel() {
               API activity.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <a
-              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper sm:w-auto"
-              download
-              href="/api/me/api-usage/export?limit=1000"
-            >
-              <Download className="h-4 w-4" aria-hidden="true" />
-              Export CSV
-            </a>
-            <Button
-              className="w-full sm:w-auto"
-              disabled={usageState.status === "loading"}
-              onClick={() => void refreshUsage()}
-              type="button"
-              variant="secondary"
-            >
-              {usageState.status === "loading" ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              )}
-              Refresh
-            </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto">
+            <div className="flex w-full flex-col gap-2 sm:flex-row">
+              <Button
+                className="w-full sm:w-auto"
+                disabled={exportState.status === "loading"}
+                onClick={() => void exportUsage()}
+                type="button"
+                variant="secondary"
+              >
+                {exportState.status === "loading" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                )}
+                {exportState.status === "loading" ? "Exporting..." : "Export CSV"}
+              </Button>
+              <Button
+                className="w-full sm:w-auto"
+                disabled={usageState.status === "loading"}
+                onClick={() => void refreshUsage()}
+                type="button"
+                variant="secondary"
+              >
+                {usageState.status === "loading" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                )}
+                Refresh
+              </Button>
+            </div>
+            {exportState.status === "error" ? (
+              <p className="max-w-xs text-xs font-semibold text-rust" role="alert">
+                {exportState.message}
+              </p>
+            ) : null}
           </div>
         </div>
       </section>

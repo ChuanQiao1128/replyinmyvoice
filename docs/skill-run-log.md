@@ -3900,3 +3900,326 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/developers/api-keys-panel.tsx`; `app/api/keys/[id]/webhook/route.ts`; `tests/unit/api-keys-route.test.ts`; `tests/unit/developer-keys-ui.test.ts`.
 - Verification evidence: `npm run typecheck` passed. Full `npm run test` passed 450/450.
 - Limitations: No Playwright/browser screenshot pass was run because the issue acceptance required unit/typecheck gates and this worker run did not start a local web server.
+
+### 2026-06-06 - system-spec-synthesis - RFX-01 public API paid gate
+
+- Agent: Codex worker
+- Trigger: GitHub issue #562 / RFX-01 changes the public API v1 submit contract from quota-only rejection to a paid-entitlement gate before reservation.
+- Action: Opened and followed the skill; translated the issue and brief into an implementation checklist. Context: live API keys currently loaded the account plan and reserved quota without checking paid entitlement. Goals: reject live free-baseline API calls with `402 api_requires_paid_plan`, keep sandbox keys exempt, allow active/trialing/testing subscriptions and usable purchased credits, and preserve website rewrite free-quota behavior. Non-goals: no frontend changes, no payment provider changes, no schema migration, no deployment.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused backend filter for `AccountServiceTests|RewriteApiTests` passed 50/50 after the red compile failure on missing `HasPaidApiEntitlementAsync`. Full `cd backend-dotnet && dotnet test` passed 566/566.
+- Limitations: No separate spec document was created because the issue and RFX-01 brief were already implementation-scoped.
+
+### 2026-06-06 - state-machine-modeling - RFX-01 API entitlement and reservation boundary
+
+- Agent: Codex worker
+- Trigger: RFX-01 changes the quota/reservation lifecycle by adding an entitlement decision before a public API live request can enter pending reservation state.
+- Action: Opened and followed the skill. State list: live key authenticated; sandbox key authenticated; live account has API paid entitlement; live account lacks API paid entitlement; quota reservation pending; quota rejected. Events: submit v1 rewrite, sandbox key detected, active/trialing/testing subscription found, usable purchased credit found, no entitlement found, reservation created, quota exhausted. Transition table: sandbox submit -> sandbox attempt; live entitled submit -> quota reservation path; live not entitled submit -> `402 api_requires_paid_plan`; entitled but quota exhausted -> existing `402 quota_exhausted`. Invariants: no reservation, rewrite attempt, outbox message, or credit consumption on entitlement rejection; sandbox remains exempt; website rewrite path remains unchanged.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: xUnit asserts free-baseline live key rejection with no reservation, active subscription acceptance through existing v1 submit test, usable purchased credit acceptance, and sandbox key acceptance through existing sandbox test. Full `cd backend-dotnet && dotnet test` passed 566/566.
+- Limitations: Concurrent depletion after the entitlement check is still handled by the existing quota reservation path, which can return quota exhaustion.
+
+### 2026-06-06 - data-module-review - RFX-01 account and credit entitlement lookup
+
+- Agent: Codex worker
+- Trigger: RFX-01 reviews quota/account persistence invariants for `AppUser.SubscriptionStatus`, `RewriteCredit`, `UsagePeriod`, `UsageReservation`, and pre-reservation API rejection.
+- Action: Opened and followed the skill; reviewed AccountService, QuotaService, AppDbContext mappings, and tests together. Findings: no new schema/migration required; entitlement lookup is read-only and uses tracked reservation code only after the gate passes; SQLite DateTimeOffset limitations are avoided by materializing candidate purchased credits before expiry filtering; rejection creates no usage period, reservation, attempt, outbox message, or credit consumption. Ran the data-risk scan against the infrastructure project root.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src/ReplyInMyVoice.Infrastructure` completed and reported existing quota/idempotency hotspots for review. Focused backend tests passed 50/50. Full `cd backend-dotnet && dotnet test` passed 566/566.
+- Limitations: The scan is signal-based and intentionally broad; it is not a proof of all persistence invariants.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-01 xUnit paid gate coverage
+
+- Agent: Codex worker
+- Trigger: RFX-01 acceptance requires xUnit coverage for free-baseline live key rejection, active subscription acceptance, purchased-credit acceptance, sandbox exemption, and no reservation/charge on rejection.
+- Action: Opened and followed the project skill plus test-first workflow. Added AccountService helper tests and extended RewriteApiTests before production code. The first focused run failed because `HasPaidApiEntitlementAsync` did not exist, then passed after implementation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~AccountServiceTests|FullyQualifiedName~RewriteApiTests" --no-restore` passed 50/50. Full `cd backend-dotnet && dotnet test` passed 566/566.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.
+
+### 2026-06-06 - verification-before-completion - RFX-01 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #562 after implementation and test runs.
+- Action: Opened and followed the skill; reran the proof commands after implementation and before making completion claims. Checked full backend tests, diff whitespace, changed-file blocked-copy scan, and worktree status.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Fresh `cd backend-dotnet && dotnet test` passed 566/566. `git diff --check` passed. Changed-file blocked-copy scan returned no matches. `git status --short` showed only the six RFX-01 modified files.
+- Limitations: Local commit creation failed because the git worktree index lock is outside the writable sandbox at `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-562/index.lock`.
+
+### 2026-06-06 - state-machine-modeling - RFX-02 usage accounting and v1 result environment boundary
+
+- Agent: Codex worker
+- Trigger: GitHub issue #563 / RFX-02 changes quota accounting, usage windows, and v1 attempt result visibility across live and test API key environments.
+- Action: Opened and followed the skill. State list: free period quota, paid period quota, active credit balance, pending period reservation, credit consumed balance, live API key result read, test API key result read. Events: account summary requested, period reservation created/finalized, credit-backed reservation created/released, usage series requested, recent usage requested, v1 result polled. Transition table: free/paid period usage contributes to period used/reserved; active credit consumption contributes to aggregate used and credit remaining; series/recent queries enter a bounded `1..90` day window; live result reads can see only live attempts; test result reads can see only test attempts. Invariants: `quota - used - reserved == remaining`; remaining never negative; credit remaining is preserved when old period usage exists; cross-environment result reads return not found.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageQueryService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; related xUnit tests.
+- Verification evidence: Focused backend filter for `AccountServiceTests|ApiKeyUsageQueryServiceTests|ApiUsageHttpFunctionsTests|RewriteApiTests` passed 58/58. Full `cd backend-dotnet && dotnet test` passed 571/571. `npm run typecheck` passed.
+- Limitations: Credit reservations are still represented by the existing `RewriteCredit.AmountConsumed` model; no schema change was made.
+
+### 2026-06-06 - data-module-review - RFX-02 usage counters and API usage query bounds
+
+- Agent: Codex worker
+- Trigger: RFX-02 changes usage counters, credit accounting, EF query shape, and API key usage persistence reads.
+- Action: Opened and followed the skill; reviewed `AccountService`, `QuotaService`, `ApiKeyUsageQueryService`, `ApiKeyUsage`, `ApiKey`, and existing SQLite test fixtures together. Findings: no migration required; aggregate account usage could be made coherent without changing the response contract; SQLite cannot translate `DateTimeOffset` lower-bound LINQ filters, so the bounded usage read uses parameterized SQL for the user/key/date join and composes projections afterward; recent rows are limited to the same 90-day safety window.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageQueryService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminCreditAdjustTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageQueryServiceTests.cs`.
+- Verification evidence: New command-capture xUnit coverage asserts the API usage query includes a `CreatedAt >=` lower bound. Full `cd backend-dotnet && dotnet test` passed 571/571. `git diff --check` passed.
+- Limitations: The query-bound proof is local SQLite/EF coverage plus SQL text capture; no production database query plan was captured.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-02 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: RFX-02 acceptance requires xUnit coverage for usage invariant across free/paid/credit, bounded API usage windows, and live/test result isolation.
+- Action: Opened and followed the project skill plus test-first workflow. Added failing tests first, confirmed red failures for credit aggregate math, unbounded `days`, recent rows outside the window, missing query lower bound, and live-key reads of test attempts. Implemented minimal backend fixes, then updated existing account/admin credit tests to the new coherent aggregate definition.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminCreditAdjustTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageQueryServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiUsageHttpFunctionsTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Red run failed for the intended RFX-02 behaviors before production edits. Focused backend filter passed 58/58 after implementation. Full `cd backend-dotnet && dotnet test` passed 571/571.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.
+
+### 2026-06-06 - verification-before-completion - RFX-02 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #563 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands after implementation before completion claims. Checked full backend tests, frontend typecheck, source-only restricted-copy scan, diff whitespace, and worktree status.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Fresh `cd backend-dotnet && dotnet test` passed 571/571. `npm run typecheck` passed after restoring `node_modules` with `npm ci --cache /private/tmp/rfx-02-563-npm-cache`. Source-only restricted-copy scan over `app components public lib backend-dotnet/src backend-dotnet/tests` returned no matches when excluding generated output. `git diff --check` passed.
+- Limitations: Initial `npm run typecheck` failed because `node_modules` was absent; initial `npm ci` failed on an unwritable supervisor npm cache, so the install was rerun with a writable temp cache. npm also warned this shell uses Node 24 while the project declares Node 22.
+
+### 2026-06-06 - data-module-review - RFX-03 API rate-limit counters and RequestId index
+
+- Agent: Codex worker
+- Trigger: GitHub issue #564 / RFX-03 changes EF Core persistence for API key usage lookup indexing and introduces a persisted per-key fixed-window rate-limit counter.
+- Action: Opened and followed the skill; reviewed `ApiKeyUsage`, `ApiKey`, `RewriteAttempt.IdempotencyKey`, AppDbContext mappings, generated migration output, and V1 submit/result/usage mutation paths together. Invariants checked: rate-limit decisions no longer depend on best-effort `ApiKeyUsage` analytics rows; limiter write failure fails closed; over-length idempotency keys cannot reach `RewriteAttempt` persistence; `ApiKeyUsage.RequestId` gets a plain lookup index; the migration adds only one direct FK from `ApiKeyRateLimitWindows` to `ApiKeys`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKeyRateLimitWindow.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyRateLimiter.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260606080828_AddApiRateLimitWindowsAndUsageRequestIdIndex.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`.
+- Verification evidence: Generated migration contains `IX_ApiKeyUsages_RequestId`, unique `IX_ApiKeyRateLimitWindows_ApiKeyId_WindowStart`, and no second cascade path to `RewriteAttempts`. Focused `V1RewriteRateLimitTests` passed 4/4. Full `cd backend-dotnet && dotnet test` passed 575/575. `cd backend-dotnet && dotnet build` passed.
+- Limitations: `ApiKeyUsage.RequestId` was intentionally indexed but not made unique because usage rows are analytics/audit records and duplicate logical IDs can occur across retries or endpoint classes; no production migration was applied.
+
+### 2026-06-06 - resilience-test-generation - RFX-03 concurrent rate-limit and fail-closed coverage
+
+- Agent: Codex worker
+- Trigger: RFX-03 changes rate-limit enforcement under concurrent public API submits and failure handling when limiter/usage persistence fails.
+- Action: Opened and followed the skill; built a failure matrix covering concurrent submits, duplicate/racing counter creation, usage analytics write failure, limiter unavailable, malformed/over-length idempotency input, and quota side effects. Implemented deterministic SQLite xUnit coverage with a trigger that rejects every `ApiKeyUsages` insert to prove rate limiting does not depend on those rows.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRateLimitTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyRateLimiter.cs`; V1 submit/result/usage handler updates in `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs` and `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: Focused test `V1_rewrite_submit_enforces_per_key_rate_limit_under_concurrent_usage_write_failures` accepted exactly 2 of 10 concurrent requests at a limit of 2, returned `429 rate_limited` for the rest, created exactly 2 attempts/reservations/outbox messages, and left `ApiKeyUsages` empty due the trigger. `V1_rewrite_submit_fails_closed_when_rate_limiter_is_unavailable` returned `503 rate_limit_unavailable` with no attempt/reservation/outbox.
+- Limitations: The concurrency proof uses file-backed SQLite WAL in tests; SQL Server behavior is backed by serializable transactions, a unique counter-window index, concurrency-token retries, and build-verified EF SQL Server mappings.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-03 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: RFX-03 acceptance requires xUnit coverage for concurrent rate limits, fail-closed limiter behavior, over-length `Idempotency-Key`, and the migration index.
+- Action: Opened and followed the project skill plus test-first workflow. Added `V1RewriteRateLimitTests` before production code. The first focused run failed at compile time because `IApiKeyRateLimiter` / `ApiKeyRateLimitResult` did not exist; after implementation, the focused class failed only on the missing migration index; after EF migration generation, the focused class passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRateLimitTests.cs`.
+- Verification evidence: Focused `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter V1RewriteRateLimitTests --no-restore` passed 4/4. Existing `RewriteApiTests` passed 32/32. Full `cd backend-dotnet && dotnet test` passed 575/575.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed successfully.
+
+### 2026-06-06 - verification-before-completion - RFX-03 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #564 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked focused RFX-03 tests, existing V1 rewrite API tests, full backend build, full backend test suite, and banned-term scans.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Focused `V1RewriteRateLimitTests` passed 4/4. Existing `RewriteApiTests` passed 32/32. `cd backend-dotnet && dotnet build` passed. `cd backend-dotnet && dotnet test` passed 575/575. Targeted `npm run test -- tests/unit/openapi-spec.test.ts` passed 3/3 after `npm ci --cache /private/tmp/rfx-03-564-npm-cache`. Banned-term scans over `app components public lib` and changed files returned no matches.
+- Limitations: The first EF migration command took the default host-factory timeout before returning; it still generated the migration successfully. `npm ci` reported existing audit findings and a Node 24 runtime warning against the repo's Node 22 engine. No push, PR, deploy, or production database migration was run.
+
+### 2026-06-06 - data-module-review - RFX-04 webhook URL persistence boundary
+
+- Agent: Codex worker
+- Trigger: GitHub issue #565 / RFX-04 reviews persisted API key webhook URLs and webhook delivery rows that can outlive the save-time validator.
+- Action: Opened and followed the skill; reviewed `ApiKey.WebhookUrl`, `WebhookDelivery.Url`, API key rotation, webhook setup, delivery claim/send/failure marking, and SQLite test fixtures together. Findings: no migration required; old rows need send-time validation before dispatch; rejection should follow the existing failed-attempt path and must not expose the signing value.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookEndpointSafety.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDispatcherService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`.
+- Verification evidence: Focused webhook/API key/infrastructure xUnit filter passed 34/34 after implementation. Full `cd backend-dotnet && dotnet test` passed 583/583.
+- Limitations: No schema migration or backfill was added; existing unsafe rows are handled by send-time rejection.
+
+### 2026-06-06 - resilience-test-generation - RFX-04 webhook network hardening
+
+- Agent: Codex worker
+- Trigger: RFX-04 changes outbound webhook network failure handling, redirect behavior, connect-time host resolution, and per-request timeouts.
+- Action: Opened and followed the skill; built focused resilience coverage for non-HTTPS input, local/link-local/private saved destinations, old-row send-time refusal, and registered handler redirect prevention. Used deterministic unit tests and handler inspection instead of live remote calls.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookHttpClientFactory.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`.
+- Verification evidence: Initial focused test run failed for the intended behaviors. Focused rerun passed 34/34. Full `cd backend-dotnet && dotnet test` passed 583/583.
+- Limitations: Redirect behavior is verified through handler configuration rather than a live redirect server, because the webhook sender now rejects non-HTTPS/local test targets before the request leaves the process.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-04 xUnit webhook hardening coverage
+
+- Agent: Codex worker
+- Trigger: RFX-04 acceptance requires xUnit coverage for webhook URL rejection/acceptance, old-row send-time validation, and no-redirect HTTP client configuration.
+- Action: Opened and followed the project skill plus test-first workflow. Added failing tests in `ApiKeyServiceTests`, `WebhookDispatcherServiceTests`, and `InfrastructureServiceCollectionTests`, confirmed red failures, then implemented the shared validator, send-time guards, and typed HTTP client handler configuration.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`.
+- Verification evidence: Red focused run failed with 7 expected failures. Focused rerun passed 34/34. Full `cd backend-dotnet && dotnet test` passed 583/583.
+- Limitations: Public URL acceptance uses a deterministic test resolver for `example.com`; function and dispatcher fixtures use a public literal endpoint to avoid external DNS in tests.
+
+### 2026-06-06 - verification-before-completion - RFX-04 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #565 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked focused xUnit coverage, full backend tests, restricted-copy scans, and project UI copy scan.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Focused webhook/API key/infrastructure filter passed 34/34. Full `cd backend-dotnet && dotnet test` passed 583/583. Restricted-copy scans over touched files, backend source/tests, and `app components public lib` returned no matches.
+- Limitations: Local commit creation failed because the git worktree index lock is outside the writable sandbox at `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-565/index.lock`. No push, PR, deploy, production database migration, or live webhook call was run.
+
+### 2026-06-06 - system-spec-synthesis - RFX-05 webhook reliability scope
+
+- Agent: Codex worker
+- Trigger: GitHub issue #566 / RFX-05 changes webhook job lifecycle, event contract headers, retry behavior, and EF Core origin persistence.
+- Action: Opened and followed the skill; converted the issue body, RFX-05 brief, AGENTS.md constraints, and cross-review notes into a scoped implementation spec covering context, goals, non-goals, current system, data model, job contract, state handling, security/privacy, rollout, verification, and open questions.
+- Output artifacts: Concise working spec in the session update; implementation checkpoints executed in `WebhookDispatcherService`, `WebhookDeliveryService`, `RewriteAttempt`, `QuotaService`, v1 submit handlers, EF migration, and xUnit coverage.
+- Verification evidence: Focused RFX-05 filter passed 59/59. Full `cd backend-dotnet && dotnet build` passed. Full `cd backend-dotnet && dotnet test` passed 586/586.
+- Limitations: No deployment, push, PR, production database migration, or live webhook call was run.
+
+### 2026-06-06 - state-machine-modeling - RFX-05 webhook delivery lifecycle
+
+- Agent: Codex worker
+- Trigger: RFX-05 adds an in-flight webhook delivery state and terminal poison-row behavior.
+- Action: Opened and followed the skill; modeled `WebhookDelivery` states as `Pending`, `InProgress`, `Delivered`, and `Failed`; transitions are due claim, send success, retryable send failure, max-attempt failure, and stale in-progress recovery after lease expiry. Invariants checked: terminal states are not due-claimed, in-flight rows are not reclaimed during the timer edge, retries clear locks, and poison rows become terminal at the retry limit.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Enums/WebhookDeliveryStatus.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDispatcherService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`.
+- Verification evidence: `DispatchDueAsync_does_not_claim_delivery_again_on_next_timer_tick_while_send_is_running` passed; `DispatchDueAsync_terminalizes_delivery_when_attempt_data_is_missing` passed; focused RFX-05 filter passed 59/59.
+- Limitations: Lease recovery is covered by service-level tests with deterministic fakes; no live receiver was called.
+
+### 2026-06-06 - data-module-review - RFX-05 API key origin persistence
+
+- Agent: Codex worker
+- Trigger: RFX-05 changes EF Core persistence by adding the source API key to `RewriteAttempt` and changing webhook enqueue lookup invariants.
+- Action: Opened and followed the skill; reviewed `RewriteAttempt`, `ApiKey`, `ApiKeyUsage`, `WebhookDelivery`, `UsageReservation`, AppDbContext mappings, generated migration, v1 submit paths, and enqueue service together. Findings addressed: source-of-truth origin must live on the attempt, website attempts keep null origin, webhook delivery FK remains non-cascading, and usage analytics rows are no longer required to enqueue terminal API attempts.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/RewriteAttempt.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260606084307_AddRewriteAttemptApiKeyId.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDeliveryService.cs`.
+- Verification evidence: Generated migration adds nullable `RewriteAttempts.ApiKeyId`, `IX_RewriteAttempts_ApiKeyId`, and `FK_RewriteAttempts_ApiKeys_ApiKeyId` with `NoAction`. `FinalizeSuccessAsync_enqueues_webhook_delivery_from_persisted_api_key_id_without_usage_row` passed. Full backend build and tests passed.
+- Limitations: Existing rows are left with null origin and therefore do not enqueue new webhook deliveries retroactively.
+
+### 2026-06-06 - resilience-test-generation - RFX-05 webhook delivery failure matrix
+
+- Agent: Codex worker
+- Trigger: RFX-05 changes webhook timeouts, leases, retry races, poison delivery handling, and signed request replay-bounding.
+- Action: Opened and followed the skill; built deterministic tests for slow receiver in-flight protection, missing required data at max attempts, persisted-origin enqueue without usage analytics, non-API no-enqueue behavior, and timestamp-covered signatures. Implemented serialization/race retry around claim transactions using the same bounded retry style as other persistence race paths.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; dispatcher retry code in `WebhookDispatcherService`.
+- Verification evidence: Initial focused run failed at the missing `InProgress` state. After implementation, focused RFX-05 filter passed 59/59 and full `cd backend-dotnet && dotnet test` passed 586/586.
+- Limitations: Serialization retry is covered by code path and full test suite, not by a SQL Server deadlock harness.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-05 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: RFX-05 acceptance requires xUnit coverage for slow delivery claim behavior, poison terminal state, persisted API key origin, API-only webhook enqueue, and timestamp-covered signing.
+- Action: Opened and followed the skill plus test-first workflow. Added focused xUnit tests before implementation in existing backend test classes, watched the focused run fail on the missing lifecycle state, then implemented the minimum backend changes and reran focused and full backend suites.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter "WebhookDispatcherServiceTests|QuotaServiceTests|RewriteApiTests"` passed 59/59. Full `cd backend-dotnet && dotnet test` passed 586/586. Full `cd backend-dotnet && dotnet build` passed with 0 warnings and 0 errors.
+- Limitations: The EF tooling `migrations list` command timed out while checking database status because no local SQL Server is reachable; the generated migration still compiles and was verified by build/test.
+
+### 2026-06-06 - verification-before-completion - RFX-05 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #566 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked focused RFX-05 xUnit coverage, full backend build, full backend tests, project UI copy scan, and changed-line restricted-copy scan.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Focused RFX-05 filter passed 59/59. `cd backend-dotnet && dotnet build` passed. `cd backend-dotnet && dotnet test` passed 586/586. Restricted-copy scans over `app components public lib` and changed lines returned no matches.
+- Limitations: No push, PR, deploy, production database migration, or live webhook call was run.
+
+### 2026-06-06 - resilience-test-generation - RFX-06 provider exception release
+
+- Agent: Codex worker
+- Trigger: GitHub issue #567 / RFX-06 changes provider failure recovery and quota release behavior for rewrite jobs.
+- Action: Opened and followed the skill; identified provider exception, timeout, explicit failed result, malformed result, expired reservation, and queue redelivery boundaries. Added deterministic xUnit coverage for the generic provider exception path so failed provider work releases quota immediately and records a terminal attempt.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`.
+- Verification evidence: Focused `RewriteJobProcessorTests` first failed on `ProcessAsync_releases_reservation_when_provider_throws` because the exception rethrew. After implementation, focused `RewriteJobProcessorTests` passed 8/8. Full `cd backend-dotnet && dotnet test -m:1` passed 592/592.
+- Limitations: No bounded provider retry was added; the existing local pattern is prompt terminal release for non-timeout provider exceptions.
+
+### 2026-06-06 - state-machine-modeling - RFX-06 rewrite attempt terminal release
+
+- Agent: Codex worker
+- Trigger: RFX-06 changes `RewriteAttempt` / `UsageReservation` lifecycle transitions for provider exception handling.
+- Action: Opened and followed the skill; modeled states as `Pending`, `Processing`, `Succeeded`, `Failed`, and `Expired`. Events reviewed: claim for processing, provider success, provider explicit failure, provider exception, timeout, malformed result, expiry, and redelivery. Invariants checked: terminal attempts are no-ops on redelivery, failed/expired attempts do not increment `UsedCount`, and released reservations leave `ReservedCount` at zero.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`.
+- Verification evidence: New provider-exception test asserts `UsageReservationStatus.Released`, `RewriteAttemptStatus.Failed`, `UsedCount == 0`, and `ReservedCount == 0`. Focused processor tests passed 8/8; full backend tests passed 592/592.
+- Limitations: No new enum state or migration was needed; the existing `Failed` terminal state remains the release target.
+
+### 2026-06-06 - data-module-review - RFX-06 ApiKey RowVersion and quota invariants
+
+- Agent: Codex worker
+- Trigger: RFX-06 reviews EF Core persistence invariants for `ApiKey.RowVersion`, `UsageReservation`, `UsagePeriod`, and provider failure accounting.
+- Action: Opened and followed the skill; reviewed `ApiKey` entity, `AppDbContext` concurrency mapping, API key service write paths, quota release behavior, and worker tests together. Chose the low-risk client-managed Guid option from the brief, documented the contract on `ApiKey.RowVersion`, and added focused service assertions for create, revoke, rotate, set webhook, and clear webhook paths.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`.
+- Verification evidence: `ApiKey_write_paths_bump_client_managed_row_version` passed inside the focused API key service filter. Full backend build passed. Full backend tests passed 592/592.
+- Limitations: No DB-generated rowversion migration was added, avoiding churn in existing optimistic-concurrency mappings and tests.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-06 xUnit backend coverage
+
+- Agent: Codex worker
+- Trigger: RFX-06 acceptance requires xUnit coverage for missing production API key pepper behavior, test-environment tolerance, provider exception release, and client-managed key concurrency token bumps.
+- Action: Opened and followed the project skill plus test-first workflow. Added focused tests in `ApiKeyServiceTests` and `RewriteJobProcessorTests`, confirmed red failures for production missing-pepper hashing and provider exception release, then implemented minimal backend changes and reran focused and full backend gates.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`.
+- Verification evidence: Red API key focused run failed on missing production pepper throw; red processor focused run failed because the provider exception rethrew. Green focused runs passed `ApiKeyServiceTests` 18/18 and `RewriteJobProcessorTests` 8/8. Exact `cd backend-dotnet && dotnet build` passed. Exact `cd backend-dotnet && dotnet test` passed 592/592.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed successfully.
+
+### 2026-06-06 - verification-before-completion - RFX-06 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #567 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked focused xUnit coverage, full backend build, full backend tests, and restricted substring scan over app/UI and backend source/test directories.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: `ApiKeyServiceTests` passed 18/18. `RewriteJobProcessorTests` passed 8/8. Exact `cd backend-dotnet && dotnet build` passed. Exact `cd backend-dotnet && dotnet test` passed 592/592. Restricted substring scan over `app components public lib backend-dotnet/src backend-dotnet/tests` returned no matches.
+- Limitations: An initial parallel focused test run hit Functions worker build artifact races; sequential focused tests and exact full backend commands later passed. No push, PR, deploy, production database migration, or live provider call was run.
+### 2026-06-06 - system-spec-synthesis - RFX-08 SDK and OpenAPI contract accuracy
+
+- Agent: Codex worker
+- Trigger: GitHub issue #561 / RFX-08 changes the documented v1 API contract and the TypeScript SDK contract.
+- Action: Opened and followed the skill; converted the issue and `plans/rewrite-api-v1/fix-issues/RFX-08-sdk-openapi.md` into an implementation checklist covering SDK idempotency, submit response validation, polling timing, UUID rewrite ids, nullable usage periods, unauthenticated response headers, request body schema limits, and verification gates.
+- Output artifacts: `packages/sdk/src/index.ts`; `packages/sdk/package.json`; `packages/sdk/LICENSE`; `packages/sdk/README.md`; `public/openapi.json`; `tests/unit/sdk.test.ts`; `tests/unit/openapi-spec.test.ts`.
+- Verification evidence: Focused SDK/OpenAPI red run failed on the missing contract behavior, then passed 15/15 after implementation. `npm run typecheck`, `npm run test`, `cd packages/sdk && npm run build`, `git diff --check`, package metadata check, and scoped restricted-term scan all passed.
+- Limitations: No live API or deployment smoke was run; this issue is limited to local SDK/spec/test artifacts.
+
+### 2026-06-06 - resilience-test-generation - RFX-08 SDK idempotency and polling
+
+- Agent: Codex worker
+- Trigger: RFX-08 changes retry-safe SDK submit behavior and the polling loop timing.
+- Action: Opened and followed the skill; identified the critical invariant that repeated logical submits can carry a stable idempotency key and that polling should not hammer the result endpoint immediately. Added deterministic unit tests using mocked fetch and fake timers for idempotency header forwarding, invalid submit response handling, initial poll delay, timeout behavior, and failed job propagation.
+- Output artifacts: `tests/unit/sdk.test.ts`; `packages/sdk/src/index.ts`.
+- Verification evidence: Focused SDK/OpenAPI tests passed 15/15. Full `npm run test` passed 457/457. `npm run typecheck` and `cd packages/sdk && npm run build` passed.
+- Limitations: Tests use local mocked fetch only; no external API endpoint was contacted.
+
+### 2026-06-06 - ui-browser-testing - RFX-07 developer export controls
+
+- Agent: Codex worker
+- Trigger: GitHub issue #568 / RFX-07 changes browser-visible developer Usage and Billing CSV export controls, loading/error states, and same-origin API reads.
+- Action: Opened and followed the skill; identified the user-visible export flows, added a client CSV download helper test, updated component source assertions for fetch/blob export wiring, converted export links to buttons with loading/error states, and updated the developer billing Playwright expectation to the new button/download behavior.
+- Output artifacts: `components/developers/usage-panel.tsx`; `components/developers/billing-panel.tsx`; `lib/client-csv-download.ts`; `tests/unit/client-csv-download.test.ts`; `tests/unit/developer-keys-ui.test.ts`; `tests/unit/developer-billing-panel.test.ts`; `tests/e2e/developer-billing.spec.ts`.
+- Verification evidence: Focused unit run for export/client/component tests passed 61/61. Full `npm run test` passed 462/462 before the Playwright expectation update. Focused Playwright command `npx playwright test tests/e2e/developer-billing.spec.ts --project=chromium` was attempted for real-browser coverage.
+- Limitations: The focused Playwright run hung during local server startup with no reporter output and the sandbox blocked process inspection/termination. No deploy, push, PR, or live payment action was run.
+
+### 2026-06-06 - resilience-test-generation - RFX-07 v1 proxy failure handling
+
+- Agent: Codex worker
+- Trigger: GitHub issue #568 / RFX-07 changes tests for v1 proxy backend fetch failures and telemetry delivery scheduling.
+- Action: Opened and followed the skill; identified the Azure proxy boundary and failure invariant: failed upstream fetches must not surface framework 500s and telemetry must be scheduled without blocking the response. Added deterministic route tests for submit, result, and usage proxy failures returning the documented error shape with HTTP 502.
+- Output artifacts: `app/api/v1/rewrite/route.ts`; `app/api/v1/rewrite/[id]/route.ts`; `app/api/v1/usage/route.ts`; `lib/api-observability.ts`; `tests/unit/public-rewrite-api-route.test.ts`; `tests/unit/v1-usage-route.test.ts`; `tests/unit/api-observability.test.ts`.
+- Verification evidence: Red focused run failed on thrown upstream errors and missing scheduler. After implementation, focused v1 proxy and observability tests passed. Full `npm run test` passed 462/462 before the Playwright expectation update.
+- Limitations: No retry behavior was added; RFX-07 only required deterministic 502 wrapping and non-blocking telemetry scheduling. No live Azure, PostHog, or Sentry call was run.
+
+### 2026-06-06 - cloud-architecture-cost-review - RFX-09 SQL Server CI migration gate
+
+- Agent: Codex worker
+- Trigger: RFX-09 changes the `dotnet-azure` CI/CD deploy gate for EF Core migrations and SQL Server validation.
+- Action: Opened and followed the project skill; compared an ephemeral SQL Server service container with the fallback idempotent-script/static-check option and rejected production Azure SQL for CI validation.
+- Output artifacts: `.github/workflows/dotnet-azure.yml`; `docs/ci-sqlserver-migration-gate.md`.
+- Verification evidence: Selected `mcr.microsoft.com/mssql/server:2022-latest` service container with no new paid resource and no production SQL connection. `deploy.needs` now requires both `build-test` and `sqlserver-migration`.
+- Limitations: Exact provider pricing was not checked because no paid cloud resource or exact cost estimate was introduced; the cost impact is GitHub Actions runner time and container pull time only.
+
+### 2026-06-06 - system-spec-synthesis - RFX-09 implementation contract
+
+- Agent: Codex worker
+- Trigger: RFX-09 converts the cross-review finding and GitHub issue into an implementation-ready CI gate and documentation contract.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, the issue brief, `CROSS-REVIEW.md`, `dotnet-azure.yml`, Azure readiness docs, and the EF design-time context path, then wrote the gate specification.
+- Output artifacts: `docs/ci-sqlserver-migration-gate.md`; `.github/workflows/dotnet-azure.yml`.
+- Verification evidence: The spec records context, goals, non-goals, architecture, data model impact, job contract, error handling, security/privacy, rollout, verification, and open questions.
+- Limitations: No separate broad architecture handoff was needed because the scope is a single workflow gate and docs note.
+
+### 2026-06-06 - data-module-review - RFX-09 EF migration process coverage
+
+- Agent: Codex worker
+- Trigger: RFX-09 reviews EF Core migration safety and the gap caused by SQLite `EnsureCreated` test fixtures not exercising SQL Server migrations.
+- Action: Opened and followed the skill; reviewed `AppDbContextDesignTimeFactory`, `AppDbContext`, EF package setup, migrations location, and the current workflow migration command. No entity, migration, or runtime data-access changes were made.
+- Output artifacts: `docs/ci-sqlserver-migration-gate.md`; `.github/workflows/dotnet-azure.yml`.
+- Verification evidence: The workflow gate applies the current migration chain to an empty SQL Server database through `ConnectionStrings__DefaultConnection`; the docs note records findings and suggested tests.
+- Limitations: Local Docker daemon was unavailable, so the actual SQL Server container run is delegated to GitHub Actions; local EF script generation was used as a compile-time migration check.
+
+### 2026-06-06 - verification-before-completion - RFX-09 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #569 after CI gate implementation.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked backend tests, frontend typecheck, EF migration script generation, workflow YAML syntax, diff whitespace, banned-term scans, and local Docker availability.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test` passed 592/592. `npm run typecheck` passed after `npm ci --cache ./.npm-cache`. `dotnet ef migrations script --idempotent --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj --startup-project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj --context AppDbContext --output /tmp/rfx09-migrations-infra-final.sql` exited 0 and wrote a 2,142-line script. Workflow YAML parsed successfully with Ruby Psych. `git diff --check` passed. Project and changed-file banned-term scans returned no matches.
+- Limitations: Docker client is installed, but `docker info` cannot connect to the local daemon; no local SQL Server container migration update was run. The GitHub Actions job is the first full container-backed execution of the new gate.

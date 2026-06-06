@@ -21,6 +21,7 @@ namespace ReplyInMyVoice.Functions.Functions;
 public sealed class V1RewriteHttpFunctions(
     IConfiguration configuration,
     AppDbContext db,
+    IApiKeyRateLimiter rateLimiter,
     AccountService accountService,
     RewriteRequestService rewriteRequestService)
 {
@@ -30,6 +31,7 @@ public sealed class V1RewriteHttpFunctions(
     private const int MinimumDraftLength = 10;
     private const int MaximumDraftWords = 300;
     private const int MaximumDraftCharacters = 2400;
+    private const int MaximumIdempotencyKeyLength = 120;
     private const string SandboxAttemptPrefix = "test:";
     private const string SandboxUsagePeriodKey = "test:sandbox";
     private const string SandboxResultJson = """
@@ -68,14 +70,21 @@ public sealed class V1RewriteHttpFunctions(
             return Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
         }
 
-        var rateLimitWindow = auth.ApiKeyId is null
+        var rateLimit = auth.ApiKeyId is null
             ? null
-            : await GetRateLimitWindowAsync(
+            : await rateLimiter.CheckAndIncrementAsync(
                 auth.ApiKeyId.Value,
                 auth.RateLimitPerMinute,
                 now,
                 cancellationToken);
-        if (rateLimitWindow?.IsLimited == true)
+        if (rateLimit?.IsUnavailable == true)
+        {
+            return await CompleteAsync(
+                Error("rate_limit_unavailable", "Request limit could not be checked. Please retry later.", StatusCodes.Status503ServiceUnavailable),
+                StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (rateLimit?.IsLimited == true)
         {
             return await CompleteAsync(
                 Error("rate_limited", "Request limit reached. Please retry later.", StatusCodes.Status429TooManyRequests),
@@ -122,11 +131,16 @@ public sealed class V1RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var plan = AccountService.GetUsagePlan(user, configuration);
         var idempotencyKey = request.Headers["Idempotency-Key"].ToString();
         if (string.IsNullOrWhiteSpace(idempotencyKey))
         {
             idempotencyKey = Guid.NewGuid().ToString("D");
+        }
+        else if (idempotencyKey.Length > MaximumIdempotencyKeyLength)
+        {
+            return await CompleteAsync(
+                Error("invalid_request", "Idempotency-Key must be 120 characters or fewer.", StatusCodes.Status400BadRequest),
+                StatusCodes.Status400BadRequest);
         }
 
         if (auth.IsTest)
@@ -159,6 +173,17 @@ public sealed class V1RewriteHttpFunctions(
                 sandboxResult.AttemptId.ToString());
         }
 
+        if (!await accountService.HasPaidApiEntitlementAsync(user.Id, now, cancellationToken))
+        {
+            return await CompleteAsync(
+                Error(
+                    "api_requires_paid_plan",
+                    "Public API access requires an active paid plan or usable purchased rewrite credit.",
+                    StatusCodes.Status402PaymentRequired),
+                StatusCodes.Status402PaymentRequired);
+        }
+
+        var plan = AccountService.GetUsagePlan(user, configuration);
         var rewriteRequest = new RewriteRequest(
             null,
             draft,
@@ -175,7 +200,8 @@ public sealed class V1RewriteHttpFunctions(
             plan.PeriodKey,
             plan.QuotaLimit,
             now,
-            cancellationToken);
+            cancellationToken,
+            auth.ApiKeyId);
 
         if (result.Kind == ReserveRewriteResultKind.QuotaExceeded)
         {
@@ -221,7 +247,7 @@ public sealed class V1RewriteHttpFunctions(
                 EndpointName,
                 requestId,
                 request.HttpContext.Response,
-                rateLimitWindow);
+                rateLimit?.IsUnavailable == true ? null : rateLimit);
         }
     }
 
@@ -249,14 +275,32 @@ public sealed class V1RewriteHttpFunctions(
                 "invalid_key");
         }
 
-        var rateLimitWindow = auth.ApiKeyId is null
+        var rateLimit = auth.ApiKeyId is null
             ? null
-            : await GetRateLimitWindowAsync(
+            : await rateLimiter.CheckAndIncrementAsync(
                 auth.ApiKeyId.Value,
                 auth.RateLimitPerMinute,
                 now,
                 cancellationToken);
-        if (rateLimitWindow?.IsLimited == true)
+        if (rateLimit?.IsUnavailable == true)
+        {
+            return await CompleteWithUsageAsync(
+                auth.ApiKeyId,
+                FunctionHttpResults.Problem(
+                    "Request limit could not be checked. Please retry later.",
+                    "Request limit could not be checked. Please retry later.",
+                    StatusCodes.Status503ServiceUnavailable,
+                    "rate_limit_unavailable"),
+                StatusCodes.Status503ServiceUnavailable,
+                stopwatch,
+                now,
+                cancellationToken,
+                ResultEndpointName,
+                id.ToString(),
+                request.HttpContext.Response);
+        }
+
+        if (rateLimit?.IsLimited == true)
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
@@ -272,7 +316,7 @@ public sealed class V1RewriteHttpFunctions(
                 ResultEndpointName,
                 id.ToString(),
                 request.HttpContext.Response,
-                rateLimitWindow);
+                rateLimit);
         }
 
         var attempt = await db.RewriteAttempts
@@ -281,7 +325,7 @@ public sealed class V1RewriteHttpFunctions(
                 x => x.Id == id && x.UserId == auth.UserId.Value,
                 cancellationToken);
 
-        if (attempt is null || (auth.IsTest && !IsSandboxAttempt(attempt)))
+        if (attempt is null || IsSandboxAttempt(attempt) != auth.IsTest)
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
@@ -297,7 +341,7 @@ public sealed class V1RewriteHttpFunctions(
                 ResultEndpointName,
                 id.ToString(),
                 request.HttpContext.Response,
-                rateLimitWindow);
+                rateLimit);
         }
 
         return await CompleteWithUsageAsync(
@@ -310,7 +354,7 @@ public sealed class V1RewriteHttpFunctions(
             ResultEndpointName,
             id.ToString(),
             request.HttpContext.Response,
-            rateLimitWindow);
+            rateLimit);
     }
 
     [Function("V1GetUsage")]
@@ -336,14 +380,31 @@ public sealed class V1RewriteHttpFunctions(
                 "invalid_key");
         }
 
-        var rateLimitWindow = auth.ApiKeyId is null
+        var rateLimit = auth.ApiKeyId is null
             ? null
-            : await GetRateLimitWindowAsync(
+            : await rateLimiter.CheckAndIncrementAsync(
                 auth.ApiKeyId.Value,
                 auth.RateLimitPerMinute,
                 now,
                 cancellationToken);
-        if (rateLimitWindow?.IsLimited == true)
+        if (rateLimit?.IsUnavailable == true)
+        {
+            return await CompleteWithUsageAsync(
+                auth.ApiKeyId,
+                FunctionHttpResults.Problem(
+                    "Request limit could not be checked. Please retry later.",
+                    "Request limit could not be checked. Please retry later.",
+                    StatusCodes.Status503ServiceUnavailable,
+                    "rate_limit_unavailable"),
+                StatusCodes.Status503ServiceUnavailable,
+                stopwatch,
+                now,
+                cancellationToken,
+                UsageEndpointName,
+                response: request.HttpContext.Response);
+        }
+
+        if (rateLimit?.IsLimited == true)
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
@@ -358,7 +419,7 @@ public sealed class V1RewriteHttpFunctions(
                 cancellationToken,
                 UsageEndpointName,
                 response: request.HttpContext.Response,
-                rateLimitWindow: rateLimitWindow);
+                rateLimit: rateLimit);
         }
 
         if (auth.IsTest)
@@ -378,7 +439,7 @@ public sealed class V1RewriteHttpFunctions(
                 cancellationToken,
                 UsageEndpointName,
                 response: request.HttpContext.Response,
-                rateLimitWindow: rateLimitWindow);
+                rateLimit: rateLimit);
         }
 
         var user = await db.AppUsers
@@ -399,7 +460,7 @@ public sealed class V1RewriteHttpFunctions(
                 cancellationToken,
                 UsageEndpointName,
                 response: request.HttpContext.Response,
-                rateLimitWindow: rateLimitWindow);
+                rateLimit: rateLimit);
         }
 
         var account = await accountService.GetOrCreateAccountSummaryAsync(
@@ -422,7 +483,7 @@ public sealed class V1RewriteHttpFunctions(
             cancellationToken,
             UsageEndpointName,
             response: request.HttpContext.Response,
-            rateLimitWindow: rateLimitWindow);
+            rateLimit: rateLimit);
     }
 
     private static IActionResult MapRewriteResult(RewriteAttempt attempt)
@@ -504,6 +565,7 @@ public sealed class V1RewriteHttpFunctions(
             IdempotencyKey = sandboxIdempotencyKey,
             RequestHash = requestHash,
             RequestJson = JsonSerializer.Serialize(rewriteRequest),
+            ApiKeyId = apiKeyId,
             Status = RewriteAttemptStatus.Succeeded,
             ResultJson = SandboxResultJson,
             CreatedAt = now,
@@ -587,56 +649,6 @@ public sealed class V1RewriteHttpFunctions(
             ? "The rewrite did not finish in time. Please submit a new request."
             : "The rewrite could not be completed. Please try again.";
 
-    private async Task<V1RateLimitWindow> GetRateLimitWindowAsync(
-        Guid apiKeyId,
-        int rateLimitPerMinute,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        if (rateLimitPerMinute <= 0)
-        {
-            return new V1RateLimitWindow(0, 0, now.AddMinutes(1));
-        }
-
-        var windowStart = now.AddMinutes(-1);
-        var usageQuery = db.ApiKeyUsages
-            .AsNoTracking()
-            .Where(x => x.ApiKeyId == apiKeyId);
-
-        if (string.Equals(
-                db.Database.ProviderName,
-                "Microsoft.EntityFrameworkCore.Sqlite",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            var createdAtValues = await usageQuery
-                .Select(x => x.CreatedAt)
-                .ToListAsync(cancellationToken);
-            var recentCreatedAtValues = createdAtValues
-                .Where(x => x >= windowStart)
-                .OrderBy(x => x)
-                .ToList();
-            var sqliteResetAt = recentCreatedAtValues.Count == 0
-                ? now.AddMinutes(1)
-                : recentCreatedAtValues[0].AddMinutes(1);
-
-            return new V1RateLimitWindow(rateLimitPerMinute, recentCreatedAtValues.Count, sqliteResetAt);
-        }
-
-        var recentCallCount = await usageQuery.CountAsync(
-            x => x.CreatedAt >= windowStart,
-            cancellationToken);
-        var earliestCallAt = recentCallCount == 0
-            ? now
-            : await usageQuery
-                .Where(x => x.CreatedAt >= windowStart)
-                .MinAsync(x => x.CreatedAt, cancellationToken);
-        var resetAt = recentCallCount == 0
-            ? now.AddMinutes(1)
-            : earliestCallAt.AddMinutes(1);
-
-        return new V1RateLimitWindow(rateLimitPerMinute, recentCallCount, resetAt);
-    }
-
     private async Task<IActionResult> CompleteWithUsageAsync(
         Guid? apiKeyId,
         IActionResult result,
@@ -647,7 +659,7 @@ public sealed class V1RewriteHttpFunctions(
         string endpoint,
         string? requestId = null,
         HttpResponse? response = null,
-        V1RateLimitWindow? rateLimitWindow = null)
+        ApiKeyRateLimitResult? rateLimit = null)
     {
         stopwatch.Stop();
         await TryWriteApiKeyUsageAsync(
@@ -658,11 +670,11 @@ public sealed class V1RewriteHttpFunctions(
             (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
             now,
             cancellationToken);
-        if (response is not null && rateLimitWindow is not null)
+        if (response is not null && rateLimit is not null)
         {
             SetRateLimitHeaders(
                 response,
-                rateLimitWindow.WithCurrentCall(now),
+                rateLimit,
                 statusCode == StatusCodes.Status429TooManyRequests,
                 now);
         }
@@ -672,17 +684,17 @@ public sealed class V1RewriteHttpFunctions(
 
     private static void SetRateLimitHeaders(
         HttpResponse response,
-        V1RateLimitWindow rateLimitWindow,
+        ApiKeyRateLimitResult rateLimit,
         bool includeRetryAfter,
         DateTimeOffset now)
     {
-        response.Headers["X-RateLimit-Limit"] = rateLimitWindow.Limit.ToString(CultureInfo.InvariantCulture);
-        response.Headers["X-RateLimit-Remaining"] = rateLimitWindow.Remaining.ToString(CultureInfo.InvariantCulture);
-        response.Headers["X-RateLimit-Reset"] = rateLimitWindow.ResetAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        response.Headers["X-RateLimit-Limit"] = rateLimit.Limit.ToString(CultureInfo.InvariantCulture);
+        response.Headers["X-RateLimit-Remaining"] = rateLimit.Remaining.ToString(CultureInfo.InvariantCulture);
+        response.Headers["X-RateLimit-Reset"] = rateLimit.ResetAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
 
         if (includeRetryAfter)
         {
-            response.Headers.RetryAfter = rateLimitWindow.RetryAfterSeconds(now).ToString(CultureInfo.InvariantCulture);
+            response.Headers.RetryAfter = rateLimit.RetryAfterSeconds(now).ToString(CultureInfo.InvariantCulture);
         }
     }
 
@@ -741,23 +753,6 @@ public sealed class V1RewriteHttpFunctions(
         }
 
         return count;
-    }
-
-    private sealed record V1RateLimitWindow(int Limit, int Calls, DateTimeOffset ResetAt)
-    {
-        public bool IsLimited => Limit <= 0 || Calls >= Limit;
-
-        public int Remaining => Math.Max(0, Limit - Calls);
-
-        public V1RateLimitWindow WithCurrentCall(DateTimeOffset now) =>
-            this with
-            {
-                Calls = Calls + 1,
-                ResetAt = Calls == 0 ? now.AddMinutes(1) : ResetAt,
-            };
-
-        public int RetryAfterSeconds(DateTimeOffset now) =>
-            Math.Max(1, (int)Math.Ceiling((ResetAt - now).TotalSeconds));
     }
 
     private sealed class V1RewriteSubmitRequest

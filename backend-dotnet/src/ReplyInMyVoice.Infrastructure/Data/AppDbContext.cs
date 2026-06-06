@@ -24,6 +24,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<RewriteProviderCall> RewriteProviderCalls => Set<RewriteProviderCall>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsage> ApiKeyUsages => Set<ApiKeyUsage>();
+    public DbSet<ApiKeyRateLimitWindow> ApiKeyRateLimitWindows => Set<ApiKeyRateLimitWindow>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
     public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
@@ -82,6 +83,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.CreatedAt);
             entity.HasIndex(x => new { x.UserId, x.DeletedAt, x.CreatedAt });
             entity.HasIndex(x => new { x.Status, x.ExpiresAt });
+            entity.HasIndex(x => x.ApiKeyId);
             entity.Property(x => x.IdempotencyKey).HasMaxLength(120);
             entity.Property(x => x.RequestHash).HasMaxLength(128);
             entity.Property(x => x.RequestJson).IsRequired(false);
@@ -93,6 +95,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany(x => x.RewriteAttempts)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.ApiKey)
+                .WithMany()
+                .HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<UsageReservation>(entity =>
@@ -378,6 +384,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<ApiKeyUsage>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.RequestId);
             entity.HasIndex(x => new { x.ApiKeyId, x.CreatedAt });
             entity.HasIndex(x => x.Endpoint);
             entity.HasIndex(x => x.CreatedAt);
@@ -387,6 +394,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
             entity.HasOne(x => x.ApiKey)
                 .WithMany(x => x.ApiKeyUsages)
+                .HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ApiKeyRateLimitWindow>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ApiKeyId, x.WindowStart }).IsUnique();
+            entity.HasIndex(x => x.WindowStart);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.ApiKey)
+                .WithMany(x => x.RateLimitWindows)
                 .HasForeignKey(x => x.ApiKeyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

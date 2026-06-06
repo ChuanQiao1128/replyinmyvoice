@@ -92,6 +92,8 @@ public sealed class AccountService(
             .ToList();
         var creditRemaining = activeCredits
             .Sum(x => Math.Max(x.AmountGranted - x.AmountConsumed, 0));
+        var creditUsed = activeCredits
+            .Sum(x => Math.Max(x.AmountConsumed, 0));
         var activePromoCredits = activeCredits
             .Where(x => x.Source == "PROMO")
             .ToList();
@@ -125,6 +127,8 @@ public sealed class AccountService(
             now <= x.ValidUntil &&
             (x.MaxRedemptionsGlobal is null || x.RedemptionCount < x.MaxRedemptionsGlobal));
         var remaining = periodRemaining + creditRemaining;
+        var totalUsed = used + creditUsed;
+        var quota = totalUsed + reserved + remaining;
         var sources = new List<AccountUsageSource>
         {
             new(
@@ -160,8 +164,8 @@ public sealed class AccountService(
             new AccountUsageSummary(
                 usagePlan.Scope,
                 usagePlan.PeriodKey,
-                usagePlan.QuotaLimit + creditRemaining,
-                used,
+                quota,
+                totalUsed,
                 reserved,
                 remaining,
                 remaining <= 0)
@@ -211,6 +215,39 @@ public sealed class AccountService(
                 x.ExpiresAt,
                 Math.Max(x.AmountGranted - x.AmountConsumed, 0)))
             .ToList();
+    }
+
+    public async Task<bool> HasPaidApiEntitlementAsync(
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var db = dbContextFactory();
+        var subscriptionStatus = await db.AppUsers
+            .AsNoTracking()
+            .Where(x => x.Id == userId)
+            .Select(x => (SubscriptionStatus?)x.SubscriptionStatus)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (subscriptionStatus is null)
+        {
+            return false;
+        }
+
+        if (IsPaidApiSubscriptionStatus(subscriptionStatus.Value))
+        {
+            return true;
+        }
+
+        var purchasedCredits = await db.RewriteCredits
+            .AsNoTracking()
+            .Where(x => x.UserId == userId && x.Source == "PURCHASE")
+            .Select(x => new { x.AmountGranted, x.AmountConsumed, x.ExpiresAt })
+            .ToListAsync(cancellationToken);
+
+        return purchasedCredits.Any(x =>
+            (x.ExpiresAt is null || x.ExpiresAt > now) &&
+            x.AmountGranted - x.AmountConsumed > 0);
     }
 
     public async Task<IReadOnlyList<AccountBillingHistoryItem>> GetBillingHistoryAsync(
@@ -459,6 +496,9 @@ public sealed class AccountService(
             "free:lifetime",
             ResolveFreeBaselineRewrites(configuration));
     }
+
+    private static bool IsPaidApiSubscriptionStatus(SubscriptionStatus subscriptionStatus) =>
+        subscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing;
 
     private static int ResolveFreeBaselineRewrites(IConfiguration? configuration)
     {

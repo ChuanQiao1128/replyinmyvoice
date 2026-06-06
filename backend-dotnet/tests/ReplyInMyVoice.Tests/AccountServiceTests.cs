@@ -118,6 +118,171 @@ public sealed class AccountServiceTests : IAsyncLifetime
         plan.QuotaLimit.Should().Be(2);
     }
 
+    [Theory]
+    [InlineData(SubscriptionStatus.Active)]
+    [InlineData(SubscriptionStatus.Trialing)]
+    [InlineData(SubscriptionStatus.Testing)]
+    public async Task HasPaidApiEntitlementAsync_allows_paid_subscription_statuses(SubscriptionStatus subscriptionStatus)
+    {
+        var userId = Guid.NewGuid();
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = $"entra-api-entitlement-{subscriptionStatus}",
+                SubscriptionStatus = subscriptionStatus,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var hasEntitlement = await service.HasPaidApiEntitlementAsync(
+            userId,
+            DateTimeOffset.UtcNow,
+            CancellationToken.None);
+
+        hasEntitlement.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasPaidApiEntitlementAsync_allows_usable_purchased_credit()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-api-entitlement-purchase",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = userId,
+                Source = "PURCHASE",
+                AmountGranted = 3,
+                AmountConsumed = 2,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var hasEntitlement = await service.HasPaidApiEntitlementAsync(
+            userId,
+            now,
+            CancellationToken.None);
+
+        hasEntitlement.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasPaidApiEntitlementAsync_rejects_free_or_non_usable_credit_states()
+    {
+        var freeUserId = Guid.NewGuid();
+        var promoOnlyUserId = Guid.NewGuid();
+        var consumedPurchaseUserId = Guid.NewGuid();
+        var expiredPurchaseUserId = Guid.NewGuid();
+        var pastDueUserId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.AddRange(
+                new AppUser
+                {
+                    Id = freeUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-free",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = promoOnlyUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-promo",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = consumedPurchaseUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-consumed",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = expiredPurchaseUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-expired",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = pastDueUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-past-due",
+                    SubscriptionStatus = SubscriptionStatus.PastDue,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            db.RewriteCredits.AddRange(
+                new RewriteCredit
+                {
+                    UserId = promoOnlyUserId,
+                    Source = "PROMO",
+                    AmountGranted = 3,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddDays(-1),
+                    ExpiresAt = now.AddDays(30),
+                },
+                new RewriteCredit
+                {
+                    UserId = consumedPurchaseUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 3,
+                    AmountConsumed = 3,
+                    GrantedAt = now.AddDays(-1),
+                    ExpiresAt = now.AddDays(30),
+                },
+                new RewriteCredit
+                {
+                    UserId = expiredPurchaseUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 3,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddDays(-40),
+                    ExpiresAt = now.AddDays(-1),
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var free = await service.HasPaidApiEntitlementAsync(freeUserId, now, CancellationToken.None);
+        var promoOnly = await service.HasPaidApiEntitlementAsync(promoOnlyUserId, now, CancellationToken.None);
+        var consumedPurchase = await service.HasPaidApiEntitlementAsync(consumedPurchaseUserId, now, CancellationToken.None);
+        var expiredPurchase = await service.HasPaidApiEntitlementAsync(expiredPurchaseUserId, now, CancellationToken.None);
+        var pastDue = await service.HasPaidApiEntitlementAsync(pastDueUserId, now, CancellationToken.None);
+
+        free.Should().BeFalse();
+        promoOnly.Should().BeFalse();
+        consumedPurchase.Should().BeFalse();
+        expiredPurchase.Should().BeFalse();
+        pastDue.Should().BeFalse();
+    }
+
     [Fact]
     public async Task GetOrCreateAccountSummary_counts_reserved_paid_usage_for_current_period()
     {
@@ -165,6 +330,119 @@ public sealed class AccountServiceTests : IAsyncLifetime
         summary.Usage.Reserved.Should().Be(2);
         summary.Usage.Remaining.Should().Be(81);
         summary.Usage.Exhausted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetOrCreateAccountSummary_reports_coherent_usage_totals_for_free_paid_and_credit_accounts()
+    {
+        var freeUserId = Guid.NewGuid();
+        var paidUserId = Guid.NewGuid();
+        var creditUserId = Guid.NewGuid();
+        var paidPeriodEnd = DateTimeOffset.Parse("2026-07-01T00:00:00Z");
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.AddRange(
+                new AppUser
+                {
+                    Id = freeUserId,
+                    ExternalAuthUserId = "entra-invariant-free",
+                    Email = "invariant-free@example.com",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = paidUserId,
+                    ExternalAuthUserId = "entra-invariant-paid",
+                    Email = "invariant-paid@example.com",
+                    StripeSubscriptionId = "sub_invariant_paid",
+                    SubscriptionStatus = SubscriptionStatus.Active,
+                    CurrentPeriodEnd = paidPeriodEnd,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = creditUserId,
+                    ExternalAuthUserId = "entra-invariant-credit",
+                    Email = "invariant-credit@example.com",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            db.UsagePeriods.AddRange(
+                new UsagePeriod
+                {
+                    UserId = freeUserId,
+                    PeriodKey = "free:lifetime",
+                    QuotaLimit = 3,
+                    UsedCount = 1,
+                    ReservedCount = 1,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new UsagePeriod
+                {
+                    UserId = paidUserId,
+                    PeriodKey = $"paid:sub_invariant_paid:{paidPeriodEnd:O}",
+                    QuotaLimit = 90,
+                    UsedCount = 12,
+                    ReservedCount = 3,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new UsagePeriod
+                {
+                    UserId = creditUserId,
+                    PeriodKey = "free:lifetime",
+                    QuotaLimit = 0,
+                    UsedCount = 1,
+                    ReservedCount = 0,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = creditUserId,
+                Source = "PROMO",
+                AmountGranted = 3,
+                AmountConsumed = 1,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var configuredService = new AccountService(
+            CreateContext,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["FREE_BASELINE_REWRITES"] = "3",
+                })
+                .Build());
+        var defaultService = new AccountService(CreateContext);
+
+        var free = await configuredService.GetOrCreateAccountSummaryAsync(
+            "entra-invariant-free",
+            "invariant-free@example.com",
+            CancellationToken.None);
+        var paid = await configuredService.GetOrCreateAccountSummaryAsync(
+            "entra-invariant-paid",
+            "invariant-paid@example.com",
+            CancellationToken.None);
+        var credit = await defaultService.GetOrCreateAccountSummaryAsync(
+            "entra-invariant-credit",
+            "invariant-credit@example.com",
+            CancellationToken.None);
+
+        AssertUsageInvariant(free.Usage);
+        AssertUsageInvariant(paid.Usage);
+        AssertUsageInvariant(credit.Usage);
+        credit.Usage.Remaining.Should().Be(2);
     }
 
     [Fact]
@@ -260,8 +538,8 @@ public sealed class AccountServiceTests : IAsyncLifetime
             CancellationToken.None);
 
         summary.Usage.Scope.Should().Be("free");
-        summary.Usage.Quota.Should().Be(3);
-        summary.Usage.Used.Should().Be(3);
+        summary.Usage.Quota.Should().Be(13);
+        summary.Usage.Used.Should().Be(10);
         summary.Usage.Reserved.Should().Be(0);
         summary.Usage.Remaining.Should().Be(3);
         summary.Usage.Exhausted.Should().BeFalse();
@@ -407,7 +685,8 @@ public sealed class AccountServiceTests : IAsyncLifetime
             CancellationToken.None);
 
         summary.Usage.Remaining.Should().Be(2);
-        summary.Usage.Quota.Should().Be(2);
+        summary.Usage.Quota.Should().Be(3);
+        summary.Usage.Used.Should().Be(1);
         summary.Promo.HasRedeemed.Should().BeTrue();
         summary.Promo.Eligible.Should().BeFalse();
         summary.Promo.TrialRemaining.Should().Be(2);
@@ -1015,6 +1294,12 @@ public sealed class AccountServiceTests : IAsyncLifetime
             .ReplaceService<IExecutionStrategyFactory, TestExecutionStrategyFactory>()
             .Options;
         return new AppDbContext(options);
+    }
+
+    private static void AssertUsageInvariant(AccountUsageSummary usage)
+    {
+        (usage.Quota - usage.Used - usage.Reserved).Should().Be(usage.Remaining);
+        usage.Remaining.Should().BeGreaterThanOrEqualTo(0);
     }
 
     private sealed class TestExecutionStrategyFactory(

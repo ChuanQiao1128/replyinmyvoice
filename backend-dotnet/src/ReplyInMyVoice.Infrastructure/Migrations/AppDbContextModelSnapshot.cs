@@ -151,6 +151,41 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.ToTable("ApiKeys");
                 });
 
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.ApiKeyRateLimitWindow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ApiKeyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("WindowStart")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WindowStart");
+
+                    b.HasIndex("ApiKeyId", "WindowStart")
+                        .IsUnique();
+
+                    b.ToTable("ApiKeyRateLimitWindows");
+                });
+
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.ApiKeyUsage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -192,6 +227,8 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.HasIndex("CreatedAt");
 
                     b.HasIndex("Endpoint");
+
+                    b.HasIndex("RequestId");
 
                     b.HasIndex("ApiKeyId", "CreatedAt");
 
@@ -711,6 +748,9 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ApiKeyId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -760,6 +800,8 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ApiKeyId");
 
                     b.HasIndex("CreatedAt");
 
@@ -1666,6 +1708,17 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.ApiKeyRateLimitWindow", b =>
+                {
+                    b.HasOne("ReplyInMyVoice.Domain.Entities.ApiKey", "ApiKey")
+                        .WithMany("RateLimitWindows")
+                        .HasForeignKey("ApiKeyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ApiKey");
+                });
+
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.ApiKeyUsage", b =>
                 {
                     b.HasOne("ReplyInMyVoice.Domain.Entities.ApiKey", "ApiKey")
@@ -1731,11 +1784,18 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.RewriteAttempt", b =>
                 {
+                    b.HasOne("ReplyInMyVoice.Domain.Entities.ApiKey", "ApiKey")
+                        .WithMany()
+                        .HasForeignKey("ApiKeyId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("ReplyInMyVoice.Domain.Entities.AppUser", "User")
                         .WithMany("RewriteAttempts")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("ApiKey");
 
                     b.Navigation("User");
                 });
@@ -1871,6 +1931,8 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.ApiKey", b =>
                 {
                     b.Navigation("ApiKeyUsages");
+
+                    b.Navigation("RateLimitWindows");
 
                     b.Navigation("WebhookDeliveries");
                 });

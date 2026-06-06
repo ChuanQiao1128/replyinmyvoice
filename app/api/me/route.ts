@@ -42,7 +42,12 @@ async function currentAuthorizationHeader() {
   return `${authScheme} ${accessToken}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const originError = requireSameOrigin(request);
+  if (originError) {
+    return originError;
+  }
+
   initializePaymentObservability();
 
   const authorization = await currentAuthorizationHeader();

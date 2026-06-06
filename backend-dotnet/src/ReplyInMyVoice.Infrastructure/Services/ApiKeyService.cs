@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
@@ -35,6 +36,11 @@ public sealed class ApiKeyService
         ArgumentNullException.ThrowIfNull(plaintext);
 
         var pepper = Environment.GetEnvironmentVariable("API_KEY_PEPPER");
+        if (string.IsNullOrWhiteSpace(pepper) && IsProductionRuntimeEnvironment())
+        {
+            throw new InvalidOperationException("API key hashing requires API_KEY_PEPPER in Production.");
+        }
+
         if (string.IsNullOrWhiteSpace(pepper) &&
             Interlocked.Exchange(ref s_missingPepperWarningLogged, 1) == 0)
         {
@@ -49,6 +55,8 @@ public sealed class ApiKeyService
             }
         }
 
+        // Keep this formula stable for existing keys; a future keyed-HMAC migration needs
+        // explicit key versioning and rotation.
         var material = string.IsNullOrWhiteSpace(pepper)
             ? plaintext
             : string.Concat(pepper, plaintext);
@@ -243,7 +251,7 @@ public sealed class ApiKeyService
     {
         if (!TryNormalizeWebhookUrl(webhookUrl, out var normalizedUrl))
         {
-            throw new ArgumentException("Webhook URL must be an absolute HTTP or HTTPS URL.", nameof(webhookUrl));
+            throw new ArgumentException("Webhook URL must be an absolute HTTPS URL that resolves to a public address.", nameof(webhookUrl));
         }
 
         await using var db = _dbContextFactory();
@@ -305,24 +313,14 @@ public sealed class ApiKeyService
         return (isTest ? TestKeyPrefix : LiveKeyPrefix) + ToBase62(randomBytes);
     }
 
-    public static bool TryNormalizeWebhookUrl(string? value, out string normalizedUrl)
-    {
-        normalizedUrl = string.Empty;
-        var trimmed = value?.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.Length > 2048)
-        {
-            return false;
-        }
+    public static bool TryNormalizeWebhookUrl(string? value, out string normalizedUrl) =>
+        WebhookEndpointSafety.TryNormalizeUrl(value, out normalizedUrl);
 
-        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-        {
-            return false;
-        }
-
-        normalizedUrl = uri.ToString();
-        return true;
-    }
+    internal static bool TryNormalizeWebhookUrl(
+        string? value,
+        out string normalizedUrl,
+        Func<string, IPAddress[]> resolveHost) =>
+        WebhookEndpointSafety.TryNormalizeUrl(value, out normalizedUrl, resolveHost);
 
     private static string GenerateWebhookSecret()
     {
@@ -330,6 +328,14 @@ public sealed class ApiKeyService
         RandomNumberGenerator.Fill(randomBytes);
         return Convert.ToHexString(randomBytes).ToLowerInvariant();
     }
+
+    private static bool IsProductionRuntimeEnvironment() =>
+        IsProductionEnvironmentName(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")) ||
+        IsProductionEnvironmentName(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")) ||
+        IsProductionEnvironmentName(Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT"));
+
+    private static bool IsProductionEnvironmentName(string? environmentName) =>
+        string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
 
     private static string ToBase62(ReadOnlySpan<byte> bytes)
     {

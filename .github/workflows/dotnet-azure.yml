@@ -6,6 +6,9 @@ on:
       - main
       - "codex/**"
   pull_request:
+    branches:
+      - main
+      - delivery/api-fixes
 
 permissions:
   contents: read
@@ -32,8 +35,65 @@ jobs:
       - name: Publish Functions
         run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions
 
+  sqlserver-migration:
+    runs-on: ubuntu-latest
+    env:
+      SQLSERVER_SA_PASSWORD: "LocalCiOnly_${{ github.run_id }}!"
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_PID: "Developer"
+          MSSQL_SA_PASSWORD: "LocalCiOnly_${{ github.run_id }}!"
+        ports:
+          - 1433:1433
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore backend-dotnet/ReplyInMyVoice.sln
+      - name: Install EF tool
+        run: dotnet tool install --global dotnet-ef --version 8.*
+      - name: Wait for SQL Server
+        run: |
+          for attempt in {1..60}; do
+            if bash -c '</dev/tcp/127.0.0.1/1433' >/dev/null 2>&1; then
+              sleep 10
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "SQL Server did not open port 1433 in time."
+          exit 1
+      - name: Apply migrations to SQL Server
+        run: |
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          SQL_CONNECTION="Server=localhost,1433;Initial Catalog=ReplyInMyVoiceMigrationGate;Persist Security Info=False;User ID=sa;Password=${SQLSERVER_SA_PASSWORD};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=True;Connection Timeout=30;"
+
+          for attempt in {1..6}; do
+            if ConnectionStrings__DefaultConnection="$SQL_CONNECTION" dotnet ef database update \
+              --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
+              --startup-project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
+              --context AppDbContext; then
+              exit 0
+            fi
+
+            exit_code=$?
+            if [ "$attempt" -eq 6 ]; then
+              exit "$exit_code"
+            fi
+
+            sleep 10
+          done
+
   deploy:
-    needs: build-test
+    needs:
+      - build-test
+      - sqlserver-migration
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:

@@ -208,20 +208,20 @@ public sealed class ApiKeyHttpFunctionsTests
             CreateRequest(
                 "entra-key-webhook-owner",
                 "owner@example.com",
-                new { webhookUrl = "https://listener.example.test/rewrite" }),
+                new { webhookUrl = "https://93.184.216.34/rewrite" }),
             generated.Id,
             CancellationToken.None);
 
         var ok = setResult.Should().BeOfType<OkObjectResult>().Subject;
         var setBody = ok.Value.Should().BeOfType<ApiKeyWebhookResponse>().Subject;
         setBody.Id.Should().Be(generated.Id);
-        setBody.WebhookUrl.Should().Be("https://listener.example.test/rewrite");
+        setBody.WebhookUrl.Should().Be("https://93.184.216.34/rewrite");
         setBody.WebhookSecret.Should().NotBeNullOrWhiteSpace();
 
         await using (var db = fixture.CreateContext())
         {
             var stored = await db.ApiKeys.SingleAsync(x => x.Id == generated.Id);
-            stored.WebhookUrl.Should().Be("https://listener.example.test/rewrite");
+            stored.WebhookUrl.Should().Be("https://93.184.216.34/rewrite");
             stored.WebhookSecret.Should().Be(setBody.WebhookSecret);
         }
 
@@ -238,7 +238,7 @@ public sealed class ApiKeyHttpFunctionsTests
             .BeAssignableTo<IReadOnlyList<ApiKeyListResponse>>()
             .Subject;
         var item = listBody.Should().ContainSingle().Subject;
-        item.WebhookUrl.Should().Be("https://listener.example.test/rewrite");
+        item.WebhookUrl.Should().Be("https://93.184.216.34/rewrite");
 
         var listJson = JsonSerializer.Serialize(listBody, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         listJson.Should().NotContain(setBody.WebhookSecret);
@@ -259,7 +259,7 @@ public sealed class ApiKeyHttpFunctionsTests
         await using (var seedDb = fixture.CreateContext())
         {
             var key = await seedDb.ApiKeys.SingleAsync(x => x.Id == generated.Id);
-            key.WebhookUrl = "https://listener.example.test/rewrite";
+            key.WebhookUrl = "https://93.184.216.34/rewrite";
             key.WebhookSecret = "unit-webhook-signing-value";
             await seedDb.SaveChangesAsync();
         }
@@ -275,7 +275,7 @@ public sealed class ApiKeyHttpFunctionsTests
         await using (var unchangedDb = fixture.CreateContext())
         {
             var unchanged = await unchangedDb.ApiKeys.SingleAsync(x => x.Id == generated.Id);
-            unchanged.WebhookUrl.Should().Be("https://listener.example.test/rewrite");
+            unchanged.WebhookUrl.Should().Be("https://93.184.216.34/rewrite");
             unchanged.WebhookSecret.Should().Be("unit-webhook-signing-value");
         }
 
