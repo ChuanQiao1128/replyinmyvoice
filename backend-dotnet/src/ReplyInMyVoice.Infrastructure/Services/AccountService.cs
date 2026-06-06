@@ -213,6 +213,39 @@ public sealed class AccountService(
             .ToList();
     }
 
+    public async Task<bool> HasPaidApiEntitlementAsync(
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var db = dbContextFactory();
+        var subscriptionStatus = await db.AppUsers
+            .AsNoTracking()
+            .Where(x => x.Id == userId)
+            .Select(x => (SubscriptionStatus?)x.SubscriptionStatus)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (subscriptionStatus is null)
+        {
+            return false;
+        }
+
+        if (IsPaidApiSubscriptionStatus(subscriptionStatus.Value))
+        {
+            return true;
+        }
+
+        var purchasedCredits = await db.RewriteCredits
+            .AsNoTracking()
+            .Where(x => x.UserId == userId && x.Source == "PURCHASE")
+            .Select(x => new { x.AmountGranted, x.AmountConsumed, x.ExpiresAt })
+            .ToListAsync(cancellationToken);
+
+        return purchasedCredits.Any(x =>
+            (x.ExpiresAt is null || x.ExpiresAt > now) &&
+            x.AmountGranted - x.AmountConsumed > 0);
+    }
+
     public async Task<IReadOnlyList<AccountBillingHistoryItem>> GetBillingHistoryAsync(
         string externalAuthUserId,
         string? email,
@@ -459,6 +492,9 @@ public sealed class AccountService(
             "free:lifetime",
             ResolveFreeBaselineRewrites(configuration));
     }
+
+    private static bool IsPaidApiSubscriptionStatus(SubscriptionStatus subscriptionStatus) =>
+        subscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing;
 
     private static int ResolveFreeBaselineRewrites(IConfiguration? configuration)
     {

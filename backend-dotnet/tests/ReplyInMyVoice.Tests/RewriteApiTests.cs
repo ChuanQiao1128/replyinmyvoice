@@ -427,7 +427,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task V1_rewrite_submit_returns_quota_exhausted_without_reservation_when_no_quota_or_credit()
+    public async Task V1_rewrite_submit_requires_paid_plan_for_free_baseline_live_key_without_reservation()
     {
         var (_, token) = await SeedApiKeyUserAsync(
             "clerk_v1_no_quota",
@@ -439,7 +439,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
         var response = await PostV1RewriteAsync(client, token, "v1-no-quota", ValidV1Draft());
 
         response.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
-        await AssertErrorCodeAsync(response, "quota_exhausted");
+        await AssertErrorCodeAsync(response, "api_requires_paid_plan");
         await using var db = CreateContext();
         (await db.RewriteAttempts.CountAsync()).Should().Be(0);
         (await db.UsageReservations.CountAsync()).Should().Be(0);
@@ -448,6 +448,53 @@ public sealed class RewriteApiTests : IAsyncLifetime
         var usage = await db.ApiKeyUsages.SingleAsync();
         usage.Endpoint.Should().Be("v1/rewrite");
         usage.StatusCode.Should().Be(StatusCodes.Status402PaymentRequired);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_allows_live_key_with_usable_purchased_credit()
+    {
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_purchase_credit",
+            SubscriptionStatus.Inactive,
+            currentPeriodEnd: null);
+        var now = DateTimeOffset.UtcNow;
+        await using (var seedDb = CreateContext())
+        {
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 1,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await PostV1RewriteAsync(client, token, "v1-purchase-credit", ValidV1Draft());
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var body = await response.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        body.Should().NotBeNull();
+        body!.Status.Should().Be("processing");
+        await using var db = CreateContext();
+        var reservation = await db.UsageReservations.SingleAsync();
+        reservation.UserId.Should().Be(user.Id);
+        reservation.RewriteAttemptId.Should().Be(body.Id);
+        reservation.RewriteCreditId.Should().NotBeNull();
+        var credit = await db.RewriteCredits.SingleAsync();
+        credit.AmountConsumed.Should().Be(1);
+        var period = await db.UsagePeriods.SingleAsync();
+        period.PeriodKey.Should().Be("free:lifetime");
+        period.QuotaLimit.Should().Be(0);
+        period.ReservedCount.Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(1);
+        var usage = await db.ApiKeyUsages.SingleAsync();
+        usage.StatusCode.Should().Be(StatusCodes.Status202Accepted);
     }
 
     [Fact]

@@ -3900,3 +3900,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/developers/api-keys-panel.tsx`; `app/api/keys/[id]/webhook/route.ts`; `tests/unit/api-keys-route.test.ts`; `tests/unit/developer-keys-ui.test.ts`.
 - Verification evidence: `npm run typecheck` passed. Full `npm run test` passed 450/450.
 - Limitations: No Playwright/browser screenshot pass was run because the issue acceptance required unit/typecheck gates and this worker run did not start a local web server.
+
+### 2026-06-06 - system-spec-synthesis - RFX-01 public API paid gate
+
+- Agent: Codex worker
+- Trigger: GitHub issue #562 / RFX-01 changes the public API v1 submit contract from quota-only rejection to a paid-entitlement gate before reservation.
+- Action: Opened and followed the skill; translated the issue and brief into an implementation checklist. Context: live API keys currently loaded the account plan and reserved quota without checking paid entitlement. Goals: reject live free-baseline API calls with `402 api_requires_paid_plan`, keep sandbox keys exempt, allow active/trialing/testing subscriptions and usable purchased credits, and preserve website rewrite free-quota behavior. Non-goals: no frontend changes, no payment provider changes, no schema migration, no deployment.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused backend filter for `AccountServiceTests|RewriteApiTests` passed 50/50 after the red compile failure on missing `HasPaidApiEntitlementAsync`. Full `cd backend-dotnet && dotnet test` passed 566/566.
+- Limitations: No separate spec document was created because the issue and RFX-01 brief were already implementation-scoped.
+
+### 2026-06-06 - state-machine-modeling - RFX-01 API entitlement and reservation boundary
+
+- Agent: Codex worker
+- Trigger: RFX-01 changes the quota/reservation lifecycle by adding an entitlement decision before a public API live request can enter pending reservation state.
+- Action: Opened and followed the skill. State list: live key authenticated; sandbox key authenticated; live account has API paid entitlement; live account lacks API paid entitlement; quota reservation pending; quota rejected. Events: submit v1 rewrite, sandbox key detected, active/trialing/testing subscription found, usable purchased credit found, no entitlement found, reservation created, quota exhausted. Transition table: sandbox submit -> sandbox attempt; live entitled submit -> quota reservation path; live not entitled submit -> `402 api_requires_paid_plan`; entitled but quota exhausted -> existing `402 quota_exhausted`. Invariants: no reservation, rewrite attempt, outbox message, or credit consumption on entitlement rejection; sandbox remains exempt; website rewrite path remains unchanged.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: xUnit asserts free-baseline live key rejection with no reservation, active subscription acceptance through existing v1 submit test, usable purchased credit acceptance, and sandbox key acceptance through existing sandbox test. Full `cd backend-dotnet && dotnet test` passed 566/566.
+- Limitations: Concurrent depletion after the entitlement check is still handled by the existing quota reservation path, which can return quota exhaustion.
+
+### 2026-06-06 - data-module-review - RFX-01 account and credit entitlement lookup
+
+- Agent: Codex worker
+- Trigger: RFX-01 reviews quota/account persistence invariants for `AppUser.SubscriptionStatus`, `RewriteCredit`, `UsagePeriod`, `UsageReservation`, and pre-reservation API rejection.
+- Action: Opened and followed the skill; reviewed AccountService, QuotaService, AppDbContext mappings, and tests together. Findings: no new schema/migration required; entitlement lookup is read-only and uses tracked reservation code only after the gate passes; SQLite DateTimeOffset limitations are avoided by materializing candidate purchased credits before expiry filtering; rejection creates no usage period, reservation, attempt, outbox message, or credit consumption. Ran the data-risk scan against the infrastructure project root.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/AccountService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src/ReplyInMyVoice.Infrastructure` completed and reported existing quota/idempotency hotspots for review. Focused backend tests passed 50/50. Full `cd backend-dotnet && dotnet test` passed 566/566.
+- Limitations: The scan is signal-based and intentionally broad; it is not a proof of all persistence invariants.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-01 xUnit paid gate coverage
+
+- Agent: Codex worker
+- Trigger: RFX-01 acceptance requires xUnit coverage for free-baseline live key rejection, active subscription acceptance, purchased-credit acceptance, sandbox exemption, and no reservation/charge on rejection.
+- Action: Opened and followed the project skill plus test-first workflow. Added AccountService helper tests and extended RewriteApiTests before production code. The first focused run failed because `HasPaidApiEntitlementAsync` did not exist, then passed after implementation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`.
+- Verification evidence: Focused `dotnet test ReplyInMyVoice.sln --filter "FullyQualifiedName~AccountServiceTests|FullyQualifiedName~RewriteApiTests" --no-restore` passed 50/50. Full `cd backend-dotnet && dotnet test` passed 566/566.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.
+
+### 2026-06-06 - verification-before-completion - RFX-01 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #562 after implementation and test runs.
+- Action: Opened and followed the skill; reran the proof commands after implementation and before making completion claims. Checked full backend tests, diff whitespace, changed-file blocked-copy scan, and worktree status.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Fresh `cd backend-dotnet && dotnet test` passed 566/566. `git diff --check` passed. Changed-file blocked-copy scan returned no matches. `git status --short` showed only the six RFX-01 modified files.
+- Limitations: Local commit creation failed because the git worktree index lock is outside the writable sandbox at `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-562/index.lock`.
