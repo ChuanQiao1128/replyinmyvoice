@@ -47,10 +47,45 @@ describe("/developers API documentation page", () => {
     expect(pageSource).toContain("30-day retention");
     expect(pageSource).toContain("naturalness reference");
     expect(pageSource).toContain("not accepted in the request");
+    expect(pageSource).toContain('href="/developers/terms"');
+    expect(pageSource).toContain('href="/developers/acceptable-use"');
+    expect(pageSource).toContain('href="/developers/data"');
 
     expect(pageSource).not.toContain("analyze-signal");
     expect(pageSource).not.toContain("not yet public");
     expect(pageSource).not.toContain("Trial codes unlock 3 rewrites");
     expect(pageSource).not.toContain("200 OK");
+  });
+
+  it("publishes draft API legal and data pages", () => {
+    const termsSource = source("app/developers/terms/page.tsx");
+    const acceptableUseSource = source("app/developers/acceptable-use/page.tsx");
+    const dataSource = source("app/developers/data/page.tsx");
+
+    for (const pageSource of [termsSource, acceptableUseSource, dataSource]) {
+      expect(pageSource).toContain("export default function");
+      expect(pageSource).toContain("Draft — pending review");
+      expect(pageSource).toContain("TimeAwake Ltd");
+      expect(pageSource).toContain("replyinmyvoice.com");
+    }
+
+    expect(termsSource).toContain("API Terms of Use");
+    expect(termsSource).toContain("per succeeded rewrite");
+    expect(termsSource).toContain("shared quota");
+    expect(termsSource).toContain("no free tier");
+    expect(termsSource).toContain("informational naturalness reference");
+    expect(termsSource).toContain("not a guarantee");
+
+    expect(acceptableUseSource).toContain("Acceptable Use Policy");
+    expect(acceptableUseSource).toContain("illegal, deceptive, abusive, or harassing");
+    expect(acceptableUseSource).toContain("overload or reverse-engineer");
+    expect(acceptableUseSource).toContain("resell raw access");
+
+    expect(dataSource).toContain("Data & Retention");
+    expect(dataSource).toContain("RewriteAttempt");
+    expect(dataSource).toContain("input and output");
+    expect(dataSource).toContain("bounded 30-day retention");
+    expect(dataSource).toContain("purged");
+    expect(dataSource).toContain("rewrite and naturalness providers");
   });
 });

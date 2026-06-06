@@ -528,6 +528,53 @@ export default function DevelopersPage() {
             </div>
           </section>
 
+          <section className="dev-section" aria-labelledby="legal-heading">
+            <div className="pp-includes-head" id="legal-heading">
+              Legal
+            </div>
+            <div className="card-grid">
+              <article className="v2card">
+                <h3>API Terms of Use</h3>
+                <p>
+                  Draft API terms covering eligibility, key security, paid
+                  quota, metering, service limits, and account changes.
+                </p>
+                <p>
+                  <Link href="/developers/terms" className="dev-text-link">
+                    Read the draft page
+                  </Link>
+                </p>
+              </article>
+              <article className="v2card">
+                <h3>Acceptable Use Policy</h3>
+                <p>
+                  Draft API usage rules for responsible content, system load,
+                  access sharing, and customer obligations.
+                </p>
+                <p>
+                  <Link
+                    href="/developers/acceptable-use"
+                    className="dev-text-link"
+                  >
+                    Read the draft page
+                  </Link>
+                </p>
+              </article>
+              <article className="v2card">
+                <h3>Data & Retention</h3>
+                <p>
+                  Draft data notes covering RewriteAttempt storage, the bounded
+                  30-day retention window, deletion, and processors.
+                </p>
+                <p>
+                  <Link href="/developers/data" className="dev-text-link">
+                    Read the draft page
+                  </Link>
+                </p>
+              </article>
+            </div>
+          </section>
+
           <div style={{ marginTop: 64 }}>
             <div className="final-card">
               <div>
