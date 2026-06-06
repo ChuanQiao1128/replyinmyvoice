@@ -7,6 +7,8 @@ public sealed class RewriteAttempt
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid UserId { get; set; }
     public AppUser? User { get; set; }
+    public Guid? ApiKeyId { get; set; }
+    public ApiKey? ApiKey { get; set; }
     public required string IdempotencyKey { get; set; }
     public required string RequestHash { get; set; }
     public required string RequestJson { get; set; }

@@ -200,7 +200,8 @@ public sealed class V1RewriteHttpFunctions(
             plan.PeriodKey,
             plan.QuotaLimit,
             now,
-            cancellationToken);
+            cancellationToken,
+            auth.ApiKeyId);
 
         if (result.Kind == ReserveRewriteResultKind.QuotaExceeded)
         {
@@ -564,6 +565,7 @@ public sealed class V1RewriteHttpFunctions(
             IdempotencyKey = sandboxIdempotencyKey,
             RequestHash = requestHash,
             RequestJson = JsonSerializer.Serialize(rewriteRequest),
+            ApiKeyId = apiKeyId,
             Status = RewriteAttemptStatus.Succeeded,
             ResultJson = SandboxResultJson,
             CreatedAt = now,

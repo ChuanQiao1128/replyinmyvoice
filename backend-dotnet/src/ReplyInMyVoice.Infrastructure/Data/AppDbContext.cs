@@ -83,6 +83,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.CreatedAt);
             entity.HasIndex(x => new { x.UserId, x.DeletedAt, x.CreatedAt });
             entity.HasIndex(x => new { x.Status, x.ExpiresAt });
+            entity.HasIndex(x => x.ApiKeyId);
             entity.Property(x => x.IdempotencyKey).HasMaxLength(120);
             entity.Property(x => x.RequestHash).HasMaxLength(128);
             entity.Property(x => x.RequestJson).IsRequired(false);
@@ -94,6 +95,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany(x => x.RewriteAttempts)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.ApiKey)
+                .WithMany()
+                .HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<UsageReservation>(entity =>

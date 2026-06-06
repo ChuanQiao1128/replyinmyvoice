@@ -19,7 +19,8 @@ public sealed class RewriteRequestService(
         string periodKey,
         int quotaLimit,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? apiKeyId = null)
     {
         await using (var db = dbContextFactory())
         {
@@ -48,7 +49,8 @@ public sealed class RewriteRequestService(
             quotaLimit,
             now,
             TimeSpan.FromMinutes(15),
-            cancellationToken);
+            cancellationToken,
+            apiKeyId);
 
         return result;
     }
