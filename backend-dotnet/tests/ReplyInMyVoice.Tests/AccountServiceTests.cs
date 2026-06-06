@@ -118,6 +118,171 @@ public sealed class AccountServiceTests : IAsyncLifetime
         plan.QuotaLimit.Should().Be(2);
     }
 
+    [Theory]
+    [InlineData(SubscriptionStatus.Active)]
+    [InlineData(SubscriptionStatus.Trialing)]
+    [InlineData(SubscriptionStatus.Testing)]
+    public async Task HasPaidApiEntitlementAsync_allows_paid_subscription_statuses(SubscriptionStatus subscriptionStatus)
+    {
+        var userId = Guid.NewGuid();
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = $"entra-api-entitlement-{subscriptionStatus}",
+                SubscriptionStatus = subscriptionStatus,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var hasEntitlement = await service.HasPaidApiEntitlementAsync(
+            userId,
+            DateTimeOffset.UtcNow,
+            CancellationToken.None);
+
+        hasEntitlement.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasPaidApiEntitlementAsync_allows_usable_purchased_credit()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "entra-api-entitlement-purchase",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = userId,
+                Source = "PURCHASE",
+                AmountGranted = 3,
+                AmountConsumed = 2,
+                GrantedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(30),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var hasEntitlement = await service.HasPaidApiEntitlementAsync(
+            userId,
+            now,
+            CancellationToken.None);
+
+        hasEntitlement.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasPaidApiEntitlementAsync_rejects_free_or_non_usable_credit_states()
+    {
+        var freeUserId = Guid.NewGuid();
+        var promoOnlyUserId = Guid.NewGuid();
+        var consumedPurchaseUserId = Guid.NewGuid();
+        var expiredPurchaseUserId = Guid.NewGuid();
+        var pastDueUserId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.AddRange(
+                new AppUser
+                {
+                    Id = freeUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-free",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = promoOnlyUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-promo",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = consumedPurchaseUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-consumed",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = expiredPurchaseUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-expired",
+                    SubscriptionStatus = SubscriptionStatus.Inactive,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                },
+                new AppUser
+                {
+                    Id = pastDueUserId,
+                    ExternalAuthUserId = "entra-api-entitlement-past-due",
+                    SubscriptionStatus = SubscriptionStatus.PastDue,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            db.RewriteCredits.AddRange(
+                new RewriteCredit
+                {
+                    UserId = promoOnlyUserId,
+                    Source = "PROMO",
+                    AmountGranted = 3,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddDays(-1),
+                    ExpiresAt = now.AddDays(30),
+                },
+                new RewriteCredit
+                {
+                    UserId = consumedPurchaseUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 3,
+                    AmountConsumed = 3,
+                    GrantedAt = now.AddDays(-1),
+                    ExpiresAt = now.AddDays(30),
+                },
+                new RewriteCredit
+                {
+                    UserId = expiredPurchaseUserId,
+                    Source = "PURCHASE",
+                    AmountGranted = 3,
+                    AmountConsumed = 0,
+                    GrantedAt = now.AddDays(-40),
+                    ExpiresAt = now.AddDays(-1),
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AccountService(CreateContext);
+
+        var free = await service.HasPaidApiEntitlementAsync(freeUserId, now, CancellationToken.None);
+        var promoOnly = await service.HasPaidApiEntitlementAsync(promoOnlyUserId, now, CancellationToken.None);
+        var consumedPurchase = await service.HasPaidApiEntitlementAsync(consumedPurchaseUserId, now, CancellationToken.None);
+        var expiredPurchase = await service.HasPaidApiEntitlementAsync(expiredPurchaseUserId, now, CancellationToken.None);
+        var pastDue = await service.HasPaidApiEntitlementAsync(pastDueUserId, now, CancellationToken.None);
+
+        free.Should().BeFalse();
+        promoOnly.Should().BeFalse();
+        consumedPurchase.Should().BeFalse();
+        expiredPurchase.Should().BeFalse();
+        pastDue.Should().BeFalse();
+    }
+
     [Fact]
     public async Task GetOrCreateAccountSummary_counts_reserved_paid_usage_for_current_period()
     {

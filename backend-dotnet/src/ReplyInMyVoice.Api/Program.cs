@@ -204,6 +204,7 @@ app.MapPost("/api/rewrite", async (
 app.MapPost("/api/v1/rewrite", async (
     HttpRequest httpRequest,
     AppDbContext db,
+    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
     RewriteRequestService rewriteRequestService,
     CancellationToken cancellationToken) =>
 {
@@ -346,6 +347,23 @@ app.MapPost("/api/v1/rewrite", async (
             now,
             cancellationToken,
             sandboxResult.AttemptId.ToString(),
+            response: httpRequest.HttpContext.Response,
+            rateLimitWindow: rateLimitWindow);
+    }
+
+    if (!await accountService.HasPaidApiEntitlementAsync(user.Id, now, cancellationToken))
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error(
+                "api_requires_paid_plan",
+                "Public API access requires an active paid plan or usable purchased rewrite credit.",
+                StatusCodes.Status402PaymentRequired),
+            StatusCodes.Status402PaymentRequired,
+            stopwatch,
+            now,
+            cancellationToken,
             response: httpRequest.HttpContext.Response,
             rateLimitWindow: rateLimitWindow);
     }

@@ -122,7 +122,6 @@ public sealed class V1RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var plan = AccountService.GetUsagePlan(user, configuration);
         var idempotencyKey = request.Headers["Idempotency-Key"].ToString();
         if (string.IsNullOrWhiteSpace(idempotencyKey))
         {
@@ -159,6 +158,17 @@ public sealed class V1RewriteHttpFunctions(
                 sandboxResult.AttemptId.ToString());
         }
 
+        if (!await accountService.HasPaidApiEntitlementAsync(user.Id, now, cancellationToken))
+        {
+            return await CompleteAsync(
+                Error(
+                    "api_requires_paid_plan",
+                    "Public API access requires an active paid plan or usable purchased rewrite credit.",
+                    StatusCodes.Status402PaymentRequired),
+                StatusCodes.Status402PaymentRequired);
+        }
+
+        var plan = AccountService.GetUsagePlan(user, configuration);
         var rewriteRequest = new RewriteRequest(
             null,
             draft,
