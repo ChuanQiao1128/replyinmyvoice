@@ -66,7 +66,8 @@ describe("/developers API documentation page", () => {
 
     for (const pageSource of [termsSource, acceptableUseSource, dataSource]) {
       expect(pageSource).toContain("export default function");
-      expect(pageSource).toContain("Draft — pending review");
+      expect(pageSource).toContain("Effective 6 June 2026");
+      expect(pageSource).not.toContain("Draft — pending review");
       expect(pageSource).toContain("TimeAwake Ltd");
       expect(pageSource).toContain("replyinmyvoice.com");
     }

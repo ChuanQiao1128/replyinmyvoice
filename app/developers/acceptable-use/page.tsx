@@ -5,13 +5,13 @@ import { SiteHeader } from "../../../components/site-header";
 export const metadata: Metadata = {
   title: "Acceptable Use Policy",
   description:
-    "Draft Acceptable Use Policy for the Reply In My Voice developer API.",
+    "Acceptable Use Policy for the Reply In My Voice developer API.",
 };
 
 const sections = [
   {
-    title: "Status",
-    text: "This Acceptable Use Policy is Draft — pending review. It applies to API access for Reply In My Voice, operated by TimeAwake Ltd at replyinmyvoice.com.",
+    title: "Scope",
+    text: "This Acceptable Use Policy applies to API access for Reply In My Voice, operated by TimeAwake Ltd at replyinmyvoice.com.",
   },
   {
     title: "Content you submit",
@@ -39,7 +39,7 @@ const sections = [
   },
   {
     title: "Contact",
-    text: "Questions about this draft policy can be sent to TimeAwake Ltd at info@timeawake.co.nz.",
+    text: "Questions about this policy can be sent to TimeAwake Ltd at info@timeawake.co.nz.",
   },
 ];
 
@@ -52,11 +52,11 @@ export default function AcceptableUsePage() {
           <div className="page-head">
             <div className="eyebrow">
               <span className="dot" />
-              Draft — pending review
+              Effective 6 June 2026
             </div>
             <h1>Acceptable Use Policy</h1>
             <p className="lede">
-              Draft API use rules for responsible reply-writing integrations on
+              API use rules for responsible reply-writing integrations on
               replyinmyvoice.com.
             </p>
           </div>

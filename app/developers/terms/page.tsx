@@ -6,7 +6,7 @@ import { SiteHeader } from "../../../components/site-header";
 export const metadata: Metadata = {
   title: "API Terms of Use",
   description:
-    "Draft API Terms of Use for Reply In My Voice by TimeAwake Ltd.",
+    "API Terms of Use for Reply In My Voice by TimeAwake Ltd.",
 };
 
 type ApiTermsSection = {
@@ -19,7 +19,7 @@ type ApiTermsSection = {
 const sections: ApiTermsSection[] = [
   {
     title: "Operator and status",
-    text: "Reply In My Voice is operated by TimeAwake Ltd at replyinmyvoice.com. This page is Draft — pending review and is provided so API customers can see the intended service boundaries before general availability.",
+    text: "Reply In My Voice is operated by TimeAwake Ltd at replyinmyvoice.com. These terms set out the service boundaries for API customers.",
   },
   {
     title: "Eligibility",
@@ -45,7 +45,7 @@ const sections: ApiTermsSection[] = [
   },
   {
     title: "Service changes and termination",
-    text: "We may update the API, documentation, quotas, limits, pricing, or these draft terms as the service matures. We may suspend or terminate API access for unpaid accounts, security risk, harmful use, or repeated policy violations.",
+    text: "We may update the API, documentation, quotas, limits, pricing, or these terms as the service matures. We may suspend or terminate API access for unpaid accounts, security risk, harmful use, or repeated policy violations.",
   },
   {
     title: "Limitations",
@@ -53,7 +53,7 @@ const sections: ApiTermsSection[] = [
   },
   {
     title: "Contact",
-    text: "Questions about these draft API terms can be sent to TimeAwake Ltd at info@timeawake.co.nz.",
+    text: "Questions about these API terms can be sent to TimeAwake Ltd at info@timeawake.co.nz.",
   },
 ];
 
@@ -66,11 +66,11 @@ export default function ApiTermsPage() {
           <div className="page-head">
             <div className="eyebrow">
               <span className="dot" />
-              Draft — pending review
+              Effective 6 June 2026
             </div>
             <h1>API Terms of Use</h1>
             <p className="lede">
-              Draft service terms for the Reply In My Voice API operated by
+              Service terms for the Reply In My Voice API operated by
               TimeAwake Ltd at replyinmyvoice.com.
             </p>
           </div>

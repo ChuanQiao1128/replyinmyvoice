@@ -5,13 +5,13 @@ import { SiteHeader } from "../../../components/site-header";
 export const metadata: Metadata = {
   title: "Data & Retention",
   description:
-    "Draft Data & Retention notes for the Reply In My Voice developer API.",
+    "Data & Retention notes for the Reply In My Voice developer API.",
 };
 
 const sections = [
   {
-    title: "Status",
-    text: "This Data & Retention page is Draft — pending review. It describes the intended API-originated data handling for Reply In My Voice, operated by TimeAwake Ltd at replyinmyvoice.com.",
+    title: "Scope",
+    text: "This Data & Retention page describes API-originated data handling for Reply In My Voice, operated by TimeAwake Ltd at replyinmyvoice.com.",
   },
   {
     title: "What is stored",
@@ -39,7 +39,7 @@ const sections = [
   },
   {
     title: "Contact",
-    text: "Questions about this draft data page can be sent to TimeAwake Ltd at info@timeawake.co.nz.",
+    text: "Questions about this data page can be sent to TimeAwake Ltd at info@timeawake.co.nz.",
   },
 ];
 
@@ -52,11 +52,11 @@ export default function ApiDataRetentionPage() {
           <div className="page-head">
             <div className="eyebrow">
               <span className="dot" />
-              Draft — pending review
+              Effective 6 June 2026
             </div>
             <h1>Data & Retention</h1>
             <p className="lede">
-              Draft API data handling notes for Reply In My Voice request and
+              API data handling notes for Reply In My Voice request and
               result content on replyinmyvoice.com.
             </p>
           </div>
