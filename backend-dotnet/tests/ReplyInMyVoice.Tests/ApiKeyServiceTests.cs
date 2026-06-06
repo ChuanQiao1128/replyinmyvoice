@@ -13,6 +13,39 @@ public sealed class ApiKeyServiceTests
 {
     private const string TestPepper = "api-key-test-pepper";
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ComputeHash_throws_in_production_when_pepper_is_missing_or_blank(string? apiKeyPepper)
+    {
+        using var environment = ApiKeyHashEnvironment.Use(
+            apiKeyPepper,
+            dotnetEnvironment: null,
+            aspNetCoreEnvironment: "Production",
+            azureFunctionsEnvironment: null);
+
+        var act = () => ApiKeyService.ComputeHash("rmv_live_sample_key");
+
+        var exception = act.Should().Throw<InvalidOperationException>().Which;
+        exception.Message.Should().Contain("API_KEY_PEPPER");
+        exception.Message.Should().NotContain("rmv_live_sample_key");
+    }
+
+    [Fact]
+    public void ComputeHash_allows_missing_pepper_in_testing()
+    {
+        using var environment = ApiKeyHashEnvironment.Use(
+            apiKeyPepper: null,
+            dotnetEnvironment: "Testing",
+            aspNetCoreEnvironment: null,
+            azureFunctionsEnvironment: null);
+
+        var hash = ApiKeyService.ComputeHash("rmv_test_sample_key");
+
+        hash.Should().MatchRegex("^[0-9a-f]{64}$");
+    }
+
     [Fact]
     public async Task GenerateAsync_returns_plaintext_once_and_stores_hash_and_last4()
     {
@@ -256,11 +289,57 @@ public sealed class ApiKeyServiceTests
         summaries.Select(x => x.Id).Should().NotContain(otherKey.Id);
     }
 
+    [Fact]
+    public async Task ApiKey_write_paths_bump_client_managed_row_version()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await fixture.CreateUserAsync();
+        var service = new ApiKeyService(fixture.CreateContext);
+
+        var revokeKey = await service.GenerateAsync(owner.Id, "Revoke key", CancellationToken.None);
+        var revokeOriginal = await ReadRowVersionAsync(fixture, revokeKey.Id);
+        revokeOriginal.Should().NotBeEmpty();
+        var revoked = await service.RevokeAsync(owner.Id, revokeKey.Id, CancellationToken.None);
+        revoked.Should().BeTrue();
+        (await ReadRowVersionAsync(fixture, revokeKey.Id)).Should().NotBe(revokeOriginal);
+
+        var rotateKey = await service.GenerateAsync(owner.Id, "Rotate key", CancellationToken.None);
+        var rotateOriginal = await ReadRowVersionAsync(fixture, rotateKey.Id);
+        var rotated = await service.RotateAsync(owner.Id, rotateKey.Id, CancellationToken.None);
+        rotated.Should().NotBeNull();
+        (await ReadRowVersionAsync(fixture, rotateKey.Id)).Should().NotBe(rotateOriginal);
+
+        var webhookKey = await service.GenerateAsync(owner.Id, "Webhook key", CancellationToken.None);
+        var setWebhookOriginal = await ReadRowVersionAsync(fixture, webhookKey.Id);
+        var setWebhook = await service.SetWebhookAsync(
+            owner.Id,
+            webhookKey.Id,
+            "https://93.184.216.34/rewrite",
+            CancellationToken.None);
+        setWebhook.Should().NotBeNull();
+        var clearWebhookOriginal = await ReadRowVersionAsync(fixture, webhookKey.Id);
+        clearWebhookOriginal.Should().NotBe(setWebhookOriginal);
+
+        var cleared = await service.ClearWebhookAsync(owner.Id, webhookKey.Id, CancellationToken.None);
+        cleared.Should().BeTrue();
+        (await ReadRowVersionAsync(fixture, webhookKey.Id)).Should().NotBe(clearWebhookOriginal);
+    }
+
     private static HttpRequest CreateBearerRequest(string token)
     {
         var context = new DefaultHttpContext();
         context.Request.Headers.Authorization = $"Bearer {token}";
         return context.Request;
+    }
+
+    private static async Task<Guid> ReadRowVersionAsync(DbFixture fixture, Guid keyId)
+    {
+        await using var db = fixture.CreateContext();
+        return await db.ApiKeys
+            .Where(x => x.Id == keyId)
+            .Select(x => x.RowVersion)
+            .SingleAsync();
     }
 
     private static ApiKeyUsage Usage(
@@ -276,4 +355,42 @@ public sealed class ApiKeyServiceTests
             StatusCode = statusCode,
             CreatedAt = createdAt,
         };
+
+    private sealed class ApiKeyHashEnvironment : IDisposable
+    {
+        private readonly string? _apiKeyPepper;
+        private readonly string? _dotnetEnvironment;
+        private readonly string? _aspNetCoreEnvironment;
+        private readonly string? _azureFunctionsEnvironment;
+
+        private ApiKeyHashEnvironment()
+        {
+            _apiKeyPepper = Environment.GetEnvironmentVariable("API_KEY_PEPPER");
+            _dotnetEnvironment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+            _aspNetCoreEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+            _azureFunctionsEnvironment = Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT");
+        }
+
+        public static ApiKeyHashEnvironment Use(
+            string? apiKeyPepper,
+            string? dotnetEnvironment,
+            string? aspNetCoreEnvironment,
+            string? azureFunctionsEnvironment)
+        {
+            var snapshot = new ApiKeyHashEnvironment();
+            Environment.SetEnvironmentVariable("API_KEY_PEPPER", apiKeyPepper);
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", dotnetEnvironment);
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", aspNetCoreEnvironment);
+            Environment.SetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT", azureFunctionsEnvironment);
+            return snapshot;
+        }
+
+        public void Dispose()
+        {
+            Environment.SetEnvironmentVariable("API_KEY_PEPPER", _apiKeyPepper);
+            Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", _dotnetEnvironment);
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", _aspNetCoreEnvironment);
+            Environment.SetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT", _azureFunctionsEnvironment);
+        }
+    }
 }

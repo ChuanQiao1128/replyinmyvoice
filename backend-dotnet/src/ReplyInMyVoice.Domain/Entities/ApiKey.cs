@@ -22,6 +22,7 @@ public sealed class ApiKey
     public string? WebhookSecret { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    // Client-managed Guid concurrency token: every ApiKey writer must assign a new Guid before saving.
     public Guid RowVersion { get; set; } = Guid.NewGuid();
 
     public ICollection<ApiKeyUsage> ApiKeyUsages { get; } = new List<ApiKeyUsage>();

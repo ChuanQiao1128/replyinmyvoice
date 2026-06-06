@@ -4107,3 +4107,48 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: Focused RFX-05 filter passed 59/59. `cd backend-dotnet && dotnet build` passed. `cd backend-dotnet && dotnet test` passed 586/586. Restricted-copy scans over `app components public lib` and changed lines returned no matches.
 - Limitations: No push, PR, deploy, production database migration, or live webhook call was run.
+
+### 2026-06-06 - resilience-test-generation - RFX-06 provider exception release
+
+- Agent: Codex worker
+- Trigger: GitHub issue #567 / RFX-06 changes provider failure recovery and quota release behavior for rewrite jobs.
+- Action: Opened and followed the skill; identified provider exception, timeout, explicit failed result, malformed result, expired reservation, and queue redelivery boundaries. Added deterministic xUnit coverage for the generic provider exception path so failed provider work releases quota immediately and records a terminal attempt.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`.
+- Verification evidence: Focused `RewriteJobProcessorTests` first failed on `ProcessAsync_releases_reservation_when_provider_throws` because the exception rethrew. After implementation, focused `RewriteJobProcessorTests` passed 8/8. Full `cd backend-dotnet && dotnet test -m:1` passed 592/592.
+- Limitations: No bounded provider retry was added; the existing local pattern is prompt terminal release for non-timeout provider exceptions.
+
+### 2026-06-06 - state-machine-modeling - RFX-06 rewrite attempt terminal release
+
+- Agent: Codex worker
+- Trigger: RFX-06 changes `RewriteAttempt` / `UsageReservation` lifecycle transitions for provider exception handling.
+- Action: Opened and followed the skill; modeled states as `Pending`, `Processing`, `Succeeded`, `Failed`, and `Expired`. Events reviewed: claim for processing, provider success, provider explicit failure, provider exception, timeout, malformed result, expiry, and redelivery. Invariants checked: terminal attempts are no-ops on redelivery, failed/expired attempts do not increment `UsedCount`, and released reservations leave `ReservedCount` at zero.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/RewriteJobProcessor.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`.
+- Verification evidence: New provider-exception test asserts `UsageReservationStatus.Released`, `RewriteAttemptStatus.Failed`, `UsedCount == 0`, and `ReservedCount == 0`. Focused processor tests passed 8/8; full backend tests passed 592/592.
+- Limitations: No new enum state or migration was needed; the existing `Failed` terminal state remains the release target.
+
+### 2026-06-06 - data-module-review - RFX-06 ApiKey RowVersion and quota invariants
+
+- Agent: Codex worker
+- Trigger: RFX-06 reviews EF Core persistence invariants for `ApiKey.RowVersion`, `UsageReservation`, `UsagePeriod`, and provider failure accounting.
+- Action: Opened and followed the skill; reviewed `ApiKey` entity, `AppDbContext` concurrency mapping, API key service write paths, quota release behavior, and worker tests together. Chose the low-risk client-managed Guid option from the brief, documented the contract on `ApiKey.RowVersion`, and added focused service assertions for create, revoke, rotate, set webhook, and clear webhook paths.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`.
+- Verification evidence: `ApiKey_write_paths_bump_client_managed_row_version` passed inside the focused API key service filter. Full backend build passed. Full backend tests passed 592/592.
+- Limitations: No DB-generated rowversion migration was added, avoiding churn in existing optimistic-concurrency mappings and tests.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-06 xUnit backend coverage
+
+- Agent: Codex worker
+- Trigger: RFX-06 acceptance requires xUnit coverage for missing production API key pepper behavior, test-environment tolerance, provider exception release, and client-managed key concurrency token bumps.
+- Action: Opened and followed the project skill plus test-first workflow. Added focused tests in `ApiKeyServiceTests` and `RewriteJobProcessorTests`, confirmed red failures for production missing-pepper hashing and provider exception release, then implemented minimal backend changes and reran focused and full backend gates.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobProcessorTests.cs`.
+- Verification evidence: Red API key focused run failed on missing production pepper throw; red processor focused run failed because the provider exception rethrew. Green focused runs passed `ApiKeyServiceTests` 18/18 and `RewriteJobProcessorTests` 8/8. Exact `cd backend-dotnet && dotnet build` passed. Exact `cd backend-dotnet && dotnet test` passed 592/592.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore/build/test still completed successfully.
+
+### 2026-06-06 - verification-before-completion - RFX-06 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #567 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked focused xUnit coverage, full backend build, full backend tests, and restricted substring scan over app/UI and backend source/test directories.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: `ApiKeyServiceTests` passed 18/18. `RewriteJobProcessorTests` passed 8/8. Exact `cd backend-dotnet && dotnet build` passed. Exact `cd backend-dotnet && dotnet test` passed 592/592. Restricted substring scan over `app components public lib backend-dotnet/src backend-dotnet/tests` returned no matches.
+- Limitations: An initial parallel focused test run hit Functions worker build artifact races; sequential focused tests and exact full backend commands later passed. No push, PR, deploy, production database migration, or live provider call was run.
