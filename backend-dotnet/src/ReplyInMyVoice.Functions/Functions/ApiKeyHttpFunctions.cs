@@ -177,7 +177,7 @@ public sealed class ApiKeyHttpFunctions(
 
         if (!ApiKeyService.TryNormalizeWebhookUrl(body?.WebhookUrl, out var webhookUrl))
         {
-            return InvalidRequest("Webhook URL must be an absolute HTTP or HTTPS URL.");
+            return InvalidRequest("Webhook URL must be an absolute HTTPS URL that resolves to a public address.");
         }
 
         var user = await accountService.GetOrCreateUserAsync(

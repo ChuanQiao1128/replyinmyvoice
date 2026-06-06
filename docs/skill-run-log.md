@@ -4017,3 +4017,39 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: Focused `V1RewriteRateLimitTests` passed 4/4. Existing `RewriteApiTests` passed 32/32. `cd backend-dotnet && dotnet build` passed. `cd backend-dotnet && dotnet test` passed 575/575. Targeted `npm run test -- tests/unit/openapi-spec.test.ts` passed 3/3 after `npm ci --cache /private/tmp/rfx-03-564-npm-cache`. Banned-term scans over `app components public lib` and changed files returned no matches.
 - Limitations: The first EF migration command took the default host-factory timeout before returning; it still generated the migration successfully. `npm ci` reported existing audit findings and a Node 24 runtime warning against the repo's Node 22 engine. No push, PR, deploy, or production database migration was run.
+
+### 2026-06-06 - data-module-review - RFX-04 webhook URL persistence boundary
+
+- Agent: Codex worker
+- Trigger: GitHub issue #565 / RFX-04 reviews persisted API key webhook URLs and webhook delivery rows that can outlive the save-time validator.
+- Action: Opened and followed the skill; reviewed `ApiKey.WebhookUrl`, `WebhookDelivery.Url`, API key rotation, webhook setup, delivery claim/send/failure marking, and SQLite test fixtures together. Findings: no migration required; old rows need send-time validation before dispatch; rejection should follow the existing failed-attempt path and must not expose the signing value.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookEndpointSafety.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDispatcherService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`.
+- Verification evidence: Focused webhook/API key/infrastructure xUnit filter passed 34/34 after implementation. Full `cd backend-dotnet && dotnet test` passed 583/583.
+- Limitations: No schema migration or backfill was added; existing unsafe rows are handled by send-time rejection.
+
+### 2026-06-06 - resilience-test-generation - RFX-04 webhook network hardening
+
+- Agent: Codex worker
+- Trigger: RFX-04 changes outbound webhook network failure handling, redirect behavior, connect-time host resolution, and per-request timeouts.
+- Action: Opened and followed the skill; built focused resilience coverage for non-HTTPS input, local/link-local/private saved destinations, old-row send-time refusal, and registered handler redirect prevention. Used deterministic unit tests and handler inspection instead of live remote calls.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookHttpClientFactory.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`.
+- Verification evidence: Initial focused test run failed for the intended behaviors. Focused rerun passed 34/34. Full `cd backend-dotnet && dotnet test` passed 583/583.
+- Limitations: Redirect behavior is verified through handler configuration rather than a live redirect server, because the webhook sender now rejects non-HTTPS/local test targets before the request leaves the process.
+
+### 2026-06-06 - dotnet-backend-testing - RFX-04 xUnit webhook hardening coverage
+
+- Agent: Codex worker
+- Trigger: RFX-04 acceptance requires xUnit coverage for webhook URL rejection/acceptance, old-row send-time validation, and no-redirect HTTP client configuration.
+- Action: Opened and followed the project skill plus test-first workflow. Added failing tests in `ApiKeyServiceTests`, `WebhookDispatcherServiceTests`, and `InfrastructureServiceCollectionTests`, confirmed red failures, then implemented the shared validator, send-time guards, and typed HTTP client handler configuration.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`.
+- Verification evidence: Red focused run failed with 7 expected failures. Focused rerun passed 34/34. Full `cd backend-dotnet && dotnet test` passed 583/583.
+- Limitations: Public URL acceptance uses a deterministic test resolver for `example.com`; function and dispatcher fixtures use a public literal endpoint to avoid external DNS in tests.
+
+### 2026-06-06 - verification-before-completion - RFX-04 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #565 after implementation and gate runs.
+- Action: Opened and followed the skill; reran proof commands before completion claims. Checked focused xUnit coverage, full backend tests, restricted-copy scans, and project UI copy scan.
+- Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
+- Verification evidence: Focused webhook/API key/infrastructure filter passed 34/34. Full `cd backend-dotnet && dotnet test` passed 583/583. Restricted-copy scans over touched files, backend source/tests, and `app components public lib` returned no matches.
+- Limitations: Local commit creation failed because the git worktree index lock is outside the writable sandbox at `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-565/index.lock`. No push, PR, deploy, production database migration, or live webhook call was run.

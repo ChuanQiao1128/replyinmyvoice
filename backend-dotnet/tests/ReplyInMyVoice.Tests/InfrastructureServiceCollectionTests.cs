@@ -1,11 +1,14 @@
+using System.Net.Http;
 using System.Reflection;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
+using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -176,6 +179,21 @@ public sealed class InfrastructureServiceCollectionTests
     }
 
     [Fact]
+    public void AddReplyInMyVoiceInfrastructure_webhook_http_client_disables_redirects_and_uses_connect_guard()
+    {
+        var provider = BuildProvider([]);
+        var handlerFactory = provider.GetRequiredService<IHttpMessageHandlerFactory>();
+
+        using var handler = handlerFactory.CreateHandler(nameof(IWebhookDeliverySender));
+        var socketsHandler = FindHandler<SocketsHttpHandler>(handler);
+
+        socketsHandler.Should().NotBeNull();
+        socketsHandler!.AllowAutoRedirect.Should().BeFalse();
+        socketsHandler.ConnectCallback.Should().NotBeNull();
+        socketsHandler.ConnectTimeout.Should().BeLessThanOrEqualTo(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public void Worker_program_gates_in_process_service_bus_consumer_by_default()
     {
         var program = File.ReadAllText(WorkerProgramPath());
@@ -224,6 +242,30 @@ public sealed class InfrastructureServiceCollectionTests
 
         optionsField.Should().NotBeNull();
         return (FactReconstructRewriteOptions)optionsField!.GetValue(provider)!;
+    }
+
+    private static THandler? FindHandler<THandler>(HttpMessageHandler handler)
+        where THandler : HttpMessageHandler
+    {
+        if (handler is THandler typed)
+        {
+            return typed;
+        }
+
+        if (handler is DelegatingHandler delegatingHandler && delegatingHandler.InnerHandler is not null)
+        {
+            return FindHandler<THandler>(delegatingHandler.InnerHandler);
+        }
+
+        var innerHandlerField = handler.GetType().GetField(
+            "_innerHandler",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        if (innerHandlerField?.GetValue(handler) is HttpMessageHandler innerHandler)
+        {
+            return FindHandler<THandler>(innerHandler);
+        }
+
+        return null;
     }
 
     private static string WorkerProgramPath()

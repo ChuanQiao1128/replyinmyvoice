@@ -1,3 +1,4 @@
+using System.Net;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -78,6 +79,32 @@ public sealed class ApiKeyServiceTests
 
         second.Should().Be(first);
         first.Should().MatchRegex("^[0-9a-f]{64}$");
+    }
+
+    [Theory]
+    [InlineData("http://example.com/rewrite")]
+    [InlineData("https://127.0.0.1/rewrite")]
+    [InlineData("https://169.254.169.254/latest/meta-data")]
+    [InlineData("https://10.0.0.5/rewrite")]
+    [InlineData("https://localhost/rewrite")]
+    public void TryNormalizeWebhookUrl_rejects_non_https_and_non_public_targets(string value)
+    {
+        var valid = ApiKeyService.TryNormalizeWebhookUrl(value, out var normalizedUrl);
+
+        valid.Should().BeFalse();
+        normalizedUrl.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryNormalizeWebhookUrl_accepts_public_https_url()
+    {
+        var valid = ApiKeyService.TryNormalizeWebhookUrl(
+            "https://example.com/rewrite",
+            out var normalizedUrl,
+            _ => [IPAddress.Parse("93.184.216.34")]);
+
+        valid.Should().BeTrue();
+        normalizedUrl.Should().Be("https://example.com/rewrite");
     }
 
     [Fact]
