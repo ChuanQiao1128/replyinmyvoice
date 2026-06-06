@@ -201,6 +201,9 @@ export default function DevelopersPage() {
               <a href="#quickstart" className="btn btn-ghost btn-lg">
                 Quickstart
               </a>
+              <a href="/api/v1/openapi.json" className="btn btn-ghost btn-lg">
+                OpenAPI specification
+              </a>
             </div>
           </div>
 

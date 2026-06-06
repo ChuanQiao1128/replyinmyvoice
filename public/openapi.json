@@ -1,0 +1,785 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Reply In My Voice API",
+    "version": "1.0.0",
+    "description": "Async v1 API for submitting reply rewrite jobs, polling results, and reading paid quota usage."
+  },
+  "servers": [
+    {
+      "url": "https://replyinmyvoice.com"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Rewrite API"
+    }
+  ],
+  "paths": {
+    "/api/v1/rewrite": {
+      "post": {
+        "tags": [
+          "Rewrite API"
+        ],
+        "summary": "Submit a rewrite job",
+        "description": "Submits a draft for asynchronous processing. The response is accepted immediately with a job id and Location header; poll the result endpoint for completion.",
+        "operationId": "submitRewrite",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RewriteSubmitRequest"
+              },
+              "examples": {
+                "basic": {
+                  "value": {
+                    "draft": "Sam, your order is delayed and ships next week."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Rewrite job accepted for processing.",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RewriteSubmitAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body, missing draft, draft shorter than 10 characters, draft over 300 words, or draft over 2400 characters.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalidRequest": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_request",
+                        "message": "Draft must be at least 10 characters."
+                      }
+                    }
+                  },
+                  "inputTooLong": {
+                    "value": {
+                      "error": {
+                        "code": "input_too_long",
+                        "message": "Draft must be 300 words or fewer and 2400 characters or fewer."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, revoked, expired, or unknown API key.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalidKey": {
+                    "value": {
+                      "error": {
+                        "code": "invalid_key",
+                        "message": "A valid API key is required."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "No paid rewrite quota remains for the account.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "quotaExhausted": {
+                    "value": {
+                      "error": {
+                        "code": "quota_exhausted",
+                        "message": "No rewrite quota remains."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The Idempotency-Key was reused with a different request body.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "idempotencyConflict": {
+                    "value": {
+                      "error": {
+                        "code": "idempotency_conflict",
+                        "message": "Idempotency-Key was reused with a different request body."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The API key reached its request rate limit.",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rateLimited": {
+                    "value": {
+                      "error": {
+                        "code": "rate_limited",
+                        "message": "Request limit reached. Try again later."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rewrite/{id}": {
+      "get": {
+        "tags": [
+          "Rewrite API"
+        ],
+        "summary": "Fetch rewrite job status",
+        "description": "Returns the current processing state, successful rewrite, or failed job details for a rewrite job owned by the API key account.",
+        "operationId": "getRewriteResult",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RewriteId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rewrite job status.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RewriteResult"
+                },
+                "examples": {
+                  "processing": {
+                    "value": {
+                      "id": "rw_123",
+                      "status": "processing"
+                    }
+                  },
+                  "succeeded": {
+                    "value": {
+                      "id": "rw_123",
+                      "status": "succeeded",
+                      "rewrittenText": "Hi Sam, thanks for your patience. Your order is running a little behind and ships next week.",
+                      "signal": {
+                        "draft": 78,
+                        "rewrite": 24
+                      }
+                    }
+                  },
+                  "failed": {
+                    "value": {
+                      "id": "rw_123",
+                      "status": "failed",
+                      "error": {
+                        "code": "rewrite_failed",
+                        "message": "The rewrite could not be completed."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, revoked, expired, or unknown API key.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rewrite job was not found for the API key account.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The API key reached its request rate limit.",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usage": {
+      "get": {
+        "tags": [
+          "Rewrite API"
+        ],
+        "summary": "Read current usage",
+        "description": "Returns the API key account's current paid quota window and remaining rewrite count.",
+        "operationId": "getUsage",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current usage for the account.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Usage"
+                },
+                "examples": {
+                  "paid": {
+                    "value": {
+                      "scope": "paid",
+                      "periodKey": "paid:sub_123:2026-07-01T00:00:00Z",
+                      "quota": 90,
+                      "used": 12,
+                      "remaining": 78,
+                      "periodEnd": "2026-07-01T00:00:00Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, revoked, expired, or unknown API key.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "No paid rewrite quota remains for the account.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The API key reached its request rate limit.",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimitLimit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimitRemaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimitReset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "rmv_live API key",
+        "description": "Use Authorization: Bearer rmv_live_..."
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Stable key for one logical submit request. Reusing it with the same body returns the same job id; reusing it with a different body returns idempotency_conflict.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "RewriteId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Rewrite job id returned by POST /api/v1/rewrite.",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "headers": {
+      "Location": {
+        "description": "Relative polling URL for the accepted rewrite job.",
+        "schema": {
+          "type": "string",
+          "example": "/api/v1/rewrite/rw_123"
+        }
+      },
+      "RateLimitLimit": {
+        "description": "Request limit for the current rate-limit window.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "example": 60
+        }
+      },
+      "RateLimitRemaining": {
+        "description": "Remaining requests in the current rate-limit window.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "example": 59
+        }
+      },
+      "RateLimitReset": {
+        "description": "Unix timestamp when the current rate-limit window resets.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "example": 1812345678
+        }
+      },
+      "RetryAfter": {
+        "description": "Seconds to wait before retrying after a 429 response.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "example": 42
+        }
+      }
+    },
+    "schemas": {
+      "RewriteSubmitRequest": {
+        "type": "object",
+        "required": [
+          "draft"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 2400,
+            "description": "Draft text to rewrite. Must be at least 10 characters, at most 300 words, and at most 2400 characters."
+          }
+        }
+      },
+      "RewriteSubmitAccepted": {
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "processing"
+          }
+        }
+      },
+      "RewriteResult": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RewriteProcessing"
+          },
+          {
+            "$ref": "#/components/schemas/RewriteSucceeded"
+          },
+          {
+            "$ref": "#/components/schemas/RewriteFailed"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "status"
+        }
+      },
+      "RewriteProcessing": {
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "processing"
+          }
+        }
+      },
+      "RewriteSucceeded": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "rewrittenText",
+          "signal"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "succeeded"
+          },
+          "rewrittenText": {
+            "type": "string"
+          },
+          "signal": {
+            "$ref": "#/components/schemas/Signal"
+          }
+        }
+      },
+      "RewriteFailed": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "error"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "failed"
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Signal": {
+        "type": "object",
+        "description": "Informational naturalness reference for the draft and rewrite.",
+        "required": [
+          "draft",
+          "rewrite"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "rewrite": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "required": [
+          "scope",
+          "periodKey",
+          "quota",
+          "used",
+          "remaining",
+          "periodEnd"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "periodKey": {
+            "type": "string"
+          },
+          "quota": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "used": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "remaining": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "periodEnd": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
