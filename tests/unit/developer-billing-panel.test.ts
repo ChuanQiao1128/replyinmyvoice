@@ -56,7 +56,9 @@ describe("developer billing panel", () => {
 
     expect(panelSource).toContain('"/api/me"');
     expect(panelSource).toContain('"/api/me/billing/history"');
+    expect(panelSource).toContain('"/api/me/billing/export"');
     expect(panelSource).toContain('"/api/stripe/portal"');
+    expect(panelSource).toContain("Export CSV");
     expect(panelSource).toContain('cache: "no-store"');
     expect(panelSource).not.toContain("getAzureApiBaseUrl");
     expect(panelSource).not.toContain("azureApiFetch");
