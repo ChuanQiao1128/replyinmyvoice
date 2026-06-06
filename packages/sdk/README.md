@@ -1,17 +1,17 @@
 # Reply In My Voice TypeScript SDK
 
-Official TypeScript client for the Reply In My Voice public API. The owner will publish the package later; do not publish this package from a delivery branch.
+Official TypeScript client for the Reply In My Voice public API. Published on npm as `replyinmyvoice-api`.
 
 ## Install
 
 ```sh
-npm install @replyinmyvoice/api
+npm install replyinmyvoice-api
 ```
 
 ## Quickstart
 
 ```ts
-import { createClient } from "@replyinmyvoice/api";
+import { createClient } from "replyinmyvoice-api";
 
 const client = createClient({
   apiKey: process.env.REPLY_IN_MY_VOICE_API_KEY!,
@@ -66,7 +66,7 @@ await client.getUsage();
 Non-2xx responses throw `RimvApiError`:
 
 ```ts
-import { RimvApiError } from "@replyinmyvoice/api";
+import { RimvApiError } from "replyinmyvoice-api";
 
 try {
   await client.rewrite(draft);

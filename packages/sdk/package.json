@@ -1,5 +1,5 @@
 {
-  "name": "@replyinmyvoice/api",
+  "name": "replyinmyvoice-api",
   "version": "0.1.0",
   "description": "Official TypeScript client for the Reply In My Voice API.",
   "license": "MIT",
