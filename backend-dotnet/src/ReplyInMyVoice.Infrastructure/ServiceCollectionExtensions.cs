@@ -56,6 +56,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AccountService>();
         services.AddScoped<ApiKeyService>();
         services.AddScoped<ApiKeyUsageQueryService>();
+        services.AddScoped<WebhookDeliveryService>();
+        services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
+        services.AddScoped<WebhookDispatcherService>();
         services.AddScoped<QuotaService>();
         services.AddScoped<PromoService>();
         services.AddScoped<RewriteRequestService>();
@@ -75,6 +78,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<ICheckoutVelocityLimiter, CheckoutVelocityLimiter>();
         services.AddHttpClient();
+        services.AddHttpClient<IWebhookDeliverySender, HttpWebhookDeliverySender>();
         services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleRewriteModelClient));
         services.AddResilientProviderHttpClient(nameof(SaplingWritingSignalClient));
         services.AddHttpClient(nameof(ResendNotificationEmailProvider));

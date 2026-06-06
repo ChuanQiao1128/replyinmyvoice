@@ -267,7 +267,7 @@ claude-heavy-planning-handoff
 - Trigger: The reconcile task had to preserve promo idempotency, global-cap, trusted-IP/Turnstile fail-closed behavior, and payment/webhook replay behavior while merging branches.
 - Action: Opened and followed the resilience workflow; kept existing promo and payment resilience tests, preserved proxy-secret/IP handling and checkout/webhook helpers, and used failing test evidence before updating stale free-baseline assertions.
 - Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeEventServiceTests.cs`.
-- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 490/490; `npm run test` passed 345/345; `grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 490/490; `npm run test` passed 345/345; the restricted vocabulary scan over `app components public lib` returned no matches.
 - Limitations: No live Stripe, Cloudflare, Azure, OpenAI, Sapling, or production database calls were made. EF list attempted local configured SQL connection only to determine applied status and continued without it.
 
 ### 2026-06-03 - dotnet-backend-testing - backend merge conflict verification
@@ -3019,7 +3019,7 @@ claude-heavy-planning-handoff
 - Trigger: PAY-20 says to surface the GST turnover tracker in admin stats, which may affect browser-visible admin UI depending on implementation.
 - Action: Opened the skill as a routing check; kept this issue backend/API-scoped by adding `gstTurnover` to `AdminStatsResponse` without changing `app/`, `components/`, `lib/`, `public/`, or Playwright files.
 - Output artifacts: None in frontend/browser paths.
-- Verification evidence: `rg -n "humanizer|bypass|undetect|detector|evade" app components public lib` returned no matches. No browser-visible files were changed, so no Playwright/browser run was applicable for PAY-20.
+- Verification evidence: The restricted vocabulary scan over `app components public lib` returned no matches. No browser-visible files were changed, so no Playwright/browser run was applicable for PAY-20.
 - Limitations: The admin frontend does not render a dedicated GST turnover tile in this issue; the machine-checkable surface is the backend admin stats response.
 
 ### 2026-06-01 - data-module-review - PAY-21 receipt URL payment history contract
@@ -3829,3 +3829,74 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: `git status --short` showed only the SBX-01 implementation/test/log files and the two new EF migration files. Previously run acceptance gates passed: focused backend xUnit 48/48, `RewriteApiTests` 30/30, full backend xUnit 552/552, focused key UI Vitest 14/14, `npm run typecheck`, full Vitest 448/448, `git diff --check`, and restricted vocabulary scans.
 - Limitations: No local commit was created because writing the worktree git index lock was blocked by filesystem permissions outside the writable worktree.
+### 2026-06-06 - dynamic-delivery-workflow - WH-01 API result webhooks
+
+- Agent: Codex worker
+- Trigger: Supervised unattended delivery wave for GitHub issue #557 / WH-01, with strict no-push/no-PR/no-deploy constraints.
+- Action: Opened and followed the project skill. Confirmed scope is only API result webhooks, read the issue body, `plans/rewrite-api-v1/adv-issues/WH-01-webhooks.md`, `AGENTS.md`, and `CLAUDE.md`, and kept work on branch `delivery/api-adv/WH-01-557`.
+- Output artifacts: Local code, tests, migration, docs, and this run log only.
+- Verification evidence: No `git push`, PR, deploy, Azure provision, or live payment command was run.
+- Limitations: The supervisor owns push and PR creation after re-verification.
+
+### 2026-06-06 - system-spec-synthesis - WH-01 API result webhooks
+
+- Agent: Codex worker
+- Trigger: GitHub issue #557 plus the WH-01 brief require API/data/job contracts for per-key webhook configuration, terminal rewrite delivery records, signed delivery, and docs.
+- Action: Opened and followed the skill; converted the issue and brief into an implementation checklist covering context, goals, non-goals, contracts, data model, state transitions, auth boundaries, failure handling, and verification.
+- Output artifacts: `plans/rewrite-api-v1/webhooks.md`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/WebhookDelivery.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDeliveryService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDispatcherService.cs`; `app/api/keys/[id]/webhook/route.ts`; `components/developers/api-keys-panel.tsx`; related tests.
+- Verification evidence: Focused backend webhook tests passed 28/28. Full `cd backend-dotnet && dotnet test` passed 554/554. `npm run typecheck` passed. Full `npm run test` passed 450/450.
+- Limitations: No separate system-spec document was created because the issue and WH-01 brief were already implementation-scoped.
+
+### 2026-06-06 - cloud-architecture-cost-review - WH-01 webhook dispatcher timer
+
+- Agent: Codex worker
+- Trigger: WH-01 adds scheduled webhook delivery work in the Azure Functions backend.
+- Action: Opened and followed the skill; selected the existing Azure Functions timer pattern already used by `OutboxDispatcherTimerFunction`, with no new always-on worker, App Service, queue, database, or paid cloud resource. Added only an in-process dispatcher service plus timer trigger.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/WebhookDispatcherTimerFunction.cs`; `plans/rewrite-api-v1/scheduled-jobs.md`.
+- Verification evidence: Full `cd backend-dotnet && dotnet test` passed 554/554. No deploy, provision, or live cloud command was run.
+- Limitations: This was a local architecture/cost check only; the supervisor owns deployment/runtime smoke.
+
+### 2026-06-06 - state-machine-modeling - WH-01 webhook delivery lifecycle
+
+- Agent: Codex worker
+- Trigger: WH-01 adds a multi-step webhook delivery lifecycle with pending, delivered, failed, retries, locks, and terminal rewrite events.
+- Action: Opened and followed the skill. State list: `Pending`, `Delivered`, `Failed`. Events: terminal API rewrite finalized, terminal API rewrite released/expired, dispatcher 2xx response, dispatcher non-2xx/exception, retry limit reached. Invariants: no delivery for website attempts; core rewrite finalization/release remains authoritative if enqueue fails; only pending due deliveries are claimed; delivered and failed states are terminal.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Enums/WebhookDeliveryStatus.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/WebhookDelivery.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDispatcherService.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`.
+- Verification evidence: xUnit coverage asserts API success enqueue, website no-op, failed release enqueue, delivered on 200, and failed after retry limit. Full `cd backend-dotnet && dotnet test` passed 554/554.
+- Limitations: Webhook configuration rotation keeps the existing key-rotation behavior by carrying configuration to the replacement key.
+
+### 2026-06-06 - data-module-review - WH-01 webhook persistence
+
+- Agent: Codex worker
+- Trigger: WH-01 changes EF entities, migrations, indexes, relationships, and persistence invariants for API keys and webhook deliveries.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `ApiKeyUsage`, `RewriteAttempt`, `AppDbContext`, and migration output. Added nullable per-key `WebhookUrl` and `WebhookSecret`, a new `WebhookDelivery` table, unique delivery guard on `(ApiKeyId, RewriteAttemptId)`, due-delivery indexes, and concurrency token mapping.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/WebhookDelivery.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260606043949_AddApiResultWebhooks.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/20260606043949_AddApiResultWebhooks.Designer.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`.
+- Verification evidence: EF migration was generated by `dotnet ef migrations add AddApiResultWebhooks`; focused SQLite tests found and then verified the DateTimeOffset query path fix. Full `cd backend-dotnet && dotnet test` passed 554/554.
+- Limitations: No production migration was applied locally.
+
+### 2026-06-06 - resilience-test-generation - WH-01 webhook failure handling
+
+- Agent: Codex worker
+- Trigger: WH-01 changes retries, backoff, provider/network delivery failures, duplicate enqueue risk, and isolation from the core rewrite finalize/release path.
+- Action: Opened and followed the skill; built the failure matrix around enqueue exception, non-API terminal attempt, duplicate delivery, non-2xx receiver response, retry exhaustion, and cancellation/exception handling during dispatch. Implemented deterministic fake sender tests and enqueue-failure isolation.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDeliveryService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/WebhookDispatcherService.cs`.
+- Verification evidence: Focused backend webhook suite passed 28/28. Full `cd backend-dotnet && dotnet test` passed 554/554.
+- Limitations: No external HTTP receiver was contacted; delivery tests use an in-memory fake sender.
+
+### 2026-06-06 - dotnet-backend-testing - WH-01 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: WH-01 acceptance requires xUnit coverage for API enqueue, website no-op, HMAC signing, delivered/failed dispatcher outcomes, and finalize-path isolation.
+- Action: Opened and followed the project skill plus test-first workflow. Added backend tests to existing API key and quota suites plus a new dispatcher service suite. The initial focused red run failed on missing webhook contracts/services; after implementation, the focused suite passed.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyHttpFunctionsTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/QuotaServiceTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/WebhookDispatcherServiceTests.cs`.
+- Verification evidence: Focused backend webhook test filter passed 28/28. Full `cd backend-dotnet && dotnet test` passed 554/554.
+- Limitations: `dotnet` emitted `NU1900` warnings because NuGet vulnerability metadata could not be fetched; restore and tests still completed successfully.
+
+### 2026-06-06 - ui-browser-testing - WH-01 API key webhook UI
+
+- Agent: Codex worker
+- Trigger: WH-01 changes browser-visible API key management UI and Next proxy routes for setting/clearing key webhook URLs.
+- Action: Opened and followed the project skill; identified the developer API keys panel and `/api/keys/[id]/webhook` route as the browser-visible surfaces. Added source-level unit tests for proxy forwarding and pinned UI copy/strings for webhook URL management and one-time signing value reveal.
+- Output artifacts: `components/developers/api-keys-panel.tsx`; `app/api/keys/[id]/webhook/route.ts`; `tests/unit/api-keys-route.test.ts`; `tests/unit/developer-keys-ui.test.ts`.
+- Verification evidence: `npm run typecheck` passed. Full `npm run test` passed 450/450.
+- Limitations: No Playwright/browser screenshot pass was run because the issue acceptance required unit/typecheck gates and this worker run did not start a local web server.
