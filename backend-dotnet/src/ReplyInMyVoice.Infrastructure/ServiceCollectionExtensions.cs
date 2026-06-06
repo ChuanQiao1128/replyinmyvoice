@@ -79,7 +79,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<ICheckoutVelocityLimiter, CheckoutVelocityLimiter>();
         services.AddHttpClient();
-        services.AddHttpClient<IWebhookDeliverySender, HttpWebhookDeliverySender>();
+        services.AddHttpClient<IWebhookDeliverySender, HttpWebhookDeliverySender>(client =>
+            {
+                client.Timeout = WebhookHttpClientFactory.OverallTimeout;
+            })
+            .ConfigurePrimaryHttpMessageHandler(WebhookHttpClientFactory.CreateHandler);
         services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleRewriteModelClient));
         services.AddResilientProviderHttpClient(nameof(SaplingWritingSignalClient));
         services.AddHttpClient(nameof(ResendNotificationEmailProvider));

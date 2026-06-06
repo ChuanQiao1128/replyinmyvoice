@@ -34,7 +34,7 @@ public sealed class WebhookDispatcherServiceTests
 
         dispatched.Should().Be(1);
         var sent = sender.Requests.Should().ContainSingle().Subject;
-        sent.Url.Should().Be("https://listener.example.test/rewrite");
+        sent.Url.Should().Be("https://93.184.216.34/rewrite");
 
         using var body = JsonDocument.Parse(sent.RawBody);
         body.RootElement.GetProperty("id").GetGuid().Should().Be(attemptId);
@@ -83,6 +83,37 @@ public sealed class WebhookDispatcherServiceTests
         delivery.DeliveredAt.Should().BeNull();
     }
 
+    [Fact]
+    public async Task DispatchDueAsync_rejects_disallowed_saved_url_before_send()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await SeedDeliveryAsync(
+            fixture,
+            user.Id,
+            new string('d', 64),
+            RewriteAttemptStatus.Succeeded,
+            "{\"rewrittenText\":\"Hi Sam, the report is ready.\",\"naturalness\":{\"draftAiLikePercent\":78,\"rewriteAiLikePercent\":24},\"changeSummary\":[],\"riskNotes\":[]}",
+            webhookUrl: "https://127.0.0.1/rewrite",
+            maxAttempts: 1);
+        var sender = new RecordingWebhookDeliverySender(new WebhookSendResult(200));
+        var dispatcher = new WebhookDispatcherService(fixture.CreateContext, sender);
+
+        await dispatcher.DispatchDueAsync(
+            DateTimeOffset.Parse("2026-06-06T02:00:00Z"),
+            "test-worker",
+            batchSize: 10,
+            CancellationToken.None);
+
+        sender.Requests.Should().BeEmpty();
+        await using var db = fixture.CreateContext();
+        var delivery = await db.WebhookDeliveries.SingleAsync();
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Failed);
+        delivery.AttemptCount.Should().Be(1);
+        delivery.LastError.Should().Contain("Webhook URL is not allowed");
+        delivery.DeliveredAt.Should().BeNull();
+    }
+
     private static async Task<Guid> SeedDeliveryAsync(
         DbFixture fixture,
         Guid userId,
@@ -90,7 +121,9 @@ public sealed class WebhookDispatcherServiceTests
         RewriteAttemptStatus status,
         string? resultJson,
         string? errorCode = null,
-        int attemptCount = 0)
+        int attemptCount = 0,
+        string webhookUrl = "https://93.184.216.34/rewrite",
+        int maxAttempts = 5)
     {
         await using var db = fixture.CreateContext();
         var apiKey = new ApiKey
@@ -99,7 +132,7 @@ public sealed class WebhookDispatcherServiceTests
             Name = "Server key",
             KeyHash = Guid.NewGuid().ToString("N"),
             Last4 = "abcd",
-            WebhookUrl = "https://listener.example.test/rewrite",
+            WebhookUrl = webhookUrl,
             WebhookSecret = signingValue,
             CreatedAt = DateTimeOffset.Parse("2026-06-06T01:59:00Z"),
             UpdatedAt = DateTimeOffset.Parse("2026-06-06T01:59:00Z"),
@@ -124,6 +157,7 @@ public sealed class WebhookDispatcherServiceTests
             Url = apiKey.WebhookUrl,
             Status = WebhookDeliveryStatus.Pending,
             AttemptCount = attemptCount,
+            MaxAttempts = maxAttempts,
             CreatedAt = DateTimeOffset.Parse("2026-06-06T01:59:00Z"),
             NextAttemptAt = DateTimeOffset.Parse("2026-06-06T01:59:00Z"),
         };

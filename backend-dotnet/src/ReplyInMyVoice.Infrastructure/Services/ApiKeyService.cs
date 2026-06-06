@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
@@ -243,7 +244,7 @@ public sealed class ApiKeyService
     {
         if (!TryNormalizeWebhookUrl(webhookUrl, out var normalizedUrl))
         {
-            throw new ArgumentException("Webhook URL must be an absolute HTTP or HTTPS URL.", nameof(webhookUrl));
+            throw new ArgumentException("Webhook URL must be an absolute HTTPS URL that resolves to a public address.", nameof(webhookUrl));
         }
 
         await using var db = _dbContextFactory();
@@ -305,24 +306,14 @@ public sealed class ApiKeyService
         return (isTest ? TestKeyPrefix : LiveKeyPrefix) + ToBase62(randomBytes);
     }
 
-    public static bool TryNormalizeWebhookUrl(string? value, out string normalizedUrl)
-    {
-        normalizedUrl = string.Empty;
-        var trimmed = value?.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.Length > 2048)
-        {
-            return false;
-        }
+    public static bool TryNormalizeWebhookUrl(string? value, out string normalizedUrl) =>
+        WebhookEndpointSafety.TryNormalizeUrl(value, out normalizedUrl);
 
-        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-        {
-            return false;
-        }
-
-        normalizedUrl = uri.ToString();
-        return true;
-    }
+    internal static bool TryNormalizeWebhookUrl(
+        string? value,
+        out string normalizedUrl,
+        Func<string, IPAddress[]> resolveHost) =>
+        WebhookEndpointSafety.TryNormalizeUrl(value, out normalizedUrl, resolveHost);
 
     private static string GenerateWebhookSecret()
     {
