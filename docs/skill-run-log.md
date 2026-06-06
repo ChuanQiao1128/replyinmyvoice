@@ -4152,3 +4152,20 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: `ApiKeyServiceTests` passed 18/18. `RewriteJobProcessorTests` passed 8/8. Exact `cd backend-dotnet && dotnet build` passed. Exact `cd backend-dotnet && dotnet test` passed 592/592. Restricted substring scan over `app components public lib backend-dotnet/src backend-dotnet/tests` returned no matches.
 - Limitations: An initial parallel focused test run hit Functions worker build artifact races; sequential focused tests and exact full backend commands later passed. No push, PR, deploy, production database migration, or live provider call was run.
+### 2026-06-06 - system-spec-synthesis - RFX-08 SDK and OpenAPI contract accuracy
+
+- Agent: Codex worker
+- Trigger: GitHub issue #561 / RFX-08 changes the documented v1 API contract and the TypeScript SDK contract.
+- Action: Opened and followed the skill; converted the issue and `plans/rewrite-api-v1/fix-issues/RFX-08-sdk-openapi.md` into an implementation checklist covering SDK idempotency, submit response validation, polling timing, UUID rewrite ids, nullable usage periods, unauthenticated response headers, request body schema limits, and verification gates.
+- Output artifacts: `packages/sdk/src/index.ts`; `packages/sdk/package.json`; `packages/sdk/LICENSE`; `packages/sdk/README.md`; `public/openapi.json`; `tests/unit/sdk.test.ts`; `tests/unit/openapi-spec.test.ts`.
+- Verification evidence: Focused SDK/OpenAPI red run failed on the missing contract behavior, then passed 15/15 after implementation. `npm run typecheck`, `npm run test`, `cd packages/sdk && npm run build`, `git diff --check`, package metadata check, and scoped restricted-term scan all passed.
+- Limitations: No live API or deployment smoke was run; this issue is limited to local SDK/spec/test artifacts.
+
+### 2026-06-06 - resilience-test-generation - RFX-08 SDK idempotency and polling
+
+- Agent: Codex worker
+- Trigger: RFX-08 changes retry-safe SDK submit behavior and the polling loop timing.
+- Action: Opened and followed the skill; identified the critical invariant that repeated logical submits can carry a stable idempotency key and that polling should not hammer the result endpoint immediately. Added deterministic unit tests using mocked fetch and fake timers for idempotency header forwarding, invalid submit response handling, initial poll delay, timeout behavior, and failed job propagation.
+- Output artifacts: `tests/unit/sdk.test.ts`; `packages/sdk/src/index.ts`.
+- Verification evidence: Focused SDK/OpenAPI tests passed 15/15. Full `npm run test` passed 457/457. `npm run typecheck` and `cd packages/sdk && npm run build` passed.
+- Limitations: Tests use local mocked fetch only; no external API endpoint was contacted.

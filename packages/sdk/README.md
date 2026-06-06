@@ -27,6 +27,7 @@ console.log(result.signal); // naturalness reference: { draft, rewrite }
 
 ```ts
 const { rewrittenText, signal } = await client.rewrite(draft, {
+  idempotencyKey: "request-2026-06-06-001",
   pollIntervalMs: 1_500,
   timeoutMs: 120_000,
 });
@@ -53,13 +54,13 @@ The default API base URL is `https://replyinmyvoice.com`. For local or preview t
 ## Methods
 
 ```ts
-await client.submitRewrite(draft);
+await client.submitRewrite(draft, { idempotencyKey: "request-2026-06-06-001" });
 await client.getRewrite(id);
 await client.rewrite(draft);
 await client.getUsage();
 ```
 
-`submitRewrite()` returns `{ id, status }`. `getRewrite()` returns the current job state. `getUsage()` returns `{ scope, quota, used, remaining, periodEnd }`.
+`submitRewrite()` returns `{ id, status }`. `getRewrite()` returns the current job state. `getUsage()` returns `{ scope, quota, used, remaining, periodEnd }`, where `periodEnd` can be `null` for sandbox or free usage.
 
 ## Errors
 
