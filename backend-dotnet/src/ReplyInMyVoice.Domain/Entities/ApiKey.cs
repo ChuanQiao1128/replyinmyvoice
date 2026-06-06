@@ -10,6 +10,7 @@ public sealed class ApiKey
     public required string Name { get; set; }
     public string PlanTier { get; set; } = "free";
     public string Scope { get; set; } = "[]";
+    public bool IsTest { get; set; }
     public int RateLimitPerMinute { get; set; } = 60;
     public int MonthlyQuota { get; set; } = 1000;
     public int CurrentPeriodUsage { get; set; }

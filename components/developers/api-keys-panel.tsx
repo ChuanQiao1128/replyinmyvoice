@@ -4,6 +4,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clipboard,
+  FlaskConical,
   KeyRound,
   Loader2,
   Plus,
@@ -20,6 +21,7 @@ import { Input } from "../ui/input";
 type ApiKey = {
   createdAt: string;
   id: string;
+  isTest: boolean;
   lastUsedAt: string | null;
   last30dUsage: ApiUsageCount;
   maskedKey: string;
@@ -36,6 +38,7 @@ type ApiUsageCount = {
 type CreatedApiKey = {
   createdAt: string;
   id: string;
+  isTest: boolean;
   key: string;
   name: string;
 };
@@ -66,6 +69,14 @@ function formatDateTime(value: string | null, emptyLabel = "Not recorded") {
 
 function fallbackMaskedKey(value: string) {
   const trimmed = value.trim();
+  if (trimmed.startsWith("rmv_test_") && trimmed.length >= 13) {
+    return `rmv_test_\u2022\u2022\u2022\u2022${trimmed.slice(-4)}`;
+  }
+
+  if (trimmed.startsWith("rmv_live_") && trimmed.length >= 13) {
+    return `rmv_live_\u2022\u2022\u2022\u2022${trimmed.slice(-4)}`;
+  }
+
   if (trimmed.length <= 12) {
     return "****";
   }
@@ -129,6 +140,7 @@ function createdKeyListItem(created: CreatedApiKey): ApiKey {
   return {
     createdAt: created.createdAt,
     id: created.id,
+    isTest: created.isTest,
     lastUsedAt: null,
     last30dUsage: emptyUsage(),
     maskedKey: fallbackMaskedKey(created.key),
@@ -200,8 +212,7 @@ export function ApiKeysPanel() {
     return keysState.keys.filter((key) => !key.revokedAt).length;
   }, [keysState]);
 
-  async function createKey(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitCreateKey(isTest: boolean) {
     if (isCreating) {
       return;
     }
@@ -222,7 +233,7 @@ export function ApiKeysPanel() {
 
     try {
       const response = await fetch("/api/keys", {
-        body: JSON.stringify({ name: trimmedName }),
+        body: JSON.stringify({ name: trimmedName, test: isTest }),
         cache: "no-store",
         headers: {
           "Content-Type": "application/json",
@@ -244,7 +255,11 @@ export function ApiKeysPanel() {
       created = (await response.json()) as CreatedApiKey;
       setRevealedKey(created);
       setName("");
-      setCreateNotice("Key created. Copy it before leaving this page.");
+      setCreateNotice(
+        isTest
+          ? "Test key created. Copy it before leaving this page."
+          : "Key created. Copy it before leaving this page.",
+      );
       setKeysState((current) => {
         if (current.status !== "ready" || !created) {
           return current;
@@ -276,6 +291,11 @@ export function ApiKeysPanel() {
     } finally {
       setIsCreating(false);
     }
+  }
+
+  function createKey(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitCreateKey(false);
   }
 
   async function copyKey() {
@@ -512,6 +532,14 @@ export function ApiKeysPanel() {
                     {revealedKey.key}
                   </code>
                 </div>
+                {revealedKey.isTest ? (
+                  <span
+                    aria-label="Test key"
+                    className="mt-3 inline-flex rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 text-xs font-semibold text-ink"
+                  >
+                    Test
+                  </span>
+                ) : null}
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Button onClick={() => void copyKey()} type="button">
                     <Clipboard className="h-4 w-4" aria-hidden="true" />
@@ -614,8 +642,18 @@ export function ApiKeysPanel() {
                           {key.name}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-4 font-mono text-xs text-ink/65">
-                        {key.maskedKey}
+                      <td className="whitespace-nowrap px-4 py-4 text-xs text-ink/65">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono">{key.maskedKey}</span>
+                          {key.isTest ? (
+                            <span
+                              aria-label="Test key"
+                              className="inline-flex rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 font-sans text-[11px] font-semibold text-ink"
+                            >
+                              Test
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-4">
                         <span
@@ -708,14 +746,29 @@ export function ApiKeysPanel() {
               <p className="text-sm font-semibold text-sage">{createNotice}</p>
             ) : null}
 
-            <Button disabled={isCreating} type="submit">
-              {isCreating ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Plus className="h-4 w-4" aria-hidden="true" />
-              )}
-              {isCreating ? "Creating..." : "Create key"}
-            </Button>
+            <div className="grid gap-3">
+              <Button disabled={isCreating} type="submit">
+                {isCreating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isCreating ? "Creating..." : "Create key"}
+              </Button>
+              <Button
+                disabled={isCreating}
+                onClick={() => void submitCreateKey(true)}
+                type="button"
+                variant="secondary"
+              >
+                {isCreating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <FlaskConical className="h-4 w-4" aria-hidden="true" />
+                )}
+                Create test key
+              </Button>
+            </div>
           </form>
         </Card>
 
