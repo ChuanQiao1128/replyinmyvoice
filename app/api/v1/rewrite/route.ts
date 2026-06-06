@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 
+import {
+  captureApiEvent,
+  parseApiErrorCode,
+  readApiRequestId,
+} from "../../../../lib/api-observability";
 import { getAzureApiBaseUrl } from "../../../../lib/azure-api";
 import { copyV1ResponseHeaders } from "../../../../lib/v1-response-headers";
 
 export const dynamic = "force-dynamic";
+
+const endpoint = "POST /api/v1/rewrite";
 
 function callerHeaders(request: Request) {
   const headers = new Headers();
@@ -22,7 +29,7 @@ function callerHeaders(request: Request) {
   return headers;
 }
 
-async function forwardFunctionsResponse(response: Response) {
+async function forwardFunctionsResponse(response: Response, startedAtMs: number) {
   const headers = new Headers();
   const contentType = response.headers.get("content-type");
   const location = response.headers.get("location");
@@ -35,19 +42,41 @@ async function forwardFunctionsResponse(response: Response) {
   }
   copyV1ResponseHeaders(response.headers, headers);
 
-  return new NextResponse(await response.text(), {
+  const responseText = await response.text();
+  void captureApiEvent({
+    endpoint,
+    errorCode: response.status >= 400 ? parseApiErrorCode(responseText) : undefined,
+    latencyMs: Date.now() - startedAtMs,
+    requestId: readApiRequestId(response.headers),
+    statusCode: response.status,
+  });
+
+  return new NextResponse(responseText, {
     headers,
     status: response.status,
   });
 }
 
 export async function POST(request: Request) {
-  const response = await fetch(`${getAzureApiBaseUrl()}/api/v1/rewrite`, {
-    body: await request.text(),
-    cache: "no-store",
-    headers: callerHeaders(request),
-    method: "POST",
-  });
+  const startedAtMs = Date.now();
 
-  return forwardFunctionsResponse(response);
+  try {
+    const response = await fetch(`${getAzureApiBaseUrl()}/api/v1/rewrite`, {
+      body: await request.text(),
+      cache: "no-store",
+      headers: callerHeaders(request),
+      method: "POST",
+    });
+
+    return forwardFunctionsResponse(response, startedAtMs);
+  } catch (error) {
+    void captureApiEvent({
+      endpoint,
+      error,
+      errorCode: "proxy_request_failed",
+      latencyMs: Date.now() - startedAtMs,
+      statusCode: 500,
+    });
+    throw error;
+  }
 }
