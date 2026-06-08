@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -60,7 +61,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRewriteAttemptRepository, RewriteAttemptRepository>();
         services.AddScoped<IUsageReservationRepository, UsageReservationRepository>();
         services.AddScoped<IRewriteCreditRepository, RewriteCreditRepository>();
+        services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<CreateRewriteAttemptHandler>();
+        services.AddScoped<GetRewriteAttemptHandler>();
         services.AddScoped<AccountService>();
         services.AddScoped<ApiKeyService>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
