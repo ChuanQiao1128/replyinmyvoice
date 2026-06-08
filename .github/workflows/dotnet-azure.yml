@@ -33,7 +33,7 @@ jobs:
       - name: Publish Worker
         run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Worker/ReplyInMyVoice.Worker.csproj --configuration Release --output backend-dotnet/artifacts/worker
       - name: Publish Functions
-        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions
+        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions /p:CommitSha=${{ github.sha }} /p:BuildTimestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 
   sqlserver-migration:
     runs-on: ubuntu-latest
@@ -109,7 +109,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Build deployment package
         run: |
-          dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions
+          dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions /p:CommitSha=${{ github.sha }} /p:BuildTimestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
           cd backend-dotnet/artifacts/functions
           zip -qr ../replyinmyvoice-functions.zip .
       - name: Apply database migrations
