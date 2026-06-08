@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - system-spec-synthesis - DDD-10 Application project skeleton
+
+- Agent: Codex worker
+- Trigger: GitHub issue #607 adds the new `ReplyInMyVoice.Application` layer to the target DDD project graph.
+- Action: Opened and followed the skill at implementation-checkpoint scale; read `AGENTS.md`, `CLAUDE.md`, issue #607, `plans/ddd-restructure/issues/DDD-10-application-skeleton.md`, `plans/ddd-restructure/REQUIREMENT.md` section 3, `backend-dotnet/ReplyInMyVoice.sln`, and `backend-dotnet/src/ReplyInMyVoice.Domain/ReplyInMyVoice.Domain.csproj`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/ReplyInMyVoice.Application.csproj`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/ApplicationAbstractionsMarker.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/ApplicationAssemblyMarker.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/ApplicationUseCasesMarker.cs`; `backend-dotnet/ReplyInMyVoice.sln`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors; `grep -q "ReplyInMyVoice.Application" backend-dotnet/ReplyInMyVoice.sln` passed; `test -f backend-dotnet/src/ReplyInMyVoice.Application/ReplyInMyVoice.Application.csproj` passed; `dotnet test ReplyInMyVoice.sln -c Release` passed 616/616 tests.
+- Limitations: Skeleton only; no use-case, repository, Infrastructure, Api, Functions, Worker, billing, deployment, secret, or production branch changes were made.
+
 ### 2026-06-08 - system-spec-synthesis - CORE-593 MCP shared tool contract
 
 - Agent: Codex worker
