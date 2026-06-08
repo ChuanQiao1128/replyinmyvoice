@@ -4259,3 +4259,21 @@ claude-heavy-planning-handoff
 - Output artifacts: Final worker report; `docs/skill-run-log.md`.
 - Verification evidence: `dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj -c Release -o /tmp/ver-pub /p:CommitSha=deadbeefcafe /p:BuildTimestamp=2026-06-08T00:00:00Z` exited 0 and `/tmp/ver-pub/version.generated.json` contained the override. `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter FullyQualifiedName~VersionFunctionTests` passed 3/3. `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 595/595.
 - Limitations: No live Azure deploy or smoke command was run; the issue explicitly scopes this to local build/package and CI publish wiring.
+
+### 2026-06-08 - data-module-review - HARD-02 API key usage anomaly signal
+
+- Agent: Codex worker
+- Trigger: GitHub issue #585 / HARD-02 reads existing `ApiKeyUsage` rows and adds usage-count anomaly logic without a new table.
+- Action: Opened and followed the skill; reviewed `AppDbContext` indexes, `ApiKeyUsage`, `ApiKeyUsageQueryService`, `ApiKeyService`, API key Functions routes, and the existing SQLite fixture style. Confirmed the query can use the existing `(ApiKeyId, CreatedAt)` index on production providers and needs no EF migration.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageAnomalyService.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageAnomalyServiceTests.cs`; `plans/rewrite-api-v1/key-leak-runbook.md`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 40` ran and showed broad existing scan rows; focused anomaly tests passed 3/3 and full backend tests passed 598/598.
+- Limitations: No dashboard wiring, EF migration, or live telemetry query was run; HARD-02 scopes this to a structured backend log signal plus runbook.
+
+### 2026-06-08 - dotnet-backend-testing - HARD-02 anomaly service tests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #585 / HARD-02 adds C# xUnit coverage for API-key usage-spike classification.
+- Action: Opened and followed the skill; used the shared EF Core SQLite fixture and wrote failing tests before production code for spike, steady, and zero-usage cases, including structured log state for the flagged path.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageAnomalyServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageAnomalyService.cs`.
+- Verification evidence: Initial focused run failed on missing `ApiKeyUsageAnomalyService`, then `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiKeyUsageAnomalyServiceTests` passed 3/3 after implementation. `dotnet build ReplyInMyVoice.sln -c Release` exited 0. `dotnet test ReplyInMyVoice.sln -c Release` passed 598/598.
+- Limitations: Tests do not assert Application Insights ingestion; they assert the service emits structured logger state when the anomaly is flagged.
