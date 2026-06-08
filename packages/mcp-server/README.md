@@ -1,26 +1,27 @@
 # @replyinmyvoice/mcp-server
 
-MCP server that exposes the Reply In My Voice rewrite tools to any MCP-compatible LLM host — Claude Desktop, Claude Code, Codex, Cursor, Continue.dev, and others.
+MCP server for Reply In My Voice. It gives MCP-compatible clients a small, stable interface for rewriting email replies while preserving the supplied facts and context.
 
-## Install
+The package can run locally over stdio with `npx`, or clients can connect to the hosted HTTP endpoint.
 
-    npx @replyinmyvoice/mcp-server
+## Requirements
 
-Or globally:
+- Node.js 18 or newer for local stdio use.
+- A Reply In My Voice API key from <https://replyinmyvoice.com/developers/keys>.
 
-    npm install -g @replyinmyvoice/mcp-server
+## Local stdio with npx
 
-Node 18+ required.
+Run the server directly:
 
-## Configure your API key
+```sh
+REPLY_IN_MY_VOICE_API_KEY=rmv_live_xxx npx -y @replyinmyvoice/mcp-server
+```
 
-Set `REPLY_IN_MY_VOICE_API_KEY` in the environment. Get a key from <https://replyinmyvoice.com/app/api-keys> after signing in.
-
-## Host configuration
+The server uses `https://replyinmyvoice.com` by default. For development or staging, set `REPLY_IN_MY_VOICE_BASE_URL`.
 
 ### Claude Desktop
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, or `%APPDATA%\Claude\claude_desktop_config.json` on Windows:
 
 ```json
 {
@@ -28,7 +29,9 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
     "replyinmyvoice": {
       "command": "npx",
       "args": ["-y", "@replyinmyvoice/mcp-server"],
-      "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
+      "env": {
+        "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx"
+      }
     }
   }
 }
@@ -36,7 +39,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 
 ### Codex
 
-Edit `~/.codex/config.toml`:
+Add a local stdio server:
 
 ```toml
 [mcp_servers.replyinmyvoice]
@@ -45,92 +48,88 @@ args = ["-y", "@replyinmyvoice/mcp-server"]
 env = { REPLY_IN_MY_VOICE_API_KEY = "rmv_live_xxx" }
 ```
 
-### Cursor
+## Remote HTTP
 
-Edit `~/.cursor/mcp.json` (or use Settings → MCP):
+Use the hosted endpoint when your MCP client supports HTTP transport and custom authorization headers.
 
-```json
-{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "command": "npx",
-      "args": ["-y", "@replyinmyvoice/mcp-server"],
-      "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
-    }
-  }
-}
+### Claude Code
+
+```sh
+claude mcp add --transport http replyinmyvoice https://replyinmyvoice.com/api/mcp \
+  --header "Authorization: Bearer rmv_live_xxx"
 ```
 
-### Continue.dev
+### Codex
 
-Edit `~/.continue/config.yaml`:
-
-```yaml
-mcpServers:
-  - name: replyinmyvoice
-    command: npx
-    args: ["-y", "@replyinmyvoice/mcp-server"]
-    env:
-      REPLY_IN_MY_VOICE_API_KEY: rmv_live_xxx
+```sh
+codex mcp add --url https://replyinmyvoice.com/api/mcp replyinmyvoice \
+  --header "Authorization: Bearer rmv_live_xxx"
 ```
 
 ## Tools
 
-The server exposes three tools (full implementations land in M9-002; the interface below is stable):
+This server exposes exactly two tools.
 
 ### `rewrite_email`
 
-Rewrites a draft so it sounds more natural while preserving meaning and facts.
+Rewrites a draft email reply and returns the finished text.
 
-| Field      | Type                                                                                  | Required | Notes |
-|------------|---------------------------------------------------------------------------------------|----------|-------|
-| `draft`    | string                                                                                | yes      | Up to 5000 chars combined with context. |
-| `scenario` | enum: `customer-support` \| `sales-outreach` \| `personal` \| `leadership` \| `recruitment` | no       | Activates scenario-specific guardrails. |
-| `tone`     | enum: `warm` \| `neutral` \| `direct` \| `enthusiastic`                               | no       | Default: `neutral`. |
+Input:
 
-Returns: `{ rewritten: string, signal_score: number, diagnosis_tags: string[] }`
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `draft` | string | yes | Draft reply to rewrite. Use 10 to 2400 characters and keep it under about 300 words. |
+| `context` | string | no | Original message, thread summary, or facts the reply should respect. |
+| `tone` | `"warm"` or `"direct"` | no | Defaults to `warm`. |
 
-### `analyze_signal`
-
-Runs the naturalness check on existing text without rewriting it.
-
-| Field  | Type   | Required |
-|--------|--------|----------|
-| `text` | string | yes      |
-
-Returns: `{ signal_score: number, diagnosis_tags: string[], suggestions: string[] }`
-
-### `list_scenarios`
-
-Returns the available scenario presets and their guardrails. Takes no arguments.
-
-Returns: `{ scenarios: Array<{ id: string, label: string, guardrails: string }> }`
-
-## Example tool calls
+Output:
 
 ```json
-{ "tool": "rewrite_email", "arguments": { "draft": "Dear Customer, we regret to inform you that...", "scenario": "customer-support", "tone": "warm" } }
+{
+  "rewritten": "Thanks for sending this through...",
+  "changes": ["Made the reply clearer and more natural."],
+  "attempt_id": "rw_..."
+}
 ```
+
+`rewrite_email` submits the request, polls the Reply In My Voice API, and returns the final rewritten reply when the job succeeds.
+
+### `get_rewrite_result`
+
+Checks the status of a rewrite attempt.
+
+Input:
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `attempt_id` | string | yes | Attempt id returned by `rewrite_email`. |
+
+Output:
 
 ```json
-{ "tool": "analyze_signal", "arguments": { "text": "Per my last email, kindly find attached the requested documentation..." } }
+{
+  "status": "succeeded",
+  "rewritten": "Thanks for sending this through...",
+  "changes": ["Made the reply clearer and more natural."]
+}
 ```
 
-```json
-{ "tool": "list_scenarios", "arguments": {} }
-```
+`status` is one of `working`, `succeeded`, or `failed`.
 
-## Status
+## Billing
 
-This package is in active development (0.x). The skeleton ships first; the three tools above arrive in M9-002.
+`rewrite_email` uses one rewrite credit when a reply is successfully delivered. `get_rewrite_result` checks an existing attempt and does not use another credit.
+
+If credits are exhausted, visit <https://replyinmyvoice.com/developers> to manage API access.
 
 ## Links
 
-- Web app — <https://replyinmyvoice.com>
-- API docs — <https://replyinmyvoice.com/developers>
-- Repository — <https://github.com/ChuanQiao1128/replyinmyvoice>
-- Issues — <https://github.com/ChuanQiao1128/replyinmyvoice/issues>
+- Web app: <https://replyinmyvoice.com>
+- Developer keys: <https://replyinmyvoice.com/developers/keys>
+- Developer docs: <https://replyinmyvoice.com/developers>
+- Repository: <https://github.com/ChuanQiao1128/replyinmyvoice>
+- Issues: <https://github.com/ChuanQiao1128/replyinmyvoice/issues>
 
 ## License
 
-MIT — see `LICENSE` in the repo root.
+MIT. See `LICENSE`.
