@@ -4509,3 +4509,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
 - Verification evidence: Initial red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteUseCaseTests` failed with missing `Application.Common` and `Application.UseCases.Rewrite` types. Final gates: `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused use-case test passed 7/7; full `dotnet test ReplyInMyVoice.sln -c Release` passed 626/626; handler file existence check passed.
 - Limitations: No frontend, deployment, push, or PR command was run.
+
+### 2026-06-09 - data-module-review - DDD-01 frontend generated Prisma artifact removal
+
+- Agent: Codex worker
+- Trigger: GitHub issue #613 includes removal of frontend generated Prisma artifacts as part of deleting replaced TypeScript rewrite logic.
+- Action: Opened and followed the skill at checklist level; confirmed `lib/generated/` and `prisma/` were already absent in this worktree, and limited changes to deleting the listed dead frontend modules/eval scripts plus compile-only import decoupling in retained helper/type files.
+- Output artifacts: Deleted dead frontend rewrite/eval modules and their exclusive tests; retained `lib/observability/` and live proxy helpers.
+- Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, the DDD-01 dead-code grep, and the banned-term source scan all exited 0. No live imports under `app/` or `components/` were found before deletion.
+- Limitations: No Prisma schema, migration, database access service, payment flow, deployment, push, or PR command was changed or run.

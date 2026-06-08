@@ -1,5 +1,10 @@
-import type { RewriteCandidate } from "./openai";
 import type { RewriteRequestInput } from "./validation";
+
+type RewriteCandidate = {
+  rewrittenText: string;
+  changeSummary: string[];
+  riskNotes: string[];
+};
 
 function capitalizeFirst(value: string) {
   const trimmed = value.trim();
