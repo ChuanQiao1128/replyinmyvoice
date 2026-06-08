@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-08 - state-machine-modeling - VER-03 deploy version gate
+
+- Agent: Codex worker
+- Trigger: GitHub issue #583 changes the Azure Functions deployment lifecycle by adding a post-health package identity gate to `.github/workflows/dotnet-azure.yml`.
+- Action: Opened and followed the skill. State list: package upload accepted or tolerated after known config-zip false-failure, health-live, version-matched, terminal gate failure. Event list: config-zip result, package URL changed, `/api/health` returned 200, `/api/version` served expected commit, `/api/version` served empty or mismatched commit, retry window elapsed. Transition table: deploy step success leads to health polling; health 200 leads to version polling; exact commit match leads to deploy success; empty or mismatched commit stays in version polling until timeout; timeout leads to terminal failure. Invariants: liveness must be proven before package identity, package identity must equal the built commit exactly, missing version data cannot pass, Azure auth/resource/migration behavior remains unchanged. Illegal transitions: health-only success cannot mark deploy green, empty version data cannot pass, mismatched old package commit cannot pass. Persistence implications: none. Test checklist: workflow shape, ordering, YAML parse, jq extraction, exact-match success, mismatch failure, missing/empty failure, restricted vocabulary scan.
+- Output artifacts: `.github/workflows/dotnet-azure.yml`; `docs/skill-run-log.md`.
+- Verification evidence: Machine-checkable VER-03 acceptance command group passed locally, including `/api/version`, `github.sha`, `commitSha`, `::error::`, health-then-version ordering, YAML parse, jq exact extraction/compare self-test, empty/missing fail-closed checks, and restricted vocabulary scan over the workflow.
+- Limitations: No live Azure deployment or remote HTTP smoke was run because the issue defines live assertion as CI-only. No secrets, push, PR, or production branch action was performed.
+
 ### 2026-06-06 - system-spec-synthesis - GA-04 usage and billing CSV export
 
 - Agent: Codex worker
