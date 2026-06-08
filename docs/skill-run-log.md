@@ -4330,3 +4330,11 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyUsageAnomalyServiceTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/ApiKeyUsageAnomalyService.cs`.
 - Verification evidence: Initial focused run failed on missing `ApiKeyUsageAnomalyService`, then `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiKeyUsageAnomalyServiceTests` passed 3/3 after implementation. `dotnet build ReplyInMyVoice.sln -c Release` exited 0. `dotnet test ReplyInMyVoice.sln -c Release` passed 598/598.
 - Limitations: Tests do not assert Application Insights ingestion; they assert the service emits structured logger state when the anomaly is flagged.
+### 2026-06-08 - dotnet-backend-testing - HARD-03 API input hardening
+
+- Agent: Codex worker
+- Trigger: GitHub issue #586 / HARD-03 adds C# xUnit coverage for API malformed input, boundary validation, and error response shape.
+- Action: Opened and followed the skill; chose direct Azure Functions tests using the existing SQLite fixture style because the behavior is HTTP validation and response mapping. Added table-driven rewrite input cases, invalid usage `days` cases, and explicit 401/402/409/429 response checks.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiInputHardeningTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiUsageHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiUsageHttpFunctionsTests.cs`.
+- Verification evidence: Initial focused run failed on four invalid `days` cases returning 200, then passed 16/16 after the scoped parser update. `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiInputHardeningTests` passed 16/16. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 611/611. `dotnet build ReplyInMyVoice.sln -c Release` exited 0.
+- Limitations: No frontend proxy test was added; backend function coverage is sufficient for the issue scope. No deploy, push, or PR command was run.
