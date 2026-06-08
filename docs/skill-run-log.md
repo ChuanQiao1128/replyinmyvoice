@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-08 - system-spec-synthesis - CORE-593 MCP shared tool contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #593 defines a transport-agnostic MCP tool core, RewriteBackend adapter, async rewrite job contract, and typed request mapping.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, issue #593, `plans/mcp-productization/issues/CORE-shared-tool-core.md`, `plans/mcp-productization/REQUIREMENT.md`, `packages/mcp-server/src/index.ts`, `packages/mcp-server/src/config.ts`, public v1 rewrite routes, and `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteRequest.cs`. Produced an implementation checkpoint plan in-session: two transport-free core modules, no stdio/http server wiring, no C# edits, domain request mapping, stable public outputs, and unit/build/type/test gates.
+- Output artifacts: `packages/mcp-server/src/backend/RewriteBackend.ts`; `packages/mcp-server/src/tools/index.ts`; `tests/unit/mcp-core.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused MCP core test first failed on the missing backend module, then passed 6/6 after implementation. `npm --prefix packages/mcp-server run build`, `npm run typecheck`, and `npm run test` passed locally.
+- Limitations: The reference artifact named by the issue, `packages/mcp-server/dist/tools/index.js`, was absent before build in this worktree, so implementation used the issue, brief, requirement document, and C# contract as source of truth. No transport wiring, backend changes, deploy, push, PR, payment action, or secret inspection was performed.
+
+### 2026-06-08 - resilience-test-generation - CORE-593 MCP idempotency and polling
+
+- Agent: Codex worker
+- Trigger: GitHub issue #593 requires deterministic submit idempotency and bounded async polling to terminal status.
+- Action: Opened and followed the skill; identified the critical operation as `rewrite_email` submit plus poll, with dependency boundary at `RewriteBackend`. Added deterministic unit fakes for submit/poll, a stable SHA-256 idempotency assertion over identical typed requests, and polling coverage for working-to-terminal behavior without contacting live services.
+- Output artifacts: `packages/mcp-server/src/backend/RewriteBackend.ts`; `packages/mcp-server/src/tools/index.ts`; `tests/unit/mcp-core.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `tests/unit/mcp-core.test.ts` passed 6/6; full `npm run test` passed 473/473. The scoped policy grep over `packages/mcp-server/src` and `tests/unit/mcp-core.test.ts` printed no matches.
+- Limitations: No live API, quota, rate-limit, cloud queue, or provider-failure endpoint was contacted. The failed-job path is represented in the core status contract, but live reservation release remains backend-owned and was not retested here.
+
+### 2026-06-08 - state-machine-modeling - CORE-593 MCP rewrite job lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #593 adds a multi-step rewrite attempt lifecycle behind MCP tool calls.
+- Action: Opened and followed the skill. State list: submitted attempt id, working, succeeded, failed. Event list: submit accepted, poll reports processing/pending/working, poll reports succeeded, poll reports failed, polling budget exhausted, invalid backend response. Transition table: submit accepted leads to working; working plus nonterminal poll stays working with backoff; working plus succeeded returns final text; working plus failed raises a clear tool error for `rewrite_email`; one-shot result polling returns the normalized state; exhausted polling returns working internally and `rewrite_email` raises a polling-limit error. Invariants: `rewrite_email` returns final rewritten text on success, public output stays minimal, `get_rewrite_result` polls once, and transport wiring remains outside CORE. Illegal transitions: unknown tool names reject, unknown backend status rejects, succeeded without rewritten text cannot be treated as success.
+- Output artifacts: `packages/mcp-server/src/backend/RewriteBackend.ts`; `packages/mcp-server/src/tools/index.ts`; `tests/unit/mcp-core.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Unit tests cover exact tool listing, request mapping, default tone, public output keys, working-to-succeeded polling, one-shot result polling, and stable idempotency key generation. `npm --prefix packages/mcp-server run build`, `npm run typecheck`, and `npm run test` passed locally.
+- Limitations: No persisted state, database migration, backend enum, queue worker, or deployment lifecycle changed.
+
 ### 2026-06-08 - state-machine-modeling - VER-03 deploy version gate
 
 - Agent: Codex worker
@@ -4357,3 +4384,47 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/mcp-productization/REQUIREMENT.md`.
 - Verification evidence: cross-references confirmed this session — `ApiKeyAuthResolver.cs`, `QuotaService.cs`, `V1RewriteHttpFunctions.cs:164` (async 202 + Location), `packages/mcp-server` skeleton with uncommitted M9-002 (`plans/codex-exec-M9-002.log`), Entra-lacks-DCR (external research), `wrangler.jsonc` nodejs_compat hosting. No code changed; copy is banned-term-safe (positioning = natural/concise/facts-preserved, never detection).
 - Limitations: 5 Open Questions deliberately left for the owner (analyze billing, remote async cap, npm version, mcp path, tone enum) — not silently decided. Hosting compared inline (3 options, all ≈$0); not run as a formal cloud-architecture-cost-review skill. No implementation started, DDW not launched. Remote async cap vs Worker request-duration is an assumption to be proven by MCP-REMOTE tests, not yet measured.
+
+### 2026-06-08 - system-spec-synthesis - REMOTE-595 Streamable HTTP route
+
+- Agent: Codex worker
+- Trigger: GitHub issue #595 turns the remote MCP notes and issue brief into an implementation-ready Next route contract for `/api/mcp`.
+- Action: Opened and followed the skill at checklist level; read `AGENTS.md`, `CLAUDE.md`, `plans/mcp-productization/issues/REMOTE-streamable-http.md`, `plans/mcp-productization/REQUIREMENT.md`, `app/api/v1/rewrite/route.ts`, `lib/azure-api.ts`, and `packages/mcp-server/src/tools`. Mapped the route to stateless Streamable HTTP, Bearer header auth, existing `/api/v1/rewrite` backend adapter, scoped Origin validation, and local verification gates.
+- Output artifacts: `app/api/mcp/route.ts`; `tests/unit/mcp-remote.test.ts`; root `package.json` / `package-lock.json` SDK dependency.
+- Verification evidence: Initial focused unit run failed because the route was missing; after implementation `npm run test -- tests/unit/mcp-remote.test.ts` passed 5/5 and `npm run typecheck` exited 0.
+- Limitations: No long-form spec document was written because the issue body and repo brief already define the accepted contract. No deploy, push, or PR command was run.
+
+### 2026-06-08 - state-machine-modeling - REMOTE-595 rewrite attempt polling lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #595 requires remote `rewrite_email` to submit an async attempt, poll it, and return a working state plus `attempt_id` when the remote cap is reached.
+- Action: Opened and followed the skill; modeled states as submitted, working, succeeded, failed, and remote-cap-working. Events are submit accepted, poll working, poll succeeded, poll failed, and poll cap reached. Invariants are one MCP call maps to one backend submit, terminal success returns rewritten text, backend failure stays an error, and the remote cap returns only the existing attempt id for `get_rewrite_result`.
+- Output artifacts: `app/api/mcp/route.ts`; `tests/unit/mcp-remote.test.ts`.
+- Verification evidence: The focused remote unit test exercises the cap path with a submitted attempt and repeated working polls, then asserts structured MCP output `{ status: "working", attempt_id: "attempt-remote-1" }`.
+- Limitations: The route does not persist state and does not add Durable Objects or sessions; lifecycle state remains in the existing backend attempt.
+
+### 2026-06-08 - resilience-test-generation - REMOTE-595 remote polling and auth guard
+
+- Agent: Codex worker
+- Trigger: GitHub issue #595 changes timeout/polling behavior and adds a missing-auth remote route guard.
+- Action: Opened and followed the skill; identified the critical operation as remote MCP tool execution over the existing rewrite API and the invariant as no backend call without a valid Bearer header or accepted Origin. Added deterministic route tests for missing auth, cross-origin rejection, shared tool listing, and remote polling cap fallback.
+- Output artifacts: `tests/unit/mcp-remote.test.ts`; `app/api/mcp/route.ts`.
+- Verification evidence: `npm run test -- tests/unit/mcp-remote.test.ts` passed 5/5. The missing-auth test asserts `401` and `WWW-Authenticate: Bearer`; the Origin guard test asserts no fetch; the polling-cap test uses fake timers and mocked backend responses.
+- Limitations: No live MCP client or production API key was used; full remote smoke is left to the supervisor after branch verification.
+
+### 2026-06-08 - ui-browser-testing - FEMCP-597 developer MCP connect page
+
+- Agent: Codex worker
+- Trigger: GitHub issue #597 adds a browser-visible `/developers/mcp` page, `/developers` entry link, responsive host config blocks, and source-string pin test updates.
+- Action: Opened and followed the project skill; used source-string coverage first, implemented the static page in the existing developer design system, and verified the rendered local HTML path after build gates.
+- Output artifacts: `app/developers/mcp/page.tsx`; `app/developers/page.tsx`; `tests/unit/developers-page.test.ts`.
+- Verification evidence: `npm run test -- tests/unit/developers-page.test.ts` first failed on the missing `/developers/mcp` page and missing `/developers` link, then passed 3/3 after implementation. `npm run typecheck` exited 0. `npm run lint` exited 0 with one existing warning in `components/account/account-panel.tsx`. `npm run test` passed 64 files / 481 tests. `npm run build` exited 0 and listed `/developers/mcp` as a static route. The required banned-term grep over `app` and `components` printed nothing. A short-lived local Next dev server on port 3002 returned 200 for `/developers/mcp` and the HTML contained the four host names, remote URL, key CTA, 1-credit note, `402`, and top-up copy.
+- Limitations: The in-app Browser target `iab` was unavailable in this session, and Playwright Chromium/Chrome-for-Testing could not launch under the macOS sandbox due Mach service permission denial, so desktop/mobile screenshots could not be captured. The first dev server on port 3000 logged `EMFILE` watcher warnings and could not be stopped from the sandbox after stdin closed; the verified local HTML check used a separate short-lived server on port 3002 with polling enabled.
+### 2026-06-08 - ui-browser-testing - FEKEYS-598 key manager polish
+
+- Agent: Codex worker
+- Trigger: GitHub issue #598 changes the `/developers/keys` UI and adds focused coverage for create, one-time plaintext reveal, masked list rendering, and visible credit balance / pricing CTA.
+- Action: Opened and followed the skill; chose CI-friendly unit/component verification because the route is signed-in and the repo has no jsdom/Testing Library dependency. Added a render test using `react-dom/server`, kept backend API routes read-only, and added source pins for the usage summary endpoint plus pricing CTA.
+- Output artifacts: `components/developers/api-keys-panel.tsx`; `tests/unit/api-keys-panel.test.ts`; `tests/unit/developer-keys-ui.test.ts`.
+- Verification evidence: `npm run test -- tests/unit/api-keys-panel.test.ts` passed 1/1 after the missing-export red run; `npm run test -- tests/unit/developer-keys-ui.test.ts` passed 7/7; `npm run typecheck` exited 0; `npm run test` passed 65 files / 481 tests; `npm run build` exited 0.
+- Limitations: No authenticated browser screenshot or Playwright flow was run by this worker; the supervisor can run a signed-in smoke if credentials/session setup are available.

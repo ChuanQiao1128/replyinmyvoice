@@ -198,6 +198,9 @@ export default function DevelopersPage() {
               <Link href="/developers/keys" className="btn btn-primary btn-lg">
                 Get your API key <span className="btn-arrow">→</span>
               </Link>
+              <Link href="/developers/mcp" className="btn btn-ghost btn-lg">
+                MCP setup
+              </Link>
               <a href="#quickstart" className="btn btn-ghost btn-lg">
                 Quickstart
               </a>
@@ -218,6 +221,13 @@ export default function DevelopersPage() {
                   <p>{item.body}</p>
                 </article>
               ))}
+            </div>
+            <div className="dev-callout">
+              Connect an LLM host through MCP instead of hand-rolling API calls:{" "}
+              <Link href="/developers/mcp" className="dev-text-link">
+                open the MCP connection guide
+              </Link>
+              .
             </div>
           </section>
 
