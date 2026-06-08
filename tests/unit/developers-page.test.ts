@@ -16,6 +16,7 @@ describe("/developers API documentation page", () => {
 
     expect(headerSource).toContain('href="/developers"');
     expect(pageSource).toContain('href="/developers/keys"');
+    expect(pageSource).toContain('href="/developers/mcp"');
     expect(pageSource).toContain('href="/api/v1/openapi.json"');
     expect(pageSource).toContain("OpenAPI specification");
     expect(pageSource).toContain("Get your API key");
@@ -57,6 +58,31 @@ describe("/developers API documentation page", () => {
     expect(pageSource).not.toContain("not yet public");
     expect(pageSource).not.toContain("Trial codes unlock 3 rewrites");
     expect(pageSource).not.toContain("200 OK");
+  });
+
+  it("documents MCP connection options and host snippets", () => {
+    const pageSource = source("app/developers/mcp/page.tsx");
+
+    expect(pageSource).toContain("Reply In My Voice MCP server");
+    expect(pageSource).toContain("npx @replyinmyvoice/mcp-server");
+    expect(pageSource).toContain("https://replyinmyvoice.com/api/mcp");
+    expect(pageSource).toContain("Authorization");
+    expect(pageSource).toContain("Bearer rmv_live_xxx");
+
+    for (const host of ["Claude Code", "Codex", "Claude Desktop", "Cursor"]) {
+      expect(pageSource).toContain(host);
+    }
+
+    expect(pageSource).toContain('href="/developers/keys"');
+    expect(pageSource).toContain("Get a key");
+    expect(pageSource).toContain("1 credit per rewrite");
+    expect(pageSource).toContain("402");
+    expect(pageSource).toContain("top-up");
+    expect(pageSource).toContain("meaning and facts intact");
+
+    expect(pageSource).not.toContain("analyze_signal");
+    expect(pageSource).not.toContain("list_scenarios");
+    expect(pageSource).not.toContain("scenario");
   });
 
   it("publishes draft API legal and data pages", () => {

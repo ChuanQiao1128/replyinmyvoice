@@ -4411,3 +4411,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `tests/unit/mcp-remote.test.ts`; `app/api/mcp/route.ts`.
 - Verification evidence: `npm run test -- tests/unit/mcp-remote.test.ts` passed 5/5. The missing-auth test asserts `401` and `WWW-Authenticate: Bearer`; the Origin guard test asserts no fetch; the polling-cap test uses fake timers and mocked backend responses.
 - Limitations: No live MCP client or production API key was used; full remote smoke is left to the supervisor after branch verification.
+
+### 2026-06-08 - ui-browser-testing - FEMCP-597 developer MCP connect page
+
+- Agent: Codex worker
+- Trigger: GitHub issue #597 adds a browser-visible `/developers/mcp` page, `/developers` entry link, responsive host config blocks, and source-string pin test updates.
+- Action: Opened and followed the project skill; used source-string coverage first, implemented the static page in the existing developer design system, and verified the rendered local HTML path after build gates.
+- Output artifacts: `app/developers/mcp/page.tsx`; `app/developers/page.tsx`; `tests/unit/developers-page.test.ts`.
+- Verification evidence: `npm run test -- tests/unit/developers-page.test.ts` first failed on the missing `/developers/mcp` page and missing `/developers` link, then passed 3/3 after implementation. `npm run typecheck` exited 0. `npm run lint` exited 0 with one existing warning in `components/account/account-panel.tsx`. `npm run test` passed 64 files / 481 tests. `npm run build` exited 0 and listed `/developers/mcp` as a static route. The required banned-term grep over `app` and `components` printed nothing. A short-lived local Next dev server on port 3002 returned 200 for `/developers/mcp` and the HTML contained the four host names, remote URL, key CTA, 1-credit note, `402`, and top-up copy.
+- Limitations: The in-app Browser target `iab` was unavailable in this session, and Playwright Chromium/Chrome-for-Testing could not launch under the macOS sandbox due Mach service permission denial, so desktop/mobile screenshots could not be captured. The first dev server on port 3000 logged `EMFILE` watcher warnings and could not be stopped from the sandbox after stdin closed; the verified local HTML check used a separate short-lived server on port 3002 with polling enabled.
