@@ -56,4 +56,42 @@ public sealed class VersionFunctionTests
             Environment.SetEnvironmentVariable("BUILD_TIMESTAMP", originalTimestamp);
         }
     }
+
+    [Fact]
+    public void Run_reads_build_metadata_from_generated_json_loader()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"rimv-version-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(directory, "version.generated.json"),
+                """
+                {
+                  "Build": {
+                    "CommitSha": "deadbeefcafe",
+                    "Timestamp": "2026-06-08T00:00:00Z"
+                  }
+                }
+                """);
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(directory)
+                .AddJsonFile("version.generated.json", optional: false, reloadOnChange: false)
+                .Build();
+            var function = new VersionFunction(configuration);
+
+            var result = function.Run(new DefaultHttpContext().Request);
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            ok.StatusCode.Should().Be(StatusCodes.Status200OK);
+            var body = ok.Value.Should().BeOfType<VersionResponse>().Subject;
+            body.CommitSha.Should().Be("deadbeefcafe");
+            body.BuildTimestamp.Should().Be("2026-06-08T00:00:00Z");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }

@@ -4223,3 +4223,39 @@ claude-heavy-planning-handoff
 - Output artifacts: Final report for the supervisor; `docs/skill-run-log.md`.
 - Verification evidence: `cd backend-dotnet && dotnet test` passed 592/592. `npm run typecheck` passed after `npm ci --cache ./.npm-cache`. `dotnet ef migrations script --idempotent --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj --startup-project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj --context AppDbContext --output /tmp/rfx09-migrations-infra-final.sql` exited 0 and wrote a 2,142-line script. Workflow YAML parsed successfully with Ruby Psych. `git diff --check` passed. Project and changed-file banned-term scans returned no matches.
 - Limitations: Docker client is installed, but `docker info` cannot connect to the local daemon; no local SQL Server container migration update was run. The GitHub Actions job is the first full container-backed execution of the new gate.
+
+### 2026-06-08 - system-spec-synthesis - VER-02 build metadata implementation contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #582 / VER-02 converts the issue body and brief into a scoped Functions package metadata implementation.
+- Action: Opened and followed the skill at checklist level; read `AGENTS.md`, `CLAUDE.md`, the issue brief, workflow, Functions startup, project file, version function tests, and readiness docs. Mapped the contract to generated JSON, startup configuration loading, two CI publish sites, and publish/test verification.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj`; `backend-dotnet/src/ReplyInMyVoice.Functions/Program.cs`; `.github/workflows/dotnet-azure.yml`; `backend-dotnet/tests/ReplyInMyVoice.Tests/VersionFunctionTests.cs`; `plans/decisions-log.md`.
+- Verification evidence: Publish override wrote `/tmp/ver-pub/version.generated.json` with the expected commit and timestamp. Focused `VersionFunctionTests` passed 3/3, full Release solution tests passed 595/595, and issue grep gates passed.
+- Limitations: No separate long-form spec was written because the issue body and repo brief already contain the implementation-ready contract.
+
+### 2026-06-08 - dotnet-backend-testing - VER-02 runtime version metadata proof
+
+- Agent: Codex worker
+- Trigger: GitHub issue #582 / VER-02 appends C# xUnit coverage proving `VersionFunction` reads generated JSON configuration values at runtime.
+- Action: Opened and followed the skill; chose a focused unit-level test because the behavior is configuration reading without persistence, provider calls, queues, or HTTP host routing. Appended a temp-file JSON loader test without modifying the two existing version tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/VersionFunctionTests.cs`.
+- Verification evidence: Initial focused run after the appended test passed 3/3, showing issue #581 already made `VersionFunction` read configuration values and that VER-02's remaining gap is startup/publish wiring.
+- Limitations: The focused test does not execute the Functions host process; `Program.cs` loader wiring is also checked by grep and publish/package proof commands.
+
+### 2026-06-08 - cloud-architecture-cost-review - VER-02 trigger check
+
+- Agent: Codex worker
+- Trigger: GitHub issue #582 touches the Azure Functions CI workflow.
+- Action: Opened the skill and reviewed applicability. The selected mechanism keeps the existing Azure Functions package flow, adds no new resource, changes no deployment target, and adds no provider usage or fixed monthly cost.
+- Output artifacts: None from this skill beyond this log entry.
+- Verification evidence: Readiness docs confirm Azure Functions is the current backend target; no deploy command or resource creation command was run.
+- Limitations: Exact provider pricing was not checked because VER-02 introduces no paid resource or cost estimate.
+
+### 2026-06-08 - verification-before-completion - VER-02 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing final supervised delivery report for GitHub issue #582 after build metadata implementation.
+- Action: Opened and followed the skill; ran publish proof, focused version tests, full backend tests, workflow syntax parsing, diff whitespace check, no-hardcoded-SHA scan, and restricted-term scan over changed files before completion claims.
+- Output artifacts: Final worker report; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj -c Release -o /tmp/ver-pub /p:CommitSha=deadbeefcafe /p:BuildTimestamp=2026-06-08T00:00:00Z` exited 0 and `/tmp/ver-pub/version.generated.json` contained the override. `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter FullyQualifiedName~VersionFunctionTests` passed 3/3. `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 595/595.
+- Limitations: No live Azure deploy or smoke command was run; the issue explicitly scopes this to local build/package and CI publish wiring.
