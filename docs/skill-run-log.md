@@ -45,6 +45,24 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - data-module-review - DDD-11 Application repository interfaces
+
+- Agent: Codex worker
+- Trigger: GitHub issue #608 defines Application-layer persistence abstractions over EF-backed `AppUser`, `RewriteAttempt`, `UsagePeriod`, `UsageReservation`, and `RewriteCredit`.
+- Action: Opened and followed the skill; reviewed `AGENTS.md`, `CLAUDE.md`, issue #608, `plans/ddd-restructure/issues/DDD-11-repository-interfaces.md`, the owned entity files, `AppDbContext`, `RewriteRequestService`, `QuotaService`, and the API create/get attempt paths. Ran the data-risk scan at a bounded limit for context.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUnitOfWork.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IAppUserRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteAttemptRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUsagePeriodRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUsageReservationRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteCreditRepository.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src --limit 40` completed and surfaced known broad quota/idempotency signals. `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. `dotnet test ReplyInMyVoice.sln -c Release` passed 616/616 tests. Application source scan found no EF Core or Infrastructure references.
+- Limitations: Interfaces only; no repository implementations, migrations, schema changes, transaction behavior changes, DI wiring, provider calls, deploys, pushes, or PR actions were performed.
+
+### 2026-06-09 - state-machine-modeling - DDD-11 rewrite attempt and reservation boundaries
+
+- Agent: Codex worker
+- Trigger: GitHub issue #608 exposes repository contracts for `RewriteAttempt` and quota reservation lifecycle aggregates.
+- Action: Opened and followed the skill as a lifecycle review. State list: `RewriteAttempt` keeps existing `Pending`, `Processing`, `Succeeded`, `Failed`, and `Expired`; `UsageReservation` keeps existing `Pending`, `Finalized`, `Released`, and `Expired`. Event list: create reservation, idempotent create lookup, owner-scoped get, finalize, release, and expiry cleanup remain existing service-owned events. Transition table and illegal transitions are unchanged by this issue because only repository contracts were added. Invariants checked: attempt result reads stay user-scoped, idempotency lookup stays user-scoped, quota period/credit/reservation mutations are committed through `IUnitOfWork`, and Application abstractions do not expose EF Core types.
+- Output artifacts: Same DDD-11 interface files and `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; `dotnet test ReplyInMyVoice.sln -c Release` passed 616/616 tests; `ls backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/I*Repository.cs` listed five repository contracts; Application source scan found no EF Core or Infrastructure references.
+- Limitations: No new lifecycle enum, transition helper, persistence implementation, migration, queue behavior, or runtime quota flow changed.
+
 ### 2026-06-09 - system-spec-synthesis - DDD-10 Application project skeleton
 
 - Agent: Codex worker
