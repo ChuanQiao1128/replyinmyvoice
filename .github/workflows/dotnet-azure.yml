@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - delivery/api-fixes
+      - "delivery/**"
 
 permissions:
   contents: read

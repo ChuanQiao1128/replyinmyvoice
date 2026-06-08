@@ -209,7 +209,13 @@ async function pollRewrite(options, id) {
       const parsed = parseJsonObject(text);
       const state = typeof parsed?.status === "string" ? parsed.status : `http_${response.status}`;
 
-      if (!response.ok || (state !== "processing" && state !== "pending")) {
+      // Only genuine application-terminal states end the poll. A transient non-OK
+      // HTTP (429/503 — the status endpoint shares the per-key RPM limiter, so polls
+      // under a burst are routinely rate-limited) is NOT terminal: keep retrying
+      // until the deadline so terminal-state/latency stats stay accurate.
+      const TERMINAL_STATES = new Set(["succeeded", "failed", "expired", "not_found"]);
+
+      if (TERMINAL_STATES.has(state)) {
         return {
           id,
           state,
