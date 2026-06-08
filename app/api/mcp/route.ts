@@ -1,3 +1,9 @@
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { WebStandardStreamableHTTPServerTransport as StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import { NextResponse } from "next/server";
 
 import {
@@ -17,48 +23,6 @@ const REMOTE_POLL_MAX_ATTEMPTS = 27;
 const REMOTE_POLL_INITIAL_DELAY_MS = 500;
 const REMOTE_POLL_MAX_DELAY_MS = 2_000;
 const AUTH_CHALLENGE = "Bearer";
-
-type McpToolRequest = {
-  params: {
-    name: string;
-    arguments?: unknown;
-  };
-};
-
-type McpServer = {
-  setRequestHandler: (
-    schema: unknown,
-    handler: (
-      request: McpToolRequest,
-      extra: unknown,
-    ) => unknown | Promise<unknown>,
-  ) => void;
-  connect: (transport: unknown) => Promise<void>;
-};
-
-type McpSdk = {
-  Server: new (
-    serverInfo: { name: string; version: string },
-    options: { capabilities: { tools: Record<string, unknown> } },
-  ) => McpServer;
-  StreamableHTTPServerTransport: new (options: {
-    enableJsonResponse: boolean;
-    sessionIdGenerator: undefined;
-  }) => {
-    handleRequest: (request: Request) => Promise<Response>;
-  };
-  CallToolRequestSchema: unknown;
-  ListToolsRequestSchema: unknown;
-};
-
-type JsonRpcRequest = {
-  id?: string | number | null;
-  method?: string;
-  params?: {
-    name?: string;
-    arguments?: unknown;
-  };
-};
 
 type RequestHandlerExtra = {
   _meta?: {
@@ -136,8 +100,8 @@ function backendBaseUrl(request: Request): string {
   return new URL(request.url).origin;
 }
 
-function createServer(apiKey: string, request: Request, sdk: McpSdk): McpServer {
-  const server = new sdk.Server(
+function createServer(apiKey: string, request: Request): Server {
+  const server = new Server(
     {
       name: "replyinmyvoice-remote",
       version: "0.1.0",
@@ -147,11 +111,11 @@ function createServer(apiKey: string, request: Request, sdk: McpSdk): McpServer 
     },
   );
 
-  server.setRequestHandler(sdk.ListToolsRequestSchema, () => ({
+  server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: listTools(),
   }));
 
-  server.setRequestHandler(sdk.CallToolRequestSchema, async (toolRequest, extra) => {
+  server.setRequestHandler(CallToolRequestSchema, async (toolRequest, extra) => {
     const output = await callRemoteTool(toolRequest.params.name, toolRequest.params.arguments, {
       apiKey,
       backend: new HttpRewriteBackend(backendBaseUrl(request)),
@@ -272,104 +236,6 @@ function toToolText(output: RemoteToolOutput): string {
   return "Rewrite request returned no text.";
 }
 
-async function loadMcpSdk(): Promise<McpSdk | null> {
-  if (shouldUseJsonMcpFallback()) {
-    return null;
-  }
-
-  try {
-    const [serverModule, transportModule, typesModule] = await Promise.all([
-      dynamicImport<{
-        Server: McpSdk["Server"];
-      }>("@modelcontextprotocol/sdk/server/index.js"),
-      dynamicImport<{
-        WebStandardStreamableHTTPServerTransport: McpSdk["StreamableHTTPServerTransport"];
-      }>("@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"),
-      dynamicImport<{
-        CallToolRequestSchema: unknown;
-        ListToolsRequestSchema: unknown;
-      }>("@modelcontextprotocol/sdk/types.js"),
-    ]);
-
-    return {
-      CallToolRequestSchema: typesModule.CallToolRequestSchema,
-      ListToolsRequestSchema: typesModule.ListToolsRequestSchema,
-      Server: serverModule.Server,
-      StreamableHTTPServerTransport:
-        transportModule.WebStandardStreamableHTTPServerTransport,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function shouldUseJsonMcpFallback(): boolean {
-  return process.env.VITEST === "true" || process.env.NODE_ENV === "test";
-}
-
-function dynamicImport<T>(specifier: string): Promise<T> {
-  return import(specifier) as Promise<T>;
-}
-
-async function handleJsonMcpRequest(
-  request: Request,
-  apiKey: string,
-): Promise<Response> {
-  const body = await readJsonRpcRequest(request);
-
-  if (body.method === "tools/list") {
-    return NextResponse.json({
-      id: body.id,
-      jsonrpc: "2.0",
-      result: {
-        tools: listTools(),
-      },
-    });
-  }
-
-  if (body.method === "tools/call" && body.params?.name) {
-    const output = await callRemoteTool(body.params.name, body.params.arguments, {
-      apiKey,
-      backend: new HttpRewriteBackend(backendBaseUrl(request)),
-      extra: createNoopRequestExtra(body.id),
-    });
-
-    return NextResponse.json({
-      id: body.id,
-      jsonrpc: "2.0",
-      result: toCallToolResult(output),
-    });
-  }
-
-  return NextResponse.json(
-    {
-      error: {
-        code: -32601,
-        message: "Method not found.",
-      },
-      id: body.id,
-      jsonrpc: "2.0",
-    },
-    { status: 404 },
-  );
-}
-
-async function readJsonRpcRequest(request: Request): Promise<JsonRpcRequest> {
-  try {
-    const body = (await request.json()) as unknown;
-    return typeof body === "object" && body !== null ? (body as JsonRpcRequest) : {};
-  } catch {
-    return {};
-  }
-}
-
-function createNoopRequestExtra(id: JsonRpcRequest["id"]): RequestHandlerExtra {
-  return {
-    requestId: id ?? "request",
-    sendNotification: async () => {},
-  };
-}
-
 async function handleMcpRequest(request: Request): Promise<Response> {
   if (!isSafeOrigin(request)) {
     return originRejectedResponse();
@@ -380,13 +246,8 @@ async function handleMcpRequest(request: Request): Promise<Response> {
     return unauthorizedResponse();
   }
 
-  const sdk = await loadMcpSdk();
-  if (!sdk) {
-    return handleJsonMcpRequest(request, auth.apiKey);
-  }
-
-  const server = createServer(auth.apiKey, request, sdk);
-  const transport = new sdk.StreamableHTTPServerTransport({
+  const server = createServer(auth.apiKey, request);
+  const transport = new StreamableHTTPServerTransport({
     enableJsonResponse: true,
     sessionIdGenerator: undefined,
   });
