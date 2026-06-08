@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\ReplyInMyVoice.Application\ReplyInMyVoice.Application.csproj" />
     <ProjectReference Include="..\ReplyInMyVoice.Domain\ReplyInMyVoice.Domain.csproj" />
   </ItemGroup>
 
