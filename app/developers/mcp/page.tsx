@@ -261,9 +261,8 @@ export default function DevelopersMcpPage() {
               <article className="v2card">
                 <h3>One rewrite tool</h3>
                 <p>
-                  <code>rewrite_email</code> accepts a draft, optional context,
-                  and a warm or direct tone, then returns final rewritten text
-                  when the job succeeds.
+                  <code>rewrite_email</code> accepts a draft reply and returns
+                  the final rewritten text when the job succeeds.
                 </p>
               </article>
               <article className="v2card">
@@ -304,8 +303,8 @@ export default function DevelopersMcpPage() {
                   and sends <code>Authorization: Bearer rmv_live_xxx</code>.
                 </Step>
                 <Step index="3" title="Ask for the rewrite">
-                  In the host, call <code>rewrite_email</code> with the rough
-                  draft and any context that must stay true.
+                  In the host, call <code>rewrite_email</code> with your rough
+                  draft reply.
                 </Step>
               </div>
 

@@ -10,7 +10,6 @@ import { callTool, listTools } from "../../packages/mcp-server/src/tools";
 const apiKey = "rmv_live_unit_test_key";
 const baseUrl = "https://api.example.test";
 const draft = "Please send a warmer update about the delayed shipment.";
-const context = "A customer asked why shipment 123 is delayed until Friday.";
 
 function fetchMock() {
   return vi.mocked(globalThis.fetch);
@@ -53,7 +52,7 @@ describe("MCP shared tool core", () => {
     expect(listTools()).toHaveLength(2);
   });
 
-  it("maps rewrite_email input to the domain rewrite request and returns final text", async () => {
+  it("rewrite_email submits exactly the v1 { draft } field and returns final text", async () => {
     const backend = createBackend([
       {
         status: "succeeded",
@@ -63,29 +62,19 @@ describe("MCP shared tool core", () => {
     ]);
 
     await expect(
-      callTool(
-        "rewrite_email",
-        { context, draft, tone: "direct" },
-        { apiKey, backend },
-      ),
+      callTool("rewrite_email", { draft }, { apiKey, backend }),
     ).resolves.toEqual({
       attempt_id: "attempt-123",
       changes: ["Kept the shipment timing and made the reply warmer."],
       rewritten: "I can send a clearer update about the delayed shipment.",
     });
 
-    expect(backend.submit).toHaveBeenCalledWith(
-      {
-        messageToReplyTo: context,
-        roughDraftReply: draft,
-        tone: "direct",
-      },
-      { apiKey },
-    );
+    // The v1 API (V1RewriteSubmitRequest) accepts exactly { draft }; no engine-internal keys.
+    expect(backend.submit).toHaveBeenCalledWith({ draft }, { apiKey });
     expect(backend.poll).toHaveBeenCalledWith("attempt-123", { apiKey });
   });
 
-  it("defaults rewrite_email tone to warm and does not expose engine-only keys", async () => {
+  it("rewrite_email output exposes no engine-only keys", async () => {
     const backend = createBackend([
       {
         status: "succeeded",
@@ -95,13 +84,7 @@ describe("MCP shared tool core", () => {
 
     const result = await callTool("rewrite_email", { draft }, { apiKey, backend });
 
-    expect(backend.submit).toHaveBeenCalledWith(
-      {
-        roughDraftReply: draft,
-        tone: "warm",
-      },
-      { apiKey },
-    );
+    expect(backend.submit).toHaveBeenCalledWith({ draft }, { apiKey });
     expect(result).toEqual({
       attempt_id: "attempt-123",
       rewritten: "I can send a warmer update about the delayed shipment.",
@@ -150,26 +133,26 @@ describe("MCP shared tool core", () => {
 });
 
 describe("HTTP rewrite backend", () => {
+  it("POSTs exactly { draft } to /api/v1/rewrite (the real v1 wire contract)", async () => {
+    fetchMock().mockResolvedValueOnce(jsonResponse({ id: "attempt-1" }, 202));
+    const backend = new HttpRewriteBackend(baseUrl);
+
+    await backend.submit({ draft }, { apiKey });
+
+    const [url, init] = fetchMock().mock.calls[0] ?? [];
+    expect(String(url)).toBe(`${baseUrl}/api/v1/rewrite`);
+    expect(JSON.parse(String(init?.body))).toEqual({ draft });
+  });
+
   it("uses a stable idempotency key for identical rewrite requests", async () => {
     fetchMock()
       .mockResolvedValueOnce(jsonResponse({ id: "attempt-1", status: "processing" }, 202))
       .mockResolvedValueOnce(jsonResponse({ id: "attempt-1", status: "processing" }, 202));
     const backend = new HttpRewriteBackend(`${baseUrl}/`);
-    const request: RewriteRequest = {
-      messageToReplyTo: context,
-      roughDraftReply: draft,
-      tone: "warm",
-    };
+    const request: RewriteRequest = { draft };
 
     await backend.submit(request, { apiKey });
-    await backend.submit(
-      {
-        roughDraftReply: draft,
-        messageToReplyTo: context,
-        tone: "warm",
-      },
-      { apiKey },
-    );
+    await backend.submit({ draft }, { apiKey });
 
     const firstHeaders = new Headers(fetchMock().mock.calls[0]?.[1]?.headers);
     const secondHeaders = new Headers(fetchMock().mock.calls[1]?.[1]?.headers);

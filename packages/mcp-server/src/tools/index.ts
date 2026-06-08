@@ -41,7 +41,7 @@ const tools: ToolDefinition[] = [
   {
     name: "rewrite_email",
     description:
-      "Rewrite a draft email reply while preserving the meaning and supplied context.",
+      "Rewrite a draft email reply, returning a more natural version that preserves the meaning.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -49,15 +49,7 @@ const tools: ToolDefinition[] = [
       properties: {
         draft: {
           type: "string",
-          description: "Draft reply to rewrite.",
-        },
-        context: {
-          type: "string",
-          description: "Original message or context for the reply.",
-        },
-        tone: {
-          type: "string",
-          description: "Tone label for the rewrite. Defaults to warm.",
+          description: "Draft reply to rewrite (10–2400 characters).",
         },
       },
     },
@@ -132,15 +124,7 @@ export async function callTool(
 }
 
 function toRewriteRequest(args: unknown): RewriteRequest {
-  const draft = readRequiredString(args, "draft");
-  const context = readOptionalString(args, "context");
-  const tone = readOptionalString(args, "tone") ?? "warm";
-
-  return {
-    ...(context ? { messageToReplyTo: context } : {}),
-    roughDraftReply: draft,
-    tone,
-  };
+  return { draft: readRequiredString(args, "draft") };
 }
 
 async function pollUntilTerminal(
@@ -181,10 +165,6 @@ function readRequiredString(args: unknown, key: string): string {
   }
 
   return value;
-}
-
-function readOptionalString(args: unknown, key: string): string | undefined {
-  return readStringProperty(args, key);
 }
 
 function readStringProperty(args: unknown, key: string): string | undefined {

@@ -110,7 +110,6 @@ describe("MCP stdio server handlers", () => {
         method: "tools/call",
         params: {
           arguments: {
-            context: "They asked for the project update.",
             draft: "Please tell them I will send the update today.",
           },
           name: "rewrite_email",

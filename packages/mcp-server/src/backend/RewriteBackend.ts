@@ -1,13 +1,8 @@
 import { createHash } from "node:crypto";
 
 export interface RewriteRequest {
-  messageToReplyTo?: string;
-  roughDraftReply: string;
-  audience?: string;
-  purpose?: string;
-  whatHappened?: string;
-  factsToPreserve?: string;
-  tone: string;
+  // The v1 API (V1RewriteSubmitRequest) accepts exactly this one field.
+  draft: string;
 }
 
 export interface RewriteBackend {

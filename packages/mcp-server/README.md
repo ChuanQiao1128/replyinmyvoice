@@ -79,8 +79,6 @@ Input:
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `draft` | string | yes | Draft reply to rewrite. Use 10 to 2400 characters and keep it under about 300 words. |
-| `context` | string | no | Original message, thread summary, or facts the reply should respect. |
-| `tone` | `"warm"` or `"direct"` | no | Defaults to `warm`. |
 
 Output:
 
