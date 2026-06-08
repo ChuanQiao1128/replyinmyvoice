@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-08 - system-spec-synthesis - CORE-593 MCP shared tool contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #593 defines a transport-agnostic MCP tool core, RewriteBackend adapter, async rewrite job contract, and typed request mapping.
+- Action: Opened and followed the skill; read `AGENTS.md`, `CLAUDE.md`, issue #593, `plans/mcp-productization/issues/CORE-shared-tool-core.md`, `plans/mcp-productization/REQUIREMENT.md`, `packages/mcp-server/src/index.ts`, `packages/mcp-server/src/config.ts`, public v1 rewrite routes, and `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteRequest.cs`. Produced an implementation checkpoint plan in-session: two transport-free core modules, no stdio/http server wiring, no C# edits, domain request mapping, stable public outputs, and unit/build/type/test gates.
+- Output artifacts: `packages/mcp-server/src/backend/RewriteBackend.ts`; `packages/mcp-server/src/tools/index.ts`; `tests/unit/mcp-core.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Focused MCP core test first failed on the missing backend module, then passed 6/6 after implementation. `npm --prefix packages/mcp-server run build`, `npm run typecheck`, and `npm run test` passed locally.
+- Limitations: The reference artifact named by the issue, `packages/mcp-server/dist/tools/index.js`, was absent before build in this worktree, so implementation used the issue, brief, requirement document, and C# contract as source of truth. No transport wiring, backend changes, deploy, push, PR, payment action, or secret inspection was performed.
+
+### 2026-06-08 - resilience-test-generation - CORE-593 MCP idempotency and polling
+
+- Agent: Codex worker
+- Trigger: GitHub issue #593 requires deterministic submit idempotency and bounded async polling to terminal status.
+- Action: Opened and followed the skill; identified the critical operation as `rewrite_email` submit plus poll, with dependency boundary at `RewriteBackend`. Added deterministic unit fakes for submit/poll, a stable SHA-256 idempotency assertion over identical typed requests, and polling coverage for working-to-terminal behavior without contacting live services.
+- Output artifacts: `packages/mcp-server/src/backend/RewriteBackend.ts`; `packages/mcp-server/src/tools/index.ts`; `tests/unit/mcp-core.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: `tests/unit/mcp-core.test.ts` passed 6/6; full `npm run test` passed 473/473. The scoped policy grep over `packages/mcp-server/src` and `tests/unit/mcp-core.test.ts` printed no matches.
+- Limitations: No live API, quota, rate-limit, cloud queue, or provider-failure endpoint was contacted. The failed-job path is represented in the core status contract, but live reservation release remains backend-owned and was not retested here.
+
+### 2026-06-08 - state-machine-modeling - CORE-593 MCP rewrite job lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #593 adds a multi-step rewrite attempt lifecycle behind MCP tool calls.
+- Action: Opened and followed the skill. State list: submitted attempt id, working, succeeded, failed. Event list: submit accepted, poll reports processing/pending/working, poll reports succeeded, poll reports failed, polling budget exhausted, invalid backend response. Transition table: submit accepted leads to working; working plus nonterminal poll stays working with backoff; working plus succeeded returns final text; working plus failed raises a clear tool error for `rewrite_email`; one-shot result polling returns the normalized state; exhausted polling returns working internally and `rewrite_email` raises a polling-limit error. Invariants: `rewrite_email` returns final rewritten text on success, public output stays minimal, `get_rewrite_result` polls once, and transport wiring remains outside CORE. Illegal transitions: unknown tool names reject, unknown backend status rejects, succeeded without rewritten text cannot be treated as success.
+- Output artifacts: `packages/mcp-server/src/backend/RewriteBackend.ts`; `packages/mcp-server/src/tools/index.ts`; `tests/unit/mcp-core.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Unit tests cover exact tool listing, request mapping, default tone, public output keys, working-to-succeeded polling, one-shot result polling, and stable idempotency key generation. `npm --prefix packages/mcp-server run build`, `npm run typecheck`, and `npm run test` passed locally.
+- Limitations: No persisted state, database migration, backend enum, queue worker, or deployment lifecycle changed.
+
 ### 2026-06-08 - state-machine-modeling - VER-03 deploy version gate
 
 - Agent: Codex worker
