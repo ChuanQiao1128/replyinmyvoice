@@ -4384,3 +4384,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `plans/mcp-productization/REQUIREMENT.md`.
 - Verification evidence: cross-references confirmed this session — `ApiKeyAuthResolver.cs`, `QuotaService.cs`, `V1RewriteHttpFunctions.cs:164` (async 202 + Location), `packages/mcp-server` skeleton with uncommitted M9-002 (`plans/codex-exec-M9-002.log`), Entra-lacks-DCR (external research), `wrangler.jsonc` nodejs_compat hosting. No code changed; copy is banned-term-safe (positioning = natural/concise/facts-preserved, never detection).
 - Limitations: 5 Open Questions deliberately left for the owner (analyze billing, remote async cap, npm version, mcp path, tone enum) — not silently decided. Hosting compared inline (3 options, all ≈$0); not run as a formal cloud-architecture-cost-review skill. No implementation started, DDW not launched. Remote async cap vs Worker request-duration is an assumption to be proven by MCP-REMOTE tests, not yet measured.
+
+### 2026-06-08 - system-spec-synthesis - REMOTE-595 Streamable HTTP route
+
+- Agent: Codex worker
+- Trigger: GitHub issue #595 turns the remote MCP notes and issue brief into an implementation-ready Next route contract for `/api/mcp`.
+- Action: Opened and followed the skill at checklist level; read `AGENTS.md`, `CLAUDE.md`, `plans/mcp-productization/issues/REMOTE-streamable-http.md`, `plans/mcp-productization/REQUIREMENT.md`, `app/api/v1/rewrite/route.ts`, `lib/azure-api.ts`, and `packages/mcp-server/src/tools`. Mapped the route to stateless Streamable HTTP, Bearer header auth, existing `/api/v1/rewrite` backend adapter, scoped Origin validation, and local verification gates.
+- Output artifacts: `app/api/mcp/route.ts`; `tests/unit/mcp-remote.test.ts`; root `package.json` / `package-lock.json` SDK dependency.
+- Verification evidence: Initial focused unit run failed because the route was missing; after implementation `npm run test -- tests/unit/mcp-remote.test.ts` passed 5/5 and `npm run typecheck` exited 0.
+- Limitations: No long-form spec document was written because the issue body and repo brief already define the accepted contract. No deploy, push, or PR command was run.
+
+### 2026-06-08 - state-machine-modeling - REMOTE-595 rewrite attempt polling lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #595 requires remote `rewrite_email` to submit an async attempt, poll it, and return a working state plus `attempt_id` when the remote cap is reached.
+- Action: Opened and followed the skill; modeled states as submitted, working, succeeded, failed, and remote-cap-working. Events are submit accepted, poll working, poll succeeded, poll failed, and poll cap reached. Invariants are one MCP call maps to one backend submit, terminal success returns rewritten text, backend failure stays an error, and the remote cap returns only the existing attempt id for `get_rewrite_result`.
+- Output artifacts: `app/api/mcp/route.ts`; `tests/unit/mcp-remote.test.ts`.
+- Verification evidence: The focused remote unit test exercises the cap path with a submitted attempt and repeated working polls, then asserts structured MCP output `{ status: "working", attempt_id: "attempt-remote-1" }`.
+- Limitations: The route does not persist state and does not add Durable Objects or sessions; lifecycle state remains in the existing backend attempt.
+
+### 2026-06-08 - resilience-test-generation - REMOTE-595 remote polling and auth guard
+
+- Agent: Codex worker
+- Trigger: GitHub issue #595 changes timeout/polling behavior and adds a missing-auth remote route guard.
+- Action: Opened and followed the skill; identified the critical operation as remote MCP tool execution over the existing rewrite API and the invariant as no backend call without a valid Bearer header or accepted Origin. Added deterministic route tests for missing auth, cross-origin rejection, shared tool listing, and remote polling cap fallback.
+- Output artifacts: `tests/unit/mcp-remote.test.ts`; `app/api/mcp/route.ts`.
+- Verification evidence: `npm run test -- tests/unit/mcp-remote.test.ts` passed 5/5. The missing-auth test asserts `401` and `WWW-Authenticate: Bearer`; the Origin guard test asserts no fetch; the polling-cap test uses fake timers and mocked backend responses.
+- Limitations: No live MCP client or production API key was used; full remote smoke is left to the supervisor after branch verification.
