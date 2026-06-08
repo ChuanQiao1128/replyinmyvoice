@@ -7,7 +7,14 @@ using ReplyInMyVoice.Infrastructure;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
-builder.Configuration.AddJsonFile("version.generated.json", optional: true, reloadOnChange: false);
+// Read the build-stamped version.generated.json from next to the assembly. A bare relative
+// path resolves against ContentRoot/CWD, which on Azure Functions Linux (WEBSITE_RUN_FROM_PACKAGE)
+// is NOT where CopyToOutputDirectory places the file — so /api/version reported "unknown" even
+// though the file shipped in the package. AppContext.BaseDirectory is the assembly dir = file dir.
+builder.Configuration.AddJsonFile(
+    Path.Combine(AppContext.BaseDirectory, "version.generated.json"),
+    optional: true,
+    reloadOnChange: false);
 
 builder.ConfigureFunctionsWebApplication();
 
