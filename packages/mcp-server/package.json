@@ -1,5 +1,5 @@
 {
-  "name": "@replyinmyvoice/mcp-server",
+  "name": "@replyinmyvoiceashuman/mcp-server",
   "version": "0.1.0",
   "description": "MCP server for Reply In My Voice rewrite API",
   "license": "MIT",

@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   },
 };
 
-const localInstall = `npx @replyinmyvoice/mcp-server`;
+const localInstall = `npx @replyinmyvoiceashuman/mcp-server`;
 
 const remoteEndpoint = `https://replyinmyvoice.com/api/mcp
 Authorization: Bearer rmv_live_xxx`;
@@ -33,7 +33,7 @@ const hostConfigs = [
     body: "Use the local command when you want the host to launch the server on your machine. Use the remote URL when your workspace supports HTTP MCP.",
     local: `claude mcp add replyinmyvoice \\
   --env REPLY_IN_MY_VOICE_API_KEY=rmv_live_xxx \\
-  -- npx -y @replyinmyvoice/mcp-server`,
+  -- npx -y @replyinmyvoiceashuman/mcp-server`,
     remote: `claude mcp add replyinmyvoice \\
   --transport http \\
   --url https://replyinmyvoice.com/api/mcp \\
@@ -44,7 +44,7 @@ const hostConfigs = [
     body: "Add one of these entries to your Codex MCP config. The local version reads the key from env; the remote version sends the Bearer header.",
     local: `[mcp_servers.replyinmyvoice]
 command = "npx"
-args = ["-y", "@replyinmyvoice/mcp-server"]
+args = ["-y", "@replyinmyvoiceashuman/mcp-server"]
 env = { REPLY_IN_MY_VOICE_API_KEY = "rmv_live_xxx" }`,
     remote: `[mcp_servers.replyinmyvoice]
 url = "https://replyinmyvoice.com/api/mcp"
@@ -57,7 +57,7 @@ headers = { Authorization = "Bearer rmv_live_xxx" }`,
   "mcpServers": {
     "replyinmyvoice": {
       "command": "npx",
-      "args": ["-y", "@replyinmyvoice/mcp-server"],
+      "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
       "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
     }
   }
@@ -78,7 +78,7 @@ headers = { Authorization = "Bearer rmv_live_xxx" }`,
   "mcpServers": {
     "replyinmyvoice": {
       "command": "npx",
-      "args": ["-y", "@replyinmyvoice/mcp-server"],
+      "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
       "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
     }
   }

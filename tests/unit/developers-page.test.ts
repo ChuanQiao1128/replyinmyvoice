@@ -64,7 +64,7 @@ describe("/developers API documentation page", () => {
     const pageSource = source("app/developers/mcp/page.tsx");
 
     expect(pageSource).toContain("Reply In My Voice MCP server");
-    expect(pageSource).toContain("npx @replyinmyvoice/mcp-server");
+    expect(pageSource).toContain("npx @replyinmyvoiceashuman/mcp-server");
     expect(pageSource).toContain("https://replyinmyvoice.com/api/mcp");
     expect(pageSource).toContain("Authorization");
     expect(pageSource).toContain("Bearer rmv_live_xxx");

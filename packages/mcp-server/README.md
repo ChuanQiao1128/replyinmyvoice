@@ -1,4 +1,4 @@
-# @replyinmyvoice/mcp-server
+# @replyinmyvoiceashuman/mcp-server
 
 MCP server for Reply In My Voice. It gives MCP-compatible clients a small, stable interface for rewriting email replies while preserving the supplied facts and context.
 
@@ -14,7 +14,7 @@ The package can run locally over stdio with `npx`, or clients can connect to the
 Run the server directly:
 
 ```sh
-REPLY_IN_MY_VOICE_API_KEY=rmv_live_xxx npx -y @replyinmyvoice/mcp-server
+REPLY_IN_MY_VOICE_API_KEY=rmv_live_xxx npx -y @replyinmyvoiceashuman/mcp-server
 ```
 
 The server uses `https://replyinmyvoice.com` by default. For development or staging, set `REPLY_IN_MY_VOICE_BASE_URL`.
@@ -28,7 +28,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
   "mcpServers": {
     "replyinmyvoice": {
       "command": "npx",
-      "args": ["-y", "@replyinmyvoice/mcp-server"],
+      "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
       "env": {
         "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx"
       }
@@ -44,7 +44,7 @@ Add a local stdio server:
 ```toml
 [mcp_servers.replyinmyvoice]
 command = "npx"
-args = ["-y", "@replyinmyvoice/mcp-server"]
+args = ["-y", "@replyinmyvoiceashuman/mcp-server"]
 env = { REPLY_IN_MY_VOICE_API_KEY = "rmv_live_xxx" }
 ```
 
