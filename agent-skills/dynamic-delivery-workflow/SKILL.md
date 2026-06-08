@@ -1,6 +1,6 @@
 ---
 name: dynamic-delivery-workflow
-description: Run an UNATTENDED, restart/suspend-resilient multi-issue software-delivery wave where each GitHub issue is implemented by Codex (codex exec) via a detached background daemon — self-healing watchdog sentinel, event-driven notifications (no Claude polling), adaptive timeouts, canary-first validation, diff-scoped safety gates, merging into an integration branch (never main). Use whenever the user wants to run a "dynamic workflow" / "delivery wave" / "delivery pipeline" to deliver or ship a BATCH of GitHub issues via Codex with minimal supervision — especially if it should survive session restarts/suspend, save Claude usage, or run unattended/overnight while they check in periodically — even if they don't name the skill. Distinct from the in-session `delivery-pipeline` skill: THIS one runs as a detached daemon and is for hands-off, restart-proof batches. Example triggers: "run a dynamic workflow to finish issues #378-400", "kick off an unattended codex delivery wave", "跑 dynamic workflow 用 codex 完成这些 issue".
+description: Run an UNATTENDED, restart/suspend-resilient multi-issue software-delivery wave where each GitHub issue is implemented by Codex (codex exec) via a detached background daemon — self-healing watchdog sentinel, event-driven notifications (no Claude polling), adaptive timeouts, canary-first validation, diff-scoped safety gates, merging into an integration branch (never main). It can also take a raw requirement/spec and decompose it into issues first (one human checkpoint) before running the wave. Use whenever the user wants to run a "dynamic workflow" / "delivery wave" / "delivery pipeline" to deliver or ship a BATCH of GitHub issues via Codex with minimal supervision — especially if it should survive session restarts/suspend, save Claude usage, or run unattended/overnight while they check in periodically — even if they don't name the skill. Distinct from the in-session `delivery-pipeline` skill: THIS one runs as a detached daemon and is for hands-off, restart-proof batches. Example triggers: "run a dynamic workflow to finish issues #378-400", "kick off an unattended codex delivery wave", "跑 dynamic workflow 用 codex 完成这些 issue".
 ---
 
 # Dynamic Delivery Workflow
@@ -34,19 +34,32 @@ not "simplify" them without reading `references/postmortem.md` — several one-l
 check, strip-`node_modules`-before-commit, atomic lock + 90s grace). Architecture overview:
 `references/design.md`. Machine-reboot survival: `references/launchd.md`.
 
-## The supervisor protocol (follow on trigger)
+## Two phases
+
+- **Phase 1 — Decompose** (ONLY if you were handed a requirement, not a ready issue list):
+  reason the requirement → GitHub issues + per-issue briefs + `queue.tsv` → **ONE human checkpoint**.
+  Full protocol: `references/decompose.md`.
+- **Phase 2 — Execute** (the existing unattended daemon): preflight → `start.sh` → event-driven,
+  restart-proof. This is the supervisor protocol below (steps 1–7).
+
+If you were handed a ready issue-list with tiers/deps/briefs already, SKIP Phase 1 — go straight to
+Phase 2 step 2 ("Write `wave.conf` + `queue.tsv`").
+
+## The supervisor protocol — Phase 2 Execute (follow on trigger)
 
 ### 1. Gather the wave config
 
 You need: the **issue list** with per-issue **tier / deps / brief / timeout**, the **integration
 base branch**, the **repo + GitHub repo**, and a **branch prefix**. 
 
-- If the user hands you issue numbers + an existing integration branch, gather their tiers/deps.
-- If they hand you a **requirement instead of issues**, decompose it into issues FIRST. Reuse the
-  project's decomposition skills if relevant (`system-spec-synthesis` to turn notes into an
-  implementation-ready spec; `claude-heavy-planning-handoff` / `delivery-pipeline` for the
-  issue-creation flow). Create the GitHub issues + per-issue **briefs** (one markdown file each:
-  Context, Constraints, Changes required, machine-checkable Acceptance, Do NOT), then continue here.
+- **Input A — ready issues:** the user hands you issue numbers + an existing integration branch →
+  gather their tiers/deps and go to step 2.
+- **Input B — a requirement/spec** (file path, inline, or linked doc) → **do Phase 1 first: read
+  `references/decompose.md` and follow it end to end.** It produces the GitHub issues, the per-issue
+  briefs under `BRIEF_DIR`, and a draft `queue.tsv`, then STOPS at the one human checkpoint. Only
+  after explicit approval do you continue to step 2. (You MAY run `system-spec-synthesis` upstream
+  to turn rough notes into a clean spec before decomposing — but decomposition itself is now native
+  here, via `references/decompose.md`, not a hand-off to the disabled `delivery-pipeline`.)
 - Decide each issue's **TIMEOUT_MIN** deliberately (adaptive — NOT one flat value): ~75 for
   backend/feature work, ~40 default, ~20 for docs-only. v1's flat 40 killed 3 big features.
 - Identify **TIER-1 prereqs** (things dependents must build on) → `TIER1_MERGE=yes`; everything
@@ -132,6 +145,16 @@ If you must check liveness once, read (don't `git`) the read-only monitors:
 `$CONTROL_DIR/STATUS`, `heartbeat.txt`, `driver.log`, `sentinel.log`, `logs/issue-<n>.log`. Do NOT
 run git commands in the main checkout while the driver owns worktrees.
 
+#### Optional: arm the context-frugal watcher (zero-poll auto-wakeup)
+To be auto-woken on a decision-needed event WITHOUT spending Claude turns polling, launch the
+Claude-side watcher via a **backgrounded Bash** (`run_in_background: true`), NOT nohup:
+`bash <skill>/scripts/claude-watch.sh "$CONTROL_DIR"`.
+It watches STATUS for `issue-blocked` / `canary-failed` / `systemic-error` / `wave-done` (and the
+driver+sentinel both-dead case), prints the matching STATUS tail + heartbeat, then EXITS — the
+harness re-invokes Claude on that exit. That exit-wakes-Claude property is why it must be a harness
+background task, not nohup. It does NOT replace `sentinel.sh` (the OS watchdog that keeps the DRIVER
+alive); it is the Claude-attention layer on top. See `references/sentinel.md`.
+
 ### 6. On a `systemic-error` / `canary-failed` event: investigate, don't just resume
 
 A systemic event means something is wrong for *every* issue (a mis-scoped gate, a bad brief
@@ -168,6 +191,8 @@ this independently — it trusts nothing the worker reports.
 
 ## Pointers
 
+- `references/decompose.md` — Phase 1: requirement → issues + briefs + queue.tsv (one checkpoint).
+- `references/sentinel.md` — the two watch layers (OS watchdog vs Claude-side watcher) + SessionStart auto-reconnect.
 - `references/design.md` — architecture + the five v2 levers. Read when adapting to a new repo.
 - `references/postmortem.md` — the 8 bugs + invariants. Read before editing any script.
 - `references/launchd.md` — optional machine-reboot survival (must live off the TCC-blocked Desktop).
