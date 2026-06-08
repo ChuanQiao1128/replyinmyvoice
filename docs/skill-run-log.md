@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - system-spec-synthesis - DDD-30 ADR and migration playbook
+
+- Agent: Codex worker
+- Trigger: GitHub issue #612 asks for an ADR recording target DDD layering and a migration playbook for later bounded-context waves.
+- Action: Opened and followed the skill at documentation-spec scale; read `AGENTS.md`, `CLAUDE.md`, issue #612, `docs/architecture-decision-record.md`, the DDD restructure requirement, DDD-30 brief, Wave-1 rewrite migration briefs, and the merged Application/repository/handler files.
+- Output artifacts: `docs/architecture-decision-record-0002-ddd-layering.md`; `docs/ddd-migration-playbook.md`; `docs/skill-run-log.md`.
+- Verification evidence: `test -f docs/architecture-decision-record-0002-ddd-layering.md` passed; `test -f docs/ddd-migration-playbook.md` passed; `grep -qi "strangler" docs/ddd-migration-playbook.md` passed; both new docs are non-empty; scoped restricted-substring scan over the two new docs printed no matches.
+- Limitations: Docs-only issue. No code, csproj, schema, deployment, push, PR, payment, secret, or production branch action was performed.
+
 ### 2026-06-09 - data-module-review - DDD-11 Application repository interfaces
 
 - Agent: Codex worker
