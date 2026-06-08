@@ -4259,3 +4259,48 @@ claude-heavy-planning-handoff
 - Output artifacts: Final worker report; `docs/skill-run-log.md`.
 - Verification evidence: `dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj -c Release -o /tmp/ver-pub /p:CommitSha=deadbeefcafe /p:BuildTimestamp=2026-06-08T00:00:00Z` exited 0 and `/tmp/ver-pub/version.generated.json` contained the override. `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter FullyQualifiedName~VersionFunctionTests` passed 3/3. `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 595/595.
 - Limitations: No live Azure deploy or smoke command was run; the issue explicitly scopes this to local build/package and CI publish wiring.
+
+### 2026-06-08 - resilience-test-generation - HARD-01 API burst rate-limit invariant
+
+- Agent: Codex worker
+- Trigger: GitHub issue #584 / HARD-01 adds tests for rate limits, concurrent requests, and rejected-submit no-charge behavior.
+- Action: Opened and followed the skill; identified the critical operation as API submit admission, the dependency boundary as SQLite-backed EF persistence, and the invariant as exactly `limit` admitted requests with rejected requests creating no rewrite reservation or used-quota charge. Added deterministic concurrent local tests rather than live endpoint calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiBurstRateLimitTests.cs`; `scripts/load-test/api-burst.mjs`; `plans/rewrite-api-v1/load-test.md`.
+- Verification evidence: `cd backend-dotnet && dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiBurstRateLimitTests` passed 2/2 after fixing a SQLite query-shape issue.
+- Limitations: No staging or production load was run; the issue reserves real endpoint load for the owner.
+
+### 2026-06-08 - state-machine-modeling - HARD-01 rate-limit window lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #584 tests the `ApiKeyRateLimitWindow` lifecycle and reset behavior.
+- Action: Opened and followed the skill; modeled states as below-limit, at-limit, limited-until-reset, and next-window-open. Events are submit-in-window and submit-in-next-minute. Invariants are one row per key/window, count never exceeds the configured limit, and usage reservations are only created after an admitted submit.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiBurstRateLimitTests.cs`.
+- Verification evidence: The reset test proves the first minute reaches count `limit`, one extra same-window submit is limited with no reservation, and the next minute creates a separate window with count 1.
+- Limitations: No production state transition or migration was changed; this is regression coverage for the existing limiter.
+
+### 2026-06-08 - data-module-review - HARD-01 limiter and quota persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #584 touches EF-backed rate-limit windows, usage periods, rewrite attempts, outbox rows, and usage reservations.
+- Action: Opened and followed the skill; reviewed `AppDbContext`, `ApiKeyRateLimiter`, `QuotaService`, `ApiKeyRateLimitWindow`, `UsageReservation`, `RewriteAttempt`, and existing rate-limit/quota tests. Kept schema unchanged and added assertions over persisted counters and side effects.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiBurstRateLimitTests.cs`.
+- Verification evidence: The burst test asserts one persisted rate-limit window at count `limit`, exactly `limit` rewrite attempts, exactly `limit` usage reservations, exactly `limit` outbox messages, `ReservedCount == limit`, and `UsedCount == 0`.
+- Limitations: No migration or index changes were needed; SQLite file-backed fixtures provide local transaction coverage but are not a SQL Server substitute.
+
+### 2026-06-08 - dotnet-backend-testing - HARD-01 EF SQLite burst tests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #584 adds C# xUnit backend tests for the API rate limiter and quota reservation invariant.
+- Action: Opened and followed the skill; chose a focused EF Core SQLite integration-style test using the real `ApiKeyRateLimiter`, `QuotaService`, and persisted AppDbContext state. Used xUnit and FluentAssertions with the existing test project target framework and no new package references.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiBurstRateLimitTests.cs`.
+- Verification evidence: `cd backend-dotnet && dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiBurstRateLimitTests` passed 2/2, and `cd backend-dotnet && dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors.
+- Limitations: The tests intentionally avoid live HTTP and do not measure worker throughput; the harness runbook covers owner-run staging and production load.
+
+### 2026-06-08 - verification-before-completion - HARD-01 final evidence check
+
+- Agent: Codex worker
+- Trigger: Preparing the final supervised delivery report for GitHub issue #584 after adding the burst harness, backend tests, and load-test runbook.
+- Action: Opened and followed the skill; reran machine-checkable issue acceptance commands and the broader backend test gate before completion claims.
+- Output artifacts: Final worker report; `docs/skill-run-log.md`.
+- Verification evidence: `node scripts/load-test/api-burst.mjs --dry-run --url http://example.invalid --key rmv_test_x --concurrency 5 --requests 10` exited 0. `node scripts/load-test/api-burst.mjs --help` exited 0. `node --check scripts/load-test/api-burst.mjs` exited 0. `cd backend-dotnet && dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiBurstRateLimitTests` passed 2/2. `cd backend-dotnet && dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. `cd backend-dotnet && dotnet test ReplyInMyVoice.sln -c Release` passed 597/597.
+- Limitations: No live staging or production endpoint was called; real load execution remains owner-run as required by HARD-01.
