@@ -4455,3 +4455,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/developers/api-keys-panel.tsx`; `tests/unit/api-keys-panel.test.ts`; `tests/unit/developer-keys-ui.test.ts`.
 - Verification evidence: `npm run test -- tests/unit/api-keys-panel.test.ts` passed 1/1 after the missing-export red run; `npm run test -- tests/unit/developer-keys-ui.test.ts` passed 7/7; `npm run typecheck` exited 0; `npm run test` passed 65 files / 481 tests; `npm run build` exited 0.
 - Limitations: No authenticated browser screenshot or Playwright flow was run by this worker; the supervisor can run a signed-in smoke if credentials/session setup are available.
+
+### 2026-06-09 - data-module-review - DDD-12 infrastructure repositories
+
+- Agent: Codex worker
+- Trigger: GitHub issue #609 / DDD-12 adds EF Core repository implementations and UnitOfWork over `AppDbContext`.
+- Action: Opened and followed the skill; read the DDD-11 Application abstractions, `AppDbContext`, old quota/account/history query paths, entity mappings, and DI registration pattern. Preserved tracked repository queries for UnitOfWork semantics, retained idempotency lookup visibility across soft-deleted attempts, and kept credit selection materialized by user to remain SQLite-compatible.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/*.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories --limit 120` reported only expected quota/idempotency/read-query signals in the new repository methods. Focused repository tests passed 3/3 after implementation.
+- Limitations: The new repositories intentionally do not add transactions or retry loops; callers compose them with scoped `AppDbContext` and `IUnitOfWork`, while existing old services remain unchanged.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-12 repository DI and behavior
+
+- Agent: Codex worker
+- Trigger: GitHub issue #609 changes C# backend infrastructure and needs Release build/test acceptance.
+- Action: Opened and followed the skill; added focused xUnit/FluentAssertions coverage for Application repository DI registrations, shared scoped context persistence through UnitOfWork, soft-delete-aware user lookup, idempotency lookup, and earliest usable rewrite credit selection.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureRepositoryTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`.
+- Verification evidence: Initial focused run failed because `ReplyInMyVoice.Infrastructure.Repositories` was missing. After implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~InfrastructureRepositoryTests|FullyQualifiedName~AddReplyInMyVoiceInfrastructure_registers_application_repositories"` passed 3/3. `dotnet build ReplyInMyVoice.sln -c Release` exited 0. `dotnet test ReplyInMyVoice.sln -c Release` passed 619/619.
+- Limitations: Tests cover repository contracts and DI only; no old `Infrastructure/Services/*`, Functions, Api, or Worker behavior was changed.

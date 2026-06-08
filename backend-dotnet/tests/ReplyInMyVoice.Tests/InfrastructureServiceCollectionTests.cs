@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
+using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -22,6 +23,22 @@ public sealed class InfrastructureServiceCollectionTests
         provider.GetRequiredService<IRewriteProvider>()
             .Should()
             .BeOfType<DeterministicRewriteProvider>();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_application_repositories()
+    {
+        var provider = BuildProvider([]);
+
+        using var scope = provider.CreateScope();
+        var scopedProvider = scope.ServiceProvider;
+
+        scopedProvider.GetRequiredService<IAppUserRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IUsagePeriodRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IRewriteAttemptRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IUsageReservationRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IRewriteCreditRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IUnitOfWork>().Should().NotBeNull();
     }
 
     [Fact]

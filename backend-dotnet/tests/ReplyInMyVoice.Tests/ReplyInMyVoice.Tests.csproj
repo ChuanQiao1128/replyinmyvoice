@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\ReplyInMyVoice.Application\ReplyInMyVoice.Application.csproj" />
     <ProjectReference Include="..\..\src\ReplyInMyVoice.Domain\ReplyInMyVoice.Domain.csproj" />
     <ProjectReference Include="..\..\src\ReplyInMyVoice.Infrastructure\ReplyInMyVoice.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\ReplyInMyVoice.Api\ReplyInMyVoice.Api.csproj" />

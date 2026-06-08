@@ -4,10 +4,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Infrastructure;
@@ -53,6 +55,12 @@ public static class ServiceCollectionExtensions
             var options = sp.GetRequiredService<DbContextOptions<AppDbContext>>();
             return () => new AppDbContext(options);
         });
+        services.AddScoped<IAppUserRepository, AppUserRepository>();
+        services.AddScoped<IUsagePeriodRepository, UsagePeriodRepository>();
+        services.AddScoped<IRewriteAttemptRepository, RewriteAttemptRepository>();
+        services.AddScoped<IUsageReservationRepository, UsageReservationRepository>();
+        services.AddScoped<IRewriteCreditRepository, RewriteCreditRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<AccountService>();
         services.AddScoped<ApiKeyService>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
