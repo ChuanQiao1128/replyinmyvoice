@@ -4411,3 +4411,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `tests/unit/mcp-remote.test.ts`; `app/api/mcp/route.ts`.
 - Verification evidence: `npm run test -- tests/unit/mcp-remote.test.ts` passed 5/5. The missing-auth test asserts `401` and `WWW-Authenticate: Bearer`; the Origin guard test asserts no fetch; the polling-cap test uses fake timers and mocked backend responses.
 - Limitations: No live MCP client or production API key was used; full remote smoke is left to the supervisor after branch verification.
+
+### 2026-06-08 - ui-browser-testing - FEKEYS-598 key manager polish
+
+- Agent: Codex worker
+- Trigger: GitHub issue #598 changes the `/developers/keys` UI and adds focused coverage for create, one-time plaintext reveal, masked list rendering, and visible credit balance / pricing CTA.
+- Action: Opened and followed the skill; chose CI-friendly unit/component verification because the route is signed-in and the repo has no jsdom/Testing Library dependency. Added a render test using `react-dom/server`, kept backend API routes read-only, and added source pins for the usage summary endpoint plus pricing CTA.
+- Output artifacts: `components/developers/api-keys-panel.tsx`; `tests/unit/api-keys-panel.test.ts`; `tests/unit/developer-keys-ui.test.ts`.
+- Verification evidence: `npm run test -- tests/unit/api-keys-panel.test.ts` passed 1/1 after the missing-export red run; `npm run test -- tests/unit/developer-keys-ui.test.ts` passed 7/7; `npm run typecheck` exited 0; `npm run test` passed 65 files / 481 tests; `npm run build` exited 0.
+- Limitations: No authenticated browser screenshot or Playwright flow was run by this worker; the supervisor can run a signed-in smoke if credentials/session setup are available.

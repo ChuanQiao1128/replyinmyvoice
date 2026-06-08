@@ -62,6 +62,10 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain("Copy signing secret");
     expect(panelSource).toContain("Clear webhook");
     expect(panelSource).toContain("30-day calls");
+    expect(panelSource).toContain('"/api/me/api-usage/summary"');
+    expect(panelSource).toContain("Remaining credits");
+    expect(panelSource).toContain('href="/pricing"');
+    expect(panelSource).toContain("Buy credits");
     expect(panelSource).toContain("Confirm revoke");
     expect(panelSource).toContain("setRevealedKey(null)");
   });
