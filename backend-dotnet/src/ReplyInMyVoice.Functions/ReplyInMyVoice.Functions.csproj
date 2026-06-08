@@ -8,7 +8,21 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <CommitSha Condition="'$(CommitSha)'==''">unknown</CommitSha>
+    <BuildTimestamp Condition="'$(BuildTimestamp)'==''">unknown</BuildTimestamp>
+  </PropertyGroup>
+
+  <Target Name="GenerateVersionMetadata" BeforeTargets="BeforeBuild;BeforePublish">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile
+      File="$(IntermediateOutputPath)version.generated.json"
+      Lines="{&quot;Build&quot;:{&quot;CommitSha&quot;:&quot;$(CommitSha)&quot;,&quot;Timestamp&quot;:&quot;$(BuildTimestamp)&quot;}}"
+      Overwrite="true" />
+  </Target>
+
   <ItemGroup>
+    <None Include="$(IntermediateOutputPath)version.generated.json" Link="version.generated.json" TargetPath="version.generated.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.51.0" />

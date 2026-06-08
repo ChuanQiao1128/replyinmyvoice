@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - delivery/api-fixes
+      - "delivery/**"
 
 permissions:
   contents: read
@@ -33,7 +34,7 @@ jobs:
       - name: Publish Worker
         run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Worker/ReplyInMyVoice.Worker.csproj --configuration Release --output backend-dotnet/artifacts/worker
       - name: Publish Functions
-        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions
+        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions /p:CommitSha=${{ github.sha }} /p:BuildTimestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 
   sqlserver-migration:
     runs-on: ubuntu-latest
@@ -109,7 +110,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Build deployment package
         run: |
-          dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions
+          dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj --configuration Release --output backend-dotnet/artifacts/functions /p:CommitSha=${{ github.sha }} /p:BuildTimestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
           cd backend-dotnet/artifacts/functions
           zip -qr ../replyinmyvoice-functions.zip .
       - name: Apply database migrations
@@ -192,4 +193,26 @@ jobs:
             sleep 10
           done
           echo "::error::Health endpoint never returned 200 after deploy — failing the job."
+          exit 1
+      - name: Version gate (assert deployed commit)
+        env:
+          AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME }}
+          EXPECTED_COMMIT_SHA: ${{ github.sha }}
+        run: |
+          # Source of truth for package identity: the live app must serve the commit this workflow built.
+          # Poll after health passes so package swaps and restarts can settle before the identity assertion.
+          set -uo pipefail
+          URL="https://${AZURE_FUNCTION_APP_NAME}.azurewebsites.net/api/version"
+          echo "Polling $URL for up to ~5 minutes..."
+          for attempt in $(seq 1 30); do
+            body="$(curl -sS --max-time 20 "$URL" || true)"
+            observed_commit_sha="$(printf '%s' "$body" | jq -r '.commitSha' 2>/dev/null || true)"
+            echo "  attempt $attempt: observed=${observed_commit_sha:-<empty>} expected=$EXPECTED_COMMIT_SHA"
+            if [ -n "$observed_commit_sha" ] && [ "$observed_commit_sha" != "null" ] && [ "$observed_commit_sha" = "$EXPECTED_COMMIT_SHA" ]; then
+              echo "Version gate passed — deployed commit matches the built commit."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Version endpoint never served the built commit after deploy — failing the job."
           exit 1

@@ -44,16 +44,22 @@ public sealed class ApiUsageHttpFunctions(
             return AuthenticationRequired();
         }
 
-        var account = await accountService.GetOrCreateAccountSummaryAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
-            cancellationToken);
-        var days = ParseBoundedQueryInt(
+        if (!TryParseBoundedQueryInt(
             request,
             "days",
             30,
             1,
-            ApiKeyUsageQueryService.MaxUsageWindowDays);
+            ApiKeyUsageQueryService.MaxUsageWindowDays,
+            out var days,
+            out var errorMessage))
+        {
+            return InvalidRequest(errorMessage);
+        }
+
+        var account = await accountService.GetOrCreateAccountSummaryAsync(
+            authUser.ExternalAuthUserId,
+            authUser.Email,
+            cancellationToken);
         var series = await apiKeyUsageQueryService.GetSeriesAsync(
             account.Id,
             days,
@@ -96,17 +102,40 @@ public sealed class ApiUsageHttpFunctions(
             : defaultValue;
     }
 
-    private static int ParseBoundedQueryInt(
+    private static bool TryParseBoundedQueryInt(
         HttpRequest request,
         string name,
         int defaultValue,
         int minValue,
-        int maxValue)
+        int maxValue,
+        out int value,
+        out string errorMessage)
     {
+        if (!request.Query.ContainsKey(name))
+        {
+            value = defaultValue;
+            errorMessage = string.Empty;
+            return true;
+        }
+
         var rawValue = request.Query[name].ToString();
-        return int.TryParse(rawValue, out var parsed)
-            ? Math.Clamp(parsed, minValue, maxValue)
-            : defaultValue;
+        if (!int.TryParse(rawValue, out var parsed))
+        {
+            value = defaultValue;
+            errorMessage = $"{name} must be a number between {minValue} and {maxValue}.";
+            return false;
+        }
+
+        if (parsed < minValue || parsed > maxValue)
+        {
+            value = defaultValue;
+            errorMessage = $"{name} must be between {minValue} and {maxValue}.";
+            return false;
+        }
+
+        value = parsed;
+        errorMessage = string.Empty;
+        return true;
     }
 
     private static IActionResult AuthenticationRequired() =>
@@ -114,4 +143,11 @@ public sealed class ApiUsageHttpFunctions(
             "Authentication required",
             "A valid authenticated user is required.",
             StatusCodes.Status401Unauthorized);
+
+    private static IActionResult InvalidRequest(string message) =>
+        FunctionHttpResults.Problem(
+            "Invalid request",
+            message,
+            StatusCodes.Status400BadRequest,
+            "invalid_request");
 }
