@@ -4338,3 +4338,22 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiInputHardeningTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiUsageHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiUsageHttpFunctionsTests.cs`.
 - Verification evidence: Initial focused run failed on four invalid `days` cases returning 200, then passed 16/16 after the scoped parser update. `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiInputHardeningTests` passed 16/16. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 611/611. `dotnet build ReplyInMyVoice.sln -c Release` exited 0.
 - Limitations: No frontend proxy test was added; backend function coverage is sufficient for the issue scope. No deploy, push, or PR command was run.
+
+## 2026-06-08 cloud-architecture-cost-review — Monitoring cost (PostHog + Sentry)
+
+- Skill source: read `agent-skills/cloud-architecture-cost-review/SKILL.md` as fallback (not indexed to the Skill tool this session).
+- Trigger: owner asked whether enabling PostHog (analytics) + Sentry (error tracking) for HARD-04 costs money / whether free tiers suffice.
+- Usage assumption: replyinmyvoice.com has no real users yet (GA/LAUNCH-01 not opened); events/errors are internal-test volume (hundreds to low-thousands/month).
+- Pricing (verified 2026-06 against posthog.com/pricing + sentry.io/pricing): PostHog free = 1M events + 100K exceptions + no monthly fee (pure usage-based); Sentry free Developer = 5K errors + 5M spans + 1 user, permanent; Sentry Team = $26/mo (annual) for multi-user.
+- Recommended: both fit the free tier at $0. PostHog alone can cover analytics + error tracking (100K exceptions free = 20x Sentry's 5K, no user cap) -> connect PostHog first, treat Sentry as optional. Connecting keys to the prod Worker is the only owner-gated step (no cost).
+- Rejected: Sentry Team $26/mo — unneeded at current scale.
+- Limitations: Sentry free caps at 1 user + 5K errors/mo (a noisy bug could exhaust it; spike-protection mitigates); PostHog error tracking is newer than Sentry's. No paid action taken; no key written to prod yet.
+
+## 2026-06-08 system-spec-synthesis — MCP productization spec
+
+- Agent: Claude Code (supervisor)
+- Trigger: owner asked to turn the existing rewrite API into a usable MCP service (stdio npm package + remote HTTP server + new `/api/v1/analyze-signal` backend endpoint + `/developers/mcp` page), shipped end-to-end — requires implementation-ready API/job/data contracts before any code.
+- Action: Opened and followed the skill. Separated source facts (each with a file path) from explicit [ASSUMPTION]s; produced the full Output Contract (Context … Open Questions) plus a Dynamic Delivery Workflow work breakdown with machine-checkable acceptance per issue.
+- Output artifacts: `plans/mcp-productization/REQUIREMENT.md`.
+- Verification evidence: cross-references confirmed this session — `ApiKeyAuthResolver.cs`, `QuotaService.cs`, `V1RewriteHttpFunctions.cs:164` (async 202 + Location), `packages/mcp-server` skeleton with uncommitted M9-002 (`plans/codex-exec-M9-002.log`), Entra-lacks-DCR (external research), `wrangler.jsonc` nodejs_compat hosting. No code changed; copy is banned-term-safe (positioning = natural/concise/facts-preserved, never detection).
+- Limitations: 5 Open Questions deliberately left for the owner (analyze billing, remote async cap, npm version, mcp path, tone enum) — not silently decided. Hosting compared inline (3 options, all ≈$0); not run as a formal cloud-architecture-cost-review skill. No implementation started, DDW not launched. Remote async cap vs Worker request-duration is an assumption to be proven by MCP-REMOTE tests, not yet measured.
