@@ -5,10 +5,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -112,13 +114,23 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
     private RewriteHttpFunctions CreateFunctions(AppDbContext db)
     {
         var accountService = new AccountService(CreateContext);
-        var quotaService = new QuotaService(CreateContext);
-        var rewriteRequestService = new RewriteRequestService(CreateContext, quotaService);
+        var rewriteAttemptRepository = new RewriteAttemptRepository(db);
+        var createRewriteAttemptHandler = new CreateRewriteAttemptHandler(
+            new AppUserRepository(db),
+            new UsagePeriodRepository(db),
+            rewriteAttemptRepository,
+            new UsageReservationRepository(db),
+            new RewriteCreditRepository(db),
+            new OutboxMessageRepository(db),
+            new UnitOfWork(db));
+        var getRewriteAttemptHandler = new GetRewriteAttemptHandler(rewriteAttemptRepository);
+
         return new RewriteHttpFunctions(
             BuildConfiguration(),
             db,
             accountService,
-            rewriteRequestService);
+            createRewriteAttemptHandler,
+            getRewriteAttemptHandler);
     }
 
     private async Task<AppUser> SeedUserAsync(string externalAuthUserId)
