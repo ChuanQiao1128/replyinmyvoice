@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -38,7 +39,10 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IRewriteAttemptRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IUsageReservationRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteCreditRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IOutboxMessageRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IUnitOfWork>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<CreateRewriteAttemptHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
     }
 
     [Fact]

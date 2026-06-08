@@ -4473,3 +4473,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureRepositoryTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`.
 - Verification evidence: Initial focused run failed because `ReplyInMyVoice.Infrastructure.Repositories` was missing. After implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~InfrastructureRepositoryTests|FullyQualifiedName~AddReplyInMyVoiceInfrastructure_registers_application_repositories"` passed 3/3. `dotnet build ReplyInMyVoice.sln -c Release` exited 0. `dotnet test ReplyInMyVoice.sln -c Release` passed 619/619.
 - Limitations: Tests cover repository contracts and DI only; no old `Infrastructure/Services/*`, Functions, Api, or Worker behavior was changed.
+
+### 2026-06-09 - state-machine-modeling - DDD-20 rewrite attempt reservation handlers
+
+- Agent: Codex worker
+- Trigger: GitHub issue #610 moves rewrite create/get use cases into Application handlers and changes the rewrite attempt plus usage reservation lifecycle surface.
+- Action: Opened and followed the project skill; modeled states as no attempt, pending attempt with pending reservation, existing same-key attempt, conflict same-key attempt, quota blocked, succeeded attempt lookup, and not-found lookup. Events are create command, duplicate create command, conflicting create command, quota exhausted, credit-backed create, and get query by user.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/CreateRewriteAttemptHandler.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/GetRewriteAttemptHandler.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteUseCaseTests.cs`.
+- Verification evidence: Used `agent-skills/state-machine-modeling/scripts/state_machine_template.py "Rewrite attempt reservation"` to generate the required transition checklist. Focused tests cover create -> pending reservation/outbox, duplicate -> existing without new side effects, conflict -> no new side effects, quota blocked -> no pending context mutation, credit-backed create, and get -> owner-only success/not-found.
+- Limitations: DDD-20 does not switch Functions/API entry points; existing service and job processing lifecycle remain in place for DDD-21 and later issues.
+
+### 2026-06-09 - data-module-review - DDD-20 rewrite create/get persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #610 changes data access for rewrite attempt creation, usage periods, usage reservations, rewrite credits, and outbox rows.
+- Action: Opened and followed the project skill; read the old `RewriteRequestService` create path, `RewriteHttpFunctions` get-by-user path, DDD-11/12 repository contracts, EF entity mappings, and existing quota tests. Added a minimal outbox repository abstraction so the Application handler can keep the old pending job side effect without depending on `AppDbContext`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IOutboxMessageRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/OutboxMessageRepository.cs`; Application rewrite handlers and tests.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 120 backend-dotnet/src` showed expected quota/idempotency signals in the new handler area. A new focused test first failed on a rejected quota path that left an unsaved `UsagePeriod`; after reordering mutations, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteUseCaseTests` passed 7/7.
+- Limitations: No schema or migration changed. The handler uses the current repository and `IUnitOfWork.SaveChangesAsync` surface; it does not add a new transaction/retry abstraction in DDD-20.
+
+### 2026-06-09 - resilience-test-generation - DDD-20 idempotency and quota rejection checks
+
+- Agent: Codex worker
+- Trigger: GitHub issue #610 changes idempotent rewrite attempt creation and quota reservation behavior.
+- Action: Opened and followed the project skill; generated the local resilience matrix for rewrite attempt reservation and selected SQLite integration tests as the lowest level that proves persistence invariants. Added duplicate request, conflicting request, quota rejection, suspended user, credit-backed quota, and owner-scoped get tests with deterministic clocks and local SQLite.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteUseCaseTests.cs`.
+- Verification evidence: `python3 agent-skills/resilience-test-generation/scripts/resilience_matrix.py "Rewrite attempt reservation"` produced timeout, duplicate, partial-success, concurrent request, and malformed-payload rows. The duplicate/conflict tests assert no duplicate attempts, reservations, or outbox messages. The rejected-quota test asserts a later context save cannot persist a partial period.
+- Limitations: No live provider, payment, queue, or cloud endpoint was used. Concurrent reservation retries remain owned by the existing service until a later issue expands the Application unit-of-work contract.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-20 rewrite use-case tests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #610 adds C# Application handlers and requires SQLite in-memory tests for create/get use cases.
+- Action: Opened and followed the project skill; wrote xUnit/FluentAssertions tests first, watched the initial focused run fail because Application Common and Rewrite handler types were missing, then implemented the handlers and repository registration.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Initial red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteUseCaseTests` failed with missing `Application.Common` and `Application.UseCases.Rewrite` types. Final gates: `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused use-case test passed 7/7; full `dotnet test ReplyInMyVoice.sln -c Release` passed 626/626; handler file existence check passed.
+- Limitations: No frontend, deployment, push, or PR command was run.
