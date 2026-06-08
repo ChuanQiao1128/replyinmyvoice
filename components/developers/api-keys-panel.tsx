@@ -4,6 +4,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clipboard,
+  CreditCard,
   FlaskConical,
   KeyRound,
   Link2,
@@ -15,7 +16,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { Button, LinkButton } from "../ui/button";
 import { Card } from "../ui/card";
@@ -59,6 +66,25 @@ type KeysState =
   | { status: "ready"; keys: ApiKey[] }
   | { status: "error"; message: string };
 
+type UsageBalanceSummary = {
+  periodEnd?: string | null;
+  quota: number;
+  remaining: number;
+  used: number;
+};
+
+type UsageBalanceState =
+  | { status: "loading" }
+  | { status: "ready"; summary: UsageBalanceSummary }
+  | { status: "error"; message: string };
+
+const emptyUsageBalanceSummary: UsageBalanceSummary = {
+  periodEnd: null,
+  quota: 0,
+  remaining: 0,
+  used: 0,
+};
+
 function formatDateTime(value: string | null, emptyLabel = "Not recorded") {
   if (!value) {
     return emptyLabel;
@@ -78,6 +104,23 @@ function formatDateTime(value: string | null, emptyLabel = "Not recorded") {
   }).format(date);
 }
 
+function formatPeriodEnd(value: string | null | undefined) {
+  if (!value) {
+    return "No period end recorded";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "No period end recorded";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
 function fallbackMaskedKey(value: string) {
   const trimmed = value.trim();
   if (trimmed.startsWith("rmv_test_") && trimmed.length >= 13) {
@@ -93,6 +136,25 @@ function fallbackMaskedKey(value: string) {
   }
 
   return `${trimmed.slice(0, 8)}...${trimmed.slice(-4)}`;
+}
+
+function safeNumber(value: number | undefined | null) {
+  return Number.isFinite(value) && value && value > 0 ? value : 0;
+}
+
+function normalizeUsageBalanceSummary(
+  summary: Partial<UsageBalanceSummary> | null,
+): UsageBalanceSummary {
+  if (!summary) {
+    return emptyUsageBalanceSummary;
+  }
+
+  return {
+    periodEnd: summary.periodEnd ?? null,
+    quota: safeNumber(summary.quota),
+    remaining: safeNumber(summary.remaining),
+    used: safeNumber(summary.used),
+  };
 }
 
 async function readJsonError(response: Response) {
@@ -121,6 +183,27 @@ async function loadKeys() {
   return (await response.json()) as ApiKey[];
 }
 
+async function loadUsageBalance() {
+  const response = await fetch("/api/me/api-usage/summary", {
+    cache: "no-store",
+  });
+
+  if (response.status === 401) {
+    window.location.assign("/sign-in");
+    return emptyUsageBalanceSummary;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      (await readJsonError(response)) ?? "Could not load credit balance.",
+    );
+  }
+
+  return normalizeUsageBalanceSummary(
+    (await response.json()) as Partial<UsageBalanceSummary> | null,
+  );
+}
+
 function statusLabel(key: ApiKey) {
   return key.revokedAt ? "Revoked" : "Active";
 }
@@ -147,7 +230,7 @@ function usageDetailLabel(usage: ApiUsageCount) {
   return `${usage.succeeded} ok / ${usage.failed} failed`;
 }
 
-function createdKeyListItem(created: CreatedApiKey): ApiKey {
+export function createdKeyListItem(created: CreatedApiKey): ApiKey {
   return {
     createdAt: created.createdAt,
     id: created.id,
@@ -161,8 +244,168 @@ function createdKeyListItem(created: CreatedApiKey): ApiKey {
   };
 }
 
+export function CreatedKeyReveal({
+  copyNotice,
+  onCopy,
+  onDone,
+  revealedKey,
+}: {
+  copyNotice: string | null;
+  onCopy: () => void;
+  onDone: () => void;
+  revealedKey: CreatedApiKey;
+}) {
+  return (
+    <section
+      aria-labelledby="new-api-key-title"
+      className="rounded-lg border border-sage/25 bg-white p-6 shadow-soft sm:p-8"
+    >
+      <div className="flex items-start gap-3">
+        <CheckCircle2 className="mt-1 h-5 w-5 text-sage" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <h2 id="new-api-key-title" className="text-2xl">
+            New key created
+          </h2>
+          <p className="mt-2 text-sm text-ink/65">
+            {"Copy this plaintext key now. For account safety, you won't see this again."}
+          </p>
+          <div className="mt-4 rounded-md border border-line bg-paper px-4 py-3">
+            <code className="block break-all font-mono text-sm text-ink">
+              {revealedKey.key}
+            </code>
+          </div>
+          {revealedKey.isTest ? (
+            <span
+              aria-label="Test key"
+              className="mt-3 inline-flex rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 text-xs font-semibold text-ink"
+            >
+              Test
+            </span>
+          ) : null}
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Button onClick={onCopy} type="button">
+              <Clipboard className="h-4 w-4" aria-hidden="true" />
+              Copy key
+            </Button>
+            <Button onClick={onDone} type="button" variant="secondary">
+              Done
+            </Button>
+            {copyNotice ? (
+              <p className="text-sm font-semibold text-sage">{copyNotice}</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function MaskedApiKeyValue({ apiKey }: { apiKey: ApiKey }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono">{apiKey.maskedKey}</span>
+      {apiKey.isTest ? (
+        <span
+          aria-label="Test key"
+          className="inline-flex rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 font-sans text-[11px] font-semibold text-ink"
+        >
+          Test
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function CreditBalanceCard({
+  balanceState,
+  onRefresh,
+}: {
+  balanceState: UsageBalanceState;
+  onRefresh: () => void;
+}) {
+  const summary =
+    balanceState.status === "ready"
+      ? balanceState.summary
+      : emptyUsageBalanceSummary;
+  const exhausted =
+    balanceState.status === "ready" && summary.remaining <= 0 && summary.quota > 0;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-sky text-sage">
+          <CreditCard className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-sage">
+            Credit balance
+          </p>
+          <h2 className="mt-3 text-2xl">Remaining credits</h2>
+        </div>
+      </div>
+
+      {balanceState.status === "loading" ? (
+        <div className="mt-5 flex items-center gap-3 rounded-md border border-line bg-paper px-4 py-4 text-sm text-ink/65">
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+          Loading credits...
+        </div>
+      ) : null}
+
+      {balanceState.status === "error" ? (
+        <div className="mt-5 rounded-md border border-rust/25 bg-rust/5 p-4">
+          <p className="text-sm font-semibold text-rust">
+            Could not load credits.
+          </p>
+          <p className="mt-1 text-sm text-ink/65">{balanceState.message}</p>
+          <Button
+            className="mt-4 w-full"
+            onClick={onRefresh}
+            type="button"
+            variant="secondary"
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      {balanceState.status === "ready" ? (
+        <div className="mt-5">
+          <p className="text-4xl font-semibold tracking-normal text-ink">
+            {summary.remaining}
+            <span className="text-base font-medium text-ink/50">
+              {" "}
+              of {summary.quota}
+            </span>
+          </p>
+          <p className="mt-2 text-sm text-ink/60">
+            {summary.used} used this period. Period ends{" "}
+            {formatPeriodEnd(summary.periodEnd)}.
+          </p>
+          {exhausted ? (
+            <p className="mt-3 rounded-md border border-rust/25 bg-rust/5 px-3 py-2 text-sm font-semibold text-rust">
+              No credits remaining.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <LinkButton
+        className="mt-5 w-full"
+        href="/pricing"
+        variant={exhausted ? "clay" : "secondary"}
+      >
+        Buy credits
+      </LinkButton>
+    </Card>
+  );
+}
+
 export function ApiKeysPanel() {
   const [keysState, setKeysState] = useState<KeysState>({ status: "loading" });
+  const [balanceState, setBalanceState] = useState<UsageBalanceState>({
+    status: "loading",
+  });
   const [name, setName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [createNotice, setCreateNotice] = useState<string | null>(null);
@@ -196,6 +439,20 @@ export function ApiKeysPanel() {
     }
   }, []);
 
+  const refreshBalance = useCallback(async () => {
+    setBalanceState({ status: "loading" });
+    try {
+      const summary = await loadUsageBalance();
+      setBalanceState({ status: "ready", summary });
+    } catch (error) {
+      setBalanceState({
+        message:
+          error instanceof Error ? error.message : "Could not load credit balance.",
+        status: "error",
+      });
+    }
+  }, []);
+
   useEffect(() => {
     let isCurrent = true;
 
@@ -217,6 +474,35 @@ export function ApiKeysPanel() {
     }
 
     void loadInitialKeys();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadInitialBalance() {
+      try {
+        const summary = await loadUsageBalance();
+        if (isCurrent) {
+          setBalanceState({ status: "ready", summary });
+        }
+      } catch (error) {
+        if (isCurrent) {
+          setBalanceState({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Could not load credit balance.",
+            status: "error",
+          });
+        }
+      }
+    }
+
+    void loadInitialBalance();
 
     return () => {
       isCurrent = false;
@@ -738,58 +1024,15 @@ export function ApiKeysPanel() {
         </section>
 
         {revealedKey ? (
-          <section
-            aria-labelledby="new-api-key-title"
-            className="rounded-lg border border-sage/25 bg-white p-6 shadow-soft sm:p-8"
-          >
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-1 h-5 w-5 text-sage" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <h2 id="new-api-key-title" className="text-2xl">
-                  New key created
-                </h2>
-                <p className="mt-2 text-sm text-ink/65">
-                  {
-                    "Copy this plaintext key now. For account safety, you won't see this again."
-                  }
-                </p>
-                <div className="mt-4 rounded-md border border-line bg-paper px-4 py-3">
-                  <code className="block break-all font-mono text-sm text-ink">
-                    {revealedKey.key}
-                  </code>
-                </div>
-                {revealedKey.isTest ? (
-                  <span
-                    aria-label="Test key"
-                    className="mt-3 inline-flex rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 text-xs font-semibold text-ink"
-                  >
-                    Test
-                  </span>
-                ) : null}
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Button onClick={() => void copyKey()} type="button">
-                    <Clipboard className="h-4 w-4" aria-hidden="true" />
-                    Copy key
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setRevealedKey(null);
-                      setCopyNotice(null);
-                    }}
-                    type="button"
-                    variant="secondary"
-                  >
-                    Done
-                  </Button>
-                  {copyNotice ? (
-                    <p className="text-sm font-semibold text-sage">
-                      {copyNotice}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </section>
+          <CreatedKeyReveal
+            copyNotice={copyNotice}
+            onCopy={() => void copyKey()}
+            onDone={() => {
+              setRevealedKey(null);
+              setCopyNotice(null);
+            }}
+            revealedKey={revealedKey}
+          />
         ) : null}
 
         {revealedWebhookSecret ? (
@@ -919,17 +1162,7 @@ export function ApiKeysPanel() {
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-xs text-ink/65">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono">{key.maskedKey}</span>
-                          {key.isTest ? (
-                            <span
-                              aria-label="Test key"
-                              className="inline-flex rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 font-sans text-[11px] font-semibold text-ink"
-                            >
-                              Test
-                            </span>
-                          ) : null}
-                        </div>
+                        <MaskedApiKeyValue apiKey={key} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-4">
                         <span
@@ -1069,6 +1302,11 @@ export function ApiKeysPanel() {
       </div>
 
       <aside className="flex flex-col gap-5">
+        <CreditBalanceCard
+          balanceState={balanceState}
+          onRefresh={() => void refreshBalance()}
+        />
+
         <Card className="p-5">
           <h2 className="text-2xl">Create key</h2>
           <p className="mt-2 text-sm text-ink/65">
