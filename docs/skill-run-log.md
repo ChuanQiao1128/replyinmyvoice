@@ -4259,3 +4259,12 @@ claude-heavy-planning-handoff
 - Output artifacts: Final worker report; `docs/skill-run-log.md`.
 - Verification evidence: `dotnet publish backend-dotnet/src/ReplyInMyVoice.Functions/ReplyInMyVoice.Functions.csproj -c Release -o /tmp/ver-pub /p:CommitSha=deadbeefcafe /p:BuildTimestamp=2026-06-08T00:00:00Z` exited 0 and `/tmp/ver-pub/version.generated.json` contained the override. `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter FullyQualifiedName~VersionFunctionTests` passed 3/3. `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 595/595.
 - Limitations: No live Azure deploy or smoke command was run; the issue explicitly scopes this to local build/package and CI publish wiring.
+
+### 2026-06-08 - dotnet-backend-testing - HARD-03 API input hardening
+
+- Agent: Codex worker
+- Trigger: GitHub issue #586 / HARD-03 adds C# xUnit coverage for API malformed input, boundary validation, and error response shape.
+- Action: Opened and followed the skill; chose direct Azure Functions tests using the existing SQLite fixture style because the behavior is HTTP validation and response mapping. Added table-driven rewrite input cases, invalid usage `days` cases, and explicit 401/402/409/429 response checks.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiInputHardeningTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiUsageHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiUsageHttpFunctionsTests.cs`.
+- Verification evidence: Initial focused run failed on four invalid `days` cases returning 200, then passed 16/16 after the scoped parser update. `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiInputHardeningTests` passed 16/16. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 611/611. `dotnet build ReplyInMyVoice.sln -c Release` exited 0.
+- Limitations: No frontend proxy test was added; backend function coverage is sufficient for the issue scope. No deploy, push, or PR command was run.

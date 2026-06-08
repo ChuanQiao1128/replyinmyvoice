@@ -97,7 +97,7 @@ public sealed class ApiUsageHttpFunctionsTests
     }
 
     [Fact]
-    public async Task Usage_series_clamps_days_query_to_supported_window()
+    public async Task Usage_series_rejects_days_query_outside_supported_window()
     {
         await using var fixture = await DbFixture.CreateAsync();
         var functions = CreateFunctions(fixture.CreateContext);
@@ -109,12 +109,8 @@ public sealed class ApiUsageHttpFunctionsTests
             CreateRequest("entra-usage-window", "usage-window@example.com", "?days=0"),
             CancellationToken.None);
 
-        var tooLargeSeries = tooLargeResult.Should().BeOfType<OkObjectResult>().Subject
-            .Value.Should().BeAssignableTo<IReadOnlyList<ApiUsageSeriesPoint>>().Subject;
-        var zeroSeries = zeroResult.Should().BeOfType<OkObjectResult>().Subject
-            .Value.Should().BeAssignableTo<IReadOnlyList<ApiUsageSeriesPoint>>().Subject;
-        tooLargeSeries.Should().HaveCount(90);
-        zeroSeries.Should().ContainSingle();
+        AssertError(tooLargeResult, StatusCodes.Status400BadRequest, "invalid_request");
+        AssertError(zeroResult, StatusCodes.Status400BadRequest, "invalid_request");
     }
 
     private static ApiUsageHttpFunctions CreateFunctions(Func<AppDbContext> createContext)
@@ -192,4 +188,24 @@ public sealed class ApiUsageHttpFunctionsTests
                 ["AZURE_FUNCTIONS_ENVIRONMENT"] = "Testing",
             })
             .Build();
+
+    private static void AssertError(IActionResult result, int expectedStatusCode, string expectedCode)
+    {
+        var body = result.Should().BeAssignableTo<ObjectResult>().Subject;
+        body.StatusCode.Should().Be(expectedStatusCode);
+        var json = System.Text.Json.JsonSerializer.Serialize(body.Value);
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+        document.RootElement
+            .GetProperty("error")
+            .GetProperty("code")
+            .GetString()
+            .Should()
+            .Be(expectedCode);
+        document.RootElement
+            .GetProperty("error")
+            .GetProperty("message")
+            .GetString()
+            .Should()
+            .NotBeNullOrWhiteSpace();
+    }
 }
