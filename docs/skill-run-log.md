@@ -4518,3 +4518,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
 - Verification evidence: Initial red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteUseCaseTests` failed with missing `Application.Common` and `Application.UseCases.Rewrite` types. Final gates: `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused use-case test passed 7/7; full `dotnet test ReplyInMyVoice.sln -c Release` passed 626/626; handler file existence check passed.
 - Limitations: No frontend, deployment, push, or PR command was run.
+
+### 2026-06-09 - data-module-review - DDD-21 Function rewrite shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #611 removes inline EF create/get access from `RewriteHttpFunctions` for the rewrite attempt path.
+- Action: Opened and followed the project skill; read the existing Function create/get methods, DDD-20 Application handlers, repository registration, and existing API behavior tests. Confirmed no schema or migration change was needed and the remaining `AppDbContext` usage in the file belongs to out-of-scope history/delete methods.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs --limit 120` reported no data-risk signals for the updated Function shell. Release build and full backend tests passed.
+- Limitations: The old `RewriteRequestService` remains registered and unchanged for later strangler work.
+
+### 2026-06-09 - state-machine-modeling - DDD-21 rewrite attempt shell mapping
+
+- Agent: Codex worker
+- Trigger: GitHub issue #611 changes the Function entry point for rewrite attempt creation and lookup, which fronts the rewrite attempt lifecycle.
+- Action: Opened and followed the project skill; generated the transition-table skeleton and verified the state model is unchanged: unauthenticated requests reject before persistence, create delegates to the Application handler for pending/existing/succeeded/conflict/quota outcomes, and get delegates owner-scoped lookup to the Application query.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/state-machine-modeling/scripts/state_machine_template.py "DDD-21 rewrite Function shell"` produced the required state-machine checklist. Existing `RewriteApiTests` passed 32/32, covering validation/auth no-side-effect cases, quota rejection, create/outbox, idempotent retry, conflict, and owner lookup.
+- Limitations: DDD-21 changes only Function shelling; it does not add new states, transitions, or persistence rules.
+
+### 2026-06-09 - resilience-test-generation - DDD-21 idempotent Function shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #611 moves the create/get Function path onto Application handlers while preserving idempotency, quota, and no-side-effect behavior.
+- Action: Opened and followed the project skill; generated the failure matrix and selected the existing API integration contract as the lowest useful test level because behavior must not change. Reviewed duplicate request, conflicting request, validation/auth rejection, quota rejection, and lookup paths against the unchanged assertions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/resilience-test-generation/scripts/resilience_matrix.py "DDD-21 rewrite Function shell"` produced duplicate, partial-success, concurrent-request, and malformed-payload checklist rows. `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteApiTests` passed 32/32 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 626/626.
+- Limitations: No live providers, queue consumers, payment calls, deployment, push, or PR command was run.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-21 RewriteApiTests contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #611 changes C# Azure Functions entry-point code and requires release build plus focused/full .NET test gates.
+- Action: Opened and followed the project skill; used existing `RewriteApiTests` as the behavior contract without modifying assertions, updated only the direct `RewriteHistoryTests` Function construction helper required by the constructor injection change, and ran focused tests before the full suite.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` exited 0 with 0 warnings; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteApiTests` passed 32/32; `dotnet test ReplyInMyVoice.sln -c Release` passed 626/626.
+- Limitations: No new test assertions were added because the issue explicitly required preserving the existing behavior contract.
