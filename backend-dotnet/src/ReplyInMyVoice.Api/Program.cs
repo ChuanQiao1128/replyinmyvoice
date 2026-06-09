@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -14,6 +16,8 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using ApplicationResultKind = ReplyInMyVoice.Application.Common.ApplicationResultKind;
+using RewriteAttemptDto = ReplyInMyVoice.Application.Common.RewriteAttemptDto;
 
 const string V1RewriteEndpointName = "v1/rewrite";
 const string V1RewriteResultEndpointName = "v1/rewrite/{id}";
@@ -62,7 +66,7 @@ app.MapGet("/health", () => Results.Ok(new { ok = true, service = "replyinmyvoic
 
 app.MapGet("/api/me", async (
     HttpRequest httpRequest,
-    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    GetAccountSummaryHandler getAccountSummaryHandler,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -74,9 +78,10 @@ app.MapGet("/api/me", async (
             statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    var account = await accountService.GetOrCreateAccountSummaryAsync(
-        externalUserId,
-        ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+    var account = await getAccountSummaryHandler.HandleAsync(
+        new GetAccountSummaryQuery(
+            externalUserId,
+            ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration)),
         cancellationToken);
 
     return Results.Ok(account);
@@ -84,7 +89,7 @@ app.MapGet("/api/me", async (
 
 app.MapGet("/api/me/payments", async (
     HttpRequest httpRequest,
-    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    GetPurchaseHistoryHandler getPurchaseHistoryHandler,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -96,9 +101,10 @@ app.MapGet("/api/me/payments", async (
             statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    var payments = await accountService.GetPurchaseHistoryAsync(
-        externalUserId,
-        ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+    var payments = await getPurchaseHistoryHandler.HandleAsync(
+        new GetPurchaseHistoryQuery(
+            externalUserId,
+            ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration)),
         cancellationToken);
 
     return Results.Ok(payments);
@@ -106,7 +112,7 @@ app.MapGet("/api/me/payments", async (
 
 app.MapGet("/api/me/billing/history", async (
     HttpRequest httpRequest,
-    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    GetBillingHistoryHandler getBillingHistoryHandler,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -118,9 +124,10 @@ app.MapGet("/api/me/billing/history", async (
             statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    var history = await accountService.GetBillingHistoryAsync(
-        externalUserId,
-        ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+    var history = await getBillingHistoryHandler.HandleAsync(
+        new GetBillingHistoryQuery(
+            externalUserId,
+            ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration)),
         cancellationToken);
 
     return Results.Ok(history);
@@ -129,8 +136,8 @@ app.MapGet("/api/me/billing/history", async (
 app.MapPost("/api/rewrite", async (
     HttpRequest httpRequest,
     [FromBody] RewriteRequest request,
-    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
-    RewriteRequestService rewriteRequestService,
+    GetOrCreateUserHandler getOrCreateUserHandler,
+    CreateRewriteAttemptHandler createRewriteAttemptHandler,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -160,22 +167,24 @@ app.MapPost("/api/rewrite", async (
             statusCode: StatusCodes.Status400BadRequest);
     }
 
-    var user = await accountService.GetOrCreateUserAsync(
-        externalUserId,
-        ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+    var user = await getOrCreateUserHandler.HandleAsync(
+        new GetOrCreateUserCommand(
+            externalUserId,
+            ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration)),
         cancellationToken);
     var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user, builder.Configuration);
 
-    var result = await rewriteRequestService.CreateAttemptAsync(
-        user.Id,
-        idempotencyKey,
-        request,
-        plan.PeriodKey,
-        plan.QuotaLimit,
-        DateTimeOffset.UtcNow,
+    var result = await createRewriteAttemptHandler.HandleAsync(
+        new CreateRewriteAttemptCommand(
+            user.Id,
+            idempotencyKey,
+            request,
+            plan.PeriodKey,
+            plan.QuotaLimit,
+            DateTimeOffset.UtcNow),
         cancellationToken);
 
-    if (result.Kind == ReserveRewriteResultKind.QuotaExceeded)
+    if (result.Kind == ApplicationResultKind.QuotaExceeded)
     {
         return Results.Problem(
             title: "Rewrite quota exhausted",
@@ -183,7 +192,7 @@ app.MapPost("/api/rewrite", async (
             statusCode: StatusCodes.Status402PaymentRequired);
     }
 
-    if (result.Kind == ReserveRewriteResultKind.Conflict)
+    if (result.Kind == ApplicationResultKind.Conflict)
     {
         return Results.Problem(
             title: "Idempotency key conflict",
@@ -191,23 +200,20 @@ app.MapPost("/api/rewrite", async (
             statusCode: StatusCodes.Status409Conflict);
     }
 
-    var response = new RewriteAttemptResponse(
-        result.AttemptId,
-        result.Status.ToString(),
-        result.ResultJson,
-        result.ErrorCode);
-
-    return result.Status == RewriteAttemptStatus.Succeeded
-        ? Results.Ok(response)
-        : Results.Accepted($"/api/rewrite-attempts/{result.AttemptId}", response);
+    return result.Value is not null
+        ? ToRewriteAttemptHttpResult(result.Value)
+        : Results.Problem(
+            title: "Rewrite request failed",
+            detail: "The rewrite request could not be processed.",
+            statusCode: StatusCodes.Status500InternalServerError);
 });
 
 app.MapPost("/api/v1/rewrite", async (
     HttpRequest httpRequest,
     AppDbContext db,
     IApiKeyRateLimiter rateLimiter,
-    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
-    RewriteRequestService rewriteRequestService,
+    HasPaidApiEntitlementHandler hasPaidApiEntitlementHandler,
+    CreateRewriteAttemptHandler createRewriteAttemptHandler,
     CancellationToken cancellationToken) =>
 {
     var stopwatch = Stopwatch.StartNew();
@@ -301,6 +307,7 @@ app.MapPost("/api/v1/rewrite", async (
             rateLimit: rateLimit);
     }
 
+    // TODO(DDD): still uses inline db — DDD-67/68
     var user = await db.AppUsers
         .AsNoTracking()
         .SingleOrDefaultAsync(x => x.Id == auth.UserId.Value, cancellationToken);
@@ -378,7 +385,9 @@ app.MapPost("/api/v1/rewrite", async (
             rateLimit: rateLimit);
     }
 
-    if (!await accountService.HasPaidApiEntitlementAsync(user.Id, now, cancellationToken))
+    if (!await hasPaidApiEntitlementHandler.HandleAsync(
+            new HasPaidApiEntitlementQuery(user.Id, now),
+            cancellationToken))
     {
         return await CompleteV1Async(
             db,
@@ -396,17 +405,18 @@ app.MapPost("/api/v1/rewrite", async (
     }
 
     var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user, builder.Configuration);
-    var result = await rewriteRequestService.CreateAttemptAsync(
-        user.Id,
-        idempotencyKey,
-        new RewriteRequest(null, draft, null, null, null, null, "warm"),
-        plan.PeriodKey,
-        plan.QuotaLimit,
-        now,
-        cancellationToken,
-        auth.ApiKeyId);
+    var result = await createRewriteAttemptHandler.HandleAsync(
+        new CreateRewriteAttemptCommand(
+            user.Id,
+            idempotencyKey,
+            new RewriteRequest(null, draft, null, null, null, null, "warm"),
+            plan.PeriodKey,
+            plan.QuotaLimit,
+            now,
+            auth.ApiKeyId),
+        cancellationToken);
 
-    if (result.Kind == ReserveRewriteResultKind.QuotaExceeded)
+    if (result.Kind == ApplicationResultKind.QuotaExceeded)
     {
         return await CompleteV1Async(
             db,
@@ -420,7 +430,7 @@ app.MapPost("/api/v1/rewrite", async (
             rateLimit: rateLimit);
     }
 
-    if (result.Kind == ReserveRewriteResultKind.Conflict)
+    if (result.Kind == ApplicationResultKind.Conflict)
     {
         return await CompleteV1Async(
             db,
@@ -430,7 +440,21 @@ app.MapPost("/api/v1/rewrite", async (
             stopwatch,
             now,
             cancellationToken,
-            result.AttemptId.ToString(),
+            result.Value?.AttemptId.ToString(),
+            response: httpRequest.HttpContext.Response,
+            rateLimit: rateLimit);
+    }
+
+    if (result.Value is null)
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error("rewrite_failed", "The rewrite request could not be processed.", StatusCodes.Status500InternalServerError),
+            StatusCodes.Status500InternalServerError,
+            stopwatch,
+            now,
+            cancellationToken,
             response: httpRequest.HttpContext.Response,
             rateLimit: rateLimit);
     }
@@ -439,13 +463,13 @@ app.MapPost("/api/v1/rewrite", async (
         db,
         auth.ApiKeyId,
         Results.Accepted(
-            $"/api/v1/rewrite/{result.AttemptId}",
-            new V1RewriteSubmitResponse(result.AttemptId, "processing")),
+            $"/api/v1/rewrite/{result.Value.AttemptId}",
+            new V1RewriteSubmitResponse(result.Value.AttemptId, "processing")),
         StatusCodes.Status202Accepted,
         stopwatch,
         now,
         cancellationToken,
-        result.AttemptId.ToString(),
+        result.Value.AttemptId.ToString(),
         response: httpRequest.HttpContext.Response,
         rateLimit: rateLimit);
 });
@@ -455,6 +479,7 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
     HttpRequest httpRequest,
     AppDbContext db,
     IApiKeyRateLimiter rateLimiter,
+    GetRewriteAttemptHandler getRewriteAttemptHandler,
     CancellationToken cancellationToken) =>
 {
     var stopwatch = Stopwatch.StartNew();
@@ -504,13 +529,14 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
             rateLimit: rateLimit);
     }
 
-    var attempt = await db.RewriteAttempts
-        .AsNoTracking()
-        .SingleOrDefaultAsync(
-            x => x.Id == id && x.UserId == auth.UserId.Value,
-            cancellationToken);
+    var getAttemptResult = await getRewriteAttemptHandler.HandleAsync(
+        new GetRewriteAttemptQuery(id, auth.UserId.Value),
+        cancellationToken);
+    var attempt = getAttemptResult.Value;
 
-    if (attempt is null || IsV1SandboxAttempt(attempt) != auth.IsTest)
+    if (getAttemptResult.Kind == ApplicationResultKind.NotFound ||
+        attempt is null ||
+        IsV1SandboxAttempt(attempt) != auth.IsTest)
     {
         return await CompleteV1Async(
             db,
@@ -544,7 +570,7 @@ app.MapGet("/api/v1/usage", async (
     HttpRequest httpRequest,
     AppDbContext db,
     IApiKeyRateLimiter rateLimiter,
-    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    GetAccountSummaryHandler getAccountSummaryHandler,
     CancellationToken cancellationToken) =>
 {
     var stopwatch = Stopwatch.StartNew();
@@ -613,6 +639,7 @@ app.MapGet("/api/v1/usage", async (
             rateLimit: rateLimit);
     }
 
+    // TODO(DDD): still uses inline db — DDD-67/68
     var user = await db.AppUsers
         .AsNoTracking()
         .SingleOrDefaultAsync(x => x.Id == auth.UserId.Value, cancellationToken);
@@ -631,9 +658,8 @@ app.MapGet("/api/v1/usage", async (
             rateLimit: rateLimit);
     }
 
-    var account = await accountService.GetOrCreateAccountSummaryAsync(
-        user.ExternalAuthUserId,
-        user.Email,
+    var account = await getAccountSummaryHandler.HandleAsync(
+        new GetAccountSummaryQuery(user.ExternalAuthUserId, user.Email),
         cancellationToken);
 
     return await CompleteV1Async(
@@ -658,7 +684,8 @@ app.MapGet("/api/v1/usage", async (
 app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
     Guid attemptId,
     HttpRequest httpRequest,
-    AppDbContext db,
+    FindUserHandler findUserHandler,
+    GetRewriteAttemptHandler getRewriteAttemptHandler,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -669,8 +696,8 @@ app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
             statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    var user = await db.AppUsers.SingleOrDefaultAsync(
-        x => x.ExternalAuthUserId == externalUserId,
+    var user = await findUserHandler.HandleAsync(
+        new FindUserQuery(externalUserId),
         cancellationToken);
 
     if (user is null)
@@ -678,22 +705,17 @@ app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
         return Results.NotFound();
     }
 
-    var attempt = await db.RewriteAttempts
-        .AsNoTracking()
-        .SingleOrDefaultAsync(
-            x => x.Id == attemptId && x.UserId == user.Id,
-            cancellationToken);
+    var result = await getRewriteAttemptHandler.HandleAsync(
+        new GetRewriteAttemptQuery(attemptId, user.Id),
+        cancellationToken);
+    var attempt = result.Value;
 
-    if (attempt is null)
+    if (result.Kind == ApplicationResultKind.NotFound || attempt is null)
     {
         return Results.NotFound();
     }
 
-    return Results.Ok(new RewriteAttemptResponse(
-        attempt.Id,
-        attempt.Status.ToString(),
-        attempt.ResultJson,
-        attempt.ErrorCode));
+    return Results.Ok(ToRewriteAttemptResponse(attempt));
 });
 
 app.MapPost("/api/promo/redeem", async (
@@ -979,6 +1001,22 @@ static string? ValidateRewriteRequest(RewriteRequest request)
     return null;
 }
 
+static IResult ToRewriteAttemptHttpResult(RewriteAttemptDto attempt)
+{
+    var response = ToRewriteAttemptResponse(attempt);
+
+    return attempt.Status == RewriteAttemptStatus.Succeeded.ToString()
+        ? Results.Ok(response)
+        : Results.Accepted($"/api/rewrite-attempts/{attempt.AttemptId}", response);
+}
+
+static RewriteAttemptResponse ToRewriteAttemptResponse(RewriteAttemptDto attempt) =>
+    new(
+        attempt.AttemptId,
+        attempt.Status,
+        attempt.ResultJson,
+        attempt.ErrorCode);
+
 static async Task<CheckoutSessionRequest?> ReadCheckoutSessionRequestAsync(
     HttpRequest request,
     CancellationToken cancellationToken)
@@ -1033,6 +1071,7 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
     DateTimeOffset now,
     CancellationToken cancellationToken)
 {
+    // TODO(DDD): still uses inline db — DDD-67/68
     if (string.IsNullOrWhiteSpace(bearerToken) ||
         !HasKnownApiKeyPrefix(bearerToken))
     {
@@ -1144,6 +1183,7 @@ static async Task TryWriteV1ApiKeyUsageAsync(
     DateTimeOffset now,
     CancellationToken cancellationToken)
 {
+    // TODO(DDD): still uses inline db — DDD-67/68
     if (apiKeyId is null)
     {
         return;
@@ -1179,6 +1219,7 @@ static async Task<V1SandboxAttemptResult> CreateV1SandboxAttemptAsync(
     DateTimeOffset now,
     CancellationToken cancellationToken)
 {
+    // TODO(DDD): still uses inline db — DDD-67/68
     var sandboxIdempotencyKey = BuildV1SandboxIdempotencyKey(apiKeyId, idempotencyKey);
     var requestHash = ComputeV1Sha256(draft);
     var existingAttempt = await db.RewriteAttempts
@@ -1215,8 +1256,8 @@ static async Task<V1SandboxAttemptResult> CreateV1SandboxAttemptAsync(
     return new V1SandboxAttemptResult(attempt.Id, IsConflict: false);
 }
 
-static bool IsV1SandboxAttempt(RewriteAttempt attempt) =>
-    attempt.Status == RewriteAttemptStatus.Succeeded &&
+static bool IsV1SandboxAttempt(RewriteAttemptDto attempt) =>
+    attempt.Status == RewriteAttemptStatus.Succeeded.ToString() &&
     attempt.IdempotencyKey.StartsWith(V1SandboxAttemptPrefix, StringComparison.Ordinal) &&
     string.Equals(attempt.ResultJson, V1SandboxResultJson, StringComparison.Ordinal);
 
@@ -1229,18 +1270,19 @@ static string ComputeV1Sha256(string value)
     return Convert.ToHexString(hash).ToLowerInvariant();
 }
 
-static IResult MapV1RewriteResult(RewriteAttempt attempt)
+static IResult MapV1RewriteResult(RewriteAttemptDto attempt)
 {
-    if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
+    if (attempt.Status == RewriteAttemptStatus.Pending.ToString() ||
+        attempt.Status == RewriteAttemptStatus.Processing.ToString())
     {
-        return Results.Ok(new V1RewriteProcessingResponse(attempt.Id, "processing"));
+        return Results.Ok(new V1RewriteProcessingResponse(attempt.AttemptId, "processing"));
     }
 
-    if (attempt.Status == RewriteAttemptStatus.Succeeded &&
+    if (attempt.Status == RewriteAttemptStatus.Succeeded.ToString() &&
         TryReadV1SucceededResult(attempt.ResultJson, out var rewrittenText, out var draftSignal, out var rewriteSignal))
     {
         return Results.Ok(new V1RewriteSucceededResponse(
-            attempt.Id,
+            attempt.AttemptId,
             "succeeded",
             rewrittenText,
             new V1RewriteSignal(draftSignal, rewriteSignal)));
@@ -1250,7 +1292,7 @@ static IResult MapV1RewriteResult(RewriteAttempt attempt)
         ? "engine_unavailable"
         : attempt.ErrorCode;
     return Results.Ok(new V1RewriteFailedResponse(
-        attempt.Id,
+        attempt.AttemptId,
         "failed",
         new V1Error(code, V1FailureMessage(attempt))));
 }
@@ -1306,8 +1348,8 @@ static bool TryGetDecimal(JsonElement parent, string propertyName, out decimal v
         property.TryGetDecimal(out value);
 }
 
-static string V1FailureMessage(RewriteAttempt attempt) =>
-    attempt.Status == RewriteAttemptStatus.Expired
+static string V1FailureMessage(RewriteAttemptDto attempt) =>
+    attempt.Status == RewriteAttemptStatus.Expired.ToString()
         ? "The rewrite did not finish in time. Please submit a new request."
         : "The rewrite could not be completed. Please try again.";
 

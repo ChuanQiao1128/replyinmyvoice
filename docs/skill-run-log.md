@@ -5219,3 +5219,30 @@ claude-heavy-planning-handoff
 - Output artifacts: No test artifacts changed; production Worker shell edits only.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteJobProcessorTests|FullyQualifiedName~OutboxDispatcherTests|FullyQualifiedName~QuotaServiceTests"` passed 34/34. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
 - Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.
+
+### 2026-06-09 - state-machine-modeling - DDD-67 API rewrite/account shell preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #652 changes API route entry points for account summary, purchase history, billing history, rewrite attempt creation, rewrite attempt lookup, V1 submit/result, and V1 usage while preserving usage and rewrite-attempt lifecycle behavior.
+- Action: Opened and followed the project skill; treated this as lifecycle preservation. State list remains existing persisted states: rewrite attempts (`Pending`, `Processing`, `Succeeded`, `Failed`, `Expired`) and usage reservations (`Pending`, `Finalized`, `Released`, `Expired`). Events remain signed-in account lookup, rewrite submit, repeated idempotency key, V1 live/test submit, V1 result poll, V1 usage lookup, and cross-user lookup rejection. Transition table remains owned by Application handlers where available: create attempt reserves quota and enqueues outbox, get attempt reads only the caller-owned attempt, entitlement checks preserve paid or usable purchase-credit access, and test-key sandbox attempts remain inline with explicit TODO markers.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs` route lambdas now call Application handlers for the DDD-67 endpoint set.
+- Verification evidence: `python3 agent-skills/state-machine-modeling/scripts/state_machine_template.py DDD-67-api-shell` exited 0; Release build passed; focused issue filter passed 57/57; full backend suite passed 695/695.
+- Limitations: No new states, transition helper, enum, schema, migration, or lifecycle assertions were added because DDD-67 requires unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - data-module-review - DDD-67 API persistence path
+
+- Agent: Codex worker
+- Trigger: DDD-67 changes data-access routing in `ReplyInMyVoice.Api/Program.cs` for account, usage, entitlement, and rewrite attempt paths from old services or inline EF reads to already-registered Application handlers.
+- Action: Opened and followed the project skill; reviewed `Program.cs`, Application handler APIs, repositories, old service behavior, DI registration, and existing API/service tests together. Findings: no schema or migration required; old services remain registered; promo/Stripe routes remain out of scope; V1 internal-user lookup, API key auth, sandbox attempt creation, and API usage write stay inline and are marked with DDD-67/68 TODOs.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs` only.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src/ReplyInMyVoice.Api/Program.cs` exited 0 and returned no risk rows; `git diff --check` exited 0; touched-file restricted-substring scan returned no matches; Release build and both test gates passed.
+- Limitations: The API shell still keeps direct V1 helper database access where the issue explicitly deferred it. No data model, EF migration, service cleanup, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-67 API shell regression gates
+
+- Agent: Codex worker
+- Trigger: DDD-67 requires Release build, focused API/account/rewrite tests, and full .NET backend tests after changing ASP.NET Core Minimal API route lambdas.
+- Action: Opened and followed the project skill; selected existing xUnit/FluentAssertions ASP.NET Core API and service tests as characterization coverage for unchanged response contracts and persistence side effects. No test files or assertions were changed.
+- Output artifacts: No test artifacts changed; production API shell edit only.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteApiTests|FullyQualifiedName~RewriteRequestServiceTests|FullyQualifiedName~AccountServiceTests|FullyQualifiedName~V1RewriteRateLimitTests"` passed 57/57. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.
