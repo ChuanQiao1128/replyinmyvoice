@@ -45,6 +45,132 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - state-machine-modeling - DDD-68 API Program shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #653 changes API entry points for promo redemption/status, Stripe checkout/portal, and Stripe webhook lifecycle handling.
+- Action: Opened and followed the skill. State list: promo redemption remains not-redeemed/applied; promo credit remains active until consumed or expired; billing checkout remains unauthenticated/rejected or session-created; billing portal remains customer-missing or session-created; Stripe event remains new/processed/failed/duplicate. Event list: redeem code, get promo status, create checkout session, create portal session, receive webhook, process duplicate webhook. Transition table: valid redeem creates one applied redemption plus one promo credit; invalid/expired/cap/velocity/config cases create no credit; checkout session creation may create/update the local user only after provider success; missing portal customer rejects without provider side effect; valid webhook begins processing and ends processed or failed; duplicate webhook returns `processed=false`. Invariants: API response contracts stay unchanged, promo IP values are hashed before persistence, duplicate Stripe events do not double-apply side effects, old service registrations stay present, and no schema/migration changes occur. Illegal transitions: invalid promo redemption cannot create credits, missing promo hash config cannot create users or credits, failed checkout cannot persist billing state, and processed webhook events cannot be processed again.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~PromoApiTests|FullyQualifiedName~PromoServiceTests|FullyQualifiedName~StripeBillingApiTests|FullyQualifiedName~StripeWebhookApiTests|FullyQualifiedName~StripeEventServiceTests"` passed 69/69 after the Program shell swap; `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: This issue intentionally did not add a transition helper, change persisted state names, alter DDD-67 rewrite/account/V1 routes, push, open a PR, deploy, touch secrets, or change payment mode/config.
+
+### 2026-06-09 - data-module-review - DDD-68 endpoint persistence boundaries
+
+- Agent: Codex worker
+- Trigger: GitHub issue #653 reroutes EF-backed promo, account-summary, checkout, portal, and Stripe event persistence through Application handlers.
+- Action: Opened and followed the skill; reviewed the route entry points, Application use-case handlers, DI registrations, promo/billing/webhook API tests, and legacy service behavior. Findings: no P1/P2 data defects after preserving promo IP hash/config behavior at the API boundary. Open questions: none for this issue scope. Suggested tests: existing API/service tests covering promo redemption persistence, billing failure no-state behavior, webhook duplicate/idempotency, and full backend regression suite.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused DDD-68 acceptance filter passed 69/69; full backend suite passed 695/695.
+- Limitations: No EF model, migration, repository, database index, billing provider config, production data, or service registration cleanup was changed.
+
+### 2026-06-09 - resilience-test-generation - DDD-68 webhook and provider failure gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #653 changes endpoint calls around checkout provider failures, promo config fail-closed behavior, and Stripe webhook duplicate processing.
+- Action: Opened and followed the skill. Critical operations: promo redeem, checkout session creation, portal session creation, and Stripe webhook processing. Dependency boundaries: EF persistence, Stripe billing client abstraction, Stripe signature parsing, webhook idempotency records, and promo trusted-IP configuration. Failure matrix covered by existing tests: malformed promo body, missing auth, missing promo hash config, velocity limit, provider timeout, missing portal customer, missing/invalid webhook signature, tampered webhook payload, stale signature, duplicate event, and failed webhook replay behavior.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused DDD-68 filter passed 69/69 and includes no-state assertions for provider/config failures plus duplicate webhook behavior; full backend suite passed 695/695.
+- Limitations: No live Stripe endpoint, cloud queue, production database, external network provider, deploy, push, or PR action was exercised.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-68 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #653 changes C# Minimal API routing and requires `dotnet build`, focused API/service tests, and full backend tests.
+- Action: Opened and followed the skill; used the existing xUnit, FluentAssertions, WebApplicationFactory, EF Core SQLite, and deterministic provider fakes as characterization coverage because the issue requires unchanged behavior and unchanged existing assertions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Final verification passed: `dotnet build ReplyInMyVoice.sln -c Release` completed with 0 warnings and 0 errors; focused DDD-68 filter passed 69/69; `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new test assertions were added because this is a behavior-preserving route shell swap. No frontend, browser, deployment, production payment, live provider, secret, push, or PR path was exercised.
+
+### 2026-06-09 - data-module-review - DDD-61 API key Function shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #646 switches API-key and API-usage HTTP Functions from legacy Infrastructure service calls to Application handlers over EF-backed repositories.
+- Action: Opened and followed the skill; reviewed the Function entry points, Application API-key/account handlers, repository registration, legacy service response records, and API-key/usage tests. Kept the change at the shell boundary: no schema edits, no migrations, no repository edits, and old service registrations remain.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiUsageHttpFunctions.cs`; test constructor helpers in `ApiKeyHttpFunctionsTests.cs`, `ApiUsageHttpFunctionsTests.cs`, and `ApiInputHardeningTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; focused API-key/service test filter passed 27/27; full backend suite passed 695/695; `git diff --check` passed; changed-file restricted-term scan returned no matches.
+- Limitations: This issue intentionally did not remove legacy service classes or DI registration, add migrations, alter repository contracts, push, open a PR, deploy, touch secrets, or change payment wiring.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-61 backend regression gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #646 changes C# Azure Function constructor signatures and backend request handling paths while requiring existing behavior and assertions to remain unchanged.
+- Action: Opened and followed the skill; used the existing xUnit/FluentAssertions/EF Core SQLite coverage as the regression gate and changed only direct Function test factories needed for the new handler constructor dependencies.
+- Output artifacts: Same DDD-61 Function and test-helper files plus this log entry.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors; `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~ApiKeyServiceTests|FullyQualifiedName~ApiKeyHttpFunctionsTests|FullyQualifiedName~ApiKeyUsageQueryServiceTests"` passed 27/27; `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new test assertions were added because the issue scope is a behavior-preserving shell swap with existing acceptance coverage. No browser, frontend, deployment, production data, payment, or secret path was exercised.
+
+### 2026-06-09 - state-machine-modeling - DDD-41 quota reservation handlers
+
+- Agent: Codex worker
+- Trigger: GitHub issue #622 changes and tests quota reservation, rewrite-attempt, and cleanup lifecycles through new Application handlers.
+- Action: Opened and followed the skill. State list: `RewriteAttempt` remains `Pending`, `Processing`, `Succeeded`, `Failed`, and `Expired`; `UsageReservation` remains `Pending`, `Finalized`, `Released`, and `Expired`. Event list: reserve quota, duplicate reserve lookup, conflicting reserve lookup, mark processing, finalize success, release failure/cancel path, and release expired cleanup. Transition table: reserve creates pending attempt plus pending reservation; duplicate reserve returns the existing attempt; conflict returns the old attempt with an error code; mark processing moves pending attempt to processing once; finalize moves pending reservation to finalized and attempt to succeeded; release moves pending reservation to released and pending/processing attempt to failed; expired cleanup moves stale pending reservation plus pending/processing attempt to expired. Invariants: terminal attempts are not overwritten by late success, period-backed success moves one reserved count to used count, release/expiry returns reserved period count or credit consumption, and expired cleanup loops in bounded batches. Illegal transitions: finalized/released/expired reservations do not finalize again; failed/expired attempts do not become succeeded; non-pending attempts do not re-enter processing.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Quota/*.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/ReserveQuotaResult.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaUseCaseTests` passed 9/9; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaServiceTests` passed 22/22; `dotnet test ReplyInMyVoice.sln -c Release` passed 641/641.
+- Limitations: Entry points were intentionally not switched, and `QuotaService` was not edited per the strangler issue scope.
+
+### 2026-06-09 - data-module-review - DDD-41 quota repository and UoW changes
+
+- Agent: Codex worker
+- Trigger: GitHub issue #622 extends EF-backed repositories, `IUnitOfWork`, and quota persistence invariants without a schema change.
+- Action: Opened and followed the skill; reviewed `QuotaService`, `AppDbContext` mappings for `UsagePeriod`, `UsageReservation`, `RewriteAttempt`, `RewriteCredit`, and `OutboxMessage`, existing Application repository interfaces, repository implementations, and SQLite integration test patterns. Kept changes additive: narrow lookup methods, expired-reservation batch loading, serializable transaction overloads, and bounded race retry support in Infrastructure.
+- Output artifacts: `IRewriteAttemptRepository.cs`; `IUsageReservationRepository.cs`; `IUsagePeriodRepository.cs`; `IRewriteCreditRepository.cs`; `IUnitOfWork.cs`; matching `Infrastructure/Repositories/*` implementations; `QuotaUseCaseTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; focused quota use-case tests passed 9/9; existing quota service tests passed 22/22; full backend tests passed 641/641; no EF Core or `AppDbContext` dependency was introduced into the new quota handlers.
+- Limitations: No database migration, model snapshot edit, data backfill, deployment, production data access, payment action, push, or PR action was performed.
+
+### 2026-06-09 - resilience-test-generation - DDD-41 quota retry and cleanup coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #622 requires reserve race retry behavior and expired-reservation batch cleanup coverage.
+- Action: Opened and followed the skill. Critical operation: reserve quota without double-consuming period slots or credits when requests repeat or race. Dependency boundaries: SQLite/EF persistence, outbox row creation, period counters, and credit counters. Failure matrix covered in tests: duplicate request key, conflicting request hash, full quota without credit, credit-backed reservation release, simulated reserve retry path, stale pending cleanup, stale processing cleanup, and late success after expiry.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/UnitOfWork.cs`; quota Application handlers; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaUseCaseTests` passed 9/9 and asserts final persisted state for attempts, reservations, periods, credits, and outbox messages. Full backend tests passed 641/641.
+- Limitations: No live queue, provider, webhook endpoint, cloud service, or production database was contacted. The reserve retry test uses a deterministic unit-of-work shim to prove handler retry wiring; existing service concurrency coverage remains in `QuotaServiceTests`.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-41 quota xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #622 adds C#/.NET Application handler tests using SQLite in-memory and requires focused plus full `dotnet test` gates.
+- Action: Opened and followed the skill; added `QuotaUseCaseTests` at the EF Core SQLite integration level with hand-written helpers and no new packages. Covered reserve, duplicate/conflict, quota full, credit waterfall, release, finalize, processing claim, expired batch loop, and late-success guard. Added DI registration assertions for the new handlers.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; quota handler and repository implementation files; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaUseCaseTests` passed 9/9; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaServiceTests` passed 22/22; `dotnet test ReplyInMyVoice.sln -c Release` passed 641/641.
+- Limitations: NuGet package vulnerability metadata lookup emitted `NU1900` warnings because the feed metadata endpoint was unavailable. Local git commit was blocked by sandbox permissions on the parent worktree Git metadata; no push, PR, deploy, live payment action, or secret inspection was performed.
+
+### 2026-06-09 - system-spec-synthesis - DDD-30 ADR and migration playbook
+
+- Agent: Codex worker
+- Trigger: GitHub issue #612 asks for an ADR recording target DDD layering and a migration playbook for later bounded-context waves.
+- Action: Opened and followed the skill at documentation-spec scale; read `AGENTS.md`, `CLAUDE.md`, issue #612, `docs/architecture-decision-record.md`, the DDD restructure requirement, DDD-30 brief, Wave-1 rewrite migration briefs, and the merged Application/repository/handler files.
+- Output artifacts: `docs/architecture-decision-record-0002-ddd-layering.md`; `docs/ddd-migration-playbook.md`; `docs/skill-run-log.md`.
+- Verification evidence: `test -f docs/architecture-decision-record-0002-ddd-layering.md` passed; `test -f docs/ddd-migration-playbook.md` passed; `grep -qi "strangler" docs/ddd-migration-playbook.md` passed; both new docs are non-empty; scoped restricted-substring scan over the two new docs printed no matches.
+- Limitations: Docs-only issue. No code, csproj, schema, deployment, push, PR, payment, secret, or production branch action was performed.
+
+### 2026-06-09 - data-module-review - DDD-11 Application repository interfaces
+
+- Agent: Codex worker
+- Trigger: GitHub issue #608 defines Application-layer persistence abstractions over EF-backed `AppUser`, `RewriteAttempt`, `UsagePeriod`, `UsageReservation`, and `RewriteCredit`.
+- Action: Opened and followed the skill; reviewed `AGENTS.md`, `CLAUDE.md`, issue #608, `plans/ddd-restructure/issues/DDD-11-repository-interfaces.md`, the owned entity files, `AppDbContext`, `RewriteRequestService`, `QuotaService`, and the API create/get attempt paths. Ran the data-risk scan at a bounded limit for context.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUnitOfWork.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IAppUserRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteAttemptRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUsagePeriodRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUsageReservationRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteCreditRepository.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src --limit 40` completed and surfaced known broad quota/idempotency signals. `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. `dotnet test ReplyInMyVoice.sln -c Release` passed 616/616 tests. Application source scan found no EF Core or Infrastructure references.
+- Limitations: Interfaces only; no repository implementations, migrations, schema changes, transaction behavior changes, DI wiring, provider calls, deploys, pushes, or PR actions were performed.
+
+### 2026-06-09 - state-machine-modeling - DDD-11 rewrite attempt and reservation boundaries
+
+- Agent: Codex worker
+- Trigger: GitHub issue #608 exposes repository contracts for `RewriteAttempt` and quota reservation lifecycle aggregates.
+- Action: Opened and followed the skill as a lifecycle review. State list: `RewriteAttempt` keeps existing `Pending`, `Processing`, `Succeeded`, `Failed`, and `Expired`; `UsageReservation` keeps existing `Pending`, `Finalized`, `Released`, and `Expired`. Event list: create reservation, idempotent create lookup, owner-scoped get, finalize, release, and expiry cleanup remain existing service-owned events. Transition table and illegal transitions are unchanged by this issue because only repository contracts were added. Invariants checked: attempt result reads stay user-scoped, idempotency lookup stays user-scoped, quota period/credit/reservation mutations are committed through `IUnitOfWork`, and Application abstractions do not expose EF Core types.
+- Output artifacts: Same DDD-11 interface files and `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; `dotnet test ReplyInMyVoice.sln -c Release` passed 616/616 tests; `ls backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/I*Repository.cs` listed five repository contracts; Application source scan found no EF Core or Infrastructure references.
+- Limitations: No new lifecycle enum, transition helper, persistence implementation, migration, queue behavior, or runtime quota flow changed.
+
+### 2026-06-09 - system-spec-synthesis - DDD-10 Application project skeleton
+
+- Agent: Codex worker
+- Trigger: GitHub issue #607 adds the new `ReplyInMyVoice.Application` layer to the target DDD project graph.
+- Action: Opened and followed the skill at implementation-checkpoint scale; read `AGENTS.md`, `CLAUDE.md`, issue #607, `plans/ddd-restructure/issues/DDD-10-application-skeleton.md`, `plans/ddd-restructure/REQUIREMENT.md` section 3, `backend-dotnet/ReplyInMyVoice.sln`, and `backend-dotnet/src/ReplyInMyVoice.Domain/ReplyInMyVoice.Domain.csproj`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/ReplyInMyVoice.Application.csproj`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/ApplicationAbstractionsMarker.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/ApplicationAssemblyMarker.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/ApplicationUseCasesMarker.cs`; `backend-dotnet/ReplyInMyVoice.sln`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors; `grep -q "ReplyInMyVoice.Application" backend-dotnet/ReplyInMyVoice.sln` passed; `test -f backend-dotnet/src/ReplyInMyVoice.Application/ReplyInMyVoice.Application.csproj` passed; `dotnet test ReplyInMyVoice.sln -c Release` passed 616/616 tests.
+- Limitations: Skeleton only; no use-case, repository, Infrastructure, Api, Functions, Worker, billing, deployment, secret, or production branch changes were made.
+
 ### 2026-06-08 - system-spec-synthesis - CORE-593 MCP shared tool contract
 
 - Agent: Codex worker
@@ -4428,3 +4554,731 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/developers/api-keys-panel.tsx`; `tests/unit/api-keys-panel.test.ts`; `tests/unit/developer-keys-ui.test.ts`.
 - Verification evidence: `npm run test -- tests/unit/api-keys-panel.test.ts` passed 1/1 after the missing-export red run; `npm run test -- tests/unit/developer-keys-ui.test.ts` passed 7/7; `npm run typecheck` exited 0; `npm run test` passed 65 files / 481 tests; `npm run build` exited 0.
 - Limitations: No authenticated browser screenshot or Playwright flow was run by this worker; the supervisor can run a signed-in smoke if credentials/session setup are available.
+
+### 2026-06-09 - data-module-review - DDD-12 infrastructure repositories
+
+- Agent: Codex worker
+- Trigger: GitHub issue #609 / DDD-12 adds EF Core repository implementations and UnitOfWork over `AppDbContext`.
+- Action: Opened and followed the skill; read the DDD-11 Application abstractions, `AppDbContext`, old quota/account/history query paths, entity mappings, and DI registration pattern. Preserved tracked repository queries for UnitOfWork semantics, retained idempotency lookup visibility across soft-deleted attempts, and kept credit selection materialized by user to remain SQLite-compatible.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/*.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj`.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories --limit 120` reported only expected quota/idempotency/read-query signals in the new repository methods. Focused repository tests passed 3/3 after implementation.
+- Limitations: The new repositories intentionally do not add transactions or retry loops; callers compose them with scoped `AppDbContext` and `IUnitOfWork`, while existing old services remain unchanged.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-12 repository DI and behavior
+
+- Agent: Codex worker
+- Trigger: GitHub issue #609 changes C# backend infrastructure and needs Release build/test acceptance.
+- Action: Opened and followed the skill; added focused xUnit/FluentAssertions coverage for Application repository DI registrations, shared scoped context persistence through UnitOfWork, soft-delete-aware user lookup, idempotency lookup, and earliest usable rewrite credit selection.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureRepositoryTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`.
+- Verification evidence: Initial focused run failed because `ReplyInMyVoice.Infrastructure.Repositories` was missing. After implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~InfrastructureRepositoryTests|FullyQualifiedName~AddReplyInMyVoiceInfrastructure_registers_application_repositories"` passed 3/3. `dotnet build ReplyInMyVoice.sln -c Release` exited 0. `dotnet test ReplyInMyVoice.sln -c Release` passed 619/619.
+- Limitations: Tests cover repository contracts and DI only; no old `Infrastructure/Services/*`, Functions, Api, or Worker behavior was changed.
+
+### 2026-06-09 - state-machine-modeling - DDD-20 rewrite attempt reservation handlers
+
+- Agent: Codex worker
+- Trigger: GitHub issue #610 moves rewrite create/get use cases into Application handlers and changes the rewrite attempt plus usage reservation lifecycle surface.
+- Action: Opened and followed the project skill; modeled states as no attempt, pending attempt with pending reservation, existing same-key attempt, conflict same-key attempt, quota blocked, succeeded attempt lookup, and not-found lookup. Events are create command, duplicate create command, conflicting create command, quota exhausted, credit-backed create, and get query by user.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/CreateRewriteAttemptHandler.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/GetRewriteAttemptHandler.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteUseCaseTests.cs`.
+- Verification evidence: Used `agent-skills/state-machine-modeling/scripts/state_machine_template.py "Rewrite attempt reservation"` to generate the required transition checklist. Focused tests cover create -> pending reservation/outbox, duplicate -> existing without new side effects, conflict -> no new side effects, quota blocked -> no pending context mutation, credit-backed create, and get -> owner-only success/not-found.
+- Limitations: DDD-20 does not switch Functions/API entry points; existing service and job processing lifecycle remain in place for DDD-21 and later issues.
+
+### 2026-06-09 - data-module-review - DDD-20 rewrite create/get persistence
+
+- Agent: Codex worker
+- Trigger: GitHub issue #610 changes data access for rewrite attempt creation, usage periods, usage reservations, rewrite credits, and outbox rows.
+- Action: Opened and followed the project skill; read the old `RewriteRequestService` create path, `RewriteHttpFunctions` get-by-user path, DDD-11/12 repository contracts, EF entity mappings, and existing quota tests. Added a minimal outbox repository abstraction so the Application handler can keep the old pending job side effect without depending on `AppDbContext`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IOutboxMessageRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/OutboxMessageRepository.cs`; Application rewrite handlers and tests.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 120 backend-dotnet/src` showed expected quota/idempotency signals in the new handler area. A new focused test first failed on a rejected quota path that left an unsaved `UsagePeriod`; after reordering mutations, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteUseCaseTests` passed 7/7.
+- Limitations: No schema or migration changed. The handler uses the current repository and `IUnitOfWork.SaveChangesAsync` surface; it does not add a new transaction/retry abstraction in DDD-20.
+
+### 2026-06-09 - resilience-test-generation - DDD-20 idempotency and quota rejection checks
+
+- Agent: Codex worker
+- Trigger: GitHub issue #610 changes idempotent rewrite attempt creation and quota reservation behavior.
+- Action: Opened and followed the project skill; generated the local resilience matrix for rewrite attempt reservation and selected SQLite integration tests as the lowest level that proves persistence invariants. Added duplicate request, conflicting request, quota rejection, suspended user, credit-backed quota, and owner-scoped get tests with deterministic clocks and local SQLite.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteUseCaseTests.cs`.
+- Verification evidence: `python3 agent-skills/resilience-test-generation/scripts/resilience_matrix.py "Rewrite attempt reservation"` produced timeout, duplicate, partial-success, concurrent request, and malformed-payload rows. The duplicate/conflict tests assert no duplicate attempts, reservations, or outbox messages. The rejected-quota test asserts a later context save cannot persist a partial period.
+- Limitations: No live provider, payment, queue, or cloud endpoint was used. Concurrent reservation retries remain owned by the existing service until a later issue expands the Application unit-of-work contract.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-20 rewrite use-case tests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #610 adds C# Application handlers and requires SQLite in-memory tests for create/get use cases.
+- Action: Opened and followed the project skill; wrote xUnit/FluentAssertions tests first, watched the initial focused run fail because Application Common and Rewrite handler types were missing, then implemented the handlers and repository registration.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Initial red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteUseCaseTests` failed with missing `Application.Common` and `Application.UseCases.Rewrite` types. Final gates: `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused use-case test passed 7/7; full `dotnet test ReplyInMyVoice.sln -c Release` passed 626/626; handler file existence check passed.
+- Limitations: No frontend, deployment, push, or PR command was run.
+
+### 2026-06-09 - data-module-review - DDD-21 Function rewrite shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #611 removes inline EF create/get access from `RewriteHttpFunctions` for the rewrite attempt path.
+- Action: Opened and followed the project skill; read the existing Function create/get methods, DDD-20 Application handlers, repository registration, and existing API behavior tests. Confirmed no schema or migration change was needed and the remaining `AppDbContext` usage in the file belongs to out-of-scope history/delete methods.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs --limit 120` reported no data-risk signals for the updated Function shell. Release build and full backend tests passed.
+- Limitations: The old `RewriteRequestService` remains registered and unchanged for later strangler work.
+
+### 2026-06-09 - state-machine-modeling - DDD-21 rewrite attempt shell mapping
+
+- Agent: Codex worker
+- Trigger: GitHub issue #611 changes the Function entry point for rewrite attempt creation and lookup, which fronts the rewrite attempt lifecycle.
+- Action: Opened and followed the project skill; generated the transition-table skeleton and verified the state model is unchanged: unauthenticated requests reject before persistence, create delegates to the Application handler for pending/existing/succeeded/conflict/quota outcomes, and get delegates owner-scoped lookup to the Application query.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/state-machine-modeling/scripts/state_machine_template.py "DDD-21 rewrite Function shell"` produced the required state-machine checklist. Existing `RewriteApiTests` passed 32/32, covering validation/auth no-side-effect cases, quota rejection, create/outbox, idempotent retry, conflict, and owner lookup.
+- Limitations: DDD-21 changes only Function shelling; it does not add new states, transitions, or persistence rules.
+
+### 2026-06-09 - resilience-test-generation - DDD-21 idempotent Function shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #611 moves the create/get Function path onto Application handlers while preserving idempotency, quota, and no-side-effect behavior.
+- Action: Opened and followed the project skill; generated the failure matrix and selected the existing API integration contract as the lowest useful test level because behavior must not change. Reviewed duplicate request, conflicting request, validation/auth rejection, quota rejection, and lookup paths against the unchanged assertions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/resilience-test-generation/scripts/resilience_matrix.py "DDD-21 rewrite Function shell"` produced duplicate, partial-success, concurrent-request, and malformed-payload checklist rows. `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteApiTests` passed 32/32 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 626/626.
+- Limitations: No live providers, queue consumers, payment calls, deployment, push, or PR command was run.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-21 RewriteApiTests contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #611 changes C# Azure Functions entry-point code and requires release build plus focused/full .NET test gates.
+- Action: Opened and followed the project skill; used existing `RewriteApiTests` as the behavior contract without modifying assertions, updated only the direct `RewriteHistoryTests` Function construction helper required by the constructor injection change, and ran focused tests before the full suite.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` exited 0 with 0 warnings; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteApiTests` passed 32/32; `dotnet test ReplyInMyVoice.sln -c Release` passed 626/626.
+- Limitations: No new test assertions were added because the issue explicitly required preserving the existing behavior contract.
+### 2026-06-09 - data-module-review - DDD-01 frontend generated Prisma artifact removal
+
+- Agent: Codex worker
+- Trigger: GitHub issue #613 includes removal of frontend generated Prisma artifacts as part of deleting replaced TypeScript rewrite logic.
+- Action: Opened and followed the skill at checklist level; confirmed `lib/generated/` and `prisma/` were already absent in this worktree, and limited changes to deleting the listed dead frontend modules/eval scripts plus compile-only import decoupling in retained helper/type files.
+- Output artifacts: Deleted dead frontend rewrite/eval modules and their exclusive tests; retained `lib/observability/` and live proxy helpers.
+- Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, the DDD-01 dead-code grep, and the banned-term source scan all exited 0. No live imports under `app/` or `components/` were found before deletion.
+- Limitations: No Prisma schema, migration, database access service, payment flow, deployment, push, or PR command was changed or run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-40 Account Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #621 and `plans/ddd-restructure/issues/DDD-40-account.md` require converting the existing `AccountService` use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-40 brief, `docs/ddd-migration-playbook.md`, `AccountService.cs`, existing Rewrite handlers, Application abstractions, repositories, and AccountService tests before editing. Scoped goals to add Account handlers/repositories/DTOs only; non-goals were no entry-point switch, no AccountService edit, no schema/migration change, no provider mode or secret wiring change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Account/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/AccountDtos.cs`; repository abstractions/implementations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AccountUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the Account use-case namespace and DTO/abstraction surface did not exist. Final release build, focused AccountUseCase tests, full backend tests, file-existence check, diff whitespace check, and touched-file banned-term scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-40 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-40 Account deletion and entitlement lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #621 migrates Account use cases that read subscription/free-credit entitlement state and erase account-owned rewrite/usage/credit/support records.
+- Action: Opened and followed the project skill; modeled states as active account, absent account, erased account, paid-entitled account, credit-entitled account, non-entitled account, pending/processing rewrite attempt, finalized/succeeded attempt, pending usage reservation, released reservation, active credit, erased credit, open billing support request, and resolved billing support request. Events are get/create user, find user, summary query, purchase/billing query, API entitlement query, delete command, duplicate delete command, and optional subscription cancellation.
+- Output artifacts: `DeleteAccountHandler`, `HasPaidApiEntitlementHandler`, Account projection handlers, and `AccountUseCaseTests`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/state-machine-modeling/scripts/state_machine_template.py "DDD-40 account deletion lifecycle"` generated the checklist. Tests cover delete command transitions to erased/canceled user, pending/processing attempt to failed with `account_erased`, reservation to released, credit to erased/zeroed, support request to resolved, duplicate delete with one cancellation call, paid-status entitlement, purchase-credit entitlement, and rejected promo/expired/missing-user entitlement.
+- Limitations: Existing entry points still call `AccountService`; the new state transitions are not production-routed until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-40 Account repository migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #621 changes data access services for AppUser, UsagePeriod, UsageReservation, RewriteAttempt, RewriteCredit, PromoCode, PromoCodeRedemption, StripeInvoice, and BillingSupportRequest through new Application repository interfaces.
+- Action: Opened and followed the project skill; read EF entities/mappings, old AccountService queries/mutations, existing repository style, and SQLite tests. Added narrow repository methods only, kept all schema and migration files unchanged, and made `DeleteAccountHandler` commit through `IUnitOfWork.ExecuteInTransactionAsync`.
+- Output artifacts: new Account repository abstractions and implementations, `UnitOfWork.ExecuteInTransactionAsync`, `AccountUsagePlanProvider`, and Account handlers/tests.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src` completed and reported the expected broad quota/idempotency/read-write signals in the backend tree. `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~AccountUseCaseTests` passed 6/6; full `dotnet test ReplyInMyVoice.sln -c Release` passed 632/632.
+- Limitations: The scan is heuristic and broad; no dedicated migration smoke was needed because no schema or migration changed. The existing `AccountService` data path remains in place by design.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-40 AccountUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #621 adds C#/.NET Application handlers and requires SQLite in-memory tests covering all Account handlers.
+- Action: Opened and followed the project skill; wrote `AccountUseCaseTests` before production code, watched the focused test fail on missing Account handler/DTO/interface types, then implemented the Application and Infrastructure code. Added DI assertions to `InfrastructureServiceCollectionTests` for the new repositories, handlers, usage-plan provider, and cancellation adapter.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AccountUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~AccountUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.Account` and related types. Final gates: `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused AccountUseCase tests passed 6/6; focused InfrastructureServiceCollection tests passed 13/13; full backend tests passed 632/632.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-42 RewriteJob Application handler contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 and `plans/ddd-restructure/issues/DDD-42-rewrite-job.md` require converting the existing rewrite job execution workflow into an implementation-ready Application handler contract across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-42 brief, `docs/ddd-migration-playbook.md`, `RewriteJobProcessor.cs`, existing Rewrite/Quota Application handlers, Application abstractions, repositories, and tests before editing. Scoped goals to add the strangler handler and provider/cost abstractions only; non-goals were no entry-point switch, no old processor edit, no schema/migration change, no provider secret or deployment change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/RewriteJob/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteEngineClient.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteCostLogger.cs`; Infrastructure adapter and cost logger files; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteJobUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the `ReplyInMyVoice.Application.UseCases.RewriteJob` namespace and new abstraction types did not exist. Final release build, focused RewriteJobUseCase tests, full backend tests, file-existence check, diff whitespace check, and changed-file prohibited-term scan passed.
+- Limitations: No separate spec document was added because the issue body plus DDD-42 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-42 rewrite job execution lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 moves rewrite job execution, including rewrite attempt status and quota reservation transitions, into an Application handler.
+- Action: Opened and followed the project skill; modeled states as missing attempt, pending attempt with pending reservation, processing attempt, succeeded/finalized attempt, failed/released attempt, expired terminal attempt, malformed request release, provider failure release, provider timeout release, period-backed quota, and credit-backed quota. Events are process command, terminal redelivery, expiration precheck, malformed request JSON, processing claim, engine success, engine failure result, engine timeout, and engine exception.
+- Output artifacts: `ProcessRewriteJobHandler`, `ProcessRewriteJobCommand`, rewrite engine/cost abstractions, and `RewriteJobUseCaseTests`.
+- Verification evidence: Tests cover pending -> processing -> succeeded/finalized, pending -> processing -> failed/released on engine failure, and credit-backed pending -> processing -> failed/released with credit refund on engine exception. Existing `RewriteJobProcessorTests` stayed green in the full suite.
+- Limitations: The new Application handler is registered but not yet wired to Functions/API/Worker entry points; the old processor remains live for the current runtime path by design.
+
+### 2026-06-09 - data-module-review - DDD-42 rewrite job persistence migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 changes data access for rewrite attempt mutation, usage reservation finalization/release, period counters, rewrite credit refunds, and rewrite cost log persistence.
+- Action: Opened and followed the project skill; read EF entities/mappings, old `RewriteJobProcessor` and `QuotaService` mutation paths, existing Application quota handlers, repository contracts, and SQLite tests. Added one narrow no-tracking attempt lookup for preclaim snapshots and kept all schema and migration files unchanged.
+- Output artifacts: `IRewriteAttemptRepository.GetByIdNoTrackingAsync`; `RewriteAttemptRepository.GetByIdNoTrackingAsync`; `ProcessRewriteJobHandler`; `RewriteCostLogger`; `RewriteJobUseCaseTests`.
+- Verification evidence: Focused tests assert final persisted attempt, reservation, period, and credit state after success/failure/error paths. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 644/644.
+- Limitations: No migration smoke was needed because no schema or migration changed. The cost logger duplicates the current persistence shape behind the new abstraction so later waves can switch entry points without editing the old processor now.
+
+### 2026-06-09 - resilience-test-generation - DDD-42 provider failure and quota release checks
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 requires handler coverage for engine failure paths and quota-release-on-error behavior.
+- Action: Opened and followed the project skill; selected deterministic local fakes over live provider calls. Added tests for valid rewrite success, failed engine result, and thrown engine exception with credit refund, asserting persisted final state instead of only handler return behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteJobUseCaseTests.cs`; `FakeRewriteEngineClient`; `ThrowingRewriteEngineClient`; `FakeRewriteCostLogger`.
+- Verification evidence: Red run failed on missing handler/abstraction types. After implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteJobUseCaseTests` passed 3/3, and full backend tests passed 644/644.
+- Limitations: No live OpenAI-compatible provider, writing signal provider, queue consumer, payment provider, cloud endpoint, deployment, push, or PR command was used.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-42 RewriteJobUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 adds C#/.NET Application handler tests for rewrite job success, engine failure, and quota release behavior.
+- Action: Opened and followed the project skill; wrote `RewriteJobUseCaseTests` before production code, watched the initial focused run fail on missing `ProcessRewriteJobHandler`, command, engine, and cost logger types, then implemented the Application and Infrastructure code. Added DI assertions for the new handler and abstractions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteJobUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/RewriteJob/ProcessRewriteJobHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused RewriteJobUseCase tests passed 3/3; full backend tests passed 644/644.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, old processor edit, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-43 ApiKey Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #624 and `plans/ddd-restructure/issues/DDD-43-apikey.md` require converting ApiKey service use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-43 brief, `docs/ddd-migration-playbook.md`, `ApiKeyService.cs`, `ApiKeyUsageQueryService.cs`, existing Rewrite handlers, Application abstractions, repositories, and ApiKey tests before editing. Scoped goals to add ApiKey handlers/repositories/DTOs only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret or deployment change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/ApiKey/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/ApiKeyDtos.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/ApiKeyCredential.cs`; ApiKey repository abstractions/implementations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/ApiKeyUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the ApiKey Application namespace, handlers, and repository types did not exist. Final release build, focused ApiKeyUseCase tests, full backend tests, file-existence check, diff whitespace check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-43 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-43 ApiKey active, rotated, revoked, and webhook lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #624 migrates ApiKey use cases that change key active/revoked state and webhook state.
+- Action: Opened and followed the project skill; modeled states as active key, revoked key, active key with webhook, active key without webhook, missing/non-owned key, and replacement key after rotation. Events are generate command, list query, rotate command, revoke command, set webhook command, clear webhook command, usage summary query, usage series query, and usage recent query.
+- Output artifacts: `GenerateApiKeyHandler`, `ListApiKeysHandler`, `RotateApiKeyHandler`, `RevokeApiKeyHandler`, `SetApiKeyWebhookHandler`, `ClearApiKeyWebhookHandler`, usage query handlers, and `ApiKeyUseCaseTests`.
+- Verification evidence: Tests cover generate -> active, list with last-30-day counts, set webhook -> active with webhook, clear webhook -> active without webhook, rotate active -> old revoked plus replacement active, non-owner rotate -> null, missing revoke -> false, revoke active -> revoked, and usage query window clamping.
+- Limitations: Existing entry points still call the legacy services; the new handlers are registered but not production-routed until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-43 ApiKey repository migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #624 changes data access services for ApiKeys and ApiKeyUsages through new Application repository interfaces.
+- Action: Opened and followed the project skill; read EF entities/mappings, legacy ApiKey service queries/mutations, existing repository style, and SQLite tests. Added narrow repository methods only, kept all schema and migration files unchanged, kept write paths on `IUnitOfWork`, and kept read-only usage queries without `IUnitOfWork`.
+- Output artifacts: `IApiKeyRepository`; `IApiKeyUsageRepository`; `ApiKeyRepository`; `ApiKeyUsageRepository`; ApiKey handlers/tests.
+- Verification evidence: Focused tests assert final persisted ApiKey and ApiKeyUsage-derived state after generate/list/webhook/rotate/revoke and usage query paths. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 646/646.
+- Limitations: No migration smoke was needed because no schema or migration changed. The legacy ApiKey service data path remains in place by design.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-43 ApiKeyUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #624 adds C#/.NET Application handler tests for ApiKey CRUD, webhook, and usage query behavior.
+- Action: Opened and followed the project skill; wrote `ApiKeyUseCaseTests` before production code, watched the initial focused run fail on missing ApiKey Application handler/repository types, then implemented the Application and Infrastructure code with SQLite in-memory coverage.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/ApiKeyUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiKeyUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.ApiKey` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/ApiKey/GenerateApiKeyHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused ApiKeyUseCase tests passed 2/2; full backend tests passed 646/646.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-44 Promo Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 and `plans/ddd-restructure/issues/DDD-44-promo.md` require converting promo redeem/status use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-44 brief, `docs/ddd-migration-playbook.md`, `PromoService.cs`, existing Rewrite handlers, Application abstractions, repositories, and promo tests before editing. Scoped goals to add the strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret or deployment change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Promo/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/PromoRedeemResultDto.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/PromoStatusDto.cs`; promo repository interface extensions and implementations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because `ReplyInMyVoice.Application.UseCases.Promo`, `RedeemPromoHandler`, and `GetPromoStatusHandler` did not exist. Final release build, focused PromoUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and banned-substring scans passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-44 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-44 promo redemption lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 migrates promo redemption/status behavior with validity, cap, already-redeemed, IP-velocity, credit grant, and redemption record states.
+- Action: Opened and followed the project skill; modeled states as missing/invalid code, inactive/future code, expired code, redeemable code under cap, cap-reached code, user already redeemed for code, IP-velocity blocked request, applied redemption, active promo credit, and promo status eligible/not eligible. Events are redeem command, status query, code normalization failure, IP count check, atomic count increment success/miss, redemption insert, and duplicate redemption race.
+- Output artifacts: `RedeemPromoHandler`, `GetPromoStatusHandler`, promo DTOs, repository extensions, and `PromoUseCaseTests`.
+- Verification evidence: Tests cover success, cap reached, already redeemed, expired, IP-velocity blocked, status before redeem, and status after redeem. Full backend tests passed 652/652.
+- Limitations: The new handlers are registered but not wired to Functions/API/Worker entry points; the old `PromoService` remains live by design.
+
+### 2026-06-09 - data-module-review - DDD-44 promo persistence migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 changes data access for promo code lookup, redemption records, IP velocity counts, atomic promo count increment, and promo credit grants.
+- Action: Opened and followed the project skill; read EF promo entities/mappings, legacy `PromoService` persistence flow, existing repository style, and SQLite tests. Added narrow repository methods only, kept all schema and migration files unchanged, kept the raw SQL atomic increment inside Infrastructure, and kept Application handlers free of `AppDbContext`.
+- Output artifacts: `IPromoCodeRepository.GetByIdAsync`, `GetByCodeAsync`, `TryIncrementRedemptionCountAsync`; `IPromoCodeRedemptionRepository` add/query/count methods; `IRewriteCreditRepository.AddAsync`; matching repository implementations; `PromoUseCaseTests`.
+- Verification evidence: Focused tests assert final persisted promo count, rewrite credit, and redemption state for success, cap reached, already redeemed, expired, and IP-velocity blocked paths. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 652/652.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `PromoService` persistence code was not edited.
+
+### 2026-06-09 - resilience-test-generation - DDD-44 promo race and velocity checks
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 requires preserving retry/optimistic-concurrency semantics and IP velocity defense while moving promo redemption into Application handlers.
+- Action: Opened and followed the project skill; selected deterministic SQLite in-memory tests for handler behavior and final state assertions. The handler uses `IUnitOfWork.ExecuteInTransactionAsync` with a bounded retry count and the repository-backed atomic increment to preserve cap correctness.
+- Output artifacts: `RedeemPromoHandler`; promo repository extensions; `PromoUseCaseTests`.
+- Verification evidence: Red run failed on missing handler namespace/types. After implementation, focused PromoUseCase tests passed 6/6 and full backend tests passed 652/652. Existing `PromoService` and promo concurrency tests remained in the full suite.
+- Limitations: No live provider, payment, queue, cloud endpoint, deployment, push, PR, or production smoke command was used.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-44 PromoUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 adds C#/.NET Application handler tests for promo redeem and status behavior.
+- Action: Opened and followed the project skill; wrote `PromoUseCaseTests` before production code, watched the initial focused run fail on missing Promo Application namespace and handlers, then implemented Application and Infrastructure code with SQLite in-memory coverage.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoUseCaseTests.cs`.
+- Verification evidence: Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Promo/RedeemPromoHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused PromoUseCase tests passed 6/6; full backend tests passed 652/652.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-45 PromoAdmin Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #626 and `plans/ddd-restructure/issues/DDD-45-promo-admin.md` require converting PromoAdmin service use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-45 brief, `docs/ddd-migration-playbook.md`, `PromoAdminService.cs`, Rewrite handler templates, Application abstractions, repositories, and admin promo tests before editing. Scoped goals to add the strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, and no deployment change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/PromoAdmin/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/AdminPromoDtos.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IPromoAdminRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/PromoAdminRepository.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoAdminUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the PromoAdmin Application namespace, handlers, and repository types did not exist. Final release build, focused PromoAdminUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and changed-file safety substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-45 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-45 promo admin lifecycle mutations
+
+- Agent: Codex worker
+- Trigger: GitHub issue #626 migrates promo admin use cases that create, update, enable, disable, archive, and restore promo-code state.
+- Action: Opened and followed the project skill; modeled promo-code states as missing, active, disabled, archived, pending, expired, and exhausted, derived from `ArchivedAt`, `IsActive`, validity window, and global redemption count. Events are create command, update command, set-active command, archive command, restore command, list query, and detail query.
+- Output artifacts: `CreatePromoCodeHandler`, `UpdatePromoCodeHandler`, `SetPromoCodeActiveHandler`, `ArchivePromoCodeHandler`, `RestorePromoCodeHandler`, list/detail handlers, and `PromoAdminUseCaseTests`.
+- Verification evidence: Tests cover create -> active with audit, duplicate create rejection, update with audit, update missing id -> not found, ordered status projection, detail stats for applied redemptions, and detail missing id -> null. Full backend tests passed 659/659.
+- Limitations: Existing Functions/API/Worker entry points still use the legacy service; the new handlers are registered but not production-routed until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-45 promo admin repository migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #626 changes data access for promo admin list/detail queries, promo-code mutations, and admin audit append through new Application repository interfaces.
+- Action: Opened and followed the project skill; read EF promo/admin-audit entities and mappings, legacy `PromoAdminService` persistence flow, existing repository style, and SQLite tests. Added a narrow `IPromoAdminRepository`, kept all schema and migration files unchanged, kept write paths on `IUnitOfWork`, preserved unique-code handling, and kept handlers free of `AppDbContext`.
+- Output artifacts: `IPromoAdminRepository`; `PromoAdminRepository`; Application PromoAdmin handlers; `AdminPromoDtos`; `PromoAdminUseCaseTests`.
+- Verification evidence: Focused tests assert persisted promo rows and admin audit rows for create/update, no side effects for duplicate create and missing update, and detail stats from redemption/credit rows. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 659/659.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `PromoAdminService` persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-45 PromoAdminUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #626 adds C#/.NET Application handler tests for PromoAdmin create, update, list, and detail behavior.
+- Action: Opened and followed the project skill; wrote `PromoAdminUseCaseTests` before production code, watched the initial focused run fail on missing PromoAdmin Application namespace, handlers, and repository types, then implemented Application and Infrastructure code with SQLite in-memory coverage.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoAdminUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~PromoAdminUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.PromoAdmin` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/PromoAdmin/CreatePromoCodeHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused PromoAdminUseCase tests passed 7/7; full backend tests passed 659/659.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-46 Billing Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #627 and `plans/ddd-restructure/issues/DDD-46-billing.md` require converting Billing use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-46 brief, `docs/ddd-migration-playbook.md`, `StripeBillingService.cs`, `TaxTurnoverService.cs`, Rewrite handler templates, Application abstractions, repositories, and billing tests before editing. Scoped goals to add the strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Billing/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/BillingDtos.cs`; Application billing abstractions; Infrastructure adapters/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the Billing Application namespace, handlers, and abstractions did not exist. Final release build, focused BillingUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and touched-path restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-46 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-46 billing subscription and payment paths
+
+- Agent: Codex worker
+- Trigger: GitHub issue #627 migrates billing use cases that read subscription/customer state, cancel subscriptions, issue refunds, list paid provider payments, and compute tax turnover warnings.
+- Action: Opened and followed the project skill; modeled states as missing user, user without customer, user with customer, user without subscription, user with active subscription id, local payment missing, local payment present, provider payment listed, turnover below warning threshold, and turnover at or above warning threshold. Events are create checkout command, create portal query, cancel command, refund command, paid-payment list query, and turnover report query.
+- Output artifacts: Billing Application command/query handlers, billing DTOs, Stripe client abstraction, turnover notifier/settings abstractions, repository read extensions, and `BillingUseCaseTests`.
+- Verification evidence: Tests cover checkout user creation, portal customer use, subscription cancellation, no-subscription no-op, refund success, refund missing-payment not found, provider paid-payment listing, and turnover warning notification. Full backend tests passed 667/667.
+- Limitations: Existing Functions/API/Worker entry points still use the legacy services; the new handlers are registered but not production-routed until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-46 billing repository reads
+
+- Agent: Codex worker
+- Trigger: GitHub issue #627 changes data access for AppUser checkout/portal/cancel reads, payment-intent refund validation, and rolling turnover report purchase-credit reads.
+- Action: Opened and followed the project skill; read EF entities/mappings, legacy billing and turnover persistence behavior, existing repository style, and SQLite tests. Added narrow `IRewriteCreditRepository` read methods only, kept all schema and migration files unchanged, kept handlers free of `AppDbContext`, and preserved the old turnover service's SQLite-safe in-memory `DateTimeOffset` window filtering shape.
+- Output artifacts: `IRewriteCreditRepository.GetByUserIdAndPaymentIntentIdAsync`; `IRewriteCreditRepository.ListPurchaseCreditsForTurnoverAsync`; matching `RewriteCreditRepository` implementations; Billing handlers/tests.
+- Verification evidence: Focused tests assert no provider refund call when local payment is missing, correct provider refund request for an existing local payment, and turnover totals from local purchase credits. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 667/667.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing billing service persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-46 BillingUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #627 adds C#/.NET Application handler tests for Billing checkout, portal, cancel, refund, paid-payment list, and tax turnover behavior.
+- Action: Opened and followed the project skill; wrote `BillingUseCaseTests` before production code, watched the initial focused run fail on missing Billing Application namespace, handlers, and abstractions, then implemented Application and Infrastructure code with SQLite in-memory coverage and deterministic fakes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~BillingUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.Billing` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Billing/CreateCheckoutSessionHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused BillingUseCase tests passed 8/8; full backend tests passed 667/667.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-47 Stripe reconciliation Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #628 and `plans/ddd-restructure/issues/DDD-47-stripe-reconciliation.md` require converting the Stripe reconciliation use case into an Application handler across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-47 brief, `docs/ddd-migration-playbook.md`, `StripeReconciliationService.cs`, existing Rewrite/Billing handler templates, Application abstractions, repositories, and reconciliation tests before editing. Scoped goals to add the strangler Application handler only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeReconciliation/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/StripeReconciliationDtos.cs`; Application reconciliation abstractions; Infrastructure repository/adapters/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the StripeReconciliation Application namespace, handler, DTOs, and abstractions did not exist. Final release build, focused StripeReconciliationUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-47 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - data-module-review - DDD-47 payment grant snapshot repository
+
+- Agent: Codex worker
+- Trigger: GitHub issue #628 changes data access for reconciliation-time purchase grant snapshot loading through a new Application repository interface.
+- Action: Opened and followed the project skill; read EF `RewriteCredit` usage, legacy reconciliation grant-loading logic, existing repository style, and SQLite test conventions. Added a narrow read-only `IPaymentGrantRepository`, kept all schema and migration files unchanged, preserved the old SQLite-safe in-memory `DateTimeOffset` filtering shape, and kept the Application handler free of `AppDbContext`.
+- Output artifacts: `IPaymentGrantRepository`; `PaymentGrantRepository`; Stripe reconciliation Application handler and tests.
+- Verification evidence: Focused tests assert the handler requests normalized payment intent ids, performs no unit-of-work save, and produces no alert for a clean match. Full backend tests passed 671/671.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `StripeReconciliationService` persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-47 StripeReconciliationUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #628 adds C#/.NET Application handler tests for Stripe reconciliation discrepancy behavior.
+- Action: Opened and followed the project skill; wrote `StripeReconciliationUseCaseTests` before production code, watched the initial focused run fail on missing StripeReconciliation Application namespace, handler, DTOs, and abstractions, then implemented Application and Infrastructure code with deterministic fakes for the Stripe reconciliation client and alerter.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~StripeReconciliationUseCaseTests` failed with missing reconciliation Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeReconciliation/ReconcileStripeHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused StripeReconciliationUseCase tests passed 4/4; full backend tests passed 671/671.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-48 Stripe event Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 and `plans/ddd-restructure/issues/DDD-48-stripe-event.md` require converting Stripe event use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-48 brief, `docs/ddd-migration-playbook.md`, `StripeEventService.cs`, existing Rewrite/Billing handler templates, Application abstractions, repositories, and Stripe event tests before editing. Scoped goals to add strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/StripeWebhookPayloadDto.cs`; Stripe event Application abstractions; Infrastructure repository/notifier adapters/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the StripeEvent Application namespace, handlers, notifier abstraction, and repository type did not exist. Final release build, focused StripeEventUseCase tests, full backend tests, handler file-existence check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-48 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-48 Stripe event and payment-grace lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 migrates Stripe event idempotency, webhook dispatch, subscription/payment-grace transitions, invoice upsert, credit grant/revocation, and grace batch use cases.
+- Action: Opened and followed the project skill; modeled `StripeEvent` states as `Processing`, `Failed`, and `Processed`; AppUser payment-grace states as active paid access, past-due grace, recovered active, expired inactive, and terminal subscription states; events are try-mark-processed, begin processing, duplicate/in-flight replay, failed sync, checkout completed, subscription update/delete, invoice failed/succeeded/paid/finalized, charge refund/dispute, grace expiry, and grace reminder.
+- Output artifacts: Application StripeEvent command/handler set, `IStripeEventRepository`, `IStripeEventNotifier`, repository extensions, and StripeEvent use-case tests.
+- Verification evidence: Tests cover duplicate TryMark, checkout replay, invoice failed transition into grace, subscription active transition, a two-row grace-expiry batch drain, and a reminder batch ordering regression. Full backend tests passed 677/677.
+- Limitations: Entry points still call the legacy service until a later strangler issue switches callers; no production routing changed.
+
+### 2026-06-09 - data-module-review - DDD-48 Stripe event persistence and repositories
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 changes data access for StripeEvents, AppUsers, RewriteCredits, and StripeInvoices through Application repository interfaces.
+- Action: Opened and followed the project skill; read EF mappings, unique keys, row-version concurrency tokens, legacy Stripe event persistence flow, existing repository style, and SQLite test conventions. Added narrow repository methods for event lock rows, Stripe user lookup, grace batches, checkout credit lookup, refund credit lookup, and invoice upsert. Kept all schema and migration files unchanged and kept handlers free of `AppDbContext`.
+- Output artifacts: `IStripeEventRepository`; `StripeEventRepository`; extensions to `IAppUserRepository`, `IRewriteCreditRepository`, and `IStripeInvoiceRepository`; matching Infrastructure implementations.
+- Verification evidence: Focused tests assert one processed event row for TryMark, one purchase credit for checkout replay, persisted invoice upsert on failed invoice, state changes for batched grace expiry, and due reminder selection before batch limiting. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 677/677.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `StripeEventService` persistence code was not edited.
+
+### 2026-06-09 - resilience-test-generation - DDD-48 Stripe event replay and post-commit side effects
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 touches Stripe webhook replay, idempotency locking, transactional state sync, and post-commit notification/cancellation side effects.
+- Action: Opened and followed the project skill; built the failure matrix around duplicate event, in-flight event, missing checkout user retry, invoice grace transition, post-commit notifier fake, and batch processing. Implemented deterministic SQLite tests and hand-written fakes rather than live provider calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`; post-commit side-effect abstractions and fakes.
+- Verification evidence: Red run failed on missing Application types; final focused test command passed 6/6, including duplicate TryMark, checkout replay, invoice failed grace entry, subscription entitlement sync, bounded grace-expiry batch drain, and reminder due-row selection. Full backend tests passed 677/677.
+- Limitations: No live Stripe endpoint, notification provider, billing portal, or cancellation provider was called; side-effect behavior is proven through deterministic fakes and Infrastructure adapter registration.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-48 StripeEventUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 adds C#/.NET Application handler tests for Stripe event idempotency, webhook dispatch, invoice/subscription paths, and a batch handler.
+- Action: Opened and followed the project skill; wrote `StripeEventUseCaseTests` before production code, watched the initial focused run fail on missing StripeEvent Application namespace, handlers, DTOs, notifier abstraction, and repository types, then implemented Application and Infrastructure code with SQLite in-memory coverage and deterministic fakes for post-commit work.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~StripeEventUseCaseTests` failed with missing StripeEvent Application types; an added reminder ordering regression then failed with processed count 0 before the repository batch filter was corrected. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/ProcessStripeWebhookHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused StripeEventUseCase tests passed 6/6; full backend tests passed 677/677.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-49 Admin Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #630 and `plans/ddd-restructure/issues/DDD-49-admin.md` require converting primary Admin use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-49 brief, `docs/ddd-migration-playbook.md`, `AdminService.cs`, existing Rewrite/PromoAdmin handler templates, Application abstractions, repositories, and Admin tests before editing. Scoped goals to the primary handlers only: user list, user detail, stats, grant credits, and delete user. Non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Admin/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/AdminDtos.cs`; `IAdminUserRepository`; `IAdminStatsRepository`; Infrastructure admin repositories/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AdminUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the Admin Application namespace, handlers, repositories, DTOs, and abstractions did not exist. Final release build, focused AdminUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-49 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-49 Admin credit grant and user erase transitions
+
+- Agent: Codex worker
+- Trigger: GitHub issue #630 migrates Admin credit grant and user deletion mutations into Application handlers with explicit success, forbidden, and not-found outcomes.
+- Action: Opened and followed the project skill; modeled credit grant as target-user-exists to admin credit available plus audit row, and delete as active user to erased user plus audit row. Illegal transitions are missing user, already erased user, and admin self-delete. The delete transition preserves related-table cleanup for attempts, usage periods, reservations, credits, promo redemptions, and billing support requests.
+- Output artifacts: `GrantCreditsHandler`; `DeleteAdminUserHandler`; `AdminUserRepository.EraseUserAsync`; `AdminUseCaseTests` cases for grant success/not-found and delete success/forbidden/not-found.
+- Verification evidence: Focused AdminUseCase tests passed 15/15 and full backend tests passed 685/685.
+- Limitations: Entry points still call the legacy service until a later strangler issue switches callers; no production routing changed.
+
+### 2026-06-09 - data-module-review - DDD-49 Admin repositories and persistence invariants
+
+- Agent: Codex worker
+- Trigger: GitHub issue #630 changes EF data access for Admin projections and mutations through new Application repository interfaces.
+- Action: Opened and followed the project skill; read EF mappings, row-version concurrency tokens, legacy Admin query/mutation logic, existing repository style, and SQLite test conventions. Added narrow `IAdminUserRepository` and `IAdminStatsRepository` abstractions, kept all schema and migration files unchanged, preserved SQLite-safe in-memory ordering/filtering where DateTimeOffset translation matters, and kept handlers free of `AppDbContext`.
+- Output artifacts: `AdminUserRepository`; `AdminStatsRepository`; Application Admin DTOs and repository interfaces; Admin handler tests.
+- Verification evidence: Data risk scan ran against `backend-dotnet/src` and reported broad existing risk signals; no new schema or migration files were added. Focused tests assert credit plus audit write, delete erase plus audit write, no side effects on not-found/forbidden paths, and aggregate read projections. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 685/685.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `AdminService` persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-49 AdminUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #630 adds C#/.NET Application handler tests for Admin user list pagination/filtering, user detail, stats, grant credits, and delete user behavior.
+- Action: Opened and followed the project skill; wrote `AdminUseCaseTests` before production code, watched the initial focused run fail on missing Admin Application namespace, handlers, DTOs, repositories, and abstractions, then implemented Application and Infrastructure code with SQLite in-memory coverage and deterministic provider fakes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AdminUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~AdminUseCaseTests` failed with missing Admin Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Admin/GrantCreditsHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused AdminUseCase tests passed 15/15; full backend tests passed 685/685.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-50 BillingSupport Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #631 and `plans/ddd-restructure/issues/DDD-50-billing-support.md` require converting BillingSupport create/list use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-50 brief, `docs/ddd-migration-playbook.md`, `BillingSupportService.cs`, existing Rewrite handler templates, Application abstractions, repositories, and BillingSupport-related tests before editing. Scoped goals to add strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/BillingSupport/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/BillingSupportRequestResultDto.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/BillingSupportRequestResponseDto.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IBillingSupportRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/BillingSupportRepository.cs`; handler/repository registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingSupportUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the BillingSupport Application namespace and handlers did not exist. Final release build, focused BillingSupportUseCase tests, full backend tests, handler file-existence check, Application layering scan, touched-file restricted-substring scan, and standard frontend copy guard passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-50 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-50 BillingSupport request status guard
+
+- Agent: Codex worker
+- Trigger: GitHub issue #631 requires preserving the duplicate-open-request guard while creating BillingSupport requests.
+- Action: Opened and followed the project skill; modeled `BillingSupportRequest` states as `Open` and `Resolved`. Event list: create request, reject create while an open request exists, list by user, and admin resolve in the existing legacy path. Allowed transition for this issue is no request or resolved-only history to new `Open`; illegal transition is creating another `Open` request for the same user. Persistence implication: the guard and insert run inside `IUnitOfWork.ExecuteInTransactionAsync` with serializable isolation and no schema change.
+- Output artifacts: `CreateBillingSupportRequestHandler`; `IBillingSupportRepository.HasOpenRequestForUserAsync`; `BillingSupportRepository.HasOpenRequestForUserAsync`; duplicate-open SQLite test.
+- Verification evidence: `CreateBillingSupportRequestAsync_rejects_duplicate_open_request_without_side_effects` passed and asserted `InvalidRequest` plus one persisted request. Focused BillingSupportUseCase tests passed 4/4 and full backend tests passed 689/689.
+- Limitations: No new database uniqueness constraint or migration was added because the issue explicitly prohibited schema changes; entry points still call the legacy service until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-50 BillingSupport repository and persistence invariants
+
+- Agent: Codex worker
+- Trigger: GitHub issue #631 changes EF data access for BillingSupport create/list through a new Application repository interface.
+- Action: Opened and followed the project skill; read EF mappings, existing BillingSupport entity/status/type enums, existing account deletion repository dependency, legacy BillingSupport persistence flow, and SQLite test conventions. Added a narrow `IBillingSupportRepository` and matching `BillingSupportRepository`, kept the existing `IBillingSupportRequestRepository` untouched for account deletion, kept all schema and migration files unchanged, and kept handlers free of `AppDbContext`.
+- Output artifacts: `IBillingSupportRepository`; `BillingSupportRepository`; Application BillingSupport DTOs/handlers; BillingSupport handler tests; DI registration assertions.
+- Verification evidence: Data risk scan ran against `backend-dotnet/src` and reported broad existing risk signals; no new schema or migration files were added. Focused tests assert successful create, duplicate-open no-side-effect path, empty list, and user-scoped newest-first list. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 689/689.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `BillingSupportService` persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-50 BillingSupportUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #631 adds C#/.NET Application handler tests for BillingSupport create/list behavior.
+- Action: Opened and followed the project skill; wrote `BillingSupportUseCaseTests` before production code, watched the initial focused run fail on missing BillingSupport Application namespace and handlers, then implemented Application and Infrastructure code with SQLite in-memory coverage. Updated the existing Infrastructure service-collection smoke test to assert the new repository and handlers are registered.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingSupportUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~BillingSupportUseCaseTests` failed with missing BillingSupport Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/BillingSupport/CreateBillingSupportRequestHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused BillingSupportUseCase tests passed 4/4; full backend tests passed 689/689.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-51 WebhookOutbox Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 and `plans/ddd-restructure/issues/DDD-51-webhook-outbox.md` require converting WebhookOutbox timer batch use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-51 brief, `docs/ddd-migration-playbook.md`, the legacy webhook/outbox dispatcher services, Rewrite handler templates, Application abstractions, repositories, and existing dispatcher tests before editing. Scoped goals to add strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/WebhookOutbox/*`; `IWebhookDeliveryRepository`; Application webhook sender and outbox message handler abstractions; Infrastructure repository/adapters/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the WebhookOutbox Application namespace, handlers, sender/router abstractions, and repository types did not exist. Final release build, focused WebhookOutboxUseCase tests, full backend tests, handler file-existence check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-51 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-51 webhook delivery and outbox message dispatch lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 migrates webhook delivery and outbox message batch lifecycle handling with claim, dispatch, retry, and terminal failure transitions.
+- Action: Opened and followed the project skill; modeled `WebhookDelivery` states as `Pending`, `InProgress`, `Delivered`, and `Failed`, and `OutboxMessage` states as `Pending`, `Processing`, `Sent`, and `Failed`. Events are claim due row, successful external dispatch, failed external dispatch, retry delay elapsed, max attempts reached, and duplicate/concurrent timer claim.
+- Output artifacts: `DispatchDueWebhooksHandler`; `DispatchDueOutboxHandler`; claim/mark repository methods; SQLite tests for success, failed-attempt back-off, and concurrent claim idempotency for both lifecycles.
+- Verification evidence: Focused WebhookOutboxUseCase tests passed 6/6 and full backend tests passed 695/695.
+- Limitations: Entry points still call the legacy dispatcher services until a later strangler issue switches callers; no production routing changed.
+
+### 2026-06-09 - data-module-review - DDD-51 WebhookOutbox repositories and persistence invariants
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 changes EF data access for `WebhookDeliveries` and `OutboxMessages` through Application repository interfaces.
+- Action: Opened and followed the project skill; read EF mappings, row-version concurrency tokens, existing indexes, legacy transaction/claim code, repository style, and SQLite DateTimeOffset handling. Added narrow claim/mark repository methods, preserved serializable claim transactions through `IUnitOfWork`, kept all schema and migration files unchanged, and kept handlers free of `AppDbContext`.
+- Output artifacts: `IWebhookDeliveryRepository`; `WebhookDeliveryRepository`; extensions to `IOutboxMessageRepository`; `OutboxMessageRepository` claim/mark methods; widened retryable transaction race detection in `UnitOfWork`.
+- Verification evidence: Focused tests assert claim writes lock owner/lease, success clears lock and marks terminal success, failure clears lock and schedules retry with the existing two-second first delay, and a second handler cannot dispatch an already claimed row. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `WebhookDispatcherService` and `OutboxDispatcherService` files were not edited.
+
+### 2026-06-09 - resilience-test-generation - DDD-51 dispatcher retry and concurrent claim coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 touches retry back-off, provider failures, queue publish failures, and concurrent timer claim behavior.
+- Action: Opened and followed the project skill; built the failure matrix around HTTP non-2xx, outbox handler exception, max-attempt terminalization through existing repository rules, duplicate timer claim while first dispatch is still running, and SQLite-backed persistence. Implemented deterministic fakes for webhook sending and outbox message handling rather than live HTTP, queue, or cloud calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; `IWebhookDeliverySender`; `IOutboxMessageHandler`; Infrastructure adapter and concrete outbox message handler.
+- Verification evidence: Red run failed on missing Application types; final focused test command passed 6/6, including webhook success/failure/concurrent claim and outbox success/failure/concurrent claim. Full backend tests passed 695/695.
+- Limitations: No live webhook endpoint, Service Bus, Azure worker, or deployment command was used; resilience behavior is proven through deterministic fakes and SQLite state assertions.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-51 WebhookOutboxUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 adds C#/.NET Application handler tests for WebhookOutbox claim, dispatch, back-off, and concurrency behavior.
+- Action: Opened and followed the project skill; wrote `WebhookOutboxUseCaseTests` before production code, watched the initial focused run fail on missing WebhookOutbox Application namespace, handlers, sender/router abstractions, and repository types, then implemented Application and Infrastructure code with SQLite in-memory coverage and deterministic fakes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~WebhookOutboxUseCaseTests` failed with missing WebhookOutbox Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/WebhookOutbox/DispatchDueWebhooksHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused WebhookOutboxUseCase tests passed 6/6; full backend tests passed 695/695; touched-file restricted-substring scan returned no matches.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - data-module-review - DDD-60 account and promo Function strangler shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #645 switches consumer-facing Account and Promo HTTP Functions from legacy Infrastructure service calls to Application handlers that own account, billing-support, and promo persistence paths.
+- Action: Opened and followed the project skill; read the DDD-60 issue and brief, `AGENTS.md`, `CLAUDE.md`, the target Function classes, Application Account/BillingSupport/Promo handlers from the integration branch, legacy service behavior, API tests, and handler tests. Kept schema/migrations unchanged, kept old service classes and DI registration intact, and preserved HTTP response record shapes while routing mutations and queries through Application handlers.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PromoHttpFunctions.cs`; updated direct `AccountHttpFunctions` test construction in `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~AccountServiceTests|FullyQualifiedName~PromoApiTests|FullyQualifiedName~PromoServiceTests"` passed 42/42; full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695; changed-file restricted-substring scan returned no matches.
+- Limitations: No schema, migration, old service deletion, deployment, push, PR, or live payment action was performed. Billing-support notification sending remains in the Function wrapper to preserve existing API behavior because the Application create handler only persists the request.
+
+### 2026-06-09 - state-machine-modeling - DDD-62 billing and Stripe webhook Function shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #647 switches billing checkout, billing portal, and Stripe webhook HTTP Function entry points to Application handlers while preserving response contracts.
+- Action: Opened and followed the project skill; modeled checkout states as unauthenticated, invalid SKU, rate-limited, delegated, success, configuration failure, and provider failure; portal states as unauthenticated, delegated, missing customer, success, and provider failure; Stripe event states as absent, processing, processed, and failed. Events are authenticated checkout request, SKU validation, checkout velocity check, portal request, verified webhook request, duplicate event, sync success, and sync failure. Allowed transitions keep pre-handler validation in the Function and move only delegated billing/webhook work to Application handlers. Illegal transitions are handler invocation before auth/SKU/rate-limit success, duplicate event reprocessing after processed status, and persistence mutation on rejected webhook input. Persistence implications: no schema or migration changed; existing Application repositories and serializable Stripe event transaction path own `AppUsers`, `StripeEvents`, `RewriteCredits`, and `StripeInvoices`.
+- Output artifacts: `BillingHttpFunctions`; `StripeWebhookFunction`; raw Stripe event to Application DTO adapter; updated API test helpers.
+- Verification evidence: Release build passed; focused billing/webhook/service filter passed 49/49; full backend suite passed 695/695.
+- Limitations: Existing old services and DI registration were intentionally retained for later cleanup. No new lifecycle states or database constraints were added.
+
+### 2026-06-09 - data-module-review - DDD-62 billing and Stripe webhook persistence path
+
+- Agent: Codex worker
+- Trigger: GitHub issue #647 changes the HTTP shell persistence path for checkout user upsert, portal customer lookup, Stripe event idempotency, invoice sync, and rewrite-credit grants by routing through Application handlers.
+- Action: Opened and followed the project skill; read function shells, Application billing and Stripe event handlers, old Infrastructure services, repository registrations, EF-backed API/service tests, and DI setup. Confirmed owned data remains in existing repositories and handlers; no `AppDbContext` query was added to the migrated Function methods; old services and registrations stayed in place.
+- Output artifacts: `BillingHttpFunctions` now calls `CreateCheckoutSessionHandler` and `CreatePortalSessionHandler`; `StripeWebhookFunction` now calls `ProcessStripeWebhookHandler`; test fakes register the Application billing client boundary; webhook direct-function tests construct the Application handler with SQLite repositories.
+- Verification evidence: `git diff --check` exited 0; changed-file restricted-substring scan returned no matches; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused filter passed 49/49; full backend tests passed 695/695.
+- Limitations: The raw Stripe event adapter is necessary because the merged Application handler accepts a parsed DTO while the Function receives provider JSON. No schema, migration, new package, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - DDD-62 billing and Stripe webhook failure preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #647 touches checkout provider failures, checkout velocity limits, Stripe webhook replay/idempotency, invalid webhook input, and failed sync recovery behavior.
+- Action: Opened and followed the project skill; reviewed failure matrix rows for checkout timeout, missing checkout config, unknown SKU, rate limit, portal missing customer, missing webhook signature, invalid signed payload, duplicate event, malformed unsigned JSON, and webhook sync failure. Reused existing deterministic fakes and SQLite-backed assertions because the issue required behavior unchanged and existing assertions unmodified.
+- Output artifacts: Function shell changes plus test helper wiring that keeps the focused API/service tests exercising the same failure paths through Application handlers.
+- Verification evidence: Focused filter passed 49/49, covering billing API/service, webhook API, and Stripe event service behavior; full backend suite passed 695/695.
+- Limitations: No live provider, cloud, queue, deployment, or payment command was used. No new resilience assertions were added because this issue was a strangler shell swap with unchanged behavior.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-62 focused billing and webhook gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #647 requires Release build plus focused and full .NET test gates for billing and Stripe webhook behavior.
+- Action: Opened and followed the project skill; selected existing service and API tests as the lowest test level that proves response status, provider failure mapping, duplicate webhook handling, and persisted state. Updated only test construction/fake DI helpers needed by the new handler constructor path; no test assertions were changed.
+- Output artifacts: Updated `StripeBillingApiTests` fake to implement the Application billing client interface; updated `StripeWebhookApiTests` function helper to construct `ProcessStripeWebhookHandler`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings; focused filter passed 49/49; full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new test cases were added because the issue acceptance explicitly required unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - state-machine-modeling - DDD-63 admin Function shell lifecycle preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #648 switches admin and promo-admin HTTP shell call paths for stateful user deletion, credit grant, promo active/archive/restore, and deferred admin service lifecycles.
+- Action: Opened and followed the project skill; treated this as a shell-preservation model rather than a new lifecycle design. Existing allowed transitions remain: unauthorized requests reject before mutation; user delete moves eligible users to erased/canceled with audit; credit grant creates an admin credit plus audit; promo create starts active; promo update changes validated fields; promo disable/enable toggles active state; promo archive sets archived and inactive; promo restore clears archive while leaving active state unchanged. Deferred billing-support, accounting CSV, suspension, and refund transitions remain on `AdminService`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; handler command/query calls; DTO-to-legacy-response adapters; deferred TODO markers.
+- Verification evidence: `python3 /Users/qc/.codex/skills/state-machine-modeling/scripts/state_machine_template.py "DDD-63 admin Function shell"` generated the lifecycle checklist; focused admin test filter passed 20/20; full backend suite passed 695/695.
+- Limitations: No new states, transition helper, enum, schema, migration, or lifecycle tests were added because this issue required unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - data-module-review - DDD-63 admin Function persistence path
+
+- Agent: Codex worker
+- Trigger: GitHub issue #648 changes the admin Function data-access route from inline legacy services to Application handlers and repositories while leaving five deferred service paths in place.
+- Action: Opened and followed the project skill; reviewed the Function shell, Application Admin and PromoAdmin handlers, repository registration, legacy services, existing admin/promo/refund tests, and DI setup. Kept schema and migrations unchanged, kept legacy admin services registered, registered the refund client adapter, and preserved HTTP response record shapes through explicit adapters.
+- Output artifacts: `AdminHttpFunctions.cs`; `ServiceCollectionExtensions.cs`; `AdminHttpFunctionsTestFactory.cs`; updated admin test construction helpers.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs --limit 80` returned no risk rows; the same scan on `ServiceCollectionExtensions.cs` returned no risk rows; `git diff --check` exited 0; changed-diff restricted-substring scan returned no matches; Release build and both test gates passed.
+- Limitations: The five explicitly deferred AdminService use-cases remain legacy service calls with TODO markers. No schema, migration, old service deletion, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-63 admin shell regression gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #648 requires Release build, focused admin tests, and full .NET backend tests after changing `AdminHttpFunctions`.
+- Action: Opened and followed the project skill; used existing xUnit/FluentAssertions admin tests as characterization coverage because the issue required behavior unchanged and assertions unmodified. Added a test-only factory to construct the new Function handler graph, and updated test setup only.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminHttpFunctionsTestFactory.cs`; updated admin test construction calls.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings; focused admin filter passed 20/20; full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new test cases were added because the issue was a strangler shell replacement with unchanged response contracts.
+
+### 2026-06-09 - system-spec-synthesis - DDD-64 rewrite Function shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #649 / DDD-64 requires an implementation-ready handler shell plan across `RewriteHttpFunctions`, `V1RewriteHttpFunctions`, Application rewrite/account handlers, and backend regression gates.
+- Action: Opened and followed the project skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-64 brief, target Function files, requested Application handlers via `git show origin/delivery/ddd-restructure`, and relevant tests. Generated the spec skeleton with `agent-skills/system-spec-synthesis/scripts/spec_outline.py DDD-64-rewrite-shell`, then applied the plan in-place rather than writing a separate spec artifact.
+- Output artifacts: Handler-shell changes in `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs` and `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: Spec skeleton command exited 0; Release build passed; focused rewrite/V1 tests passed 40/40; full backend suite passed 695/695.
+- Limitations: No architecture, API contract, schema, migration, deployment, or old-service cleanup was added beyond the issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-64 rewrite attempt lifecycle preservation
+
+- Agent: Codex worker
+- Trigger: DDD-64 routes V1 rewrite creation/result and rewrite history lookups through Application handlers that touch `RewriteAttempt`, usage reservation, quota, idempotency, and sandbox attempt lifecycle paths.
+- Action: Opened and followed the project skill; generated the lifecycle checklist with `agent-skills/state-machine-modeling/scripts/state_machine_template.py RewriteAttemptUsageReservation`. Preserved the existing states: pending/processing/succeeded/failed/expired for attempts and pending/finalized/released/expired for reservations. Preserved existing events: submit, repeated idempotency key, provider success/failure, reservation expiry, result poll, history detail, and soft delete. Illegal transitions remain unchanged: cross-user read, mixed sandbox/live result read, quota side effects on rejected input, duplicate reservation on repeated idempotency key, and mutation after result polling.
+- Output artifacts: `RewriteHttpFunctions` now uses `FindUserHandler` and `GetRewriteAttemptHandler` where handlers exist; `V1RewriteHttpFunctions` now uses entitlement/create/get/account-summary handlers while unsupported sandbox, usage-write, list, delete, and internal-user lookup paths remain marked with DDD-64 TODOs.
+- Verification evidence: Lifecycle template command exited 0; focused rewrite/V1 tests passed 40/40; full backend suite passed 695/695.
+- Limitations: No new states, transition helper, enum, schema, migration, or new lifecycle assertions were added because DDD-64 requires unchanged behavior.
+
+### 2026-06-09 - data-module-review - DDD-64 rewrite persistence path
+
+- Agent: Codex worker
+- Trigger: DDD-64 changes data-access routing for rewrite history, V1 entitlement, V1 attempt creation, V1 result lookup, and V1 usage summary.
+- Action: Opened and followed the project skill; reviewed owned entities (`AppUser`, `RewriteAttempt`, `UsagePeriod`, `UsageReservation`, `RewriteCredit`, `ApiKeyUsage`), existing repositories/handlers, old service behavior, and tests together. Ran `agent-skills/data-module-review/scripts/scan_data_risks.py --limit 40 backend-dotnet/src/ReplyInMyVoice.Functions` and kept schema/migrations unchanged. Expanded `RewriteAttemptDto` through `FromAttempt` so handler-backed result/detail responses preserve existing HTTP view fields and sandbox/live checks.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Common/RewriteAttemptDto.cs`; `RewriteHttpFunctions`; `V1RewriteHttpFunctions`; direct test helper wiring in `RewriteHistoryTests` and `ApiInputHardeningTests`.
+- Verification evidence: Data risk scan exited 0 and reported existing risk signals for review; `git diff --check` exited 0; changed-file restricted-substring scan returned no matches; Release build passed; focused tests passed 40/40; full backend tests passed 695/695.
+- Limitations: Inline DB remains where no Application handler exists yet: rewrite history list/delete, V1 internal-user lookup, sandbox attempt creation, and API usage write helper. Each remaining path is marked with a DDD-64 TODO.
+
+### 2026-06-09 - resilience-test-generation - DDD-64 V1 idempotency, rate limit, and quota gates
+
+- Agent: Codex worker
+- Trigger: DDD-64 changes V1 submit/result/usage code paths that are covered by idempotency, rate-limit, quota, provider-failure, and sandbox/live regression tests.
+- Action: Opened and followed the project skill; generated the failure matrix with `agent-skills/resilience-test-generation/scripts/resilience_matrix.py V1RewriteSubmit`. Reused existing deterministic SQLite/fake-provider tests because the issue explicitly requires unchanged behavior and unmodified assertions. Verified duplicate idempotency keys, different-draft conflict, quota exhaustion, usable purchase credit, provider failure no-charge path, rate limiter unavailable, concurrent rate-limit behavior, and sandbox/live result separation through the focused filter.
+- Output artifacts: Handler-shell code and test helper construction only; no test assertions changed.
+- Verification evidence: Resilience matrix command exited 0; focused filter passed 40/40; full backend suite passed 695/695.
+- Limitations: No live provider, payment, cloud, deploy, or network dependency was used. No new resilience tests were added because existing acceptance coverage already exercised the required unchanged behavior.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-64 rewrite shell regression gates
+
+- Agent: Codex worker
+- Trigger: DDD-64 requires Release build, focused rewrite/V1 tests, and full .NET backend tests after changing C# Azure Function shells and direct test helper construction.
+- Action: Opened and followed the project skill; selected existing xUnit/FluentAssertions API/service tests as characterization coverage because response contracts must remain unchanged. Updated only test construction helpers to supply the new Application handlers; no assertions were modified.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiInputHardeningTests.cs`.
+- Verification evidence: Initial Release build failed on `ApiInputHardeningTests.cs` direct V1 constructor wiring, root cause was constructor signature drift; after updating the helper, `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteApiTests|FullyQualifiedName~RewriteHistoryTests|FullyQualifiedName~V1RewriteRateLimitTests|FullyQualifiedName~RewriteRequestServiceTests"` passed 40/40. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new tests were added because this is a strangler shell refactor with unchanged behavior and the issue forbids assertion changes.
+
+### 2026-06-09 - state-machine-modeling - DDD-65 timer shell lifecycle preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #650 switches timer and queue Function shells for outbox dispatch, webhook dispatch, payment grace, Stripe reconciliation, and rewrite job processing to Application handlers.
+- Action: Opened and followed the project skill; treated this as lifecycle preservation. State list remains existing persisted states for outbox messages, webhook deliveries, app user payment grace, reconciliation reports, rewrite attempts, and usage reservations. Events remain due timer tick, payment-grace timer tick, reconciliation timer tick, and Service Bus rewrite message. Transition table is unchanged: due pending work is claimed and completed or failed-attempted; expired grace downgrades only eligible users; reconciliation reports the same one-day window; valid rewrite messages process by attempt id. Invariants and illegal transitions remain with the handlers: no duplicate finalization, no mutation for invalid queue payloads, no schema change, and no old service deletion.
+- Output artifacts: `OutboxDispatcherTimerFunction.cs`, `WebhookDispatcherTimerFunction.cs`, `PaymentGraceExpiryFunction.cs`, `StripeReconciliationTimerFunction.cs`, and `RewriteJobFunction.cs` now call Application commands/handlers while preserving host inputs and logs.
+- Verification evidence: `python3 /Users/qc/.codex/skills/state-machine-modeling/scripts/state_machine_template.py DDD-65-timer-shell` exited 0; Release build passed; focused timer/job-related test filter passed 47/47; full backend suite passed 695/695.
+- Limitations: No new states, transition helpers, enums, schema, migrations, or lifecycle assertions were added because the issue requires unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - data-module-review - DDD-65 timer shell persistence path
+
+- Agent: Codex worker
+- Trigger: GitHub issue #650 changes data-access routing for timer and queue entry points from legacy services to already-registered Application handlers/repositories.
+- Action: Opened and followed the project skill; reviewed Function shells, Application handler APIs, DI registrations, legacy service registrations, and existing persistence tests together. Findings: no schema or migration required; old services remain registered; constructor service parameters were removed only where no method in the Function file still used them; handler command inputs preserve timestamp, worker name, batch size, and attempt id.
+- Output artifacts: Handler-shell changes in the five scoped Function files only.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src/ReplyInMyVoice.Functions/Functions` exited 0 and returned existing broad risk signals for review; `git diff --check` exited 0; touched-file restricted-substring scan returned no matches; Release build and both test gates passed.
+- Limitations: The data-risk scan is text-signal based and reports unrelated existing Function risks. No data model, EF migration, service cleanup, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-65 timer shell regression gates
+
+- Agent: Codex worker
+- Trigger: DDD-65 requires Release build, focused timer/job-related service tests, and the full .NET backend test suite after changing Azure Function shells.
+- Action: Opened and followed the project skill; selected the existing xUnit/FluentAssertions service tests named by the issue as characterization coverage for unchanged behavior. No test files or assertions were changed.
+- Output artifacts: No test artifacts changed; production Function shell edits only.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~OutboxDispatcherTests|FullyQualifiedName~StripeEventServiceTests|FullyQualifiedName~StripeReconciliationServiceTests|FullyQualifiedName~RewriteJobProcessorTests"` passed 47/47. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.
+
+### 2026-06-09 - state-machine-modeling - DDD-66 Worker BackgroundService shell preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #651 changes Worker BackgroundService entry points for rewrite job processing, outbox dispatch, and expired quota reservation cleanup.
+- Action: Opened and followed the project skill; modeled this as lifecycle preservation rather than a new transition design. State list remains existing persisted states: rewrite attempts (`Pending`, `Processing`, `Succeeded`, `Failed`, `Expired`), usage reservations (`Pending`, `Finalized`, `Released`, `Expired`), and outbox messages (`Pending`, `Processing`, `Sent`, `Failed`). Event list remains Service Bus rewrite message, outbox loop tick, and cleanup loop tick. Transition table remains owned by the Application handlers: valid rewrite messages process by attempt id; due outbox messages are claimed and then sent or failed-attempted; expired pending reservations are released from reserved quota and marked expired. Invariants remain no duplicate finalization, no quota side effect for invalid queue payloads, no old service deletion, and no schema change. Illegal transitions remain terminal attempt overwrite, duplicate usage charge, duplicate job enqueue, and mutation from malformed worker input.
+- Output artifacts: `ServiceBusRewriteWorker.cs`, `OutboxDispatcherWorker.cs`, and `ExpiredReservationCleanupWorker.cs` now call the Wave-2 Application handlers from their existing per-loop scopes.
+- Verification evidence: `python3 agent-skills/state-machine-modeling/scripts/state_machine_template.py DDD-66-worker-shell` exited 0; Release build passed; focused worker-related filter passed 34/34; full backend suite passed 695/695.
+- Limitations: No new states, transition helper, enum, schema, migration, or lifecycle assertions were added because the issue requires unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - data-module-review - DDD-66 Worker persistence path
+
+- Agent: Codex worker
+- Trigger: DDD-66 changes data-access routing for Worker background loops from legacy infrastructure services to already-registered Application handlers/repositories.
+- Action: Opened and followed the project skill; reviewed the Worker files, Application handler APIs, DI registrations, old service registrations, and existing persistence tests together. Findings: no P1/P2 data issue found; schema and migrations remain unchanged; old services remain registered; per-loop scopes remain intact; handler command inputs preserve attempt id, current timestamp, worker instance id, and batch size.
+- Output artifacts: Handler-shell changes in the three Worker files only.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src/ReplyInMyVoice.Worker` exited 0 and returned expected review signals for outbox/quota paths; `git diff --check` exited 0; changed-diff restricted-substring scan returned no matches; Release build and both test gates passed.
+- Limitations: The data-risk scan is text-signal based and reports review prompts, not failures. No data model, EF migration, service cleanup, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - DDD-66 worker queue/outbox/quota failure preservation
+
+- Agent: Codex worker
+- Trigger: DDD-66 touches Service Bus rewrite processing, outbox dispatch loop routing, quota reservation cleanup, and existing redelivery/failure coverage while requiring behavior unchanged.
+- Action: Opened and followed the project skill; reviewed the failure matrix for timeout, transient provider/cloud failure, permanent failure, duplicate queue delivery, partial persisted state, concurrent quota mutation, and malformed worker payload. Reused existing deterministic tests because the issue forbids changing assertions and the Application handlers already own the failure behavior.
+- Output artifacts: Worker shell changes only; no test artifacts changed.
+- Verification evidence: `python3 agent-skills/resilience-test-generation/scripts/resilience_matrix.py DDD-66-worker-shell` exited 0; focused worker-related filter passed 34/34; full backend suite passed 695/695.
+- Limitations: No live provider, cloud, queue, deployment, or payment command was used. No new resilience assertions were added because this issue is a strangler shell swap with unchanged behavior.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-66 Worker shell regression gates
+
+- Agent: Codex worker
+- Trigger: DDD-66 requires Release build, focused rewrite job/outbox/quota tests, and full .NET backend tests after changing C# Worker BackgroundServices.
+- Action: Opened and followed the project skill; selected the existing xUnit/FluentAssertions tests named by the issue as characterization coverage for unchanged behavior. No test files or assertions were changed.
+- Output artifacts: No test artifacts changed; production Worker shell edits only.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteJobProcessorTests|FullyQualifiedName~OutboxDispatcherTests|FullyQualifiedName~QuotaServiceTests"` passed 34/34. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.
+
+### 2026-06-09 - state-machine-modeling - DDD-67 API rewrite/account shell preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #652 changes API route entry points for account summary, purchase history, billing history, rewrite attempt creation, rewrite attempt lookup, V1 submit/result, and V1 usage while preserving usage and rewrite-attempt lifecycle behavior.
+- Action: Opened and followed the project skill; treated this as lifecycle preservation. State list remains existing persisted states: rewrite attempts (`Pending`, `Processing`, `Succeeded`, `Failed`, `Expired`) and usage reservations (`Pending`, `Finalized`, `Released`, `Expired`). Events remain signed-in account lookup, rewrite submit, repeated idempotency key, V1 live/test submit, V1 result poll, V1 usage lookup, and cross-user lookup rejection. Transition table remains owned by Application handlers where available: create attempt reserves quota and enqueues outbox, get attempt reads only the caller-owned attempt, entitlement checks preserve paid or usable purchase-credit access, and test-key sandbox attempts remain inline with explicit TODO markers.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs` route lambdas now call Application handlers for the DDD-67 endpoint set.
+- Verification evidence: `python3 agent-skills/state-machine-modeling/scripts/state_machine_template.py DDD-67-api-shell` exited 0; Release build passed; focused issue filter passed 57/57; full backend suite passed 695/695.
+- Limitations: No new states, transition helper, enum, schema, migration, or lifecycle assertions were added because DDD-67 requires unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - data-module-review - DDD-67 API persistence path
+
+- Agent: Codex worker
+- Trigger: DDD-67 changes data-access routing in `ReplyInMyVoice.Api/Program.cs` for account, usage, entitlement, and rewrite attempt paths from old services or inline EF reads to already-registered Application handlers.
+- Action: Opened and followed the project skill; reviewed `Program.cs`, Application handler APIs, repositories, old service behavior, DI registration, and existing API/service tests together. Findings: no schema or migration required; old services remain registered; promo/Stripe routes remain out of scope; V1 internal-user lookup, API key auth, sandbox attempt creation, and API usage write stay inline and are marked with DDD-67/68 TODOs.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs` only.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src/ReplyInMyVoice.Api/Program.cs` exited 0 and returned no risk rows; `git diff --check` exited 0; touched-file restricted-substring scan returned no matches; Release build and both test gates passed.
+- Limitations: The API shell still keeps direct V1 helper database access where the issue explicitly deferred it. No data model, EF migration, service cleanup, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-67 API shell regression gates
+
+- Agent: Codex worker
+- Trigger: DDD-67 requires Release build, focused API/account/rewrite tests, and full .NET backend tests after changing ASP.NET Core Minimal API route lambdas.
+- Action: Opened and followed the project skill; selected existing xUnit/FluentAssertions ASP.NET Core API and service tests as characterization coverage for unchanged response contracts and persistence side effects. No test files or assertions were changed.
+- Output artifacts: No test artifacts changed; production API shell edit only.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteApiTests|FullyQualifiedName~RewriteRequestServiceTests|FullyQualifiedName~AccountServiceTests|FullyQualifiedName~V1RewriteRateLimitTests"` passed 57/57. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.

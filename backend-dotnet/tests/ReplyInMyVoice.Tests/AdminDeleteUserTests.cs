@@ -138,7 +138,7 @@ public sealed class AdminDeleteUserTests
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var function = new AdminHttpFunctions(BuildConfiguration(), fixture.CreateContext);
+        var function = AdminHttpFunctionsTestFactory.Create(BuildConfiguration(), fixture.CreateContext);
 
         var forbidden = await function.DeleteUser(
             CreateRequest("regular-user-oid", "regular@example.com"),

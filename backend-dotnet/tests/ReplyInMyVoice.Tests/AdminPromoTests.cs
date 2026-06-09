@@ -291,7 +291,7 @@ public sealed class AdminPromoTests
     }
 
     private static AdminHttpFunctions CreateFunction(DbFixture fixture) =>
-        new(BuildConfiguration(), fixture.CreateContext);
+        AdminHttpFunctionsTestFactory.Create(BuildConfiguration(), fixture.CreateContext);
 
     private static async Task<PromoCode> SeedPromoCodeAsync(DbFixture fixture, string code)
     {

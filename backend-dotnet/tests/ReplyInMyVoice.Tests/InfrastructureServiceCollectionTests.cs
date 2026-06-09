@@ -5,10 +5,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
+using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.BillingSupport;
+using ReplyInMyVoice.Application.UseCases.Quota;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
+using ReplyInMyVoice.Application.UseCases.RewriteJob;
+using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
+using AppStripeReconciliationAlerter = ReplyInMyVoice.Application.Abstractions.IStripeReconciliationAlerter;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -22,6 +31,52 @@ public sealed class InfrastructureServiceCollectionTests
         provider.GetRequiredService<IRewriteProvider>()
             .Should()
             .BeOfType<DeterministicRewriteProvider>();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_application_repositories()
+    {
+        var provider = BuildProvider([]);
+
+        using var scope = provider.CreateScope();
+        var scopedProvider = scope.ServiceProvider;
+
+        scopedProvider.GetRequiredService<IAppUserRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IUsagePeriodRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IRewriteAttemptRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IUsageReservationRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IRewriteCreditRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IOutboxMessageRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IPromoCodeRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IPromoCodeRedemptionRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IStripeInvoiceRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IBillingSupportRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IBillingSupportRequestRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IPaymentGrantRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IAccountUsagePlanProvider>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IUnitOfWork>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<AppStripePaymentReconciliationClient>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<AppStripeReconciliationAlerter>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IRewriteEngineClient>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IRewriteCostLogger>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetOrCreateUserHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<FindUserHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetAccountSummaryHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetPurchaseHistoryHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<HasPaidApiEntitlementHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetBillingHistoryHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<CreateBillingSupportRequestHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetBillingSupportRequestsHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<DeleteAccountHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ReserveQuotaHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<FinalizeQuotaSuccessHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<MarkQuotaProcessingHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ReleaseQuotaHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ReleaseExpiredReservationsHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<CreateRewriteAttemptHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ReconcileStripeHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ProcessRewriteJobHandler>().Should().NotBeNull();
     }
 
     [Fact]
@@ -184,7 +239,7 @@ public sealed class InfrastructureServiceCollectionTests
         var provider = BuildProvider([]);
         var handlerFactory = provider.GetRequiredService<IHttpMessageHandlerFactory>();
 
-        using var handler = handlerFactory.CreateHandler(nameof(IWebhookDeliverySender));
+        using var handler = handlerFactory.CreateHandler(nameof(ReplyInMyVoice.Infrastructure.Services.IWebhookDeliverySender));
         var socketsHandler = FindHandler<SocketsHttpHandler>(handler);
 
         socketsHandler.Should().NotBeNull();

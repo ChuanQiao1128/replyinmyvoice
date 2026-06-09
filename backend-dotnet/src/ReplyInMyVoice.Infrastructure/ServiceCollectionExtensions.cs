@@ -4,11 +4,30 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Admin;
+using ReplyInMyVoice.Application.UseCases.ApiKey;
+using ReplyInMyVoice.Application.UseCases.Billing;
+using ReplyInMyVoice.Application.UseCases.BillingSupport;
+using ReplyInMyVoice.Application.UseCases.Promo;
+using ReplyInMyVoice.Application.UseCases.PromoAdmin;
+using ReplyInMyVoice.Application.UseCases.Quota;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
+using ReplyInMyVoice.Application.UseCases.RewriteJob;
+using ReplyInMyVoice.Application.UseCases.StripeEvent;
+using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
+using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
+using AppStripeReconciliationAlerter = ReplyInMyVoice.Application.Abstractions.IStripeReconciliationAlerter;
+using LegacyStripePaymentReconciliationClient = ReplyInMyVoice.Infrastructure.Services.IStripePaymentReconciliationClient;
+using LegacyStripeReconciliationAlerter = ReplyInMyVoice.Infrastructure.Services.IStripeReconciliationAlerter;
 
 namespace ReplyInMyVoice.Infrastructure;
 
@@ -53,6 +72,84 @@ public static class ServiceCollectionExtensions
             var options = sp.GetRequiredService<DbContextOptions<AppDbContext>>();
             return () => new AppDbContext(options);
         });
+        services.AddScoped<IAppUserRepository, AppUserRepository>();
+        services.AddScoped<IUsagePeriodRepository, UsagePeriodRepository>();
+        services.AddScoped<IRewriteAttemptRepository, RewriteAttemptRepository>();
+        services.AddScoped<IUsageReservationRepository, UsageReservationRepository>();
+        services.AddScoped<IRewriteCreditRepository, RewriteCreditRepository>();
+        services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
+        services.AddScoped<IWebhookDeliveryRepository, WebhookDeliveryRepository>();
+        services.AddScoped<IPromoCodeRepository, PromoCodeRepository>();
+        services.AddScoped<IPromoCodeRedemptionRepository, PromoCodeRedemptionRepository>();
+        services.AddScoped<IPromoAdminRepository, PromoAdminRepository>();
+        services.AddScoped<IStripeEventRepository, StripeEventRepository>();
+        services.AddScoped<IStripeInvoiceRepository, StripeInvoiceRepository>();
+        services.AddScoped<IBillingSupportRepository, BillingSupportRepository>();
+        services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
+        services.AddScoped<IPaymentGrantRepository, PaymentGrantRepository>();
+        services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+        services.AddScoped<IApiKeyUsageRepository, ApiKeyUsageRepository>();
+        services.AddScoped<IAdminUserRepository, AdminUserRepository>();
+        services.AddScoped<IAdminStatsRepository, AdminStatsRepository>();
+        services.AddScoped<IAccountUsagePlanProvider>(_ => new AccountUsagePlanProvider(configuration));
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
+        services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
+        services.AddScoped<ITaxTurnoverNotifier, TaxTurnoverNotifier>();
+        services.AddScoped<ITaxTurnoverSettingsProvider, TaxTurnoverSettingsProvider>();
+        services.AddScoped<GetOrCreateUserHandler>();
+        services.AddScoped<FindUserHandler>();
+        services.AddScoped<GetAccountSummaryHandler>();
+        services.AddScoped<GetPurchaseHistoryHandler>();
+        services.AddScoped<HasPaidApiEntitlementHandler>();
+        services.AddScoped<GetBillingHistoryHandler>();
+        services.AddScoped<CreateBillingSupportRequestHandler>();
+        services.AddScoped<GetBillingSupportRequestsHandler>();
+        services.AddScoped<DeleteAccountHandler>();
+        services.AddScoped<GetAdminUsersHandler>();
+        services.AddScoped<GetAdminUserDetailHandler>();
+        services.AddScoped<GetAdminStatsHandler>();
+        services.AddScoped<GrantCreditsHandler>();
+        services.AddScoped<DeleteAdminUserHandler>();
+        services.AddScoped<CreateCheckoutSessionHandler>();
+        services.AddScoped<CreatePortalSessionHandler>();
+        services.AddScoped<CancelSubscriptionHandler>();
+        services.AddScoped<RefundPaymentHandler>();
+        services.AddScoped<ListPaidPaymentsHandler>();
+        services.AddScoped<GetTaxTurnoverReportHandler>();
+        services.AddScoped<ReserveQuotaHandler>();
+        services.AddScoped<FinalizeQuotaSuccessHandler>();
+        services.AddScoped<MarkQuotaProcessingHandler>();
+        services.AddScoped<ReleaseQuotaHandler>();
+        services.AddScoped<ReleaseExpiredReservationsHandler>();
+        services.AddScoped<RedeemPromoHandler>();
+        services.AddScoped<GetPromoStatusHandler>();
+        services.AddScoped<ListPromoCodesHandler>();
+        services.AddScoped<GetPromoCodeDetailHandler>();
+        services.AddScoped<CreatePromoCodeHandler>();
+        services.AddScoped<UpdatePromoCodeHandler>();
+        services.AddScoped<SetPromoCodeActiveHandler>();
+        services.AddScoped<ArchivePromoCodeHandler>();
+        services.AddScoped<RestorePromoCodeHandler>();
+        services.AddScoped<CreateRewriteAttemptHandler>();
+        services.AddScoped<GetRewriteAttemptHandler>();
+        services.AddScoped<DispatchDueWebhooksHandler>();
+        services.AddScoped<DispatchDueOutboxHandler>();
+        services.AddScoped<ReconcileStripeHandler>();
+        services.AddScoped<GenerateApiKeyHandler>();
+        services.AddScoped<ListApiKeysHandler>();
+        services.AddScoped<RotateApiKeyHandler>();
+        services.AddScoped<RevokeApiKeyHandler>();
+        services.AddScoped<SetApiKeyWebhookHandler>();
+        services.AddScoped<ClearApiKeyWebhookHandler>();
+        services.AddScoped<GetApiUsageSummaryHandler>();
+        services.AddScoped<GetApiUsageSeriesHandler>();
+        services.AddScoped<GetApiUsageRecentHandler>();
+        services.AddScoped<ProcessRewriteJobHandler>();
+        services.AddScoped<TryMarkStripeEventProcessedHandler>();
+        services.AddScoped<ProcessStripeWebhookHandler>();
+        services.AddScoped<ProcessExpiredPaymentGraceHandler>();
+        services.AddScoped<ProcessPaymentGraceRemindersHandler>();
         services.AddScoped<AccountService>();
         services.AddScoped<ApiKeyService>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
@@ -63,24 +160,44 @@ public static class ServiceCollectionExtensions
         services.AddScoped<WebhookDispatcherService>();
         services.AddScoped<QuotaService>();
         services.AddScoped<PromoService>();
+        services.AddScoped<AdminService>();
+        services.AddScoped<PromoAdminService>();
         services.AddScoped<RewriteRequestService>();
         services.AddScoped<RewriteJobProcessor>();
         services.AddScoped<OutboxDispatcherService>();
+        services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
         services.AddScoped<CreditExpiryReminderService>();
         services.AddScoped<StripeReconciliationService>();
         services.AddScoped<StripeEventService>();
         services.AddScoped<BillingSupportService>();
-        services.AddSingleton<IStripeBillingClient, StripeBillingClient>();
+        services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
+        services.AddSingleton<ReplyInMyVoice.Application.Abstractions.IStripeBillingClient>(sp =>
+            new ApplicationStripeBillingClient(
+                configuration,
+                sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<TaxTurnoverService>();
-        services.AddScoped<IStripeBillingService, StripeBillingService>();
-        services.AddScoped<IStripePaymentReconciliationClient, StripeBillingService>();
-        services.AddScoped<IStripeReconciliationAlerter, StripeReconciliationNotificationAlerter>();
+        services.AddScoped(sp => new StripeBillingService(
+            sp.GetRequiredService<Func<AppDbContext>>(),
+            configuration,
+            sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
+        services.AddScoped<IStripeBillingService>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<IStripeRefundClient>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<IStripeEventNotifier, StripeEventNotifier>();
+        services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
+        services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<AppStripePaymentReconciliationClient, StripePaymentReconciliationClient>();
+        services.AddScoped<LegacyStripeReconciliationAlerter>(sp => new StripeReconciliationNotificationAlerter(
+            configuration,
+            sp.GetRequiredService<INotificationService>(),
+            sp.GetRequiredService<ILogger<StripeReconciliationNotificationAlerter>>()));
+        services.AddScoped<AppStripeReconciliationAlerter, StripeReconciliationAlerterAdapter>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<ICheckoutVelocityLimiter, CheckoutVelocityLimiter>();
         services.AddHttpClient();
-        services.AddHttpClient<IWebhookDeliverySender, HttpWebhookDeliverySender>(client =>
+        services.AddTransient<ReplyInMyVoice.Application.Abstractions.IWebhookDeliverySender, WebhookDeliverySenderAdapter>();
+        services.AddHttpClient<ReplyInMyVoice.Infrastructure.Services.IWebhookDeliverySender, HttpWebhookDeliverySender>(client =>
             {
                 client.Timeout = WebhookHttpClientFactory.OverallTimeout;
             })

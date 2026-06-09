@@ -1,4 +1,4 @@
-using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 
 namespace ReplyInMyVoice.Worker;
 
@@ -28,11 +28,9 @@ public sealed class OutboxDispatcherWorker(
             try
             {
                 using var scope = scopeFactory.CreateScope();
-                var dispatcher = scope.ServiceProvider.GetRequiredService<OutboxDispatcherService>();
-                await dispatcher.DispatchDueAsync(
-                    DateTimeOffset.UtcNow,
-                    _instanceId,
-                    batchSize: 25,
+                var handler = scope.ServiceProvider.GetRequiredService<DispatchDueOutboxHandler>();
+                await handler.HandleAsync(
+                    new DispatchDueOutboxCommand(DateTimeOffset.UtcNow, _instanceId, BatchSize: 25),
                     stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

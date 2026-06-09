@@ -1,9 +1,15 @@
 import { normalizeRewriteRequestFailureReason } from "../rewrite-failure-reasons";
-import type { FactReconstructQualityError } from "../rewrite-pipeline/pipeline";
 import type { RewriteResponsePayload } from "../rewrite-types";
 import type { RewriteRequestInput } from "../validation";
 import type { ProviderCallTelemetry } from "./rewrite-cost";
 import { summarizeProviderCalls } from "./rewrite-cost";
+
+type RewriteQualityErrorLike = {
+  naturalness?: RewriteResponsePayload["naturalness"];
+  repairCandidatesTried?: number;
+  rejectedCandidates?: number;
+  reason?: string;
+};
 
 function createId(): string {
   return crypto.randomUUID();
@@ -56,7 +62,7 @@ export type RewriteTelemetryFinishArgs = {
   status: RewriteCostLogStatus;
   errorCode?: string | null;
   response?: RewriteResponsePayload;
-  qualityError?: FactReconstructQualityError;
+  qualityError?: RewriteQualityErrorLike;
   strategyVersion: string;
   finishedAt?: Date;
 };

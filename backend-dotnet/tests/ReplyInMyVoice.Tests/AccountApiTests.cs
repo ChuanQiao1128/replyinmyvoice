@@ -13,11 +13,14 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.BillingSupport;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -515,18 +518,48 @@ public sealed class AccountApiTests : IAsyncLifetime
     private AccountHttpFunctions CreateAccountFunction(
         INotificationEmailProvider notificationEmailProvider)
     {
-        var accountService = new AccountService(CreateContext);
+        var db = CreateContext();
+        var unitOfWork = new UnitOfWork(db);
         var notificationService = new NotificationService(
             notificationEmailProvider,
             NullLogger<NotificationService>.Instance);
-        var billingSupportService = new BillingSupportService(
-            CreateContext,
-            notificationService);
 
         return new AccountHttpFunctions(
             BuildFunctionConfiguration(),
-            accountService,
-            billingSupportService);
+            new GetAccountSummaryHandler(
+                new AppUserRepository(db),
+                new UsagePeriodRepository(db),
+                new RewriteCreditRepository(db),
+                new PromoCodeRedemptionRepository(db),
+                new PromoCodeRepository(db),
+                new AccountUsagePlanProvider(BuildFunctionConfiguration()),
+                unitOfWork),
+            new GetPurchaseHistoryHandler(
+                new AppUserRepository(db),
+                new RewriteCreditRepository(db),
+                unitOfWork),
+            new GetBillingHistoryHandler(
+                new AppUserRepository(db),
+                new RewriteCreditRepository(db),
+                new StripeInvoiceRepository(db),
+                unitOfWork),
+            new GetBillingSupportRequestsHandler(new BillingSupportRepository(db)),
+            new GetOrCreateUserHandler(
+                new AppUserRepository(db),
+                unitOfWork),
+            new CreateBillingSupportRequestHandler(
+                new BillingSupportRepository(db),
+                unitOfWork),
+            new DeleteAccountHandler(
+                new AppUserRepository(db),
+                new RewriteAttemptRepository(db),
+                new UsagePeriodRepository(db),
+                new UsageReservationRepository(db),
+                new RewriteCreditRepository(db),
+                new PromoCodeRedemptionRepository(db),
+                new BillingSupportRequestRepository(db),
+                unitOfWork),
+            notificationService);
     }
 
     private static HttpRequest CreateFunctionRequest(

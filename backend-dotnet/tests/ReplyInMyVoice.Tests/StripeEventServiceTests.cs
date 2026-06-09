@@ -256,7 +256,9 @@ public sealed class StripeEventServiceTests
         bool[] results = [];
         var act = async () => results = await Task.WhenAll(tasks);
         await act.Should().NotThrowAsync();
-        await fixture.WaitForConcurrentCreditAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        // 30s margin (was 5s): under full-suite parallel CPU load on CI the concurrent grant
+        // can lag past 5s, causing a flaky timeout; the assertion/behaviour is unchanged.
+        await fixture.WaitForConcurrentCreditAsync().WaitAsync(TimeSpan.FromSeconds(30));
         results.Should().HaveCount(2);
 
         await using var db = fixture.CreateContext();

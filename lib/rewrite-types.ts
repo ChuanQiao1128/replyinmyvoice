@@ -1,12 +1,44 @@
-import type { DiagnosisTag } from "./rewrite-diagnosis";
-import type { RequiredFact } from "./fact-extraction";
-import type { ReviewedFact } from "./rewrite-pipeline/fact-ledger";
-import type {
-  ExtractedFacts,
-  RewriteAttemptLedgerEntry,
-} from "./rewrite-pipeline/types";
-import type { SignalQualityResult } from "./rewrite-quality-gate";
 import type { SignalLabel } from "./writing-signal";
+
+export type ExtractedFacts = {
+  facts: string[];
+  criticalFacts: string[];
+  supportingFacts: string[];
+  optionalFacts: string[];
+  constraints: string[];
+  sourceAnchors: string[];
+};
+
+export type RequiredFact = {
+  text: string;
+  normalizedText: string;
+  category: string;
+  source: string;
+};
+
+export type ReviewedFact = {
+  text: string;
+  normalizedText: string;
+  accepted: boolean;
+  reason: string;
+};
+
+export type RewriteAttemptLedgerEntry = {
+  attempt: number;
+  stage: string;
+  strategy: string;
+  outcome: string;
+  reason: string;
+};
+
+type SignalQualityStatus =
+  | "passed"
+  | "signal_unavailable"
+  | "signal_not_improved"
+  | "still_above_threshold"
+  | "failed";
+
+type DiagnosisTag = string;
 
 export type RewriteFactDiagnostics = {
   extractedFacts: ExtractedFacts;
@@ -38,7 +70,7 @@ export type RewriteResponsePayload = {
     candidateSignals: Array<{
       stage: "initial" | "targeted_repair" | "repair" | "fallback";
       aiLikePercent: number | null;
-      status: SignalQualityResult["status"];
+      status: SignalQualityStatus;
       rejected: boolean;
       reason: string;
     }>;

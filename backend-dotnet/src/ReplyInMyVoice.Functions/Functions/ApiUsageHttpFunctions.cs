@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure.Services;
@@ -10,8 +13,10 @@ namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class ApiUsageHttpFunctions(
     IConfiguration configuration,
-    AccountService accountService,
-    ApiKeyUsageQueryService apiKeyUsageQueryService)
+    GetApiUsageSummaryHandler getApiUsageSummaryHandler,
+    GetApiUsageSeriesHandler getApiUsageSeriesHandler,
+    GetApiUsageRecentHandler getApiUsageRecentHandler,
+    GetAccountSummaryHandler getAccountSummaryHandler)
 {
     [Function("GetApiUsageSummary")]
     public async Task<IActionResult> GetApiUsageSummary(
@@ -25,11 +30,13 @@ public sealed class ApiUsageHttpFunctions(
             return AuthenticationRequired();
         }
 
-        var summary = await apiKeyUsageQueryService.GetSummaryAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        await getAccountSummaryHandler.HandleAsync(
+            new GetAccountSummaryQuery(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        return new OkObjectResult(summary);
+        var summary = await getApiUsageSummaryHandler.HandleAsync(
+            new GetApiUsageSummaryQuery(authUser.ExternalAuthUserId, authUser.Email, DateTimeOffset.UtcNow),
+            cancellationToken);
+        return new OkObjectResult(ToResponse(summary!));
     }
 
     [Function("GetApiUsageSeries")]
@@ -56,15 +63,13 @@ public sealed class ApiUsageHttpFunctions(
             return InvalidRequest(errorMessage);
         }
 
-        var account = await accountService.GetOrCreateAccountSummaryAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var account = await getAccountSummaryHandler.HandleAsync(
+            new GetAccountSummaryQuery(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var series = await apiKeyUsageQueryService.GetSeriesAsync(
-            account.Id,
-            days,
+        var series = await getApiUsageSeriesHandler.HandleAsync(
+            new GetApiUsageSeriesQuery(account.Id, DateTimeOffset.UtcNow, days),
             cancellationToken);
-        return new OkObjectResult(series);
+        return new OkObjectResult(series.Select(ToResponse).ToArray());
     }
 
     [Function("GetApiUsageRecent")]
@@ -79,16 +84,14 @@ public sealed class ApiUsageHttpFunctions(
             return AuthenticationRequired();
         }
 
-        var account = await accountService.GetOrCreateAccountSummaryAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var account = await getAccountSummaryHandler.HandleAsync(
+            new GetAccountSummaryQuery(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
         var limit = ParsePositiveQueryInt(request, "limit", 50);
-        var recent = await apiKeyUsageQueryService.GetRecentAsync(
-            account.Id,
-            limit,
+        var recent = await getApiUsageRecentHandler.HandleAsync(
+            new GetApiUsageRecentQuery(account.Id, DateTimeOffset.UtcNow, limit),
             cancellationToken);
-        return new OkObjectResult(recent);
+        return new OkObjectResult(recent.Select(ToResponse).ToArray());
     }
 
     private static int ParsePositiveQueryInt(
@@ -150,4 +153,24 @@ public sealed class ApiUsageHttpFunctions(
             message,
             StatusCodes.Status400BadRequest,
             "invalid_request");
+
+    private static ApiUsageSummaryResponse ToResponse(ApiUsageSummaryDto summary) =>
+        new(
+            ToResponse(summary.Today),
+            ToResponse(summary.Yesterday),
+            ToResponse(summary.MonthToDate),
+            summary.Last30dCalls,
+            summary.Quota,
+            summary.Used,
+            summary.Remaining,
+            summary.PeriodEnd);
+
+    private static ApiUsageCount ToResponse(ApiUsageCountDto count) =>
+        new(count.Calls, count.Succeeded, count.Failed);
+
+    private static ApiUsageSeriesPoint ToResponse(ApiUsageSeriesPointDto point) =>
+        new(point.Date, point.Calls, point.Succeeded, point.Failed);
+
+    private static ApiUsageRecentItem ToResponse(ApiUsageRecentItemDto item) =>
+        new(item.CreatedAt, item.Endpoint, item.StatusCode, item.LatencyMs, item.KeyLast4);
 }

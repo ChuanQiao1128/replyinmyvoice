@@ -7,10 +7,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.ApiKey;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -196,23 +200,67 @@ public sealed class ApiInputHardeningTests
         AppDbContext db,
         Func<AppDbContext> createContext)
     {
-        var accountService = new AccountService(createContext);
-        var quotaService = new QuotaService(createContext);
+        var configuration = BuildConfiguration();
+        var appUsers = new AppUserRepository(db);
+        var usagePeriods = new UsagePeriodRepository(db);
+        var rewriteAttempts = new RewriteAttemptRepository(db);
+        var reservations = new UsageReservationRepository(db);
+        var credits = new RewriteCreditRepository(db);
+        var outboxMessages = new OutboxMessageRepository(db);
+        var promoRedemptions = new PromoCodeRedemptionRepository(db);
+        var promoCodes = new PromoCodeRepository(db);
+        var usagePlans = new AccountUsagePlanProvider(configuration);
+        var unitOfWork = new UnitOfWork(db);
+
         return new V1RewriteHttpFunctions(
-            BuildConfiguration(),
+            configuration,
             db,
             new ApiKeyRateLimiter(createContext),
-            accountService,
-            new RewriteRequestService(createContext, quotaService));
+            new HasPaidApiEntitlementHandler(appUsers, credits),
+            new CreateRewriteAttemptHandler(
+                appUsers,
+                usagePeriods,
+                rewriteAttempts,
+                reservations,
+                credits,
+                outboxMessages,
+                unitOfWork),
+            new GetRewriteAttemptHandler(rewriteAttempts),
+            new GetAccountSummaryHandler(
+                appUsers,
+                usagePeriods,
+                credits,
+                promoRedemptions,
+                promoCodes,
+                usagePlans,
+                unitOfWork));
     }
 
     private static ApiUsageHttpFunctions CreateUsageFunctions(Func<AppDbContext> createContext)
     {
-        var accountService = new AccountService(createContext);
+        var db = createContext();
+        var appUsers = new AppUserRepository(db);
+        var usagePeriods = new UsagePeriodRepository(db);
+        var credits = new RewriteCreditRepository(db);
+        var apiKeyUsage = new ApiKeyUsageRepository(db);
+        var promoRedemptions = new PromoCodeRedemptionRepository(db);
+        var promoCodes = new PromoCodeRepository(db);
+        var usagePlans = new AccountUsagePlanProvider(BuildConfiguration());
+        var unitOfWork = new UnitOfWork(db);
+
         return new ApiUsageHttpFunctions(
             BuildConfiguration(),
-            accountService,
-            new ApiKeyUsageQueryService(createContext, accountService));
+            new GetApiUsageSummaryHandler(appUsers, usagePeriods, credits, apiKeyUsage, usagePlans),
+            new GetApiUsageSeriesHandler(apiKeyUsage),
+            new GetApiUsageRecentHandler(apiKeyUsage),
+            new GetAccountSummaryHandler(
+                appUsers,
+                usagePeriods,
+                credits,
+                promoRedemptions,
+                promoCodes,
+                usagePlans,
+                unitOfWork));
     }
 
     private static async Task<(AppUser User, string Token)> SeedApiKeyUserAsync(

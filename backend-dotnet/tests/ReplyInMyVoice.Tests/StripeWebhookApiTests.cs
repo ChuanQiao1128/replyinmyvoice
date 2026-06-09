@@ -10,11 +10,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
-using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Infrastructure.Repositories;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -295,9 +297,18 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
                 .AddInMemoryCollection(settings)
                 .Build(),
             new TestHostEnvironment(environment),
-            new StripeEventService(() => CreateContext()),
+            CreateWebhookHandler(CreateContext()),
             NullLogger<StripeWebhookFunction>.Instance);
     }
+
+    private static ProcessStripeWebhookHandler CreateWebhookHandler(AppDbContext db) =>
+        new(
+            new StripeEventRepository(db),
+            new AppUserRepository(db),
+            new RewriteCreditRepository(db),
+            new StripeInvoiceRepository(db),
+            new NoopStripeEventNotifier(),
+            new UnitOfWork(db));
 
     private AppDbContext CreateContext()
     {
@@ -400,5 +411,20 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
         public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
 
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    private sealed class NoopStripeEventNotifier : IStripeEventNotifier
+    {
+        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, CancellationToken ct = default) =>
+            Task.CompletedTask;
     }
 }

@@ -1,19 +1,23 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Functions.Auth;
-using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class PromoHttpFunctions(
     IConfiguration configuration,
-    PromoService promoService,
-    AccountService accountService)
+    RedeemPromoHandler redeemPromoHandler,
+    GetPromoStatusHandler getPromoStatusHandler,
+    GetAccountSummaryHandler getAccountSummaryHandler)
 {
     private const string ProxySecretHeader = "X-RIMV-Proxy-Secret";
     private const string ClientIpHeader = "X-Client-IP";
@@ -57,12 +61,19 @@ public sealed class PromoHttpFunctions(
 
         try
         {
-            var result = await promoService.RedeemAsync(
-                authUser.ExternalAuthUserId,
-                authUser.Email,
-                body.Code,
-                ResolveTrustedClientIp(request),
-                DateTimeOffset.UtcNow,
+            var clientIp = ResolveTrustedClientIp(request);
+            if (clientIp.ServerConfigError)
+            {
+                return Error("server_config", StatusCodes.Status500InternalServerError);
+            }
+
+            var result = await redeemPromoHandler.HandleAsync(
+                new RedeemPromoCommand(
+                    authUser.ExternalAuthUserId,
+                    authUser.Email,
+                    body.Code,
+                    clientIp.IpHash,
+                    DateTimeOffset.UtcNow),
                 cancellationToken);
 
             return await MapRedeemResultAsync(result, authUser, cancellationToken);
@@ -91,10 +102,11 @@ public sealed class PromoHttpFunctions(
 
         try
         {
-            var status = await promoService.GetStatusAsync(
-                authUser.ExternalAuthUserId,
-                authUser.Email,
-                DateTimeOffset.UtcNow,
+            var status = await getPromoStatusHandler.HandleAsync(
+                new GetPromoStatusQuery(
+                    authUser.ExternalAuthUserId,
+                    authUser.Email,
+                    DateTimeOffset.UtcNow),
                 cancellationToken);
 
             return new OkObjectResult(new PromoStatusResponse(
@@ -114,16 +126,15 @@ public sealed class PromoHttpFunctions(
     }
 
     private async Task<IActionResult> MapRedeemResultAsync(
-        PromoRedeemResult result,
+        PromoRedeemResultDto result,
         FunctionAuthUser authUser,
         CancellationToken cancellationToken)
     {
         switch (result.Kind)
         {
             case PromoRedeemResultKind.Success:
-                var account = await accountService.GetOrCreateAccountSummaryAsync(
-                    authUser.ExternalAuthUserId,
-                    authUser.Email,
+                var account = await getAccountSummaryHandler.HandleAsync(
+                    new GetAccountSummaryQuery(authUser.ExternalAuthUserId, authUser.Email),
                     cancellationToken);
                 return new OkObjectResult(new PromoRedeemResponse(
                     result.CreditsGranted,
@@ -154,24 +165,76 @@ public sealed class PromoHttpFunctions(
         }
     }
 
-    private string? ResolveTrustedClientIp(HttpRequest request)
+    private PromoClientIpResolution ResolveTrustedClientIp(HttpRequest request)
     {
+        var isProduction = IsProductionEnvironment();
+        var expectedSecret = configuration["PROMO_PROXY_SHARED_SECRET"];
+        if (isProduction && string.IsNullOrWhiteSpace(expectedSecret))
+        {
+            return PromoClientIpResolution.ServerConfig();
+        }
+
         var candidateIp = request.Headers[ClientIpHeader].ToString();
         if (string.IsNullOrWhiteSpace(candidateIp))
         {
-            return null;
+            return isProduction
+                ? PromoClientIpResolution.ServerConfig()
+                : PromoClientIpResolution.Skip();
         }
 
-        var expectedSecret = configuration["PROMO_PROXY_SHARED_SECRET"];
         var suppliedSecret = request.Headers[ProxySecretHeader].ToString();
         if (string.IsNullOrWhiteSpace(expectedSecret) ||
             string.IsNullOrWhiteSpace(suppliedSecret) ||
             !SecretsMatch(expectedSecret, suppliedSecret))
         {
+            return isProduction
+                ? PromoClientIpResolution.ServerConfig()
+                : PromoClientIpResolution.Skip();
+        }
+
+        var normalizedIp = NormalizeTrustedClientIp(candidateIp);
+        if (normalizedIp is null)
+        {
+            return isProduction
+                ? PromoClientIpResolution.ServerConfig()
+                : PromoClientIpResolution.Skip();
+        }
+
+        var salt = configuration["PROMO_IP_HASH_SALT"];
+        if (string.IsNullOrWhiteSpace(salt))
+        {
+            return PromoClientIpResolution.ServerConfig();
+        }
+
+        return PromoClientIpResolution.WithHash(HashIp(normalizedIp, salt));
+    }
+
+    private bool IsProductionEnvironment()
+    {
+        var environmentName = configuration["DOTNET_ENVIRONMENT"]
+            ?? configuration["ASPNETCORE_ENVIRONMENT"]
+            ?? configuration["AZURE_FUNCTIONS_ENVIRONMENT"];
+        return string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? NormalizeTrustedClientIp(string? trustedClientIp)
+    {
+        var trimmed = trustedClientIp?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
             return null;
         }
 
-        return candidateIp;
+        return IPAddress.TryParse(trimmed, out var parsedIp)
+            ? parsedIp.ToString()
+            : null;
+    }
+
+    private static string HashIp(string trustedClientIp, string salt)
+    {
+        var payload = Encoding.UTF8.GetBytes($"{salt}:{trustedClientIp}");
+        var hash = SHA256.HashData(payload);
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private static bool SecretsMatch(string expectedSecret, string suppliedSecret)
@@ -203,4 +266,13 @@ public sealed class PromoHttpFunctions(
         DateTimeOffset? TrialExpiresAt);
 
     private sealed record PromoErrorResponse(string Error);
+
+    private sealed record PromoClientIpResolution(bool ServerConfigError, string? IpHash)
+    {
+        public static PromoClientIpResolution ServerConfig() => new(true, null);
+
+        public static PromoClientIpResolution Skip() => new(false, null);
+
+        public static PromoClientIpResolution WithHash(string ipHash) => new(false, ipHash);
+    }
 }

@@ -4,6 +4,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Auth;
@@ -17,7 +20,9 @@ public sealed class RewriteHttpFunctions(
     IConfiguration configuration,
     AppDbContext db,
     AccountService accountService,
-    RewriteRequestService rewriteRequestService)
+    FindUserHandler findUserHandler,
+    CreateRewriteAttemptHandler createRewriteAttemptHandler,
+    GetRewriteAttemptHandler getRewriteAttemptHandler)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -86,40 +91,17 @@ public sealed class RewriteHttpFunctions(
             authUser.Email,
             cancellationToken);
         var plan = AccountService.GetUsagePlan(user, configuration);
-        var result = await rewriteRequestService.CreateAttemptAsync(
-            user.Id,
-            idempotencyKey,
-            body,
-            plan.PeriodKey,
-            plan.QuotaLimit,
-            DateTimeOffset.UtcNow,
+        var result = await createRewriteAttemptHandler.HandleAsync(
+            new CreateRewriteAttemptCommand(
+                user.Id,
+                idempotencyKey,
+                body,
+                plan.PeriodKey,
+                plan.QuotaLimit,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
-        if (result.Kind == ReserveRewriteResultKind.QuotaExceeded)
-        {
-            return FunctionHttpResults.Problem(
-                "Rewrite quota exhausted",
-                "No rewrite quota remains for the current period.",
-                StatusCodes.Status402PaymentRequired);
-        }
-
-        if (result.Kind == ReserveRewriteResultKind.Conflict)
-        {
-            return FunctionHttpResults.Problem(
-                "Idempotency key conflict",
-                "The same idempotency key was reused with a different rewrite request.",
-                StatusCodes.Status409Conflict);
-        }
-
-        var response = new RewriteAttemptResponse(
-            result.AttemptId,
-            result.Status.ToString(),
-            result.ResultJson,
-            result.ErrorCode);
-
-        return result.Status == RewriteAttemptStatus.Succeeded
-            ? new OkObjectResult(response)
-            : FunctionHttpResults.Accepted($"/api/rewrite-attempts/{result.AttemptId}", response);
+        return ToCreateRewriteAttemptHttpResult(result);
     }
 
     [Function("GetRewriteAttempt")]
@@ -138,29 +120,19 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await db.AppUsers.SingleOrDefaultAsync(
-            x => x.ExternalAuthUserId == authUser.ExternalAuthUserId,
-            cancellationToken);
+        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
         if (user is null)
         {
             return new NotFoundResult();
         }
 
-        var attempt = await db.RewriteAttempts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(
-                x => x.Id == attemptId && x.UserId == user.Id,
-                cancellationToken);
-        if (attempt is null)
-        {
-            return new NotFoundResult();
-        }
+        var result = await getRewriteAttemptHandler.HandleAsync(
+            new GetRewriteAttemptQuery(attemptId, user.Id),
+            cancellationToken);
 
-        return new OkObjectResult(new RewriteAttemptResponse(
-            attempt.Id,
-            attempt.Status.ToString(),
-            attempt.ResultJson,
-            attempt.ErrorCode));
+        return result.Kind == ApplicationResultKind.NotFound || result.Value is null
+            ? new NotFoundResult()
+            : new OkObjectResult(ToResponse(result.Value));
     }
 
     [Function("ListMyRewriteAttempts")]
@@ -180,7 +152,9 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        var user = await findUserHandler.HandleAsync(
+            new FindUserQuery(authUser.ExternalAuthUserId),
+            cancellationToken);
         if (user is null)
         {
             return new OkObjectResult(new RewriteHistoryPageResponse(
@@ -190,6 +164,7 @@ public sealed class RewriteHttpFunctions(
                 []));
         }
 
+        // TODO(DDD): no list-history handler yet - DDD-64
         var baseQuery = db.RewriteAttempts
             .AsNoTracking()
             .Where(x => x.UserId == user.Id && x.DeletedAt == null);
@@ -253,31 +228,31 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        var user = await findUserHandler.HandleAsync(
+            new FindUserQuery(authUser.ExternalAuthUserId),
+            cancellationToken);
         if (user is null)
         {
             return new NotFoundResult();
         }
 
-        var attempt = await db.RewriteAttempts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(
-                x => x.Id == attemptId && x.UserId == user.Id && x.DeletedAt == null,
-                cancellationToken);
-        if (attempt is null)
+        var result = await getRewriteAttemptHandler.HandleAsync(
+            new GetRewriteAttemptQuery(attemptId, user.Id),
+            cancellationToken);
+        if (result.Kind == ApplicationResultKind.NotFound || result.Value is null)
         {
             return new NotFoundResult();
         }
 
         return new OkObjectResult(new RewriteHistoryDetailResponse(
-            attempt.Id,
-            attempt.Status.ToString(),
-            attempt.RequestJson,
-            attempt.ResultJson,
-            attempt.ErrorCode,
-            attempt.ErrorMessage,
-            attempt.CreatedAt,
-            attempt.CompletedAt));
+            result.Value.AttemptId,
+            result.Value.Status,
+            result.Value.RequestJson,
+            result.Value.ResultJson,
+            result.Value.ErrorCode,
+            result.Value.ErrorMessage,
+            result.Value.CreatedAt,
+            result.Value.CompletedAt));
     }
 
     [Function("DeleteMyRewriteAttempt")]
@@ -296,12 +271,15 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        var user = await findUserHandler.HandleAsync(
+            new FindUserQuery(authUser.ExternalAuthUserId),
+            cancellationToken);
         if (user is null)
         {
             return new NotFoundResult();
         }
 
+        // TODO(DDD): no delete-history handler yet - DDD-64
         var attempt = await db.RewriteAttempts
             .AsTracking()
             .SingleOrDefaultAsync(
@@ -349,6 +327,43 @@ public sealed class RewriteHttpFunctions(
             ? parsed
             : fallback;
     }
+
+    private static IActionResult ToCreateRewriteAttemptHttpResult(
+        ApplicationResult<RewriteAttemptDto> result) =>
+        result.Kind switch
+        {
+            ApplicationResultKind.Created or ApplicationResultKind.Existing or ApplicationResultKind.Success
+                when result.Value is not null => ToRewriteAttemptHttpResult(result.Value),
+            ApplicationResultKind.QuotaExceeded => FunctionHttpResults.Problem(
+                "Rewrite quota exhausted",
+                "No rewrite quota remains for the current period.",
+                StatusCodes.Status402PaymentRequired),
+            ApplicationResultKind.Conflict => FunctionHttpResults.Problem(
+                "Idempotency key conflict",
+                "The same idempotency key was reused with a different rewrite request.",
+                StatusCodes.Status409Conflict),
+            ApplicationResultKind.NotFound => new NotFoundResult(),
+            _ => FunctionHttpResults.Problem(
+                "Rewrite request failed",
+                "The rewrite request could not be processed.",
+                StatusCodes.Status500InternalServerError),
+        };
+
+    private static IActionResult ToRewriteAttemptHttpResult(RewriteAttemptDto attempt)
+    {
+        var response = ToResponse(attempt);
+
+        return attempt.Status == RewriteAttemptStatus.Succeeded.ToString()
+            ? new OkObjectResult(response)
+            : FunctionHttpResults.Accepted($"/api/rewrite-attempts/{attempt.AttemptId}", response);
+    }
+
+    private static RewriteAttemptResponse ToResponse(RewriteAttemptDto attempt) =>
+        new(
+            attempt.AttemptId,
+            attempt.Status,
+            attempt.ResultJson,
+            attempt.ErrorCode);
 }
 
 public sealed record RewriteAttemptResponse(
