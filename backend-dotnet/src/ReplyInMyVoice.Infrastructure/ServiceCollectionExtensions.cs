@@ -17,6 +17,7 @@ using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
+using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -77,6 +78,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUsageReservationRepository, UsageReservationRepository>();
         services.AddScoped<IRewriteCreditRepository, RewriteCreditRepository>();
         services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
+        services.AddScoped<IWebhookDeliveryRepository, WebhookDeliveryRepository>();
         services.AddScoped<IPromoCodeRepository, PromoCodeRepository>();
         services.AddScoped<IPromoCodeRedemptionRepository, PromoCodeRedemptionRepository>();
         services.AddScoped<IPromoAdminRepository, PromoAdminRepository>();
@@ -131,6 +133,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RestorePromoCodeHandler>();
         services.AddScoped<CreateRewriteAttemptHandler>();
         services.AddScoped<GetRewriteAttemptHandler>();
+        services.AddScoped<DispatchDueWebhooksHandler>();
+        services.AddScoped<DispatchDueOutboxHandler>();
         services.AddScoped<ReconcileStripeHandler>();
         services.AddScoped<GenerateApiKeyHandler>();
         services.AddScoped<ListApiKeysHandler>();
@@ -159,6 +163,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RewriteRequestService>();
         services.AddScoped<RewriteJobProcessor>();
         services.AddScoped<OutboxDispatcherService>();
+        services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
         services.AddScoped<CreditExpiryReminderService>();
@@ -188,7 +193,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<ICheckoutVelocityLimiter, CheckoutVelocityLimiter>();
         services.AddHttpClient();
-        services.AddHttpClient<IWebhookDeliverySender, HttpWebhookDeliverySender>(client =>
+        services.AddTransient<ReplyInMyVoice.Application.Abstractions.IWebhookDeliverySender, WebhookDeliverySenderAdapter>();
+        services.AddHttpClient<ReplyInMyVoice.Infrastructure.Services.IWebhookDeliverySender, HttpWebhookDeliverySender>(client =>
             {
                 client.Timeout = WebhookHttpClientFactory.OverallTimeout;
             })

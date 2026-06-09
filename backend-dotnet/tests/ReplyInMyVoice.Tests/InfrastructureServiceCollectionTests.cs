@@ -239,7 +239,7 @@ public sealed class InfrastructureServiceCollectionTests
         var provider = BuildProvider([]);
         var handlerFactory = provider.GetRequiredService<IHttpMessageHandlerFactory>();
 
-        using var handler = handlerFactory.CreateHandler(nameof(IWebhookDeliverySender));
+        using var handler = handlerFactory.CreateHandler(nameof(ReplyInMyVoice.Infrastructure.Services.IWebhookDeliverySender));
         var socketsHandler = FindHandler<SocketsHttpHandler>(handler);
 
         socketsHandler.Should().NotBeNull();

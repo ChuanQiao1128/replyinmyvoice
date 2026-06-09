@@ -4976,3 +4976,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingSupportUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
 - Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~BillingSupportUseCaseTests` failed with missing BillingSupport Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/BillingSupport/CreateBillingSupportRequestHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused BillingSupportUseCase tests passed 4/4; full backend tests passed 689/689.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-51 WebhookOutbox Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 and `plans/ddd-restructure/issues/DDD-51-webhook-outbox.md` require converting WebhookOutbox timer batch use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-51 brief, `docs/ddd-migration-playbook.md`, the legacy webhook/outbox dispatcher services, Rewrite handler templates, Application abstractions, repositories, and existing dispatcher tests before editing. Scoped goals to add strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/WebhookOutbox/*`; `IWebhookDeliveryRepository`; Application webhook sender and outbox message handler abstractions; Infrastructure repository/adapters/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the WebhookOutbox Application namespace, handlers, sender/router abstractions, and repository types did not exist. Final release build, focused WebhookOutboxUseCase tests, full backend tests, handler file-existence check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-51 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-51 webhook delivery and outbox message dispatch lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 migrates webhook delivery and outbox message batch lifecycle handling with claim, dispatch, retry, and terminal failure transitions.
+- Action: Opened and followed the project skill; modeled `WebhookDelivery` states as `Pending`, `InProgress`, `Delivered`, and `Failed`, and `OutboxMessage` states as `Pending`, `Processing`, `Sent`, and `Failed`. Events are claim due row, successful external dispatch, failed external dispatch, retry delay elapsed, max attempts reached, and duplicate/concurrent timer claim.
+- Output artifacts: `DispatchDueWebhooksHandler`; `DispatchDueOutboxHandler`; claim/mark repository methods; SQLite tests for success, failed-attempt back-off, and concurrent claim idempotency for both lifecycles.
+- Verification evidence: Focused WebhookOutboxUseCase tests passed 6/6 and full backend tests passed 695/695.
+- Limitations: Entry points still call the legacy dispatcher services until a later strangler issue switches callers; no production routing changed.
+
+### 2026-06-09 - data-module-review - DDD-51 WebhookOutbox repositories and persistence invariants
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 changes EF data access for `WebhookDeliveries` and `OutboxMessages` through Application repository interfaces.
+- Action: Opened and followed the project skill; read EF mappings, row-version concurrency tokens, existing indexes, legacy transaction/claim code, repository style, and SQLite DateTimeOffset handling. Added narrow claim/mark repository methods, preserved serializable claim transactions through `IUnitOfWork`, kept all schema and migration files unchanged, and kept handlers free of `AppDbContext`.
+- Output artifacts: `IWebhookDeliveryRepository`; `WebhookDeliveryRepository`; extensions to `IOutboxMessageRepository`; `OutboxMessageRepository` claim/mark methods; widened retryable transaction race detection in `UnitOfWork`.
+- Verification evidence: Focused tests assert claim writes lock owner/lease, success clears lock and marks terminal success, failure clears lock and schedules retry with the existing two-second first delay, and a second handler cannot dispatch an already claimed row. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `WebhookDispatcherService` and `OutboxDispatcherService` files were not edited.
+
+### 2026-06-09 - resilience-test-generation - DDD-51 dispatcher retry and concurrent claim coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 touches retry back-off, provider failures, queue publish failures, and concurrent timer claim behavior.
+- Action: Opened and followed the project skill; built the failure matrix around HTTP non-2xx, outbox handler exception, max-attempt terminalization through existing repository rules, duplicate timer claim while first dispatch is still running, and SQLite-backed persistence. Implemented deterministic fakes for webhook sending and outbox message handling rather than live HTTP, queue, or cloud calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; `IWebhookDeliverySender`; `IOutboxMessageHandler`; Infrastructure adapter and concrete outbox message handler.
+- Verification evidence: Red run failed on missing Application types; final focused test command passed 6/6, including webhook success/failure/concurrent claim and outbox success/failure/concurrent claim. Full backend tests passed 695/695.
+- Limitations: No live webhook endpoint, Service Bus, Azure worker, or deployment command was used; resilience behavior is proven through deterministic fakes and SQLite state assertions.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-51 WebhookOutboxUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #632 adds C#/.NET Application handler tests for WebhookOutbox claim, dispatch, back-off, and concurrency behavior.
+- Action: Opened and followed the project skill; wrote `WebhookOutboxUseCaseTests` before production code, watched the initial focused run fail on missing WebhookOutbox Application namespace, handlers, sender/router abstractions, and repository types, then implemented Application and Infrastructure code with SQLite in-memory coverage and deterministic fakes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~WebhookOutboxUseCaseTests` failed with missing WebhookOutbox Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/WebhookOutbox/DispatchDueWebhooksHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused WebhookOutboxUseCase tests passed 6/6; full backend tests passed 695/695; touched-file restricted-substring scan returned no matches.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.

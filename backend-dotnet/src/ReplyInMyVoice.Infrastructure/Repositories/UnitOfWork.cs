@@ -87,9 +87,9 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
         exception is SqliteException { SqliteErrorCode: 5 or 6 } ||
         exception.ToString().Contains("database is locked", StringComparison.OrdinalIgnoreCase) ||
         exception.ToString().Contains("database table is locked", StringComparison.OrdinalIgnoreCase) ||
-        (exception is DbUpdateException dbUpdateException && IsReservationRaceException(dbUpdateException));
+        (exception is DbUpdateException dbUpdateException && IsRetryableDbUpdateRaceException(dbUpdateException));
 
-    private static bool IsReservationRaceException(DbUpdateException exception)
+    private static bool IsRetryableDbUpdateRaceException(DbUpdateException exception)
     {
         var message = exception.ToString();
         return message.Contains("IX_UsagePeriods_UserId_PeriodKey", StringComparison.OrdinalIgnoreCase) ||
@@ -97,6 +97,9 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
                 message.Contains("UsagePeriods.PeriodKey", StringComparison.OrdinalIgnoreCase)) ||
             message.Contains("IX_RewriteAttempts_UserId_IdempotencyKey", StringComparison.OrdinalIgnoreCase) ||
             (message.Contains("RewriteAttempts.UserId", StringComparison.OrdinalIgnoreCase) &&
-                message.Contains("RewriteAttempts.IdempotencyKey", StringComparison.OrdinalIgnoreCase));
+                message.Contains("RewriteAttempts.IdempotencyKey", StringComparison.OrdinalIgnoreCase)) ||
+            message.Contains("serialization", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("deadlock", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("3960", StringComparison.OrdinalIgnoreCase);
     }
 }
