@@ -80,6 +80,23 @@ public sealed class InfrastructureServiceCollectionTests
     }
 
     [Fact]
+    public void AddReplyInMyVoiceInfrastructure_does_not_register_retired_stripe_services()
+    {
+        var services = BuildServiceCollection([]);
+        var registeredTypeNames = services
+            .SelectMany(descriptor => new[]
+            {
+                descriptor.ServiceType.Name,
+                descriptor.ImplementationType?.Name,
+            })
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+
+        registeredTypeNames.Should().NotContain("StripeEventService");
+        registeredTypeNames.Should().NotContain("StripeReconciliationService");
+    }
+
+    [Fact]
     public void AddReplyInMyVoiceInfrastructure_fails_fast_in_non_development_environments_when_critical_config_is_missing()
     {
         var values = new Dictionary<string, string?>
@@ -271,12 +288,27 @@ public sealed class InfrastructureServiceCollectionTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(values)
             .Build();
+        var services = BuildServiceCollection(
+            values,
+            environmentName,
+            requireServiceBusConsumer);
+        return services.BuildServiceProvider();
+    }
+
+    private static ServiceCollection BuildServiceCollection(
+        Dictionary<string, string?> values,
+        string environmentName = "Testing",
+        bool requireServiceBusConsumer = false)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(values)
+            .Build();
         var services = new ServiceCollection();
         services.AddReplyInMyVoiceInfrastructure(
             configuration,
             environmentName,
             requireServiceBusConsumer);
-        return services.BuildServiceProvider();
+        return services;
     }
 
     private static Dictionary<string, string?> CompleteProductionConfiguration() => new()
