@@ -5507,3 +5507,39 @@ claude-heavy-planning-handoff
 - Output artifacts: no lifecycle code change was made after local verification passed.
 - Verification evidence: exact test stress run and full backend suite passed from the current worktree.
 - Limitations: No new state, enum, schema, deployment, push, or PR work was performed.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-13 Stripe webhook and reconciliation cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-13 deletes legacy Stripe webhook/reconciliation infrastructure services while preserving webhook event, subscription grace, refund/dispute, and reconciliation lifecycles in Application handlers.
+- Action: Opened and followed the project skill as a lifecycle checklist. State list: Stripe event `Processing`, `Processed`, `Failed`; subscription `Active`, `PastDue`, `Inactive`, `Canceled`; payment grace present/cleared; rewrite credit grant/adjusted. Events checked: checkout completed, invoice failed/succeeded/paid, subscription updated/deleted, refund, dispute, duplicate/replayed webhook, and reconciliation timer inputs. Invariants checked: duplicate event idempotency, failed-event retry, no duplicate credit grant, grace expiry/reminder transitions, paid grace preservation for `past_due`, non-paying downgrade, refund clamping, dispute revocation, and read-only reconciliation inputs.
+- Output artifacts: migrated old service edge-case assertions into `StripeEventUseCaseTests.cs`; added `StripeEventNotifierTests.cs`; deleted `StripeEventService.cs`, `StripeReconciliationService.cs`, and their obsolete direct test files.
+- Verification evidence: focused Stripe filter passed 42/42; full `dotnet test ReplyInMyVoice.sln -c Release` passed 636/636; deleted-class grep checks over `backend-dotnet/src` passed.
+- Limitations: No new lifecycle state, enum, schema, migration, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-13 Stripe persistence reference cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-13 removes EF-backed legacy services and test coverage around `StripeEvents`, `RewriteCredits`, `StripeInvoices`, and reconciliation purchase-grant reads.
+- Action: Opened and followed the project skill. Reviewed old services, repositories, DI registrations, handler tests, surviving consumers, and old service tests together. Confirmed surviving contracts must move before deleting `StripeReconciliationService.cs`, and confirmed `StripeBillingService`, its statics, provider adapters, notifier, and subscription cancellation service remain untouched.
+- Output artifacts: added `StripeReconciliationContracts.cs`; removed only `AddScoped<StripeReconciliationService>()` and `AddScoped<StripeEventService>()`; preserved legacy reconciliation client/alerter aliases; added a DI guard asserting retired services are not registered.
+- Verification evidence: relocation build passed before deletion; post-deletion Release build passed; `grep -rq "class StripeBillingService" backend-dotnet/src` and `grep -rq "interface IStripeReconciliationAlerter" backend-dotnet/src` passed; `git diff --check` passed.
+- Limitations: No database schema, migration, index, transaction policy, live provider call, deployment, push, or PR change was made.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-13 webhook replay and refund coverage preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-13 retires old service tests that covered duplicate Stripe webhooks, failed-event replay, checkout grant conflicts, refunds, disputes, and notification post-commit effects.
+- Action: Opened and followed the project skill as a failure-matrix checklist. Failure/replay rows preserved locally: missing checkout user then replay, duplicate checkout/subscription events, invoice recovery replay, refund before grant then replay, duplicate refund replay, partial refund grant math, consumed-credit clamp, dispute credit revocation, and invalid signature/no-side-effect API tests already in `StripeWebhookApiTests`.
+- Output artifacts: migrated relevant old-service assertions into `StripeEventUseCaseTests.cs`; added `StripeEventNotifierTests.cs` for notification boundary behavior that now lives outside the handler; removed obsolete direct service tests after focused coverage passed.
+- Verification evidence: initial TDD DI guard failed as expected while legacy services were still registered; migrated event/notifier focused filter passed 25/25 before deletion; issue focused Stripe filter passed 42/42 after deletion; full backend suite passed 636/636.
+- Limitations: Malformed raw JSON logging from the deleted service was not reintroduced because parsing now occurs before the handler boundary. No live Stripe endpoint, cloud dependency, deployment, push, PR, or payment action was used.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-13 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-13 changes C# infrastructure DI, service files, xUnit tests, EF SQLite handler tests, and full backend acceptance coverage.
+- Action: Opened and followed the project skill. Added a failing DI guard first, compared old service-unit assertions against Application handler/API tests, migrated unique handler/notifier coverage, relocated surviving contracts, deleted obsolete service tests, then ran focused and full backend gates.
+- Output artifacts: added `StripeReconciliationContracts.cs` and `StripeEventNotifierTests.cs`; modified `StripeEventUseCaseTests.cs`, `InfrastructureServiceCollectionTests.cs`, `ServiceCollectionExtensions.cs`, `plans/decisions-log.md`, and this log; deleted `StripeEventService.cs`, `StripeReconciliationService.cs`, `StripeEventServiceTests.cs`, and `StripeReconciliationServiceTests.cs`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed after relocation and again after deletion; focused CLEAN-13 filter passed 42/42; full `dotnet test ReplyInMyVoice.sln -c Release` passed 636/636; acceptance grep checks passed; diff-only restricted-wording scan found no added banned substrings.
+- Limitations: NuGet vulnerability metadata warnings appeared because the NuGet service index was unavailable, but restore/build/test completed. A local `git add && git commit` checkpoint was attempted and failed because this worktree's git index is outside the writable sandbox. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
