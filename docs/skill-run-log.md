@@ -4679,3 +4679,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteJobUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
 - Verification evidence: Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/RewriteJob/ProcessRewriteJobHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused RewriteJobUseCase tests passed 3/3; full backend tests passed 644/644.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, old processor edit, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-43 ApiKey Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #624 and `plans/ddd-restructure/issues/DDD-43-apikey.md` require converting ApiKey service use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-43 brief, `docs/ddd-migration-playbook.md`, `ApiKeyService.cs`, `ApiKeyUsageQueryService.cs`, existing Rewrite handlers, Application abstractions, repositories, and ApiKey tests before editing. Scoped goals to add ApiKey handlers/repositories/DTOs only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret or deployment change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/ApiKey/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/ApiKeyDtos.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/ApiKeyCredential.cs`; ApiKey repository abstractions/implementations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/ApiKeyUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the ApiKey Application namespace, handlers, and repository types did not exist. Final release build, focused ApiKeyUseCase tests, full backend tests, file-existence check, diff whitespace check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-43 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-43 ApiKey active, rotated, revoked, and webhook lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #624 migrates ApiKey use cases that change key active/revoked state and webhook state.
+- Action: Opened and followed the project skill; modeled states as active key, revoked key, active key with webhook, active key without webhook, missing/non-owned key, and replacement key after rotation. Events are generate command, list query, rotate command, revoke command, set webhook command, clear webhook command, usage summary query, usage series query, and usage recent query.
+- Output artifacts: `GenerateApiKeyHandler`, `ListApiKeysHandler`, `RotateApiKeyHandler`, `RevokeApiKeyHandler`, `SetApiKeyWebhookHandler`, `ClearApiKeyWebhookHandler`, usage query handlers, and `ApiKeyUseCaseTests`.
+- Verification evidence: Tests cover generate -> active, list with last-30-day counts, set webhook -> active with webhook, clear webhook -> active without webhook, rotate active -> old revoked plus replacement active, non-owner rotate -> null, missing revoke -> false, revoke active -> revoked, and usage query window clamping.
+- Limitations: Existing entry points still call the legacy services; the new handlers are registered but not production-routed until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-43 ApiKey repository migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #624 changes data access services for ApiKeys and ApiKeyUsages through new Application repository interfaces.
+- Action: Opened and followed the project skill; read EF entities/mappings, legacy ApiKey service queries/mutations, existing repository style, and SQLite tests. Added narrow repository methods only, kept all schema and migration files unchanged, kept write paths on `IUnitOfWork`, and kept read-only usage queries without `IUnitOfWork`.
+- Output artifacts: `IApiKeyRepository`; `IApiKeyUsageRepository`; `ApiKeyRepository`; `ApiKeyUsageRepository`; ApiKey handlers/tests.
+- Verification evidence: Focused tests assert final persisted ApiKey and ApiKeyUsage-derived state after generate/list/webhook/rotate/revoke and usage query paths. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 646/646.
+- Limitations: No migration smoke was needed because no schema or migration changed. The legacy ApiKey service data path remains in place by design.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-43 ApiKeyUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #624 adds C#/.NET Application handler tests for ApiKey CRUD, webhook, and usage query behavior.
+- Action: Opened and followed the project skill; wrote `ApiKeyUseCaseTests` before production code, watched the initial focused run fail on missing ApiKey Application handler/repository types, then implemented the Application and Infrastructure code with SQLite in-memory coverage.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/ApiKeyUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiKeyUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.ApiKey` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/ApiKey/GenerateApiKeyHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused ApiKeyUseCase tests passed 2/2; full backend tests passed 646/646.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, or live payment command was run.
