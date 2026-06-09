@@ -8,6 +8,7 @@ using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
+using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -70,6 +71,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
         services.AddScoped<IAccountUsagePlanProvider>(_ => new AccountUsagePlanProvider(configuration));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
+        services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
         services.AddScoped<GetOrCreateUserHandler>();
         services.AddScoped<FindUserHandler>();
         services.AddScoped<GetAccountSummaryHandler>();
@@ -84,6 +87,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ReleaseExpiredReservationsHandler>();
         services.AddScoped<CreateRewriteAttemptHandler>();
         services.AddScoped<GetRewriteAttemptHandler>();
+        services.AddScoped<ProcessRewriteJobHandler>();
         services.AddScoped<AccountService>();
         services.AddScoped<ApiKeyService>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();

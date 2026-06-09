@@ -9,6 +9,7 @@ using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
+using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -48,6 +49,8 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IBillingSupportRequestRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IAccountUsagePlanProvider>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IUnitOfWork>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IRewriteEngineClient>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IRewriteCostLogger>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetOrCreateUserHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<FindUserHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetAccountSummaryHandler>().Should().NotBeNull();
@@ -62,6 +65,7 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<ReleaseExpiredReservationsHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<CreateRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ProcessRewriteJobHandler>().Should().NotBeNull();
     }
 
     [Fact]

@@ -4634,3 +4634,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AccountUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
 - Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~AccountUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.Account` and related types. Final gates: `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused AccountUseCase tests passed 6/6; focused InfrastructureServiceCollection tests passed 13/13; full backend tests passed 632/632.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-42 RewriteJob Application handler contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 and `plans/ddd-restructure/issues/DDD-42-rewrite-job.md` require converting the existing rewrite job execution workflow into an implementation-ready Application handler contract across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-42 brief, `docs/ddd-migration-playbook.md`, `RewriteJobProcessor.cs`, existing Rewrite/Quota Application handlers, Application abstractions, repositories, and tests before editing. Scoped goals to add the strangler handler and provider/cost abstractions only; non-goals were no entry-point switch, no old processor edit, no schema/migration change, no provider secret or deployment change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/RewriteJob/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteEngineClient.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteCostLogger.cs`; Infrastructure adapter and cost logger files; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteJobUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the `ReplyInMyVoice.Application.UseCases.RewriteJob` namespace and new abstraction types did not exist. Final release build, focused RewriteJobUseCase tests, full backend tests, file-existence check, diff whitespace check, and changed-file prohibited-term scan passed.
+- Limitations: No separate spec document was added because the issue body plus DDD-42 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-42 rewrite job execution lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 moves rewrite job execution, including rewrite attempt status and quota reservation transitions, into an Application handler.
+- Action: Opened and followed the project skill; modeled states as missing attempt, pending attempt with pending reservation, processing attempt, succeeded/finalized attempt, failed/released attempt, expired terminal attempt, malformed request release, provider failure release, provider timeout release, period-backed quota, and credit-backed quota. Events are process command, terminal redelivery, expiration precheck, malformed request JSON, processing claim, engine success, engine failure result, engine timeout, and engine exception.
+- Output artifacts: `ProcessRewriteJobHandler`, `ProcessRewriteJobCommand`, rewrite engine/cost abstractions, and `RewriteJobUseCaseTests`.
+- Verification evidence: Tests cover pending -> processing -> succeeded/finalized, pending -> processing -> failed/released on engine failure, and credit-backed pending -> processing -> failed/released with credit refund on engine exception. Existing `RewriteJobProcessorTests` stayed green in the full suite.
+- Limitations: The new Application handler is registered but not yet wired to Functions/API/Worker entry points; the old processor remains live for the current runtime path by design.
+
+### 2026-06-09 - data-module-review - DDD-42 rewrite job persistence migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 changes data access for rewrite attempt mutation, usage reservation finalization/release, period counters, rewrite credit refunds, and rewrite cost log persistence.
+- Action: Opened and followed the project skill; read EF entities/mappings, old `RewriteJobProcessor` and `QuotaService` mutation paths, existing Application quota handlers, repository contracts, and SQLite tests. Added one narrow no-tracking attempt lookup for preclaim snapshots and kept all schema and migration files unchanged.
+- Output artifacts: `IRewriteAttemptRepository.GetByIdNoTrackingAsync`; `RewriteAttemptRepository.GetByIdNoTrackingAsync`; `ProcessRewriteJobHandler`; `RewriteCostLogger`; `RewriteJobUseCaseTests`.
+- Verification evidence: Focused tests assert final persisted attempt, reservation, period, and credit state after success/failure/error paths. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 644/644.
+- Limitations: No migration smoke was needed because no schema or migration changed. The cost logger duplicates the current persistence shape behind the new abstraction so later waves can switch entry points without editing the old processor now.
+
+### 2026-06-09 - resilience-test-generation - DDD-42 provider failure and quota release checks
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 requires handler coverage for engine failure paths and quota-release-on-error behavior.
+- Action: Opened and followed the project skill; selected deterministic local fakes over live provider calls. Added tests for valid rewrite success, failed engine result, and thrown engine exception with credit refund, asserting persisted final state instead of only handler return behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteJobUseCaseTests.cs`; `FakeRewriteEngineClient`; `ThrowingRewriteEngineClient`; `FakeRewriteCostLogger`.
+- Verification evidence: Red run failed on missing handler/abstraction types. After implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteJobUseCaseTests` passed 3/3, and full backend tests passed 644/644.
+- Limitations: No live OpenAI-compatible provider, writing signal provider, queue consumer, payment provider, cloud endpoint, deployment, push, or PR command was used.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-42 RewriteJobUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #623 adds C#/.NET Application handler tests for rewrite job success, engine failure, and quota release behavior.
+- Action: Opened and followed the project skill; wrote `RewriteJobUseCaseTests` before production code, watched the initial focused run fail on missing `ProcessRewriteJobHandler`, command, engine, and cost logger types, then implemented the Application and Infrastructure code. Added DI assertions for the new handler and abstractions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/RewriteJobUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/RewriteJob/ProcessRewriteJobHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused RewriteJobUseCase tests passed 3/3; full backend tests passed 644/644.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, old processor edit, or live payment command was run.
