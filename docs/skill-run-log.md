@@ -4760,3 +4760,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoUseCaseTests.cs`.
 - Verification evidence: Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Promo/RedeemPromoHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused PromoUseCase tests passed 6/6; full backend tests passed 652/652.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-45 PromoAdmin Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #626 and `plans/ddd-restructure/issues/DDD-45-promo-admin.md` require converting PromoAdmin service use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-45 brief, `docs/ddd-migration-playbook.md`, `PromoAdminService.cs`, Rewrite handler templates, Application abstractions, repositories, and admin promo tests before editing. Scoped goals to add the strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, and no deployment change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/PromoAdmin/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/AdminPromoDtos.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IPromoAdminRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/PromoAdminRepository.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoAdminUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the PromoAdmin Application namespace, handlers, and repository types did not exist. Final release build, focused PromoAdminUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and changed-file safety substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-45 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-45 promo admin lifecycle mutations
+
+- Agent: Codex worker
+- Trigger: GitHub issue #626 migrates promo admin use cases that create, update, enable, disable, archive, and restore promo-code state.
+- Action: Opened and followed the project skill; modeled promo-code states as missing, active, disabled, archived, pending, expired, and exhausted, derived from `ArchivedAt`, `IsActive`, validity window, and global redemption count. Events are create command, update command, set-active command, archive command, restore command, list query, and detail query.
+- Output artifacts: `CreatePromoCodeHandler`, `UpdatePromoCodeHandler`, `SetPromoCodeActiveHandler`, `ArchivePromoCodeHandler`, `RestorePromoCodeHandler`, list/detail handlers, and `PromoAdminUseCaseTests`.
+- Verification evidence: Tests cover create -> active with audit, duplicate create rejection, update with audit, update missing id -> not found, ordered status projection, detail stats for applied redemptions, and detail missing id -> null. Full backend tests passed 659/659.
+- Limitations: Existing Functions/API/Worker entry points still use the legacy service; the new handlers are registered but not production-routed until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-45 promo admin repository migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #626 changes data access for promo admin list/detail queries, promo-code mutations, and admin audit append through new Application repository interfaces.
+- Action: Opened and followed the project skill; read EF promo/admin-audit entities and mappings, legacy `PromoAdminService` persistence flow, existing repository style, and SQLite tests. Added a narrow `IPromoAdminRepository`, kept all schema and migration files unchanged, kept write paths on `IUnitOfWork`, preserved unique-code handling, and kept handlers free of `AppDbContext`.
+- Output artifacts: `IPromoAdminRepository`; `PromoAdminRepository`; Application PromoAdmin handlers; `AdminPromoDtos`; `PromoAdminUseCaseTests`.
+- Verification evidence: Focused tests assert persisted promo rows and admin audit rows for create/update, no side effects for duplicate create and missing update, and detail stats from redemption/credit rows. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 659/659.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `PromoAdminService` persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-45 PromoAdminUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #626 adds C#/.NET Application handler tests for PromoAdmin create, update, list, and detail behavior.
+- Action: Opened and followed the project skill; wrote `PromoAdminUseCaseTests` before production code, watched the initial focused run fail on missing PromoAdmin Application namespace, handlers, and repository types, then implemented Application and Infrastructure code with SQLite in-memory coverage.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoAdminUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~PromoAdminUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.PromoAdmin` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/PromoAdmin/CreatePromoCodeHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused PromoAdminUseCase tests passed 7/7; full backend tests passed 659/659.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
