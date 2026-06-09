@@ -45,6 +45,42 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - state-machine-modeling - DDD-68 API Program shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #653 changes API entry points for promo redemption/status, Stripe checkout/portal, and Stripe webhook lifecycle handling.
+- Action: Opened and followed the skill. State list: promo redemption remains not-redeemed/applied; promo credit remains active until consumed or expired; billing checkout remains unauthenticated/rejected or session-created; billing portal remains customer-missing or session-created; Stripe event remains new/processed/failed/duplicate. Event list: redeem code, get promo status, create checkout session, create portal session, receive webhook, process duplicate webhook. Transition table: valid redeem creates one applied redemption plus one promo credit; invalid/expired/cap/velocity/config cases create no credit; checkout session creation may create/update the local user only after provider success; missing portal customer rejects without provider side effect; valid webhook begins processing and ends processed or failed; duplicate webhook returns `processed=false`. Invariants: API response contracts stay unchanged, promo IP values are hashed before persistence, duplicate Stripe events do not double-apply side effects, old service registrations stay present, and no schema/migration changes occur. Illegal transitions: invalid promo redemption cannot create credits, missing promo hash config cannot create users or credits, failed checkout cannot persist billing state, and processed webhook events cannot be processed again.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~PromoApiTests|FullyQualifiedName~PromoServiceTests|FullyQualifiedName~StripeBillingApiTests|FullyQualifiedName~StripeWebhookApiTests|FullyQualifiedName~StripeEventServiceTests"` passed 69/69 after the Program shell swap; `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: This issue intentionally did not add a transition helper, change persisted state names, alter DDD-67 rewrite/account/V1 routes, push, open a PR, deploy, touch secrets, or change payment mode/config.
+
+### 2026-06-09 - data-module-review - DDD-68 endpoint persistence boundaries
+
+- Agent: Codex worker
+- Trigger: GitHub issue #653 reroutes EF-backed promo, account-summary, checkout, portal, and Stripe event persistence through Application handlers.
+- Action: Opened and followed the skill; reviewed the route entry points, Application use-case handlers, DI registrations, promo/billing/webhook API tests, and legacy service behavior. Findings: no P1/P2 data defects after preserving promo IP hash/config behavior at the API boundary. Open questions: none for this issue scope. Suggested tests: existing API/service tests covering promo redemption persistence, billing failure no-state behavior, webhook duplicate/idempotency, and full backend regression suite.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused DDD-68 acceptance filter passed 69/69; full backend suite passed 695/695.
+- Limitations: No EF model, migration, repository, database index, billing provider config, production data, or service registration cleanup was changed.
+
+### 2026-06-09 - resilience-test-generation - DDD-68 webhook and provider failure gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #653 changes endpoint calls around checkout provider failures, promo config fail-closed behavior, and Stripe webhook duplicate processing.
+- Action: Opened and followed the skill. Critical operations: promo redeem, checkout session creation, portal session creation, and Stripe webhook processing. Dependency boundaries: EF persistence, Stripe billing client abstraction, Stripe signature parsing, webhook idempotency records, and promo trusted-IP configuration. Failure matrix covered by existing tests: malformed promo body, missing auth, missing promo hash config, velocity limit, provider timeout, missing portal customer, missing/invalid webhook signature, tampered webhook payload, stale signature, duplicate event, and failed webhook replay behavior.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Focused DDD-68 filter passed 69/69 and includes no-state assertions for provider/config failures plus duplicate webhook behavior; full backend suite passed 695/695.
+- Limitations: No live Stripe endpoint, cloud queue, production database, external network provider, deploy, push, or PR action was exercised.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-68 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #653 changes C# Minimal API routing and requires `dotnet build`, focused API/service tests, and full backend tests.
+- Action: Opened and followed the skill; used the existing xUnit, FluentAssertions, WebApplicationFactory, EF Core SQLite, and deterministic provider fakes as characterization coverage because the issue requires unchanged behavior and unchanged existing assertions.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Final verification passed: `dotnet build ReplyInMyVoice.sln -c Release` completed with 0 warnings and 0 errors; focused DDD-68 filter passed 69/69; `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new test assertions were added because this is a behavior-preserving route shell swap. No frontend, browser, deployment, production payment, live provider, secret, push, or PR path was exercised.
+
 ### 2026-06-09 - data-module-review - DDD-61 API key Function shell
 
 - Agent: Codex worker

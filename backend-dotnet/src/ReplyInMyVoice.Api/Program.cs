@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Billing;
+using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
+using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -12,12 +15,16 @@ using ReplyInMyVoice.Infrastructure.Services;
 using Stripe;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ApplicationResultKind = ReplyInMyVoice.Application.Common.ApplicationResultKind;
+using ApplicationPromoRedeemResultKind = ReplyInMyVoice.Application.Common.PromoRedeemResultKind;
+using PromoRedeemResultDto = ReplyInMyVoice.Application.Common.PromoRedeemResultDto;
 using RewriteAttemptDto = ReplyInMyVoice.Application.Common.RewriteAttemptDto;
+using StripeWebhookPayloadDto = ReplyInMyVoice.Application.Common.StripeWebhookPayloadDto;
 
 const string V1RewriteEndpointName = "v1/rewrite";
 const string V1RewriteResultEndpointName = "v1/rewrite/{id}";
@@ -720,8 +727,8 @@ app.MapGet("/api/rewrite-attempts/{attemptId:guid}", async (
 
 app.MapPost("/api/promo/redeem", async (
     HttpRequest httpRequest,
-    PromoService promoService,
-    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    RedeemPromoHandler redeemPromoHandler,
+    GetAccountSummaryHandler getAccountSummaryHandler,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -753,19 +760,23 @@ app.MapPost("/api/promo/redeem", async (
     try
     {
         var email = ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration);
-        var result = await promoService.RedeemAsync(
-            externalUserId,
-            email,
-            request.Code,
-            ResolveTrustedPromoClientIp(httpRequest, builder.Configuration),
-            DateTimeOffset.UtcNow,
-            cancellationToken);
+        var ipDefense = ResolvePromoIpDefense(httpRequest, app.Environment, builder.Configuration);
+        var result = ipDefense.ServerConfigError
+            ? PromoRedeemResultDto.ServerConfig()
+            : await redeemPromoHandler.HandleAsync(
+                new RedeemPromoCommand(
+                    externalUserId,
+                    email,
+                    request.Code,
+                    ipDefense.IpHash,
+                    DateTimeOffset.UtcNow),
+                cancellationToken);
 
         return await MapPromoRedeemResultAsync(
             result,
             externalUserId,
             email,
-            accountService,
+            getAccountSummaryHandler,
             cancellationToken);
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -780,7 +791,7 @@ app.MapPost("/api/promo/redeem", async (
 
 app.MapGet("/api/promo/status", async (
     HttpRequest httpRequest,
-    PromoService promoService,
+    GetPromoStatusHandler getPromoStatusHandler,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -791,10 +802,11 @@ app.MapGet("/api/promo/status", async (
 
     try
     {
-        var status = await promoService.GetStatusAsync(
-            externalUserId,
-            ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
-            DateTimeOffset.UtcNow,
+        var status = await getPromoStatusHandler.HandleAsync(
+            new GetPromoStatusQuery(
+                externalUserId,
+                ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
         return Results.Ok(new PromoStatusResponse(
@@ -815,7 +827,7 @@ app.MapGet("/api/promo/status", async (
 
 app.MapPost("/api/stripe/checkout", async (
     HttpRequest httpRequest,
-    IStripeBillingService billingService,
+    CreateCheckoutSessionHandler createCheckoutSessionHandler,
     ICheckoutVelocityLimiter checkoutVelocityLimiter,
     CancellationToken cancellationToken) =>
 {
@@ -848,12 +860,13 @@ app.MapPost("/api/stripe/checkout", async (
                 statusCode: StatusCodes.Status429TooManyRequests);
         }
 
-        var url = await billingService.CreateCheckoutSessionUrlAsync(
-            externalUserId,
-            ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
-            string.IsNullOrWhiteSpace(sku) ? null : sku,
+        var session = await createCheckoutSessionHandler.HandleAsync(
+            new CreateCheckoutSessionCommand(
+                externalUserId,
+                ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration),
+                string.IsNullOrWhiteSpace(sku) ? null : sku),
             cancellationToken);
-        return Results.Ok(new BillingUrlResponse(url));
+        return Results.Ok(new BillingUrlResponse(session.Url));
     }
     catch (JsonException)
     {
@@ -877,7 +890,7 @@ app.MapPost("/api/stripe/checkout", async (
 
 app.MapPost("/api/stripe/portal", async (
     HttpRequest httpRequest,
-    IStripeBillingService billingService,
+    CreatePortalSessionHandler createPortalSessionHandler,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -890,8 +903,10 @@ app.MapPost("/api/stripe/portal", async (
 
     try
     {
-        var url = await billingService.CreatePortalSessionUrlAsync(externalUserId, cancellationToken);
-        return Results.Ok(new BillingUrlResponse(url));
+        var session = await createPortalSessionHandler.HandleAsync(
+            new CreatePortalSessionQuery(externalUserId),
+            cancellationToken);
+        return Results.Ok(new BillingUrlResponse(session.Url));
     }
     catch (InvalidOperationException ex) when (ex.Message == "stripe_customer_missing")
     {
@@ -904,7 +919,7 @@ app.MapPost("/api/stripe/portal", async (
 app.MapPost("/api/stripe/webhook", async (
     HttpRequest request,
     IConfiguration configuration,
-    StripeEventService stripeEventService,
+    ProcessStripeWebhookHandler processStripeWebhookHandler,
     CancellationToken cancellationToken) =>
 {
     using var reader = new StreamReader(request.Body);
@@ -964,11 +979,10 @@ app.MapPost("/api/stripe/webhook", async (
             statusCode: StatusCodes.Status400BadRequest);
     }
 
-    var processed = await stripeEventService.ProcessWebhookEventAsync(
-        eventId,
-        eventType,
-        rawBody,
-        DateTimeOffset.UtcNow,
+    var processed = await processStripeWebhookHandler.HandleAsync(
+        new ProcessStripeWebhookCommand(
+            new StripeWebhookPayloadDto(eventId, eventType, rawBody),
+            DateTimeOffset.UtcNow),
         cancellationToken);
 
     return Results.Ok(new { received = true, processed });
@@ -1387,18 +1401,17 @@ static int CountWords(string value)
 }
 
 static async Task<IResult> MapPromoRedeemResultAsync(
-    PromoRedeemResult result,
+    PromoRedeemResultDto result,
     string externalUserId,
     string? email,
-    ReplyInMyVoice.Infrastructure.Services.AccountService accountService,
+    GetAccountSummaryHandler getAccountSummaryHandler,
     CancellationToken cancellationToken)
 {
     switch (result.Kind)
     {
-        case PromoRedeemResultKind.Success:
-            var account = await accountService.GetOrCreateAccountSummaryAsync(
-                externalUserId,
-                email,
+        case ApplicationPromoRedeemResultKind.Success:
+            var account = await getAccountSummaryHandler.HandleAsync(
+                new GetAccountSummaryQuery(externalUserId, email),
                 cancellationToken);
             return Results.Ok(new PromoRedeemResponse(
                 result.CreditsGranted,
@@ -1406,22 +1419,22 @@ static async Task<IResult> MapPromoRedeemResultAsync(
                 result.ExpiresAt,
                 AlreadyRedeemed: false));
 
-        case PromoRedeemResultKind.InvalidCode:
+        case ApplicationPromoRedeemResultKind.InvalidCode:
             return PromoError("invalid_code", StatusCodes.Status422UnprocessableEntity);
 
-        case PromoRedeemResultKind.Expired:
+        case ApplicationPromoRedeemResultKind.Expired:
             return PromoError("code_expired", StatusCodes.Status422UnprocessableEntity);
 
-        case PromoRedeemResultKind.AlreadyRedeemed:
+        case ApplicationPromoRedeemResultKind.AlreadyRedeemed:
             return PromoError("already_redeemed", StatusCodes.Status409Conflict);
 
-        case PromoRedeemResultKind.CapReached:
+        case ApplicationPromoRedeemResultKind.CapReached:
             return PromoError("code_exhausted", StatusCodes.Status409Conflict);
 
-        case PromoRedeemResultKind.IpVelocityBlocked:
+        case ApplicationPromoRedeemResultKind.IpVelocityBlocked:
             return PromoError("ip_velocity", StatusCodes.Status429TooManyRequests);
 
-        case PromoRedeemResultKind.ServerConfig:
+        case ApplicationPromoRedeemResultKind.ServerConfig:
             return PromoError("server_config", StatusCodes.Status500InternalServerError);
 
         default:
@@ -1450,6 +1463,53 @@ static string? ResolveTrustedPromoClientIp(HttpRequest request, IConfiguration c
     }
 
     return candidateIp;
+}
+
+static (bool ServerConfigError, string? IpHash) ResolvePromoIpDefense(
+    HttpRequest request,
+    IWebHostEnvironment environment,
+    IConfiguration configuration)
+{
+    var isProduction = IsProductionEnvironment(environment, configuration);
+    if (isProduction && string.IsNullOrWhiteSpace(configuration["PROMO_PROXY_SHARED_SECRET"]))
+    {
+        return (true, null);
+    }
+
+    var normalizedIp = NormalizeTrustedPromoClientIp(
+        ResolveTrustedPromoClientIp(request, configuration));
+    if (normalizedIp is null)
+    {
+        return isProduction ? (true, null) : (false, null);
+    }
+
+    var salt = configuration["PROMO_IP_HASH_SALT"];
+    if (string.IsNullOrWhiteSpace(salt))
+    {
+        return (true, null);
+    }
+
+    return (false, HashPromoIp(normalizedIp, salt));
+}
+
+static string? NormalizeTrustedPromoClientIp(string? trustedClientIp)
+{
+    var trimmed = trustedClientIp?.Trim();
+    if (string.IsNullOrWhiteSpace(trimmed))
+    {
+        return null;
+    }
+
+    return IPAddress.TryParse(trimmed, out var parsedIp)
+        ? parsedIp.ToString()
+        : null;
+}
+
+static string HashPromoIp(string trustedClientIp, string salt)
+{
+    var payload = Encoding.UTF8.GetBytes($"{salt}:{trustedClientIp}");
+    var hash = SHA256.HashData(payload);
+    return Convert.ToHexString(hash).ToLowerInvariant();
 }
 
 static bool SecretsMatch(string expectedSecret, string suppliedSecret)
