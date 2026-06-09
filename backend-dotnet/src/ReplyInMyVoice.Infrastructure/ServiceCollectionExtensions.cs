@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Application.UseCases.Billing;
 using ReplyInMyVoice.Application.UseCases.Promo;
@@ -84,6 +85,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPaymentGrantRepository, PaymentGrantRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
         services.AddScoped<IApiKeyUsageRepository, ApiKeyUsageRepository>();
+        services.AddScoped<IAdminUserRepository, AdminUserRepository>();
+        services.AddScoped<IAdminStatsRepository, AdminStatsRepository>();
         services.AddScoped<IAccountUsagePlanProvider>(_ => new AccountUsagePlanProvider(configuration));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
@@ -97,6 +100,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<HasPaidApiEntitlementHandler>();
         services.AddScoped<GetBillingHistoryHandler>();
         services.AddScoped<DeleteAccountHandler>();
+        services.AddScoped<GetAdminUsersHandler>();
+        services.AddScoped<GetAdminUserDetailHandler>();
+        services.AddScoped<GetAdminStatsHandler>();
+        services.AddScoped<GrantCreditsHandler>();
+        services.AddScoped<DeleteAdminUserHandler>();
         services.AddScoped<CreateCheckoutSessionHandler>();
         services.AddScoped<CreatePortalSessionHandler>();
         services.AddScoped<CancelSubscriptionHandler>();
