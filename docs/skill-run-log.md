@@ -5084,3 +5084,30 @@ claude-heavy-planning-handoff
 - Output artifacts: Updated `StripeBillingApiTests` fake to implement the Application billing client interface; updated `StripeWebhookApiTests` function helper to construct `ProcessStripeWebhookHandler`.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings; focused filter passed 49/49; full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
 - Limitations: No new test cases were added because the issue acceptance explicitly required unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - state-machine-modeling - DDD-63 admin Function shell lifecycle preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #648 switches admin and promo-admin HTTP shell call paths for stateful user deletion, credit grant, promo active/archive/restore, and deferred admin service lifecycles.
+- Action: Opened and followed the project skill; treated this as a shell-preservation model rather than a new lifecycle design. Existing allowed transitions remain: unauthorized requests reject before mutation; user delete moves eligible users to erased/canceled with audit; credit grant creates an admin credit plus audit; promo create starts active; promo update changes validated fields; promo disable/enable toggles active state; promo archive sets archived and inactive; promo restore clears archive while leaving active state unchanged. Deferred billing-support, accounting CSV, suspension, and refund transitions remain on `AdminService`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs`; handler command/query calls; DTO-to-legacy-response adapters; deferred TODO markers.
+- Verification evidence: `python3 /Users/qc/.codex/skills/state-machine-modeling/scripts/state_machine_template.py "DDD-63 admin Function shell"` generated the lifecycle checklist; focused admin test filter passed 20/20; full backend suite passed 695/695.
+- Limitations: No new states, transition helper, enum, schema, migration, or lifecycle tests were added because this issue required unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - data-module-review - DDD-63 admin Function persistence path
+
+- Agent: Codex worker
+- Trigger: GitHub issue #648 changes the admin Function data-access route from inline legacy services to Application handlers and repositories while leaving five deferred service paths in place.
+- Action: Opened and followed the project skill; reviewed the Function shell, Application Admin and PromoAdmin handlers, repository registration, legacy services, existing admin/promo/refund tests, and DI setup. Kept schema and migrations unchanged, kept legacy admin services registered, registered the refund client adapter, and preserved HTTP response record shapes through explicit adapters.
+- Output artifacts: `AdminHttpFunctions.cs`; `ServiceCollectionExtensions.cs`; `AdminHttpFunctionsTestFactory.cs`; updated admin test construction helpers.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AdminHttpFunctions.cs --limit 80` returned no risk rows; the same scan on `ServiceCollectionExtensions.cs` returned no risk rows; `git diff --check` exited 0; changed-diff restricted-substring scan returned no matches; Release build and both test gates passed.
+- Limitations: The five explicitly deferred AdminService use-cases remain legacy service calls with TODO markers. No schema, migration, old service deletion, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-63 admin shell regression gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #648 requires Release build, focused admin tests, and full .NET backend tests after changing `AdminHttpFunctions`.
+- Action: Opened and followed the project skill; used existing xUnit/FluentAssertions admin tests as characterization coverage because the issue required behavior unchanged and assertions unmodified. Added a test-only factory to construct the new Function handler graph, and updated test setup only.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminHttpFunctionsTestFactory.cs`; updated admin test construction calls.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings; focused admin filter passed 20/20; full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new test cases were added because the issue was a strangler shell replacement with unchanged response contracts.

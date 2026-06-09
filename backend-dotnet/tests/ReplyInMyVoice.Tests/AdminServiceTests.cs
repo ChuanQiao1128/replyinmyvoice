@@ -416,7 +416,9 @@ public sealed class AdminServiceTests
     }
 
     private static AdminHttpFunctions CreateFunction(DbFixture fixture) =>
-        new(BuildConfiguration("admin-owner-oid, owner@example.com"), fixture.CreateContext);
+        AdminHttpFunctionsTestFactory.Create(
+            BuildConfiguration("admin-owner-oid, owner@example.com"),
+            fixture.CreateContext);
 
     private static async Task<AppUser> SeedUserAsync(
         DbFixture fixture,

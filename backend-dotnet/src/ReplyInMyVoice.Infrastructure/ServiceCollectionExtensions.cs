@@ -160,6 +160,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<WebhookDispatcherService>();
         services.AddScoped<QuotaService>();
         services.AddScoped<PromoService>();
+        services.AddScoped<AdminService>();
+        services.AddScoped<PromoAdminService>();
         services.AddScoped<RewriteRequestService>();
         services.AddScoped<RewriteJobProcessor>();
         services.AddScoped<OutboxDispatcherService>();
@@ -181,6 +183,7 @@ public static class ServiceCollectionExtensions
             configuration,
             sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<IStripeBillingService>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<IStripeRefundClient>(sp => sp.GetRequiredService<StripeBillingService>());
         services.AddScoped<IStripeEventNotifier, StripeEventNotifier>();
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());

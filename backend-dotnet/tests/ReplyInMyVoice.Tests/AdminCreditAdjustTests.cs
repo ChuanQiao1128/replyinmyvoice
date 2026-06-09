@@ -21,7 +21,7 @@ public sealed class AdminCreditAdjustTests
         var user = await fixture.CreateUserAsync();
         await ExhaustFreeQuotaAsync(fixture, user.Id);
         var accountService = new AccountService(fixture.CreateContext);
-        var function = new AdminHttpFunctions(BuildConfiguration(), fixture.CreateContext);
+        var function = AdminHttpFunctionsTestFactory.Create(BuildConfiguration(), fixture.CreateContext);
 
         var before = await accountService.GetOrCreateAccountSummaryAsync(
             user.ExternalAuthUserId,
@@ -73,7 +73,7 @@ public sealed class AdminCreditAdjustTests
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var function = new AdminHttpFunctions(BuildConfiguration(), fixture.CreateContext);
+        var function = AdminHttpFunctionsTestFactory.Create(BuildConfiguration(), fixture.CreateContext);
 
         var forbidden = await function.GrantCredits(
             CreateRequest("regular-user-oid", "regular@example.com", new

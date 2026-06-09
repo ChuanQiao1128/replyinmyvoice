@@ -92,7 +92,7 @@ public sealed class AdminSuspensionTests
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var function = new AdminHttpFunctions(BuildConfiguration(), fixture.CreateContext);
+        var function = AdminHttpFunctionsTestFactory.Create(BuildConfiguration(), fixture.CreateContext);
 
         var forbidden = await function.SetUserSuspension(
             CreateRequest("regular-user-oid", "regular@example.com", new { suspended = true }),

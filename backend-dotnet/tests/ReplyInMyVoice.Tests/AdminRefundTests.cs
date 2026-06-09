@@ -165,7 +165,7 @@ public sealed class AdminRefundTests : IAsyncLifetime
     }
 
     private AdminHttpFunctions CreateFunction(FakeStripeRefundClient fakeRefundClient) =>
-        new(BuildConfiguration(), CreateContext, fakeRefundClient);
+        AdminHttpFunctionsTestFactory.Create(BuildConfiguration(), CreateContext, fakeRefundClient);
 
     private async Task<AppUser> SeedPaidUserAsync()
     {

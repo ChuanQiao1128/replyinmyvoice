@@ -13,8 +13,10 @@ public sealed class AdminAccessTests
     [Fact]
     public async Task AdminPing_NonAdminForbidden()
     {
-        var function = new AdminHttpFunctions(BuildConfiguration(
-            "admin-owner-oid, owner@example.com"));
+        await using var fixture = await DbFixture.CreateAsync();
+        var function = AdminHttpFunctionsTestFactory.Create(
+            BuildConfiguration("admin-owner-oid, owner@example.com"),
+            fixture.CreateContext);
         var request = CreateRequest("regular-user-oid", "regular@example.com");
 
         var result = await function.Ping(request, CancellationToken.None);
@@ -26,8 +28,10 @@ public sealed class AdminAccessTests
     [Fact]
     public async Task AdminPing_AdminAllowed_when_email_matches()
     {
-        var function = new AdminHttpFunctions(BuildConfiguration(
-            "admin-owner-oid, Owner@Example.com"));
+        await using var fixture = await DbFixture.CreateAsync();
+        var function = AdminHttpFunctionsTestFactory.Create(
+            BuildConfiguration("admin-owner-oid, Owner@Example.com"),
+            fixture.CreateContext);
         var request = CreateRequest("different-oid", "owner@example.com");
 
         var result = await function.Ping(request, CancellationToken.None);
@@ -40,8 +44,10 @@ public sealed class AdminAccessTests
     [Fact]
     public async Task AdminPing_AdminAllowed_when_oid_matches()
     {
-        var function = new AdminHttpFunctions(BuildConfiguration(
-            "ADMIN-OWNER-OID, owner@example.com"));
+        await using var fixture = await DbFixture.CreateAsync();
+        var function = AdminHttpFunctionsTestFactory.Create(
+            BuildConfiguration("ADMIN-OWNER-OID, owner@example.com"),
+            fixture.CreateContext);
         var request = CreateRequest("admin-owner-oid", "different@example.com");
 
         var result = await function.Ping(request, CancellationToken.None);
