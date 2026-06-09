@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
+using ReplyInMyVoice.Application.UseCases.Billing;
 using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -79,6 +80,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
         services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
+        services.AddScoped<ITaxTurnoverNotifier, TaxTurnoverNotifier>();
+        services.AddScoped<ITaxTurnoverSettingsProvider, TaxTurnoverSettingsProvider>();
         services.AddScoped<GetOrCreateUserHandler>();
         services.AddScoped<FindUserHandler>();
         services.AddScoped<GetAccountSummaryHandler>();
@@ -86,6 +89,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<HasPaidApiEntitlementHandler>();
         services.AddScoped<GetBillingHistoryHandler>();
         services.AddScoped<DeleteAccountHandler>();
+        services.AddScoped<CreateCheckoutSessionHandler>();
+        services.AddScoped<CreatePortalSessionHandler>();
+        services.AddScoped<CancelSubscriptionHandler>();
+        services.AddScoped<RefundPaymentHandler>();
+        services.AddScoped<ListPaidPaymentsHandler>();
+        services.AddScoped<GetTaxTurnoverReportHandler>();
         services.AddScoped<ReserveQuotaHandler>();
         services.AddScoped<FinalizeQuotaSuccessHandler>();
         services.AddScoped<MarkQuotaProcessingHandler>();
@@ -131,12 +140,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<StripeReconciliationService>();
         services.AddScoped<StripeEventService>();
         services.AddScoped<BillingSupportService>();
-        services.AddSingleton<IStripeBillingClient, StripeBillingClient>();
+        services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
+        services.AddSingleton<ReplyInMyVoice.Application.Abstractions.IStripeBillingClient, ApplicationStripeBillingClient>();
         services.AddScoped<TaxTurnoverService>();
         services.AddScoped(sp => new StripeBillingService(
             sp.GetRequiredService<Func<AppDbContext>>(),
             configuration,
-            sp.GetService<IStripeBillingClient>()));
+            sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<IStripeBillingService>(sp => sp.GetRequiredService<StripeBillingService>());
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<IStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());

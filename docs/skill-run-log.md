@@ -4796,3 +4796,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoAdminUseCaseTests.cs`.
 - Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~PromoAdminUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.PromoAdmin` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/PromoAdmin/CreatePromoCodeHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused PromoAdminUseCase tests passed 7/7; full backend tests passed 659/659.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-46 Billing Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #627 and `plans/ddd-restructure/issues/DDD-46-billing.md` require converting Billing use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-46 brief, `docs/ddd-migration-playbook.md`, `StripeBillingService.cs`, `TaxTurnoverService.cs`, Rewrite handler templates, Application abstractions, repositories, and billing tests before editing. Scoped goals to add the strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Billing/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/BillingDtos.cs`; Application billing abstractions; Infrastructure adapters/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the Billing Application namespace, handlers, and abstractions did not exist. Final release build, focused BillingUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and touched-path restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-46 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-46 billing subscription and payment paths
+
+- Agent: Codex worker
+- Trigger: GitHub issue #627 migrates billing use cases that read subscription/customer state, cancel subscriptions, issue refunds, list paid provider payments, and compute tax turnover warnings.
+- Action: Opened and followed the project skill; modeled states as missing user, user without customer, user with customer, user without subscription, user with active subscription id, local payment missing, local payment present, provider payment listed, turnover below warning threshold, and turnover at or above warning threshold. Events are create checkout command, create portal query, cancel command, refund command, paid-payment list query, and turnover report query.
+- Output artifacts: Billing Application command/query handlers, billing DTOs, Stripe client abstraction, turnover notifier/settings abstractions, repository read extensions, and `BillingUseCaseTests`.
+- Verification evidence: Tests cover checkout user creation, portal customer use, subscription cancellation, no-subscription no-op, refund success, refund missing-payment not found, provider paid-payment listing, and turnover warning notification. Full backend tests passed 667/667.
+- Limitations: Existing Functions/API/Worker entry points still use the legacy services; the new handlers are registered but not production-routed until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-46 billing repository reads
+
+- Agent: Codex worker
+- Trigger: GitHub issue #627 changes data access for AppUser checkout/portal/cancel reads, payment-intent refund validation, and rolling turnover report purchase-credit reads.
+- Action: Opened and followed the project skill; read EF entities/mappings, legacy billing and turnover persistence behavior, existing repository style, and SQLite tests. Added narrow `IRewriteCreditRepository` read methods only, kept all schema and migration files unchanged, kept handlers free of `AppDbContext`, and preserved the old turnover service's SQLite-safe in-memory `DateTimeOffset` window filtering shape.
+- Output artifacts: `IRewriteCreditRepository.GetByUserIdAndPaymentIntentIdAsync`; `IRewriteCreditRepository.ListPurchaseCreditsForTurnoverAsync`; matching `RewriteCreditRepository` implementations; Billing handlers/tests.
+- Verification evidence: Focused tests assert no provider refund call when local payment is missing, correct provider refund request for an existing local payment, and turnover totals from local purchase credits. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 667/667.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing billing service persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-46 BillingUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #627 adds C#/.NET Application handler tests for Billing checkout, portal, cancel, refund, paid-payment list, and tax turnover behavior.
+- Action: Opened and followed the project skill; wrote `BillingUseCaseTests` before production code, watched the initial focused run fail on missing Billing Application namespace, handlers, and abstractions, then implemented Application and Infrastructure code with SQLite in-memory coverage and deterministic fakes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~BillingUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.Billing` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Billing/CreateCheckoutSessionHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused BillingUseCase tests passed 8/8; full backend tests passed 667/667.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
