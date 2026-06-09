@@ -9,6 +9,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppStripeBillingClient = ReplyInMyVoice.Application.Abstractions.IStripeBillingClient;
+using AppStripeCheckoutSessionCreateRequest = ReplyInMyVoice.Application.Abstractions.StripeCheckoutSessionCreateRequest;
+using AppStripeCheckoutSessionResult = ReplyInMyVoice.Application.Abstractions.StripeCheckoutSessionResult;
+using AppStripePaidPaymentDto = ReplyInMyVoice.Application.Common.StripePaidPaymentDto;
+using AppStripePortalSessionResult = ReplyInMyVoice.Application.Abstractions.StripePortalSessionResult;
+using AppStripeRefundRequest = ReplyInMyVoice.Application.Abstractions.StripeRefundRequest;
+using AppStripeRefundResult = ReplyInMyVoice.Application.Abstractions.StripeRefundResult;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -176,8 +183,16 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
                         services.Remove(existingBilling);
                     }
 
+                    var existingApplicationBilling = services.SingleOrDefault(d =>
+                        d.ServiceType == typeof(AppStripeBillingClient));
+                    if (existingApplicationBilling is not null)
+                    {
+                        services.Remove(existingApplicationBilling);
+                    }
+
                     services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
                     services.AddSingleton(billingService);
+                    services.AddSingleton((AppStripeBillingClient)billingService);
                 });
             });
     }
@@ -197,7 +212,7 @@ public sealed class StripeBillingApiTests : IAsyncLifetime
     }
 }
 
-internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBillingService
+internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBillingService, AppStripeBillingClient
 {
     public string? CheckoutUserId { get; private set; }
     public string? CheckoutSku { get; private set; }
@@ -222,6 +237,23 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
         return Task.FromResult(checkoutUrl);
     }
 
+    public Task<AppStripeCheckoutSessionResult> CreateCheckoutSessionAsync(
+        AppStripeCheckoutSessionCreateRequest request,
+        CancellationToken ct = default)
+    {
+        CheckoutUserId = request.ExternalAuthUserId;
+        CheckoutSku = request.Sku;
+        CheckoutCallCount++;
+        if (CheckoutError is not null)
+        {
+            throw CheckoutError;
+        }
+
+        return Task.FromResult(new AppStripeCheckoutSessionResult(
+            checkoutUrl,
+            "cus_checkout_success"));
+    }
+
     public Task<string> CreatePortalSessionUrlAsync(
         string externalAuthUserId,
         CancellationToken cancellationToken)
@@ -234,10 +266,38 @@ internal sealed class FakeStripeBillingService(string checkoutUrl) : IStripeBill
         return Task.FromResult("https://billing.test/portal");
     }
 
+    public Task<AppStripePortalSessionResult> CreatePortalSessionAsync(
+        string customerId,
+        CancellationToken ct = default)
+    {
+        if (PortalError is not null)
+        {
+            throw PortalError;
+        }
+
+        return Task.FromResult(new AppStripePortalSessionResult("https://billing.test/portal"));
+    }
+
     public Task CancelSubscriptionAsync(
         string stripeSubscriptionId,
         CancellationToken cancellationToken) =>
         Task.CompletedTask;
+
+    public Task<AppStripeRefundResult> RefundPaymentAsync(
+        AppStripeRefundRequest request,
+        CancellationToken ct = default) =>
+        Task.FromResult(new AppStripeRefundResult(
+            "re_unused",
+            request.PaymentIntentId,
+            request.Amount,
+            request.Currency,
+            "succeeded"));
+
+    public Task<IReadOnlyList<AppStripePaidPaymentDto>> ListPaidPaymentIntentsAsync(
+        DateTimeOffset windowStart,
+        DateTimeOffset windowEnd,
+        CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<AppStripePaidPaymentDto>>([]);
 }
 
 public sealed record BillingUrlResponse(string Url);

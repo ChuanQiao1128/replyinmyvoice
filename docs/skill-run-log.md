@@ -5048,3 +5048,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/AccountHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/PromoHttpFunctions.cs`; updated direct `AccountHttpFunctions` test construction in `backend-dotnet/tests/ReplyInMyVoice.Tests/AccountApiTests.cs`.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~AccountServiceTests|FullyQualifiedName~PromoApiTests|FullyQualifiedName~PromoServiceTests"` passed 42/42; full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695; changed-file restricted-substring scan returned no matches.
 - Limitations: No schema, migration, old service deletion, deployment, push, PR, or live payment action was performed. Billing-support notification sending remains in the Function wrapper to preserve existing API behavior because the Application create handler only persists the request.
+
+### 2026-06-09 - state-machine-modeling - DDD-62 billing and Stripe webhook Function shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #647 switches billing checkout, billing portal, and Stripe webhook HTTP Function entry points to Application handlers while preserving response contracts.
+- Action: Opened and followed the project skill; modeled checkout states as unauthenticated, invalid SKU, rate-limited, delegated, success, configuration failure, and provider failure; portal states as unauthenticated, delegated, missing customer, success, and provider failure; Stripe event states as absent, processing, processed, and failed. Events are authenticated checkout request, SKU validation, checkout velocity check, portal request, verified webhook request, duplicate event, sync success, and sync failure. Allowed transitions keep pre-handler validation in the Function and move only delegated billing/webhook work to Application handlers. Illegal transitions are handler invocation before auth/SKU/rate-limit success, duplicate event reprocessing after processed status, and persistence mutation on rejected webhook input. Persistence implications: no schema or migration changed; existing Application repositories and serializable Stripe event transaction path own `AppUsers`, `StripeEvents`, `RewriteCredits`, and `StripeInvoices`.
+- Output artifacts: `BillingHttpFunctions`; `StripeWebhookFunction`; raw Stripe event to Application DTO adapter; updated API test helpers.
+- Verification evidence: Release build passed; focused billing/webhook/service filter passed 49/49; full backend suite passed 695/695.
+- Limitations: Existing old services and DI registration were intentionally retained for later cleanup. No new lifecycle states or database constraints were added.
+
+### 2026-06-09 - data-module-review - DDD-62 billing and Stripe webhook persistence path
+
+- Agent: Codex worker
+- Trigger: GitHub issue #647 changes the HTTP shell persistence path for checkout user upsert, portal customer lookup, Stripe event idempotency, invoice sync, and rewrite-credit grants by routing through Application handlers.
+- Action: Opened and followed the project skill; read function shells, Application billing and Stripe event handlers, old Infrastructure services, repository registrations, EF-backed API/service tests, and DI setup. Confirmed owned data remains in existing repositories and handlers; no `AppDbContext` query was added to the migrated Function methods; old services and registrations stayed in place.
+- Output artifacts: `BillingHttpFunctions` now calls `CreateCheckoutSessionHandler` and `CreatePortalSessionHandler`; `StripeWebhookFunction` now calls `ProcessStripeWebhookHandler`; test fakes register the Application billing client boundary; webhook direct-function tests construct the Application handler with SQLite repositories.
+- Verification evidence: `git diff --check` exited 0; changed-file restricted-substring scan returned no matches; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused filter passed 49/49; full backend tests passed 695/695.
+- Limitations: The raw Stripe event adapter is necessary because the merged Application handler accepts a parsed DTO while the Function receives provider JSON. No schema, migration, new package, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - DDD-62 billing and Stripe webhook failure preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #647 touches checkout provider failures, checkout velocity limits, Stripe webhook replay/idempotency, invalid webhook input, and failed sync recovery behavior.
+- Action: Opened and followed the project skill; reviewed failure matrix rows for checkout timeout, missing checkout config, unknown SKU, rate limit, portal missing customer, missing webhook signature, invalid signed payload, duplicate event, malformed unsigned JSON, and webhook sync failure. Reused existing deterministic fakes and SQLite-backed assertions because the issue required behavior unchanged and existing assertions unmodified.
+- Output artifacts: Function shell changes plus test helper wiring that keeps the focused API/service tests exercising the same failure paths through Application handlers.
+- Verification evidence: Focused filter passed 49/49, covering billing API/service, webhook API, and Stripe event service behavior; full backend suite passed 695/695.
+- Limitations: No live provider, cloud, queue, deployment, or payment command was used. No new resilience assertions were added because this issue was a strangler shell swap with unchanged behavior.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-62 focused billing and webhook gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #647 requires Release build plus focused and full .NET test gates for billing and Stripe webhook behavior.
+- Action: Opened and followed the project skill; selected existing service and API tests as the lowest test level that proves response status, provider failure mapping, duplicate webhook handling, and persisted state. Updated only test construction/fake DI helpers needed by the new handler constructor path; no test assertions were changed.
+- Output artifacts: Updated `StripeBillingApiTests` fake to implement the Application billing client interface; updated `StripeWebhookApiTests` function helper to construct `ProcessStripeWebhookHandler`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings; focused filter passed 49/49; full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new test cases were added because the issue acceptance explicitly required unchanged behavior and existing assertions unmodified.

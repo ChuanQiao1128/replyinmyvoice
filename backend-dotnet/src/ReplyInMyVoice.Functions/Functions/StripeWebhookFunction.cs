@@ -5,8 +5,9 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Functions.Http;
-using ReplyInMyVoice.Infrastructure.Services;
 using Stripe;
 
 namespace ReplyInMyVoice.Functions.Functions;
@@ -14,7 +15,7 @@ namespace ReplyInMyVoice.Functions.Functions;
 public sealed class StripeWebhookFunction(
     IConfiguration configuration,
     IHostEnvironment environment,
-    StripeEventService stripeEventService,
+    ProcessStripeWebhookHandler processStripeWebhookHandler,
     ILogger<StripeWebhookFunction> logger)
 {
     [Function("StripeWebhook")]
@@ -117,11 +118,10 @@ public sealed class StripeWebhookFunction(
         bool processed;
         try
         {
-            processed = await stripeEventService.ProcessWebhookEventAsync(
-                eventId,
-                eventType,
-                rawBody,
-                DateTimeOffset.UtcNow,
+            processed = await processStripeWebhookHandler.HandleAsync(
+                new ProcessStripeWebhookCommand(
+                    new StripeWebhookPayloadDto(eventId, eventType, rawBody),
+                    DateTimeOffset.UtcNow),
                 cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
