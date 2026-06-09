@@ -192,6 +192,35 @@ public sealed class WebhookOutboxUseCaseTests
     }
 
     [Fact]
+    public async Task DispatchDueOutboxAsync_marks_failed_after_max_attempts()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        await SeedOutboxAsync(
+            fixture,
+            Guid.NewGuid(),
+            now,
+            attemptCount: 9,
+            maxAttempts: 10);
+        var outboxHandler = new RecordingOutboxMessageHandler("RewriteJobCreated", fail: true);
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateOutboxHandler(handlerDb, outboxHandler);
+
+        var dispatched = await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        dispatched.Should().Be(1);
+        await using var verifyDb = fixture.CreateContext();
+        var outbox = await verifyDb.OutboxMessages.SingleAsync();
+        outbox.Status.Should().Be(OutboxMessageStatus.Failed);
+        outbox.AttemptCount.Should().Be(10);
+        outbox.LastError.Should().Contain("handler failed");
+        outbox.LockedBy.Should().BeNull();
+        outbox.LockedUntil.Should().BeNull();
+    }
+
+    [Fact]
     public async Task DispatchDueOutboxAsync_does_not_double_dispatch_concurrently_claimed_message()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -297,7 +326,9 @@ public sealed class WebhookOutboxUseCaseTests
     private static async Task SeedOutboxAsync(
         DbFixture fixture,
         Guid attemptId,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        int attemptCount = 0,
+        int maxAttempts = 10)
     {
         await using var db = fixture.CreateContext();
         db.OutboxMessages.Add(new OutboxMessage
@@ -307,8 +338,8 @@ public sealed class WebhookOutboxUseCaseTests
             Status = OutboxMessageStatus.Pending,
             CreatedAt = now,
             NextAttemptAt = now,
-            AttemptCount = 0,
-            MaxAttempts = 10,
+            AttemptCount = attemptCount,
+            MaxAttempts = maxAttempts,
             CorrelationId = attemptId.ToString(),
         });
         await db.SaveChangesAsync();

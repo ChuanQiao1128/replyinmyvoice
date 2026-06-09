@@ -164,7 +164,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AccountService>();
         services.AddScoped<ApiKeyService>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
-        services.AddScoped<ApiKeyUsageAnomalyService>();
         services.AddScoped<ApiKeyUsageQueryService>();
         services.AddScoped<WebhookDeliveryService>();
         services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
@@ -173,9 +172,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PromoService>();
         services.AddScoped<AdminService>();
         services.AddScoped<PromoAdminService>();
-        services.AddScoped<RewriteRequestService>();
         services.AddScoped<RewriteJobProcessor>();
-        services.AddScoped<OutboxDispatcherService>();
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
@@ -190,7 +187,6 @@ public static class ServiceCollectionExtensions
                 sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<AppStripeBillingClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
         services.AddScoped<AppStripeRefundClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
-        services.AddScoped<TaxTurnoverService>();
         services.AddScoped(sp => new StripeBillingService(
             sp.GetRequiredService<Func<AppDbContext>>(),
             configuration,

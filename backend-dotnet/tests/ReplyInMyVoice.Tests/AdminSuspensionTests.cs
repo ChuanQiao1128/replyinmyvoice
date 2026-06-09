@@ -6,10 +6,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppResultKind = ReplyInMyVoice.Application.Common.ApplicationResultKind;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -29,22 +32,21 @@ public sealed class AdminSuspensionTests
             await db.SaveChangesAsync();
         }
 
-        var rewriteService = new RewriteRequestService(
-            fixture.CreateContext,
-            new QuotaService(fixture.CreateContext));
+        await using var rewriteDb = fixture.CreateContext();
+        var rewriteHandler = CreateRewriteHandler(rewriteDb);
 
-        var rejected = await rewriteService.CreateAttemptAsync(
+        var rejected = await rewriteHandler.HandleAsync(new CreateRewriteAttemptCommand(
             user.Id,
             "idem-suspended",
             CreateRewriteRequest(),
             "free:lifetime",
-            quotaLimit: 3,
+            QuotaLimit: 3,
             now,
-            CancellationToken.None);
+            ApiKeyId: null));
 
-        rejected.Status.Should().Be(RewriteAttemptStatus.Failed);
+        rejected.Kind.Should().Be(AppResultKind.QuotaExceeded);
         rejected.ErrorCode.Should().Be("user_suspended");
-        rejected.AttemptId.Should().Be(Guid.Empty);
+        rejected.Value.Should().BeNull();
 
         await using (var db = fixture.CreateContext())
         {
@@ -67,16 +69,19 @@ public sealed class AdminSuspensionTests
         unsuspend.Response!.Suspended.Should().BeFalse();
         unsuspend.Response.SuspendedAt.Should().BeNull();
 
-        var restored = await rewriteService.CreateAttemptAsync(
+        await using var restoredRewriteDb = fixture.CreateContext();
+        var restoredRewriteHandler = CreateRewriteHandler(restoredRewriteDb);
+
+        var restored = await restoredRewriteHandler.HandleAsync(new CreateRewriteAttemptCommand(
             user.Id,
             "idem-restored",
             CreateRewriteRequest(),
             "free:lifetime",
-            quotaLimit: 3,
+            QuotaLimit: 3,
             now.AddMinutes(2),
-            CancellationToken.None);
+            ApiKeyId: null));
 
-        restored.Kind.Should().Be(ReserveRewriteResultKind.Created);
+        restored.Kind.Should().Be(AppResultKind.Created);
 
         await using (var db = fixture.CreateContext())
         {
@@ -155,6 +160,16 @@ public sealed class AdminSuspensionTests
 
     private static RewriteRequest CreateRewriteRequest() =>
         new("message", "rough draft reply", "teacher", "reply", "facts", "preserve", "warm");
+
+    private static CreateRewriteAttemptHandler CreateRewriteHandler(ReplyInMyVoice.Infrastructure.Data.AppDbContext db) =>
+        new(
+            new AppUserRepository(db),
+            new UsagePeriodRepository(db),
+            new RewriteAttemptRepository(db),
+            new UsageReservationRepository(db),
+            new RewriteCreditRepository(db),
+            new OutboxMessageRepository(db),
+            new UnitOfWork(db));
 
     private static HttpRequest CreateRequest(string oid, string email, object body)
     {
