@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - state-machine-modeling - CLEAN-12 webhook dispatcher cleanup
+
+- Agent: Codex worker
+- Trigger: GitHub issue #669 removes an obsolete webhook dispatcher class after reviewing webhook delivery lifecycle coverage.
+- Action: Opened and followed the skill. State list: `Pending`, `InProgress`, `Delivered`, `Failed`. Event list: due delivery claimed, send succeeds, send returns a retryable HTTP status, send/setup fails, required delivery data is missing, max attempts reached. Transition table: due `Pending` or expired `InProgress` -> `InProgress` on claim; `InProgress` -> `Delivered` on success; `InProgress` -> `Pending` with backoff on retryable failure; `InProgress` -> `Failed` when max attempts or required-data failure terminalizes the delivery. Invariants: one claimed delivery is sent once per lease, locks clear after terminal or retryable outcomes, exhausted deliveries do not reschedule, and the surviving sender adapter/HTTP sender registrations remain live.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/HttpWebhookDeliverySender.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~WebhookOutboxUseCaseTests"` passed 9/9; full `dotnet test ReplyInMyVoice.sln -c Release` passed 651/651; source check found no dispatcher class in `backend-dotnet/src`.
+- Limitations: No schema, migration, queue runtime, push, PR, or deployment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-12 webhook retry and sender coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #669 requires deleting an obsolete webhook dispatcher test only after preserving retry/backoff, endpoint-safety, signature/timestamp, and terminal failure coverage.
+- Action: Opened and followed the skill. Critical operation: webhook delivery dispatch and HTTP sender handoff. Dependency boundaries: EF Core SQLite test database, application webhook delivery repository/unit-of-work, legacy infrastructure HTTP sender, and outbound HTTP transport. Failure matrix covered: retryable HTTP failure reschedules with backoff; max-attempt failure terminalizes; missing required delivery data terminalizes without sending; concurrent claim prevents duplicate sends; disallowed saved URL fails before the HTTP handler is called.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpWebhookDeliverySenderTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Pre-cleanup focused transfer command `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~WebhookOutboxUseCaseTests|FullyQualifiedName~HttpWebhookDeliverySenderTests"` passed 10/10; final focused outbox command passed 9/9; final full backend suite passed 651/651.
+- Limitations: No live webhook endpoint, external network send, production database, push, PR, or deployment action was exercised.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-12 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #669 changes C#/.NET backend source and tests by relocating sender types, deleting obsolete dispatcher coverage, and requiring Release build plus focused and full backend tests.
+- Action: Opened and followed the skill; used xUnit, FluentAssertions, EF Core SQLite fixture coverage, deterministic sender fakes, and a local throwing `HttpMessageHandler` to preserve behavior before removing the obsolete service test file.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/HttpWebhookDeliverySender.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpWebhookDeliverySenderTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed after relocation and after deletion; `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~WebhookOutboxUseCaseTests"` passed 9/9; `dotnet test ReplyInMyVoice.sln -c Release` passed 651/651; source checks confirmed the obsolete dispatcher class is absent and `HttpWebhookDeliverySender` remains present.
+- Limitations: NuGet advisory metadata lookup emitted NU1900 warnings because package metadata could not be loaded, but all required commands exited 0. Local git commit was attempted but blocked by sandbox permissions on worktree metadata outside this writable root.
+
 ### 2026-06-09 - state-machine-modeling - DDD-68 API Program shell
 
 - Agent: Codex worker
