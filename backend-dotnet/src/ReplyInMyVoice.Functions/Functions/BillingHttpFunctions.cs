@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using ReplyInMyVoice.Application.UseCases.Billing;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure.Services;
@@ -14,7 +15,8 @@ namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class BillingHttpFunctions(
     IConfiguration configuration,
-    IStripeBillingService billingService,
+    CreateCheckoutSessionHandler createCheckoutSessionHandler,
+    CreatePortalSessionHandler createPortalSessionHandler,
     ILogger<BillingHttpFunctions> logger,
     ICheckoutVelocityLimiter? checkoutVelocityLimiter = null)
 {
@@ -70,12 +72,13 @@ public sealed class BillingHttpFunctions(
 
         try
         {
-            var url = await billingService.CreateCheckoutSessionUrlAsync(
-                authUser.ExternalAuthUserId,
-                authUser.Email,
-                string.IsNullOrWhiteSpace(sku) ? null : sku,
+            var session = await createCheckoutSessionHandler.HandleAsync(
+                new CreateCheckoutSessionCommand(
+                    authUser.ExternalAuthUserId,
+                    authUser.Email,
+                    string.IsNullOrWhiteSpace(sku) ? null : sku),
                 cancellationToken);
-            return new OkObjectResult(new BillingUrlResponse(url));
+            return new OkObjectResult(new BillingUrlResponse(session.Url));
         }
         catch (InvalidOperationException ex) when (ex.Message.EndsWith("_missing", StringComparison.Ordinal))
         {
@@ -135,8 +138,10 @@ public sealed class BillingHttpFunctions(
         var correlationId = ResolveCorrelationId(request);
         try
         {
-            var url = await billingService.CreatePortalSessionUrlAsync(authUser.ExternalAuthUserId, cancellationToken);
-            return new OkObjectResult(new BillingUrlResponse(url));
+            var session = await createPortalSessionHandler.HandleAsync(
+                new CreatePortalSessionQuery(authUser.ExternalAuthUserId),
+                cancellationToken);
+            return new OkObjectResult(new BillingUrlResponse(session.Url));
         }
         catch (InvalidOperationException ex) when (ex.Message == "stripe_customer_missing")
         {
