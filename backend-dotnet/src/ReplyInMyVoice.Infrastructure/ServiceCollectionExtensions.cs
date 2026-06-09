@@ -167,7 +167,6 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
-        services.AddScoped<BillingSupportService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
         services.AddScoped<ApplicationStripeBillingClient>(sp =>
             new ApplicationStripeBillingClient(
