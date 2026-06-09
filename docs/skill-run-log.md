@@ -5372,3 +5372,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `AdminUseCaseTests` now covers billing-support queue read, resolve, accounting revenue export, suspension, refund with fake Application refund port, and refund provider failure. `AdminHttpFunctionsTestFactory` now constructs the new handler graph.
 - Verification evidence: Initial `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~AdminUseCaseTests"` failed with missing `GetBillingSupportQueueHandler`, `ResolveBillingSupportRequestHandler`, `ExportAccountingRevenueHandler`, `SetUserSuspensionHandler`, `IssueRefundHandler`, and Application `IStripeRefundClient`. Final AdminUseCaseTests passed 21/21, focused admin filter passed 27/27, `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 errors, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 702/702.
 - Limitations: Build/test commands emitted NU1900 vulnerability-feed warnings because NuGet vulnerability metadata was unavailable, but restore/build/test completed. A local git commit was attempted and failed because the worktree git metadata is outside the writable sandbox. No push, PR, deploy, schema change, or live payment action was performed.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-10 outbox and rewrite lifecycle cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-10 deletes legacy service code that previously touched outbox dispatch and rewrite-attempt creation lifecycles.
+- Action: Opened and followed the project skill as a preservation checklist. State list: outbox `Pending`, `Processing`, `Sent`, `Failed`; rewrite attempt `Pending` plus rejected suspended-user create path; usage reservation `Pending`. Events: due outbox dispatch, handler success, handler failure, max-attempt failure, suspended-user create request, restored-user create request. Allowed transitions stay in the surviving Application handlers/repositories: due outbox claim moves pending to processing, success moves processing to sent, retryable failure moves processing to pending, final failure moves processing to failed, rewrite create for suspended users rejects without persistence, restored users can create one pending attempt with one pending reservation and one outbox row. Illegal transitions remain covered by existing handler tests.
+- Output artifacts: deleted the four target service files; migrated the max-attempt outbox assertion into `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; repointed shared rewrite assertions in `AdminSuspensionTests.cs` and `RetentionServiceTests.cs` to `CreateRewriteAttemptHandler`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; focused handler filter passed 22/22; `AdminSuspensionTests.SuspendedUserRewriteRejected` passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 694/694; all four target service file absence checks passed.
+- Limitations: No schema, migration, new state, status enum, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-10 legacy service deletion and DI cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-10 changes EF-backed service/dependency wiring and removes obsolete infrastructure service files and their tests.
+- Action: Opened and followed the project skill. Reviewed target services, DI registration, old unit tests, surviving Application handler tests, and shared tests together. Initial src reference check found the tax target still referenced by the legacy `AdminService`; removed that stale dependency by returning the existing Application tax DTO shape so the target file and co-located records could be deleted without introducing schema or migration work.
+- Output artifacts: removed exactly the four target DI registrations; deleted the four target service files and four obsolete single-service tests; updated `AdminService.cs` and `AdminHttpFunctions.cs` only to stop compiling against deleted tax records; kept `QuotaService` and `TestCollectionBehavior.cs` unchanged.
+- Verification evidence: `grep -rn -w` source checks were run for each target before deletion; post-change target-name scan over `backend-dotnet/src` and `backend-dotnet/tests` returned no deleted service/type references; changed-file policy scan returned no matches; Release build and full backend suite passed.
+- Limitations: The branch did not satisfy the tax target's stated zero-reference precondition at first because `AdminService` still referenced it. The cleanup was kept compile-focused and no database, migration, payment, secret, deployment, push, or PR work was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-10 retry and failure coverage preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-10 deletes old tests around outbox retry/failure behavior and shared rewrite create tests, so failure/retry invariants needed coverage preservation.
+- Action: Opened and followed the project skill as a failure-matrix checklist. Critical operations reviewed: outbox dispatch handler success, retryable handler failure, final max-attempt failure, concurrent claim, suspended-user rewrite create rejection, restored-user rewrite create success, and first rewrite consent stamping. Dependency boundaries stayed local: EF SQLite test database and deterministic in-memory handlers/fakes.
+- Output artifacts: added handler-level max-attempt final-failure coverage in `Application/WebhookOutboxUseCaseTests.cs`; repointed `AdminSuspensionTests.cs` and `RetentionServiceTests.cs` to the surviving Application rewrite handler while preserving final database-state assertions.
+- Verification evidence: focused handler filter passed 22/22; exact suspension regression passed 1/1 after fixing stale tracked-context reuse; full `dotnet test ReplyInMyVoice.sln -c Release` passed 694/694.
+- Limitations: No new retry policy, external provider call, live cloud dependency, deployment, push, PR, or payment action was added.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-10 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-10 deletes C# infrastructure services and obsolete xUnit tests while requiring handler/integration coverage and full backend verification.
+- Action: Opened and followed the project skill. Confirmed handler coverage before deleting obsolete unit tests, migrated the one unique outbox max-attempt assertion, switched shared tests to `CreateRewriteAttemptHandler`, ran focused tests first, then full backend suite.
+- Output artifacts: modified `WebhookOutboxUseCaseTests.cs`, `AdminSuspensionTests.cs`, and `RetentionServiceTests.cs`; deleted `OutboxDispatcherTests.cs`, `TaxTurnoverServiceTests.cs`, `ApiKeyUsageAnomalyServiceTests.cs`, and `RewriteRequestServiceTests.cs`; retained `QuotaService` tests and xUnit collection behavior.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; issue focused filter passed 22/22; `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~AdminSuspensionTests.SuspendedUserRewriteRejected"` passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 694/694; four target file absence checks passed.
+- Limitations: A local `git add && git commit` checkpoint was attempted but failed because the worktree git metadata lives outside the writable sandbox. No push, PR, deploy, schema change, NuGet change, or payment action was performed.

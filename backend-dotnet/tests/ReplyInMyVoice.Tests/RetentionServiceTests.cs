@@ -1,9 +1,12 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppResultKind = ReplyInMyVoice.Application.Common.ApplicationResultKind;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -129,21 +132,20 @@ public sealed class RetentionServiceTests
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var service = new RewriteRequestService(
-            fixture.CreateContext,
-            new QuotaService(fixture.CreateContext));
         var now = DateTimeOffset.Parse("2026-05-30T12:00:00Z");
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateRewriteHandler(handlerDb);
 
-        var result = await service.CreateAttemptAsync(
+        var result = await handler.HandleAsync(new CreateRewriteAttemptCommand(
             user.Id,
             "consent-idem",
             new RewriteRequest("message", "rough draft reply", "teacher", "reply", "facts", "preserve", "warm"),
             "free:lifetime",
-            quotaLimit: 3,
+            QuotaLimit: 3,
             now,
-            CancellationToken.None);
+            ApiKeyId: null));
 
-        result.Kind.Should().Be(ReserveRewriteResultKind.Created);
+        result.Kind.Should().Be(AppResultKind.Created);
         await using var verifyDb = fixture.CreateContext();
         var updatedUser = await verifyDb.AppUsers.SingleAsync(x => x.Id == user.Id);
         updatedUser.ConsentAcceptedAt.Should().Be(now);
@@ -173,4 +175,14 @@ public sealed class RetentionServiceTests
             ExpiresAt = createdAt.AddMinutes(15),
         };
     }
+
+    private static CreateRewriteAttemptHandler CreateRewriteHandler(ReplyInMyVoice.Infrastructure.Data.AppDbContext db) =>
+        new(
+            new AppUserRepository(db),
+            new UsagePeriodRepository(db),
+            new RewriteAttemptRepository(db),
+            new UsageReservationRepository(db),
+            new RewriteCreditRepository(db),
+            new OutboxMessageRepository(db),
+            new UnitOfWork(db));
 }

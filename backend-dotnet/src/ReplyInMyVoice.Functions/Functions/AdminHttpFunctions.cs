@@ -936,34 +936,9 @@ public sealed class AdminHttpFunctions
             dto.PaymentCount,
             dto.PaymentAmountTotal,
             dto.CostToDateUsd,
-            ToTaxTurnoverReport(dto.GstTurnover),
+            dto.GstTurnover,
             ToAdminPaymentReconciliationSummary(dto.PaymentReconciliation),
             ToAdminRefundReviewStats(dto.RefundReview));
-
-    private static TaxTurnoverReport ToTaxTurnoverReport(AppCommon.TaxTurnoverReportDto dto) =>
-        new(
-            dto.WindowStart,
-            dto.WindowEnd,
-            dto.Currency,
-            dto.GrossAmountTotal,
-            dto.RegistrationThresholdAmountTotal,
-            dto.WarningFraction,
-            dto.WarningAmountTotal,
-            dto.FractionOfThreshold,
-            dto.IgnoredNonNzdPaymentCount,
-            dto.Warning is null
-                ? null
-                : new TaxTurnoverWarning(
-                    dto.Warning.Code,
-                    dto.Warning.Severity,
-                    dto.Warning.Message),
-            dto.Notification is null
-                ? null
-                : new TaxTurnoverNotificationResult(
-                    dto.Notification.Attempted,
-                    dto.Notification.Sent,
-                    dto.Notification.Provider,
-                    dto.Notification.Reason));
 
     private static AdminPaymentReconciliationSummary? ToAdminPaymentReconciliationSummary(
         AppCommon.AdminPaymentReconciliationSummaryDto? dto) =>

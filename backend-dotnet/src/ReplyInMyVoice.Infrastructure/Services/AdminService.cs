@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -12,12 +12,15 @@ namespace ReplyInMyVoice.Infrastructure.Services;
 public sealed class AdminService(
     Func<AppDbContext> dbContextFactory,
     IStripeRefundClient? stripeRefundClient = null,
-    TaxTurnoverService? taxTurnoverService = null,
     AccountService? accountService = null)
 {
     public const int RefundReviewCountThreshold = 3;
     public const long RefundReviewAmountThreshold = 2_500;
 
+    private const string PurchaseSource = "PURCHASE";
+    private const string NzdCurrency = "nzd";
+    private const long DefaultRegistrationThresholdAmountTotal = 6_000_000;
+    private const decimal DefaultWarningFraction = 0.80m;
     private const int MaxPageSize = 100;
     private const int AccountingExportPageSize = 500;
     private const int MaxAccountingExportPageSize = 1000;
@@ -27,8 +30,6 @@ public sealed class AdminService(
         "date,userRef,sku,amount,currency,paymentIntent,receiptUrl,creditsGranted,creditsConsumed,creditsRemaining";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly AccountService _accountService = accountService ?? new AccountService(dbContextFactory);
-    private readonly TaxTurnoverService _taxTurnoverService =
-        taxTurnoverService ?? new TaxTurnoverService(dbContextFactory, new ConfigurationBuilder().Build());
 
     public async Task<AdminUsersListResponse> GetUsersAsync(
         int page,
@@ -321,8 +322,7 @@ public sealed class AdminService(
 
         var creditRows = await db.RewriteCredits
             .AsNoTracking()
-            .Select(x => new
-            {
+            .Select(x => new AdminStatsCreditRow(
                 x.Source,
                 x.AmountGranted,
                 x.AmountConsumed,
@@ -331,7 +331,7 @@ public sealed class AdminService(
                 x.StripeSku,
                 x.StripeAmountTotal,
                 x.StripeCurrency,
-            })
+                x.GrantedAt))
             .ToListAsync(cancellationToken);
 
         var costRows = await db.RewriteCostLogs
@@ -348,9 +348,7 @@ public sealed class AdminService(
                 x.StripeAmountTotal,
                 x.StripeCurrency))
             .ToList();
-        var gstTurnover = await _taxTurnoverService.GetRollingTwelveMonthReportAsync(
-            DateTimeOffset.UtcNow,
-            cancellationToken);
+        var gstTurnover = BuildTaxTurnoverReport(DateTimeOffset.UtcNow, creditRows);
         var paymentReconciliation = await GetLatestPaymentReconciliationSummaryAsync(
             db,
             cancellationToken);
@@ -793,6 +791,51 @@ public sealed class AdminService(
         amountTotal is not null ||
         string.Equals(source, "PURCHASE", StringComparison.OrdinalIgnoreCase);
 
+    private static TaxTurnoverReportDto BuildTaxTurnoverReport(
+        DateTimeOffset now,
+        IReadOnlyList<AdminStatsCreditRow> creditRows)
+    {
+        var windowStart = now.AddMonths(-12);
+        var windowRows = creditRows
+            .Where(x =>
+                x.Source == PurchaseSource &&
+                x.StripeAmountTotal is > 0 &&
+                x.GrantedAt >= windowStart &&
+                x.GrantedAt <= now)
+            .ToList();
+        var nzdRows = windowRows
+            .Where(x => string.Equals(x.StripeCurrency, NzdCurrency, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var grossAmountTotal = nzdRows.Sum(x => x.StripeAmountTotal!.Value);
+        var warningAmountTotal = (long)Math.Ceiling(
+            DefaultRegistrationThresholdAmountTotal * DefaultWarningFraction);
+        var warning = grossAmountTotal >= warningAmountTotal
+            ? new TaxTurnoverWarningDto(
+                "nz_gst_turnover_threshold_approaching",
+                "warning",
+                "Rolling 12-month gross NZD revenue is approaching the GST registration threshold.")
+            : null;
+
+        return new TaxTurnoverReportDto(
+            windowStart,
+            now,
+            NzdCurrency,
+            grossAmountTotal,
+            DefaultRegistrationThresholdAmountTotal,
+            DefaultWarningFraction,
+            warningAmountTotal,
+            grossAmountTotal / (decimal)DefaultRegistrationThresholdAmountTotal,
+            windowRows.Count - nzdRows.Count,
+            warning,
+            warning is null
+                ? null
+                : new TaxTurnoverNotificationResultDto(
+                    Attempted: false,
+                    Sent: false,
+                    Provider: null,
+                    Reason: "notification_not_configured"));
+    }
+
     private static async Task<AdminPaymentReconciliationSummary?> GetLatestPaymentReconciliationSummaryAsync(
         AppDbContext db,
         CancellationToken cancellationToken)
@@ -1120,6 +1163,17 @@ public sealed class AdminService(
         int AmountGranted,
         int AmountConsumed);
 
+    private sealed record AdminStatsCreditRow(
+        string Source,
+        int AmountGranted,
+        int AmountConsumed,
+        string? StripeEventId,
+        string? StripePaymentIntentId,
+        string? StripeSku,
+        long? StripeAmountTotal,
+        string? StripeCurrency,
+        DateTimeOffset GrantedAt);
+
     private sealed record AdminRefundReviewRow(Guid TargetUserId, long Amount);
 }
 
@@ -1211,7 +1265,7 @@ public sealed record AdminStatsResponse(
     int PaymentCount,
     long PaymentAmountTotal,
     decimal CostToDateUsd,
-    TaxTurnoverReport GstTurnover,
+    TaxTurnoverReportDto GstTurnover,
     AdminPaymentReconciliationSummary? PaymentReconciliation,
     AdminRefundReviewStats RefundReview);
 
