@@ -10,6 +10,7 @@ using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Application.UseCases.Billing;
 using ReplyInMyVoice.Application.UseCases.BillingSupport;
+using ReplyInMyVoice.Application.UseCases.CreditExpiry;
 using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -95,6 +96,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
         services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
+        services.AddScoped<ICreditExpiryNotifier, CreditExpiryNotifier>();
         services.AddScoped<ITaxTurnoverNotifier, TaxTurnoverNotifier>();
         services.AddScoped<ITaxTurnoverSettingsProvider, TaxTurnoverSettingsProvider>();
         services.AddScoped<GetOrCreateUserHandler>();
@@ -145,6 +147,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetApiUsageSummaryHandler>();
         services.AddScoped<GetApiUsageSeriesHandler>();
         services.AddScoped<GetApiUsageRecentHandler>();
+        services.AddScoped<SendCreditExpiryRemindersHandler>();
         services.AddScoped<ProcessRewriteJobHandler>();
         services.AddScoped<TryMarkStripeEventProcessedHandler>();
         services.AddScoped<ProcessStripeWebhookHandler>();

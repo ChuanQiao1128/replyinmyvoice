@@ -90,6 +90,50 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
             .ToList();
     }
 
+    public async Task<IReadOnlyList<RewriteCredit>> ListExpiryReminderCandidatesAsync(
+        DateTimeOffset now,
+        DateTimeOffset windowEnd,
+        int batchSize,
+        CancellationToken ct = default)
+    {
+        var query = db.RewriteCredits
+            .AsTracking()
+            .Include(x => x.User)
+            .Where(x =>
+                x.ExpiryReminderSentAt == null &&
+                x.ExpiresAt != null &&
+                x.AmountGranted > x.AmountConsumed);
+
+        if (db.Database.IsSqlite())
+        {
+            var candidates = await query.ToListAsync(ct);
+            return candidates
+                .Where(x => x.ExpiresAt > now && x.ExpiresAt <= windowEnd)
+                .OrderBy(x => x.ExpiresAt)
+                .ThenBy(x => x.Id)
+                .Take(batchSize)
+                .ToList();
+        }
+
+        return await query
+            .Where(x => x.ExpiresAt > now && x.ExpiresAt <= windowEnd)
+            .OrderBy(x => x.ExpiresAt)
+            .ThenBy(x => x.Id)
+            .Take(batchSize)
+            .ToListAsync(ct);
+    }
+
+    public Task MarkExpiryReminderSentAsync(
+        RewriteCredit credit,
+        DateTimeOffset sentAt,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        credit.ExpiryReminderSentAt = sentAt;
+        credit.RowVersion = Guid.NewGuid();
+        return Task.CompletedTask;
+    }
+
     public bool IsStripeEventIdWriteFailure(Exception exception)
     {
         var message = exception.ToString();
