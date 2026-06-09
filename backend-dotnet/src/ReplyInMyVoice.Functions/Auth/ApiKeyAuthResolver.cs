@@ -33,7 +33,7 @@ public static class ApiKeyAuthResolver
             return new ApiKeyAuthResult(null, null, 0);
         }
 
-        var keyHash = ApiKeyService.ComputeHash(token);
+        var keyHash = ApiKeyHashing.ComputeHash(token);
         var apiKey = await db.ApiKeys
             .SingleOrDefaultAsync(x => x.KeyHash == keyHash, cancellationToken);
 

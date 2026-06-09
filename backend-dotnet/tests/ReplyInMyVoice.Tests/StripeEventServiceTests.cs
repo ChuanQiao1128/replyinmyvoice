@@ -601,7 +601,7 @@ public sealed class StripeEventServiceTests
             .Should()
             .Be(DateTimeOffset.FromUnixTimeSeconds(1780000300));
 
-        AccountService.GetUsagePlan(updatedUser).Scope.Should().Be("paid");
+        AccountUsagePlans.GetUsagePlan(updatedUser).Scope.Should().Be("paid");
         notifications.Messages.Should().ContainSingle();
         notifications.Messages[0].TemplateName.Should().Be("failed-payment");
         notifications.Messages[0].Recipient.Email.Should().Be("customer@example.com");
@@ -660,16 +660,16 @@ public sealed class StripeEventServiceTests
         updatedExpiredGraceUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Inactive);
         updatedExpiredGraceUser.PaymentFailedAt.Should().BeNull();
         updatedExpiredGraceUser.PaymentGraceEndsAt.Should().BeNull();
-        AccountService.GetUsagePlan(updatedExpiredGraceUser).Scope.Should().Be("free");
+        AccountUsagePlans.GetUsagePlan(updatedExpiredGraceUser).Scope.Should().Be("free");
 
         var unchangedActiveUser = await db.AppUsers.SingleAsync(x => x.Id == activeUser.Id);
         unchangedActiveUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Active);
-        AccountService.GetUsagePlan(unchangedActiveUser).Scope.Should().Be("paid");
+        AccountUsagePlans.GetUsagePlan(unchangedActiveUser).Scope.Should().Be("paid");
 
         var unchangedInGraceUser = await db.AppUsers.SingleAsync(x => x.Id == inGraceUser.Id);
         unchangedInGraceUser.SubscriptionStatus.Should().Be(SubscriptionStatus.PastDue);
         unchangedInGraceUser.PaymentGraceEndsAt.Should().Be(now.AddDays(2));
-        AccountService.GetUsagePlan(unchangedInGraceUser).Scope.Should().Be("paid");
+        AccountUsagePlans.GetUsagePlan(unchangedInGraceUser).Scope.Should().Be("paid");
 
         notifications.Messages.Should().ContainSingle();
         notifications.Messages[0].TemplateName.Should().Be("subscription-paused");
@@ -1061,7 +1061,7 @@ public sealed class StripeEventServiceTests
         updatedUser.SubscriptionStatus.Should().NotBe(SubscriptionStatus.Trialing);
         updatedUser.SubscriptionStatus.Should().NotBe(SubscriptionStatus.Testing);
 
-        var plan = AccountService.GetUsagePlan(updatedUser);
+        var plan = AccountUsagePlans.GetUsagePlan(updatedUser);
         plan.Scope.Should().Be("free");
         plan.PeriodKey.Should().Be("free:lifetime");
         plan.QuotaLimit.Should().Be(0);
@@ -1109,7 +1109,7 @@ public sealed class StripeEventServiceTests
         await using var db = fixture.CreateContext();
         var updatedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
         updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.PastDue);
-        AccountService.GetUsagePlan(updatedUser).Scope.Should().Be("paid");
+        AccountUsagePlans.GetUsagePlan(updatedUser).Scope.Should().Be("paid");
     }
 
     [Fact]

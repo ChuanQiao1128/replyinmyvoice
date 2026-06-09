@@ -90,7 +90,7 @@ public sealed class RewriteHttpFunctions(
             authUser.ExternalAuthUserId,
             authUser.Email,
             cancellationToken);
-        var plan = AccountService.GetUsagePlan(user, configuration);
+        var plan = AccountUsagePlans.GetUsagePlan(user, configuration);
         var result = await createRewriteAttemptHandler.HandleAsync(
             new CreateRewriteAttemptCommand(
                 user.Id,

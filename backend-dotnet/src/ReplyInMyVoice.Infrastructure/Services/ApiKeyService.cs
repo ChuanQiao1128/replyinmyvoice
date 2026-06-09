@@ -1,8 +1,5 @@
-using System.Diagnostics;
-using System.Net;
 using System.Numerics;
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Domain.Entities;
@@ -15,9 +12,6 @@ public sealed class ApiKeyService
     private const string LiveKeyPrefix = "rmv_live_";
     private const string TestKeyPrefix = "rmv_test_";
     private const string Base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    private static int s_missingPepperWarningLogged;
-    private static ILogger<ApiKeyService>? s_logger;
-
     private readonly Func<AppDbContext> _dbContextFactory;
 
     public ApiKeyService(
@@ -27,41 +21,8 @@ public sealed class ApiKeyService
         _dbContextFactory = dbContextFactory;
         if (logger is not null)
         {
-            s_logger = logger;
+            ApiKeyHashing.UseLogger(logger);
         }
-    }
-
-    public static string ComputeHash(string plaintext)
-    {
-        ArgumentNullException.ThrowIfNull(plaintext);
-
-        var pepper = Environment.GetEnvironmentVariable("API_KEY_PEPPER");
-        if (string.IsNullOrWhiteSpace(pepper) && IsProductionRuntimeEnvironment())
-        {
-            throw new InvalidOperationException("API key hashing requires API_KEY_PEPPER in Production.");
-        }
-
-        if (string.IsNullOrWhiteSpace(pepper) &&
-            Interlocked.Exchange(ref s_missingPepperWarningLogged, 1) == 0)
-        {
-            const string warning = "API_KEY_PEPPER is not set; API key hashes are being computed without the configured pepper.";
-            if (s_logger is not null)
-            {
-                s_logger.LogWarning("{Warning}", warning);
-            }
-            else
-            {
-                Trace.TraceWarning(warning);
-            }
-        }
-
-        // Keep this formula stable for existing keys; a future keyed-HMAC migration needs
-        // explicit key versioning and rotation.
-        var material = string.IsNullOrWhiteSpace(pepper)
-            ? plaintext
-            : string.Concat(pepper, plaintext);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
-        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     public async Task<(Guid Id, string Plaintext, DateTimeOffset CreatedAt)> GenerateAsync(
@@ -76,7 +37,7 @@ public sealed class ApiKeyService
         {
             UserId = userId,
             Name = name,
-            KeyHash = ComputeHash(plaintext),
+            KeyHash = ApiKeyHashing.ComputeHash(plaintext),
             Last4 = plaintext[^4..],
             IsTest = isTest,
             CreatedAt = now,
@@ -192,7 +153,7 @@ public sealed class ApiKeyService
         {
             UserId = userId,
             Name = apiKey.Name,
-            KeyHash = ComputeHash(plaintext),
+            KeyHash = ApiKeyHashing.ComputeHash(plaintext),
             Last4 = plaintext[^4..],
             IsTest = apiKey.IsTest,
             PlanTier = apiKey.PlanTier,
@@ -249,7 +210,7 @@ public sealed class ApiKeyService
         string webhookUrl,
         CancellationToken cancellationToken)
     {
-        if (!TryNormalizeWebhookUrl(webhookUrl, out var normalizedUrl))
+        if (!ApiKeyWebhookUrl.TryNormalizeWebhookUrl(webhookUrl, out var normalizedUrl))
         {
             throw new ArgumentException("Webhook URL must be an absolute HTTPS URL that resolves to a public address.", nameof(webhookUrl));
         }
@@ -313,29 +274,12 @@ public sealed class ApiKeyService
         return (isTest ? TestKeyPrefix : LiveKeyPrefix) + ToBase62(randomBytes);
     }
 
-    public static bool TryNormalizeWebhookUrl(string? value, out string normalizedUrl) =>
-        WebhookEndpointSafety.TryNormalizeUrl(value, out normalizedUrl);
-
-    internal static bool TryNormalizeWebhookUrl(
-        string? value,
-        out string normalizedUrl,
-        Func<string, IPAddress[]> resolveHost) =>
-        WebhookEndpointSafety.TryNormalizeUrl(value, out normalizedUrl, resolveHost);
-
     private static string GenerateWebhookSecret()
     {
         Span<byte> randomBytes = stackalloc byte[32];
         RandomNumberGenerator.Fill(randomBytes);
         return Convert.ToHexString(randomBytes).ToLowerInvariant();
     }
-
-    private static bool IsProductionRuntimeEnvironment() =>
-        IsProductionEnvironmentName(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")) ||
-        IsProductionEnvironmentName(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")) ||
-        IsProductionEnvironmentName(Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT"));
-
-    private static bool IsProductionEnvironmentName(string? environmentName) =>
-        string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
 
     private static string ToBase62(ReadOnlySpan<byte> bytes)
     {

@@ -179,7 +179,7 @@ app.MapPost("/api/rewrite", async (
             externalUserId,
             ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration)),
         cancellationToken);
-    var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user, builder.Configuration);
+    var plan = AccountUsagePlans.GetUsagePlan(user, builder.Configuration);
 
     var result = await createRewriteAttemptHandler.HandleAsync(
         new CreateRewriteAttemptCommand(
@@ -411,7 +411,7 @@ app.MapPost("/api/v1/rewrite", async (
             rateLimit: rateLimit);
     }
 
-    var plan = ReplyInMyVoice.Infrastructure.Services.AccountService.GetUsagePlan(user, builder.Configuration);
+    var plan = AccountUsagePlans.GetUsagePlan(user, builder.Configuration);
     var result = await createRewriteAttemptHandler.HandleAsync(
         new CreateRewriteAttemptCommand(
             user.Id,
@@ -1092,7 +1092,7 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
         return new ApiKeyAuthResult(null, null, 0);
     }
 
-    var keyHash = ApiKeyService.ComputeHash(bearerToken);
+    var keyHash = ApiKeyHashing.ComputeHash(bearerToken);
     var apiKey = await db.ApiKeys
         .SingleOrDefaultAsync(x => x.KeyHash == keyHash, cancellationToken);
 

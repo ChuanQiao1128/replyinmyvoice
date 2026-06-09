@@ -192,7 +192,7 @@ public sealed class V1RewriteHttpFunctions(
                 StatusCodes.Status402PaymentRequired);
         }
 
-        var plan = AccountService.GetUsagePlan(user, configuration);
+        var plan = AccountUsagePlans.GetUsagePlan(user, configuration);
         var rewriteRequest = new RewriteRequest(
             null,
             draft,

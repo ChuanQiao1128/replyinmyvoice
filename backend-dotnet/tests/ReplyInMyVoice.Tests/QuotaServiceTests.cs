@@ -586,7 +586,7 @@ public sealed class QuotaServiceTests
             await seedDb.SaveChangesAsync();
         }
 
-        var plan = AccountService.GetUsagePlan(user);
+        var plan = AccountUsagePlans.GetUsagePlan(user);
         var service = new QuotaService(fixture.CreateContext);
 
         var result = await service.ReserveAsync(

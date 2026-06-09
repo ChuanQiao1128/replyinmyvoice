@@ -56,7 +56,7 @@ public sealed class ApiUsageHttpFunctions(
             "days",
             30,
             1,
-            ApiKeyUsageQueryService.MaxUsageWindowDays,
+            ApiKeyUsageWindow.MaxUsageWindowDays,
             out var days,
             out var errorMessage))
         {

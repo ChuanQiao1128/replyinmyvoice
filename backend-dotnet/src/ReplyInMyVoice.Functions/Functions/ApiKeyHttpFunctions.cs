@@ -186,7 +186,7 @@ public sealed class ApiKeyHttpFunctions(
             return InvalidRequest("Request body must be valid JSON.");
         }
 
-        if (!ApiKeyService.TryNormalizeWebhookUrl(body?.WebhookUrl, out var webhookUrl))
+        if (!ApiKeyWebhookUrl.TryNormalizeWebhookUrl(body?.WebhookUrl, out var webhookUrl))
         {
             return InvalidRequest("Webhook URL must be an absolute HTTPS URL that resolves to a public address.");
         }
