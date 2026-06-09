@@ -4904,3 +4904,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`.
 - Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~StripeEventUseCaseTests` failed with missing StripeEvent Application types; an added reminder ordering regression then failed with processed count 0 before the repository batch filter was corrected. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/ProcessStripeWebhookHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused StripeEventUseCase tests passed 6/6; full backend tests passed 677/677.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-49 Admin Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #630 and `plans/ddd-restructure/issues/DDD-49-admin.md` require converting primary Admin use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-49 brief, `docs/ddd-migration-playbook.md`, `AdminService.cs`, existing Rewrite/PromoAdmin handler templates, Application abstractions, repositories, and Admin tests before editing. Scoped goals to the primary handlers only: user list, user detail, stats, grant credits, and delete user. Non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Admin/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/AdminDtos.cs`; `IAdminUserRepository`; `IAdminStatsRepository`; Infrastructure admin repositories/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AdminUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the Admin Application namespace, handlers, repositories, DTOs, and abstractions did not exist. Final release build, focused AdminUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-49 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-49 Admin credit grant and user erase transitions
+
+- Agent: Codex worker
+- Trigger: GitHub issue #630 migrates Admin credit grant and user deletion mutations into Application handlers with explicit success, forbidden, and not-found outcomes.
+- Action: Opened and followed the project skill; modeled credit grant as target-user-exists to admin credit available plus audit row, and delete as active user to erased user plus audit row. Illegal transitions are missing user, already erased user, and admin self-delete. The delete transition preserves related-table cleanup for attempts, usage periods, reservations, credits, promo redemptions, and billing support requests.
+- Output artifacts: `GrantCreditsHandler`; `DeleteAdminUserHandler`; `AdminUserRepository.EraseUserAsync`; `AdminUseCaseTests` cases for grant success/not-found and delete success/forbidden/not-found.
+- Verification evidence: Focused AdminUseCase tests passed 15/15 and full backend tests passed 685/685.
+- Limitations: Entry points still call the legacy service until a later strangler issue switches callers; no production routing changed.
+
+### 2026-06-09 - data-module-review - DDD-49 Admin repositories and persistence invariants
+
+- Agent: Codex worker
+- Trigger: GitHub issue #630 changes EF data access for Admin projections and mutations through new Application repository interfaces.
+- Action: Opened and followed the project skill; read EF mappings, row-version concurrency tokens, legacy Admin query/mutation logic, existing repository style, and SQLite test conventions. Added narrow `IAdminUserRepository` and `IAdminStatsRepository` abstractions, kept all schema and migration files unchanged, preserved SQLite-safe in-memory ordering/filtering where DateTimeOffset translation matters, and kept handlers free of `AppDbContext`.
+- Output artifacts: `AdminUserRepository`; `AdminStatsRepository`; Application Admin DTOs and repository interfaces; Admin handler tests.
+- Verification evidence: Data risk scan ran against `backend-dotnet/src` and reported broad existing risk signals; no new schema or migration files were added. Focused tests assert credit plus audit write, delete erase plus audit write, no side effects on not-found/forbidden paths, and aggregate read projections. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 685/685.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `AdminService` persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-49 AdminUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #630 adds C#/.NET Application handler tests for Admin user list pagination/filtering, user detail, stats, grant credits, and delete user behavior.
+- Action: Opened and followed the project skill; wrote `AdminUseCaseTests` before production code, watched the initial focused run fail on missing Admin Application namespace, handlers, DTOs, repositories, and abstractions, then implemented Application and Infrastructure code with SQLite in-memory coverage and deterministic provider fakes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AdminUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~AdminUseCaseTests` failed with missing Admin Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Admin/GrantCreditsHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused AdminUseCase tests passed 15/15; full backend tests passed 685/685.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
