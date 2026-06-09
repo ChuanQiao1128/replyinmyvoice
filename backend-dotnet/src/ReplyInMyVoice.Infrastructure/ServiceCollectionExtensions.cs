@@ -13,12 +13,17 @@ using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
+using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
+using AppStripeReconciliationAlerter = ReplyInMyVoice.Application.Abstractions.IStripeReconciliationAlerter;
+using LegacyStripePaymentReconciliationClient = ReplyInMyVoice.Infrastructure.Services.IStripePaymentReconciliationClient;
+using LegacyStripeReconciliationAlerter = ReplyInMyVoice.Infrastructure.Services.IStripeReconciliationAlerter;
 
 namespace ReplyInMyVoice.Infrastructure;
 
@@ -74,6 +79,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPromoAdminRepository, PromoAdminRepository>();
         services.AddScoped<IStripeInvoiceRepository, StripeInvoiceRepository>();
         services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
+        services.AddScoped<IPaymentGrantRepository, PaymentGrantRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
         services.AddScoped<IApiKeyUsageRepository, ApiKeyUsageRepository>();
         services.AddScoped<IAccountUsagePlanProvider>(_ => new AccountUsagePlanProvider(configuration));
@@ -111,6 +117,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RestorePromoCodeHandler>();
         services.AddScoped<CreateRewriteAttemptHandler>();
         services.AddScoped<GetRewriteAttemptHandler>();
+        services.AddScoped<ReconcileStripeHandler>();
         services.AddScoped<GenerateApiKeyHandler>();
         services.AddScoped<ListApiKeysHandler>();
         services.AddScoped<RotateApiKeyHandler>();
@@ -141,7 +148,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<StripeEventService>();
         services.AddScoped<BillingSupportService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
-        services.AddSingleton<ReplyInMyVoice.Application.Abstractions.IStripeBillingClient, ApplicationStripeBillingClient>();
+        services.AddSingleton<ReplyInMyVoice.Application.Abstractions.IStripeBillingClient>(sp =>
+            new ApplicationStripeBillingClient(
+                configuration,
+                sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<TaxTurnoverService>();
         services.AddScoped(sp => new StripeBillingService(
             sp.GetRequiredService<Func<AppDbContext>>(),
@@ -149,8 +159,13 @@ public static class ServiceCollectionExtensions
             sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<IStripeBillingService>(sp => sp.GetRequiredService<StripeBillingService>());
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
-        services.AddScoped<IStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());
-        services.AddScoped<IStripeReconciliationAlerter, StripeReconciliationNotificationAlerter>();
+        services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<AppStripePaymentReconciliationClient, StripePaymentReconciliationClient>();
+        services.AddScoped<LegacyStripeReconciliationAlerter>(sp => new StripeReconciliationNotificationAlerter(
+            configuration,
+            sp.GetRequiredService<INotificationService>(),
+            sp.GetRequiredService<ILogger<StripeReconciliationNotificationAlerter>>()));
+        services.AddScoped<AppStripeReconciliationAlerter, StripeReconciliationAlerterAdapter>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<ICheckoutVelocityLimiter, CheckoutVelocityLimiter>();
         services.AddHttpClient();
