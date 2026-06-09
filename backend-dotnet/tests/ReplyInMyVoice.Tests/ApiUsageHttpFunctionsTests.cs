@@ -4,10 +4,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -115,11 +118,29 @@ public sealed class ApiUsageHttpFunctionsTests
 
     private static ApiUsageHttpFunctions CreateFunctions(Func<AppDbContext> createContext)
     {
-        var accountService = new AccountService(createContext);
+        var db = createContext();
+        var appUsers = new AppUserRepository(db);
+        var usagePeriods = new UsagePeriodRepository(db);
+        var credits = new RewriteCreditRepository(db);
+        var apiKeyUsage = new ApiKeyUsageRepository(db);
+        var promoRedemptions = new PromoCodeRedemptionRepository(db);
+        var promoCodes = new PromoCodeRepository(db);
+        var usagePlans = new AccountUsagePlanProvider(BuildConfiguration());
+        var unitOfWork = new UnitOfWork(db);
+
         return new ApiUsageHttpFunctions(
             BuildConfiguration(),
-            accountService,
-            new ApiKeyUsageQueryService(createContext, accountService));
+            new GetApiUsageSummaryHandler(appUsers, usagePeriods, credits, apiKeyUsage, usagePlans),
+            new GetApiUsageSeriesHandler(apiKeyUsage),
+            new GetApiUsageRecentHandler(apiKeyUsage),
+            new GetAccountSummaryHandler(
+                appUsers,
+                usagePeriods,
+                credits,
+                promoRedemptions,
+                promoCodes,
+                usagePlans,
+                unitOfWork));
     }
 
     private static HttpRequest CreateRequest(

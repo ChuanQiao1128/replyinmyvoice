@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure.Services;
@@ -11,8 +13,13 @@ namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class ApiKeyHttpFunctions(
     IConfiguration configuration,
-    AccountService accountService,
-    ApiKeyService apiKeyService)
+    GetOrCreateUserHandler getOrCreateUserHandler,
+    GenerateApiKeyHandler generateApiKeyHandler,
+    ListApiKeysHandler listApiKeysHandler,
+    RotateApiKeyHandler rotateApiKeyHandler,
+    RevokeApiKeyHandler revokeApiKeyHandler,
+    SetApiKeyWebhookHandler setApiKeyWebhookHandler,
+    ClearApiKeyWebhookHandler clearApiKeyWebhookHandler)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -49,12 +56,13 @@ public sealed class ApiKeyHttpFunctions(
             return InvalidRequest("Name must be 200 characters or less.");
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
         var isTest = body?.Test == true;
-        var generated = await apiKeyService.GenerateAsync(user.Id, name, cancellationToken, isTest);
+        var generated = await generateApiKeyHandler.HandleAsync(
+            new GenerateApiKeyCommand(user.Id, name, isTest),
+            cancellationToken);
 
         return new CreatedResult(
             $"/api/keys/{generated.Id}",
@@ -78,11 +86,12 @@ public sealed class ApiKeyHttpFunctions(
             return AuthenticationRequired();
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var summaries = await apiKeyService.ListAsync(user.Id, cancellationToken);
+        var summaries = await listApiKeysHandler.HandleAsync(
+            new ListApiKeysQuery(user.Id),
+            cancellationToken);
         var response = summaries
             .Select(x => new ApiKeyListResponse(
                 x.Id,
@@ -93,7 +102,7 @@ public sealed class ApiKeyHttpFunctions(
                 x.CreatedAt,
                 x.RevokedAt,
                 x.WebhookUrl,
-                x.Last30dUsage))
+                ToResponse(x.Last30dUsage)))
             .ToArray();
 
         return new OkObjectResult(response);
@@ -112,11 +121,12 @@ public sealed class ApiKeyHttpFunctions(
             return AuthenticationRequired();
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var rotated = await apiKeyService.RotateAsync(user.Id, id, cancellationToken);
+        var rotated = await rotateApiKeyHandler.HandleAsync(
+            new RotateApiKeyCommand(user.Id, id),
+            cancellationToken);
 
         return rotated is null
             ? new NotFoundResult()
@@ -143,11 +153,12 @@ public sealed class ApiKeyHttpFunctions(
             return AuthenticationRequired();
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var revoked = await apiKeyService.RevokeAsync(user.Id, id, cancellationToken);
+        var revoked = await revokeApiKeyHandler.HandleAsync(
+            new RevokeApiKeyCommand(user.Id, id),
+            cancellationToken);
 
         return revoked ? new NoContentResult() : new NotFoundResult();
     }
@@ -180,11 +191,12 @@ public sealed class ApiKeyHttpFunctions(
             return InvalidRequest("Webhook URL must be an absolute HTTPS URL that resolves to a public address.");
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var updated = await apiKeyService.SetWebhookAsync(user.Id, id, webhookUrl, cancellationToken);
+        var updated = await setApiKeyWebhookHandler.HandleAsync(
+            new SetApiKeyWebhookCommand(user.Id, id, webhookUrl),
+            cancellationToken);
 
         return updated is null
             ? new NotFoundResult()
@@ -207,11 +219,12 @@ public sealed class ApiKeyHttpFunctions(
             return AuthenticationRequired();
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var cleared = await apiKeyService.ClearWebhookAsync(user.Id, id, cancellationToken);
+        var cleared = await clearApiKeyWebhookHandler.HandleAsync(
+            new ClearApiKeyWebhookCommand(user.Id, id),
+            cancellationToken);
 
         return cleared ? new NoContentResult() : new NotFoundResult();
     }
@@ -255,6 +268,9 @@ public sealed class ApiKeyHttpFunctions(
             "Invalid API key request",
             detail,
             StatusCodes.Status400BadRequest);
+
+    private static ApiUsageCount ToResponse(ReplyInMyVoice.Application.Common.ApiUsageCountDto count) =>
+        new(count.Calls, count.Succeeded, count.Failed);
 }
 
 public sealed record ApiKeyCreateRequest(string? Name, bool Test = false);
