@@ -4859,3 +4859,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`.
 - Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~StripeReconciliationUseCaseTests` failed with missing reconciliation Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeReconciliation/ReconcileStripeHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused StripeReconciliationUseCase tests passed 4/4; full backend tests passed 671/671.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-48 Stripe event Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 and `plans/ddd-restructure/issues/DDD-48-stripe-event.md` require converting Stripe event use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-48 brief, `docs/ddd-migration-playbook.md`, `StripeEventService.cs`, existing Rewrite/Billing handler templates, Application abstractions, repositories, and Stripe event tests before editing. Scoped goals to add strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/StripeWebhookPayloadDto.cs`; Stripe event Application abstractions; Infrastructure repository/notifier adapters/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the StripeEvent Application namespace, handlers, notifier abstraction, and repository type did not exist. Final release build, focused StripeEventUseCase tests, full backend tests, handler file-existence check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-48 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-48 Stripe event and payment-grace lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 migrates Stripe event idempotency, webhook dispatch, subscription/payment-grace transitions, invoice upsert, credit grant/revocation, and grace batch use cases.
+- Action: Opened and followed the project skill; modeled `StripeEvent` states as `Processing`, `Failed`, and `Processed`; AppUser payment-grace states as active paid access, past-due grace, recovered active, expired inactive, and terminal subscription states; events are try-mark-processed, begin processing, duplicate/in-flight replay, failed sync, checkout completed, subscription update/delete, invoice failed/succeeded/paid/finalized, charge refund/dispute, grace expiry, and grace reminder.
+- Output artifacts: Application StripeEvent command/handler set, `IStripeEventRepository`, `IStripeEventNotifier`, repository extensions, and StripeEvent use-case tests.
+- Verification evidence: Tests cover duplicate TryMark, checkout replay, invoice failed transition into grace, subscription active transition, a two-row grace-expiry batch drain, and a reminder batch ordering regression. Full backend tests passed 677/677.
+- Limitations: Entry points still call the legacy service until a later strangler issue switches callers; no production routing changed.
+
+### 2026-06-09 - data-module-review - DDD-48 Stripe event persistence and repositories
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 changes data access for StripeEvents, AppUsers, RewriteCredits, and StripeInvoices through Application repository interfaces.
+- Action: Opened and followed the project skill; read EF mappings, unique keys, row-version concurrency tokens, legacy Stripe event persistence flow, existing repository style, and SQLite test conventions. Added narrow repository methods for event lock rows, Stripe user lookup, grace batches, checkout credit lookup, refund credit lookup, and invoice upsert. Kept all schema and migration files unchanged and kept handlers free of `AppDbContext`.
+- Output artifacts: `IStripeEventRepository`; `StripeEventRepository`; extensions to `IAppUserRepository`, `IRewriteCreditRepository`, and `IStripeInvoiceRepository`; matching Infrastructure implementations.
+- Verification evidence: Focused tests assert one processed event row for TryMark, one purchase credit for checkout replay, persisted invoice upsert on failed invoice, state changes for batched grace expiry, and due reminder selection before batch limiting. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 677/677.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `StripeEventService` persistence code was not edited.
+
+### 2026-06-09 - resilience-test-generation - DDD-48 Stripe event replay and post-commit side effects
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 touches Stripe webhook replay, idempotency locking, transactional state sync, and post-commit notification/cancellation side effects.
+- Action: Opened and followed the project skill; built the failure matrix around duplicate event, in-flight event, missing checkout user retry, invoice grace transition, post-commit notifier fake, and batch processing. Implemented deterministic SQLite tests and hand-written fakes rather than live provider calls.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`; post-commit side-effect abstractions and fakes.
+- Verification evidence: Red run failed on missing Application types; final focused test command passed 6/6, including duplicate TryMark, checkout replay, invoice failed grace entry, subscription entitlement sync, bounded grace-expiry batch drain, and reminder due-row selection. Full backend tests passed 677/677.
+- Limitations: No live Stripe endpoint, notification provider, billing portal, or cancellation provider was called; side-effect behavior is proven through deterministic fakes and Infrastructure adapter registration.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-48 StripeEventUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #629 adds C#/.NET Application handler tests for Stripe event idempotency, webhook dispatch, invoice/subscription paths, and a batch handler.
+- Action: Opened and followed the project skill; wrote `StripeEventUseCaseTests` before production code, watched the initial focused run fail on missing StripeEvent Application namespace, handlers, DTOs, notifier abstraction, and repository types, then implemented Application and Infrastructure code with SQLite in-memory coverage and deterministic fakes for post-commit work.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~StripeEventUseCaseTests` failed with missing StripeEvent Application types; an added reminder ordering regression then failed with processed count 0 before the repository batch filter was corrected. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/ProcessStripeWebhookHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused StripeEventUseCase tests passed 6/6; full backend tests passed 677/677.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.

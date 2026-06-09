@@ -13,6 +13,7 @@ using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
+using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
@@ -77,6 +78,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPromoCodeRepository, PromoCodeRepository>();
         services.AddScoped<IPromoCodeRedemptionRepository, PromoCodeRedemptionRepository>();
         services.AddScoped<IPromoAdminRepository, PromoAdminRepository>();
+        services.AddScoped<IStripeEventRepository, StripeEventRepository>();
         services.AddScoped<IStripeInvoiceRepository, StripeInvoiceRepository>();
         services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
         services.AddScoped<IPaymentGrantRepository, PaymentGrantRepository>();
@@ -128,6 +130,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetApiUsageSeriesHandler>();
         services.AddScoped<GetApiUsageRecentHandler>();
         services.AddScoped<ProcessRewriteJobHandler>();
+        services.AddScoped<TryMarkStripeEventProcessedHandler>();
+        services.AddScoped<ProcessStripeWebhookHandler>();
+        services.AddScoped<ProcessExpiredPaymentGraceHandler>();
+        services.AddScoped<ProcessPaymentGraceRemindersHandler>();
         services.AddScoped<AccountService>();
         services.AddScoped<ApiKeyService>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
@@ -158,6 +164,7 @@ public static class ServiceCollectionExtensions
             configuration,
             sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<IStripeBillingService>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<IStripeEventNotifier, StripeEventNotifier>();
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());
         services.AddScoped<AppStripePaymentReconciliationClient, StripePaymentReconciliationClient>();

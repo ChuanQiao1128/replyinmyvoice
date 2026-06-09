@@ -55,6 +55,21 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
                 x => x.UserId == userId && x.StripePaymentIntentId == paymentIntentId,
                 ct);
 
+    public async Task<bool> ExistsByStripeEventIdAsync(
+        string stripeEventId,
+        CancellationToken ct = default) =>
+        await db.RewriteCredits
+            .AsNoTracking()
+            .AnyAsync(x => x.StripeEventId == stripeEventId, ct);
+
+    public async Task<IReadOnlyList<RewriteCredit>> ListByStripePaymentIntentIdAsync(
+        string paymentIntentId,
+        CancellationToken ct = default) =>
+        await db.RewriteCredits
+            .AsTracking()
+            .Where(x => x.StripePaymentIntentId == paymentIntentId)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<RewriteCredit>> ListPurchaseCreditsForTurnoverAsync(
         DateTimeOffset windowStart,
         DateTimeOffset windowEnd,
@@ -73,5 +88,14 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
                 x.GrantedAt >= windowStart &&
                 x.GrantedAt <= windowEnd)
             .ToList();
+    }
+
+    public bool IsStripeEventIdWriteFailure(Exception exception)
+    {
+        var message = exception.ToString();
+        return message.Contains("IX_RewriteCredits_StripeEventId", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("RewriteCredits.StripeEventId", StringComparison.OrdinalIgnoreCase) ||
+            (message.Contains("RewriteCredits", StringComparison.OrdinalIgnoreCase) &&
+                message.Contains("StripeEventId", StringComparison.OrdinalIgnoreCase));
     }
 }
