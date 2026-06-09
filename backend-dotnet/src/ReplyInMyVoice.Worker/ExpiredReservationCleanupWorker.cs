@@ -1,4 +1,4 @@
-using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Application.UseCases.Quota;
 
 namespace ReplyInMyVoice.Worker;
 
@@ -14,8 +14,10 @@ public sealed class ExpiredReservationCleanupWorker(
             try
             {
                 using var scope = scopeFactory.CreateScope();
-                var cleanup = scope.ServiceProvider.GetRequiredService<ExpiredReservationCleanupService>();
-                var released = await cleanup.RunOnceAsync(DateTimeOffset.UtcNow, stoppingToken);
+                var handler = scope.ServiceProvider.GetRequiredService<ReleaseExpiredReservationsHandler>();
+                var released = await handler.HandleAsync(
+                    new ReleaseExpiredReservationsCommand(DateTimeOffset.UtcNow),
+                    stoppingToken);
                 if (released > 0)
                 {
                     logger.LogInformation("Released {Count} expired rewrite reservations.", released);
