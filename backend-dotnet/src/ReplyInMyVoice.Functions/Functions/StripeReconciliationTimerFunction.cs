@@ -1,11 +1,11 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class StripeReconciliationTimerFunction(
-    StripeReconciliationService reconciliation,
+    ReconcileStripeHandler reconcileStripeHandler,
     ILogger<StripeReconciliationTimerFunction> logger)
 {
     [Function("ReconcileStripePayments")]
@@ -17,10 +17,11 @@ public sealed class StripeReconciliationTimerFunction(
         var windowEnd = completedAt;
         var windowStart = windowEnd.AddDays(-1);
 
-        var report = await reconciliation.ReconcileAsync(
-            windowStart,
-            windowEnd,
-            completedAt,
+        var report = await reconcileStripeHandler.HandleAsync(
+            new ReconcileStripeCommand(
+                windowStart,
+                windowEnd,
+                completedAt),
             cancellationToken);
 
         logger.LogInformation(

@@ -1,11 +1,11 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class OutboxDispatcherTimerFunction(
-    OutboxDispatcherService dispatcher,
+    DispatchDueOutboxHandler dispatchDueOutboxHandler,
     ILogger<OutboxDispatcherTimerFunction> logger)
 {
     [Function("DispatchOutboxMessages")]
@@ -13,10 +13,11 @@ public sealed class OutboxDispatcherTimerFunction(
         [TimerTrigger("*/15 * * * * *")] TimerInfo timer,
         CancellationToken cancellationToken)
     {
-        var count = await dispatcher.DispatchDueAsync(
-            DateTimeOffset.UtcNow,
-            Environment.MachineName,
-            batchSize: 10,
+        var count = await dispatchDueOutboxHandler.HandleAsync(
+            new DispatchDueOutboxCommand(
+                DateTimeOffset.UtcNow,
+                Environment.MachineName,
+                BatchSize: 10),
             cancellationToken);
 
         if (count > 0)
