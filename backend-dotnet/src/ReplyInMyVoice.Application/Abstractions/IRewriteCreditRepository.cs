@@ -4,6 +4,8 @@ namespace ReplyInMyVoice.Application.Abstractions;
 
 public interface IRewriteCreditRepository
 {
+    Task<RewriteCredit?> GetByIdAsync(Guid creditId, CancellationToken ct = default);
+
     Task<RewriteCredit?> GetUsableForReservationAsync(
         Guid userId,
         DateTimeOffset now,

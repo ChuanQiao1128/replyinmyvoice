@@ -45,6 +45,42 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - state-machine-modeling - DDD-41 quota reservation handlers
+
+- Agent: Codex worker
+- Trigger: GitHub issue #622 changes and tests quota reservation, rewrite-attempt, and cleanup lifecycles through new Application handlers.
+- Action: Opened and followed the skill. State list: `RewriteAttempt` remains `Pending`, `Processing`, `Succeeded`, `Failed`, and `Expired`; `UsageReservation` remains `Pending`, `Finalized`, `Released`, and `Expired`. Event list: reserve quota, duplicate reserve lookup, conflicting reserve lookup, mark processing, finalize success, release failure/cancel path, and release expired cleanup. Transition table: reserve creates pending attempt plus pending reservation; duplicate reserve returns the existing attempt; conflict returns the old attempt with an error code; mark processing moves pending attempt to processing once; finalize moves pending reservation to finalized and attempt to succeeded; release moves pending reservation to released and pending/processing attempt to failed; expired cleanup moves stale pending reservation plus pending/processing attempt to expired. Invariants: terminal attempts are not overwritten by late success, period-backed success moves one reserved count to used count, release/expiry returns reserved period count or credit consumption, and expired cleanup loops in bounded batches. Illegal transitions: finalized/released/expired reservations do not finalize again; failed/expired attempts do not become succeeded; non-pending attempts do not re-enter processing.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Quota/*.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/ReserveQuotaResult.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaUseCaseTests` passed 9/9; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaServiceTests` passed 22/22; `dotnet test ReplyInMyVoice.sln -c Release` passed 641/641.
+- Limitations: Entry points were intentionally not switched, and `QuotaService` was not edited per the strangler issue scope.
+
+### 2026-06-09 - data-module-review - DDD-41 quota repository and UoW changes
+
+- Agent: Codex worker
+- Trigger: GitHub issue #622 extends EF-backed repositories, `IUnitOfWork`, and quota persistence invariants without a schema change.
+- Action: Opened and followed the skill; reviewed `QuotaService`, `AppDbContext` mappings for `UsagePeriod`, `UsageReservation`, `RewriteAttempt`, `RewriteCredit`, and `OutboxMessage`, existing Application repository interfaces, repository implementations, and SQLite integration test patterns. Kept changes additive: narrow lookup methods, expired-reservation batch loading, serializable transaction overloads, and bounded race retry support in Infrastructure.
+- Output artifacts: `IRewriteAttemptRepository.cs`; `IUsageReservationRepository.cs`; `IUsagePeriodRepository.cs`; `IRewriteCreditRepository.cs`; `IUnitOfWork.cs`; matching `Infrastructure/Repositories/*` implementations; `QuotaUseCaseTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; focused quota use-case tests passed 9/9; existing quota service tests passed 22/22; full backend tests passed 641/641; no EF Core or `AppDbContext` dependency was introduced into the new quota handlers.
+- Limitations: No database migration, model snapshot edit, data backfill, deployment, production data access, payment action, push, or PR action was performed.
+
+### 2026-06-09 - resilience-test-generation - DDD-41 quota retry and cleanup coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #622 requires reserve race retry behavior and expired-reservation batch cleanup coverage.
+- Action: Opened and followed the skill. Critical operation: reserve quota without double-consuming period slots or credits when requests repeat or race. Dependency boundaries: SQLite/EF persistence, outbox row creation, period counters, and credit counters. Failure matrix covered in tests: duplicate request key, conflicting request hash, full quota without credit, credit-backed reservation release, simulated reserve retry path, stale pending cleanup, stale processing cleanup, and late success after expiry.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/UnitOfWork.cs`; quota Application handlers; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaUseCaseTests` passed 9/9 and asserts final persisted state for attempts, reservations, periods, credits, and outbox messages. Full backend tests passed 641/641.
+- Limitations: No live queue, provider, webhook endpoint, cloud service, or production database was contacted. The reserve retry test uses a deterministic unit-of-work shim to prove handler retry wiring; existing service concurrency coverage remains in `QuotaServiceTests`.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-41 quota xUnit coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #622 adds C#/.NET Application handler tests using SQLite in-memory and requires focused plus full `dotnet test` gates.
+- Action: Opened and followed the skill; added `QuotaUseCaseTests` at the EF Core SQLite integration level with hand-written helpers and no new packages. Covered reserve, duplicate/conflict, quota full, credit waterfall, release, finalize, processing claim, expired batch loop, and late-success guard. Added DI registration assertions for the new handlers.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`; quota handler and repository implementation files; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaUseCaseTests` passed 9/9; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~QuotaServiceTests` passed 22/22; `dotnet test ReplyInMyVoice.sln -c Release` passed 641/641.
+- Limitations: NuGet package vulnerability metadata lookup emitted `NU1900` warnings because the feed metadata endpoint was unavailable. Local git commit was blocked by sandbox permissions on the parent worktree Git metadata; no push, PR, deploy, live payment action, or secret inspection was performed.
+
 ### 2026-06-09 - system-spec-synthesis - DDD-30 ADR and migration playbook
 
 - Agent: Codex worker

@@ -6,6 +6,8 @@ public interface IUsagePeriodRepository
 {
     Task AddAsync(UsagePeriod usagePeriod, CancellationToken ct = default);
 
+    Task<UsagePeriod?> GetByIdAsync(Guid usagePeriodId, CancellationToken ct = default);
+
     Task<UsagePeriod?> GetByUserIdAndPeriodKeyAsync(
         Guid userId,
         string periodKey,

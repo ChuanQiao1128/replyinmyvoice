@@ -12,6 +12,13 @@ public sealed class UsagePeriodRepository(AppDbContext db) : IUsagePeriodReposit
         await db.UsagePeriods.AddAsync(usagePeriod, ct);
     }
 
+    public async Task<UsagePeriod?> GetByIdAsync(
+        Guid usagePeriodId,
+        CancellationToken ct = default) =>
+        await db.UsagePeriods
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == usagePeriodId, ct);
+
     public async Task<UsagePeriod?> GetByUserIdAndPeriodKeyAsync(
         Guid userId,
         string periodKey,
