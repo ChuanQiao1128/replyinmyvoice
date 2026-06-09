@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Enums;
@@ -19,6 +20,7 @@ public sealed class RewriteHttpFunctions(
     IConfiguration configuration,
     AppDbContext db,
     AccountService accountService,
+    FindUserHandler findUserHandler,
     CreateRewriteAttemptHandler createRewriteAttemptHandler,
     GetRewriteAttemptHandler getRewriteAttemptHandler)
 {
@@ -150,7 +152,9 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        var user = await findUserHandler.HandleAsync(
+            new FindUserQuery(authUser.ExternalAuthUserId),
+            cancellationToken);
         if (user is null)
         {
             return new OkObjectResult(new RewriteHistoryPageResponse(
@@ -160,6 +164,7 @@ public sealed class RewriteHttpFunctions(
                 []));
         }
 
+        // TODO(DDD): no list-history handler yet - DDD-64
         var baseQuery = db.RewriteAttempts
             .AsNoTracking()
             .Where(x => x.UserId == user.Id && x.DeletedAt == null);
@@ -223,31 +228,31 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        var user = await findUserHandler.HandleAsync(
+            new FindUserQuery(authUser.ExternalAuthUserId),
+            cancellationToken);
         if (user is null)
         {
             return new NotFoundResult();
         }
 
-        var attempt = await db.RewriteAttempts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(
-                x => x.Id == attemptId && x.UserId == user.Id && x.DeletedAt == null,
-                cancellationToken);
-        if (attempt is null)
+        var result = await getRewriteAttemptHandler.HandleAsync(
+            new GetRewriteAttemptQuery(attemptId, user.Id),
+            cancellationToken);
+        if (result.Kind == ApplicationResultKind.NotFound || result.Value is null)
         {
             return new NotFoundResult();
         }
 
         return new OkObjectResult(new RewriteHistoryDetailResponse(
-            attempt.Id,
-            attempt.Status.ToString(),
-            attempt.RequestJson,
-            attempt.ResultJson,
-            attempt.ErrorCode,
-            attempt.ErrorMessage,
-            attempt.CreatedAt,
-            attempt.CompletedAt));
+            result.Value.AttemptId,
+            result.Value.Status,
+            result.Value.RequestJson,
+            result.Value.ResultJson,
+            result.Value.ErrorCode,
+            result.Value.ErrorMessage,
+            result.Value.CreatedAt,
+            result.Value.CompletedAt));
     }
 
     [Function("DeleteMyRewriteAttempt")]
@@ -266,12 +271,15 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        var user = await findUserHandler.HandleAsync(
+            new FindUserQuery(authUser.ExternalAuthUserId),
+            cancellationToken);
         if (user is null)
         {
             return new NotFoundResult();
         }
 
+        // TODO(DDD): no delete-history handler yet - DDD-64
         var attempt = await db.RewriteAttempts
             .AsTracking()
             .SingleOrDefaultAsync(

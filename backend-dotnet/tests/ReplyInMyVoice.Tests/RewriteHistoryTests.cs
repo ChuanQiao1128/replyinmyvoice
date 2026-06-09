@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -114,21 +115,24 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
     private RewriteHttpFunctions CreateFunctions(AppDbContext db)
     {
         var accountService = new AccountService(CreateContext);
+        var appUserRepository = new AppUserRepository(db);
         var rewriteAttemptRepository = new RewriteAttemptRepository(db);
         var createRewriteAttemptHandler = new CreateRewriteAttemptHandler(
-            new AppUserRepository(db),
+            appUserRepository,
             new UsagePeriodRepository(db),
             rewriteAttemptRepository,
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
             new UnitOfWork(db));
+        var findUserHandler = new FindUserHandler(appUserRepository);
         var getRewriteAttemptHandler = new GetRewriteAttemptHandler(rewriteAttemptRepository);
 
         return new RewriteHttpFunctions(
             BuildConfiguration(),
             db,
             accountService,
+            findUserHandler,
             createRewriteAttemptHandler,
             getRewriteAttemptHandler);
     }
