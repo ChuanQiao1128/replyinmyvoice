@@ -6,10 +6,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -291,11 +294,23 @@ public sealed class ApiKeyHttpFunctionsTests
         stored.WebhookSecret.Should().BeNull();
     }
 
-    private static ApiKeyHttpFunctions CreateFunctions(Func<AppDbContext> createContext) =>
-        new(
+    private static ApiKeyHttpFunctions CreateFunctions(Func<AppDbContext> createContext)
+    {
+        var db = createContext();
+        var appUsers = new AppUserRepository(db);
+        var apiKeys = new ApiKeyRepository(db);
+        var unitOfWork = new UnitOfWork(db);
+
+        return new ApiKeyHttpFunctions(
             BuildConfiguration(),
-            new AccountService(createContext),
-            new ApiKeyService(createContext));
+            new GetOrCreateUserHandler(appUsers, unitOfWork),
+            new GenerateApiKeyHandler(apiKeys, unitOfWork),
+            new ListApiKeysHandler(apiKeys, new ApiKeyUsageRepository(db)),
+            new RotateApiKeyHandler(apiKeys, unitOfWork),
+            new RevokeApiKeyHandler(apiKeys, unitOfWork),
+            new SetApiKeyWebhookHandler(apiKeys, unitOfWork),
+            new ClearApiKeyWebhookHandler(apiKeys, unitOfWork));
+    }
 
     private static HttpRequest CreateRequest(
         string externalAuthUserId,

@@ -45,6 +45,24 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - data-module-review - DDD-61 API key Function shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #646 switches API-key and API-usage HTTP Functions from legacy Infrastructure service calls to Application handlers over EF-backed repositories.
+- Action: Opened and followed the skill; reviewed the Function entry points, Application API-key/account handlers, repository registration, legacy service response records, and API-key/usage tests. Kept the change at the shell boundary: no schema edits, no migrations, no repository edits, and old service registrations remain.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiKeyHttpFunctions.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ApiUsageHttpFunctions.cs`; test constructor helpers in `ApiKeyHttpFunctionsTests.cs`, `ApiUsageHttpFunctionsTests.cs`, and `ApiInputHardeningTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; focused API-key/service test filter passed 27/27; full backend suite passed 695/695; `git diff --check` passed; changed-file restricted-term scan returned no matches.
+- Limitations: This issue intentionally did not remove legacy service classes or DI registration, add migrations, alter repository contracts, push, open a PR, deploy, touch secrets, or change payment wiring.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-61 backend regression gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #646 changes C# Azure Function constructor signatures and backend request handling paths while requiring existing behavior and assertions to remain unchanged.
+- Action: Opened and followed the skill; used the existing xUnit/FluentAssertions/EF Core SQLite coverage as the regression gate and changed only direct Function test factories needed for the new handler constructor dependencies.
+- Output artifacts: Same DDD-61 Function and test-helper files plus this log entry.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors; `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~ApiKeyServiceTests|FullyQualifiedName~ApiKeyHttpFunctionsTests|FullyQualifiedName~ApiKeyUsageQueryServiceTests"` passed 27/27; `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new test assertions were added because the issue scope is a behavior-preserving shell swap with existing acceptance coverage. No browser, frontend, deployment, production data, payment, or secret path was exercised.
+
 ### 2026-06-09 - state-machine-modeling - DDD-41 quota reservation handlers
 
 - Agent: Codex worker
