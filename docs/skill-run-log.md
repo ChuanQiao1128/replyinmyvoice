@@ -5183,3 +5183,39 @@ claude-heavy-planning-handoff
 - Output artifacts: No test artifacts changed; production Function shell edits only.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~OutboxDispatcherTests|FullyQualifiedName~StripeEventServiceTests|FullyQualifiedName~StripeReconciliationServiceTests|FullyQualifiedName~RewriteJobProcessorTests"` passed 47/47. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
 - Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.
+
+### 2026-06-09 - state-machine-modeling - DDD-66 Worker BackgroundService shell preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #651 changes Worker BackgroundService entry points for rewrite job processing, outbox dispatch, and expired quota reservation cleanup.
+- Action: Opened and followed the project skill; modeled this as lifecycle preservation rather than a new transition design. State list remains existing persisted states: rewrite attempts (`Pending`, `Processing`, `Succeeded`, `Failed`, `Expired`), usage reservations (`Pending`, `Finalized`, `Released`, `Expired`), and outbox messages (`Pending`, `Processing`, `Sent`, `Failed`). Event list remains Service Bus rewrite message, outbox loop tick, and cleanup loop tick. Transition table remains owned by the Application handlers: valid rewrite messages process by attempt id; due outbox messages are claimed and then sent or failed-attempted; expired pending reservations are released from reserved quota and marked expired. Invariants remain no duplicate finalization, no quota side effect for invalid queue payloads, no old service deletion, and no schema change. Illegal transitions remain terminal attempt overwrite, duplicate usage charge, duplicate job enqueue, and mutation from malformed worker input.
+- Output artifacts: `ServiceBusRewriteWorker.cs`, `OutboxDispatcherWorker.cs`, and `ExpiredReservationCleanupWorker.cs` now call the Wave-2 Application handlers from their existing per-loop scopes.
+- Verification evidence: `python3 agent-skills/state-machine-modeling/scripts/state_machine_template.py DDD-66-worker-shell` exited 0; Release build passed; focused worker-related filter passed 34/34; full backend suite passed 695/695.
+- Limitations: No new states, transition helper, enum, schema, migration, or lifecycle assertions were added because the issue requires unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - data-module-review - DDD-66 Worker persistence path
+
+- Agent: Codex worker
+- Trigger: DDD-66 changes data-access routing for Worker background loops from legacy infrastructure services to already-registered Application handlers/repositories.
+- Action: Opened and followed the project skill; reviewed the Worker files, Application handler APIs, DI registrations, old service registrations, and existing persistence tests together. Findings: no P1/P2 data issue found; schema and migrations remain unchanged; old services remain registered; per-loop scopes remain intact; handler command inputs preserve attempt id, current timestamp, worker instance id, and batch size.
+- Output artifacts: Handler-shell changes in the three Worker files only.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src/ReplyInMyVoice.Worker` exited 0 and returned expected review signals for outbox/quota paths; `git diff --check` exited 0; changed-diff restricted-substring scan returned no matches; Release build and both test gates passed.
+- Limitations: The data-risk scan is text-signal based and reports review prompts, not failures. No data model, EF migration, service cleanup, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - DDD-66 worker queue/outbox/quota failure preservation
+
+- Agent: Codex worker
+- Trigger: DDD-66 touches Service Bus rewrite processing, outbox dispatch loop routing, quota reservation cleanup, and existing redelivery/failure coverage while requiring behavior unchanged.
+- Action: Opened and followed the project skill; reviewed the failure matrix for timeout, transient provider/cloud failure, permanent failure, duplicate queue delivery, partial persisted state, concurrent quota mutation, and malformed worker payload. Reused existing deterministic tests because the issue forbids changing assertions and the Application handlers already own the failure behavior.
+- Output artifacts: Worker shell changes only; no test artifacts changed.
+- Verification evidence: `python3 agent-skills/resilience-test-generation/scripts/resilience_matrix.py DDD-66-worker-shell` exited 0; focused worker-related filter passed 34/34; full backend suite passed 695/695.
+- Limitations: No live provider, cloud, queue, deployment, or payment command was used. No new resilience assertions were added because this issue is a strangler shell swap with unchanged behavior.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-66 Worker shell regression gates
+
+- Agent: Codex worker
+- Trigger: DDD-66 requires Release build, focused rewrite job/outbox/quota tests, and full .NET backend tests after changing C# Worker BackgroundServices.
+- Action: Opened and followed the project skill; selected the existing xUnit/FluentAssertions tests named by the issue as characterization coverage for unchanged behavior. No test files or assertions were changed.
+- Output artifacts: No test artifacts changed; production Worker shell edits only.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteJobProcessorTests|FullyQualifiedName~OutboxDispatcherTests|FullyQualifiedName~QuotaServiceTests"` passed 34/34. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.
