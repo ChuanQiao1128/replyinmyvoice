@@ -35,5 +35,16 @@ public interface IRewriteCreditRepository
         DateTimeOffset windowEnd,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<RewriteCredit>> ListExpiryReminderCandidatesAsync(
+        DateTimeOffset now,
+        DateTimeOffset windowEnd,
+        int batchSize,
+        CancellationToken ct = default);
+
+    Task MarkExpiryReminderSentAsync(
+        RewriteCredit credit,
+        DateTimeOffset sentAt,
+        CancellationToken ct = default);
+
     bool IsStripeEventIdWriteFailure(Exception exception);
 }
