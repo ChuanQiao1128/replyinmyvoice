@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -54,6 +55,11 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<HasPaidApiEntitlementHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetBillingHistoryHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<DeleteAccountHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ReserveQuotaHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<FinalizeQuotaSuccessHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<MarkQuotaProcessingHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ReleaseQuotaHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ReleaseExpiredReservationsHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<CreateRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
     }

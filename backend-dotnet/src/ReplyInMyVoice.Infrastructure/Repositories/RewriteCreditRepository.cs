@@ -7,6 +7,13 @@ namespace ReplyInMyVoice.Infrastructure.Repositories;
 
 public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRepository
 {
+    public async Task<RewriteCredit?> GetByIdAsync(
+        Guid creditId,
+        CancellationToken ct = default) =>
+        await db.RewriteCredits
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == creditId, ct);
+
     public async Task<RewriteCredit?> GetUsableForReservationAsync(
         Guid userId,
         DateTimeOffset now,

@@ -12,6 +12,13 @@ public sealed class RewriteAttemptRepository(AppDbContext db) : IRewriteAttemptR
         await db.RewriteAttempts.AddAsync(attempt, ct);
     }
 
+    public async Task<RewriteAttempt?> GetByIdAsync(
+        Guid attemptId,
+        CancellationToken ct = default) =>
+        await db.RewriteAttempts
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == attemptId, ct);
+
     public async Task<RewriteAttempt?> GetByIdForUserAsync(
         Guid attemptId,
         Guid userId,
