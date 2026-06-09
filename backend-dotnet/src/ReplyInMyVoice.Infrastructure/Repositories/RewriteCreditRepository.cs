@@ -7,6 +7,11 @@ namespace ReplyInMyVoice.Infrastructure.Repositories;
 
 public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRepository
 {
+    public async Task AddAsync(RewriteCredit credit, CancellationToken ct = default)
+    {
+        await db.RewriteCredits.AddAsync(credit, ct);
+    }
+
     public async Task<RewriteCredit?> GetByIdAsync(
         Guid creditId,
         CancellationToken ct = default) =>

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
+using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
@@ -88,6 +89,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<MarkQuotaProcessingHandler>();
         services.AddScoped<ReleaseQuotaHandler>();
         services.AddScoped<ReleaseExpiredReservationsHandler>();
+        services.AddScoped<RedeemPromoHandler>();
+        services.AddScoped<GetPromoStatusHandler>();
         services.AddScoped<CreateRewriteAttemptHandler>();
         services.AddScoped<GetRewriteAttemptHandler>();
         services.AddScoped<GenerateApiKeyHandler>();
