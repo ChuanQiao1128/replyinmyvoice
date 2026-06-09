@@ -10,10 +10,13 @@ using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
+using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
+using AppStripeReconciliationAlerter = ReplyInMyVoice.Application.Abstractions.IStripeReconciliationAlerter;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -47,8 +50,11 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IPromoCodeRedemptionRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IStripeInvoiceRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IBillingSupportRequestRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IPaymentGrantRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IAccountUsagePlanProvider>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IUnitOfWork>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<AppStripePaymentReconciliationClient>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<AppStripeReconciliationAlerter>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteEngineClient>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteCostLogger>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetOrCreateUserHandler>().Should().NotBeNull();
@@ -65,6 +71,7 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<ReleaseExpiredReservationsHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<CreateRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ReconcileStripeHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ProcessRewriteJobHandler>().Should().NotBeNull();
     }
 

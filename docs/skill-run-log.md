@@ -4832,3 +4832,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingUseCaseTests.cs`.
 - Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~BillingUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.Billing` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Billing/CreateCheckoutSessionHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused BillingUseCase tests passed 8/8; full backend tests passed 667/667.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-47 Stripe reconciliation Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #628 and `plans/ddd-restructure/issues/DDD-47-stripe-reconciliation.md` require converting the Stripe reconciliation use case into an Application handler across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-47 brief, `docs/ddd-migration-playbook.md`, `StripeReconciliationService.cs`, existing Rewrite/Billing handler templates, Application abstractions, repositories, and reconciliation tests before editing. Scoped goals to add the strangler Application handler only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeReconciliation/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/StripeReconciliationDtos.cs`; Application reconciliation abstractions; Infrastructure repository/adapters/registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the StripeReconciliation Application namespace, handler, DTOs, and abstractions did not exist. Final release build, focused StripeReconciliationUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and touched-file restricted-substring scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-47 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - data-module-review - DDD-47 payment grant snapshot repository
+
+- Agent: Codex worker
+- Trigger: GitHub issue #628 changes data access for reconciliation-time purchase grant snapshot loading through a new Application repository interface.
+- Action: Opened and followed the project skill; read EF `RewriteCredit` usage, legacy reconciliation grant-loading logic, existing repository style, and SQLite test conventions. Added a narrow read-only `IPaymentGrantRepository`, kept all schema and migration files unchanged, preserved the old SQLite-safe in-memory `DateTimeOffset` filtering shape, and kept the Application handler free of `AppDbContext`.
+- Output artifacts: `IPaymentGrantRepository`; `PaymentGrantRepository`; Stripe reconciliation Application handler and tests.
+- Verification evidence: Focused tests assert the handler requests normalized payment intent ids, performs no unit-of-work save, and produces no alert for a clean match. Full backend tests passed 671/671.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `StripeReconciliationService` persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-47 StripeReconciliationUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #628 adds C#/.NET Application handler tests for Stripe reconciliation discrepancy behavior.
+- Action: Opened and followed the project skill; wrote `StripeReconciliationUseCaseTests` before production code, watched the initial focused run fail on missing StripeReconciliation Application namespace, handler, DTOs, and abstractions, then implemented Application and Infrastructure code with deterministic fakes for the Stripe reconciliation client and alerter.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~StripeReconciliationUseCaseTests` failed with missing reconciliation Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeReconciliation/ReconcileStripeHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused StripeReconciliationUseCase tests passed 4/4; full backend tests passed 671/671.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
