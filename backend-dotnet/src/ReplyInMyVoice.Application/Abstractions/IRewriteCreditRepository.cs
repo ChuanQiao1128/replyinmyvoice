@@ -16,4 +16,14 @@ public interface IRewriteCreditRepository
     Task<IReadOnlyList<RewriteCredit>> ListByUserIdAsync(
         Guid userId,
         CancellationToken ct = default);
+
+    Task<RewriteCredit?> GetByUserIdAndPaymentIntentIdAsync(
+        Guid userId,
+        string paymentIntentId,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<RewriteCredit>> ListPurchaseCreditsForTurnoverAsync(
+        DateTimeOffset windowStart,
+        DateTimeOffset windowEnd,
+        CancellationToken ct = default);
 }

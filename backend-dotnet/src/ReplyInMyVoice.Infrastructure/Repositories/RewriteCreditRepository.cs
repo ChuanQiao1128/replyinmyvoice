@@ -44,4 +44,34 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
             .AsTracking()
             .Where(x => x.UserId == userId)
             .ToListAsync(ct);
+
+    public async Task<RewriteCredit?> GetByUserIdAndPaymentIntentIdAsync(
+        Guid userId,
+        string paymentIntentId,
+        CancellationToken ct = default) =>
+        await db.RewriteCredits
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.UserId == userId && x.StripePaymentIntentId == paymentIntentId,
+                ct);
+
+    public async Task<IReadOnlyList<RewriteCredit>> ListPurchaseCreditsForTurnoverAsync(
+        DateTimeOffset windowStart,
+        DateTimeOffset windowEnd,
+        CancellationToken ct = default)
+    {
+        var rows = await db.RewriteCredits
+            .AsNoTracking()
+            .Where(x =>
+                x.Source == "PURCHASE" &&
+                x.StripeAmountTotal.HasValue)
+            .ToListAsync(ct);
+
+        return rows
+            .Where(x =>
+                x.StripeAmountTotal is > 0 &&
+                x.GrantedAt >= windowStart &&
+                x.GrantedAt <= windowEnd)
+            .ToList();
+    }
 }
