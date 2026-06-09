@@ -22,8 +22,18 @@ public interface IRewriteCreditRepository
         string paymentIntentId,
         CancellationToken ct = default);
 
+    Task<bool> ExistsByStripeEventIdAsync(
+        string stripeEventId,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<RewriteCredit>> ListByStripePaymentIntentIdAsync(
+        string paymentIntentId,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<RewriteCredit>> ListPurchaseCreditsForTurnoverAsync(
         DateTimeOffset windowStart,
         DateTimeOffset windowEnd,
         CancellationToken ct = default);
+
+    bool IsStripeEventIdWriteFailure(Exception exception);
 }
