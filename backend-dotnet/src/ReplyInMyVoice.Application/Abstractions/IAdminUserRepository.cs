@@ -27,6 +27,18 @@ public interface IAdminUserRepository
         AdminAuditLog auditLog,
         CancellationToken ct = default);
 
+    Task<AdminSuspensionMutationDto?> SetUserSuspensionAsync(
+        Guid userId,
+        bool suspended,
+        DateTimeOffset now,
+        CancellationToken ct = default);
+
+    Task<AdminRefundAuditDetailsDto?> FindRefundAuditDetailsAsync(
+        Guid targetUserId,
+        string paymentIntentId,
+        long amount,
+        CancellationToken ct = default);
+
     Task<AdminDeleteUserLookupDto?> GetDeleteUserLookupAsync(
         Guid userId,
         CancellationToken ct = default);

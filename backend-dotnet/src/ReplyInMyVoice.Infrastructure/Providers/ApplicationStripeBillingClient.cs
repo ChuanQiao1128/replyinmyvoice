@@ -6,6 +6,7 @@ using AppStripeBillingClient = ReplyInMyVoice.Application.Abstractions.IStripeBi
 using AppStripeCheckoutSessionCreateRequest = ReplyInMyVoice.Application.Abstractions.StripeCheckoutSessionCreateRequest;
 using AppStripeCheckoutSessionResult = ReplyInMyVoice.Application.Abstractions.StripeCheckoutSessionResult;
 using AppStripePortalSessionResult = ReplyInMyVoice.Application.Abstractions.StripePortalSessionResult;
+using AppStripeRefundClient = ReplyInMyVoice.Application.Abstractions.IStripeRefundClient;
 using AppStripeRefundRequest = ReplyInMyVoice.Application.Abstractions.StripeRefundRequest;
 using AppStripeRefundResult = ReplyInMyVoice.Application.Abstractions.StripeRefundResult;
 using LegacyStripeBillingClient = ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient;
@@ -16,7 +17,7 @@ namespace ReplyInMyVoice.Infrastructure.Providers;
 
 public sealed class ApplicationStripeBillingClient(
     IConfiguration configuration,
-    LegacyStripeBillingClient? stripeBillingClient = null) : AppStripeBillingClient
+    LegacyStripeBillingClient? stripeBillingClient = null) : AppStripeBillingClient, AppStripeRefundClient
 {
     private const string LegacyPriceEnvVar = "STRIPE_PRICE_ID";
     private readonly LegacyStripeBillingClient _stripeBillingClient =

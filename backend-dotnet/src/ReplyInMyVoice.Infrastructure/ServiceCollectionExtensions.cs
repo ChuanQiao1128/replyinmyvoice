@@ -25,9 +25,12 @@ using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppStripeBillingClient = ReplyInMyVoice.Application.Abstractions.IStripeBillingClient;
 using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
+using AppStripeRefundClient = ReplyInMyVoice.Application.Abstractions.IStripeRefundClient;
 using AppStripeReconciliationAlerter = ReplyInMyVoice.Application.Abstractions.IStripeReconciliationAlerter;
 using LegacyStripePaymentReconciliationClient = ReplyInMyVoice.Infrastructure.Services.IStripePaymentReconciliationClient;
+using LegacyStripeRefundClient = ReplyInMyVoice.Infrastructure.Services.IStripeRefundClient;
 using LegacyStripeReconciliationAlerter = ReplyInMyVoice.Infrastructure.Services.IStripeReconciliationAlerter;
 
 namespace ReplyInMyVoice.Infrastructure;
@@ -113,6 +116,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetAdminStatsHandler>();
         services.AddScoped<GrantCreditsHandler>();
         services.AddScoped<DeleteAdminUserHandler>();
+        services.AddScoped<GetBillingSupportQueueHandler>();
+        services.AddScoped<ResolveBillingSupportRequestHandler>();
+        services.AddScoped<ExportAccountingRevenueHandler>();
+        services.AddScoped<SetUserSuspensionHandler>();
+        services.AddScoped<IssueRefundHandler>();
         services.AddScoped<CreateCheckoutSessionHandler>();
         services.AddScoped<CreatePortalSessionHandler>();
         services.AddScoped<CancelSubscriptionHandler>();
@@ -176,17 +184,19 @@ public static class ServiceCollectionExtensions
         services.AddScoped<StripeEventService>();
         services.AddScoped<BillingSupportService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
-        services.AddSingleton<ReplyInMyVoice.Application.Abstractions.IStripeBillingClient>(sp =>
+        services.AddScoped<ApplicationStripeBillingClient>(sp =>
             new ApplicationStripeBillingClient(
                 configuration,
                 sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
+        services.AddScoped<AppStripeBillingClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
+        services.AddScoped<AppStripeRefundClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
         services.AddScoped<TaxTurnoverService>();
         services.AddScoped(sp => new StripeBillingService(
             sp.GetRequiredService<Func<AppDbContext>>(),
             configuration,
             sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<IStripeBillingService>(sp => sp.GetRequiredService<StripeBillingService>());
-        services.AddScoped<IStripeRefundClient>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<LegacyStripeRefundClient>(sp => sp.GetRequiredService<StripeBillingService>());
         services.AddScoped<IStripeEventNotifier, StripeEventNotifier>();
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());

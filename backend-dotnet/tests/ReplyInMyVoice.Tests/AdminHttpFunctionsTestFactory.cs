@@ -6,6 +6,11 @@ using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppStripeRefundClient = ReplyInMyVoice.Application.Abstractions.IStripeRefundClient;
+using AppStripeRefundRequest = ReplyInMyVoice.Application.Abstractions.StripeRefundRequest;
+using AppStripeRefundResult = ReplyInMyVoice.Application.Abstractions.StripeRefundResult;
+using LegacyStripeRefundClient = ReplyInMyVoice.Infrastructure.Services.IStripeRefundClient;
+using LegacyStripeRefundRequest = ReplyInMyVoice.Infrastructure.Services.StripeRefundRequest;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -14,21 +19,21 @@ internal static class AdminHttpFunctionsTestFactory
     public static AdminHttpFunctions Create(
         IConfiguration configuration,
         Func<AppDbContext> dbContextFactory,
-        IStripeRefundClient? refundClient = null)
+        LegacyStripeRefundClient? refundClient = null)
     {
         var db = dbContextFactory();
         var adminUsers = new AdminUserRepository(db);
         var adminStats = new AdminStatsRepository(db);
+        var billingSupportRequests = new BillingSupportRequestRepository(db);
+        var credits = new RewriteCreditRepository(db);
         var promoAdmin = new PromoAdminRepository(db);
         var unitOfWork = new UnitOfWork(db);
+        AppStripeRefundClient? applicationRefundClient = refundClient is null
+            ? null
+            : new LegacyStripeRefundClientAdapter(refundClient);
 
         return new AdminHttpFunctions(
             configuration,
-            new AdminService(
-                dbContextFactory,
-                refundClient,
-                new TaxTurnoverService(dbContextFactory, configuration),
-                new AccountService(dbContextFactory, configuration)),
             new GetAdminUsersHandler(adminUsers),
             new GetAdminUserDetailHandler(adminUsers),
             new GetAdminStatsHandler(
@@ -36,6 +41,11 @@ internal static class AdminHttpFunctionsTestFactory
                 new TaxTurnoverSettingsProvider(configuration)),
             new DeleteAdminUserHandler(adminUsers, unitOfWork),
             new GrantCreditsHandler(adminUsers, unitOfWork),
+            new GetBillingSupportQueueHandler(billingSupportRequests),
+            new ResolveBillingSupportRequestHandler(billingSupportRequests, adminUsers, unitOfWork),
+            new ExportAccountingRevenueHandler(credits),
+            new SetUserSuspensionHandler(adminUsers, unitOfWork),
+            new IssueRefundHandler(adminUsers, credits, applicationRefundClient, unitOfWork),
             new CreatePromoCodeHandler(promoAdmin, unitOfWork),
             new ListPromoCodesHandler(promoAdmin),
             new GetPromoCodeDetailHandler(promoAdmin),
@@ -43,5 +53,29 @@ internal static class AdminHttpFunctionsTestFactory
             new SetPromoCodeActiveHandler(promoAdmin, unitOfWork),
             new ArchivePromoCodeHandler(promoAdmin, unitOfWork),
             new RestorePromoCodeHandler(promoAdmin, unitOfWork));
+    }
+
+    private sealed class LegacyStripeRefundClientAdapter(LegacyStripeRefundClient refundClient) : AppStripeRefundClient
+    {
+        public async Task<AppStripeRefundResult> RefundPaymentAsync(
+            AppStripeRefundRequest request,
+            CancellationToken ct = default)
+        {
+            var refund = await refundClient.RefundPaymentAsync(
+                new LegacyStripeRefundRequest(
+                    request.PaymentIntentId,
+                    request.Amount,
+                    request.Currency,
+                    request.IdempotencyKey,
+                    request.TargetUserId),
+                ct);
+
+            return new AppStripeRefundResult(
+                refund.RefundId,
+                refund.PaymentIntentId,
+                refund.Amount,
+                refund.Currency,
+                refund.Status);
+        }
     }
 }

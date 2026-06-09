@@ -184,3 +184,119 @@ public sealed record AdminDeleteUserLookupDto(
     Guid UserId,
     string ExternalAuthUserId,
     string? StripeSubscriptionId);
+
+public sealed record AdminBillingSupportRequestDto(
+    Guid Id,
+    Guid UserId,
+    string? UserEmail,
+    string? ExternalAuthUserId,
+    string Type,
+    string? RelatedPaymentIntentId,
+    string Message,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? ResolvedAt);
+
+public sealed record AdminBillingSupportResolveAuditDetailsDto(
+    Guid RequestId,
+    string Type,
+    string? RelatedPaymentIntentId,
+    DateTimeOffset ResolvedAt);
+
+public sealed record AdminAccountingRevenueExportDto(
+    IReadOnlyList<AdminAccountingRevenueRowDto> Rows);
+
+public sealed record AdminAccountingRevenueRowDto(
+    Guid CreditId,
+    Guid UserId,
+    DateTimeOffset GrantedAt,
+    string? Sku,
+    long? AmountTotal,
+    string? Currency,
+    string? PaymentIntentId,
+    int AmountGranted,
+    int AmountConsumed,
+    int CreditsRemaining);
+
+public sealed record AdminSuspensionMutationDto(
+    Guid TargetUserId,
+    bool Suspended,
+    DateTimeOffset? SuspendedAt);
+
+public sealed record AdminSuspensionResponseDto(
+    Guid TargetUserId,
+    bool Suspended,
+    DateTimeOffset? SuspendedAt);
+
+public sealed record AdminSuspensionResultDto(
+    AdminSuspensionResultKind Kind,
+    AdminSuspensionResponseDto? Response,
+    string? Detail)
+{
+    public static AdminSuspensionResultDto Success(AdminSuspensionResponseDto response) =>
+        new(AdminSuspensionResultKind.Success, response, null);
+
+    public static AdminSuspensionResultDto UserNotFound(string detail) =>
+        new(AdminSuspensionResultKind.UserNotFound, null, detail);
+}
+
+public enum AdminSuspensionResultKind
+{
+    Success,
+    UserNotFound,
+}
+
+public sealed record AdminSuspensionAuditDetailsDto(
+    bool Suspended,
+    DateTimeOffset? SuspendedAt);
+
+public sealed record AdminRefundPaymentLookupDto(
+    string? PaymentIntentId,
+    long? AmountTotal,
+    string? Currency);
+
+public sealed record AdminRefundResponseDto(
+    Guid TargetUserId,
+    string PaymentIntentId,
+    long Amount,
+    string? Currency,
+    string? RefundId,
+    bool AlreadyRefunded);
+
+public sealed record AdminRefundResultDto(
+    AdminRefundResultKind Kind,
+    AdminRefundResponseDto? Response,
+    string? Detail)
+{
+    public static AdminRefundResultDto Success(AdminRefundResponseDto response) =>
+        new(AdminRefundResultKind.Success, response, null);
+
+    public static AdminRefundResultDto InvalidRequest(string detail) =>
+        new(AdminRefundResultKind.InvalidRequest, null, detail);
+
+    public static AdminRefundResultDto UserNotFound(string detail) =>
+        new(AdminRefundResultKind.UserNotFound, null, detail);
+
+    public static AdminRefundResultDto PaymentNotFound(string detail) =>
+        new(AdminRefundResultKind.PaymentNotFound, null, detail);
+
+    public static AdminRefundResultDto RefundUnavailable(string detail) =>
+        new(AdminRefundResultKind.RefundUnavailable, null, detail);
+}
+
+public enum AdminRefundResultKind
+{
+    Success,
+    InvalidRequest,
+    UserNotFound,
+    PaymentNotFound,
+    RefundUnavailable,
+}
+
+public sealed record AdminRefundAuditDetailsDto(
+    string PaymentIntentId,
+    string? RefundId,
+    long Amount,
+    string? Currency,
+    string? Status);

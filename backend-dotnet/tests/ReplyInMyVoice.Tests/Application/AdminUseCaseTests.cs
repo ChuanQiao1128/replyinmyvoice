@@ -340,6 +340,287 @@ public sealed class AdminUseCaseTests
         (await verifyDb.AdminAuditLogs.CountAsync()).Should().Be(0);
     }
 
+    [Fact]
+    public async Task GetBillingSupportQueueAsync_returns_open_requests_in_created_order_with_user_details()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_support_queue",
+            "support-queue@example.com",
+            Now.AddDays(-5));
+        var newer = await SeedBillingSupportRequestAsync(
+            fixture,
+            user.Id,
+            BillingSupportRequestType.Refund,
+            "pi_newer",
+            "Please review this newer payment.",
+            BillingSupportRequestStatus.Open,
+            Now.AddHours(-1));
+        var older = await SeedBillingSupportRequestAsync(
+            fixture,
+            user.Id,
+            BillingSupportRequestType.BillingQuestion,
+            null,
+            "Please review this older billing question.",
+            BillingSupportRequestStatus.Open,
+            Now.AddHours(-2));
+        await SeedBillingSupportRequestAsync(
+            fixture,
+            user.Id,
+            BillingSupportRequestType.Refund,
+            "pi_resolved",
+            "This one is already complete.",
+            BillingSupportRequestStatus.Resolved,
+            Now.AddHours(-3),
+            resolvedAt: Now.AddHours(-1));
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateBillingSupportQueueHandler(handlerDb);
+
+        var queue = await handler.HandleAsync(new GetBillingSupportQueueQuery());
+
+        queue.Select(x => x.Id).Should().Equal(older, newer);
+        queue[0].UserEmail.Should().Be("support-queue@example.com");
+        queue[0].ExternalAuthUserId.Should().Be("clerk_support_queue");
+        queue[0].Type.Should().Be("billing-question");
+        queue[0].Status.Should().Be("open");
+    }
+
+    [Fact]
+    public async Task ResolveBillingSupportRequestAsync_marks_open_request_resolved_and_audits_once()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_support_resolve",
+            "support-resolve@example.com",
+            Now.AddDays(-5));
+        var requestId = await SeedBillingSupportRequestAsync(
+            fixture,
+            user.Id,
+            BillingSupportRequestType.Refund,
+            "pi_support_resolve",
+            "Please review this payment.",
+            BillingSupportRequestStatus.Open,
+            Now.AddHours(-2));
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateResolveBillingSupportHandler(handlerDb);
+        var command = new ResolveBillingSupportRequestCommand(
+            " admin-owner-oid ",
+            " owner@example.com ",
+            requestId,
+            Now);
+
+        var first = await handler.HandleAsync(command);
+        var second = await handler.HandleAsync(command);
+
+        first.Should().NotBeNull();
+        first!.Id.Should().Be(requestId);
+        first.Status.Should().Be("resolved");
+        first.ResolvedAt.Should().Be(Now);
+        second.Should().NotBeNull();
+        second!.Status.Should().Be("resolved");
+
+        await using var verifyDb = fixture.CreateContext();
+        var stored = await verifyDb.BillingSupportRequests.SingleAsync(x => x.Id == requestId);
+        stored.Status.Should().Be(BillingSupportRequestStatus.Resolved);
+        stored.ResolvedAt.Should().Be(Now);
+        var audit = await verifyDb.AdminAuditLogs.SingleAsync();
+        audit.AdminExternalAuthUserId.Should().Be("admin-owner-oid");
+        audit.AdminEmail.Should().Be("owner@example.com");
+        audit.Action.Should().Be("resolve_billing_support_request");
+        audit.TargetUserId.Should().Be(user.Id);
+        using var details = JsonDocument.Parse(audit.DetailsJson!);
+        details.RootElement.GetProperty("requestId").GetGuid().Should().Be(requestId);
+        details.RootElement.GetProperty("type").GetString().Should().Be("refund");
+        details.RootElement.GetProperty("relatedPaymentIntentId").GetString().Should().Be("pi_support_resolve");
+    }
+
+    [Fact]
+    public async Task ExportAccountingRevenueAsync_returns_payment_credit_rows_for_date_range()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await SeedUserAsync(
+            fixture,
+            "clerk_accounting_use_case",
+            "accounting-use-case@example.com",
+            Now.AddDays(-5));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "PURCHASE",
+            amountGranted: 10,
+            amountConsumed: 3,
+            stripePaymentIntentId: "pi_revenue_in_range",
+            stripeSku: "quick_pack",
+            stripeAmountTotal: 250,
+            stripeCurrency: "nzd",
+            grantedAt: Now.AddDays(-1));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "PURCHASE",
+            amountGranted: 30,
+            amountConsumed: 0,
+            stripePaymentIntentId: "pi_revenue_outside",
+            stripeSku: "value_pack",
+            stripeAmountTotal: 690,
+            stripeCurrency: "nzd",
+            grantedAt: Now.AddMonths(-2));
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "ADMIN",
+            amountGranted: 5,
+            amountConsumed: 0,
+            grantedAt: Now.AddDays(-1));
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateAccountingRevenueHandler(handlerDb);
+
+        var export = await handler.HandleAsync(new ExportAccountingRevenueQuery(
+            Now.AddDays(-7),
+            Now.AddDays(1)));
+
+        export.Rows.Should().ContainSingle();
+        var row = export.Rows[0];
+        row.UserId.Should().Be(user.Id);
+        row.PaymentIntentId.Should().Be("pi_revenue_in_range");
+        row.Sku.Should().Be("quick_pack");
+        row.AmountTotal.Should().Be(250);
+        row.Currency.Should().Be("nzd");
+        row.AmountGranted.Should().Be(10);
+        row.AmountConsumed.Should().Be(3);
+        row.CreditsRemaining.Should().Be(7);
+    }
+
+    [Fact]
+    public async Task SetUserSuspensionAsync_toggles_user_suspension_and_writes_audit_logs()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateSuspensionHandler(handlerDb);
+
+        var suspend = await handler.HandleAsync(new SetUserSuspensionCommand(
+            " admin-owner-oid ",
+            " owner@example.com ",
+            user.Id,
+            Suspended: true,
+            Now));
+        var unsuspend = await handler.HandleAsync(new SetUserSuspensionCommand(
+            "admin-owner-oid",
+            "owner@example.com",
+            user.Id,
+            Suspended: false,
+            Now.AddMinutes(1)));
+
+        suspend.Kind.Should().Be(AdminSuspensionResultKind.Success);
+        suspend.Response!.TargetUserId.Should().Be(user.Id);
+        suspend.Response.Suspended.Should().BeTrue();
+        suspend.Response.SuspendedAt.Should().Be(Now);
+        unsuspend.Kind.Should().Be(AdminSuspensionResultKind.Success);
+        unsuspend.Response!.Suspended.Should().BeFalse();
+        unsuspend.Response.SuspendedAt.Should().BeNull();
+
+        await using var verifyDb = fixture.CreateContext();
+        var storedUser = await verifyDb.AppUsers.SingleAsync(x => x.Id == user.Id);
+        storedUser.SuspendedAt.Should().BeNull();
+        var audits = (await verifyDb.AdminAuditLogs.ToListAsync())
+            .OrderBy(x => x.CreatedAt)
+            .ToList();
+        audits.Select(x => x.Action).Should().Equal("suspend_user", "unsuspend_user");
+        audits.Should().OnlyContain(x =>
+            x.TargetUserId == user.Id &&
+            x.AdminExternalAuthUserId == "admin-owner-oid" &&
+            x.AdminEmail == "owner@example.com");
+    }
+
+    [Fact]
+    public async Task IssueRefundAsync_uses_refund_port_and_returns_existing_refund_without_second_call()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "PURCHASE",
+            amountGranted: 10,
+            amountConsumed: 0,
+            stripePaymentIntentId: "pi_refund_use_case",
+            stripeAmountTotal: 1200,
+            stripeCurrency: "nzd");
+        var refundClient = new FakeStripeRefundClient("re_use_case");
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateRefundHandler(handlerDb, refundClient);
+        var command = new IssueRefundCommand(
+            " admin-owner-oid ",
+            " owner@example.com ",
+            user.Id,
+            " pi_refund_use_case ",
+            1200,
+            null);
+
+        var first = await handler.HandleAsync(command);
+        var second = await handler.HandleAsync(command);
+
+        first.Kind.Should().Be(AdminRefundResultKind.Success);
+        first.Response!.TargetUserId.Should().Be(user.Id);
+        first.Response.PaymentIntentId.Should().Be("pi_refund_use_case");
+        first.Response.Amount.Should().Be(1200);
+        first.Response.Currency.Should().Be("nzd");
+        first.Response.RefundId.Should().Be("re_use_case");
+        first.Response.AlreadyRefunded.Should().BeFalse();
+        second.Kind.Should().Be(AdminRefundResultKind.Success);
+        second.Response!.AlreadyRefunded.Should().BeTrue();
+        second.Response.RefundId.Should().Be("re_use_case");
+        refundClient.Calls.Should().ContainSingle();
+        refundClient.Calls[0].IdempotencyKey.Should().Be(
+            $"admin-refund:{user.Id:N}:pi_refund_use_case:1200");
+
+        await using var verifyDb = fixture.CreateContext();
+        var audit = await verifyDb.AdminAuditLogs.SingleAsync();
+        audit.AdminExternalAuthUserId.Should().Be("admin-owner-oid");
+        audit.AdminEmail.Should().Be("owner@example.com");
+        audit.Action.Should().Be("refund");
+        audit.TargetUserId.Should().Be(user.Id);
+    }
+
+    [Fact]
+    public async Task IssueRefundAsync_provider_failure_writes_no_audit_log()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        await SeedCreditAsync(
+            fixture,
+            user.Id,
+            source: "PURCHASE",
+            amountGranted: 10,
+            amountConsumed: 0,
+            stripePaymentIntentId: "pi_refund_failure_use_case",
+            stripeAmountTotal: 1200,
+            stripeCurrency: "nzd");
+        var refundClient = new FakeStripeRefundClient("re_failure")
+        {
+            RefundError = new TaskCanceledException("simulated refund timeout"),
+        };
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateRefundHandler(handlerDb, refundClient);
+
+        var act = () => handler.HandleAsync(new IssueRefundCommand(
+            "admin-owner-oid",
+            "owner@example.com",
+            user.Id,
+            "pi_refund_failure_use_case",
+            1200,
+            "nzd"));
+
+        await act.Should().ThrowAsync<TaskCanceledException>()
+            .WithMessage("*simulated refund timeout*");
+
+        await using var verifyDb = fixture.CreateContext();
+        (await verifyDb.AdminAuditLogs.CountAsync()).Should().Be(0);
+    }
+
     private static GetAdminUsersHandler CreateUsersHandler(AppDbContext db) =>
         new(new AdminUserRepository(db));
 
@@ -354,6 +635,23 @@ public sealed class AdminUseCaseTests
 
     private static DeleteAdminUserHandler CreateDeleteHandler(AppDbContext db) =>
         new(new AdminUserRepository(db), new UnitOfWork(db), new RecordingSubscriptionCancellationService());
+
+    private static GetBillingSupportQueueHandler CreateBillingSupportQueueHandler(AppDbContext db) =>
+        new(new BillingSupportRequestRepository(db));
+
+    private static ResolveBillingSupportRequestHandler CreateResolveBillingSupportHandler(AppDbContext db) =>
+        new(new BillingSupportRequestRepository(db), new AdminUserRepository(db), new UnitOfWork(db));
+
+    private static ExportAccountingRevenueHandler CreateAccountingRevenueHandler(AppDbContext db) =>
+        new(new RewriteCreditRepository(db));
+
+    private static SetUserSuspensionHandler CreateSuspensionHandler(AppDbContext db) =>
+        new(new AdminUserRepository(db), new UnitOfWork(db));
+
+    private static IssueRefundHandler CreateRefundHandler(
+        AppDbContext db,
+        IStripeRefundClient refundClient) =>
+        new(new AdminUserRepository(db), new RewriteCreditRepository(db), refundClient, new UnitOfWork(db));
 
     private static async Task<AppUser> SeedUserAsync(
         DbFixture fixture,
@@ -462,6 +760,33 @@ public sealed class AdminUseCaseTests
         await db.SaveChangesAsync();
     }
 
+    private static async Task<Guid> SeedBillingSupportRequestAsync(
+        DbFixture fixture,
+        Guid userId,
+        BillingSupportRequestType type,
+        string? paymentIntentId,
+        string message,
+        BillingSupportRequestStatus status,
+        DateTimeOffset createdAt,
+        DateTimeOffset? resolvedAt = null)
+    {
+        await using var db = fixture.CreateContext();
+        var request = new BillingSupportRequest
+        {
+            UserId = userId,
+            Type = type,
+            RelatedPaymentIntentId = paymentIntentId,
+            Message = message,
+            Status = status,
+            CreatedAt = createdAt,
+            UpdatedAt = resolvedAt ?? createdAt,
+            ResolvedAt = resolvedAt,
+        };
+        db.BillingSupportRequests.Add(request);
+        await db.SaveChangesAsync();
+        return request.Id;
+    }
+
     private sealed class StaticTaxTurnoverSettingsProvider : ITaxTurnoverSettingsProvider
     {
         public TaxTurnoverSettings GetSettings() =>
@@ -474,5 +799,30 @@ public sealed class AdminUseCaseTests
     {
         public Task CancelSubscriptionAsync(string stripeSubscriptionId, CancellationToken ct = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class FakeStripeRefundClient(string refundId) : IStripeRefundClient
+    {
+        public List<StripeRefundRequest> Calls { get; } = [];
+
+        public Exception? RefundError { get; init; }
+
+        public Task<StripeRefundResult> RefundPaymentAsync(
+            StripeRefundRequest request,
+            CancellationToken ct = default)
+        {
+            Calls.Add(request);
+            if (RefundError is not null)
+            {
+                throw RefundError;
+            }
+
+            return Task.FromResult(new StripeRefundResult(
+                refundId,
+                request.PaymentIntentId,
+                request.Amount,
+                request.Currency,
+                "succeeded"));
+        }
     }
 }

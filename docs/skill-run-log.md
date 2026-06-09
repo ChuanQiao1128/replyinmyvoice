@@ -5327,3 +5327,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `CreateRewriteAttemptHandler.cs` now wraps rewrite attempt creation in the existing retrying unit-of-work transaction.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; exact failing V1 test passed 1/1; `V1RewriteRateLimitTests` passed 4/4; focused CLEAN-02 filter passed 70/70; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
 - Limitations: No tests were disabled, skipped, deleted, or weakened. No deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - system-spec-synthesis - CLEAN-03 admin use-case migration scope
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 converts five deferred admin service behaviors into implementation-ready Application commands/queries, repository contracts, and Function shells.
+- Action: Opened and followed the project skill; synthesized the scope as a strangler migration with goals to move billing-support queue, resolve, accounting revenue export, suspension, and refund to Application handlers while keeping the old service and DI registration for Phase-B cleanup. Non-goals: no schema change, no migration, no live payment action, no deploy, no PR.
+- Output artifacts: Application command/query/handler files under `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Admin/`, an Application refund port, DTO additions, repository contract additions, Function shell wiring, and new Application handler tests.
+- Verification evidence: Initial AdminUseCaseTests run failed on missing handler/port types as expected; later `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 errors, the focused admin filter passed 27/27, and the full backend suite passed 702/702.
+- Limitations: The source brief referenced an Application `IStripeRefundClient` file that was not present in this branch, so the port was added using the existing Application refund request/result records and backed by the existing Stripe adapter.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-03 admin lifecycle preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 changes admin workflows with persisted transitions: billing-support requests open-to-resolved, user suspension active/suspended toggles, and refund idempotency through audit-log state.
+- Action: Opened and followed the project skill. State list: billing support `Open` and `Resolved`; user account suspension as `SuspendedAt == null` or non-null; refund state as no matching refund audit or matching `refund` audit for target/payment/amount. Events: admin queue read, admin resolve, repeated resolve, suspend, unsuspend, refund request, repeated refund request, refund provider failure. Allowed transitions: open support request resolves once with audit; resolved support request remains resolved without duplicate audit; suspend preserves existing `SuspendedAt` when already suspended; unsuspend clears `SuspendedAt`; first refund calls the Application refund port then writes one audit; repeated refund returns the prior audit-backed result without another provider call. Illegal/rejected transitions: missing user, missing payment, invalid amount/currency, unavailable refund port.
+- Output artifacts: `ResolveBillingSupportRequestHandler`, `SetUserSuspensionHandler`, `IssueRefundHandler`, repository mutation methods, and tests covering repeated resolve, suspension toggle, refund repeat, and refund provider failure.
+- Verification evidence: AdminUseCaseTests passed 21/21; focused admin filter passed 27/27; full backend suite passed 702/702.
+- Limitations: No new enum, status column, migration, transition helper, deployment, push, PR, or payment-provider live action was added.
+
+### 2026-06-09 - data-module-review - CLEAN-03 admin persistence migration
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 changes EF-backed repository contracts and persistence behavior for admin support requests, audit logs, suspension fields, rewrite-credit revenue export, and refund audit idempotency.
+- Action: Opened and followed the project skill; reviewed `AdminService`, `AdminHttpFunctions`, existing Admin handlers, repository interfaces, EF repositories, `IUnitOfWork`, and tests together. Findings: no schema/migration required; mutations stay tracked in repositories and commit through `IUnitOfWork`; refund duplicate detection remains audit-log based; revenue export preserves the old payment-credit filter and SQLite paging behavior.
+- Output artifacts: repository method additions in `IAdminUserRepository`, `IBillingSupportRequestRepository`, `IRewriteCreditRepository`, and implementations in `AdminUserRepository`, `BillingSupportRequestRepository`, `RewriteCreditRepository`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src --limit 40` exited 0 and returned broad existing repo signals; diff restricted-term scan returned no matches; Release build passed; focused admin filter passed; full backend suite passed.
+- Limitations: The data-risk scan is broad and reported existing quota/idempotency signals outside this issue. No schema, migration, data backfill, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-03 refund and duplicate admin events
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 touches refund idempotency and provider failure behavior while moving refund logic out of the old service.
+- Action: Opened and followed the project skill; used deterministic fakes rather than live provider calls. Failure matrix covered duplicate refund request, refund provider timeout/failure, duplicate billing-support resolve, missing user/payment, invalid refund amount/currency, and missing refund port.
+- Output artifacts: `IssueRefundHandler` with fake-port Application tests for first refund, duplicate refund returning the prior audit, and provider failure writing no audit; `ResolveBillingSupportRequestHandler` test proving duplicate resolve writes one audit.
+- Verification evidence: AdminUseCaseTests passed 21/21; focused admin/refund/suspension/route filter passed 27/27; full backend suite passed 702/702.
+- Limitations: No retry policy was added for refund provider failure because the legacy behavior throws and writes no audit on provider failure. No live provider, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-03 admin handler and Function gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 adds C# Application handlers, repository methods, Function constructor wiring, and xUnit coverage for five admin use cases.
+- Action: Opened and followed the project skill; wrote failing Application tests first, verified the missing-handler compile failure, implemented handlers/repositories/shell wiring, fixed one SQLite assertion query by materializing before ordering, then ran focused and full backend gates.
+- Output artifacts: `AdminUseCaseTests` now covers billing-support queue read, resolve, accounting revenue export, suspension, refund with fake Application refund port, and refund provider failure. `AdminHttpFunctionsTestFactory` now constructs the new handler graph.
+- Verification evidence: Initial `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~AdminUseCaseTests"` failed with missing `GetBillingSupportQueueHandler`, `ResolveBillingSupportRequestHandler`, `ExportAccountingRevenueHandler`, `SetUserSuspensionHandler`, `IssueRefundHandler`, and Application `IStripeRefundClient`. Final AdminUseCaseTests passed 21/21, focused admin filter passed 27/27, `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 errors, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 702/702.
+- Limitations: Build/test commands emitted NU1900 vulnerability-feed warnings because NuGet vulnerability metadata was unavailable, but restore/build/test completed. A local git commit was attempted and failed because the worktree git metadata is outside the writable sandbox. No push, PR, deploy, schema change, or live payment action was performed.

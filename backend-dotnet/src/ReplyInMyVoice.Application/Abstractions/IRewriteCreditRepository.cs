@@ -1,3 +1,4 @@
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Entities;
 
 namespace ReplyInMyVoice.Application.Abstractions;
@@ -20,6 +21,17 @@ public interface IRewriteCreditRepository
     Task<RewriteCredit?> GetByUserIdAndPaymentIntentIdAsync(
         Guid userId,
         string paymentIntentId,
+        CancellationToken ct = default);
+
+    Task<AdminRefundPaymentLookupDto?> GetRefundPaymentLookupAsync(
+        Guid userId,
+        string paymentIntentId,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<AdminAccountingRevenueRowDto>> ListAccountingRevenueRowsAsync(
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive,
+        int pageSize,
         CancellationToken ct = default);
 
     Task<bool> ExistsByStripeEventIdAsync(
