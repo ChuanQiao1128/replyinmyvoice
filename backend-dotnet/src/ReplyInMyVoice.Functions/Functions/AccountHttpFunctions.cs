@@ -3,17 +3,30 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.BillingSupport;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
+using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppBillingSupportRequestResultKind = ReplyInMyVoice.Application.Common.BillingSupportRequestResultKind;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class AccountHttpFunctions(
     IConfiguration configuration,
-    AccountService accountService,
-    BillingSupportService billingSupportService)
+    GetAccountSummaryHandler getAccountSummaryHandler,
+    GetPurchaseHistoryHandler getPurchaseHistoryHandler,
+    GetBillingHistoryHandler getBillingHistoryHandler,
+    GetBillingSupportRequestsHandler getBillingSupportRequestsHandler,
+    GetOrCreateUserHandler getOrCreateUserHandler,
+    CreateBillingSupportRequestHandler createBillingSupportRequestHandler,
+    DeleteAccountHandler deleteAccountHandler,
+    INotificationService notificationService)
 {
+    private const string SupportEmail = "info@timeawake.co.nz";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Function("GetAccountSummary")]
@@ -31,12 +44,11 @@ public sealed class AccountHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var account = await accountService.GetOrCreateAccountSummaryAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var account = await getAccountSummaryHandler.HandleAsync(
+            new GetAccountSummaryQuery(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
 
-        return new OkObjectResult(account);
+        return new OkObjectResult(ToAccountSummary(account));
     }
 
     [Function("GetAccountPayments")]
@@ -54,12 +66,11 @@ public sealed class AccountHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var payments = await accountService.GetPurchaseHistoryAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var payments = await getPurchaseHistoryHandler.HandleAsync(
+            new GetPurchaseHistoryQuery(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
 
-        return new OkObjectResult(payments);
+        return new OkObjectResult(payments.Select(ToAccountPayment).ToList());
     }
 
     [Function("GetBillingHistory")]
@@ -77,12 +88,11 @@ public sealed class AccountHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var history = await accountService.GetBillingHistoryAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var history = await getBillingHistoryHandler.HandleAsync(
+            new GetBillingHistoryQuery(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
 
-        return new OkObjectResult(history);
+        return new OkObjectResult(history.Select(ToAccountBillingHistoryItem).ToList());
     }
 
     [Function("GetBillingSupportRequests")]
@@ -100,12 +110,14 @@ public sealed class AccountHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var requests = await billingSupportService.GetForUserAsync(user.Id, cancellationToken);
-        return new OkObjectResult(requests);
+        var requests = await getBillingSupportRequestsHandler.HandleAsync(
+            new GetBillingSupportRequestsQuery(user.Id),
+            cancellationToken);
+
+        return new OkObjectResult(requests.Select(ToBillingSupportRequestResponse).ToList());
     }
 
     [Function("CreateBillingSupportRequest")]
@@ -144,21 +156,25 @@ public sealed class AccountHttpFunctions(
                 StatusCodes.Status400BadRequest);
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var result = await billingSupportService.CreateForUserAsync(
-            user,
-            createRequest,
-            DateTimeOffset.UtcNow,
+        var result = await createBillingSupportRequestHandler.HandleAsync(
+            new CreateBillingSupportRequestCommand(
+                user.Id,
+                createRequest.Type,
+                createRequest.RelatedPaymentIntentId,
+                createRequest.Message,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
-        if (result.Kind == BillingSupportRequestResultKind.Success && result.Response is not null)
+        if (result.Kind == AppBillingSupportRequestResultKind.Success && result.Response is not null)
         {
+            var response = ToBillingSupportRequestResponse(result.Response);
+            await SendBillingSupportReceivedNotificationAsync(user.Email, response.Id, cancellationToken);
             return new CreatedResult(
-                $"/api/billing-support-requests/{result.Response.Id}",
-                result.Response);
+                $"/api/billing-support-requests/{response.Id}",
+                response);
         }
 
         return FunctionHttpResults.Problem(
@@ -182,8 +198,25 @@ public sealed class AccountHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        await accountService.DeleteAccountAsync(authUser.ExternalAuthUserId, cancellationToken);
+        await deleteAccountHandler.HandleAsync(
+            new DeleteAccountCommand(authUser.ExternalAuthUserId),
+            cancellationToken);
         return new NoContentResult();
+    }
+
+    private async Task SendBillingSupportReceivedNotificationAsync(
+        string? email,
+        Guid requestId,
+        CancellationToken cancellationToken)
+    {
+        await notificationService.SendAsync(
+            NotificationTemplates.BillingSupportRequestReceived,
+            new NotificationRecipient(email ?? string.Empty, email),
+            new BillingSupportRequestReceivedNotificationModel(
+                CustomerName: email ?? "there",
+                SupportEmail: SupportEmail,
+                RequestReference: $"request {requestId:N}"[..20]),
+            cancellationToken);
     }
 
     private static async Task<BillingSupportCreateRequest?> ReadBillingSupportCreateRequestAsync(
@@ -199,4 +232,77 @@ public sealed class AccountHttpFunctions(
 
         return JsonSerializer.Deserialize<BillingSupportCreateRequest>(body, JsonOptions);
     }
+
+    private static AccountSummary ToAccountSummary(AccountSummaryDto account) =>
+        new(
+            account.Id,
+            account.ExternalAuthUserId,
+            account.Email,
+            account.SubscriptionStatus,
+            account.PaymentGraceEndsAt,
+            ToAccountUsageSummary(account.Usage),
+            new AccountPromoSummary(
+                account.Promo.HasRedeemed,
+                account.Promo.Eligible,
+                account.Promo.TrialRemaining,
+                account.Promo.TrialExpiresAt));
+
+    private static AccountUsageSummary ToAccountUsageSummary(AccountUsageSummaryDto usage) =>
+        new(
+            usage.Scope,
+            usage.PeriodKey,
+            usage.Quota,
+            usage.Used,
+            usage.Reserved,
+            usage.Remaining,
+            usage.Exhausted)
+        {
+            Sources = usage.Sources.Select(ToAccountUsageSource).ToList(),
+        };
+
+    private static AccountUsageSource ToAccountUsageSource(AccountUsageSourceDto source) =>
+        new(
+            source.Source,
+            source.Label,
+            source.Used,
+            source.Limit,
+            source.Reserved,
+            source.Remaining,
+            source.ExpiresAt,
+            source.ExpiresInDays);
+
+    private static AccountPayment ToAccountPayment(AccountPaymentDto payment) =>
+        new(
+            payment.Sku,
+            payment.PaymentIntentId,
+            payment.Amount,
+            payment.Currency,
+            payment.ReceiptUrl,
+            payment.Date,
+            payment.Expiry,
+            payment.Remaining);
+
+    private static AccountBillingHistoryItem ToAccountBillingHistoryItem(AccountBillingHistoryItemDto item) =>
+        new(
+            item.Type,
+            item.Date,
+            item.Description,
+            item.Amount,
+            item.Currency,
+            item.Status,
+            item.ReceiptUrl,
+            item.HostedInvoiceUrl);
+
+    private static BillingSupportRequestResponse ToBillingSupportRequestResponse(
+        BillingSupportRequestResponseDto response) =>
+        new(
+            response.Id,
+            response.UserId,
+            response.Type,
+            response.RelatedPaymentIntentId,
+            response.Message,
+            response.Status,
+            response.CreatedAt,
+            response.UpdatedAt,
+            response.ResolvedAt);
 }
