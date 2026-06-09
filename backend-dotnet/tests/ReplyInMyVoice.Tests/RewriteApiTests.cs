@@ -12,6 +12,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using ReplyInMyVoice.Application.UseCases.Quota;
+using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -19,6 +21,7 @@ using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -209,9 +212,10 @@ public sealed class RewriteApiTests : IAsyncLifetime
             """,
             true,
             null));
-        var processor = new RewriteJobProcessor(CreateContext, provider);
+        await using var processorDb = CreateContext();
+        var processor = CreateProcessHandler(processorDb, provider);
 
-        await processor.ProcessAsync(new RewriteJob(submitBody!.Id), CancellationToken.None);
+        await processor.HandleAsync(new ProcessRewriteJobCommand(submitBody!.Id), CancellationToken.None);
 
         provider.CallCount.Should().Be(1);
         await using (var db = CreateContext())
@@ -570,9 +574,10 @@ public sealed class RewriteApiTests : IAsyncLifetime
         var submit = await PostV1RewriteAsync(client, token, "v1-expired-terminal", ValidV1Draft());
         var body = await submit.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
         body.Should().NotBeNull();
-        var quota = new QuotaService(CreateContext);
 
-        var released = await quota.ReleaseExpiredReservationsAsync(DateTimeOffset.UtcNow.AddMinutes(16));
+        await using var cleanupDb = CreateContext();
+        var released = await CreateExpiredHandler(cleanupDb).HandleAsync(
+            new ReleaseExpiredReservationsCommand(DateTimeOffset.UtcNow.AddMinutes(16)));
         var result = await GetV1RewriteResultAsync(client, token, body!.Id);
 
         released.Should().Be(1);
@@ -607,9 +612,10 @@ public sealed class RewriteApiTests : IAsyncLifetime
         var body = await submit.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
         body.Should().NotBeNull();
         var provider = new FakeRewriteProvider(new RewriteProviderResult(null, false, "provider_failed"));
-        var processor = new RewriteJobProcessor(CreateContext, provider);
+        await using var processorDb = CreateContext();
+        var processor = CreateProcessHandler(processorDb, provider);
 
-        await processor.ProcessAsync(new RewriteJob(body!.Id), CancellationToken.None);
+        await processor.HandleAsync(new ProcessRewriteJobCommand(body!.Id), CancellationToken.None);
         var result = await GetV1RewriteResultAsync(client, token, body.Id);
 
         provider.CallCount.Should().Be(1);
@@ -953,10 +959,12 @@ public sealed class RewriteApiTests : IAsyncLifetime
         var createResponse = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
         var created = await createResponse.Content.ReadFromJsonAsync<RewriteAttemptResponse>();
         var resultJson = "{\"rewrittenText\":\"Done\",\"changeSummary\":[],\"riskNotes\":[]}";
-        await using (var db = CreateContext())
+        await using (var finalizeDb = CreateContext())
         {
-            var quota = new ReplyInMyVoice.Infrastructure.Services.QuotaService(() => CreateContext());
-            await quota.FinalizeSuccessAsync(created!.AttemptId, resultJson, DateTimeOffset.UtcNow);
+            await CreateFinalizeHandler(finalizeDb).HandleAsync(new FinalizeQuotaSuccessCommand(
+                created!.AttemptId,
+                resultJson,
+                DateTimeOffset.UtcNow));
         }
 
         var retry = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
@@ -1164,6 +1172,28 @@ public sealed class RewriteApiTests : IAsyncLifetime
             .Options;
         return new AppDbContext(options);
     }
+
+    private ProcessRewriteJobHandler CreateProcessHandler(
+        AppDbContext db,
+        IRewriteProvider provider) =>
+        new(
+            new RewriteAttemptRepository(db),
+            new UsageReservationRepository(db),
+            new UsagePeriodRepository(db),
+            new RewriteCreditRepository(db),
+            new UnitOfWork(db),
+            new RewriteProviderEngineClient(provider),
+            new RewriteCostLogger(() => CreateContext()));
+
+    private static ReleaseExpiredReservationsHandler CreateExpiredHandler(AppDbContext db) =>
+        new(new UsageReservationRepository(db), new UnitOfWork(db));
+
+    private static FinalizeQuotaSuccessHandler CreateFinalizeHandler(AppDbContext db) =>
+        new(
+            new RewriteAttemptRepository(db),
+            new UsageReservationRepository(db),
+            new UsagePeriodRepository(db),
+            new UnitOfWork(db));
 
     private static HttpClient CreateClient(WebApplicationFactory<Program> factory) =>
         factory.CreateClient(new WebApplicationFactoryClientOptions

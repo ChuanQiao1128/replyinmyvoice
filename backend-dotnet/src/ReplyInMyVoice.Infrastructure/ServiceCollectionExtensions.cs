@@ -168,11 +168,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<WebhookDeliveryService>();
         services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
         services.AddScoped<WebhookDispatcherService>();
-        services.AddScoped<QuotaService>();
-        services.AddScoped<PromoService>();
         services.AddScoped<AdminService>();
-        services.AddScoped<PromoAdminService>();
-        services.AddScoped<RewriteJobProcessor>();
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();

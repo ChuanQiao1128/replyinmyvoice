@@ -5408,3 +5408,75 @@ claude-heavy-planning-handoff
 - Output artifacts: modified `WebhookOutboxUseCaseTests.cs`, `AdminSuspensionTests.cs`, and `RetentionServiceTests.cs`; deleted `OutboxDispatcherTests.cs`, `TaxTurnoverServiceTests.cs`, `ApiKeyUsageAnomalyServiceTests.cs`, and `RewriteRequestServiceTests.cs`; retained `QuotaService` tests and xUnit collection behavior.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; issue focused filter passed 22/22; `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~AdminSuspensionTests.SuspendedUserRewriteRejected"` passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 694/694; four target file absence checks passed.
 - Limitations: A local `git add && git commit` checkpoint was attempted but failed because the worktree git metadata lives outside the writable sandbox. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-11 quota, rewrite job, and promo cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-11 deletes legacy quota, rewrite-job, promo, and promo-admin infrastructure services while preserving usage reservation, rewrite attempt, and promo redemption lifecycles in Application handlers.
+- Action: Opened and followed the project skill as a preservation checklist. State list: usage reservation `Pending`, `Finalized`, `Released`, `Expired`; rewrite attempt `Pending`, `Processing`, `Succeeded`, `Failed`, `Expired`; promo redemption absent or `Applied`. Events: reserve, mark processing, finalize success, release failure, release expired, process job, duplicate job processing, redeem promo, duplicate redemption, promo cap reached, invalid or expired code. Allowed transitions remain in `ReserveQuotaHandler`, `MarkQuotaProcessingHandler`, `FinalizeQuotaSuccessHandler`, `ReleaseQuotaHandler`, `ReleaseExpiredReservationsHandler`, `ProcessRewriteJobHandler`, `RedeemPromoHandler`, and promo-admin handlers. Illegal transitions remain covered by handler tests and surviving API/concurrency tests.
+- Output artifacts: retargeted `ExpiredReservationCleanupService` and surviving tests to Application handlers; removed old worker missing-attempt catch for the deleted processor exception; returned Application promo-admin DTOs directly from Functions.
+- Verification evidence: exact `grep -rn -w` source checks for all four deleted services returned no hits after deletion; focused CLEAN-11 filter passed 65/65; full `dotnet test ReplyInMyVoice.sln -c Release` passed 653/653; Release build passed with 0 errors.
+- Limitations: No new state column, enum, migration, schema change, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-11 persistence reference cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-11 removes EF-backed infrastructure service code and rewrites test setup that mutates usage periods, usage reservations, rewrite attempts, promo credits, promo redemptions, and cost logs.
+- Action: Opened and followed the project skill. Reviewed target services, DI registrations, Application handlers, repositories, old unit tests, and surviving tests together. Initial source scan found `ExpiredReservationCleanupService` still depended on the old quota service, so that wrapper now calls `ReleaseExpiredReservationsHandler`. Shared `DbFixture` was extracted before deleting the old quota test file because many unrelated tests depend on it.
+- Output artifacts: deleted the four target service files and three obsolete service test files; removed four DI registrations; extracted `DbFixture`; rewired surviving test setup through Application handlers/repositories; kept schema and migrations unchanged.
+- Verification evidence: `git diff --check` exited 0; post-change old-service/type scan over `backend-dotnet/src` and tests returned no hits; all four file absence checks passed; Release build and full backend suite passed.
+- Limitations: A standalone unused legacy `ReserveRewriteResult` record file remains because it was not one of this issue's delete targets. No migration, data backfill, deployment, push, PR, or live provider/payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-11 handler failure and concurrency coverage preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-11 deletes old service tests around provider failure, repeated processing, quota expiry, promo concurrency, IP velocity, and quota/rate-limit interaction.
+- Action: Opened and followed the project skill as a failure-matrix checklist. Critical operations reviewed: quota reservation race, rate-limit admission before quota reservation, expired reservation cleanup, provider failure release, repeated succeeded job processing, promo duplicate redemption, global cap race, invalid/expired promo code, production promo proxy fail-closed, and IP velocity blocking. Deterministic local fakes and SQLite fixtures were used; no live provider endpoints were called.
+- Output artifacts: surviving tests now use `ReserveQuotaHandler`, `ReleaseExpiredReservationsHandler`, `FinalizeQuotaSuccessHandler`, `ProcessRewriteJobHandler`, `RedeemPromoHandler`, and direct Function/API paths while preserving final persisted-state assertions.
+- Verification evidence: focused CLEAN-11 filter passed 65/65 and full Release suite passed 653/653. Diff restricted-wording scan returned no matches.
+- Limitations: No new retry policy, external provider call, live cloud dependency, deployment, push, PR, or payment action was added.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-11 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-11 changes C# infrastructure DI, Functions/Worker references, and xUnit/WebApplicationFactory/EF SQLite tests while deleting obsolete service tests.
+- Action: Opened and followed the project skill. Compared old service-unit coverage against Application handler tests, extracted shared test support before deleting obsolete tests, migrated surviving setup helpers to handlers, ran the focused issue filter, then the full backend suite.
+- Output artifacts: modified `AdminHttpFunctions.cs`, `ExpiredReservationCleanupService.cs`, `ServiceBusRewriteWorker.cs`, `AdminPromoTests.cs`, `ApiBurstRateLimitTests.cs`, `ExpiredReservationCleanupServiceTests.cs`, `PromoConcurrencyTests.cs`, `RewriteApiTests.cs`, and `RewriteCostTrackingTests.cs`; added `DbFixture.cs` and `RewriteProviderFakes.cs`; deleted the four target services plus `QuotaServiceTests.cs`, `RewriteJobProcessorTests.cs`, and `PromoServiceTests.cs`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings/errors; focused issue filter passed 65/65; full `dotnet test ReplyInMyVoice.sln -c Release` passed 653/653; all four target file absence checks passed.
+- Limitations: Touched-file count exceeded the practical cap because multiple surviving-subject tests and shared test support still referenced deleted types. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-11 verifier retry
+
+- Agent: Codex worker
+- Trigger: The supervisor reported a full `dotnet test` failure in `V1RewriteRateLimitTests` after CLEAN-11.
+- Action: Opened and followed the project skill; reproduced the exact test, stress-ran it, ran the adjacent API/rate-limit test filter, then reran the full backend suite from the current worktree.
+- Output artifacts: no source or test behavior change was made in this pass because the exact reported test passed locally and the full suite also passed.
+- Verification evidence: exact `V1RewriteRateLimitTests.V1_rewrite_submit_enforces_per_key_rate_limit_under_concurrent_usage_write_failures` passed once, then passed 25 consecutive `--no-build` runs; adjacent `V1RewriteRateLimitTests|RewriteApiTests|ApiBurstRateLimitTests` filter passed 38/38; full `dotnet test ReplyInMyVoice.sln -c Release` passed 653/653.
+- Limitations: Local test count is 653 because CLEAN-11 deletes three obsolete service test files. The supervisor failure showed 695 tests and source paths outside this worktree, so that result appears to have used a stale or different checkout state. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-11 verifier retry
+
+- Agent: Codex worker
+- Trigger: The reported failure occurred during EF Core persistence for concurrent rewrite attempt creation.
+- Action: Opened and followed the project skill; reviewed `CreateRewriteAttemptHandler`, `ReserveQuotaHandler`, `UnitOfWork`, `ApiKeyRateLimiter`, the V1 completion usage writer, and the old quota retry shape from the integration branch.
+- Output artifacts: no persistence code change was made because the current handler already uses the same three-attempt reservation race retry shape as the deleted quota service and the failing path passed locally under stress.
+- Verification evidence: the current worktree full suite passed 653/653, and the focused rate-limit/API filter passed 38/38.
+- Limitations: No schema or migration change was made.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-11 verifier retry
+
+- Agent: Codex worker
+- Trigger: The reported failing test covers concurrent V1 requests when API usage write persistence fails.
+- Action: Opened and followed the project skill; checked the local failure matrix for database write failure, concurrent requests, rate-limit admission, quota reservation, outbox creation, and final persisted-state assertions.
+- Output artifacts: no new test was added because the existing regression test is present and passed repeatedly.
+- Verification evidence: exact reported test passed 26 total local runs in this pass, and related API/rate-limit filter passed 38/38.
+- Limitations: The external verifier failure could not be reproduced from this worktree.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-11 verifier retry
+
+- Agent: Codex worker
+- Trigger: The reported failure involved the V1 submit lifecycle: rate-limit admission, pending rewrite attempt creation, pending reservation creation, and outbox enqueue.
+- Action: Opened and followed the project skill as a lifecycle checklist. State list checked: API rate-limit window count, rewrite attempt `Pending`, usage reservation `Pending`, outbox message `Pending`, and usage audit row absent when audit writes fail. Event checked: concurrent V1 submit after rate-limit admission. Invariant checked: admitted requests create exactly one attempt/reservation/outbox row each, rate-limited requests create no quota rows, and audit write failure does not change the response outcome.
+- Output artifacts: no lifecycle code change was made after local verification passed.
+- Verification evidence: exact test stress run and full backend suite passed from the current worktree.
+- Limitations: No new state, enum, schema, deployment, push, or PR work was performed.

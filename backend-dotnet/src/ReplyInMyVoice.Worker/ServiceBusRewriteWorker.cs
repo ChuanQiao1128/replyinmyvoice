@@ -2,7 +2,6 @@ using System.Text.Json;
 using Azure.Messaging.ServiceBus;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Domain.Contracts;
-using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Worker;
 
@@ -92,7 +91,7 @@ public sealed class ServiceBusRewriteWorker(
             await handler.HandleAsync(new ProcessRewriteJobCommand(job.AttemptId), args.CancellationToken);
             await args.CompleteMessageAsync(args.Message);
         }
-        catch (Exception ex) when (ex is RewriteJobAttemptNotFoundException or RewriteAttemptNotFoundException)
+        catch (RewriteJobAttemptNotFoundException ex)
         {
             logger.LogWarning(ex, "Dead-lettering rewrite job for missing attempt {AttemptId}", job.AttemptId);
             await args.DeadLetterMessageAsync(args.Message, "attempt_not_found", ex.Message);

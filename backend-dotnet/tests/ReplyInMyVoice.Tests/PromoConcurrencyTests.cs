@@ -1,16 +1,25 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -32,11 +41,10 @@ public sealed class PromoConcurrencyTests
         await using var fixture = await PromoFileDbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync("promo_double_click_user", "double-click@example.com");
         await SeedPromoCodeAsync(fixture.CreateContext, "DOUBLECLICK", Now, maxRedemptionsGlobal: 10);
-        var service = CreateService(fixture.CreateContext);
 
         var results = await Task.WhenAll(
-            service.RedeemAsync(user.ExternalAuthUserId, user.Email, "DOUBLECLICK", "203.0.113.10", Now),
-            service.RedeemAsync(user.ExternalAuthUserId, user.Email, "double-click", "203.0.113.10", Now));
+            RedeemAsync(fixture.CreateContext, user.ExternalAuthUserId, user.Email, "DOUBLECLICK", IpHash("203.0.113.10"), Now),
+            RedeemAsync(fixture.CreateContext, user.ExternalAuthUserId, user.Email, "double-click", IpHash("203.0.113.10"), Now));
 
         results.Count(x => x.Kind == PromoRedeemResultKind.Success).Should().Be(1);
         results.Count(x => x.Kind == PromoRedeemResultKind.AlreadyRedeemed).Should().Be(1);
@@ -53,14 +61,14 @@ public sealed class PromoConcurrencyTests
         const int requestCount = 12;
         await using var fixture = await PromoFileDbFixture.CreateAsync();
         await SeedPromoCodeAsync(fixture.CreateContext, "CAPONE", Now, maxRedemptionsGlobal: 1);
-        var service = CreateService(fixture.CreateContext);
 
         var results = await Task.WhenAll(Enumerable.Range(1, requestCount).Select(index =>
-            service.RedeemAsync(
+            RedeemAsync(
+                fixture.CreateContext,
                 $"promo_cap_one_{index}",
                 $"cap-one-{index}@example.com",
                 "CAPONE",
-                $"203.0.113.{20 + index}",
+                IpHash($"203.0.113.{20 + index}"),
                 Now)));
 
         results.Count(x => x.Kind == PromoRedeemResultKind.Success).Should().Be(1);
@@ -86,19 +94,20 @@ public sealed class PromoConcurrencyTests
             "DISABLEDCASE",
             Now,
             isActive: false);
-        var service = CreateService(fixture.CreateContext);
 
-        var expired = await service.RedeemAsync(
+        var expired = await RedeemAsync(
+            fixture.CreateContext,
             "promo_expired_user",
             "expired@example.com",
             "EXPIREDCASE",
-            "203.0.113.40",
+            IpHash("203.0.113.40"),
             Now);
-        var disabled = await service.RedeemAsync(
+        var disabled = await RedeemAsync(
+            fixture.CreateContext,
             "promo_disabled_user",
             "disabled@example.com",
             "DISABLEDCASE",
-            "203.0.113.41",
+            IpHash("203.0.113.41"),
             Now);
 
         expired.Kind.Should().Be(PromoRedeemResultKind.Expired);
@@ -137,20 +146,23 @@ public sealed class PromoConcurrencyTests
     }
 
     [Fact]
-    public async Task RedeemAsync_in_production_without_trusted_proxy_ip_fails_closed_without_credit()
+    public async Task Redeem_api_in_production_without_trusted_proxy_ip_fails_closed_without_credit()
     {
         await using var fixture = await PromoFileDbFixture.CreateAsync();
         await SeedPromoCodeAsync(fixture.CreateContext, "PRODPROXY", Now);
-        var service = CreateService(fixture.CreateContext, BuildConfiguration(environmentName: "Production"));
+        await using var functionDb = fixture.CreateContext();
+        var function = CreateFunction(functionDb, BuildConfiguration("Production"));
 
-        var result = await service.RedeemAsync(
-            "promo_prod_proxy_user",
-            "prod-proxy@example.com",
-            "PRODPROXY",
-            trustedClientIp: null,
-            Now);
+        var result = await function.RedeemPromoCode(
+            CreatePromoFunctionRequest(
+                "promo_prod_proxy_user",
+                "prod-proxy@example.com",
+                "PRODPROXY"),
+            CancellationToken.None);
 
-        result.Kind.Should().Be(PromoRedeemResultKind.ServerConfig);
+        var response = result.Should().BeOfType<ObjectResult>().Subject;
+        response.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
+        response.Value.Should().BeEquivalentTo(new { Error = "server_config" });
 
         await using var db = fixture.CreateContext();
         (await db.AppUsers.CountAsync()).Should().Be(0);
@@ -159,46 +171,108 @@ public sealed class PromoConcurrencyTests
         (await db.PromoCodes.SingleAsync()).RedemptionCount.Should().Be(0);
     }
 
+    private static HttpRequest CreatePromoFunctionRequest(
+        string oid,
+        string email,
+        string code)
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim("oid", oid),
+                new Claim(ClaimTypes.Email, email),
+            ], "Test")),
+        };
+        context.Request.Body = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            code,
+            turnstileToken = NewToken(),
+        }));
+        context.Request.ContentType = "application/json";
+        return context.Request;
+    }
+
+    private static PromoHttpFunctions CreateFunction(
+        AppDbContext db,
+        IConfiguration configuration)
+    {
+        return new PromoHttpFunctions(
+            configuration,
+            CreateRedeemHandler(db),
+            CreateStatusHandler(db),
+            CreateAccountSummaryHandler(db, configuration));
+    }
+
+    private static IConfiguration BuildConfiguration(string environmentName = "Testing") =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AZURE_FUNCTIONS_ENVIRONMENT"] = environmentName,
+                ["PROMO_IP_HASH_SALT"] = NewToken(),
+                ["PROMO_PROXY_SHARED_SECRET"] = NewToken(),
+            })
+            .Build();
+
+    private static GetPromoStatusHandler CreateStatusHandler(AppDbContext db) =>
+        new(
+            new AppUserRepository(db),
+            new PromoCodeRedemptionRepository(db),
+            new PromoCodeRepository(db),
+            new RewriteCreditRepository(db),
+            new UnitOfWork(db));
+
+    private static GetAccountSummaryHandler CreateAccountSummaryHandler(
+        AppDbContext db,
+        IConfiguration configuration) =>
+        new(
+            new AppUserRepository(db),
+            new UsagePeriodRepository(db),
+            new RewriteCreditRepository(db),
+            new PromoCodeRedemptionRepository(db),
+            new PromoCodeRepository(db),
+            new AccountUsagePlanProvider(configuration),
+            new UnitOfWork(db));
+
     [Fact]
     public async Task Same_ip_across_many_accounts_is_flagged_from_two_and_blocked_at_five()
     {
         await using var fixture = await PromoFileDbFixture.CreateAsync();
         await SeedPromoCodeAsync(fixture.CreateContext, "IPVELOCITY", Now, maxRedemptionsGlobal: 20);
-        var logger = new CapturingLogger<PromoService>();
-        var service = CreateService(fixture.CreateContext, logger: logger);
+        var ipHash = IpHash("203.0.113.90");
 
-        var accepted = new List<PromoRedeemResult>();
+        var accepted = new List<PromoRedeemResultDto>();
         for (var index = 1; index <= 5; index += 1)
         {
-            accepted.Add(await service.RedeemAsync(
+            accepted.Add(await RedeemAsync(
+                fixture.CreateContext,
                 $"promo_same_ip_{index}",
                 $"same-ip-{index}@example.com",
                 "IPVELOCITY",
-                "203.0.113.90",
+                ipHash,
                 Now.AddMinutes(index)));
         }
 
-        var blocked = await service.RedeemAsync(
+        var blocked = await RedeemAsync(
+            fixture.CreateContext,
             "promo_same_ip_blocked",
             "same-ip-blocked@example.com",
             "IPVELOCITY",
-            "203.0.113.90",
+            ipHash,
             Now.AddMinutes(6));
 
         accepted.Should().OnlyContain(x => x.Kind == PromoRedeemResultKind.Success);
         blocked.Kind.Should().Be(PromoRedeemResultKind.IpVelocityBlocked);
-        logger.Messages.Should().Contain(x =>
-            x.Level == LogLevel.Warning &&
-            x.Message.Contains("velocity flag", StringComparison.OrdinalIgnoreCase) &&
-            x.Message.Contains("with 2 recent", StringComparison.OrdinalIgnoreCase));
-        logger.Messages.Should().Contain(x =>
-            x.Level == LogLevel.Warning &&
-            x.Message.Contains("velocity blocked", StringComparison.OrdinalIgnoreCase) &&
-            x.Message.Contains("with 5 recent", StringComparison.OrdinalIgnoreCase));
-        logger.Messages.Should().NotContain(x => x.Message.Contains("203.0.113.90", StringComparison.OrdinalIgnoreCase));
 
         await using var db = fixture.CreateContext();
         (await db.PromoCodeRedemptions.CountAsync(x => x.Status == PromoCodeRedemptionStatus.Applied)).Should().Be(5);
+        (await db.PromoCodeRedemptions.Where(x => x.Status == PromoCodeRedemptionStatus.Applied)
+            .Select(x => x.RedeemIpHash)
+            .Distinct()
+            .SingleAsync()).Should().Be(ipHash);
+        (await db.PromoCodeRedemptions.Select(x => x.RedeemIpHash).ToListAsync())
+            .Should()
+            .NotContain(x => x != null && x.Contains("203.0.113.90", StringComparison.Ordinal));
         (await db.RewriteCredits.CountAsync()).Should().Be(5);
         (await db.PromoCodes.SingleAsync()).RedemptionCount.Should().Be(5);
     }
@@ -213,13 +287,13 @@ public sealed class PromoConcurrencyTests
             Now,
             validFrom: Now.AddDays(-1),
             validUntil: Now);
-        var service = CreateService(fixture.CreateContext);
 
-        var result = await service.RedeemAsync(
+        var result = await RedeemAsync(
+            fixture.CreateContext,
             "promo_boundary_user",
             "boundary@example.com",
             "BOUNDARY",
-            "203.0.113.100",
+            IpHash("203.0.113.100"),
             Now);
 
         result.Kind.Should().Be(PromoRedeemResultKind.Success);
@@ -230,21 +304,33 @@ public sealed class PromoConcurrencyTests
         (await db.PromoCodes.SingleAsync()).RedemptionCount.Should().Be(1);
     }
 
-    private static PromoService CreateService(
+    private static async Task<PromoRedeemResultDto> RedeemAsync(
         Func<AppDbContext> createContext,
-        IConfiguration? configuration = null,
-        ILogger<PromoService>? logger = null) =>
-        new(createContext, configuration ?? BuildConfiguration(), logger);
+        string externalAuthUserId,
+        string? email,
+        string rawCode,
+        string? ipHash,
+        DateTimeOffset now)
+    {
+        await using var db = createContext();
+        return await CreateRedeemHandler(db).HandleAsync(new RedeemPromoCommand(
+            externalAuthUserId,
+            email,
+            rawCode,
+            ipHash,
+            now));
+    }
 
-    private static IConfiguration BuildConfiguration(string environmentName = "Testing") =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["AZURE_FUNCTIONS_ENVIRONMENT"] = environmentName,
-                ["PROMO_IP_HASH_SALT"] = NewToken(),
-                ["PROMO_PROXY_SHARED_SECRET"] = NewToken(),
-            })
-            .Build();
+    private static RedeemPromoHandler CreateRedeemHandler(AppDbContext db) =>
+        new(
+            new AppUserRepository(db),
+            new PromoCodeRepository(db),
+            new PromoCodeRedemptionRepository(db),
+            new RewriteCreditRepository(db),
+            new UnitOfWork(db));
+
+    private static string IpHash(string trustedClientIp) =>
+        $"ip-hash-{trustedClientIp.Replace(".", "-", StringComparison.Ordinal)}";
 
     private static async Task<PromoCode> SeedPromoCodeAsync(
         Func<AppDbContext> createContext,
@@ -320,29 +406,6 @@ public sealed class PromoConcurrencyTests
         Missing,
         Mismatched,
     }
-
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public List<LogEntry> Messages { get; } = [];
-
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull =>
-            null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
-        {
-            Messages.Add(new LogEntry(logLevel, formatter(state, exception)));
-        }
-    }
-
-    private sealed record LogEntry(LogLevel Level, string Message);
 
     private sealed class PromoFileDbFixture : IAsyncDisposable
     {
@@ -425,19 +488,19 @@ public sealed class PromoConcurrencyTests
             return fixture;
         }
 
-        public WebApplicationFactory<Program> CreateFactory()
+        public WebApplicationFactory<Program> CreateFactory(string environmentName = "Testing")
         {
             return new WebApplicationFactory<Program>()
                 .WithWebHostBuilder(builder =>
                 {
-                    builder.UseEnvironment("Testing");
+                    builder.UseEnvironment(environmentName);
                     builder.ConfigureLogging(logging => logging.ClearProviders());
                     builder.ConfigureAppConfiguration((_, config) =>
                     {
                         config.AddInMemoryCollection(new Dictionary<string, string?>
                         {
                             ["ALLOW_HEADER_AUTH"] = "true",
-                            ["AZURE_FUNCTIONS_ENVIRONMENT"] = "Testing",
+                            ["AZURE_FUNCTIONS_ENVIRONMENT"] = environmentName,
                             ["PROMO_IP_HASH_SALT"] = _ipHashSalt,
                             ["PROMO_PROXY_SHARED_SECRET"] = _proxySecret,
                         });
