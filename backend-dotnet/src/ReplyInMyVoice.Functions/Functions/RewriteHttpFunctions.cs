@@ -19,7 +19,7 @@ namespace ReplyInMyVoice.Functions.Functions;
 public sealed class RewriteHttpFunctions(
     IConfiguration configuration,
     AppDbContext db,
-    AccountService accountService,
+    GetOrCreateUserHandler getOrCreateUserHandler,
     FindUserHandler findUserHandler,
     CreateRewriteAttemptHandler createRewriteAttemptHandler,
     GetRewriteAttemptHandler getRewriteAttemptHandler)
@@ -86,11 +86,10 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status400BadRequest);
         }
 
-        var user = await accountService.GetOrCreateUserAsync(
-            authUser.ExternalAuthUserId,
-            authUser.Email,
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
-        var plan = AccountService.GetUsagePlan(user, configuration);
+        var plan = AccountUsagePlans.GetUsagePlan(user, configuration);
         var result = await createRewriteAttemptHandler.HandleAsync(
             new CreateRewriteAttemptCommand(
                 user.Id,
@@ -120,7 +119,9 @@ public sealed class RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized);
         }
 
-        var user = await accountService.FindUserAsync(authUser.ExternalAuthUserId, cancellationToken);
+        var user = await findUserHandler.HandleAsync(
+            new FindUserQuery(authUser.ExternalAuthUserId),
+            cancellationToken);
         if (user is null)
         {
             return new NotFoundResult();

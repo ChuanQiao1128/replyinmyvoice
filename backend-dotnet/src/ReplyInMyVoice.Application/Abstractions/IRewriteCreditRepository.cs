@@ -1,3 +1,4 @@
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Entities;
 
 namespace ReplyInMyVoice.Application.Abstractions;
@@ -22,6 +23,17 @@ public interface IRewriteCreditRepository
         string paymentIntentId,
         CancellationToken ct = default);
 
+    Task<AdminRefundPaymentLookupDto?> GetRefundPaymentLookupAsync(
+        Guid userId,
+        string paymentIntentId,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<AdminAccountingRevenueRowDto>> ListAccountingRevenueRowsAsync(
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive,
+        int pageSize,
+        CancellationToken ct = default);
+
     Task<bool> ExistsByStripeEventIdAsync(
         string stripeEventId,
         CancellationToken ct = default);
@@ -33,6 +45,17 @@ public interface IRewriteCreditRepository
     Task<IReadOnlyList<RewriteCredit>> ListPurchaseCreditsForTurnoverAsync(
         DateTimeOffset windowStart,
         DateTimeOffset windowEnd,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<RewriteCredit>> ListExpiryReminderCandidatesAsync(
+        DateTimeOffset now,
+        DateTimeOffset windowEnd,
+        int batchSize,
+        CancellationToken ct = default);
+
+    Task MarkExpiryReminderSentAsync(
+        RewriteCredit credit,
+        DateTimeOffset sentAt,
         CancellationToken ct = default);
 
     bool IsStripeEventIdWriteFailure(Exception exception);

@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-09 - state-machine-modeling - CLEAN-12 webhook dispatcher cleanup
+
+- Agent: Codex worker
+- Trigger: GitHub issue #669 removes an obsolete webhook dispatcher class after reviewing webhook delivery lifecycle coverage.
+- Action: Opened and followed the skill. State list: `Pending`, `InProgress`, `Delivered`, `Failed`. Event list: due delivery claimed, send succeeds, send returns a retryable HTTP status, send/setup fails, required delivery data is missing, max attempts reached. Transition table: due `Pending` or expired `InProgress` -> `InProgress` on claim; `InProgress` -> `Delivered` on success; `InProgress` -> `Pending` with backoff on retryable failure; `InProgress` -> `Failed` when max attempts or required-data failure terminalizes the delivery. Invariants: one claimed delivery is sent once per lease, locks clear after terminal or retryable outcomes, exhausted deliveries do not reschedule, and the surviving sender adapter/HTTP sender registrations remain live.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/HttpWebhookDeliverySender.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~WebhookOutboxUseCaseTests"` passed 9/9; full `dotnet test ReplyInMyVoice.sln -c Release` passed 651/651; source check found no dispatcher class in `backend-dotnet/src`.
+- Limitations: No schema, migration, queue runtime, push, PR, or deployment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-12 webhook retry and sender coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #669 requires deleting an obsolete webhook dispatcher test only after preserving retry/backoff, endpoint-safety, signature/timestamp, and terminal failure coverage.
+- Action: Opened and followed the skill. Critical operation: webhook delivery dispatch and HTTP sender handoff. Dependency boundaries: EF Core SQLite test database, application webhook delivery repository/unit-of-work, legacy infrastructure HTTP sender, and outbound HTTP transport. Failure matrix covered: retryable HTTP failure reschedules with backoff; max-attempt failure terminalizes; missing required delivery data terminalizes without sending; concurrent claim prevents duplicate sends; disallowed saved URL fails before the HTTP handler is called.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpWebhookDeliverySenderTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: Pre-cleanup focused transfer command `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~WebhookOutboxUseCaseTests|FullyQualifiedName~HttpWebhookDeliverySenderTests"` passed 10/10; final focused outbox command passed 9/9; final full backend suite passed 651/651.
+- Limitations: No live webhook endpoint, external network send, production database, push, PR, or deployment action was exercised.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-12 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #669 changes C#/.NET backend source and tests by relocating sender types, deleting obsolete dispatcher coverage, and requiring Release build plus focused and full backend tests.
+- Action: Opened and followed the skill; used xUnit, FluentAssertions, EF Core SQLite fixture coverage, deterministic sender fakes, and a local throwing `HttpMessageHandler` to preserve behavior before removing the obsolete service test file.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/HttpWebhookDeliverySender.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpWebhookDeliverySenderTests.cs`; `docs/skill-run-log.md`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed after relocation and after deletion; `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~WebhookOutboxUseCaseTests"` passed 9/9; `dotnet test ReplyInMyVoice.sln -c Release` passed 651/651; source checks confirmed the obsolete dispatcher class is absent and `HttpWebhookDeliverySender` remains present.
+- Limitations: NuGet advisory metadata lookup emitted NU1900 warnings because package metadata could not be loaded, but all required commands exited 0. Local git commit was attempted but blocked by sandbox permissions on worktree metadata outside this writable root.
+
 ### 2026-06-09 - state-machine-modeling - DDD-68 API Program shell
 
 - Agent: Codex worker
@@ -5282,3 +5309,264 @@ claude-heavy-planning-handoff
 - Output artifacts: No test artifacts changed; production API shell edit only.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteApiTests|FullyQualifiedName~RewriteRequestServiceTests|FullyQualifiedName~AccountServiceTests|FullyQualifiedName~V1RewriteRateLimitTests"` passed 57/57. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
 - Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-02 static helper relocation gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-02 changes C# helper test references and requires focused and full .NET test gates after moving static helpers.
+- Action: Opened and followed the project skill; used the existing xUnit/FluentAssertions tests as behavior locks, repointed helper assertions to the new static homes first, and verified the expected missing-helper compile failure before adding production helpers.
+- Output artifacts: Test references in account, quota, Stripe event, admin deletion, API key, API key HTTP, API key auth, and API usage HTTP tests now exercise the new helper homes.
+- Verification evidence: Initial focused test command failed with missing `AccountUsagePlans`, `ExternalAuthUserId`, `ApiKeyHashing`, and `ApiKeyWebhookUrl` names before production helpers existed. `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused CLEAN-02 filter passed 70/70. Isolated `V1RewriteRateLimitTests` passed 4/4, and the broader API-key-pepper group passed 85/85.
+- Limitations: Full `dotnet test ReplyInMyVoice.sln -c Release` repeatedly failed one out-of-scope V1 concurrent quota reservation test with `DbUpdateConcurrencyException` from `CreateRewriteAttemptHandler`; the final full run passed 695/696. CLEAN-02 did not change that handler because this issue is limited to static-helper relocation. No schema, migration, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-02 gate repair rewrite reservation race
+
+- Agent: Codex worker
+- Trigger: The verifier failed the full .NET gate on concurrent V1 rewrite submission while creating pending rewrite attempts and quota reservations.
+- Action: Opened and followed the project skill; modeled the lifecycle as unchanged states (`Pending` rewrite attempts, `Pending` usage reservations, pending outbox messages) and unchanged events (new idempotency key, repeated idempotency key, conflicting idempotency key, concurrent distinct V1 submissions). Allowed transitions remain create pending attempt plus one pending reservation and one outbox row, return existing for duplicate same request, return conflict for duplicate different request, and return quota-exceeded after retry when the latest reserved count reaches quota.
+- Output artifacts: `CreateRewriteAttemptHandler` now runs the existing mutation logic through the retrying serializable unit-of-work path.
+- Verification evidence: Exact failing V1 test passed 1/1; `V1RewriteRateLimitTests` passed 4/4; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
+- Limitations: No new statuses, enums, schema, migration, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-02 gate repair quota persistence race
+
+- Agent: Codex worker
+- Trigger: The verifier failure was an EF Core optimistic concurrency exception while saving `UsagePeriod`, `RewriteAttempt`, `UsageReservation`, and `OutboxMessage` changes.
+- Action: Opened and followed the project skill; reviewed the failing stack, `CreateRewriteAttemptHandler`, `IUnitOfWork`/`UnitOfWork`, repositories, existing `ReserveQuotaHandler` retry pattern, and the V1 concurrency test. Finding: the Application rewrite-attempt creation path had the same quota reservation write shape as the retrying quota handler but did not use the retrying transaction overload.
+- Output artifacts: `CreateRewriteAttemptHandler` now uses `IUnitOfWork.ExecuteInTransactionAsync(..., IsolationLevel.Serializable, maxAttempts: 3, ...)`.
+- Verification evidence: Exact failing V1 test passed 1/1; focused CLEAN-02 filter passed 70/70; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
+- Limitations: No schema, migration, data backfill, repository interface change, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-02 gate repair concurrent request recovery
+
+- Agent: Codex worker
+- Trigger: The failed gate covered concurrent V1 requests, rate limiting, failed API usage writes, and quota reservation recovery.
+- Action: Opened and followed the project skill; used the existing WebApplicationFactory/SQLite V1 concurrency test as the resilience test because it already asserts the failure matrix row for concurrent requests plus partial API usage write failure. The fix retries only retryable transaction races and preserves final state assertions.
+- Output artifacts: Production retry wrapper in `CreateRewriteAttemptHandler`; no test assertions changed.
+- Verification evidence: Exact failing V1 test passed 1/1; `V1RewriteRateLimitTests` passed 4/4; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
+- Limitations: No live provider, cloud, queue, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-02 gate repair full suite
+
+- Agent: Codex worker
+- Trigger: Supervisor verification failed `dotnet test` for the backend solution after CLEAN-02.
+- Action: Opened and followed the project skill; kept the existing xUnit/FluentAssertions/WebApplicationFactory test as the red test, made the minimal production retry change, then ran the exact failing test, the containing class, the CLEAN-02 focused filter, and the full solution suite.
+- Output artifacts: `CreateRewriteAttemptHandler.cs` now wraps rewrite attempt creation in the existing retrying unit-of-work transaction.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; exact failing V1 test passed 1/1; `V1RewriteRateLimitTests` passed 4/4; focused CLEAN-02 filter passed 70/70; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
+- Limitations: No tests were disabled, skipped, deleted, or weakened. No deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - system-spec-synthesis - CLEAN-03 admin use-case migration scope
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 converts five deferred admin service behaviors into implementation-ready Application commands/queries, repository contracts, and Function shells.
+- Action: Opened and followed the project skill; synthesized the scope as a strangler migration with goals to move billing-support queue, resolve, accounting revenue export, suspension, and refund to Application handlers while keeping the old service and DI registration for Phase-B cleanup. Non-goals: no schema change, no migration, no live payment action, no deploy, no PR.
+- Output artifacts: Application command/query/handler files under `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Admin/`, an Application refund port, DTO additions, repository contract additions, Function shell wiring, and new Application handler tests.
+- Verification evidence: Initial AdminUseCaseTests run failed on missing handler/port types as expected; later `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 errors, the focused admin filter passed 27/27, and the full backend suite passed 702/702.
+- Limitations: The source brief referenced an Application `IStripeRefundClient` file that was not present in this branch, so the port was added using the existing Application refund request/result records and backed by the existing Stripe adapter.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-03 admin lifecycle preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 changes admin workflows with persisted transitions: billing-support requests open-to-resolved, user suspension active/suspended toggles, and refund idempotency through audit-log state.
+- Action: Opened and followed the project skill. State list: billing support `Open` and `Resolved`; user account suspension as `SuspendedAt == null` or non-null; refund state as no matching refund audit or matching `refund` audit for target/payment/amount. Events: admin queue read, admin resolve, repeated resolve, suspend, unsuspend, refund request, repeated refund request, refund provider failure. Allowed transitions: open support request resolves once with audit; resolved support request remains resolved without duplicate audit; suspend preserves existing `SuspendedAt` when already suspended; unsuspend clears `SuspendedAt`; first refund calls the Application refund port then writes one audit; repeated refund returns the prior audit-backed result without another provider call. Illegal/rejected transitions: missing user, missing payment, invalid amount/currency, unavailable refund port.
+- Output artifacts: `ResolveBillingSupportRequestHandler`, `SetUserSuspensionHandler`, `IssueRefundHandler`, repository mutation methods, and tests covering repeated resolve, suspension toggle, refund repeat, and refund provider failure.
+- Verification evidence: AdminUseCaseTests passed 21/21; focused admin filter passed 27/27; full backend suite passed 702/702.
+- Limitations: No new enum, status column, migration, transition helper, deployment, push, PR, or payment-provider live action was added.
+
+### 2026-06-09 - data-module-review - CLEAN-03 admin persistence migration
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 changes EF-backed repository contracts and persistence behavior for admin support requests, audit logs, suspension fields, rewrite-credit revenue export, and refund audit idempotency.
+- Action: Opened and followed the project skill; reviewed `AdminService`, `AdminHttpFunctions`, existing Admin handlers, repository interfaces, EF repositories, `IUnitOfWork`, and tests together. Findings: no schema/migration required; mutations stay tracked in repositories and commit through `IUnitOfWork`; refund duplicate detection remains audit-log based; revenue export preserves the old payment-credit filter and SQLite paging behavior.
+- Output artifacts: repository method additions in `IAdminUserRepository`, `IBillingSupportRequestRepository`, `IRewriteCreditRepository`, and implementations in `AdminUserRepository`, `BillingSupportRequestRepository`, `RewriteCreditRepository`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src --limit 40` exited 0 and returned broad existing repo signals; diff restricted-term scan returned no matches; Release build passed; focused admin filter passed; full backend suite passed.
+- Limitations: The data-risk scan is broad and reported existing quota/idempotency signals outside this issue. No schema, migration, data backfill, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-03 refund and duplicate admin events
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 touches refund idempotency and provider failure behavior while moving refund logic out of the old service.
+- Action: Opened and followed the project skill; used deterministic fakes rather than live provider calls. Failure matrix covered duplicate refund request, refund provider timeout/failure, duplicate billing-support resolve, missing user/payment, invalid refund amount/currency, and missing refund port.
+- Output artifacts: `IssueRefundHandler` with fake-port Application tests for first refund, duplicate refund returning the prior audit, and provider failure writing no audit; `ResolveBillingSupportRequestHandler` test proving duplicate resolve writes one audit.
+- Verification evidence: AdminUseCaseTests passed 21/21; focused admin/refund/suspension/route filter passed 27/27; full backend suite passed 702/702.
+- Limitations: No retry policy was added for refund provider failure because the legacy behavior throws and writes no audit on provider failure. No live provider, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-03 admin handler and Function gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-03 adds C# Application handlers, repository methods, Function constructor wiring, and xUnit coverage for five admin use cases.
+- Action: Opened and followed the project skill; wrote failing Application tests first, verified the missing-handler compile failure, implemented handlers/repositories/shell wiring, fixed one SQLite assertion query by materializing before ordering, then ran focused and full backend gates.
+- Output artifacts: `AdminUseCaseTests` now covers billing-support queue read, resolve, accounting revenue export, suspension, refund with fake Application refund port, and refund provider failure. `AdminHttpFunctionsTestFactory` now constructs the new handler graph.
+- Verification evidence: Initial `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~AdminUseCaseTests"` failed with missing `GetBillingSupportQueueHandler`, `ResolveBillingSupportRequestHandler`, `ExportAccountingRevenueHandler`, `SetUserSuspensionHandler`, `IssueRefundHandler`, and Application `IStripeRefundClient`. Final AdminUseCaseTests passed 21/21, focused admin filter passed 27/27, `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 errors, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 702/702.
+- Limitations: Build/test commands emitted NU1900 vulnerability-feed warnings because NuGet vulnerability metadata was unavailable, but restore/build/test completed. A local git commit was attempted and failed because the worktree git metadata is outside the writable sandbox. No push, PR, deploy, schema change, or live payment action was performed.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-10 outbox and rewrite lifecycle cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-10 deletes legacy service code that previously touched outbox dispatch and rewrite-attempt creation lifecycles.
+- Action: Opened and followed the project skill as a preservation checklist. State list: outbox `Pending`, `Processing`, `Sent`, `Failed`; rewrite attempt `Pending` plus rejected suspended-user create path; usage reservation `Pending`. Events: due outbox dispatch, handler success, handler failure, max-attempt failure, suspended-user create request, restored-user create request. Allowed transitions stay in the surviving Application handlers/repositories: due outbox claim moves pending to processing, success moves processing to sent, retryable failure moves processing to pending, final failure moves processing to failed, rewrite create for suspended users rejects without persistence, restored users can create one pending attempt with one pending reservation and one outbox row. Illegal transitions remain covered by existing handler tests.
+- Output artifacts: deleted the four target service files; migrated the max-attempt outbox assertion into `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/WebhookOutboxUseCaseTests.cs`; repointed shared rewrite assertions in `AdminSuspensionTests.cs` and `RetentionServiceTests.cs` to `CreateRewriteAttemptHandler`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; focused handler filter passed 22/22; `AdminSuspensionTests.SuspendedUserRewriteRejected` passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 694/694; all four target service file absence checks passed.
+- Limitations: No schema, migration, new state, status enum, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-10 legacy service deletion and DI cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-10 changes EF-backed service/dependency wiring and removes obsolete infrastructure service files and their tests.
+- Action: Opened and followed the project skill. Reviewed target services, DI registration, old unit tests, surviving Application handler tests, and shared tests together. Initial src reference check found the tax target still referenced by the legacy `AdminService`; removed that stale dependency by returning the existing Application tax DTO shape so the target file and co-located records could be deleted without introducing schema or migration work.
+- Output artifacts: removed exactly the four target DI registrations; deleted the four target service files and four obsolete single-service tests; updated `AdminService.cs` and `AdminHttpFunctions.cs` only to stop compiling against deleted tax records; kept `QuotaService` and `TestCollectionBehavior.cs` unchanged.
+- Verification evidence: `grep -rn -w` source checks were run for each target before deletion; post-change target-name scan over `backend-dotnet/src` and `backend-dotnet/tests` returned no deleted service/type references; changed-file policy scan returned no matches; Release build and full backend suite passed.
+- Limitations: The branch did not satisfy the tax target's stated zero-reference precondition at first because `AdminService` still referenced it. The cleanup was kept compile-focused and no database, migration, payment, secret, deployment, push, or PR work was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-10 retry and failure coverage preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-10 deletes old tests around outbox retry/failure behavior and shared rewrite create tests, so failure/retry invariants needed coverage preservation.
+- Action: Opened and followed the project skill as a failure-matrix checklist. Critical operations reviewed: outbox dispatch handler success, retryable handler failure, final max-attempt failure, concurrent claim, suspended-user rewrite create rejection, restored-user rewrite create success, and first rewrite consent stamping. Dependency boundaries stayed local: EF SQLite test database and deterministic in-memory handlers/fakes.
+- Output artifacts: added handler-level max-attempt final-failure coverage in `Application/WebhookOutboxUseCaseTests.cs`; repointed `AdminSuspensionTests.cs` and `RetentionServiceTests.cs` to the surviving Application rewrite handler while preserving final database-state assertions.
+- Verification evidence: focused handler filter passed 22/22; exact suspension regression passed 1/1 after fixing stale tracked-context reuse; full `dotnet test ReplyInMyVoice.sln -c Release` passed 694/694.
+- Limitations: No new retry policy, external provider call, live cloud dependency, deployment, push, PR, or payment action was added.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-10 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-10 deletes C# infrastructure services and obsolete xUnit tests while requiring handler/integration coverage and full backend verification.
+- Action: Opened and followed the project skill. Confirmed handler coverage before deleting obsolete unit tests, migrated the one unique outbox max-attempt assertion, switched shared tests to `CreateRewriteAttemptHandler`, ran focused tests first, then full backend suite.
+- Output artifacts: modified `WebhookOutboxUseCaseTests.cs`, `AdminSuspensionTests.cs`, and `RetentionServiceTests.cs`; deleted `OutboxDispatcherTests.cs`, `TaxTurnoverServiceTests.cs`, `ApiKeyUsageAnomalyServiceTests.cs`, and `RewriteRequestServiceTests.cs`; retained `QuotaService` tests and xUnit collection behavior.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; issue focused filter passed 22/22; `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~AdminSuspensionTests.SuspendedUserRewriteRejected"` passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 694/694; four target file absence checks passed.
+- Limitations: A local `git add && git commit` checkpoint was attempted but failed because the worktree git metadata lives outside the writable sandbox. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-11 quota, rewrite job, and promo cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-11 deletes legacy quota, rewrite-job, promo, and promo-admin infrastructure services while preserving usage reservation, rewrite attempt, and promo redemption lifecycles in Application handlers.
+- Action: Opened and followed the project skill as a preservation checklist. State list: usage reservation `Pending`, `Finalized`, `Released`, `Expired`; rewrite attempt `Pending`, `Processing`, `Succeeded`, `Failed`, `Expired`; promo redemption absent or `Applied`. Events: reserve, mark processing, finalize success, release failure, release expired, process job, duplicate job processing, redeem promo, duplicate redemption, promo cap reached, invalid or expired code. Allowed transitions remain in `ReserveQuotaHandler`, `MarkQuotaProcessingHandler`, `FinalizeQuotaSuccessHandler`, `ReleaseQuotaHandler`, `ReleaseExpiredReservationsHandler`, `ProcessRewriteJobHandler`, `RedeemPromoHandler`, and promo-admin handlers. Illegal transitions remain covered by handler tests and surviving API/concurrency tests.
+- Output artifacts: retargeted `ExpiredReservationCleanupService` and surviving tests to Application handlers; removed old worker missing-attempt catch for the deleted processor exception; returned Application promo-admin DTOs directly from Functions.
+- Verification evidence: exact `grep -rn -w` source checks for all four deleted services returned no hits after deletion; focused CLEAN-11 filter passed 65/65; full `dotnet test ReplyInMyVoice.sln -c Release` passed 653/653; Release build passed with 0 errors.
+- Limitations: No new state column, enum, migration, schema change, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-11 persistence reference cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-11 removes EF-backed infrastructure service code and rewrites test setup that mutates usage periods, usage reservations, rewrite attempts, promo credits, promo redemptions, and cost logs.
+- Action: Opened and followed the project skill. Reviewed target services, DI registrations, Application handlers, repositories, old unit tests, and surviving tests together. Initial source scan found `ExpiredReservationCleanupService` still depended on the old quota service, so that wrapper now calls `ReleaseExpiredReservationsHandler`. Shared `DbFixture` was extracted before deleting the old quota test file because many unrelated tests depend on it.
+- Output artifacts: deleted the four target service files and three obsolete service test files; removed four DI registrations; extracted `DbFixture`; rewired surviving test setup through Application handlers/repositories; kept schema and migrations unchanged.
+- Verification evidence: `git diff --check` exited 0; post-change old-service/type scan over `backend-dotnet/src` and tests returned no hits; all four file absence checks passed; Release build and full backend suite passed.
+- Limitations: A standalone unused legacy `ReserveRewriteResult` record file remains because it was not one of this issue's delete targets. No migration, data backfill, deployment, push, PR, or live provider/payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-11 handler failure and concurrency coverage preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-11 deletes old service tests around provider failure, repeated processing, quota expiry, promo concurrency, IP velocity, and quota/rate-limit interaction.
+- Action: Opened and followed the project skill as a failure-matrix checklist. Critical operations reviewed: quota reservation race, rate-limit admission before quota reservation, expired reservation cleanup, provider failure release, repeated succeeded job processing, promo duplicate redemption, global cap race, invalid/expired promo code, production promo proxy fail-closed, and IP velocity blocking. Deterministic local fakes and SQLite fixtures were used; no live provider endpoints were called.
+- Output artifacts: surviving tests now use `ReserveQuotaHandler`, `ReleaseExpiredReservationsHandler`, `FinalizeQuotaSuccessHandler`, `ProcessRewriteJobHandler`, `RedeemPromoHandler`, and direct Function/API paths while preserving final persisted-state assertions.
+- Verification evidence: focused CLEAN-11 filter passed 65/65 and full Release suite passed 653/653. Diff restricted-wording scan returned no matches.
+- Limitations: No new retry policy, external provider call, live cloud dependency, deployment, push, PR, or payment action was added.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-11 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-11 changes C# infrastructure DI, Functions/Worker references, and xUnit/WebApplicationFactory/EF SQLite tests while deleting obsolete service tests.
+- Action: Opened and followed the project skill. Compared old service-unit coverage against Application handler tests, extracted shared test support before deleting obsolete tests, migrated surviving setup helpers to handlers, ran the focused issue filter, then the full backend suite.
+- Output artifacts: modified `AdminHttpFunctions.cs`, `ExpiredReservationCleanupService.cs`, `ServiceBusRewriteWorker.cs`, `AdminPromoTests.cs`, `ApiBurstRateLimitTests.cs`, `ExpiredReservationCleanupServiceTests.cs`, `PromoConcurrencyTests.cs`, `RewriteApiTests.cs`, and `RewriteCostTrackingTests.cs`; added `DbFixture.cs` and `RewriteProviderFakes.cs`; deleted the four target services plus `QuotaServiceTests.cs`, `RewriteJobProcessorTests.cs`, and `PromoServiceTests.cs`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings/errors; focused issue filter passed 65/65; full `dotnet test ReplyInMyVoice.sln -c Release` passed 653/653; all four target file absence checks passed.
+- Limitations: Touched-file count exceeded the practical cap because multiple surviving-subject tests and shared test support still referenced deleted types. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-11 verifier retry
+
+- Agent: Codex worker
+- Trigger: The supervisor reported a full `dotnet test` failure in `V1RewriteRateLimitTests` after CLEAN-11.
+- Action: Opened and followed the project skill; reproduced the exact test, stress-ran it, ran the adjacent API/rate-limit test filter, then reran the full backend suite from the current worktree.
+- Output artifacts: no source or test behavior change was made in this pass because the exact reported test passed locally and the full suite also passed.
+- Verification evidence: exact `V1RewriteRateLimitTests.V1_rewrite_submit_enforces_per_key_rate_limit_under_concurrent_usage_write_failures` passed once, then passed 25 consecutive `--no-build` runs; adjacent `V1RewriteRateLimitTests|RewriteApiTests|ApiBurstRateLimitTests` filter passed 38/38; full `dotnet test ReplyInMyVoice.sln -c Release` passed 653/653.
+- Limitations: Local test count is 653 because CLEAN-11 deletes three obsolete service test files. The supervisor failure showed 695 tests and source paths outside this worktree, so that result appears to have used a stale or different checkout state. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-11 verifier retry
+
+- Agent: Codex worker
+- Trigger: The reported failure occurred during EF Core persistence for concurrent rewrite attempt creation.
+- Action: Opened and followed the project skill; reviewed `CreateRewriteAttemptHandler`, `ReserveQuotaHandler`, `UnitOfWork`, `ApiKeyRateLimiter`, the V1 completion usage writer, and the old quota retry shape from the integration branch.
+- Output artifacts: no persistence code change was made because the current handler already uses the same three-attempt reservation race retry shape as the deleted quota service and the failing path passed locally under stress.
+- Verification evidence: the current worktree full suite passed 653/653, and the focused rate-limit/API filter passed 38/38.
+- Limitations: No schema or migration change was made.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-11 verifier retry
+
+- Agent: Codex worker
+- Trigger: The reported failing test covers concurrent V1 requests when API usage write persistence fails.
+- Action: Opened and followed the project skill; checked the local failure matrix for database write failure, concurrent requests, rate-limit admission, quota reservation, outbox creation, and final persisted-state assertions.
+- Output artifacts: no new test was added because the existing regression test is present and passed repeatedly.
+- Verification evidence: exact reported test passed 26 total local runs in this pass, and related API/rate-limit filter passed 38/38.
+- Limitations: The external verifier failure could not be reproduced from this worktree.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-11 verifier retry
+
+- Agent: Codex worker
+- Trigger: The reported failure involved the V1 submit lifecycle: rate-limit admission, pending rewrite attempt creation, pending reservation creation, and outbox enqueue.
+- Action: Opened and followed the project skill as a lifecycle checklist. State list checked: API rate-limit window count, rewrite attempt `Pending`, usage reservation `Pending`, outbox message `Pending`, and usage audit row absent when audit writes fail. Event checked: concurrent V1 submit after rate-limit admission. Invariant checked: admitted requests create exactly one attempt/reservation/outbox row each, rate-limited requests create no quota rows, and audit write failure does not change the response outcome.
+- Output artifacts: no lifecycle code change was made after local verification passed.
+- Verification evidence: exact test stress run and full backend suite passed from the current worktree.
+- Limitations: No new state, enum, schema, deployment, push, or PR work was performed.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-13 Stripe webhook and reconciliation cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-13 deletes legacy Stripe webhook/reconciliation infrastructure services while preserving webhook event, subscription grace, refund/dispute, and reconciliation lifecycles in Application handlers.
+- Action: Opened and followed the project skill as a lifecycle checklist. State list: Stripe event `Processing`, `Processed`, `Failed`; subscription `Active`, `PastDue`, `Inactive`, `Canceled`; payment grace present/cleared; rewrite credit grant/adjusted. Events checked: checkout completed, invoice failed/succeeded/paid, subscription updated/deleted, refund, dispute, duplicate/replayed webhook, and reconciliation timer inputs. Invariants checked: duplicate event idempotency, failed-event retry, no duplicate credit grant, grace expiry/reminder transitions, paid grace preservation for `past_due`, non-paying downgrade, refund clamping, dispute revocation, and read-only reconciliation inputs.
+- Output artifacts: migrated old service edge-case assertions into `StripeEventUseCaseTests.cs`; added `StripeEventNotifierTests.cs`; deleted `StripeEventService.cs`, `StripeReconciliationService.cs`, and their obsolete direct test files.
+- Verification evidence: focused Stripe filter passed 42/42; full `dotnet test ReplyInMyVoice.sln -c Release` passed 636/636; deleted-class grep checks over `backend-dotnet/src` passed.
+- Limitations: No new lifecycle state, enum, schema, migration, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-13 Stripe persistence reference cleanup
+
+- Agent: Codex worker
+- Trigger: CLEAN-13 removes EF-backed legacy services and test coverage around `StripeEvents`, `RewriteCredits`, `StripeInvoices`, and reconciliation purchase-grant reads.
+- Action: Opened and followed the project skill. Reviewed old services, repositories, DI registrations, handler tests, surviving consumers, and old service tests together. Confirmed surviving contracts must move before deleting `StripeReconciliationService.cs`, and confirmed `StripeBillingService`, its statics, provider adapters, notifier, and subscription cancellation service remain untouched.
+- Output artifacts: added `StripeReconciliationContracts.cs`; removed only `AddScoped<StripeReconciliationService>()` and `AddScoped<StripeEventService>()`; preserved legacy reconciliation client/alerter aliases; added a DI guard asserting retired services are not registered.
+- Verification evidence: relocation build passed before deletion; post-deletion Release build passed; `grep -rq "class StripeBillingService" backend-dotnet/src` and `grep -rq "interface IStripeReconciliationAlerter" backend-dotnet/src` passed; `git diff --check` passed.
+- Limitations: No database schema, migration, index, transaction policy, live provider call, deployment, push, or PR change was made.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-13 webhook replay and refund coverage preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-13 retires old service tests that covered duplicate Stripe webhooks, failed-event replay, checkout grant conflicts, refunds, disputes, and notification post-commit effects.
+- Action: Opened and followed the project skill as a failure-matrix checklist. Failure/replay rows preserved locally: missing checkout user then replay, duplicate checkout/subscription events, invoice recovery replay, refund before grant then replay, duplicate refund replay, partial refund grant math, consumed-credit clamp, dispute credit revocation, and invalid signature/no-side-effect API tests already in `StripeWebhookApiTests`.
+- Output artifacts: migrated relevant old-service assertions into `StripeEventUseCaseTests.cs`; added `StripeEventNotifierTests.cs` for notification boundary behavior that now lives outside the handler; removed obsolete direct service tests after focused coverage passed.
+- Verification evidence: initial TDD DI guard failed as expected while legacy services were still registered; migrated event/notifier focused filter passed 25/25 before deletion; issue focused Stripe filter passed 42/42 after deletion; full backend suite passed 636/636.
+- Limitations: Malformed raw JSON logging from the deleted service was not reintroduced because parsing now occurs before the handler boundary. No live Stripe endpoint, cloud dependency, deployment, push, PR, or payment action was used.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-13 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-13 changes C# infrastructure DI, service files, xUnit tests, EF SQLite handler tests, and full backend acceptance coverage.
+- Action: Opened and followed the project skill. Added a failing DI guard first, compared old service-unit assertions against Application handler/API tests, migrated unique handler/notifier coverage, relocated surviving contracts, deleted obsolete service tests, then ran focused and full backend gates.
+- Output artifacts: added `StripeReconciliationContracts.cs` and `StripeEventNotifierTests.cs`; modified `StripeEventUseCaseTests.cs`, `InfrastructureServiceCollectionTests.cs`, `ServiceCollectionExtensions.cs`, `plans/decisions-log.md`, and this log; deleted `StripeEventService.cs`, `StripeReconciliationService.cs`, `StripeEventServiceTests.cs`, and `StripeReconciliationServiceTests.cs`.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed after relocation and again after deletion; focused CLEAN-13 filter passed 42/42; full `dotnet test ReplyInMyVoice.sln -c Release` passed 636/636; acceptance grep checks passed; diff-only restricted-wording scan found no added banned substrings.
+- Limitations: NuGet vulnerability metadata warnings appeared because the NuGet service index was unavailable, but restore/build/test completed. A local `git add && git commit` checkpoint was attempted and failed because this worktree's git index is outside the writable sandbox. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-20 service deletion
+
+- Agent: Codex worker
+- Trigger: CLEAN-20 removes EF-backed account, API key, API usage, credit expiry, and admin infrastructure services plus obsolete direct service tests.
+- Action: Opened and followed the project skill. Reviewed the target service files, DI registrations, handler coverage, integration coverage, repository-backed handler paths, and surviving tests that had used deleted services as setup helpers. Confirmed no schema, migration, index, transaction policy, or repository contract change was needed.
+- Output artifacts: deleted the five target service files and five obsolete direct service test files; removed their five DI registrations; moved endpoint response records to function files; repointed surviving setup helpers to Application handlers or direct data seeding.
+- Verification evidence: post-delete service-name scan over `backend-dotnet/src` and `backend-dotnet/tests` had no hits; `git diff --check` passed; all five target file absence checks passed.
+- Limitations: Initial pre-delete scan found two stale non-target source references, so they were first repointed to existing handlers/helper plumbing before deletion. No database schema, migration, NuGet, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-20 coverage preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-20 deletes old service tests that previously covered quota/account setup, API key usage windows, admin refund provider failure, and credit expiry notification boundaries.
+- Action: Opened and followed the project skill as a coverage checklist. Preserved the surviving failure and persistence assertions in Application handler tests and integration tests, and repointed admin refund provider-failure coverage from the deleted service to the surviving function/handler path.
+- Output artifacts: updated `AdminRefundTests.cs`, `AdminSuspensionTests.cs`, `AdminDeleteUserTests.cs`, `AdminCreditAdjustTests.cs`, `ApiKeyHttpFunctionsTests.cs`, `RewriteApiTests.cs`, and `RewriteHistoryTests.cs`; deleted only the obsolete direct service test files.
+- Verification evidence: focused CLEAN-20 acceptance filter passed 56/56; full `dotnet test ReplyInMyVoice.sln -c Release` passed 585/585.
+- Limitations: No new resilience behavior was introduced; this pass preserved existing coverage while removing obsolete subjects. No live provider, cloud dependency, deployment, push, PR, schema, or payment action was used.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-20 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-20 changes C# service files, dependency injection, function response contracts, and xUnit/EF SQLite tests.
+- Action: Opened and followed the project skill. Compared direct service test coverage against Application handler and integration tests, repointed surviving-subject test helpers to handlers/direct seeding, removed obsolete direct service tests, and ran the required backend gates.
+- Output artifacts: modified `AccountHttpFunctions.cs`, `AdminHttpFunctions.cs`, `ApiUsageHttpFunctions.cs`, `RewriteHttpFunctions.cs`, `ApiKeyHashing.cs`, `ServiceCollectionExtensions.cs`, and surviving test files; deleted `AccountService.cs`, `ApiKeyService.cs`, `ApiKeyUsageQueryService.cs`, `CreditExpiryReminderService.cs`, `AdminService.cs`, and their five direct test files.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings/errors; focused CLEAN-20 filter passed 56/56; full `dotnet test ReplyInMyVoice.sln -c Release` passed 585/585; all five target file absence checks passed; post-delete service-name scan had no hits.
+- Limitations: A local `git add && git commit` checkpoint was attempted and failed because this worktree's git index is outside the writable sandbox. No push, PR, deploy, schema change, NuGet change, or payment action was performed.

@@ -7,11 +7,14 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
+using ReplyInMyVoice.Application.UseCases.Quota;
+using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -27,19 +30,21 @@ public sealed class RewriteCostTrackingTests
         ConfigureRates();
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var reservedAttempt = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-log");
-        var processor = new RewriteJobProcessor(
+        var attemptId = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-log");
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateProcessHandler(
+            handlerDb,
             fixture.CreateContext,
             CreateOpenAiBackedProvider(promptTokens: 150, completionTokens: 50));
 
-        await processor.ProcessAsync(new RewriteJob(reservedAttempt.AttemptId), CancellationToken.None);
+        await handler.HandleAsync(new ProcessRewriteJobCommand(attemptId), CancellationToken.None);
 
         await using var db = fixture.CreateContext();
         var log = await db.RewriteCostLogs.Include(x => x.ProviderCalls).SingleAsync();
         var providerCall = log.ProviderCalls.Single();
 
         log.UserId.Should().Be(user.Id);
-        log.RequestId.Should().Be(reservedAttempt.AttemptId.ToString());
+        log.RequestId.Should().Be(attemptId.ToString());
         log.OpenAiInputTokens.Should().Be(150);
         log.OpenAiOutputTokens.Should().Be(50);
         log.OpenAiCostUsd.Should().BeGreaterThan(0);
@@ -57,12 +62,14 @@ public sealed class RewriteCostTrackingTests
         ConfigureRates();
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var reservedAttempt = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-rates");
-        var processor = new RewriteJobProcessor(
+        var attemptId = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-rates");
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateProcessHandler(
+            handlerDb,
             fixture.CreateContext,
             CreateOpenAiBackedProvider(promptTokens: 250, completionTokens: 125));
 
-        await processor.ProcessAsync(new RewriteJob(reservedAttempt.AttemptId), CancellationToken.None);
+        await handler.HandleAsync(new ProcessRewriteJobCommand(attemptId), CancellationToken.None);
 
         await using var db = fixture.CreateContext();
         var log = await db.RewriteCostLogs.Include(x => x.ProviderCalls).SingleAsync();
@@ -80,21 +87,28 @@ public sealed class RewriteCostTrackingTests
         ConfigureRates();
         await using var fixture = await CostLogRaceFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var reservedAttempt = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-race");
+        var attemptId = await ReserveAttemptAsync(fixture.CreateContext, user.Id, "idem-cost-race");
         var provider = CreateOpenAiBackedProvider(promptTokens: 150, completionTokens: 50);
-        var processor = new RewriteJobProcessor(fixture.CreateContext, provider);
-        var job = new RewriteJob(reservedAttempt.AttemptId);
 
         var act = async () =>
         {
-            await processor.ProcessAsync(job, CancellationToken.None);
-            await processor.ProcessAsync(job, CancellationToken.None);
+            await using (var firstDb = fixture.CreateContext())
+            {
+                await CreateProcessHandler(firstDb, fixture.CreateContext, provider)
+                    .HandleAsync(new ProcessRewriteJobCommand(attemptId), CancellationToken.None);
+            }
+
+            await using (var secondDb = fixture.CreateContext())
+            {
+                await CreateProcessHandler(secondDb, fixture.CreateContext, provider)
+                    .HandleAsync(new ProcessRewriteJobCommand(attemptId), CancellationToken.None);
+            }
         };
 
         await act.Should().NotThrowAsync();
 
         await using var db = fixture.CreateContext();
-        var requestId = reservedAttempt.AttemptId.ToString();
+        var requestId = attemptId.ToString();
         var logCount = await db.RewriteCostLogs.CountAsync(x => x.RequestId == requestId);
         logCount.Should().Be(1);
         (await db.RewriteCostLogs.CountAsync()).Should().Be(1);
@@ -106,13 +120,13 @@ public sealed class RewriteCostTrackingTests
         Environment.SetEnvironmentVariable("REWRITE_COST_OUTPUT_PER_1K", OutputRatePer1K.ToString("0.0000"));
     }
 
-    private static async Task<ReserveRewriteResult> ReserveAttemptAsync(
+    private static async Task<Guid> ReserveAttemptAsync(
         Func<AppDbContext> dbContextFactory,
         Guid userId,
         string idempotencyKey)
     {
-        var quota = new QuotaService(dbContextFactory);
-        return await quota.ReserveAsync(
+        await using var db = dbContextFactory();
+        var result = await CreateReserveHandler(db).HandleAsync(new ReserveQuotaCommand(
             userId,
             idempotencyKey,
             $"hash-{idempotencyKey}",
@@ -129,8 +143,31 @@ public sealed class RewriteCostTrackingTests
             "free:lifetime",
             3,
             DateTimeOffset.UtcNow,
-            TimeSpan.FromMinutes(10));
+            TimeSpan.FromMinutes(10)));
+        return result.AttemptId;
     }
+
+    private static ReserveQuotaHandler CreateReserveHandler(AppDbContext db) =>
+        new(
+            new UsagePeriodRepository(db),
+            new RewriteAttemptRepository(db),
+            new UsageReservationRepository(db),
+            new RewriteCreditRepository(db),
+            new OutboxMessageRepository(db),
+            new UnitOfWork(db));
+
+    private static ProcessRewriteJobHandler CreateProcessHandler(
+        AppDbContext db,
+        Func<AppDbContext> dbContextFactory,
+        IRewriteProvider provider) =>
+        new(
+            new RewriteAttemptRepository(db),
+            new UsageReservationRepository(db),
+            new UsagePeriodRepository(db),
+            new RewriteCreditRepository(db),
+            new UnitOfWork(db),
+            new RewriteProviderEngineClient(provider),
+            new RewriteCostLogger(dbContextFactory));
 
     private static IRewriteProvider CreateOpenAiBackedProvider(int promptTokens, int completionTokens)
     {

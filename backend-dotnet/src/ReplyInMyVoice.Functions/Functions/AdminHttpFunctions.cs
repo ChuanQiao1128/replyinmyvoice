@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,6 @@ using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
-using ReplyInMyVoice.Infrastructure.Services;
 using AppCommon = ReplyInMyVoice.Application.Common;
 
 namespace ReplyInMyVoice.Functions.Functions;
@@ -19,14 +19,20 @@ public sealed class AdminHttpFunctions
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const string AccountingRevenueCsvHeader =
+        "date,userRef,sku,amount,currency,paymentIntent,receiptUrl,creditsGranted,creditsConsumed,creditsRemaining";
 
     private readonly AdminAccess _adminAccess;
-    private readonly AdminService _adminService;
     private readonly GetAdminUsersHandler _getAdminUsersHandler;
     private readonly GetAdminUserDetailHandler _getAdminUserDetailHandler;
     private readonly GetAdminStatsHandler _getAdminStatsHandler;
     private readonly DeleteAdminUserHandler _deleteAdminUserHandler;
     private readonly GrantCreditsHandler _grantCreditsHandler;
+    private readonly GetBillingSupportQueueHandler _getBillingSupportQueueHandler;
+    private readonly ResolveBillingSupportRequestHandler _resolveBillingSupportRequestHandler;
+    private readonly ExportAccountingRevenueHandler _exportAccountingRevenueHandler;
+    private readonly SetUserSuspensionHandler _setUserSuspensionHandler;
+    private readonly IssueRefundHandler _issueRefundHandler;
     private readonly CreatePromoCodeHandler _createPromoCodeHandler;
     private readonly ListPromoCodesHandler _listPromoCodesHandler;
     private readonly GetPromoCodeDetailHandler _getPromoCodeDetailHandler;
@@ -37,12 +43,16 @@ public sealed class AdminHttpFunctions
 
     public AdminHttpFunctions(
         IConfiguration configuration,
-        AdminService adminService,
         GetAdminUsersHandler getAdminUsersHandler,
         GetAdminUserDetailHandler getAdminUserDetailHandler,
         GetAdminStatsHandler getAdminStatsHandler,
         DeleteAdminUserHandler deleteAdminUserHandler,
         GrantCreditsHandler grantCreditsHandler,
+        GetBillingSupportQueueHandler getBillingSupportQueueHandler,
+        ResolveBillingSupportRequestHandler resolveBillingSupportRequestHandler,
+        ExportAccountingRevenueHandler exportAccountingRevenueHandler,
+        SetUserSuspensionHandler setUserSuspensionHandler,
+        IssueRefundHandler issueRefundHandler,
         CreatePromoCodeHandler createPromoCodeHandler,
         ListPromoCodesHandler listPromoCodesHandler,
         GetPromoCodeDetailHandler getPromoCodeDetailHandler,
@@ -52,12 +62,16 @@ public sealed class AdminHttpFunctions
         RestorePromoCodeHandler restorePromoCodeHandler)
     {
         _adminAccess = new AdminAccess(configuration);
-        _adminService = adminService;
         _getAdminUsersHandler = getAdminUsersHandler;
         _getAdminUserDetailHandler = getAdminUserDetailHandler;
         _getAdminStatsHandler = getAdminStatsHandler;
         _deleteAdminUserHandler = deleteAdminUserHandler;
         _grantCreditsHandler = grantCreditsHandler;
+        _getBillingSupportQueueHandler = getBillingSupportQueueHandler;
+        _resolveBillingSupportRequestHandler = resolveBillingSupportRequestHandler;
+        _exportAccountingRevenueHandler = exportAccountingRevenueHandler;
+        _setUserSuspensionHandler = setUserSuspensionHandler;
+        _issueRefundHandler = issueRefundHandler;
         _createPromoCodeHandler = createPromoCodeHandler;
         _listPromoCodesHandler = listPromoCodesHandler;
         _getPromoCodeDetailHandler = getPromoCodeDetailHandler;
@@ -220,9 +234,10 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        var queue = await _adminService.GetBillingSupportQueueAsync(cancellationToken);
-        return new OkObjectResult(queue);
+        var queue = await _getBillingSupportQueueHandler.HandleAsync(
+            new GetBillingSupportQueueQuery(),
+            cancellationToken);
+        return new OkObjectResult(queue.Select(ToAdminBillingSupportRequest).ToList());
     }
 
     [Function("AdminResolveBillingSupportRequest")]
@@ -249,12 +264,12 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        var resolved = await _adminService.ResolveBillingSupportRequestAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedRequestId,
-            DateTimeOffset.UtcNow,
+        var resolved = await _resolveBillingSupportRequestHandler.HandleAsync(
+            new ResolveBillingSupportRequestCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedRequestId,
+                DateTimeOffset.UtcNow),
             cancellationToken);
         if (resolved is null)
         {
@@ -264,7 +279,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status404NotFound);
         }
 
-        return new OkObjectResult(resolved);
+        return new OkObjectResult(ToAdminBillingSupportRequest(resolved));
     }
 
     [Function("AdminAccountingRevenueCsv")]
@@ -303,12 +318,13 @@ public sealed class AdminHttpFunctions
         response.Headers.ContentDisposition =
             $"attachment; filename=\"accounting-revenue-{fromInclusive.UtcDateTime:yyyyMMdd}-{toExclusive.UtcDateTime:yyyyMMdd}.csv\"";
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        await _adminService.WriteAccountingRevenueCsvAsync(
+        var export = await _exportAccountingRevenueHandler.HandleAsync(
+            new ExportAccountingRevenueQuery(fromInclusive, toExclusive),
+            cancellationToken);
+        await WriteAccountingRevenueCsvAsync(
             response.Body,
-            fromInclusive,
-            toExclusive,
-            cancellationToken: cancellationToken);
+            export,
+            cancellationToken);
 
         return new EmptyResult();
     }
@@ -325,10 +341,10 @@ public sealed class AdminHttpFunctions
             return AdminForbidden();
         }
 
-        AdminPromoCodeCreateRequest? createRequest;
+        PromoCodeCreateRequest? createRequest;
         try
         {
-            createRequest = await ReadJsonRequestAsync<AdminPromoCodeCreateRequest>(request, cancellationToken);
+            createRequest = await ReadJsonRequestAsync<PromoCodeCreateRequest>(request, cancellationToken);
         }
         catch (JsonException)
         {
@@ -379,7 +395,7 @@ public sealed class AdminHttpFunctions
         var promoCodes = await _listPromoCodesHandler.HandleAsync(
             new ListPromoCodesQuery(DateTimeOffset.UtcNow),
             cancellationToken);
-        return new OkObjectResult(ToAdminPromoCodesListResponse(promoCodes));
+        return new OkObjectResult(promoCodes);
     }
 
     [Function("AdminPromoCodeDetail")]
@@ -414,7 +430,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status404NotFound);
         }
 
-        return new OkObjectResult(ToAdminPromoCodeDetailResponse(detail));
+        return new OkObjectResult(detail);
     }
 
     [Function("AdminPromoCodeUpdate")]
@@ -438,10 +454,10 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        AdminPromoCodeUpdateRequest? updateRequest;
+        PromoCodeUpdateRequest? updateRequest;
         try
         {
-            updateRequest = await ReadJsonRequestAsync<AdminPromoCodeUpdateRequest>(request, cancellationToken);
+            updateRequest = await ReadJsonRequestAsync<PromoCodeUpdateRequest>(request, cancellationToken);
         }
         catch (JsonException)
         {
@@ -623,18 +639,19 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        var result = await _adminService.SetUserSuspensionAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedUserId,
-            suspensionRequest.Suspended.Value,
-            DateTimeOffset.UtcNow,
+        var result = await _setUserSuspensionHandler.HandleAsync(
+            new SetUserSuspensionCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedUserId,
+                suspensionRequest.Suspended.Value,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
         return result.Kind switch
         {
-            AdminSuspensionResultKind.Success => new OkObjectResult(result.Response),
+            AppCommon.AdminSuspensionResultKind.Success => new OkObjectResult(
+                ToAdminSuspensionResponse(result.Response!)),
             _ => FunctionHttpResults.Problem(
                 "User not found",
                 result.Detail,
@@ -687,26 +704,28 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        var result = await _adminService.IssueRefundAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedUserId,
-            refundRequest,
+        var result = await _issueRefundHandler.HandleAsync(
+            new IssueRefundCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedUserId,
+                refundRequest.PaymentIntentId,
+                refundRequest.Amount,
+                refundRequest.Currency),
             cancellationToken);
 
         return result.Kind switch
         {
-            AdminRefundResultKind.Success => new OkObjectResult(result.Response),
-            AdminRefundResultKind.UserNotFound => FunctionHttpResults.Problem(
+            AppCommon.AdminRefundResultKind.Success => new OkObjectResult(ToAdminRefundResponse(result.Response!)),
+            AppCommon.AdminRefundResultKind.UserNotFound => FunctionHttpResults.Problem(
                 "User not found",
                 result.Detail,
                 StatusCodes.Status404NotFound),
-            AdminRefundResultKind.PaymentNotFound => FunctionHttpResults.Problem(
+            AppCommon.AdminRefundResultKind.PaymentNotFound => FunctionHttpResults.Problem(
                 "Payment not found",
                 result.Detail,
                 StatusCodes.Status404NotFound),
-            AdminRefundResultKind.RefundUnavailable => FunctionHttpResults.Problem(
+            AppCommon.AdminRefundResultKind.RefundUnavailable => FunctionHttpResults.Problem(
                 "Refund service unavailable",
                 result.Detail,
                 StatusCodes.Status500InternalServerError),
@@ -805,7 +824,7 @@ public sealed class AdminHttpFunctions
     private static IActionResult MapPromoMutationResult(AppCommon.AdminPromoMutationResultDto result) =>
         result.Kind switch
         {
-            AppCommon.AdminPromoResultKind.Success => new OkObjectResult(ToAdminPromoCodeResponse(result.Response!)),
+            AppCommon.AdminPromoResultKind.Success => new OkObjectResult(result.Response!),
             AppCommon.AdminPromoResultKind.NotFound => FunctionHttpResults.Problem(
                 "Promo code not found",
                 result.Detail,
@@ -916,34 +935,9 @@ public sealed class AdminHttpFunctions
             dto.PaymentCount,
             dto.PaymentAmountTotal,
             dto.CostToDateUsd,
-            ToTaxTurnoverReport(dto.GstTurnover),
+            dto.GstTurnover,
             ToAdminPaymentReconciliationSummary(dto.PaymentReconciliation),
             ToAdminRefundReviewStats(dto.RefundReview));
-
-    private static TaxTurnoverReport ToTaxTurnoverReport(AppCommon.TaxTurnoverReportDto dto) =>
-        new(
-            dto.WindowStart,
-            dto.WindowEnd,
-            dto.Currency,
-            dto.GrossAmountTotal,
-            dto.RegistrationThresholdAmountTotal,
-            dto.WarningFraction,
-            dto.WarningAmountTotal,
-            dto.FractionOfThreshold,
-            dto.IgnoredNonNzdPaymentCount,
-            dto.Warning is null
-                ? null
-                : new TaxTurnoverWarning(
-                    dto.Warning.Code,
-                    dto.Warning.Severity,
-                    dto.Warning.Message),
-            dto.Notification is null
-                ? null
-                : new TaxTurnoverNotificationResult(
-                    dto.Notification.Attempted,
-                    dto.Notification.Sent,
-                    dto.Notification.Provider,
-                    dto.Notification.Reason));
 
     private static AdminPaymentReconciliationSummary? ToAdminPaymentReconciliationSummary(
         AppCommon.AdminPaymentReconciliationSummaryDto? dto) =>
@@ -982,51 +976,83 @@ public sealed class AdminHttpFunctions
             dto.GrantedAt,
             dto.ExpiresAt);
 
-    private static AdminPromoCodesListResponse ToAdminPromoCodesListResponse(AppCommon.AdminPromoCodesListDto dto) =>
-        new(dto.PromoCodes.Select(ToAdminPromoCodeResponse).ToList());
-
-    private static AdminPromoCodeDetailResponse ToAdminPromoCodeDetailResponse(
-        AppCommon.AdminPromoCodeDetailDto dto) =>
-        new(
-            ToAdminPromoCodeResponse(dto.PromoCode),
-            ToAdminPromoStats(dto.Stats));
-
-    private static AdminPromoCodeResponse ToAdminPromoCodeResponse(AppCommon.AdminPromoCodeDto dto) =>
+    private static AdminBillingSupportRequest ToAdminBillingSupportRequest(
+        AppCommon.AdminBillingSupportRequestDto dto) =>
         new(
             dto.Id,
-            dto.Code,
-            dto.DisplayCode,
-            dto.Description,
-            dto.Kind,
-            dto.CreditsGranted,
-            dto.GrantTtlDays,
-            dto.ValidFrom,
-            dto.ValidUntil,
-            dto.MaxRedemptionsGlobal,
-            dto.MaxRedemptionsPerUser,
-            dto.RedemptionCount,
-            dto.IsActive,
-            dto.ArchivedAt,
+            dto.UserId,
+            dto.UserEmail,
+            dto.ExternalAuthUserId,
+            dto.Type,
+            dto.RelatedPaymentIntentId,
+            dto.Message,
             dto.Status,
             dto.CreatedAt,
-            dto.UpdatedAt);
+            dto.UpdatedAt,
+            dto.ResolvedAt);
 
-    private static AdminPromoStats ToAdminPromoStats(AppCommon.AdminPromoStatsDto dto) =>
+    private static AdminSuspensionResponse ToAdminSuspensionResponse(
+        AppCommon.AdminSuspensionResponseDto dto) =>
+        new(dto.TargetUserId, dto.Suspended, dto.SuspendedAt);
+
+    private static AdminRefundResponse ToAdminRefundResponse(AppCommon.AdminRefundResponseDto dto) =>
         new(
-            dto.TotalRedemptions,
-            dto.DistinctUsers,
-            dto.ActivationRate,
-            dto.DailyCurve
-                .Select(x => new AdminPromoDailyRedemptions(x.Date, x.Redemptions))
-                .ToList(),
-            dto.IpHashClusters
-                .Select(x => new AdminPromoIpHashCluster(
-                    x.IpHash,
-                    x.Redemptions,
-                    x.DistinctUsers,
-                    x.FirstRedeemedAt,
-                    x.LastRedeemedAt))
-                .ToList());
+            dto.TargetUserId,
+            dto.PaymentIntentId,
+            dto.Amount,
+            dto.Currency,
+            dto.RefundId,
+            dto.AlreadyRefunded);
+
+    private static async Task WriteAccountingRevenueCsvAsync(
+        Stream output,
+        AppCommon.AdminAccountingRevenueExportDto export,
+        CancellationToken cancellationToken)
+    {
+        using var writer = new StreamWriter(
+            output,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            bufferSize: 16 * 1024,
+            leaveOpen: true)
+        {
+            NewLine = "\r\n",
+        };
+
+        await writer.WriteLineAsync(AccountingRevenueCsvHeader.AsMemory(), cancellationToken);
+        foreach (var row in export.Rows)
+        {
+            await writer.WriteLineAsync(FormatAccountingRevenueCsvRow(row).AsMemory(), cancellationToken);
+        }
+
+        await writer.FlushAsync(cancellationToken);
+    }
+
+    private static string FormatAccountingRevenueCsvRow(AppCommon.AdminAccountingRevenueRowDto row) =>
+        string.Join(",", new[]
+        {
+            CsvField(row.GrantedAt.ToString("O", CultureInfo.InvariantCulture)),
+            CsvField(row.UserId.ToString("D")),
+            CsvField(row.Sku),
+            CsvField(row.AmountTotal?.ToString(CultureInfo.InvariantCulture)),
+            CsvField(row.Currency),
+            CsvField(row.PaymentIntentId),
+            CsvField(null),
+            CsvField(row.AmountGranted.ToString(CultureInfo.InvariantCulture)),
+            CsvField(row.AmountConsumed.ToString(CultureInfo.InvariantCulture)),
+            CsvField(row.CreditsRemaining.ToString(CultureInfo.InvariantCulture)),
+        });
+
+    private static string CsvField(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        return value.IndexOfAny([',', '"', '\r', '\n']) < 0
+            ? value
+            : $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+    }
 
     private static IActionResult AdminForbidden() =>
         FunctionHttpResults.Problem(
@@ -1121,4 +1147,184 @@ public sealed class AdminHttpFunctions
 
         return JsonSerializer.Deserialize<T>(body, JsonOptions);
     }
+
+    private sealed record PromoCodeCreateRequest(
+        string? Code,
+        string? Description,
+        int? CreditsGranted,
+        int? GrantTtlDays,
+        DateTimeOffset? ValidFrom,
+        DateTimeOffset? ValidUntil,
+        int? MaxRedemptionsGlobal,
+        int? MaxRedemptionsPerUser);
+
+    private sealed record PromoCodeUpdateRequest(
+        string? Description,
+        int? CreditsGranted,
+        int? GrantTtlDays,
+        DateTimeOffset? ValidFrom,
+        DateTimeOffset? ValidUntil,
+        int? MaxRedemptionsGlobal,
+        int? MaxRedemptionsPerUser);
 }
+
+public sealed record AdminUsersListResponse(
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    IReadOnlyList<AdminUserListItem> Users);
+
+public sealed record AdminUserListItem(
+    Guid Id,
+    string ExternalAuthUserId,
+    string? Email,
+    string SubscriptionStatus,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    int UsedRewrites,
+    int ReservedRewrites,
+    int CreditRemaining,
+    decimal CostToDateUsd);
+
+public sealed record AdminUserDetailResponse(
+    Guid Id,
+    string ExternalAuthUserId,
+    string? Email,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    AdminSubscriptionSummary Subscription,
+    IReadOnlyList<AdminUsagePeriod> Usage,
+    IReadOnlyList<AdminCredit> Credits,
+    IReadOnlyList<AdminPayment> Payments,
+    decimal CostToDateUsd);
+
+public sealed record AdminSubscriptionSummary(
+    string Status,
+    string? StripeCustomerId,
+    string? StripeSubscriptionId,
+    DateTimeOffset? CurrentPeriodEnd);
+
+public sealed record AdminUsagePeriod(
+    Guid Id,
+    string PeriodKey,
+    int Quota,
+    int Used,
+    int Reserved,
+    DateTimeOffset? PeriodStart,
+    DateTimeOffset? PeriodEnd,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+public sealed record AdminCredit(
+    Guid Id,
+    string Source,
+    int AmountGranted,
+    int AmountConsumed,
+    int Remaining,
+    DateTimeOffset GrantedAt,
+    DateTimeOffset? ExpiresAt,
+    string? StripeEventId,
+    string? PaymentIntentId,
+    string? Sku,
+    long? AmountTotal,
+    string? Currency,
+    string? ReceiptUrl);
+
+public sealed record AdminPayment(
+    Guid CreditId,
+    string Source,
+    string? EventId,
+    string? PaymentIntentId,
+    string? Sku,
+    long? AmountTotal,
+    string? Currency,
+    string? ReceiptUrl,
+    DateTimeOffset GrantedAt,
+    DateTimeOffset? ExpiresAt,
+    int CreditsGranted,
+    int CreditsConsumed,
+    int CreditsRemaining);
+
+public sealed record AdminStatsResponse(
+    int TotalUsers,
+    int PaidUsers,
+    int FreeUsers,
+    int UsageUsed,
+    int UsageReserved,
+    int CreditRemaining,
+    int PaymentCount,
+    long PaymentAmountTotal,
+    decimal CostToDateUsd,
+    AppCommon.TaxTurnoverReportDto GstTurnover,
+    AdminPaymentReconciliationSummary? PaymentReconciliation,
+    AdminRefundReviewStats RefundReview);
+
+public sealed record AdminBillingSupportRequest(
+    Guid Id,
+    Guid UserId,
+    string? UserEmail,
+    string? ExternalAuthUserId,
+    string Type,
+    string? RelatedPaymentIntentId,
+    string Message,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? ResolvedAt);
+
+public sealed record AdminPaymentReconciliationSummary(
+    DateTimeOffset LastCompletedAt,
+    DateTimeOffset WindowStart,
+    DateTimeOffset WindowEnd,
+    int DiscrepancyCount,
+    int PaidButNoGrantCount,
+    int GrantButNoPaymentCount,
+    int AmountMismatchCount,
+    int StripePaymentCount,
+    int PurchaseGrantCount);
+
+public sealed record AdminRefundReviewStats(
+    int FlaggedUserCount,
+    int RefundCountThreshold,
+    long RefundAmountThreshold,
+    int TotalRefundCount,
+    long TotalRefundAmount);
+
+public sealed record AdminCreditGrantRequest(
+    int? Amount,
+    string? Reason);
+
+public sealed record AdminCreditGrantResponse(
+    Guid TargetUserId,
+    Guid CreditId,
+    string Source,
+    int AmountGranted,
+    int AmountConsumed,
+    int Remaining,
+    DateTimeOffset GrantedAt,
+    DateTimeOffset? ExpiresAt);
+
+public sealed record AdminDeleteUserResponse(
+    Guid UserId,
+    string Status);
+
+public sealed record AdminSuspensionRequest(bool? Suspended);
+
+public sealed record AdminSuspensionResponse(
+    Guid TargetUserId,
+    bool Suspended,
+    DateTimeOffset? SuspendedAt);
+
+public sealed record AdminRefundRequest(
+    string? PaymentIntentId,
+    long? Amount,
+    string? Currency);
+
+public sealed record AdminRefundResponse(
+    Guid TargetUserId,
+    string PaymentIntentId,
+    long Amount,
+    string? Currency,
+    string? RefundId,
+    bool AlreadyRefunded);

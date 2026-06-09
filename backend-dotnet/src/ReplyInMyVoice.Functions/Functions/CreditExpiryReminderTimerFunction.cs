@@ -1,15 +1,16 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Application.UseCases.CreditExpiry;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class CreditExpiryReminderTimerFunction(
-    CreditExpiryReminderService reminders,
+    SendCreditExpiryRemindersHandler reminders,
     IConfiguration configuration,
     ILogger<CreditExpiryReminderTimerFunction> logger)
 {
+    private const int DefaultReminderWindowDays = 7;
     private const string ReminderWindowDaysSetting = "CREDIT_EXPIRY_REMINDER_WINDOW_DAYS";
 
     [Function("SendCreditExpiryReminders")]
@@ -17,9 +18,10 @@ public sealed class CreditExpiryReminderTimerFunction(
         [TimerTrigger("0 0 9 * * *")] TimerInfo timer,
         CancellationToken cancellationToken)
     {
-        var count = await reminders.RunOnceAsync(
-            DateTimeOffset.UtcNow,
-            TimeSpan.FromDays(ResolveReminderWindowDays()),
+        var count = await reminders.HandleAsync(
+            new SendCreditExpiryRemindersCommand(
+                DateTimeOffset.UtcNow,
+                TimeSpan.FromDays(ResolveReminderWindowDays())),
             cancellationToken);
 
         if (count > 0)
@@ -36,6 +38,6 @@ public sealed class CreditExpiryReminderTimerFunction(
             return parsed;
         }
 
-        return CreditExpiryReminderService.DefaultReminderWindowDays;
+        return DefaultReminderWindowDays;
     }
 }

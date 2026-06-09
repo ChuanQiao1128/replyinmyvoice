@@ -1,9 +1,12 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -20,18 +23,17 @@ public sealed class ApiBurstRateLimitTests
         await using var fixture = await FileBackedApiBurstDbFixture.CreateAsync();
         var (user, apiKey) = await SeedUserAndApiKeyAsync(fixture, rateLimitPerMinute);
         var limiter = new ApiKeyRateLimiter(fixture.CreateContext);
-        var quota = new QuotaService(fixture.CreateContext);
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var tasks = Enumerable.Range(0, requestCount)
             .Select(index => Task.Run(async () =>
             {
-                await start.Task;
-                return await SubmitAfterRateLimitAsync(
-                    limiter,
-                    quota,
-                    user.Id,
-                    apiKey.Id,
+                    await start.Task;
+                    return await SubmitAfterRateLimitAsync(
+                        limiter,
+                        fixture.CreateContext,
+                        user.Id,
+                        apiKey.Id,
                     rateLimitPerMinute,
                     requestCount + 10,
                     periodKey,
@@ -50,7 +52,7 @@ public sealed class ApiBurstRateLimitTests
         results.Where(x => x.IsAdmitted)
             .Select(x => x.Reservation!.Kind)
             .Should()
-            .OnlyContain(kind => kind == ReserveRewriteResultKind.Created);
+            .OnlyContain(kind => kind == ReserveQuotaResultKind.Created);
         results.Where(x => x.IsRateLimited).All(result => result.Reservation is null).Should().BeTrue();
 
         await using var db = fixture.CreateContext();
@@ -75,13 +77,12 @@ public sealed class ApiBurstRateLimitTests
         await using var fixture = await FileBackedApiBurstDbFixture.CreateAsync();
         var (user, apiKey) = await SeedUserAndApiKeyAsync(fixture, rateLimitPerMinute);
         var limiter = new ApiKeyRateLimiter(fixture.CreateContext);
-        var quota = new QuotaService(fixture.CreateContext);
 
         var firstWindowResults = await Task.WhenAll(
             Enumerable.Range(0, rateLimitPerMinute)
                 .Select(index => SubmitAfterRateLimitAsync(
                     limiter,
-                    quota,
+                    fixture.CreateContext,
                     user.Id,
                     apiKey.Id,
                     rateLimitPerMinute,
@@ -92,7 +93,7 @@ public sealed class ApiBurstRateLimitTests
                     firstWindow)));
         var overLimit = await SubmitAfterRateLimitAsync(
             limiter,
-            quota,
+            fixture.CreateContext,
             user.Id,
             apiKey.Id,
             rateLimitPerMinute,
@@ -103,7 +104,7 @@ public sealed class ApiBurstRateLimitTests
             firstWindow);
         var afterReset = await SubmitAfterRateLimitAsync(
             limiter,
-            quota,
+            fixture.CreateContext,
             user.Id,
             apiKey.Id,
             rateLimitPerMinute,
@@ -117,7 +118,7 @@ public sealed class ApiBurstRateLimitTests
         overLimit.IsRateLimited.Should().BeTrue();
         overLimit.Reservation.Should().BeNull();
         afterReset.IsAdmitted.Should().BeTrue();
-        afterReset.Reservation!.Kind.Should().Be(ReserveRewriteResultKind.Created);
+        afterReset.Reservation!.Kind.Should().Be(ReserveQuotaResultKind.Created);
 
         await using var db = fixture.CreateContext();
         var windows = (await db.ApiKeyRateLimitWindows
@@ -138,7 +139,7 @@ public sealed class ApiBurstRateLimitTests
 
     private static async Task<SimulatedSubmitResult> SubmitAfterRateLimitAsync(
         IApiKeyRateLimiter limiter,
-        QuotaService quota,
+        Func<AppDbContext> createContext,
         Guid userId,
         Guid apiKeyId,
         int rateLimitPerMinute,
@@ -159,20 +160,31 @@ public sealed class ApiBurstRateLimitTests
             return new SimulatedSubmitResult(rateLimit, null);
         }
 
-        var reservation = await quota.ReserveAsync(
-            userId,
-            idempotencyKey,
-            requestHash,
-            RequestJson(idempotencyKey),
-            periodKey,
-            quotaLimit,
-            now,
-            TimeSpan.FromMinutes(15),
-            CancellationToken.None,
-            apiKeyId);
+        await using var reserveDb = createContext();
+        var reservation = await CreateReserveHandler(reserveDb).HandleAsync(
+            new ReserveQuotaCommand(
+                userId,
+                idempotencyKey,
+                requestHash,
+                RequestJson(idempotencyKey),
+                periodKey,
+                quotaLimit,
+                now,
+                TimeSpan.FromMinutes(15),
+                apiKeyId),
+            CancellationToken.None);
 
         return new SimulatedSubmitResult(rateLimit, reservation);
     }
+
+    private static ReserveQuotaHandler CreateReserveHandler(AppDbContext db) =>
+        new(
+            new UsagePeriodRepository(db),
+            new RewriteAttemptRepository(db),
+            new UsageReservationRepository(db),
+            new RewriteCreditRepository(db),
+            new OutboxMessageRepository(db),
+            new UnitOfWork(db));
 
     private static async Task<(AppUser User, ApiKey ApiKey)> SeedUserAndApiKeyAsync(
         FileBackedApiBurstDbFixture fixture,
@@ -213,7 +225,7 @@ public sealed class ApiBurstRateLimitTests
 
     private sealed record SimulatedSubmitResult(
         ApiKeyRateLimitResult RateLimit,
-        ReserveRewriteResult? Reservation)
+        ReserveQuotaResult? Reservation)
     {
         public bool IsAdmitted => !RateLimit.IsLimited && !RateLimit.IsUnavailable;
         public bool IsRateLimited => RateLimit.IsLimited;

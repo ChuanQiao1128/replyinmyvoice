@@ -1,7 +1,9 @@
+using ReplyInMyVoice.Application.UseCases.Quota;
+
 namespace ReplyInMyVoice.Infrastructure.Services;
 
-public sealed class ExpiredReservationCleanupService(QuotaService quotaService)
+public sealed class ExpiredReservationCleanupService(ReleaseExpiredReservationsHandler handler)
 {
     public Task<int> RunOnceAsync(DateTimeOffset now, CancellationToken cancellationToken = default) =>
-        quotaService.ReleaseExpiredReservationsAsync(now, cancellationToken);
+        handler.HandleAsync(new ReleaseExpiredReservationsCommand(now), cancellationToken);
 }

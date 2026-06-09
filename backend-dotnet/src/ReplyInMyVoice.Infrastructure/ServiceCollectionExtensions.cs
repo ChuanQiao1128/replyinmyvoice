@@ -10,6 +10,7 @@ using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Application.UseCases.Billing;
 using ReplyInMyVoice.Application.UseCases.BillingSupport;
+using ReplyInMyVoice.Application.UseCases.CreditExpiry;
 using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -24,9 +25,12 @@ using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppStripeBillingClient = ReplyInMyVoice.Application.Abstractions.IStripeBillingClient;
 using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
+using AppStripeRefundClient = ReplyInMyVoice.Application.Abstractions.IStripeRefundClient;
 using AppStripeReconciliationAlerter = ReplyInMyVoice.Application.Abstractions.IStripeReconciliationAlerter;
 using LegacyStripePaymentReconciliationClient = ReplyInMyVoice.Infrastructure.Services.IStripePaymentReconciliationClient;
+using LegacyStripeRefundClient = ReplyInMyVoice.Infrastructure.Services.IStripeRefundClient;
 using LegacyStripeReconciliationAlerter = ReplyInMyVoice.Infrastructure.Services.IStripeReconciliationAlerter;
 
 namespace ReplyInMyVoice.Infrastructure;
@@ -95,6 +99,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
         services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
+        services.AddScoped<ICreditExpiryNotifier, CreditExpiryNotifier>();
         services.AddScoped<ITaxTurnoverNotifier, TaxTurnoverNotifier>();
         services.AddScoped<ITaxTurnoverSettingsProvider, TaxTurnoverSettingsProvider>();
         services.AddScoped<GetOrCreateUserHandler>();
@@ -111,6 +116,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetAdminStatsHandler>();
         services.AddScoped<GrantCreditsHandler>();
         services.AddScoped<DeleteAdminUserHandler>();
+        services.AddScoped<GetBillingSupportQueueHandler>();
+        services.AddScoped<ResolveBillingSupportRequestHandler>();
+        services.AddScoped<ExportAccountingRevenueHandler>();
+        services.AddScoped<SetUserSuspensionHandler>();
+        services.AddScoped<IssueRefundHandler>();
         services.AddScoped<CreateCheckoutSessionHandler>();
         services.AddScoped<CreatePortalSessionHandler>();
         services.AddScoped<CancelSubscriptionHandler>();
@@ -145,45 +155,32 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetApiUsageSummaryHandler>();
         services.AddScoped<GetApiUsageSeriesHandler>();
         services.AddScoped<GetApiUsageRecentHandler>();
+        services.AddScoped<SendCreditExpiryRemindersHandler>();
         services.AddScoped<ProcessRewriteJobHandler>();
         services.AddScoped<TryMarkStripeEventProcessedHandler>();
         services.AddScoped<ProcessStripeWebhookHandler>();
         services.AddScoped<ProcessExpiredPaymentGraceHandler>();
         services.AddScoped<ProcessPaymentGraceRemindersHandler>();
-        services.AddScoped<AccountService>();
-        services.AddScoped<ApiKeyService>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
-        services.AddScoped<ApiKeyUsageAnomalyService>();
-        services.AddScoped<ApiKeyUsageQueryService>();
         services.AddScoped<WebhookDeliveryService>();
         services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
-        services.AddScoped<WebhookDispatcherService>();
-        services.AddScoped<QuotaService>();
-        services.AddScoped<PromoService>();
-        services.AddScoped<AdminService>();
-        services.AddScoped<PromoAdminService>();
-        services.AddScoped<RewriteRequestService>();
-        services.AddScoped<RewriteJobProcessor>();
-        services.AddScoped<OutboxDispatcherService>();
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
-        services.AddScoped<CreditExpiryReminderService>();
-        services.AddScoped<StripeReconciliationService>();
-        services.AddScoped<StripeEventService>();
         services.AddScoped<BillingSupportService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
-        services.AddSingleton<ReplyInMyVoice.Application.Abstractions.IStripeBillingClient>(sp =>
+        services.AddScoped<ApplicationStripeBillingClient>(sp =>
             new ApplicationStripeBillingClient(
                 configuration,
                 sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
-        services.AddScoped<TaxTurnoverService>();
+        services.AddScoped<AppStripeBillingClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
+        services.AddScoped<AppStripeRefundClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
         services.AddScoped(sp => new StripeBillingService(
             sp.GetRequiredService<Func<AppDbContext>>(),
             configuration,
             sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<IStripeBillingService>(sp => sp.GetRequiredService<StripeBillingService>());
-        services.AddScoped<IStripeRefundClient>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<LegacyStripeRefundClient>(sp => sp.GetRequiredService<StripeBillingService>());
         services.AddScoped<IStripeEventNotifier, StripeEventNotifier>();
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());

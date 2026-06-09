@@ -6,6 +6,7 @@ Each overnight Claude trigger appends here.
 
 ---
 
+2026-06-09T09:41:38Z | CLEAN-12-669 | decision | Relocated live webhook sender contract and HTTP implementation into `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/HttpWebhookDeliverySender.cs` before removing the obsolete dispatcher registration and test surface.
 2026-06-02T08:04:40Z | PROMO-01-427 | decision | Reused no-cookie WebApplicationFactory client option in Account/Stripe API tests to avoid sandbox CookieContainer domain lookup failure; matches existing RewriteApiTests pattern.
 2026-05-21T11:13:33Z | M0-001..M0-005 | done | Marked already-done per handoff (commit bff864b)
 2026-05-21T11:14:00Z | M0-006 | started | Update AGENTS.md to reflect Stripe live cutover
@@ -304,3 +305,6 @@ Each overnight Claude trigger appends here.
 2026-06-08 | VER-02 | bake Functions version metadata with generated JSON | Azure Functions runs from the published package, so commit and build time are supplied as MSBuild publish properties and loaded from `version.generated.json`.
 2026-06-08 | HARD-02 | document rotate-before-delete for replacement continuity | The existing rotate operation revokes and replaces atomically, while DELETE makes a later rotate on the same key return 404; the runbook keeps containment and replacement ordering explicit.
 2026-06-09 | DDD-44 | keep promo redemption data access in the existing redemption repository | DDD-43/#624 already introduced `IPromoCodeRedemptionRepository`, so DDD-44 extended that seam for redemption queries/counts while keeping `IPromoCodeRepository` focused on promo code lookup and atomic count increment.
+2026-06-09 | CLEAN-02 | use dedicated Infrastructure static helper homes | `AccountUsagePlans`, `ExternalAuthUserId`, `ApiKeyHashing`, `ApiKeyWebhookUrl`, and `ApiKeyUsageWindow` keep helper contracts available without making soon-deleted services static call targets.
+2026-06-09 | CLEAN-02 gate repair | retry rewrite-attempt reservation transaction | The full .NET gate exposed an optimistic concurrency race in `CreateRewriteAttemptHandler`; using the existing retrying serializable unit-of-work path preserves quota invariants without changing tests.
+2026-06-09 | CLEAN-13 | relocate legacy Stripe reconciliation contracts before service deletion | `IStripePaymentReconciliationClient`, `IStripeReconciliationAlerter`, the legacy reconciliation report records, and `StripeReconciliationNotificationAlerter` now live in `StripeReconciliationContracts.cs` so `StripeBillingService`, the reconciliation adapter, and preserved DI aliases survive deleting the old reconciliation service.

@@ -4,9 +4,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
+using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -20,13 +24,15 @@ public sealed class AdminDeleteUserTests
         var now = DateTimeOffset.Parse("2026-06-03T02:00:00Z");
         var user = await fixture.CreateUserAsync();
         await SeedUserStateAsync(fixture, user.Id, now.AddDays(-1));
-        var service = new AdminService(fixture.CreateContext);
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateDeleteHandler(handlerDb);
 
-        var result = await service.DeleteUserAsync(
-            "admin-owner-oid",
-            "owner@example.com",
-            user.Id,
-            now,
+        var result = await handler.HandleAsync(
+            new DeleteAdminUserCommand(
+                "admin-owner-oid",
+                "owner@example.com",
+                user.Id,
+                now),
             CancellationToken.None);
 
         result.Kind.Should().Be(AdminDeleteUserResultKind.Success);
@@ -36,7 +42,7 @@ public sealed class AdminDeleteUserTests
 
         await using var db = fixture.CreateContext();
         var erasedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
-        AccountService.IsErasedExternalAuthUserId(erasedUser.ExternalAuthUserId).Should().BeTrue();
+        ExternalAuthUserId.IsErasedExternalAuthUserId(erasedUser.ExternalAuthUserId).Should().BeTrue();
         erasedUser.Email.Should().BeNull();
         erasedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Canceled);
 
@@ -63,13 +69,15 @@ public sealed class AdminDeleteUserTests
     public async Task DeleteUserAsyncReturnsNotFoundForMissingUser()
     {
         await using var fixture = await DbFixture.CreateAsync();
-        var service = new AdminService(fixture.CreateContext);
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateDeleteHandler(handlerDb);
 
-        var result = await service.DeleteUserAsync(
-            "admin-owner-oid",
-            "owner@example.com",
-            Guid.NewGuid(),
-            DateTimeOffset.Parse("2026-06-03T02:00:00Z"),
+        var result = await handler.HandleAsync(
+            new DeleteAdminUserCommand(
+                "admin-owner-oid",
+                "owner@example.com",
+                Guid.NewGuid(),
+                DateTimeOffset.Parse("2026-06-03T02:00:00Z")),
             CancellationToken.None);
 
         result.Kind.Should().Be(AdminDeleteUserResultKind.UserNotFound);
@@ -84,13 +92,15 @@ public sealed class AdminDeleteUserTests
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
-        var service = new AdminService(fixture.CreateContext);
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateDeleteHandler(handlerDb);
 
-        var result = await service.DeleteUserAsync(
-            user.ExternalAuthUserId,
-            user.Email,
-            user.Id,
-            DateTimeOffset.Parse("2026-06-03T02:00:00Z"),
+        var result = await handler.HandleAsync(
+            new DeleteAdminUserCommand(
+                user.ExternalAuthUserId,
+                user.Email,
+                user.Id,
+                DateTimeOffset.Parse("2026-06-03T02:00:00Z")),
             CancellationToken.None);
 
         result.Kind.Should().Be(AdminDeleteUserResultKind.Forbidden);
@@ -117,13 +127,15 @@ public sealed class AdminDeleteUserTests
             await db.SaveChangesAsync();
         }
 
-        var service = new AdminService(fixture.CreateContext);
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateDeleteHandler(handlerDb);
 
-        var result = await service.DeleteUserAsync(
-            "admin-owner-oid",
-            "owner@example.com",
-            user.Id,
-            DateTimeOffset.Parse("2026-06-03T02:00:00Z"),
+        var result = await handler.HandleAsync(
+            new DeleteAdminUserCommand(
+                "admin-owner-oid",
+                "owner@example.com",
+                user.Id,
+                DateTimeOffset.Parse("2026-06-03T02:00:00Z")),
             CancellationToken.None);
 
         result.Kind.Should().Be(AdminDeleteUserResultKind.Forbidden);
@@ -152,7 +164,7 @@ public sealed class AdminDeleteUserTests
         {
             (await db.AdminAuditLogs.CountAsync()).Should().Be(0);
             var storedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
-            AccountService.IsErasedExternalAuthUserId(storedUser.ExternalAuthUserId).Should().BeFalse();
+            ExternalAuthUserId.IsErasedExternalAuthUserId(storedUser.ExternalAuthUserId).Should().BeFalse();
         }
 
         var deleted = await function.DeleteUser(
@@ -192,6 +204,9 @@ public sealed class AdminDeleteUserTests
         });
         await db.SaveChangesAsync();
     }
+
+    private static DeleteAdminUserHandler CreateDeleteHandler(AppDbContext db) =>
+        new(new AdminUserRepository(db), new UnitOfWork(db));
 
     private static HttpRequest CreateRequest(string oid, string email)
     {

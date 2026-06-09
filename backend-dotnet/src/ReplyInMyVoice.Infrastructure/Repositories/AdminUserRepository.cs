@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
@@ -9,6 +10,8 @@ namespace ReplyInMyVoice.Infrastructure.Repositories;
 
 public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     public async Task<AdminUsersListDto> ListUsersAsync(
         int page,
         int pageSize,
@@ -287,6 +290,57 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
         await db.AdminAuditLogs.AddAsync(auditLog, ct);
     }
 
+    public async Task<AdminSuspensionMutationDto?> SetUserSuspensionAsync(
+        Guid userId,
+        bool suspended,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var user = await db.AppUsers
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == userId, ct);
+        if (user is null)
+        {
+            return null;
+        }
+
+        var suspendedAt = suspended
+            ? user.SuspendedAt ?? now
+            : (DateTimeOffset?)null;
+
+        user.SuspendedAt = suspendedAt;
+        user.UpdatedAt = now;
+        user.RowVersion = Guid.NewGuid();
+
+        return new AdminSuspensionMutationDto(user.Id, suspended, suspendedAt);
+    }
+
+    public async Task<AdminRefundAuditDetailsDto?> FindRefundAuditDetailsAsync(
+        Guid targetUserId,
+        string paymentIntentId,
+        long amount,
+        CancellationToken ct = default)
+    {
+        var auditRows = await db.AdminAuditLogs
+            .AsNoTracking()
+            .Where(x => x.TargetUserId == targetUserId && x.Action == "refund")
+            .Select(x => x.DetailsJson)
+            .ToListAsync(ct);
+
+        foreach (var detailsJson in auditRows)
+        {
+            var details = TryParseRefundDetails(detailsJson);
+            if (details is not null &&
+                string.Equals(details.PaymentIntentId, paymentIntentId, StringComparison.Ordinal) &&
+                details.Amount == amount)
+            {
+                return details;
+            }
+        }
+
+        return null;
+    }
+
     public async Task<AdminDeleteUserLookupDto?> GetDeleteUserLookupAsync(
         Guid userId,
         CancellationToken ct = default) =>
@@ -445,6 +499,23 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
         !string.IsNullOrWhiteSpace(currency) ||
         amountTotal is not null ||
         string.Equals(source, "PURCHASE", StringComparison.OrdinalIgnoreCase);
+
+    private static AdminRefundAuditDetailsDto? TryParseRefundDetails(string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<AdminRefundAuditDetailsDto>(detailsJson, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static bool IsErasedExternalAuthUserId(string externalAuthUserId) =>
         externalAuthUserId.StartsWith("erased:", StringComparison.Ordinal);

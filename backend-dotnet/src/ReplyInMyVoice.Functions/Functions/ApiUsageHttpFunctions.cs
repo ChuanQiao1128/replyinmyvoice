@@ -56,7 +56,7 @@ public sealed class ApiUsageHttpFunctions(
             "days",
             30,
             1,
-            ApiKeyUsageQueryService.MaxUsageWindowDays,
+            ApiKeyUsageWindow.MaxUsageWindowDays,
             out var days,
             out var errorMessage))
         {
@@ -174,3 +174,28 @@ public sealed class ApiUsageHttpFunctions(
     private static ApiUsageRecentItem ToResponse(ApiUsageRecentItemDto item) =>
         new(item.CreatedAt, item.Endpoint, item.StatusCode, item.LatencyMs, item.KeyLast4);
 }
+
+public sealed record ApiUsageSummaryResponse(
+    ApiUsageCount Today,
+    ApiUsageCount Yesterday,
+    ApiUsageCount MonthToDate,
+    int Last30dCalls,
+    int Quota,
+    int Used,
+    int Remaining,
+    DateTimeOffset? PeriodEnd);
+
+public sealed record ApiUsageCount(int Calls, int Succeeded, int Failed);
+
+public sealed record ApiUsageSeriesPoint(
+    string Date,
+    int Calls,
+    int Succeeded,
+    int Failed);
+
+public sealed record ApiUsageRecentItem(
+    DateTimeOffset CreatedAt,
+    string Endpoint,
+    int StatusCode,
+    int? LatencyMs,
+    string? KeyLast4);

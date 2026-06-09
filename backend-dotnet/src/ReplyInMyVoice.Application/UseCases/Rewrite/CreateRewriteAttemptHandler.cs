@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -18,6 +19,8 @@ public sealed class CreateRewriteAttemptHandler(
     IOutboxMessageRepository outboxMessages,
     IUnitOfWork unitOfWork)
 {
+    private const int ReservationRaceMaxAttempts = 3;
+
     private static readonly JsonSerializerOptions OutboxJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -27,7 +30,16 @@ public sealed class CreateRewriteAttemptHandler(
 
     public async Task<ApplicationResult<RewriteAttemptDto>> HandleAsync(
         CreateRewriteAttemptCommand command,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        await unitOfWork.ExecuteInTransactionAsync(
+            transactionCt => HandleCoreAsync(command, transactionCt),
+            IsolationLevel.Serializable,
+            ReservationRaceMaxAttempts,
+            ct);
+
+    private async Task<ApplicationResult<RewriteAttemptDto>> HandleCoreAsync(
+        CreateRewriteAttemptCommand command,
+        CancellationToken ct)
     {
         var user = await appUsers.GetByIdAsync(command.UserId, ct);
         if (user is null)

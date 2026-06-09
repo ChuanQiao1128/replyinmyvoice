@@ -185,7 +185,7 @@ public sealed class ApiKeyAuthResolverTests
         {
             UserId = userId,
             Name = "Resolver key",
-            KeyHash = ApiKeyService.ComputeHash(token),
+            KeyHash = ApiKeyHashing.ComputeHash(token),
             Last4 = token[^4..],
             IsTest = isTest,
             ExpiresAt = expiresAt,
