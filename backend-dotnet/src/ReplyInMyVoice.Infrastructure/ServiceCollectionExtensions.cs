@@ -167,7 +167,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ApiKeyUsageQueryService>();
         services.AddScoped<WebhookDeliveryService>();
         services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
-        services.AddScoped<WebhookDispatcherService>();
         services.AddScoped<AdminService>();
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
         services.AddScoped<ExpiredReservationCleanupService>();
