@@ -6,10 +6,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
+using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppCommon = ReplyInMyVoice.Application.Common;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -64,7 +68,7 @@ public sealed class AdminPromoTests
             CancellationToken.None);
 
         var response = result.Should().BeOfType<OkObjectResult>().Subject
-            .Value.Should().BeOfType<AdminPromoCodeResponse>().Subject;
+            .Value.Should().BeOfType<AppCommon.AdminPromoCodeDto>().Subject;
         response.Code.Should().Be("TEACHERTRIAL");
         response.DisplayCode.Should().Be("Teacher-Trial");
         response.RedemptionCount.Should().Be(0);
@@ -147,7 +151,7 @@ public sealed class AdminPromoTests
             CancellationToken.None);
 
         var response = result.Should().BeOfType<OkObjectResult>().Subject
-            .Value.Should().BeOfType<AdminPromoCodeResponse>().Subject;
+            .Value.Should().BeOfType<AppCommon.AdminPromoCodeDto>().Subject;
         response.IsActive.Should().BeFalse();
         response.Status.Should().Be("disabled");
 
@@ -181,7 +185,7 @@ public sealed class AdminPromoTests
             CancellationToken.None);
 
         var detail = result.Should().BeOfType<OkObjectResult>().Subject
-            .Value.Should().BeOfType<AdminPromoCodeDetailResponse>().Subject;
+            .Value.Should().BeOfType<AppCommon.AdminPromoCodeDetailDto>().Subject;
         detail.Stats.TotalRedemptions.Should().Be(2);
         detail.Stats.DistinctUsers.Should().Be(2);
         detail.Stats.ActivationRate.Should().Be(0.5);
@@ -210,7 +214,7 @@ public sealed class AdminPromoTests
             CancellationToken.None);
 
         var response = result.Should().BeOfType<OkObjectResult>().Subject
-            .Value.Should().BeOfType<AdminPromoCodeResponse>().Subject;
+            .Value.Should().BeOfType<AppCommon.AdminPromoCodeDto>().Subject;
         response.ArchivedAt.Should().NotBeNull();
         response.IsActive.Should().BeFalse();
         response.Status.Should().Be("archived");
@@ -249,7 +253,7 @@ public sealed class AdminPromoTests
             CancellationToken.None);
 
         var response = result.Should().BeOfType<OkObjectResult>().Subject
-            .Value.Should().BeOfType<AdminPromoCodeResponse>().Subject;
+            .Value.Should().BeOfType<AppCommon.AdminPromoCodeDto>().Subject;
         response.ArchivedAt.Should().BeNull();
         // Restore deliberately leaves the code disabled so an admin must re-enable it.
         response.IsActive.Should().BeFalse();
@@ -276,22 +280,30 @@ public sealed class AdminPromoTests
             promoCode.Id.ToString(),
             CancellationToken.None);
 
-        var promoService = new PromoService(fixture.CreateContext);
-        var redeem = await promoService.RedeemAsync(
+        await using var redeemDb = fixture.CreateContext();
+        var redeem = await CreateRedeemHandler(redeemDb).HandleAsync(new RedeemPromoCommand(
             "shopper-oid",
             "shopper@example.com",
             "NOREDEEM",
-            trustedClientIp: null,
-            DateTimeOffset.UtcNow);
+            null,
+            DateTimeOffset.UtcNow));
 
         // Archiving clears IsActive, so the existing redemption gates reject the code.
-        redeem.Kind.Should().Be(PromoRedeemResultKind.InvalidCode);
+        redeem.Kind.Should().Be(AppCommon.PromoRedeemResultKind.InvalidCode);
         await using var db = fixture.CreateContext();
         (await db.PromoCodeRedemptions.CountAsync()).Should().Be(0);
     }
 
     private static AdminHttpFunctions CreateFunction(DbFixture fixture) =>
         AdminHttpFunctionsTestFactory.Create(BuildConfiguration(), fixture.CreateContext);
+
+    private static RedeemPromoHandler CreateRedeemHandler(AppDbContext db) =>
+        new(
+            new AppUserRepository(db),
+            new PromoCodeRepository(db),
+            new PromoCodeRedemptionRepository(db),
+            new RewriteCreditRepository(db),
+            new UnitOfWork(db));
 
     private static async Task<PromoCode> SeedPromoCodeAsync(DbFixture fixture, string code)
     {

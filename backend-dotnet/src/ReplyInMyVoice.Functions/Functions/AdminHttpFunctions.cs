@@ -342,10 +342,10 @@ public sealed class AdminHttpFunctions
             return AdminForbidden();
         }
 
-        AdminPromoCodeCreateRequest? createRequest;
+        PromoCodeCreateRequest? createRequest;
         try
         {
-            createRequest = await ReadJsonRequestAsync<AdminPromoCodeCreateRequest>(request, cancellationToken);
+            createRequest = await ReadJsonRequestAsync<PromoCodeCreateRequest>(request, cancellationToken);
         }
         catch (JsonException)
         {
@@ -396,7 +396,7 @@ public sealed class AdminHttpFunctions
         var promoCodes = await _listPromoCodesHandler.HandleAsync(
             new ListPromoCodesQuery(DateTimeOffset.UtcNow),
             cancellationToken);
-        return new OkObjectResult(ToAdminPromoCodesListResponse(promoCodes));
+        return new OkObjectResult(promoCodes);
     }
 
     [Function("AdminPromoCodeDetail")]
@@ -431,7 +431,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status404NotFound);
         }
 
-        return new OkObjectResult(ToAdminPromoCodeDetailResponse(detail));
+        return new OkObjectResult(detail);
     }
 
     [Function("AdminPromoCodeUpdate")]
@@ -455,10 +455,10 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        AdminPromoCodeUpdateRequest? updateRequest;
+        PromoCodeUpdateRequest? updateRequest;
         try
         {
-            updateRequest = await ReadJsonRequestAsync<AdminPromoCodeUpdateRequest>(request, cancellationToken);
+            updateRequest = await ReadJsonRequestAsync<PromoCodeUpdateRequest>(request, cancellationToken);
         }
         catch (JsonException)
         {
@@ -825,7 +825,7 @@ public sealed class AdminHttpFunctions
     private static IActionResult MapPromoMutationResult(AppCommon.AdminPromoMutationResultDto result) =>
         result.Kind switch
         {
-            AppCommon.AdminPromoResultKind.Success => new OkObjectResult(ToAdminPromoCodeResponse(result.Response!)),
+            AppCommon.AdminPromoResultKind.Success => new OkObjectResult(result.Response!),
             AppCommon.AdminPromoResultKind.NotFound => FunctionHttpResults.Problem(
                 "Promo code not found",
                 result.Detail,
@@ -1055,52 +1055,6 @@ public sealed class AdminHttpFunctions
             : $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
     }
 
-    private static AdminPromoCodesListResponse ToAdminPromoCodesListResponse(AppCommon.AdminPromoCodesListDto dto) =>
-        new(dto.PromoCodes.Select(ToAdminPromoCodeResponse).ToList());
-
-    private static AdminPromoCodeDetailResponse ToAdminPromoCodeDetailResponse(
-        AppCommon.AdminPromoCodeDetailDto dto) =>
-        new(
-            ToAdminPromoCodeResponse(dto.PromoCode),
-            ToAdminPromoStats(dto.Stats));
-
-    private static AdminPromoCodeResponse ToAdminPromoCodeResponse(AppCommon.AdminPromoCodeDto dto) =>
-        new(
-            dto.Id,
-            dto.Code,
-            dto.DisplayCode,
-            dto.Description,
-            dto.Kind,
-            dto.CreditsGranted,
-            dto.GrantTtlDays,
-            dto.ValidFrom,
-            dto.ValidUntil,
-            dto.MaxRedemptionsGlobal,
-            dto.MaxRedemptionsPerUser,
-            dto.RedemptionCount,
-            dto.IsActive,
-            dto.ArchivedAt,
-            dto.Status,
-            dto.CreatedAt,
-            dto.UpdatedAt);
-
-    private static AdminPromoStats ToAdminPromoStats(AppCommon.AdminPromoStatsDto dto) =>
-        new(
-            dto.TotalRedemptions,
-            dto.DistinctUsers,
-            dto.ActivationRate,
-            dto.DailyCurve
-                .Select(x => new AdminPromoDailyRedemptions(x.Date, x.Redemptions))
-                .ToList(),
-            dto.IpHashClusters
-                .Select(x => new AdminPromoIpHashCluster(
-                    x.IpHash,
-                    x.Redemptions,
-                    x.DistinctUsers,
-                    x.FirstRedeemedAt,
-                    x.LastRedeemedAt))
-                .ToList());
-
     private static IActionResult AdminForbidden() =>
         FunctionHttpResults.Problem(
             "Admin access required",
@@ -1194,4 +1148,23 @@ public sealed class AdminHttpFunctions
 
         return JsonSerializer.Deserialize<T>(body, JsonOptions);
     }
+
+    private sealed record PromoCodeCreateRequest(
+        string? Code,
+        string? Description,
+        int? CreditsGranted,
+        int? GrantTtlDays,
+        DateTimeOffset? ValidFrom,
+        DateTimeOffset? ValidUntil,
+        int? MaxRedemptionsGlobal,
+        int? MaxRedemptionsPerUser);
+
+    private sealed record PromoCodeUpdateRequest(
+        string? Description,
+        int? CreditsGranted,
+        int? GrantTtlDays,
+        DateTimeOffset? ValidFrom,
+        DateTimeOffset? ValidUntil,
+        int? MaxRedemptionsGlobal,
+        int? MaxRedemptionsPerUser);
 }
