@@ -5156,3 +5156,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiInputHardeningTests.cs`.
 - Verification evidence: Initial Release build failed on `ApiInputHardeningTests.cs` direct V1 constructor wiring, root cause was constructor signature drift; after updating the helper, `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteApiTests|FullyQualifiedName~RewriteHistoryTests|FullyQualifiedName~V1RewriteRateLimitTests|FullyQualifiedName~RewriteRequestServiceTests"` passed 40/40. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
 - Limitations: No new tests were added because this is a strangler shell refactor with unchanged behavior and the issue forbids assertion changes.
+
+### 2026-06-09 - state-machine-modeling - DDD-65 timer shell lifecycle preservation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #650 switches timer and queue Function shells for outbox dispatch, webhook dispatch, payment grace, Stripe reconciliation, and rewrite job processing to Application handlers.
+- Action: Opened and followed the project skill; treated this as lifecycle preservation. State list remains existing persisted states for outbox messages, webhook deliveries, app user payment grace, reconciliation reports, rewrite attempts, and usage reservations. Events remain due timer tick, payment-grace timer tick, reconciliation timer tick, and Service Bus rewrite message. Transition table is unchanged: due pending work is claimed and completed or failed-attempted; expired grace downgrades only eligible users; reconciliation reports the same one-day window; valid rewrite messages process by attempt id. Invariants and illegal transitions remain with the handlers: no duplicate finalization, no mutation for invalid queue payloads, no schema change, and no old service deletion.
+- Output artifacts: `OutboxDispatcherTimerFunction.cs`, `WebhookDispatcherTimerFunction.cs`, `PaymentGraceExpiryFunction.cs`, `StripeReconciliationTimerFunction.cs`, and `RewriteJobFunction.cs` now call Application commands/handlers while preserving host inputs and logs.
+- Verification evidence: `python3 /Users/qc/.codex/skills/state-machine-modeling/scripts/state_machine_template.py DDD-65-timer-shell` exited 0; Release build passed; focused timer/job-related test filter passed 47/47; full backend suite passed 695/695.
+- Limitations: No new states, transition helpers, enums, schema, migrations, or lifecycle assertions were added because the issue requires unchanged behavior and existing assertions unmodified.
+
+### 2026-06-09 - data-module-review - DDD-65 timer shell persistence path
+
+- Agent: Codex worker
+- Trigger: GitHub issue #650 changes data-access routing for timer and queue entry points from legacy services to already-registered Application handlers/repositories.
+- Action: Opened and followed the project skill; reviewed Function shells, Application handler APIs, DI registrations, legacy service registrations, and existing persistence tests together. Findings: no schema or migration required; old services remain registered; constructor service parameters were removed only where no method in the Function file still used them; handler command inputs preserve timestamp, worker name, batch size, and attempt id.
+- Output artifacts: Handler-shell changes in the five scoped Function files only.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src/ReplyInMyVoice.Functions/Functions` exited 0 and returned existing broad risk signals for review; `git diff --check` exited 0; touched-file restricted-substring scan returned no matches; Release build and both test gates passed.
+- Limitations: The data-risk scan is text-signal based and reports unrelated existing Function risks. No data model, EF migration, service cleanup, deployment, push, PR, or live payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-65 timer shell regression gates
+
+- Agent: Codex worker
+- Trigger: DDD-65 requires Release build, focused timer/job-related service tests, and the full .NET backend test suite after changing Azure Function shells.
+- Action: Opened and followed the project skill; selected the existing xUnit/FluentAssertions service tests named by the issue as characterization coverage for unchanged behavior. No test files or assertions were changed.
+- Output artifacts: No test artifacts changed; production Function shell edits only.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~OutboxDispatcherTests|FullyQualifiedName~StripeEventServiceTests|FullyQualifiedName~StripeReconciliationServiceTests|FullyQualifiedName~RewriteJobProcessorTests"` passed 47/47. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.

@@ -1,11 +1,12 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Application.UseCases.StripeEvent;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class PaymentGraceExpiryFunction(
-    StripeEventService stripeEvents,
+    ProcessPaymentGraceRemindersHandler processPaymentGraceRemindersHandler,
+    ProcessExpiredPaymentGraceHandler processExpiredPaymentGraceHandler,
     ILogger<PaymentGraceExpiryFunction> logger)
 {
     [Function("ExpirePaymentGrace")]
@@ -14,11 +15,11 @@ public sealed class PaymentGraceExpiryFunction(
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var reminderCount = await stripeEvents.ProcessPaymentGraceRemindersAsync(
-            now,
+        var reminderCount = await processPaymentGraceRemindersHandler.HandleAsync(
+            new ProcessPaymentGraceRemindersCommand(now),
             cancellationToken);
-        var count = await stripeEvents.ProcessExpiredPaymentGraceAsync(
-            now,
+        var count = await processExpiredPaymentGraceHandler.HandleAsync(
+            new ProcessExpiredPaymentGraceCommand(now),
             cancellationToken);
 
         if (reminderCount > 0)

@@ -1,13 +1,13 @@
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Domain.Contracts;
-using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class RewriteJobFunction(
-    RewriteJobProcessor processor,
+    ProcessRewriteJobHandler processRewriteJobHandler,
     ILogger<RewriteJobFunction> logger)
 {
     [Function("ProcessRewriteJob")]
@@ -32,6 +32,8 @@ public sealed class RewriteJobFunction(
             throw new InvalidOperationException("Service Bus message did not contain a valid attempt id.");
         }
 
-        await processor.ProcessAsync(job, cancellationToken);
+        await processRewriteJobHandler.HandleAsync(
+            new ProcessRewriteJobCommand(job.AttemptId),
+            cancellationToken);
     }
 }
