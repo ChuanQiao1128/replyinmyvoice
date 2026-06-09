@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -19,14 +20,20 @@ public sealed class AdminHttpFunctions
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const string AccountingRevenueCsvHeader =
+        "date,userRef,sku,amount,currency,paymentIntent,receiptUrl,creditsGranted,creditsConsumed,creditsRemaining";
 
     private readonly AdminAccess _adminAccess;
-    private readonly AdminService _adminService;
     private readonly GetAdminUsersHandler _getAdminUsersHandler;
     private readonly GetAdminUserDetailHandler _getAdminUserDetailHandler;
     private readonly GetAdminStatsHandler _getAdminStatsHandler;
     private readonly DeleteAdminUserHandler _deleteAdminUserHandler;
     private readonly GrantCreditsHandler _grantCreditsHandler;
+    private readonly GetBillingSupportQueueHandler _getBillingSupportQueueHandler;
+    private readonly ResolveBillingSupportRequestHandler _resolveBillingSupportRequestHandler;
+    private readonly ExportAccountingRevenueHandler _exportAccountingRevenueHandler;
+    private readonly SetUserSuspensionHandler _setUserSuspensionHandler;
+    private readonly IssueRefundHandler _issueRefundHandler;
     private readonly CreatePromoCodeHandler _createPromoCodeHandler;
     private readonly ListPromoCodesHandler _listPromoCodesHandler;
     private readonly GetPromoCodeDetailHandler _getPromoCodeDetailHandler;
@@ -37,12 +44,16 @@ public sealed class AdminHttpFunctions
 
     public AdminHttpFunctions(
         IConfiguration configuration,
-        AdminService adminService,
         GetAdminUsersHandler getAdminUsersHandler,
         GetAdminUserDetailHandler getAdminUserDetailHandler,
         GetAdminStatsHandler getAdminStatsHandler,
         DeleteAdminUserHandler deleteAdminUserHandler,
         GrantCreditsHandler grantCreditsHandler,
+        GetBillingSupportQueueHandler getBillingSupportQueueHandler,
+        ResolveBillingSupportRequestHandler resolveBillingSupportRequestHandler,
+        ExportAccountingRevenueHandler exportAccountingRevenueHandler,
+        SetUserSuspensionHandler setUserSuspensionHandler,
+        IssueRefundHandler issueRefundHandler,
         CreatePromoCodeHandler createPromoCodeHandler,
         ListPromoCodesHandler listPromoCodesHandler,
         GetPromoCodeDetailHandler getPromoCodeDetailHandler,
@@ -52,12 +63,16 @@ public sealed class AdminHttpFunctions
         RestorePromoCodeHandler restorePromoCodeHandler)
     {
         _adminAccess = new AdminAccess(configuration);
-        _adminService = adminService;
         _getAdminUsersHandler = getAdminUsersHandler;
         _getAdminUserDetailHandler = getAdminUserDetailHandler;
         _getAdminStatsHandler = getAdminStatsHandler;
         _deleteAdminUserHandler = deleteAdminUserHandler;
         _grantCreditsHandler = grantCreditsHandler;
+        _getBillingSupportQueueHandler = getBillingSupportQueueHandler;
+        _resolveBillingSupportRequestHandler = resolveBillingSupportRequestHandler;
+        _exportAccountingRevenueHandler = exportAccountingRevenueHandler;
+        _setUserSuspensionHandler = setUserSuspensionHandler;
+        _issueRefundHandler = issueRefundHandler;
         _createPromoCodeHandler = createPromoCodeHandler;
         _listPromoCodesHandler = listPromoCodesHandler;
         _getPromoCodeDetailHandler = getPromoCodeDetailHandler;
@@ -220,9 +235,10 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        var queue = await _adminService.GetBillingSupportQueueAsync(cancellationToken);
-        return new OkObjectResult(queue);
+        var queue = await _getBillingSupportQueueHandler.HandleAsync(
+            new GetBillingSupportQueueQuery(),
+            cancellationToken);
+        return new OkObjectResult(queue.Select(ToAdminBillingSupportRequest).ToList());
     }
 
     [Function("AdminResolveBillingSupportRequest")]
@@ -249,12 +265,12 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        var resolved = await _adminService.ResolveBillingSupportRequestAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedRequestId,
-            DateTimeOffset.UtcNow,
+        var resolved = await _resolveBillingSupportRequestHandler.HandleAsync(
+            new ResolveBillingSupportRequestCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedRequestId,
+                DateTimeOffset.UtcNow),
             cancellationToken);
         if (resolved is null)
         {
@@ -264,7 +280,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status404NotFound);
         }
 
-        return new OkObjectResult(resolved);
+        return new OkObjectResult(ToAdminBillingSupportRequest(resolved));
     }
 
     [Function("AdminAccountingRevenueCsv")]
@@ -303,12 +319,13 @@ public sealed class AdminHttpFunctions
         response.Headers.ContentDisposition =
             $"attachment; filename=\"accounting-revenue-{fromInclusive.UtcDateTime:yyyyMMdd}-{toExclusive.UtcDateTime:yyyyMMdd}.csv\"";
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        await _adminService.WriteAccountingRevenueCsvAsync(
+        var export = await _exportAccountingRevenueHandler.HandleAsync(
+            new ExportAccountingRevenueQuery(fromInclusive, toExclusive),
+            cancellationToken);
+        await WriteAccountingRevenueCsvAsync(
             response.Body,
-            fromInclusive,
-            toExclusive,
-            cancellationToken: cancellationToken);
+            export,
+            cancellationToken);
 
         return new EmptyResult();
     }
@@ -623,18 +640,19 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        var result = await _adminService.SetUserSuspensionAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedUserId,
-            suspensionRequest.Suspended.Value,
-            DateTimeOffset.UtcNow,
+        var result = await _setUserSuspensionHandler.HandleAsync(
+            new SetUserSuspensionCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedUserId,
+                suspensionRequest.Suspended.Value,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
         return result.Kind switch
         {
-            AdminSuspensionResultKind.Success => new OkObjectResult(result.Response),
+            AppCommon.AdminSuspensionResultKind.Success => new OkObjectResult(
+                ToAdminSuspensionResponse(result.Response!)),
             _ => FunctionHttpResults.Problem(
                 "User not found",
                 result.Detail,
@@ -687,26 +705,28 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        // TODO(DDD): remaining AdminService use-case — DDD-63
-        var result = await _adminService.IssueRefundAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedUserId,
-            refundRequest,
+        var result = await _issueRefundHandler.HandleAsync(
+            new IssueRefundCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedUserId,
+                refundRequest.PaymentIntentId,
+                refundRequest.Amount,
+                refundRequest.Currency),
             cancellationToken);
 
         return result.Kind switch
         {
-            AdminRefundResultKind.Success => new OkObjectResult(result.Response),
-            AdminRefundResultKind.UserNotFound => FunctionHttpResults.Problem(
+            AppCommon.AdminRefundResultKind.Success => new OkObjectResult(ToAdminRefundResponse(result.Response!)),
+            AppCommon.AdminRefundResultKind.UserNotFound => FunctionHttpResults.Problem(
                 "User not found",
                 result.Detail,
                 StatusCodes.Status404NotFound),
-            AdminRefundResultKind.PaymentNotFound => FunctionHttpResults.Problem(
+            AppCommon.AdminRefundResultKind.PaymentNotFound => FunctionHttpResults.Problem(
                 "Payment not found",
                 result.Detail,
                 StatusCodes.Status404NotFound),
-            AdminRefundResultKind.RefundUnavailable => FunctionHttpResults.Problem(
+            AppCommon.AdminRefundResultKind.RefundUnavailable => FunctionHttpResults.Problem(
                 "Refund service unavailable",
                 result.Detail,
                 StatusCodes.Status500InternalServerError),
@@ -981,6 +1001,84 @@ public sealed class AdminHttpFunctions
             dto.Remaining,
             dto.GrantedAt,
             dto.ExpiresAt);
+
+    private static AdminBillingSupportRequest ToAdminBillingSupportRequest(
+        AppCommon.AdminBillingSupportRequestDto dto) =>
+        new(
+            dto.Id,
+            dto.UserId,
+            dto.UserEmail,
+            dto.ExternalAuthUserId,
+            dto.Type,
+            dto.RelatedPaymentIntentId,
+            dto.Message,
+            dto.Status,
+            dto.CreatedAt,
+            dto.UpdatedAt,
+            dto.ResolvedAt);
+
+    private static AdminSuspensionResponse ToAdminSuspensionResponse(
+        AppCommon.AdminSuspensionResponseDto dto) =>
+        new(dto.TargetUserId, dto.Suspended, dto.SuspendedAt);
+
+    private static AdminRefundResponse ToAdminRefundResponse(AppCommon.AdminRefundResponseDto dto) =>
+        new(
+            dto.TargetUserId,
+            dto.PaymentIntentId,
+            dto.Amount,
+            dto.Currency,
+            dto.RefundId,
+            dto.AlreadyRefunded);
+
+    private static async Task WriteAccountingRevenueCsvAsync(
+        Stream output,
+        AppCommon.AdminAccountingRevenueExportDto export,
+        CancellationToken cancellationToken)
+    {
+        using var writer = new StreamWriter(
+            output,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            bufferSize: 16 * 1024,
+            leaveOpen: true)
+        {
+            NewLine = "\r\n",
+        };
+
+        await writer.WriteLineAsync(AccountingRevenueCsvHeader.AsMemory(), cancellationToken);
+        foreach (var row in export.Rows)
+        {
+            await writer.WriteLineAsync(FormatAccountingRevenueCsvRow(row).AsMemory(), cancellationToken);
+        }
+
+        await writer.FlushAsync(cancellationToken);
+    }
+
+    private static string FormatAccountingRevenueCsvRow(AppCommon.AdminAccountingRevenueRowDto row) =>
+        string.Join(",", new[]
+        {
+            CsvField(row.GrantedAt.ToString("O", CultureInfo.InvariantCulture)),
+            CsvField(row.UserId.ToString("D")),
+            CsvField(row.Sku),
+            CsvField(row.AmountTotal?.ToString(CultureInfo.InvariantCulture)),
+            CsvField(row.Currency),
+            CsvField(row.PaymentIntentId),
+            CsvField(null),
+            CsvField(row.AmountGranted.ToString(CultureInfo.InvariantCulture)),
+            CsvField(row.AmountConsumed.ToString(CultureInfo.InvariantCulture)),
+            CsvField(row.CreditsRemaining.ToString(CultureInfo.InvariantCulture)),
+        });
+
+    private static string CsvField(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        return value.IndexOfAny([',', '"', '\r', '\n']) < 0
+            ? value
+            : $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+    }
 
     private static AdminPromoCodesListResponse ToAdminPromoCodesListResponse(AppCommon.AdminPromoCodesListDto dto) =>
         new(dto.PromoCodes.Select(ToAdminPromoCodeResponse).ToList());
