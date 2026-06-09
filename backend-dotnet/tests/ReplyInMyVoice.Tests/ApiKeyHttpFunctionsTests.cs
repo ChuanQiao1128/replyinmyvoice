@@ -113,11 +113,10 @@ public sealed class ApiKeyHttpFunctionsTests
         await using var fixture = await DbFixture.CreateAsync();
         var owner = await SeedUserAsync(fixture, "entra-key-revoke-owner");
         await SeedUserAsync(fixture, "entra-key-revoke-other");
-        var apiKeyService = new ApiKeyService(fixture.CreateContext);
-        var generated = await apiKeyService.GenerateAsync(
+        var generated = await GenerateApiKeyAsync(
+            fixture,
             owner.Id,
-            "Server key",
-            CancellationToken.None);
+            "Server key");
         var functions = CreateFunctions(fixture.CreateContext);
 
         var otherResult = await functions.RevokeApiKey(
@@ -150,11 +149,10 @@ public sealed class ApiKeyHttpFunctionsTests
         await using var fixture = await DbFixture.CreateAsync();
         var owner = await SeedUserAsync(fixture, "entra-key-rotate-owner");
         await SeedUserAsync(fixture, "entra-key-rotate-other");
-        var apiKeyService = new ApiKeyService(fixture.CreateContext);
-        var generated = await apiKeyService.GenerateAsync(
+        var generated = await GenerateApiKeyAsync(
+            fixture,
             owner.Id,
-            "Server key",
-            CancellationToken.None);
+            "Server key");
         var functions = CreateFunctions(fixture.CreateContext);
 
         var otherResult = await functions.RotateApiKey(
@@ -200,11 +198,10 @@ public sealed class ApiKeyHttpFunctionsTests
         Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
         await using var fixture = await DbFixture.CreateAsync();
         var owner = await SeedUserAsync(fixture, "entra-key-webhook-owner");
-        var apiKeyService = new ApiKeyService(fixture.CreateContext);
-        var generated = await apiKeyService.GenerateAsync(
+        var generated = await GenerateApiKeyAsync(
+            fixture,
             owner.Id,
-            "Server key",
-            CancellationToken.None);
+            "Server key");
         var functions = CreateFunctions(fixture.CreateContext);
 
         var setResult = await functions.SetApiKeyWebhook(
@@ -254,11 +251,10 @@ public sealed class ApiKeyHttpFunctionsTests
         await using var fixture = await DbFixture.CreateAsync();
         var owner = await SeedUserAsync(fixture, "entra-key-webhook-clear-owner");
         await SeedUserAsync(fixture, "entra-key-webhook-clear-other");
-        var apiKeyService = new ApiKeyService(fixture.CreateContext);
-        var generated = await apiKeyService.GenerateAsync(
+        var generated = await GenerateApiKeyAsync(
+            fixture,
             owner.Id,
-            "Server key",
-            CancellationToken.None);
+            "Server key");
         await using (var seedDb = fixture.CreateContext())
         {
             var key = await seedDb.ApiKeys.SingleAsync(x => x.Id == generated.Id);
@@ -345,6 +341,20 @@ public sealed class ApiKeyHttpFunctionsTests
         db.AppUsers.Add(user);
         await db.SaveChangesAsync();
         return user;
+    }
+
+    private static async Task<(Guid Id, string Plaintext)> GenerateApiKeyAsync(
+        DbFixture fixture,
+        Guid userId,
+        string name)
+    {
+        await using var db = fixture.CreateContext();
+        var generated = await new GenerateApiKeyHandler(
+            new ApiKeyRepository(db),
+            new UnitOfWork(db))
+            .HandleAsync(new GenerateApiKeyCommand(userId, name));
+
+        return (generated.Id, generated.Plaintext);
     }
 
     private static IConfiguration BuildConfiguration() =>

@@ -9,7 +9,6 @@ using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
-using ReplyInMyVoice.Infrastructure.Services;
 using AppCommon = ReplyInMyVoice.Application.Common;
 
 namespace ReplyInMyVoice.Functions.Functions;
@@ -1168,3 +1167,164 @@ public sealed class AdminHttpFunctions
         int? MaxRedemptionsGlobal,
         int? MaxRedemptionsPerUser);
 }
+
+public sealed record AdminUsersListResponse(
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    IReadOnlyList<AdminUserListItem> Users);
+
+public sealed record AdminUserListItem(
+    Guid Id,
+    string ExternalAuthUserId,
+    string? Email,
+    string SubscriptionStatus,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    int UsedRewrites,
+    int ReservedRewrites,
+    int CreditRemaining,
+    decimal CostToDateUsd);
+
+public sealed record AdminUserDetailResponse(
+    Guid Id,
+    string ExternalAuthUserId,
+    string? Email,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    AdminSubscriptionSummary Subscription,
+    IReadOnlyList<AdminUsagePeriod> Usage,
+    IReadOnlyList<AdminCredit> Credits,
+    IReadOnlyList<AdminPayment> Payments,
+    decimal CostToDateUsd);
+
+public sealed record AdminSubscriptionSummary(
+    string Status,
+    string? StripeCustomerId,
+    string? StripeSubscriptionId,
+    DateTimeOffset? CurrentPeriodEnd);
+
+public sealed record AdminUsagePeriod(
+    Guid Id,
+    string PeriodKey,
+    int Quota,
+    int Used,
+    int Reserved,
+    DateTimeOffset? PeriodStart,
+    DateTimeOffset? PeriodEnd,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+public sealed record AdminCredit(
+    Guid Id,
+    string Source,
+    int AmountGranted,
+    int AmountConsumed,
+    int Remaining,
+    DateTimeOffset GrantedAt,
+    DateTimeOffset? ExpiresAt,
+    string? StripeEventId,
+    string? PaymentIntentId,
+    string? Sku,
+    long? AmountTotal,
+    string? Currency,
+    string? ReceiptUrl);
+
+public sealed record AdminPayment(
+    Guid CreditId,
+    string Source,
+    string? EventId,
+    string? PaymentIntentId,
+    string? Sku,
+    long? AmountTotal,
+    string? Currency,
+    string? ReceiptUrl,
+    DateTimeOffset GrantedAt,
+    DateTimeOffset? ExpiresAt,
+    int CreditsGranted,
+    int CreditsConsumed,
+    int CreditsRemaining);
+
+public sealed record AdminStatsResponse(
+    int TotalUsers,
+    int PaidUsers,
+    int FreeUsers,
+    int UsageUsed,
+    int UsageReserved,
+    int CreditRemaining,
+    int PaymentCount,
+    long PaymentAmountTotal,
+    decimal CostToDateUsd,
+    AppCommon.TaxTurnoverReportDto GstTurnover,
+    AdminPaymentReconciliationSummary? PaymentReconciliation,
+    AdminRefundReviewStats RefundReview);
+
+public sealed record AdminBillingSupportRequest(
+    Guid Id,
+    Guid UserId,
+    string? UserEmail,
+    string? ExternalAuthUserId,
+    string Type,
+    string? RelatedPaymentIntentId,
+    string Message,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? ResolvedAt);
+
+public sealed record AdminPaymentReconciliationSummary(
+    DateTimeOffset LastCompletedAt,
+    DateTimeOffset WindowStart,
+    DateTimeOffset WindowEnd,
+    int DiscrepancyCount,
+    int PaidButNoGrantCount,
+    int GrantButNoPaymentCount,
+    int AmountMismatchCount,
+    int StripePaymentCount,
+    int PurchaseGrantCount);
+
+public sealed record AdminRefundReviewStats(
+    int FlaggedUserCount,
+    int RefundCountThreshold,
+    long RefundAmountThreshold,
+    int TotalRefundCount,
+    long TotalRefundAmount);
+
+public sealed record AdminCreditGrantRequest(
+    int? Amount,
+    string? Reason);
+
+public sealed record AdminCreditGrantResponse(
+    Guid TargetUserId,
+    Guid CreditId,
+    string Source,
+    int AmountGranted,
+    int AmountConsumed,
+    int Remaining,
+    DateTimeOffset GrantedAt,
+    DateTimeOffset? ExpiresAt);
+
+public sealed record AdminDeleteUserResponse(
+    Guid UserId,
+    string Status);
+
+public sealed record AdminSuspensionRequest(bool? Suspended);
+
+public sealed record AdminSuspensionResponse(
+    Guid TargetUserId,
+    bool Suspended,
+    DateTimeOffset? SuspendedAt);
+
+public sealed record AdminRefundRequest(
+    string? PaymentIntentId,
+    long? Amount,
+    string? Currency);
+
+public sealed record AdminRefundResponse(
+    Guid TargetUserId,
+    string PaymentIntentId,
+    long Amount,
+    string? Currency,
+    string? RefundId,
+    bool AlreadyRefunded);

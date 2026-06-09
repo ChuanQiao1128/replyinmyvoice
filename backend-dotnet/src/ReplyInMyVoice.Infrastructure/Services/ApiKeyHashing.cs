@@ -1,14 +1,12 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.Logging;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
 public static class ApiKeyHashing
 {
     private static int s_missingPepperWarningLogged;
-    private static ILogger<ApiKeyService>? s_logger;
 
     public static string ComputeHash(string plaintext)
     {
@@ -24,14 +22,7 @@ public static class ApiKeyHashing
             Interlocked.Exchange(ref s_missingPepperWarningLogged, 1) == 0)
         {
             const string warning = "API_KEY_PEPPER is not set; API key hashes are being computed without the configured pepper.";
-            if (s_logger is not null)
-            {
-                s_logger.LogWarning("{Warning}", warning);
-            }
-            else
-            {
-                Trace.TraceWarning(warning);
-            }
+            Trace.TraceWarning(warning);
         }
 
         // Keep this formula stable for existing keys; a future keyed-HMAC migration needs
@@ -42,9 +33,6 @@ public static class ApiKeyHashing
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
-
-    internal static void UseLogger(ILogger<ApiKeyService> logger) =>
-        s_logger = logger;
 
     private static bool IsProductionRuntimeEnvironment() =>
         IsProductionEnvironmentName(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")) ||

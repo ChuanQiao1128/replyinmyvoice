@@ -5543,3 +5543,30 @@ claude-heavy-planning-handoff
 - Output artifacts: added `StripeReconciliationContracts.cs` and `StripeEventNotifierTests.cs`; modified `StripeEventUseCaseTests.cs`, `InfrastructureServiceCollectionTests.cs`, `ServiceCollectionExtensions.cs`, `plans/decisions-log.md`, and this log; deleted `StripeEventService.cs`, `StripeReconciliationService.cs`, `StripeEventServiceTests.cs`, and `StripeReconciliationServiceTests.cs`.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed after relocation and again after deletion; focused CLEAN-13 filter passed 42/42; full `dotnet test ReplyInMyVoice.sln -c Release` passed 636/636; acceptance grep checks passed; diff-only restricted-wording scan found no added banned substrings.
 - Limitations: NuGet vulnerability metadata warnings appeared because the NuGet service index was unavailable, but restore/build/test completed. A local `git add && git commit` checkpoint was attempted and failed because this worktree's git index is outside the writable sandbox. No push, PR, deploy, schema change, NuGet change, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-20 service deletion
+
+- Agent: Codex worker
+- Trigger: CLEAN-20 removes EF-backed account, API key, API usage, credit expiry, and admin infrastructure services plus obsolete direct service tests.
+- Action: Opened and followed the project skill. Reviewed the target service files, DI registrations, handler coverage, integration coverage, repository-backed handler paths, and surviving tests that had used deleted services as setup helpers. Confirmed no schema, migration, index, transaction policy, or repository contract change was needed.
+- Output artifacts: deleted the five target service files and five obsolete direct service test files; removed their five DI registrations; moved endpoint response records to function files; repointed surviving setup helpers to Application handlers or direct data seeding.
+- Verification evidence: post-delete service-name scan over `backend-dotnet/src` and `backend-dotnet/tests` had no hits; `git diff --check` passed; all five target file absence checks passed.
+- Limitations: Initial pre-delete scan found two stale non-target source references, so they were first repointed to existing handlers/helper plumbing before deletion. No database schema, migration, NuGet, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-20 coverage preservation
+
+- Agent: Codex worker
+- Trigger: CLEAN-20 deletes old service tests that previously covered quota/account setup, API key usage windows, admin refund provider failure, and credit expiry notification boundaries.
+- Action: Opened and followed the project skill as a coverage checklist. Preserved the surviving failure and persistence assertions in Application handler tests and integration tests, and repointed admin refund provider-failure coverage from the deleted service to the surviving function/handler path.
+- Output artifacts: updated `AdminRefundTests.cs`, `AdminSuspensionTests.cs`, `AdminDeleteUserTests.cs`, `AdminCreditAdjustTests.cs`, `ApiKeyHttpFunctionsTests.cs`, `RewriteApiTests.cs`, and `RewriteHistoryTests.cs`; deleted only the obsolete direct service test files.
+- Verification evidence: focused CLEAN-20 acceptance filter passed 56/56; full `dotnet test ReplyInMyVoice.sln -c Release` passed 585/585.
+- Limitations: No new resilience behavior was introduced; this pass preserved existing coverage while removing obsolete subjects. No live provider, cloud dependency, deployment, push, PR, schema, or payment action was used.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-20 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-20 changes C# service files, dependency injection, function response contracts, and xUnit/EF SQLite tests.
+- Action: Opened and followed the project skill. Compared direct service test coverage against Application handler and integration tests, repointed surviving-subject test helpers to handlers/direct seeding, removed obsolete direct service tests, and ran the required backend gates.
+- Output artifacts: modified `AccountHttpFunctions.cs`, `AdminHttpFunctions.cs`, `ApiUsageHttpFunctions.cs`, `RewriteHttpFunctions.cs`, `ApiKeyHashing.cs`, `ServiceCollectionExtensions.cs`, and surviving test files; deleted `AccountService.cs`, `ApiKeyService.cs`, `ApiKeyUsageQueryService.cs`, `CreditExpiryReminderService.cs`, `AdminService.cs`, and their five direct test files.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings/errors; focused CLEAN-20 filter passed 56/56; full `dotnet test ReplyInMyVoice.sln -c Release` passed 585/585; all five target file absence checks passed; post-delete service-name scan had no hits.
+- Limitations: A local `git add && git commit` checkpoint was attempted and failed because this worktree's git index is outside the writable sandbox. No push, PR, deploy, schema change, NuGet change, or payment action was performed.

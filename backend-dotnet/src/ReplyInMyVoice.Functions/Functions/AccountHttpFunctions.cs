@@ -306,3 +306,60 @@ public sealed class AccountHttpFunctions(
             response.UpdatedAt,
             response.ResolvedAt);
 }
+
+public sealed record AccountSummary(
+    Guid Id,
+    string ExternalAuthUserId,
+    string? Email,
+    string SubscriptionStatus,
+    DateTimeOffset? PaymentGraceEndsAt,
+    AccountUsageSummary Usage,
+    AccountPromoSummary Promo);
+
+public sealed record AccountUsageSummary(
+    string Scope,
+    string PeriodKey,
+    int Quota,
+    int Used,
+    int Reserved,
+    int Remaining,
+    bool Exhausted)
+{
+    public IReadOnlyList<AccountUsageSource> Sources { get; init; } = Array.Empty<AccountUsageSource>();
+}
+
+public sealed record AccountUsageSource(
+    string Source,
+    string Label,
+    int Used,
+    int Limit,
+    int Reserved,
+    int Remaining,
+    DateTimeOffset? ExpiresAt,
+    int? ExpiresInDays);
+
+public sealed record AccountPromoSummary(
+    bool HasRedeemed,
+    bool Eligible,
+    int TrialRemaining,
+    DateTimeOffset? TrialExpiresAt);
+
+public sealed record AccountPayment(
+    string? Sku,
+    string? PaymentIntentId,
+    long? Amount,
+    string? Currency,
+    string? ReceiptUrl,
+    DateTimeOffset Date,
+    DateTimeOffset? Expiry,
+    int Remaining);
+
+public sealed record AccountBillingHistoryItem(
+    string Type,
+    DateTimeOffset Date,
+    string Description,
+    long? Amount,
+    string? Currency,
+    string Status,
+    string? ReceiptUrl,
+    string? HostedInvoiceUrl);
