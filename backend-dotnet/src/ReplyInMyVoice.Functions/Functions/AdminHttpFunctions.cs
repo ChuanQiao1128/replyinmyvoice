@@ -4,11 +4,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.UseCases.Admin;
+using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
-using ReplyInMyVoice.Infrastructure.Data;
-using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Services;
+using AppCommon = ReplyInMyVoice.Application.Common;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
@@ -20,26 +21,50 @@ public sealed class AdminHttpFunctions
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly AdminAccess _adminAccess;
-    private readonly AdminService? _adminService;
-    private readonly PromoAdminService? _promoAdminService;
+    private readonly AdminService _adminService;
+    private readonly GetAdminUsersHandler _getAdminUsersHandler;
+    private readonly GetAdminUserDetailHandler _getAdminUserDetailHandler;
+    private readonly GetAdminStatsHandler _getAdminStatsHandler;
+    private readonly DeleteAdminUserHandler _deleteAdminUserHandler;
+    private readonly GrantCreditsHandler _grantCreditsHandler;
+    private readonly CreatePromoCodeHandler _createPromoCodeHandler;
+    private readonly ListPromoCodesHandler _listPromoCodesHandler;
+    private readonly GetPromoCodeDetailHandler _getPromoCodeDetailHandler;
+    private readonly UpdatePromoCodeHandler _updatePromoCodeHandler;
+    private readonly SetPromoCodeActiveHandler _setPromoCodeActiveHandler;
+    private readonly ArchivePromoCodeHandler _archivePromoCodeHandler;
+    private readonly RestorePromoCodeHandler _restorePromoCodeHandler;
 
     public AdminHttpFunctions(
         IConfiguration configuration,
-        Func<AppDbContext>? dbContextFactory = null,
-        IStripeRefundClient? refundClient = null,
-        INotificationService? notificationService = null)
+        AdminService adminService,
+        GetAdminUsersHandler getAdminUsersHandler,
+        GetAdminUserDetailHandler getAdminUserDetailHandler,
+        GetAdminStatsHandler getAdminStatsHandler,
+        DeleteAdminUserHandler deleteAdminUserHandler,
+        GrantCreditsHandler grantCreditsHandler,
+        CreatePromoCodeHandler createPromoCodeHandler,
+        ListPromoCodesHandler listPromoCodesHandler,
+        GetPromoCodeDetailHandler getPromoCodeDetailHandler,
+        UpdatePromoCodeHandler updatePromoCodeHandler,
+        SetPromoCodeActiveHandler setPromoCodeActiveHandler,
+        ArchivePromoCodeHandler archivePromoCodeHandler,
+        RestorePromoCodeHandler restorePromoCodeHandler)
     {
         _adminAccess = new AdminAccess(configuration);
-        _adminService = dbContextFactory is null
-            ? null
-            : new AdminService(
-                dbContextFactory,
-                refundClient ?? new StripeBillingService(dbContextFactory, configuration),
-                new TaxTurnoverService(dbContextFactory, configuration, notificationService),
-                new AccountService(dbContextFactory, configuration));
-        _promoAdminService = dbContextFactory is null
-            ? null
-            : new PromoAdminService(dbContextFactory);
+        _adminService = adminService;
+        _getAdminUsersHandler = getAdminUsersHandler;
+        _getAdminUserDetailHandler = getAdminUserDetailHandler;
+        _getAdminStatsHandler = getAdminStatsHandler;
+        _deleteAdminUserHandler = deleteAdminUserHandler;
+        _grantCreditsHandler = grantCreditsHandler;
+        _createPromoCodeHandler = createPromoCodeHandler;
+        _listPromoCodesHandler = listPromoCodesHandler;
+        _getPromoCodeDetailHandler = getPromoCodeDetailHandler;
+        _updatePromoCodeHandler = updatePromoCodeHandler;
+        _setPromoCodeActiveHandler = setPromoCodeActiveHandler;
+        _archivePromoCodeHandler = archivePromoCodeHandler;
+        _restorePromoCodeHandler = restorePromoCodeHandler;
     }
 
     [Function("AdminPing")]
@@ -72,15 +97,12 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         var page = ParsePositiveInt(request.Query, "page", DefaultPage, int.MaxValue);
         var pageSize = ParsePositiveInt(request.Query, "pageSize", DefaultPageSize, MaxPageSize);
-        var users = await _adminService.GetUsersAsync(page, pageSize, cancellationToken);
-        return new OkObjectResult(users);
+        var users = await _getAdminUsersHandler.HandleAsync(
+            new GetAdminUsersQuery(page, pageSize),
+            cancellationToken);
+        return new OkObjectResult(ToAdminUsersListResponse(users));
     }
 
     [Function("AdminUserDetail")]
@@ -96,11 +118,6 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!Guid.TryParse(userId, out var parsedUserId))
         {
             return FunctionHttpResults.Problem(
@@ -109,7 +126,9 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        var detail = await _adminService.GetUserDetailAsync(parsedUserId, cancellationToken);
+        var detail = await _getAdminUserDetailHandler.HandleAsync(
+            new GetAdminUserDetailQuery(parsedUserId),
+            cancellationToken);
         if (detail is null)
         {
             return FunctionHttpResults.Problem(
@@ -118,7 +137,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status404NotFound);
         }
 
-        return new OkObjectResult(detail);
+        return new OkObjectResult(ToAdminUserDetailResponse(detail));
     }
 
     [Function("AdminDeleteUser")]
@@ -137,11 +156,6 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status403Forbidden);
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!Guid.TryParse(userId, out var parsedUserId))
         {
             return FunctionHttpResults.Problem(
@@ -150,21 +164,22 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        var result = await _adminService.DeleteUserAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedUserId,
-            DateTimeOffset.UtcNow,
+        var result = await _deleteAdminUserHandler.HandleAsync(
+            new DeleteAdminUserCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedUserId,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
         return result.Kind switch
         {
-            AdminDeleteUserResultKind.Success => new OkObjectResult(result.Response),
-            AdminDeleteUserResultKind.UserNotFound => FunctionHttpResults.Problem(
+            AppCommon.AdminDeleteUserResultKind.Success => new OkObjectResult(ToAdminDeleteUserResponse(result.Response!)),
+            AppCommon.AdminDeleteUserResultKind.UserNotFound => FunctionHttpResults.Problem(
                 "User not found",
                 result.Detail,
                 StatusCodes.Status404NotFound),
-            AdminDeleteUserResultKind.Forbidden => FunctionHttpResults.Problem(
+            AppCommon.AdminDeleteUserResultKind.Forbidden => FunctionHttpResults.Problem(
                 "Delete user forbidden",
                 result.Detail,
                 StatusCodes.Status403Forbidden),
@@ -187,13 +202,10 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
-        var stats = await _adminService.GetStatsAsync(cancellationToken);
-        return new OkObjectResult(stats);
+        var stats = await _getAdminStatsHandler.HandleAsync(
+            new GetAdminStatsQuery(DateTimeOffset.UtcNow),
+            cancellationToken);
+        return new OkObjectResult(ToAdminStatsResponse(stats));
     }
 
     [Function("AdminBillingSupportRequests")]
@@ -208,11 +220,7 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
+        // TODO(DDD): remaining AdminService use-case — DDD-63
         var queue = await _adminService.GetBillingSupportQueueAsync(cancellationToken);
         return new OkObjectResult(queue);
     }
@@ -233,11 +241,6 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status403Forbidden);
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!Guid.TryParse(requestId, out var parsedRequestId))
         {
             return FunctionHttpResults.Problem(
@@ -246,6 +249,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
+        // TODO(DDD): remaining AdminService use-case — DDD-63
         var resolved = await _adminService.ResolveBillingSupportRequestAsync(
             admin.ExternalAuthUserId,
             admin.Email,
@@ -275,11 +279,6 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!TryParseDateQuery(request.Query, "from", out var fromInclusive) ||
             !TryParseDateQuery(request.Query, "to", out var toExclusive))
         {
@@ -304,6 +303,7 @@ public sealed class AdminHttpFunctions
         response.Headers.ContentDisposition =
             $"attachment; filename=\"accounting-revenue-{fromInclusive.UtcDateTime:yyyyMMdd}-{toExclusive.UtcDateTime:yyyyMMdd}.csv\"";
 
+        // TODO(DDD): remaining AdminService use-case — DDD-63
         await _adminService.WriteAccountingRevenueCsvAsync(
             response.Body,
             fromInclusive,
@@ -323,11 +323,6 @@ public sealed class AdminHttpFunctions
         if (admin is null)
         {
             return AdminForbidden();
-        }
-
-        if (_promoAdminService is null)
-        {
-            return AdminServiceUnavailable();
         }
 
         AdminPromoCodeCreateRequest? createRequest;
@@ -351,11 +346,19 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        var result = await _promoAdminService.CreatePromoCodeAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            createRequest,
-            DateTimeOffset.UtcNow,
+        var result = await _createPromoCodeHandler.HandleAsync(
+            new CreatePromoCodeCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                createRequest.Code,
+                createRequest.Description,
+                createRequest.CreditsGranted,
+                createRequest.GrantTtlDays,
+                createRequest.ValidFrom,
+                createRequest.ValidUntil,
+                createRequest.MaxRedemptionsGlobal,
+                createRequest.MaxRedemptionsPerUser,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
         return MapPromoMutationResult(result);
@@ -373,13 +376,10 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        if (_promoAdminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
-        var promoCodes = await _promoAdminService.ListPromoCodesAsync(DateTimeOffset.UtcNow, cancellationToken);
-        return new OkObjectResult(promoCodes);
+        var promoCodes = await _listPromoCodesHandler.HandleAsync(
+            new ListPromoCodesQuery(DateTimeOffset.UtcNow),
+            cancellationToken);
+        return new OkObjectResult(ToAdminPromoCodesListResponse(promoCodes));
     }
 
     [Function("AdminPromoCodeDetail")]
@@ -395,11 +395,6 @@ public sealed class AdminHttpFunctions
             return forbidden;
         }
 
-        if (_promoAdminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!Guid.TryParse(promoCodeId, out var parsedPromoCodeId))
         {
             return FunctionHttpResults.Problem(
@@ -408,9 +403,8 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        var detail = await _promoAdminService.GetPromoCodeDetailAsync(
-            parsedPromoCodeId,
-            DateTimeOffset.UtcNow,
+        var detail = await _getPromoCodeDetailHandler.HandleAsync(
+            new GetPromoCodeDetailQuery(parsedPromoCodeId, DateTimeOffset.UtcNow),
             cancellationToken);
         if (detail is null)
         {
@@ -420,7 +414,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status404NotFound);
         }
 
-        return new OkObjectResult(detail);
+        return new OkObjectResult(ToAdminPromoCodeDetailResponse(detail));
     }
 
     [Function("AdminPromoCodeUpdate")]
@@ -434,11 +428,6 @@ public sealed class AdminHttpFunctions
         if (admin is null)
         {
             return AdminForbidden();
-        }
-
-        if (_promoAdminService is null)
-        {
-            return AdminServiceUnavailable();
         }
 
         if (!Guid.TryParse(promoCodeId, out var parsedPromoCodeId))
@@ -470,12 +459,19 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        var result = await _promoAdminService.UpdatePromoCodeAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedPromoCodeId,
-            updateRequest,
-            DateTimeOffset.UtcNow,
+        var result = await _updatePromoCodeHandler.HandleAsync(
+            new UpdatePromoCodeCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedPromoCodeId,
+                updateRequest.Description,
+                updateRequest.CreditsGranted,
+                updateRequest.GrantTtlDays,
+                updateRequest.ValidFrom,
+                updateRequest.ValidUntil,
+                updateRequest.MaxRedemptionsGlobal,
+                updateRequest.MaxRedemptionsPerUser,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
         return MapPromoMutationResult(result);
@@ -529,11 +525,6 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status403Forbidden);
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!Guid.TryParse(userId, out var parsedUserId))
         {
             return FunctionHttpResults.Problem(
@@ -563,18 +554,20 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        var result = await _adminService.GrantCreditsAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedUserId,
-            grantRequest,
-            DateTimeOffset.UtcNow,
+        var result = await _grantCreditsHandler.HandleAsync(
+            new GrantCreditsCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedUserId,
+                grantRequest.Amount,
+                grantRequest.Reason,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
         return result.Kind switch
         {
-            AdminCreditGrantResultKind.Success => new OkObjectResult(result.Response),
-            AdminCreditGrantResultKind.UserNotFound => FunctionHttpResults.Problem(
+            AppCommon.AdminCreditGrantResultKind.Success => new OkObjectResult(ToAdminCreditGrantResponse(result.Response!)),
+            AppCommon.AdminCreditGrantResultKind.UserNotFound => FunctionHttpResults.Problem(
                 "User not found",
                 result.Detail,
                 StatusCodes.Status404NotFound),
@@ -599,11 +592,6 @@ public sealed class AdminHttpFunctions
                 "Admin access required",
                 "The authenticated user is not allowed to access admin endpoints.",
                 StatusCodes.Status403Forbidden);
-        }
-
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
         }
 
         if (!Guid.TryParse(userId, out var parsedUserId))
@@ -635,6 +623,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
+        // TODO(DDD): remaining AdminService use-case — DDD-63
         var result = await _adminService.SetUserSuspensionAsync(
             admin.ExternalAuthUserId,
             admin.Email,
@@ -669,11 +658,6 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status403Forbidden);
         }
 
-        if (_adminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!Guid.TryParse(userId, out var parsedUserId))
         {
             return FunctionHttpResults.Problem(
@@ -703,6 +687,7 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
+        // TODO(DDD): remaining AdminService use-case — DDD-63
         var result = await _adminService.IssueRefundAsync(
             admin.ExternalAuthUserId,
             admin.Email,
@@ -757,11 +742,6 @@ public sealed class AdminHttpFunctions
             return AdminForbidden();
         }
 
-        if (_promoAdminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!Guid.TryParse(promoCodeId, out var parsedPromoCodeId))
         {
             return FunctionHttpResults.Problem(
@@ -770,12 +750,13 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
-        var result = await _promoAdminService.SetPromoCodeActiveAsync(
-            admin.ExternalAuthUserId,
-            admin.Email,
-            parsedPromoCodeId,
-            isActive,
-            DateTimeOffset.UtcNow,
+        var result = await _setPromoCodeActiveHandler.HandleAsync(
+            new SetPromoCodeActiveCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedPromoCodeId,
+                isActive,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
         return MapPromoMutationResult(result);
@@ -793,11 +774,6 @@ public sealed class AdminHttpFunctions
             return AdminForbidden();
         }
 
-        if (_promoAdminService is null)
-        {
-            return AdminServiceUnavailable();
-        }
-
         if (!Guid.TryParse(promoCodeId, out var parsedPromoCodeId))
         {
             return FunctionHttpResults.Problem(
@@ -806,32 +782,35 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest);
         }
 
+        var now = DateTimeOffset.UtcNow;
         var result = archive
-            ? await _promoAdminService.ArchivePromoCodeAsync(
-                admin.ExternalAuthUserId,
-                admin.Email,
-                parsedPromoCodeId,
-                DateTimeOffset.UtcNow,
+            ? await _archivePromoCodeHandler.HandleAsync(
+                new ArchivePromoCodeCommand(
+                    admin.ExternalAuthUserId,
+                    admin.Email,
+                    parsedPromoCodeId,
+                    now),
                 cancellationToken)
-            : await _promoAdminService.RestorePromoCodeAsync(
-                admin.ExternalAuthUserId,
-                admin.Email,
-                parsedPromoCodeId,
-                DateTimeOffset.UtcNow,
+            : await _restorePromoCodeHandler.HandleAsync(
+                new RestorePromoCodeCommand(
+                    admin.ExternalAuthUserId,
+                    admin.Email,
+                    parsedPromoCodeId,
+                    now),
                 cancellationToken);
 
         return MapPromoMutationResult(result);
     }
 
-    private static IActionResult MapPromoMutationResult(AdminPromoMutationResult result) =>
+    private static IActionResult MapPromoMutationResult(AppCommon.AdminPromoMutationResultDto result) =>
         result.Kind switch
         {
-            AdminPromoResultKind.Success => new OkObjectResult(result.Response),
-            AdminPromoResultKind.NotFound => FunctionHttpResults.Problem(
+            AppCommon.AdminPromoResultKind.Success => new OkObjectResult(ToAdminPromoCodeResponse(result.Response!)),
+            AppCommon.AdminPromoResultKind.NotFound => FunctionHttpResults.Problem(
                 "Promo code not found",
                 result.Detail,
                 StatusCodes.Status404NotFound),
-            AdminPromoResultKind.DuplicateCode => FunctionHttpResults.Problem(
+            AppCommon.AdminPromoResultKind.DuplicateCode => FunctionHttpResults.Problem(
                 "Duplicate promo code",
                 result.Detail,
                 StatusCodes.Status400BadRequest),
@@ -841,17 +820,219 @@ public sealed class AdminHttpFunctions
                 StatusCodes.Status400BadRequest),
         };
 
+    private static AdminUsersListResponse ToAdminUsersListResponse(AppCommon.AdminUsersListDto dto) =>
+        new(
+            dto.Page,
+            dto.PageSize,
+            dto.TotalCount,
+            dto.TotalPages,
+            dto.Users.Select(ToAdminUserListItem).ToList());
+
+    private static AdminUserListItem ToAdminUserListItem(AppCommon.AdminUserListItemDto dto) =>
+        new(
+            dto.Id,
+            dto.ExternalAuthUserId,
+            dto.Email,
+            dto.SubscriptionStatus,
+            dto.CreatedAt,
+            dto.UpdatedAt,
+            dto.UsedRewrites,
+            dto.ReservedRewrites,
+            dto.CreditRemaining,
+            dto.CostToDateUsd);
+
+    private static AdminUserDetailResponse ToAdminUserDetailResponse(AppCommon.AdminUserDetailDto dto) =>
+        new(
+            dto.Id,
+            dto.ExternalAuthUserId,
+            dto.Email,
+            dto.CreatedAt,
+            dto.UpdatedAt,
+            ToAdminSubscriptionSummary(dto.Subscription),
+            dto.Usage.Select(ToAdminUsagePeriod).ToList(),
+            dto.Credits.Select(ToAdminCredit).ToList(),
+            dto.Payments.Select(ToAdminPayment).ToList(),
+            dto.CostToDateUsd);
+
+    private static AdminSubscriptionSummary ToAdminSubscriptionSummary(AppCommon.AdminSubscriptionSummaryDto dto) =>
+        new(
+            dto.Status,
+            dto.StripeCustomerId,
+            dto.StripeSubscriptionId,
+            dto.CurrentPeriodEnd);
+
+    private static AdminUsagePeriod ToAdminUsagePeriod(AppCommon.AdminUsagePeriodDto dto) =>
+        new(
+            dto.Id,
+            dto.PeriodKey,
+            dto.Quota,
+            dto.Used,
+            dto.Reserved,
+            dto.PeriodStart,
+            dto.PeriodEnd,
+            dto.CreatedAt,
+            dto.UpdatedAt);
+
+    private static AdminCredit ToAdminCredit(AppCommon.AdminCreditDto dto) =>
+        new(
+            dto.Id,
+            dto.Source,
+            dto.AmountGranted,
+            dto.AmountConsumed,
+            dto.Remaining,
+            dto.GrantedAt,
+            dto.ExpiresAt,
+            dto.StripeEventId,
+            dto.PaymentIntentId,
+            dto.Sku,
+            dto.AmountTotal,
+            dto.Currency,
+            dto.ReceiptUrl);
+
+    private static AdminPayment ToAdminPayment(AppCommon.AdminPaymentDto dto) =>
+        new(
+            dto.CreditId,
+            dto.Source,
+            dto.EventId,
+            dto.PaymentIntentId,
+            dto.Sku,
+            dto.AmountTotal,
+            dto.Currency,
+            dto.ReceiptUrl,
+            dto.GrantedAt,
+            dto.ExpiresAt,
+            dto.CreditsGranted,
+            dto.CreditsConsumed,
+            dto.CreditsRemaining);
+
+    private static AdminStatsResponse ToAdminStatsResponse(AppCommon.AdminStatsDto dto) =>
+        new(
+            dto.TotalUsers,
+            dto.PaidUsers,
+            dto.FreeUsers,
+            dto.UsageUsed,
+            dto.UsageReserved,
+            dto.CreditRemaining,
+            dto.PaymentCount,
+            dto.PaymentAmountTotal,
+            dto.CostToDateUsd,
+            ToTaxTurnoverReport(dto.GstTurnover),
+            ToAdminPaymentReconciliationSummary(dto.PaymentReconciliation),
+            ToAdminRefundReviewStats(dto.RefundReview));
+
+    private static TaxTurnoverReport ToTaxTurnoverReport(AppCommon.TaxTurnoverReportDto dto) =>
+        new(
+            dto.WindowStart,
+            dto.WindowEnd,
+            dto.Currency,
+            dto.GrossAmountTotal,
+            dto.RegistrationThresholdAmountTotal,
+            dto.WarningFraction,
+            dto.WarningAmountTotal,
+            dto.FractionOfThreshold,
+            dto.IgnoredNonNzdPaymentCount,
+            dto.Warning is null
+                ? null
+                : new TaxTurnoverWarning(
+                    dto.Warning.Code,
+                    dto.Warning.Severity,
+                    dto.Warning.Message),
+            dto.Notification is null
+                ? null
+                : new TaxTurnoverNotificationResult(
+                    dto.Notification.Attempted,
+                    dto.Notification.Sent,
+                    dto.Notification.Provider,
+                    dto.Notification.Reason));
+
+    private static AdminPaymentReconciliationSummary? ToAdminPaymentReconciliationSummary(
+        AppCommon.AdminPaymentReconciliationSummaryDto? dto) =>
+        dto is null
+            ? null
+            : new AdminPaymentReconciliationSummary(
+                dto.LastCompletedAt,
+                dto.WindowStart,
+                dto.WindowEnd,
+                dto.DiscrepancyCount,
+                dto.PaidButNoGrantCount,
+                dto.GrantButNoPaymentCount,
+                dto.AmountMismatchCount,
+                dto.StripePaymentCount,
+                dto.PurchaseGrantCount);
+
+    private static AdminRefundReviewStats ToAdminRefundReviewStats(AppCommon.AdminRefundReviewStatsDto dto) =>
+        new(
+            dto.FlaggedUserCount,
+            dto.RefundCountThreshold,
+            dto.RefundAmountThreshold,
+            dto.TotalRefundCount,
+            dto.TotalRefundAmount);
+
+    private static AdminDeleteUserResponse ToAdminDeleteUserResponse(AppCommon.AdminDeleteUserResponseDto dto) =>
+        new(dto.UserId, dto.Status);
+
+    private static AdminCreditGrantResponse ToAdminCreditGrantResponse(AppCommon.AdminCreditGrantResponseDto dto) =>
+        new(
+            dto.TargetUserId,
+            dto.CreditId,
+            dto.Source,
+            dto.AmountGranted,
+            dto.AmountConsumed,
+            dto.Remaining,
+            dto.GrantedAt,
+            dto.ExpiresAt);
+
+    private static AdminPromoCodesListResponse ToAdminPromoCodesListResponse(AppCommon.AdminPromoCodesListDto dto) =>
+        new(dto.PromoCodes.Select(ToAdminPromoCodeResponse).ToList());
+
+    private static AdminPromoCodeDetailResponse ToAdminPromoCodeDetailResponse(
+        AppCommon.AdminPromoCodeDetailDto dto) =>
+        new(
+            ToAdminPromoCodeResponse(dto.PromoCode),
+            ToAdminPromoStats(dto.Stats));
+
+    private static AdminPromoCodeResponse ToAdminPromoCodeResponse(AppCommon.AdminPromoCodeDto dto) =>
+        new(
+            dto.Id,
+            dto.Code,
+            dto.DisplayCode,
+            dto.Description,
+            dto.Kind,
+            dto.CreditsGranted,
+            dto.GrantTtlDays,
+            dto.ValidFrom,
+            dto.ValidUntil,
+            dto.MaxRedemptionsGlobal,
+            dto.MaxRedemptionsPerUser,
+            dto.RedemptionCount,
+            dto.IsActive,
+            dto.ArchivedAt,
+            dto.Status,
+            dto.CreatedAt,
+            dto.UpdatedAt);
+
+    private static AdminPromoStats ToAdminPromoStats(AppCommon.AdminPromoStatsDto dto) =>
+        new(
+            dto.TotalRedemptions,
+            dto.DistinctUsers,
+            dto.ActivationRate,
+            dto.DailyCurve
+                .Select(x => new AdminPromoDailyRedemptions(x.Date, x.Redemptions))
+                .ToList(),
+            dto.IpHashClusters
+                .Select(x => new AdminPromoIpHashCluster(
+                    x.IpHash,
+                    x.Redemptions,
+                    x.DistinctUsers,
+                    x.FirstRedeemedAt,
+                    x.LastRedeemedAt))
+                .ToList());
+
     private static IActionResult AdminForbidden() =>
         FunctionHttpResults.Problem(
             "Admin access required",
             "The authenticated user is not allowed to access admin endpoints.",
             StatusCodes.Status403Forbidden);
-
-    private static IActionResult AdminServiceUnavailable() =>
-        FunctionHttpResults.Problem(
-            "Admin service unavailable",
-            "Admin read services are not configured.",
-            StatusCodes.Status500InternalServerError);
 
     private static int ParsePositiveInt(
         IQueryCollection query,
