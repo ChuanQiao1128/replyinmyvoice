@@ -5111,3 +5111,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminHttpFunctionsTestFactory.cs`; updated admin test construction calls.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings; focused admin filter passed 20/20; full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
 - Limitations: No new test cases were added because the issue was a strangler shell replacement with unchanged response contracts.
+
+### 2026-06-09 - system-spec-synthesis - DDD-64 rewrite Function shell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #649 / DDD-64 requires an implementation-ready handler shell plan across `RewriteHttpFunctions`, `V1RewriteHttpFunctions`, Application rewrite/account handlers, and backend regression gates.
+- Action: Opened and followed the project skill; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-64 brief, target Function files, requested Application handlers via `git show origin/delivery/ddd-restructure`, and relevant tests. Generated the spec skeleton with `agent-skills/system-spec-synthesis/scripts/spec_outline.py DDD-64-rewrite-shell`, then applied the plan in-place rather than writing a separate spec artifact.
+- Output artifacts: Handler-shell changes in `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/RewriteHttpFunctions.cs` and `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`.
+- Verification evidence: Spec skeleton command exited 0; Release build passed; focused rewrite/V1 tests passed 40/40; full backend suite passed 695/695.
+- Limitations: No architecture, API contract, schema, migration, deployment, or old-service cleanup was added beyond the issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-64 rewrite attempt lifecycle preservation
+
+- Agent: Codex worker
+- Trigger: DDD-64 routes V1 rewrite creation/result and rewrite history lookups through Application handlers that touch `RewriteAttempt`, usage reservation, quota, idempotency, and sandbox attempt lifecycle paths.
+- Action: Opened and followed the project skill; generated the lifecycle checklist with `agent-skills/state-machine-modeling/scripts/state_machine_template.py RewriteAttemptUsageReservation`. Preserved the existing states: pending/processing/succeeded/failed/expired for attempts and pending/finalized/released/expired for reservations. Preserved existing events: submit, repeated idempotency key, provider success/failure, reservation expiry, result poll, history detail, and soft delete. Illegal transitions remain unchanged: cross-user read, mixed sandbox/live result read, quota side effects on rejected input, duplicate reservation on repeated idempotency key, and mutation after result polling.
+- Output artifacts: `RewriteHttpFunctions` now uses `FindUserHandler` and `GetRewriteAttemptHandler` where handlers exist; `V1RewriteHttpFunctions` now uses entitlement/create/get/account-summary handlers while unsupported sandbox, usage-write, list, delete, and internal-user lookup paths remain marked with DDD-64 TODOs.
+- Verification evidence: Lifecycle template command exited 0; focused rewrite/V1 tests passed 40/40; full backend suite passed 695/695.
+- Limitations: No new states, transition helper, enum, schema, migration, or new lifecycle assertions were added because DDD-64 requires unchanged behavior.
+
+### 2026-06-09 - data-module-review - DDD-64 rewrite persistence path
+
+- Agent: Codex worker
+- Trigger: DDD-64 changes data-access routing for rewrite history, V1 entitlement, V1 attempt creation, V1 result lookup, and V1 usage summary.
+- Action: Opened and followed the project skill; reviewed owned entities (`AppUser`, `RewriteAttempt`, `UsagePeriod`, `UsageReservation`, `RewriteCredit`, `ApiKeyUsage`), existing repositories/handlers, old service behavior, and tests together. Ran `agent-skills/data-module-review/scripts/scan_data_risks.py --limit 40 backend-dotnet/src/ReplyInMyVoice.Functions` and kept schema/migrations unchanged. Expanded `RewriteAttemptDto` through `FromAttempt` so handler-backed result/detail responses preserve existing HTTP view fields and sandbox/live checks.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Common/RewriteAttemptDto.cs`; `RewriteHttpFunctions`; `V1RewriteHttpFunctions`; direct test helper wiring in `RewriteHistoryTests` and `ApiInputHardeningTests`.
+- Verification evidence: Data risk scan exited 0 and reported existing risk signals for review; `git diff --check` exited 0; changed-file restricted-substring scan returned no matches; Release build passed; focused tests passed 40/40; full backend tests passed 695/695.
+- Limitations: Inline DB remains where no Application handler exists yet: rewrite history list/delete, V1 internal-user lookup, sandbox attempt creation, and API usage write helper. Each remaining path is marked with a DDD-64 TODO.
+
+### 2026-06-09 - resilience-test-generation - DDD-64 V1 idempotency, rate limit, and quota gates
+
+- Agent: Codex worker
+- Trigger: DDD-64 changes V1 submit/result/usage code paths that are covered by idempotency, rate-limit, quota, provider-failure, and sandbox/live regression tests.
+- Action: Opened and followed the project skill; generated the failure matrix with `agent-skills/resilience-test-generation/scripts/resilience_matrix.py V1RewriteSubmit`. Reused existing deterministic SQLite/fake-provider tests because the issue explicitly requires unchanged behavior and unmodified assertions. Verified duplicate idempotency keys, different-draft conflict, quota exhaustion, usable purchase credit, provider failure no-charge path, rate limiter unavailable, concurrent rate-limit behavior, and sandbox/live result separation through the focused filter.
+- Output artifacts: Handler-shell code and test helper construction only; no test assertions changed.
+- Verification evidence: Resilience matrix command exited 0; focused filter passed 40/40; full backend suite passed 695/695.
+- Limitations: No live provider, payment, cloud, deploy, or network dependency was used. No new resilience tests were added because existing acceptance coverage already exercised the required unchanged behavior.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-64 rewrite shell regression gates
+
+- Agent: Codex worker
+- Trigger: DDD-64 requires Release build, focused rewrite/V1 tests, and full .NET backend tests after changing C# Azure Function shells and direct test helper construction.
+- Action: Opened and followed the project skill; selected existing xUnit/FluentAssertions API/service tests as characterization coverage because response contracts must remain unchanged. Updated only test construction helpers to supply the new Application handlers; no assertions were modified.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteHistoryTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiInputHardeningTests.cs`.
+- Verification evidence: Initial Release build failed on `ApiInputHardeningTests.cs` direct V1 constructor wiring, root cause was constructor signature drift; after updating the helper, `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteApiTests|FullyQualifiedName~RewriteHistoryTests|FullyQualifiedName~V1RewriteRateLimitTests|FullyQualifiedName~RewriteRequestServiceTests"` passed 40/40. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
+- Limitations: No new tests were added because this is a strangler shell refactor with unchanged behavior and the issue forbids assertion changes.

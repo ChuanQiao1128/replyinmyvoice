@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -22,8 +25,10 @@ public sealed class V1RewriteHttpFunctions(
     IConfiguration configuration,
     AppDbContext db,
     IApiKeyRateLimiter rateLimiter,
-    AccountService accountService,
-    RewriteRequestService rewriteRequestService)
+    HasPaidApiEntitlementHandler hasPaidApiEntitlementHandler,
+    CreateRewriteAttemptHandler createRewriteAttemptHandler,
+    GetRewriteAttemptHandler getRewriteAttemptHandler,
+    GetAccountSummaryHandler getAccountSummaryHandler)
 {
     private const string EndpointName = "v1/rewrite";
     private const string ResultEndpointName = "v1/rewrite/{id}";
@@ -121,6 +126,7 @@ public sealed class V1RewriteHttpFunctions(
                 StatusCodes.Status400BadRequest);
         }
 
+        // TODO(DDD): no internal-user lookup handler yet - DDD-64
         var user = await db.AppUsers
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == auth.UserId.Value, cancellationToken);
@@ -145,6 +151,7 @@ public sealed class V1RewriteHttpFunctions(
 
         if (auth.IsTest)
         {
+            // TODO(DDD): no sandbox-attempt handler yet - DDD-64
             var sandboxResult = await CreateSandboxAttemptAsync(
                 user.Id,
                 auth.ApiKeyId!.Value,
@@ -173,7 +180,9 @@ public sealed class V1RewriteHttpFunctions(
                 sandboxResult.AttemptId.ToString());
         }
 
-        if (!await accountService.HasPaidApiEntitlementAsync(user.Id, now, cancellationToken))
+        if (!await hasPaidApiEntitlementHandler.HandleAsync(
+                new HasPaidApiEntitlementQuery(user.Id, now),
+                cancellationToken))
         {
             return await CompleteAsync(
                 Error(
@@ -193,41 +202,49 @@ public sealed class V1RewriteHttpFunctions(
             null,
             "warm");
 
-        var result = await rewriteRequestService.CreateAttemptAsync(
-            user.Id,
-            idempotencyKey,
-            rewriteRequest,
-            plan.PeriodKey,
-            plan.QuotaLimit,
-            now,
-            cancellationToken,
-            auth.ApiKeyId);
+        var result = await createRewriteAttemptHandler.HandleAsync(
+            new CreateRewriteAttemptCommand(
+                user.Id,
+                idempotencyKey,
+                rewriteRequest,
+                plan.PeriodKey,
+                plan.QuotaLimit,
+                now,
+                auth.ApiKeyId),
+            cancellationToken);
 
-        if (result.Kind == ReserveRewriteResultKind.QuotaExceeded)
+        if (result.Kind == ApplicationResultKind.QuotaExceeded)
         {
             return await CompleteAsync(
                 Error("quota_exhausted", "No rewrite quota remains for the current period.", StatusCodes.Status402PaymentRequired),
                 StatusCodes.Status402PaymentRequired);
         }
 
-        if (result.Kind == ReserveRewriteResultKind.Conflict)
+        if (result.Kind == ApplicationResultKind.Conflict)
         {
             return await CompleteAsync(
                 Error("idempotency_conflict", "The idempotency key was reused with a different draft.", StatusCodes.Status409Conflict),
                 StatusCodes.Status409Conflict,
-                result.AttemptId.ToString());
+                result.Value?.AttemptId.ToString());
+        }
+
+        if (result.Value is null)
+        {
+            return await CompleteAsync(
+                Error("rewrite_failed", "The rewrite request could not be processed.", StatusCodes.Status500InternalServerError),
+                StatusCodes.Status500InternalServerError);
         }
 
         return await CompleteAsync(
             FunctionHttpResults.Accepted(
-                $"/api/v1/rewrite/{result.AttemptId}",
+                $"/api/v1/rewrite/{result.Value.AttemptId}",
                 new
                 {
-                    id = result.AttemptId,
+                    id = result.Value.AttemptId,
                     status = "processing",
                 }),
             StatusCodes.Status202Accepted,
-            result.AttemptId.ToString());
+            result.Value.AttemptId.ToString());
 
         IActionResult Error(string code, string message, int statusCode) =>
             FunctionHttpResults.Problem(message, message, statusCode, code);
@@ -319,13 +336,14 @@ public sealed class V1RewriteHttpFunctions(
                 rateLimit);
         }
 
-        var attempt = await db.RewriteAttempts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(
-                x => x.Id == id && x.UserId == auth.UserId.Value,
-                cancellationToken);
+        var getAttemptResult = await getRewriteAttemptHandler.HandleAsync(
+            new GetRewriteAttemptQuery(id, auth.UserId.Value),
+            cancellationToken);
+        var attempt = getAttemptResult.Value;
 
-        if (attempt is null || IsSandboxAttempt(attempt) != auth.IsTest)
+        if (getAttemptResult.Kind == ApplicationResultKind.NotFound ||
+            attempt is null ||
+            IsSandboxAttempt(attempt) != auth.IsTest)
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
@@ -442,6 +460,7 @@ public sealed class V1RewriteHttpFunctions(
                 rateLimit: rateLimit);
         }
 
+        // TODO(DDD): no internal-user lookup handler yet - DDD-64
         var user = await db.AppUsers
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == auth.UserId.Value, cancellationToken);
@@ -463,9 +482,8 @@ public sealed class V1RewriteHttpFunctions(
                 rateLimit: rateLimit);
         }
 
-        var account = await accountService.GetOrCreateAccountSummaryAsync(
-            user.ExternalAuthUserId,
-            user.Email,
+        var account = await getAccountSummaryHandler.HandleAsync(
+            new GetAccountSummaryQuery(user.ExternalAuthUserId, user.Email),
             cancellationToken);
 
         return await CompleteWithUsageAsync(
@@ -486,23 +504,24 @@ public sealed class V1RewriteHttpFunctions(
             rateLimit: rateLimit);
     }
 
-    private static IActionResult MapRewriteResult(RewriteAttempt attempt)
+    private static IActionResult MapRewriteResult(RewriteAttemptDto attempt)
     {
-        if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
+        if (attempt.Status == RewriteAttemptStatus.Pending.ToString() ||
+            attempt.Status == RewriteAttemptStatus.Processing.ToString())
         {
             return new OkObjectResult(new
             {
-                id = attempt.Id,
+                id = attempt.AttemptId,
                 status = "processing",
             });
         }
 
-        if (attempt.Status == RewriteAttemptStatus.Succeeded &&
+        if (attempt.Status == RewriteAttemptStatus.Succeeded.ToString() &&
             TryReadSucceededResult(attempt.ResultJson, out var rewrittenText, out var draftSignal, out var rewriteSignal))
         {
             return new OkObjectResult(new
             {
-                id = attempt.Id,
+                id = attempt.AttemptId,
                 status = "succeeded",
                 rewrittenText,
                 signal = new
@@ -518,7 +537,7 @@ public sealed class V1RewriteHttpFunctions(
             : attempt.ErrorCode;
         return new OkObjectResult(new
         {
-            id = attempt.Id,
+            id = attempt.AttemptId,
             status = "failed",
             error = new
             {
@@ -528,6 +547,7 @@ public sealed class V1RewriteHttpFunctions(
         });
     }
 
+    // TODO(DDD): remaining V1 inline db - DDD-64
     private async Task<SandboxAttemptResult> CreateSandboxAttemptAsync(
         Guid userId,
         Guid apiKeyId,
@@ -579,8 +599,8 @@ public sealed class V1RewriteHttpFunctions(
         return new SandboxAttemptResult(attempt.Id, IsConflict: false);
     }
 
-    private static bool IsSandboxAttempt(RewriteAttempt attempt) =>
-        attempt.Status == RewriteAttemptStatus.Succeeded &&
+    private static bool IsSandboxAttempt(RewriteAttemptDto attempt) =>
+        attempt.Status == RewriteAttemptStatus.Succeeded.ToString() &&
         attempt.IdempotencyKey.StartsWith(SandboxAttemptPrefix, StringComparison.Ordinal) &&
         string.Equals(attempt.ResultJson, SandboxResultJson, StringComparison.Ordinal);
 
@@ -644,8 +664,8 @@ public sealed class V1RewriteHttpFunctions(
             property.TryGetDecimal(out value);
     }
 
-    private static string FailureMessage(RewriteAttempt attempt) =>
-        attempt.Status == RewriteAttemptStatus.Expired
+    private static string FailureMessage(RewriteAttemptDto attempt) =>
+        attempt.Status == RewriteAttemptStatus.Expired.ToString()
             ? "The rewrite did not finish in time. Please submit a new request."
             : "The rewrite could not be completed. Please try again.";
 
@@ -698,6 +718,7 @@ public sealed class V1RewriteHttpFunctions(
         }
     }
 
+    // TODO(DDD): remaining V1 inline db - DDD-64
     private async Task TryWriteApiKeyUsageAsync(
         Guid? apiKeyId,
         string requestId,
