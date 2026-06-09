@@ -4715,3 +4715,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/ApiKeyUseCaseTests.cs`.
 - Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiKeyUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.ApiKey` and related types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/ApiKey/GenerateApiKeyHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused ApiKeyUseCase tests passed 2/2; full backend tests passed 646/646.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-44 Promo Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 and `plans/ddd-restructure/issues/DDD-44-promo.md` require converting promo redeem/status use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-44 brief, `docs/ddd-migration-playbook.md`, `PromoService.cs`, existing Rewrite handlers, Application abstractions, repositories, and promo tests before editing. Scoped goals to add the strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret or deployment change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Promo/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/PromoRedeemResultDto.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/PromoStatusDto.cs`; promo repository interface extensions and implementations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because `ReplyInMyVoice.Application.UseCases.Promo`, `RedeemPromoHandler`, and `GetPromoStatusHandler` did not exist. Final release build, focused PromoUseCase tests, full backend tests, handler file-existence check, diff whitespace check, and banned-substring scans passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-44 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-44 promo redemption lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 migrates promo redemption/status behavior with validity, cap, already-redeemed, IP-velocity, credit grant, and redemption record states.
+- Action: Opened and followed the project skill; modeled states as missing/invalid code, inactive/future code, expired code, redeemable code under cap, cap-reached code, user already redeemed for code, IP-velocity blocked request, applied redemption, active promo credit, and promo status eligible/not eligible. Events are redeem command, status query, code normalization failure, IP count check, atomic count increment success/miss, redemption insert, and duplicate redemption race.
+- Output artifacts: `RedeemPromoHandler`, `GetPromoStatusHandler`, promo DTOs, repository extensions, and `PromoUseCaseTests`.
+- Verification evidence: Tests cover success, cap reached, already redeemed, expired, IP-velocity blocked, status before redeem, and status after redeem. Full backend tests passed 652/652.
+- Limitations: The new handlers are registered but not wired to Functions/API/Worker entry points; the old `PromoService` remains live by design.
+
+### 2026-06-09 - data-module-review - DDD-44 promo persistence migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 changes data access for promo code lookup, redemption records, IP velocity counts, atomic promo count increment, and promo credit grants.
+- Action: Opened and followed the project skill; read EF promo entities/mappings, legacy `PromoService` persistence flow, existing repository style, and SQLite tests. Added narrow repository methods only, kept all schema and migration files unchanged, kept the raw SQL atomic increment inside Infrastructure, and kept Application handlers free of `AppDbContext`.
+- Output artifacts: `IPromoCodeRepository.GetByIdAsync`, `GetByCodeAsync`, `TryIncrementRedemptionCountAsync`; `IPromoCodeRedemptionRepository` add/query/count methods; `IRewriteCreditRepository.AddAsync`; matching repository implementations; `PromoUseCaseTests`.
+- Verification evidence: Focused tests assert final persisted promo count, rewrite credit, and redemption state for success, cap reached, already redeemed, expired, and IP-velocity blocked paths. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 652/652.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `PromoService` persistence code was not edited.
+
+### 2026-06-09 - resilience-test-generation - DDD-44 promo race and velocity checks
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 requires preserving retry/optimistic-concurrency semantics and IP velocity defense while moving promo redemption into Application handlers.
+- Action: Opened and followed the project skill; selected deterministic SQLite in-memory tests for handler behavior and final state assertions. The handler uses `IUnitOfWork.ExecuteInTransactionAsync` with a bounded retry count and the repository-backed atomic increment to preserve cap correctness.
+- Output artifacts: `RedeemPromoHandler`; promo repository extensions; `PromoUseCaseTests`.
+- Verification evidence: Red run failed on missing handler namespace/types. After implementation, focused PromoUseCase tests passed 6/6 and full backend tests passed 652/652. Existing `PromoService` and promo concurrency tests remained in the full suite.
+- Limitations: No live provider, payment, queue, cloud endpoint, deployment, push, PR, or production smoke command was used.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-44 PromoUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #625 adds C#/.NET Application handler tests for promo redeem and status behavior.
+- Action: Opened and followed the project skill; wrote `PromoUseCaseTests` before production code, watched the initial focused run fail on missing Promo Application namespace and handlers, then implemented Application and Infrastructure code with SQLite in-memory coverage.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/PromoUseCaseTests.cs`.
+- Verification evidence: Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Promo/RedeemPromoHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused PromoUseCase tests passed 6/6; full backend tests passed 652/652.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
