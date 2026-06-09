@@ -40,7 +40,7 @@ public sealed class HttpWebhookDeliverySender(HttpClient httpClient) : IWebhookD
         WebhookSendRequest request,
         CancellationToken cancellationToken)
     {
-        if (!ApiKeyService.TryNormalizeWebhookUrl(request.Url, out var normalizedUrl))
+        if (!ApiKeyWebhookUrl.TryNormalizeWebhookUrl(request.Url, out var normalizedUrl))
         {
             throw new InvalidOperationException("Webhook URL is not allowed.");
         }
@@ -211,7 +211,7 @@ public sealed class WebhookDispatcherService(
             throw new InvalidOperationException("Webhook delivery is missing required data.");
         }
 
-        if (!ApiKeyService.TryNormalizeWebhookUrl(delivery.Url, out var normalizedUrl))
+        if (!ApiKeyWebhookUrl.TryNormalizeWebhookUrl(delivery.Url, out var normalizedUrl))
         {
             throw new InvalidOperationException("Webhook URL is not allowed.");
         }

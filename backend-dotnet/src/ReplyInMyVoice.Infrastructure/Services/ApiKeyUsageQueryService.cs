@@ -9,7 +9,6 @@ public sealed class ApiKeyUsageQueryService(
     AccountService accountService)
 {
     private const int MinUsageWindowDays = 1;
-    public const int MaxUsageWindowDays = 90;
 
     // Business reporting days are bucketed in the product's Pacific/Auckland time zone.
     private static readonly TimeZoneInfo BusinessTimeZone =
@@ -113,7 +112,7 @@ public sealed class ApiKeyUsageQueryService(
     {
         var boundedLimit = limit <= 0 ? 50 : Math.Min(limit, 200);
         var windowStart = ToBusinessDateStartUtc(
-            ToBusinessDate(now).AddDays(-(MaxUsageWindowDays - 1)));
+            ToBusinessDate(now).AddDays(-(ApiKeyUsageWindow.MaxUsageWindowDays - 1)));
         await using var db = dbContextFactory();
         var query = ApiUsageWindowQuery(db, userId, windowStart)
             .Join(
@@ -206,7 +205,7 @@ public sealed class ApiKeyUsageQueryService(
     }
 
     public static int ClampUsageWindowDays(int days) =>
-        Math.Clamp(days, MinUsageWindowDays, MaxUsageWindowDays);
+        Math.Clamp(days, MinUsageWindowDays, ApiKeyUsageWindow.MaxUsageWindowDays);
 
     private static ApiUsageCount CountForDay(
         IReadOnlyList<LocalUsageRow> rows,

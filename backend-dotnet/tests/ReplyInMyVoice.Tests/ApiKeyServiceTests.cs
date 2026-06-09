@@ -25,7 +25,7 @@ public sealed class ApiKeyServiceTests
             aspNetCoreEnvironment: "Production",
             azureFunctionsEnvironment: null);
 
-        var act = () => ApiKeyService.ComputeHash("rmv_live_sample_key");
+        var act = () => ApiKeyHashing.ComputeHash("rmv_live_sample_key");
 
         var exception = act.Should().Throw<InvalidOperationException>().Which;
         exception.Message.Should().Contain("API_KEY_PEPPER");
@@ -41,7 +41,7 @@ public sealed class ApiKeyServiceTests
             aspNetCoreEnvironment: null,
             azureFunctionsEnvironment: null);
 
-        var hash = ApiKeyService.ComputeHash("rmv_test_sample_key");
+        var hash = ApiKeyHashing.ComputeHash("rmv_test_sample_key");
 
         hash.Should().MatchRegex("^[0-9a-f]{64}$");
     }
@@ -67,7 +67,7 @@ public sealed class ApiKeyServiceTests
         stored.UserId.Should().Be(user.Id);
         stored.Name.Should().Be("Primary integration key");
         stored.KeyHash.Should().NotBe(result.Plaintext);
-        stored.KeyHash.Should().Be(ApiKeyService.ComputeHash(result.Plaintext));
+        stored.KeyHash.Should().Be(ApiKeyHashing.ComputeHash(result.Plaintext));
         stored.Last4.Should().Be(result.Plaintext[^4..]);
         stored.IsTest.Should().BeFalse();
     }
@@ -91,7 +91,7 @@ public sealed class ApiKeyServiceTests
         await using var db = fixture.CreateContext();
         var stored = await db.ApiKeys.SingleAsync(x => x.Id == result.Id);
         stored.IsTest.Should().BeTrue();
-        stored.KeyHash.Should().Be(ApiKeyService.ComputeHash(result.Plaintext));
+        stored.KeyHash.Should().Be(ApiKeyHashing.ComputeHash(result.Plaintext));
         stored.Last4.Should().Be(result.Plaintext[^4..]);
 
         var summaries = await service.ListAsync(user.Id, CancellationToken.None);
@@ -107,8 +107,8 @@ public sealed class ApiKeyServiceTests
     {
         Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
 
-        var first = ApiKeyService.ComputeHash("rmv_live_sample_key");
-        var second = ApiKeyService.ComputeHash("rmv_live_sample_key");
+        var first = ApiKeyHashing.ComputeHash("rmv_live_sample_key");
+        var second = ApiKeyHashing.ComputeHash("rmv_live_sample_key");
 
         second.Should().Be(first);
         first.Should().MatchRegex("^[0-9a-f]{64}$");
@@ -122,7 +122,7 @@ public sealed class ApiKeyServiceTests
     [InlineData("https://localhost/rewrite")]
     public void TryNormalizeWebhookUrl_rejects_non_https_and_non_public_targets(string value)
     {
-        var valid = ApiKeyService.TryNormalizeWebhookUrl(value, out var normalizedUrl);
+        var valid = ApiKeyWebhookUrl.TryNormalizeWebhookUrl(value, out var normalizedUrl);
 
         valid.Should().BeFalse();
         normalizedUrl.Should().BeEmpty();
@@ -131,7 +131,7 @@ public sealed class ApiKeyServiceTests
     [Fact]
     public void TryNormalizeWebhookUrl_accepts_public_https_url()
     {
-        var valid = ApiKeyService.TryNormalizeWebhookUrl(
+        var valid = ApiKeyWebhookUrl.TryNormalizeWebhookUrl(
             "https://example.com/rewrite",
             out var normalizedUrl,
             _ => [IPAddress.Parse("93.184.216.34")]);
@@ -226,7 +226,7 @@ public sealed class ApiKeyServiceTests
             oldKey.RevokedAt.Should().NotBeNull();
             newKey.RevokedAt.Should().BeNull();
             newKey.Name.Should().Be(oldKey.Name);
-            newKey.KeyHash.Should().Be(ApiKeyService.ComputeHash(rotated.Plaintext));
+            newKey.KeyHash.Should().Be(ApiKeyHashing.ComputeHash(rotated.Plaintext));
             newKey.KeyHash.Should().NotBe(rotated.Plaintext);
             newKey.Last4.Should().Be(rotated.Plaintext[^4..]);
         }

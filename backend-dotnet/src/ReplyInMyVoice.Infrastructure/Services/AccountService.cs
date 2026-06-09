@@ -12,8 +12,6 @@ public sealed class AccountService(
     IConfiguration? configuration = null,
     Func<string, CancellationToken, Task>? cancelSubscriptionAsync = null)
 {
-    private const int DefaultFreeBaselineRewrites = 0;
-
     public async Task<AppUser> GetOrCreateUserAsync(
         string externalAuthUserId,
         string? email,
@@ -72,7 +70,7 @@ public sealed class AccountService(
     {
         var user = await GetOrCreateUserAsync(externalAuthUserId, email, cancellationToken);
         await using var db = dbContextFactory();
-        var usagePlan = GetUsagePlan(user, configuration);
+        var usagePlan = AccountUsagePlans.GetUsagePlan(user, configuration);
         var period = await db.UsagePeriods.AsNoTracking().SingleOrDefaultAsync(
             x => x.UserId == user.Id && x.PeriodKey == usagePlan.PeriodKey,
             cancellationToken);
@@ -372,7 +370,7 @@ public sealed class AccountService(
             var user = await db.AppUsers
                 .AsTracking()
                 .SingleOrDefaultAsync(x => x.ExternalAuthUserId == normalizedExternalId, cancellationToken);
-            if (user is null || IsErasedExternalAuthUserId(user.ExternalAuthUserId))
+            if (user is null || ExternalAuthUserId.IsErasedExternalAuthUserId(user.ExternalAuthUserId))
             {
                 await transaction.CommitAsync(cancellationToken);
                 return;
@@ -481,32 +479,8 @@ public sealed class AccountService(
         });
     }
 
-    public static AccountUsagePlan GetUsagePlan(AppUser user, IConfiguration? configuration = null)
-    {
-        if (user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing or SubscriptionStatus.PastDue)
-        {
-            return new AccountUsagePlan(
-                "paid",
-                $"paid:{user.StripeSubscriptionId ?? user.Id.ToString()}:{user.CurrentPeriodEnd?.ToString("O") ?? "no-period"}",
-                user.SubscriptionStatus == SubscriptionStatus.Testing ? 10_000 : 90);
-        }
-
-        return new AccountUsagePlan(
-            "free",
-            "free:lifetime",
-            ResolveFreeBaselineRewrites(configuration));
-    }
-
     private static bool IsPaidApiSubscriptionStatus(SubscriptionStatus subscriptionStatus) =>
         subscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing;
-
-    private static int ResolveFreeBaselineRewrites(IConfiguration? configuration)
-    {
-        var configuredValue = configuration?["FREE_BASELINE_REWRITES"];
-        return int.TryParse(configuredValue, out var parsed) && parsed >= 0
-            ? parsed
-            : DefaultFreeBaselineRewrites;
-    }
 
     private async Task CancelStripeSubscriptionAsync(
         string stripeSubscriptionId,
@@ -548,9 +522,6 @@ public sealed class AccountService(
 
         return normalized.Length <= 320 ? normalized : normalized[..320];
     }
-
-    public static bool IsErasedExternalAuthUserId(string externalAuthUserId) =>
-        externalAuthUserId.StartsWith("erased:", StringComparison.Ordinal);
 
     private static string CreateErasedExternalAuthUserId(Guid userId) =>
         $"erased:{userId:N}";
@@ -659,5 +630,3 @@ public sealed record AccountBillingHistoryItem(
     string Status,
     string? ReceiptUrl,
     string? HostedInvoiceUrl);
-
-public sealed record AccountUsagePlan(string Scope, string PeriodKey, int QuotaLimit);

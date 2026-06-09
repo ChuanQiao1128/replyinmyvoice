@@ -43,7 +43,7 @@ public sealed class ApiKeyHttpFunctionsTests
         await using (var db = fixture.CreateContext())
         {
             var stored = await db.ApiKeys.SingleAsync(x => x.Id == createBody.Id);
-            stored.KeyHash.Should().Be(ApiKeyService.ComputeHash(createBody.Key));
+            stored.KeyHash.Should().Be(ApiKeyHashing.ComputeHash(createBody.Key));
             stored.KeyHash.Should().NotBe(createBody.Key);
             stored.Last4.Should().Be(createBody.Key[^4..]);
             stored.IsTest.Should().BeFalse();
@@ -66,7 +66,7 @@ public sealed class ApiKeyHttpFunctionsTests
 
         var listJson = JsonSerializer.Serialize(listBody, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         listJson.Should().NotContain(createBody.Key);
-        listJson.Should().NotContain(ApiKeyService.ComputeHash(createBody.Key));
+        listJson.Should().NotContain(ApiKeyHashing.ComputeHash(createBody.Key));
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public sealed class ApiKeyHttpFunctionsTests
         {
             var stored = await db.ApiKeys.SingleAsync(x => x.Id == createBody.Id);
             stored.IsTest.Should().BeTrue();
-            stored.KeyHash.Should().Be(ApiKeyService.ComputeHash(createBody.Key));
+            stored.KeyHash.Should().Be(ApiKeyHashing.ComputeHash(createBody.Key));
             stored.Last4.Should().Be(createBody.Key[^4..]);
         }
 
@@ -188,10 +188,10 @@ public sealed class ApiKeyHttpFunctionsTests
         oldKey.RevokedAt.Should().NotBeNull();
         newKey.RevokedAt.Should().BeNull();
         newKey.IsTest.Should().BeFalse();
-        newKey.KeyHash.Should().Be(ApiKeyService.ComputeHash(body.Key));
+        newKey.KeyHash.Should().Be(ApiKeyHashing.ComputeHash(body.Key));
 
         var responseJson = JsonSerializer.Serialize(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        responseJson.Should().NotContain(ApiKeyService.ComputeHash(body.Key));
+        responseJson.Should().NotContain(ApiKeyHashing.ComputeHash(body.Key));
     }
 
     [Fact]

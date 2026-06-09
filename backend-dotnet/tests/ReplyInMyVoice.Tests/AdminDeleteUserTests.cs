@@ -36,7 +36,7 @@ public sealed class AdminDeleteUserTests
 
         await using var db = fixture.CreateContext();
         var erasedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
-        AccountService.IsErasedExternalAuthUserId(erasedUser.ExternalAuthUserId).Should().BeTrue();
+        ExternalAuthUserId.IsErasedExternalAuthUserId(erasedUser.ExternalAuthUserId).Should().BeTrue();
         erasedUser.Email.Should().BeNull();
         erasedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Canceled);
 
@@ -152,7 +152,7 @@ public sealed class AdminDeleteUserTests
         {
             (await db.AdminAuditLogs.CountAsync()).Should().Be(0);
             var storedUser = await db.AppUsers.SingleAsync(x => x.Id == user.Id);
-            AccountService.IsErasedExternalAuthUserId(storedUser.ExternalAuthUserId).Should().BeFalse();
+            ExternalAuthUserId.IsErasedExternalAuthUserId(storedUser.ExternalAuthUserId).Should().BeFalse();
         }
 
         var deleted = await function.DeleteUser(

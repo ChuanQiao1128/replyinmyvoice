@@ -5282,3 +5282,48 @@ claude-heavy-planning-handoff
 - Output artifacts: No test artifacts changed; production API shell edit only.
 - Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~RewriteApiTests|FullyQualifiedName~RewriteRequestServiceTests|FullyQualifiedName~AccountServiceTests|FullyQualifiedName~V1RewriteRateLimitTests"` passed 57/57. Full `dotnet test ReplyInMyVoice.sln -c Release` passed 695/695.
 - Limitations: No new tests were added because this is a strangler shell replacement with unchanged behavior and the issue requires existing assertions unmodified.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-02 static helper relocation gates
+
+- Agent: Codex worker
+- Trigger: CLEAN-02 changes C# helper test references and requires focused and full .NET test gates after moving static helpers.
+- Action: Opened and followed the project skill; used the existing xUnit/FluentAssertions tests as behavior locks, repointed helper assertions to the new static homes first, and verified the expected missing-helper compile failure before adding production helpers.
+- Output artifacts: Test references in account, quota, Stripe event, admin deletion, API key, API key HTTP, API key auth, and API usage HTTP tests now exercise the new helper homes.
+- Verification evidence: Initial focused test command failed with missing `AccountUsagePlans`, `ExternalAuthUserId`, `ApiKeyHashing`, and `ApiKeyWebhookUrl` names before production helpers existed. `dotnet build ReplyInMyVoice.sln -c Release` passed with 0 warnings and 0 errors. Focused CLEAN-02 filter passed 70/70. Isolated `V1RewriteRateLimitTests` passed 4/4, and the broader API-key-pepper group passed 85/85.
+- Limitations: Full `dotnet test ReplyInMyVoice.sln -c Release` repeatedly failed one out-of-scope V1 concurrent quota reservation test with `DbUpdateConcurrencyException` from `CreateRewriteAttemptHandler`; the final full run passed 695/696. CLEAN-02 did not change that handler because this issue is limited to static-helper relocation. No schema, migration, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - state-machine-modeling - CLEAN-02 gate repair rewrite reservation race
+
+- Agent: Codex worker
+- Trigger: The verifier failed the full .NET gate on concurrent V1 rewrite submission while creating pending rewrite attempts and quota reservations.
+- Action: Opened and followed the project skill; modeled the lifecycle as unchanged states (`Pending` rewrite attempts, `Pending` usage reservations, pending outbox messages) and unchanged events (new idempotency key, repeated idempotency key, conflicting idempotency key, concurrent distinct V1 submissions). Allowed transitions remain create pending attempt plus one pending reservation and one outbox row, return existing for duplicate same request, return conflict for duplicate different request, and return quota-exceeded after retry when the latest reserved count reaches quota.
+- Output artifacts: `CreateRewriteAttemptHandler` now runs the existing mutation logic through the retrying serializable unit-of-work path.
+- Verification evidence: Exact failing V1 test passed 1/1; `V1RewriteRateLimitTests` passed 4/4; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
+- Limitations: No new statuses, enums, schema, migration, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - data-module-review - CLEAN-02 gate repair quota persistence race
+
+- Agent: Codex worker
+- Trigger: The verifier failure was an EF Core optimistic concurrency exception while saving `UsagePeriod`, `RewriteAttempt`, `UsageReservation`, and `OutboxMessage` changes.
+- Action: Opened and followed the project skill; reviewed the failing stack, `CreateRewriteAttemptHandler`, `IUnitOfWork`/`UnitOfWork`, repositories, existing `ReserveQuotaHandler` retry pattern, and the V1 concurrency test. Finding: the Application rewrite-attempt creation path had the same quota reservation write shape as the retrying quota handler but did not use the retrying transaction overload.
+- Output artifacts: `CreateRewriteAttemptHandler` now uses `IUnitOfWork.ExecuteInTransactionAsync(..., IsolationLevel.Serializable, maxAttempts: 3, ...)`.
+- Verification evidence: Exact failing V1 test passed 1/1; focused CLEAN-02 filter passed 70/70; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
+- Limitations: No schema, migration, data backfill, repository interface change, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - resilience-test-generation - CLEAN-02 gate repair concurrent request recovery
+
+- Agent: Codex worker
+- Trigger: The failed gate covered concurrent V1 requests, rate limiting, failed API usage writes, and quota reservation recovery.
+- Action: Opened and followed the project skill; used the existing WebApplicationFactory/SQLite V1 concurrency test as the resilience test because it already asserts the failure matrix row for concurrent requests plus partial API usage write failure. The fix retries only retryable transaction races and preserves final state assertions.
+- Output artifacts: Production retry wrapper in `CreateRewriteAttemptHandler`; no test assertions changed.
+- Verification evidence: Exact failing V1 test passed 1/1; `V1RewriteRateLimitTests` passed 4/4; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
+- Limitations: No live provider, cloud, queue, deployment, push, PR, or payment action was performed.
+
+### 2026-06-09 - dotnet-backend-testing - CLEAN-02 gate repair full suite
+
+- Agent: Codex worker
+- Trigger: Supervisor verification failed `dotnet test` for the backend solution after CLEAN-02.
+- Action: Opened and followed the project skill; kept the existing xUnit/FluentAssertions/WebApplicationFactory test as the red test, made the minimal production retry change, then ran the exact failing test, the containing class, the CLEAN-02 focused filter, and the full solution suite.
+- Output artifacts: `CreateRewriteAttemptHandler.cs` now wraps rewrite attempt creation in the existing retrying unit-of-work transaction.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; exact failing V1 test passed 1/1; `V1RewriteRateLimitTests` passed 4/4; focused CLEAN-02 filter passed 70/70; full `dotnet test ReplyInMyVoice.sln -c Release` passed 696/696.
+- Limitations: No tests were disabled, skipped, deleted, or weakened. No deployment, push, PR, or payment action was performed.

@@ -111,7 +111,7 @@ public sealed class AccountServiceTests : IAsyncLifetime
             SubscriptionStatus = SubscriptionStatus.Inactive,
         };
 
-        var plan = AccountService.GetUsagePlan(user, configuration);
+        var plan = AccountUsagePlans.GetUsagePlan(user, configuration);
 
         plan.Scope.Should().Be("free");
         plan.PeriodKey.Should().Be("free:lifetime");

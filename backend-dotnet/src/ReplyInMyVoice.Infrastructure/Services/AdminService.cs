@@ -581,7 +581,7 @@ public sealed class AdminService(
                 return AdminDeleteUserServiceResult.UserNotFound("No user exists for the requested id.");
             }
 
-            if (AccountService.IsErasedExternalAuthUserId(user.ExternalAuthUserId))
+            if (ExternalAuthUserId.IsErasedExternalAuthUserId(user.ExternalAuthUserId))
             {
                 return AdminDeleteUserServiceResult.Forbidden("account already erased");
             }
