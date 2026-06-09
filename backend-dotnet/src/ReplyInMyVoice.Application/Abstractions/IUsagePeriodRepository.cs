@@ -10,4 +10,8 @@ public interface IUsagePeriodRepository
         Guid userId,
         string periodKey,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<UsagePeriod>> ListByUserIdAsync(
+        Guid userId,
+        CancellationToken ct = default);
 }

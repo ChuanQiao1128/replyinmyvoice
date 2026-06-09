@@ -8,4 +8,8 @@ public interface IRewriteCreditRepository
         Guid userId,
         DateTimeOffset now,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<RewriteCredit>> ListByUserIdAsync(
+        Guid userId,
+        CancellationToken ct = default);
 }
