@@ -6,12 +6,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Repositories;
-using ReplyInMyVoice.Infrastructure.Services;
 using AppResultKind = ReplyInMyVoice.Application.Common.ApplicationResultKind;
 
 namespace ReplyInMyVoice.Tests;
@@ -56,13 +57,14 @@ public sealed class AdminSuspensionTests
             (await db.OutboxMessages.CountAsync()).Should().Be(0);
         }
 
-        var adminService = new AdminService(fixture.CreateContext);
-        var unsuspend = await adminService.SetUserSuspensionAsync(
-            "admin-owner-oid",
-            "owner@example.com",
-            user.Id,
-            suspended: false,
-            now.AddMinutes(1),
+        await using var adminDb = fixture.CreateContext();
+        var unsuspend = await CreateSuspensionHandler(adminDb).HandleAsync(
+            new SetUserSuspensionCommand(
+                "admin-owner-oid",
+                "owner@example.com",
+                user.Id,
+                Suspended: false,
+                now.AddMinutes(1)),
             CancellationToken.None);
 
         unsuspend.Kind.Should().Be(AdminSuspensionResultKind.Success);
@@ -170,6 +172,9 @@ public sealed class AdminSuspensionTests
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
             new UnitOfWork(db));
+
+    private static SetUserSuspensionHandler CreateSuspensionHandler(ReplyInMyVoice.Infrastructure.Data.AppDbContext db) =>
+        new(new AdminUserRepository(db), new UnitOfWork(db));
 
     private static HttpRequest CreateRequest(string oid, string email, object body)
     {

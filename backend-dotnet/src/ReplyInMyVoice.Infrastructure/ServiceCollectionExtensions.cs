@@ -161,17 +161,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ProcessStripeWebhookHandler>();
         services.AddScoped<ProcessExpiredPaymentGraceHandler>();
         services.AddScoped<ProcessPaymentGraceRemindersHandler>();
-        services.AddScoped<AccountService>();
-        services.AddScoped<ApiKeyService>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
-        services.AddScoped<ApiKeyUsageQueryService>();
         services.AddScoped<WebhookDeliveryService>();
         services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
-        services.AddScoped<AdminService>();
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
-        services.AddScoped<CreditExpiryReminderService>();
         services.AddScoped<BillingSupportService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
         services.AddScoped<ApplicationStripeBillingClient>(sp =>

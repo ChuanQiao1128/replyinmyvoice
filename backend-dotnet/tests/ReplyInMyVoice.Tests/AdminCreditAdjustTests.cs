@@ -6,9 +6,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Infrastructure.Repositories;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -20,13 +23,12 @@ public sealed class AdminCreditAdjustTests
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
         await ExhaustFreeQuotaAsync(fixture, user.Id);
-        var accountService = new AccountService(fixture.CreateContext);
         var function = AdminHttpFunctionsTestFactory.Create(BuildConfiguration(), fixture.CreateContext);
 
-        var before = await accountService.GetOrCreateAccountSummaryAsync(
+        var before = await GetAccountSummaryAsync(
+            fixture,
             user.ExternalAuthUserId,
-            user.Email,
-            CancellationToken.None);
+            user.Email);
         before.Usage.Remaining.Should().Be(0);
 
         var result = await function.GrantCredits(
@@ -45,10 +47,10 @@ public sealed class AdminCreditAdjustTests
         response.Source.Should().Be("ADMIN");
         response.ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddDays(89));
 
-        var after = await accountService.GetOrCreateAccountSummaryAsync(
+        var after = await GetAccountSummaryAsync(
+            fixture,
             user.ExternalAuthUserId,
-            user.Email,
-            CancellationToken.None);
+            user.Email);
         after.Usage.Remaining.Should().Be(7);
         after.Usage.Quota.Should().Be(10);
         after.Usage.Used.Should().Be(3);
@@ -138,6 +140,24 @@ public sealed class AdminCreditAdjustTests
             UpdatedAt = DateTimeOffset.UtcNow,
         });
         await db.SaveChangesAsync();
+    }
+
+    private static async Task<AccountSummaryDto> GetAccountSummaryAsync(
+        DbFixture fixture,
+        string externalAuthUserId,
+        string? email)
+    {
+        await using var db = fixture.CreateContext();
+        var handler = new GetAccountSummaryHandler(
+            new AppUserRepository(db),
+            new UsagePeriodRepository(db),
+            new RewriteCreditRepository(db),
+            new PromoCodeRedemptionRepository(db),
+            new PromoCodeRepository(db),
+            new AccountUsagePlanProvider(BuildConfiguration()),
+            new UnitOfWork(db));
+
+        return await handler.HandleAsync(new GetAccountSummaryQuery(externalAuthUserId, email));
     }
 
     private static HttpRequest CreateRequest(string oid, string email, object body)

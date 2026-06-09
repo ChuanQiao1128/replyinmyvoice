@@ -12,6 +12,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Domain.Contracts;
@@ -767,8 +769,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
 
         await using var factory = CreateFactory();
         var client = CreateClient(factory);
-        var expected = await new AccountService(() => CreateContext())
-            .GetOrCreateAccountSummaryAsync(user.ExternalAuthUserId, user.Email, CancellationToken.None);
+        var expected = await GetAccountSummaryAsync(user.ExternalAuthUserId, user.Email);
 
         var response = await GetV1UsageAsync(client, token);
 
@@ -1209,6 +1210,23 @@ public sealed class RewriteApiTests : IAsyncLifetime
                 ["Health:StripeLastProcessedMaxAgeMinutes"] = "60",
             })
             .Build();
+
+    private async Task<AccountSummaryDto> GetAccountSummaryAsync(
+        string externalAuthUserId,
+        string? email)
+    {
+        await using var db = CreateContext();
+        var handler = new GetAccountSummaryHandler(
+            new AppUserRepository(db),
+            new UsagePeriodRepository(db),
+            new RewriteCreditRepository(db),
+            new PromoCodeRedemptionRepository(db),
+            new PromoCodeRepository(db),
+            new AccountUsagePlanProvider(new ConfigurationBuilder().Build()),
+            new UnitOfWork(db));
+
+        return await handler.HandleAsync(new GetAccountSummaryQuery(externalAuthUserId, email));
+    }
 
     private async Task SeedPromoCreditAsync(string externalAuthUserId, int amountGranted)
     {

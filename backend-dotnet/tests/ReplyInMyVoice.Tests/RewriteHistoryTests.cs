@@ -114,8 +114,8 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
 
     private RewriteHttpFunctions CreateFunctions(AppDbContext db)
     {
-        var accountService = new AccountService(CreateContext);
         var appUserRepository = new AppUserRepository(db);
+        var unitOfWork = new UnitOfWork(db);
         var rewriteAttemptRepository = new RewriteAttemptRepository(db);
         var createRewriteAttemptHandler = new CreateRewriteAttemptHandler(
             appUserRepository,
@@ -124,14 +124,15 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            unitOfWork);
+        var getOrCreateUserHandler = new GetOrCreateUserHandler(appUserRepository, unitOfWork);
         var findUserHandler = new FindUserHandler(appUserRepository);
         var getRewriteAttemptHandler = new GetRewriteAttemptHandler(rewriteAttemptRepository);
 
         return new RewriteHttpFunctions(
             BuildConfiguration(),
             db,
-            accountService,
+            getOrCreateUserHandler,
             findUserHandler,
             createRewriteAttemptHandler,
             getRewriteAttemptHandler);

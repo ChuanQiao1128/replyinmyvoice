@@ -139,14 +139,16 @@ public sealed class AdminRefundTests : IAsyncLifetime
         {
             RefundError = new TaskCanceledException("simulated Stripe refund timeout"),
         };
-        var service = new AdminService(CreateContext, fakeRefundClient);
-        var request = new AdminRefundRequest("pi_refund_failure", 1200, "nzd");
+        var function = CreateFunction(fakeRefundClient);
 
-        var act = () => service.IssueRefundAsync(
-            "admin-owner-oid",
-            "owner@example.com",
-            user.Id,
-            request,
+        var act = () => function.IssueRefund(
+            CreateRequest("admin-owner-oid", "owner@example.com", new
+            {
+                paymentIntentId = "pi_refund_failure",
+                amount = 1200,
+                currency = "nzd",
+            }),
+            user.Id.ToString(),
             CancellationToken.None);
 
         await act.Should().ThrowAsync<TaskCanceledException>()
