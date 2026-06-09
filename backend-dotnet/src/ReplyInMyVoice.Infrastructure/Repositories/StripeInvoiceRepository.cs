@@ -5,17 +5,12 @@ using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Repositories;
 
-public sealed class UsageReservationRepository(AppDbContext db) : IUsageReservationRepository
+public sealed class StripeInvoiceRepository(AppDbContext db) : IStripeInvoiceRepository
 {
-    public async Task AddAsync(UsageReservation reservation, CancellationToken ct = default)
-    {
-        await db.UsageReservations.AddAsync(reservation, ct);
-    }
-
-    public async Task<IReadOnlyList<UsageReservation>> ListByUserIdAsync(
+    public async Task<IReadOnlyList<StripeInvoice>> ListByUserIdAsync(
         Guid userId,
         CancellationToken ct = default) =>
-        await db.UsageReservations
+        await db.StripeInvoices
             .AsTracking()
             .Where(x => x.UserId == userId)
             .ToListAsync(ct);

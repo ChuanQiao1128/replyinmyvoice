@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -40,7 +41,19 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IUsageReservationRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteCreditRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IOutboxMessageRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IPromoCodeRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IPromoCodeRedemptionRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IStripeInvoiceRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IBillingSupportRequestRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IAccountUsagePlanProvider>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IUnitOfWork>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetOrCreateUserHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<FindUserHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetAccountSummaryHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetPurchaseHistoryHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<HasPaidApiEntitlementHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetBillingHistoryHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<DeleteAccountHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<CreateRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
     }

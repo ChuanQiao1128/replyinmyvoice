@@ -24,4 +24,12 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
             .ThenBy(x => x.GrantedAt)
             .FirstOrDefault();
     }
+
+    public async Task<IReadOnlyList<RewriteCredit>> ListByUserIdAsync(
+        Guid userId,
+        CancellationToken ct = default) =>
+        await db.RewriteCredits
+            .AsTracking()
+            .Where(x => x.UserId == userId)
+            .ToListAsync(ct);
 }

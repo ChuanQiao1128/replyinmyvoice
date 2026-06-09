@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
@@ -62,7 +63,19 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUsageReservationRepository, UsageReservationRepository>();
         services.AddScoped<IRewriteCreditRepository, RewriteCreditRepository>();
         services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
+        services.AddScoped<IPromoCodeRepository, PromoCodeRepository>();
+        services.AddScoped<IPromoCodeRedemptionRepository, PromoCodeRedemptionRepository>();
+        services.AddScoped<IStripeInvoiceRepository, StripeInvoiceRepository>();
+        services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
+        services.AddScoped<IAccountUsagePlanProvider>(_ => new AccountUsagePlanProvider(configuration));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<GetOrCreateUserHandler>();
+        services.AddScoped<FindUserHandler>();
+        services.AddScoped<GetAccountSummaryHandler>();
+        services.AddScoped<GetPurchaseHistoryHandler>();
+        services.AddScoped<HasPaidApiEntitlementHandler>();
+        services.AddScoped<GetBillingHistoryHandler>();
+        services.AddScoped<DeleteAccountHandler>();
         services.AddScoped<CreateRewriteAttemptHandler>();
         services.AddScoped<GetRewriteAttemptHandler>();
         services.AddScoped<AccountService>();
@@ -86,8 +99,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<BillingSupportService>();
         services.AddSingleton<IStripeBillingClient, StripeBillingClient>();
         services.AddScoped<TaxTurnoverService>();
-        services.AddScoped<IStripeBillingService, StripeBillingService>();
-        services.AddScoped<IStripePaymentReconciliationClient, StripeBillingService>();
+        services.AddScoped(sp => new StripeBillingService(
+            sp.GetRequiredService<Func<AppDbContext>>(),
+            configuration,
+            sp.GetService<IStripeBillingClient>()));
+        services.AddScoped<IStripeBillingService>(sp => sp.GetRequiredService<StripeBillingService>());
+        services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
+        services.AddScoped<IStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());
         services.AddScoped<IStripeReconciliationAlerter, StripeReconciliationNotificationAlerter>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton<ICheckoutVelocityLimiter, CheckoutVelocityLimiter>();

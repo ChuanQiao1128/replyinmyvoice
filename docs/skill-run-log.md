@@ -4562,3 +4562,39 @@ claude-heavy-planning-handoff
 - Output artifacts: Deleted dead frontend rewrite/eval modules and their exclusive tests; retained `lib/observability/` and live proxy helpers.
 - Verification evidence: `npm run typecheck`, `npm run test`, `npm run build`, `npm run lint`, the DDD-01 dead-code grep, and the banned-term source scan all exited 0. No live imports under `app/` or `components/` were found before deletion.
 - Limitations: No Prisma schema, migration, database access service, payment flow, deployment, push, or PR command was changed or run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-40 Account Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #621 and `plans/ddd-restructure/issues/DDD-40-account.md` require converting the existing `AccountService` use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-40 brief, `docs/ddd-migration-playbook.md`, `AccountService.cs`, existing Rewrite handlers, Application abstractions, repositories, and AccountService tests before editing. Scoped goals to add Account handlers/repositories/DTOs only; non-goals were no entry-point switch, no AccountService edit, no schema/migration change, no provider mode or secret wiring change.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Account/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/AccountDtos.cs`; repository abstractions/implementations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AccountUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the Account use-case namespace and DTO/abstraction surface did not exist. Final release build, focused AccountUseCase tests, full backend tests, file-existence check, diff whitespace check, and touched-file banned-term scan passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-40 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-40 Account deletion and entitlement lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #621 migrates Account use cases that read subscription/free-credit entitlement state and erase account-owned rewrite/usage/credit/support records.
+- Action: Opened and followed the project skill; modeled states as active account, absent account, erased account, paid-entitled account, credit-entitled account, non-entitled account, pending/processing rewrite attempt, finalized/succeeded attempt, pending usage reservation, released reservation, active credit, erased credit, open billing support request, and resolved billing support request. Events are get/create user, find user, summary query, purchase/billing query, API entitlement query, delete command, duplicate delete command, and optional subscription cancellation.
+- Output artifacts: `DeleteAccountHandler`, `HasPaidApiEntitlementHandler`, Account projection handlers, and `AccountUseCaseTests`.
+- Verification evidence: `python3 /Users/qc/.codex/skills/state-machine-modeling/scripts/state_machine_template.py "DDD-40 account deletion lifecycle"` generated the checklist. Tests cover delete command transitions to erased/canceled user, pending/processing attempt to failed with `account_erased`, reservation to released, credit to erased/zeroed, support request to resolved, duplicate delete with one cancellation call, paid-status entitlement, purchase-credit entitlement, and rejected promo/expired/missing-user entitlement.
+- Limitations: Existing entry points still call `AccountService`; the new state transitions are not production-routed until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-40 Account repository migration
+
+- Agent: Codex worker
+- Trigger: GitHub issue #621 changes data access services for AppUser, UsagePeriod, UsageReservation, RewriteAttempt, RewriteCredit, PromoCode, PromoCodeRedemption, StripeInvoice, and BillingSupportRequest through new Application repository interfaces.
+- Action: Opened and followed the project skill; read EF entities/mappings, old AccountService queries/mutations, existing repository style, and SQLite tests. Added narrow repository methods only, kept all schema and migration files unchanged, and made `DeleteAccountHandler` commit through `IUnitOfWork.ExecuteInTransactionAsync`.
+- Output artifacts: new Account repository abstractions and implementations, `UnitOfWork.ExecuteInTransactionAsync`, `AccountUsagePlanProvider`, and Account handlers/tests.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py --limit 80 backend-dotnet/src` completed and reported the expected broad quota/idempotency/read-write signals in the backend tree. `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~AccountUseCaseTests` passed 6/6; full `dotnet test ReplyInMyVoice.sln -c Release` passed 632/632.
+- Limitations: The scan is heuristic and broad; no dedicated migration smoke was needed because no schema or migration changed. The existing `AccountService` data path remains in place by design.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-40 AccountUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #621 adds C#/.NET Application handlers and requires SQLite in-memory tests covering all Account handlers.
+- Action: Opened and followed the project skill; wrote `AccountUseCaseTests` before production code, watched the focused test fail on missing Account handler/DTO/interface types, then implemented the Application and Infrastructure code. Added DI assertions to `InfrastructureServiceCollectionTests` for the new repositories, handlers, usage-plan provider, and cancellation adapter.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AccountUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~AccountUseCaseTests` failed with missing `ReplyInMyVoice.Application.UseCases.Account` and related types. Final gates: `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused AccountUseCase tests passed 6/6; focused InfrastructureServiceCollection tests passed 13/13; full backend tests passed 632/632.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, or live payment command was run.

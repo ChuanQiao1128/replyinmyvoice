@@ -31,4 +31,12 @@ public sealed class RewriteAttemptRepository(AppDbContext db) : IRewriteAttemptR
             .SingleOrDefaultAsync(
                 x => x.UserId == userId && x.IdempotencyKey == idempotencyKey,
                 ct);
+
+    public async Task<IReadOnlyList<RewriteAttempt>> ListByUserIdAsync(
+        Guid userId,
+        CancellationToken ct = default) =>
+        await db.RewriteAttempts
+            .AsTracking()
+            .Where(x => x.UserId == userId)
+            .ToListAsync(ct);
 }

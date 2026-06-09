@@ -12,4 +12,8 @@ public interface IRewriteAttemptRepository
         Guid userId,
         string idempotencyKey,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<RewriteAttempt>> ListByUserIdAsync(
+        Guid userId,
+        CancellationToken ct = default);
 }
