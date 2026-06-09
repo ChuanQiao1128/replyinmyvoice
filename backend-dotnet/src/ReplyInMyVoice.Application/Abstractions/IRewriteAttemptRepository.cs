@@ -8,6 +8,8 @@ public interface IRewriteAttemptRepository
 
     Task<RewriteAttempt?> GetByIdAsync(Guid attemptId, CancellationToken ct = default);
 
+    Task<RewriteAttempt?> GetByIdNoTrackingAsync(Guid attemptId, CancellationToken ct = default);
+
     Task<RewriteAttempt?> GetByIdForUserAsync(Guid attemptId, Guid userId, CancellationToken ct = default);
 
     Task<RewriteAttempt?> GetByUserIdAndIdempotencyKeyAsync(
