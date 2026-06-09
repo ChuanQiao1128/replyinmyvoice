@@ -4940,3 +4940,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/AdminUseCaseTests.cs`.
 - Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~AdminUseCaseTests` failed with missing Admin Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Admin/GrantCreditsHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused AdminUseCase tests passed 15/15; full backend tests passed 685/685.
 - Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.
+
+### 2026-06-09 - system-spec-synthesis - DDD-50 BillingSupport Application use-case contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #631 and `plans/ddd-restructure/issues/DDD-50-billing-support.md` require converting BillingSupport create/list use cases into Application handlers across Application, Infrastructure, and tests.
+- Action: Opened and followed the project skill at implementation-contract level; read `AGENTS.md`, `CLAUDE.md`, the issue body, the DDD-50 brief, `docs/ddd-migration-playbook.md`, `BillingSupportService.cs`, existing Rewrite handler templates, Application abstractions, repositories, and BillingSupport-related tests before editing. Scoped goals to add strangler Application handlers only; non-goals were no entry-point switch, no legacy service edit, no schema/migration change, no provider secret, no deployment change, and no live payment action.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/BillingSupport/*`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/BillingSupportRequestResultDto.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Common/BillingSupportRequestResponseDto.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IBillingSupportRepository.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/BillingSupportRepository.cs`; handler/repository registrations; `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingSupportUseCaseTests.cs`.
+- Verification evidence: Initial focused red test failed because the BillingSupport Application namespace and handlers did not exist. Final release build, focused BillingSupportUseCase tests, full backend tests, handler file-existence check, Application layering scan, touched-file restricted-substring scan, and standard frontend copy guard passed.
+- Limitations: No separate spec document was added because the GitHub issue plus DDD-50 brief were already the authoritative implementation spec, and the delivery wave asked to stay strictly inside issue scope.
+
+### 2026-06-09 - state-machine-modeling - DDD-50 BillingSupport request status guard
+
+- Agent: Codex worker
+- Trigger: GitHub issue #631 requires preserving the duplicate-open-request guard while creating BillingSupport requests.
+- Action: Opened and followed the project skill; modeled `BillingSupportRequest` states as `Open` and `Resolved`. Event list: create request, reject create while an open request exists, list by user, and admin resolve in the existing legacy path. Allowed transition for this issue is no request or resolved-only history to new `Open`; illegal transition is creating another `Open` request for the same user. Persistence implication: the guard and insert run inside `IUnitOfWork.ExecuteInTransactionAsync` with serializable isolation and no schema change.
+- Output artifacts: `CreateBillingSupportRequestHandler`; `IBillingSupportRepository.HasOpenRequestForUserAsync`; `BillingSupportRepository.HasOpenRequestForUserAsync`; duplicate-open SQLite test.
+- Verification evidence: `CreateBillingSupportRequestAsync_rejects_duplicate_open_request_without_side_effects` passed and asserted `InvalidRequest` plus one persisted request. Focused BillingSupportUseCase tests passed 4/4 and full backend tests passed 689/689.
+- Limitations: No new database uniqueness constraint or migration was added because the issue explicitly prohibited schema changes; entry points still call the legacy service until a later strangler issue switches callers.
+
+### 2026-06-09 - data-module-review - DDD-50 BillingSupport repository and persistence invariants
+
+- Agent: Codex worker
+- Trigger: GitHub issue #631 changes EF data access for BillingSupport create/list through a new Application repository interface.
+- Action: Opened and followed the project skill; read EF mappings, existing BillingSupport entity/status/type enums, existing account deletion repository dependency, legacy BillingSupport persistence flow, and SQLite test conventions. Added a narrow `IBillingSupportRepository` and matching `BillingSupportRepository`, kept the existing `IBillingSupportRequestRepository` untouched for account deletion, kept all schema and migration files unchanged, and kept handlers free of `AppDbContext`.
+- Output artifacts: `IBillingSupportRepository`; `BillingSupportRepository`; Application BillingSupport DTOs/handlers; BillingSupport handler tests; DI registration assertions.
+- Verification evidence: Data risk scan ran against `backend-dotnet/src` and reported broad existing risk signals; no new schema or migration files were added. Focused tests assert successful create, duplicate-open no-side-effect path, empty list, and user-scoped newest-first list. `dotnet build ReplyInMyVoice.sln -c Release` exited 0 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 689/689.
+- Limitations: No migration smoke was needed because no schema or migration changed. Existing `BillingSupportService` persistence code was not edited.
+
+### 2026-06-09 - dotnet-backend-testing - DDD-50 BillingSupportUseCaseTests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #631 adds C#/.NET Application handler tests for BillingSupport create/list behavior.
+- Action: Opened and followed the project skill; wrote `BillingSupportUseCaseTests` before production code, watched the initial focused run fail on missing BillingSupport Application namespace and handlers, then implemented Application and Infrastructure code with SQLite in-memory coverage. Updated the existing Infrastructure service-collection smoke test to assert the new repository and handlers are registered.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/BillingSupportUseCaseTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Red run: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~BillingSupportUseCaseTests` failed with missing BillingSupport Application types. Final gates: `test -f backend-dotnet/src/ReplyInMyVoice.Application/UseCases/BillingSupport/CreateBillingSupportRequestHandler.cs` exited 0; `dotnet build ReplyInMyVoice.sln -c Release` exited 0; focused BillingSupportUseCase tests passed 4/4; full backend tests passed 689/689.
+- Limitations: Git commit was attempted but blocked by sandbox permissions because the worktree git metadata lives outside the writable root; no push, PR, deploy, entry-point switch, legacy service edit, schema change, migration, new package, or live payment command was run.

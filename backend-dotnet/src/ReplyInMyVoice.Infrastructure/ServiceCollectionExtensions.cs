@@ -9,6 +9,7 @@ using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Application.UseCases.Billing;
+using ReplyInMyVoice.Application.UseCases.BillingSupport;
 using ReplyInMyVoice.Application.UseCases.Promo;
 using ReplyInMyVoice.Application.UseCases.PromoAdmin;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -81,6 +82,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPromoAdminRepository, PromoAdminRepository>();
         services.AddScoped<IStripeEventRepository, StripeEventRepository>();
         services.AddScoped<IStripeInvoiceRepository, StripeInvoiceRepository>();
+        services.AddScoped<IBillingSupportRepository, BillingSupportRepository>();
         services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
         services.AddScoped<IPaymentGrantRepository, PaymentGrantRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
@@ -99,6 +101,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetPurchaseHistoryHandler>();
         services.AddScoped<HasPaidApiEntitlementHandler>();
         services.AddScoped<GetBillingHistoryHandler>();
+        services.AddScoped<CreateBillingSupportRequestHandler>();
+        services.AddScoped<GetBillingSupportRequestsHandler>();
         services.AddScoped<DeleteAccountHandler>();
         services.AddScoped<GetAdminUsersHandler>();
         services.AddScoped<GetAdminUserDetailHandler>();

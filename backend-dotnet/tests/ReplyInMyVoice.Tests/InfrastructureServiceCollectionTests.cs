@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.BillingSupport;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
@@ -49,6 +50,7 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IPromoCodeRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IPromoCodeRedemptionRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IStripeInvoiceRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IBillingSupportRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IBillingSupportRequestRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IPaymentGrantRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IAccountUsagePlanProvider>().Should().NotBeNull();
@@ -63,6 +65,8 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<GetPurchaseHistoryHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<HasPaidApiEntitlementHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetBillingHistoryHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<CreateBillingSupportRequestHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<GetBillingSupportRequestsHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<DeleteAccountHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ReserveQuotaHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<FinalizeQuotaSuccessHandler>().Should().NotBeNull();
