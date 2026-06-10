@@ -9,7 +9,7 @@ const stats = [
   { v: "No bad result", l: "or it doesn't count" },
 ];
 
-export function Hero() {
+export function Hero({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <header className="hero">
       <div className="wrap">
@@ -28,9 +28,15 @@ export function Hero() {
           facts intact.
         </p>
         <div className="hero-cta">
-          <Link href="/sign-up" className="btn btn-primary btn-lg">
-            Start rewriting <span className="btn-arrow">→</span>
-          </Link>
+          {signedIn ? (
+            <Link href="/app" className="btn btn-primary btn-lg">
+              Open your workspace <span className="btn-arrow">→</span>
+            </Link>
+          ) : (
+            <Link href="/sign-up" className="btn btn-primary btn-lg">
+              Start rewriting <span className="btn-arrow">→</span>
+            </Link>
+          )}
           <a href="#workflow" className="btn btn-ghost btn-lg">
             See before &amp; after
           </a>

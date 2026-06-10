@@ -210,6 +210,65 @@ export default function DevelopersPage() {
             </div>
           </div>
 
+          <section className="dev-section" aria-labelledby="paths-heading">
+            <div className="pp-includes-head" id="paths-heading">
+              Two ways to integrate
+            </div>
+            <div className="card-grid">
+              <article className="v2card">
+                <h3>REST API</h3>
+                <p>
+                  Call the rewrite engine from your own product or backend:
+                  submit a draft, poll the async job, get a send-ready reply.
+                  Best when you&apos;re embedding rewrites into an app you own.
+                </p>
+                <div
+                  style={{
+                    marginTop: 16,
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <a href="#quickstart" className="btn btn-primary">
+                    API quickstart <span className="btn-arrow">→</span>
+                  </a>
+                  <a href="/api/v1/openapi.json" className="btn btn-ghost">
+                    OpenAPI spec
+                  </a>
+                </div>
+              </article>
+              <article className="v2card">
+                <h3>MCP server</h3>
+                <p>
+                  Connect Reply In My Voice as a tool inside Claude Code, Claude
+                  Desktop, Codex, Cursor, or any MCP host — nothing to code. Best
+                  when you want in-voice rewrites in the tools you already use.
+                </p>
+                <div
+                  style={{
+                    marginTop: 16,
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Link href="/developers/mcp" className="btn btn-primary">
+                    MCP setup <span className="btn-arrow">→</span>
+                  </Link>
+                </div>
+              </article>
+            </div>
+            <div className="dev-callout">
+              One API key works for both paths, and your API and website rewrites
+              draw from the same balance.{" "}
+              <Link href="/developers/keys" className="dev-text-link">
+                Get your API key
+              </Link>
+              .
+            </div>
+          </section>
+
           <section className="dev-section" aria-labelledby="overview-heading">
             <div className="pp-includes-head" id="overview-heading">
               Overview
