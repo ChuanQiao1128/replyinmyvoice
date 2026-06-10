@@ -13,19 +13,21 @@ describe("developer key management UI source", () => {
   const pageSource = source("app/developers/keys/page.tsx");
   const headerSource = source("components/site-header.tsx");
 
-  it("adds a signed-in portal page using the shared header", () => {
-    expect(pageSource).toContain(
+  it("hosts the developer console inside the app shell", () => {
+    const keysPage = source("app/app/keys/page.tsx");
+    expect(keysPage).toContain(
       'from "../../../components/developers/developer-dashboard"',
     );
-    expect(pageSource).toContain('from "../../../components/site-header"');
-    expect(pageSource).toContain('from "../../../lib/azure-api"');
-    expect(pageSource).toContain('export const dynamic = "force-dynamic"');
-    expect(pageSource).toContain("fetchAzureAccountSummary");
-    expect(pageSource).toContain("<SiteHeader");
-    expect(pageSource).toContain("<DeveloperDashboard");
-    expect(pageSource).toContain("paymentGraceEndsAt={account.paymentGraceEndsAt}");
-    expect(pageSource).not.toContain("getAzureApiBaseUrl");
-    expect(pageSource).not.toContain("getCurrentAccessToken");
+    expect(keysPage).toContain('from "../../../lib/azure-api"');
+    expect(keysPage).toContain('export const dynamic = "force-dynamic"');
+    expect(keysPage).toContain("fetchAzureAccountSummary");
+    expect(keysPage).toContain("<DeveloperDashboard");
+    expect(keysPage).toContain('initialTab="keys"');
+    expect(keysPage).toContain("paymentGraceEndsAt=");
+    expect(keysPage).toContain("subscriptionStatus=");
+
+    // The old /developers/keys route now permanently redirects into the shell.
+    expect(pageSource).toContain('redirect("/app/keys")');
   });
 
   it("loads, creates, and revokes keys through the existing UI routes", () => {

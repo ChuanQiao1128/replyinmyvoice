@@ -1,36 +1,9 @@
-import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-
-import { DeveloperDashboard } from "../../../components/developers/developer-dashboard";
-import { SiteHeader } from "../../../components/site-header";
-import { fetchAzureAccountSummary } from "../../../lib/azure-api";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Developer dashboard",
-  description:
-    "Manage API keys, usage, and billing for your Reply In My Voice developer account.",
-};
-
-export default async function DeveloperApiKeysPage() {
-  const account = await fetchAzureAccountSummary();
-
-  if (!account) {
-    redirect("/sign-in");
-  }
-
-  return (
-    <>
-      <SiteHeader />
-      <main className="rimv">
-        <section className="wrap py-10 sm:py-14">
-          <DeveloperDashboard
-            paymentGraceEndsAt={account.paymentGraceEndsAt}
-            subscriptionStatus={account.subscriptionStatus}
-          />
-        </section>
-      </main>
-    </>
-  );
+// The developer console moved into the app shell at /app/keys. A permanent
+// redirect is also configured in next.config.ts; this is the runtime fallback.
+export default function DeveloperApiKeysPage() {
+  redirect("/app/keys");
 }

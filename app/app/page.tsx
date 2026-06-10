@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
 import { RewriteWorkspace } from "../../components/app/rewrite-workspace";
-import { SiteHeader } from "../../components/site-header";
 import { fetchAzureAccountSummary } from "../../lib/azure-api";
 import {
   labelForQuotaSource,
@@ -61,9 +60,7 @@ export default async function AppPage() {
     !paid && (!promoState.hasRedeemed || promoState.trialRemaining === 0);
 
   return (
-    <>
-      <SiteHeader rewriteHistoryUserKey={rewriteHistoryUserKey} />
-      <RewriteWorkspace
+    <RewriteWorkspace
         appExperience={appExperience}
         canRedeem={canRedeem}
         outOfCredits={outOfCredits}
@@ -79,6 +76,5 @@ export default async function AppPage() {
         subscriptionStatus={account.subscriptionStatus}
         usageLabel={usageLabel}
       />
-    </>
   );
 }
