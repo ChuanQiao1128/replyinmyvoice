@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { ChromeGate } from "../components/chrome-gate";
 import { SiteFooter } from "../components/site-footer";
 import "./globals.css";
 
@@ -59,7 +60,9 @@ export default function RootLayout({
     >
       <body>
         {children}
-        <SiteFooter />
+        <ChromeGate>
+          <SiteFooter />
+        </ChromeGate>
       </body>
     </html>
   );

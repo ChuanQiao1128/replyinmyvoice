@@ -39,13 +39,15 @@ const tabs: {
 type Props = {
   paymentGraceEndsAt: string | null;
   subscriptionStatus: string;
+  initialTab?: DashboardTab;
 };
 
 export function DeveloperDashboard({
   paymentGraceEndsAt,
   subscriptionStatus,
+  initialTab = "keys",
 }: Props) {
-  const [activeTab, setActiveTab] = useState<DashboardTab>("keys");
+  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
   const tabGroupId = useId();
 
   return (
