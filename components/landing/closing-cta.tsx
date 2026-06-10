@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export function ClosingCta() {
+export function ClosingCta({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <section className="final">
       <div className="wrap">
@@ -22,9 +22,15 @@ export function ClosingCta() {
             </p>
           </div>
           <div className="cta-side">
-            <Link href="/sign-up" className="btn btn-accent">
-              Start rewriting <span className="btn-arrow">→</span>
-            </Link>
+            {signedIn ? (
+              <Link href="/app" className="btn btn-accent">
+                Open your workspace <span className="btn-arrow">→</span>
+              </Link>
+            ) : (
+              <Link href="/sign-up" className="btn btn-accent">
+                Start rewriting <span className="btn-arrow">→</span>
+              </Link>
+            )}
             <div className="meta">Redeem a trial code · 3 trial rewrites</div>
             <div className="meta" style={{ marginTop: 12 }}>
               Value Pack NZ$6.90 · 30 rewrites · most popular
