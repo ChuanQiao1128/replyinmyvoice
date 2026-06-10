@@ -2,20 +2,20 @@ import React from "react";
 
 const includes = [
   {
-    k: "Tone check",
-    p: "A before/after reference signal on every rewrite — a guide, never a guarantee.",
+    k: "AI Signal",
+    p: "A before/after reference signal on every rewrite — lower reads more natural. A guide, never a guarantee.",
   },
   {
     k: "Facts preserved",
     p: "Dates, names, and amounts you mark stay intact through the rewrite.",
   },
   {
-    k: "Warm · Direct",
-    p: "Two simple tone presets that shape the reply around your real context.",
+    k: "Server-backed history",
+    p: "Rewrites saved to your account, viewable and deletable across devices at /app/history.",
   },
   {
-    k: "Private history",
-    p: "Recent rewrites stay in your browser only — not saved to our database.",
+    k: "Delete anytime",
+    p: "Delete individual rewrites or your entire account and data at any time.",
   },
 ];
 
@@ -24,7 +24,7 @@ const reassuranceItems = [
   "Packs don't auto-renew",
   "Cancel Pro/API anytime",
   "Secure checkout via Stripe",
-  "History stays in your browser",
+  "History across your devices",
 ];
 
 export function PricingTrust() {

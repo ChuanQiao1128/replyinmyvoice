@@ -17,11 +17,19 @@ const questions = [
   },
   {
     q: "Do I need a card to try it?",
-    a: "No. A trial code unlocks 3 rewrites with no card.",
+    a: "No. A trial code unlocks 3 rewrites with no card. Don't have a code? Start with a Quick Pack, or contact us at info@timeawake.co.nz.",
   },
   {
     q: "Is my content private?",
-    a: "Recent rewrites stay in your browser's local history and are not saved to our database. Avoid pasting passwords, payment details, or highly sensitive personal data.",
+    a: "Your rewrites are saved to your account on our servers and retained for up to 90 days, then removed. You can delete individual rewrites or your entire account at any time. Avoid pasting passwords, payment details, or highly sensitive personal data.",
+  },
+  {
+    q: "Can I use the API with a one-time pack?",
+    a: "No. REST API and MCP access require an active Pro/API subscription. One-time packs cover web rewrites only.",
+  },
+  {
+    q: "What is MCP? Can I use it inside Claude or Cursor?",
+    a: "MCP (Model Context Protocol) lets AI tools like Claude Code, Claude Desktop, and Cursor call the rewrite engine directly. Pro/API subscribers get one API key that works for both REST calls and MCP connections. See the Developers page for setup guides.",
   },
   {
     q: "What currency is this, and is tax included?",

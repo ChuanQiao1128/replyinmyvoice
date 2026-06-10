@@ -1,16 +1,19 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { isDeveloperTierStatus } from "../../components/app/shell/shell-types";
 import { BuyButton } from "../../components/landing/buy-button";
 import { PricingComparison } from "../../components/landing/pricing-comparison";
 import { PricingFaq } from "../../components/landing/pricing-faq";
 import { PricingTrust } from "../../components/landing/pricing-trust";
 import { SiteHeader } from "../../components/site-header";
+import { fetchAzureAccountSummary } from "../../lib/azure-api";
+import { getCurrentSession } from "../../lib/entra-auth";
 
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Redeem a trial code for 3 rewrites, then buy one-time rewrite packs or go Pro/API for monthly rewrites and developer API access.",
+    "Redeem a trial code for 3 rewrites, then buy one-time rewrite packs or go Pro/API for monthly rewrites, REST API, and MCP server access.",
 };
 
 type PaidSku = "quick_pack" | "value_pack" | "pro_api" | "focus_pack";
@@ -95,16 +98,6 @@ const packs: Pack[] = [
     highlight: true,
     badge: "Most popular",
   },
-  {
-    sku: "pro_api",
-    name: "Pro/API",
-    price: "NZ$19.90/mo",
-    allowance: "90 rewrites/mo",
-    term: "Monthly subscription",
-    description: "For heavy use and developers. Includes API access.",
-    cta: "Go Pro/API",
-    apiNote: true,
-  },
 ];
 
 const focusPack: Pack = {
@@ -130,8 +123,22 @@ function packGroupLabel(pack: Pack) {
     : "One-time packs";
 }
 
-export default function PricingPage() {
+export default async function PricingPage() {
   const visiblePacks = isFocusPackEnabled() ? [...packs, focusPack] : packs;
+
+  // Signed-in awareness (PV-3 safe subset): read session + subscription status.
+  // fetchAzureAccountSummary returns null when unauthenticated — handled gracefully.
+  const session = await getCurrentSession();
+  const accountSummary = session ? await fetchAzureAccountSummary().catch(() => null) : null;
+  const subscriptionStatus = accountSummary?.subscriptionStatus ?? "";
+  const isOnDeveloperTier = subscriptionStatus
+    ? isDeveloperTierStatus(subscriptionStatus)
+    : false;
+  const sessionEmail = session?.email ?? null;
+
+  // Trial CTA: signed-out → /sign-up; signed-in → /app (already have account).
+  const trialCtaHref = session ? "/app" : "/sign-up";
+  const trialCtaLabel = session ? "Open app" : "Redeem a trial code";
 
   return (
     <main className="rimv">
@@ -147,11 +154,17 @@ export default function PricingPage() {
             <p className="lede">
               Trial codes unlock 3 rewrites with no card. After
               that, buy one-time rewrite packs, or go Pro/API for monthly
-              rewrites and developer API access.
+              rewrites, REST API, and MCP server access.
             </p>
+            {sessionEmail ? (
+              <p className="pricing-session-hint">
+                Signed in as {sessionEmail} — purchases credit this account.
+              </p>
+            ) : null}
           </div>
 
           <div className="pricing-wrap">
+            {/* ── For everyday replies ─────────────────────────────── */}
             <div className="plan plan-free">
               <div className="eyebrow">
                 <span className="dot" />
@@ -159,7 +172,7 @@ export default function PricingPage() {
               </div>
               <h3>Redeem a code to try it.</h3>
               <div className="plan-price">
-                3<small>trial rewrites</small>
+                Free<small>trial (3 rewrites)</small>
               </div>
               <p className="uc-body">
                 Enter a trial code, paste one real message, rewrite the reply,
@@ -167,22 +180,32 @@ export default function PricingPage() {
               </p>
               <ul className="plan-list">
                 <li>Trial code unlocks 3 successful rewrites</li>
-                <li>Warm and Direct tone presets</li>
-                <li>Tone check and facts-preserved view</li>
+                <li>AI Signal before/after reference on every rewrite</li>
+                <li>Facts-preserved view</li>
+                <li>Server-backed history at /app/history</li>
                 <li>Upgrade only when you need more</li>
               </ul>
               <div className="plan-cta">
-                <Link className="btn btn-ghost btn-lg" href="/sign-up">
-                  Redeem a trial code <span className="btn-arrow">-&gt;</span>
+                <Link className="btn btn-ghost btn-lg" href={trialCtaHref}>
+                  {trialCtaLabel} <span className="btn-arrow">-&gt;</span>
                 </Link>
               </div>
-              <div className="plan-meta">No card required for trial-code access</div>
+              <div className="plan-meta">
+                No card required for trial-code access.{" "}
+                {!session ? (
+                  <>
+                    Don&apos;t have a code? Start with a Quick Pack, or{" "}
+                    <a href="mailto:info@timeawake.co.nz">contact us</a>.
+                  </>
+                ) : null}
+              </div>
             </div>
 
+            {/* ── One-time packs ───────────────────────────────────── */}
             <div className="plan plan-paid">
               <div className="eyebrow" style={{ color: "var(--bg)" }}>
                 <span className="dot" style={{ background: "var(--bg)" }} />
-                Rewrite packs & Pro/API
+                Rewrite packs
               </div>
               <h3>Pay only for what you need.</h3>
 
@@ -240,11 +263,60 @@ export default function PricingPage() {
               </div>
 
               <div className="plan-meta">
-                Packs are one-time and valid 90 days. Pro/API is billed monthly
-                through Stripe; monthly rewrites reset each period and do not roll
-                over.
+                Packs are one-time and valid 90 days. Monthly rewrites reset
+                each period and do not roll over.
               </div>
             </div>
+
+            {/* ── For developers — Pro/API ─────────────────────────── */}
+            <article className="plan plan-pro" id="pro">
+              <div className="eyebrow">
+                <span className="dot" />
+                For developers
+              </div>
+              <div className="pp-pack-head">
+                <div>
+                  <div className="pp-pack-name">Pro/API</div>
+                  <div className="pp-pack-sub">
+                    90 rewrites/mo · Monthly subscription
+                  </div>
+                  <div className="pp-unit-price">
+                    {unitPriceBySku["pro_api"]}
+                  </div>
+                </div>
+                <div className="pp-pack-price">NZ$19.90/mo</div>
+              </div>
+              <p className="pp-pack-desc">
+                For heavy use and developers. REST API + MCP server, one key,
+                web and API rewrites share one balance.{" "}
+                <Link href="/developers">Read the integration docs &rarr;</Link>
+              </p>
+              <ul className="plan-list">
+                <li>90 rewrites per month (web + API share one balance)</li>
+                <li>REST API access — call the engine from any code</li>
+                <li>MCP server — use inside Claude Code, Claude Desktop, Cursor</li>
+                <li>One API key for both REST and MCP</li>
+                <li>AI Signal on every rewrite</li>
+                <li>Server-backed history at /app/history</li>
+              </ul>
+              <div className="plan-cta">
+                {isOnDeveloperTier ? (
+                  <Link className="btn btn-ghost btn-lg" href="/app/account">
+                    You&apos;re on Pro/API — manage billing
+                    <span className="btn-arrow"> -&gt;</span>
+                  </Link>
+                ) : (
+                  <PlanAction
+                    configured={isPriceConfigured("pro_api")}
+                    sku="pro_api"
+                    label="Go Pro/API"
+                  />
+                )}
+              </div>
+              <div className="plan-meta">
+                Billed monthly through Stripe · cancel anytime
+              </div>
+            </article>
           </div>
 
           <PricingComparison />

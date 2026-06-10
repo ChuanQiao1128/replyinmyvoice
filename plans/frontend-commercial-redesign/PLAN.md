@@ -280,6 +280,44 @@ Every copy-touching issue updates its contract tests **in the same PR** (`worksp
 
 **Net verdict (LOCKED 2026-06-10).** The IA is right and worth doing. **R1 and R2 are load-bearing and adopted**: the shell frame (FE-S1) is hand-built by the supervisor with a human in the visual loop (§6.8), and the sidebar adapts to consumer vs developer (§6.3). R3 (mobile drawer), R5 (shared-pool quota label), R6 (S1 canary) folded in. **R4 resolved → full App Shell, no Phase 0** (owner: "直接做完整 Shell"). The risk this retires: without R1 we'd reproduce polished-but-disconnected screens that pass tests and still feel off — the exact trap that produced today's UX.
 
+## 11b. Pricing v3 — /pricing redesign plan (owner request 2026-06-10, PLAN ONLY)
+
+Context: /pricing was redesigned 2026-06-04 (PR #502) — structure is solid (trial card + pack tiers w/ unit price + one-time-vs-subscription split + comparison + trust + FAQ). But the 2026-06-10 console redesign changed product facts underneath it, and the funnel gaps remain. Audit of `app/pricing/page.tsx` + `pricing-{comparison,faq,trust}.tsx` (2026-06-10):
+
+### What's now WRONG on the page (P0 — the page lies)
+
+| # | Stale claim (3 surfaces each) | Reality since the console redesign |
+|---|---|---|
+| PF1 | "Private local history" (comparison row) · "Recent rewrites stay in your browser's local history and are not saved to our database" (FAQ) · "History stays in your browser" + "Private history" card (trust band) | History is **server-backed** at /app/history (cross-device view/delete, raw content retained ≤90 days then removed — per /terms + /privacy). The localStorage list was removed from the workspace. The FAQ claim also contradicted /privacy even before |
+| PF2 | "Warm and Direct tone presets" (trial card) · "Warm · Direct tones" (comparison row) · "Warm · Direct" (trust card) | The workspace hardcodes `tone:"warm"`; there is **no tone picker** (known: tone-presets-not-in-product, caused a false hero bullet before) |
+| PF3 | "Tone check" naming (trial card, comparison, trust) | The product UI calls it **AI Signal** (workspace meter, history detail). Naming should match what users see in-app |
+| PF4 | Pro/API card: "Includes API access" only | Pro/API now means **REST API + MCP server, one key, shared web+API balance** — the console DeveloperUpsell sells exactly that story; pricing must match it |
+
+### What's missing (funnel + coherence)
+
+- **PG1 (P1)** Signed-in awareness: page is identical for signed-in users. Should show "Purchases credit this account (email) · current balance"; trial CTA for signed-in users should open redeem in /app (not /sign-up); an **active Pro/API subscriber** should see "You're on Pro/API — Manage billing" instead of "Go Pro/API" (also guards accidental double-subscribe — verify backend behavior).
+- **PG2 (P1)** Buy-intent through auth — already planned as FE-B1+FE-B2 (signed-out Buy loses the SKU at the auth wall). Pricing v3 depends on it; not duplicated here.
+- **PG3 (P2)** Trial-code honesty per Q1(c): a visitor without a code has no path. Add "Don't have a code? Start with Quick Pack, or contact us" under the trial CTA.
+- **PG4 (P2)** `id="pro"` anchor on the Pro/API card so the console DeveloperUpsell ("Get Pro/API") deep-links to it; link the card to /developers for the integration story.
+- **PG5 (P2)** FAQ gaps: "Can I use the API with a one-time pack?" (no — Pro/API only), "What is MCP / can I use it inside Claude or Cursor?", "Where do I get a trial code?", fix the privacy answer (PF1). Trust band: replace false items with real ones (history across devices + delete anytime; delete account & data anytime).
+- **PG6 (P2)** Checkout failure UX under BuyButton (= FE-C3 slice) + checkout return banners (= FE-B5).
+
+### How to design it better (structure)
+
+- **Two-audience split**: "For everyday replies" (Trial + Quick/Value packs) vs **"For developers"** (Pro/API as its own developer-flavored card: API + MCP + one-key + shared-balance feature list mirroring the console DeveloperUpsell, CTA pair "Go Pro/API" + "Read the docs"). Today Pro/API is visually a third row inside the dark packs panel — it deserves the developer framing.
+- **Name the free tier "Free"** (matches the Account console's Plan="Free"): comparison column "Trial" → "Free (trial code)"; keeps one mental model across pricing ↔ console.
+- Keep: per-rewrite unit price, one-time-vs-subscription grouping, "Most popular" highlight, marketing design language (this is a public page — it stays in the landing system, not the shell system).
+
+### Issue packaging (3 issues; copy contract tests `pricing-*`/`pricing-auth-visual-system` update in the same PR)
+
+| ID | Scope | Acceptance |
+|---|---|---|
+| PV-1 (P0) | Truth pass: fix PF1/PF2/PF3 across trial card + comparison + trust + FAQ; rename to AI Signal; server-history copy consistent with /terms + /privacy | no "local history"/"tone presets" claims; grep-consistent with legal pages; tests updated |
+| PV-2 (P1) | Developer card: PF4 + PG4 + two-audience split + comparison row "API + MCP access"; "Free" naming | Pro card lists API+MCP+one key+shared balance; `#pro` anchor lands; /developers linked |
+| PV-3 (P1, dep FE-B1/B2) | Signed-in awareness PG1 + trial-CTA retarget + Pro-subscriber "Manage billing" swap; PG3 honesty line; PG5 FAQ/trust additions | session-aware render verified; double-subscribe path closed; tests updated |
+
+Open questions for the owner: **(a)** annual billing / larger packs / team plan — out of scope unless wanted; **(b)** confirm Pro-subscriber "Go Pro/API" → "Manage billing" swap (recommended); **(c)** Focus Pack stays env-hidden?
+
 ## 12. Locked build sequence
 1. **FE-S1 (supervisor, in-session):** hand-build the shell per §6.8 → `preview_start` + desktop/mobile screenshots (consumer vs developer sidebar, drawer) → **owner visual checkpoint** → merge to `delivery/fe-redesign` as a solo canary (R6).
 2. **Launch worker pipeline** (`run_claude` swap, §8.1): Wave A trust (parallel-safe with step 1) + Wave B S2–S7 (after S1 merges).

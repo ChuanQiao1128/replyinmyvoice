@@ -21,10 +21,10 @@ describe("PricingTrust", () => {
     const markup = renderToStaticMarkup(createElement(PricingTrust));
 
     expect(markup).toContain("Every plan includes");
-    expect(markup).toContain("Tone check");
+    expect(markup).toContain("AI Signal");
     expect(markup).toContain("Facts preserved");
-    expect(markup).toContain("Warm · Direct");
-    expect(markup).toContain("Private history");
+    expect(markup).toContain("Server-backed history");
+    expect(markup).toContain("Delete anytime");
   });
 
   it("renders the reassurance items and honest credibility line", () => {
@@ -34,7 +34,7 @@ describe("PricingTrust", () => {
     expect(markup).toContain("Packs don&#x27;t auto-renew");
     expect(markup).toContain("Cancel Pro/API anytime");
     expect(markup).toContain("Secure checkout via Stripe");
-    expect(markup).toContain("History stays in your browser");
+    expect(markup).toContain("History across your devices");
     expect(markup).toContain(
       "Built for teacher, sales, workplace, and client replies.",
     );

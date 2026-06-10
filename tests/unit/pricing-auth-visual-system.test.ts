@@ -28,7 +28,7 @@ describe("pricing and auth visual system", () => {
     );
     expect(pricingPage).toContain("Trial code access");
     expect(pricingPage).toContain("Redeem a trial code");
-    expect(pricingPage).toContain("Rewrite packs & Pro/API");
+    expect(pricingPage).toContain("Rewrite packs");
     expect(pricingPage).toContain("Quick Pack");
     expect(pricingPage).toContain("NZ$2.50");
     expect(pricingPage).toContain("10 rewrites");
