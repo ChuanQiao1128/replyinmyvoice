@@ -9,19 +9,12 @@ import {
   RefreshCw,
   Send,
   Sparkles,
-  Trash2,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 
 import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
-import {
-  clearLegacyRewriteHistory,
-  clearLocalRewriteHistory,
-  readLocalRewriteHistory,
-  writeLocalRewriteHistory,
-} from "../../lib/rewrite-history";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import {
   getRewriteAttemptId,
@@ -35,6 +28,7 @@ import { NatBar } from "../landing/nat-bar";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { RedeemCodeCard } from "./redeem-code-card";
+import shell from "./shell/shell.module.css";
 import { SubscriptionStatus } from "./subscription-status";
 
 const rewriteAttemptPollLimit = 30;
@@ -45,15 +39,6 @@ type QualityFailure = {
   naturalness?: Naturalness;
   reason?: string;
   charged?: false;
-};
-
-type HistoryItem = {
-  roughDraftReply: string;
-  rewrittenText: string;
-  naturalness: Naturalness;
-  changeSummary: string[];
-  riskNotes: string[];
-  createdAt: string;
 };
 
 type QuotaCreditSource = {
@@ -209,93 +194,6 @@ async function pollRewriteAttempt(attemptId: string) {
   throw new Error("Rewrite is still processing. Try again in a moment.");
 }
 
-function normalizeHistoryItems(payload: unknown): HistoryItem[] {
-  if (!Array.isArray(payload)) {
-    return [];
-  }
-
-  return payload
-    .map((item) => normalizeHistoryItem(item))
-    .filter((item): item is HistoryItem => item !== null)
-    .slice(0, 5);
-}
-
-function normalizeHistoryItem(payload: unknown): HistoryItem | null {
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-    return null;
-  }
-
-  const record = payload as Record<string, unknown>;
-  const rewrittenText =
-    typeof record.rewrittenText === "string" ? record.rewrittenText : "";
-  if (!rewrittenText.trim()) {
-    return null;
-  }
-
-  return {
-    roughDraftReply:
-      typeof record.roughDraftReply === "string" ? record.roughDraftReply : "",
-    rewrittenText,
-    naturalness: normalizeNaturalness(record.naturalness),
-    changeSummary: Array.isArray(record.changeSummary)
-      ? record.changeSummary.filter(
-          (item): item is string => typeof item === "string",
-        )
-      : [],
-    riskNotes: Array.isArray(record.riskNotes)
-      ? record.riskNotes.filter((item): item is string => typeof item === "string")
-      : [],
-    createdAt:
-      typeof record.createdAt === "string"
-        ? record.createdAt
-        : new Date().toISOString(),
-  };
-}
-
-function historyTitle(item: HistoryItem) {
-  const firstLine = item.roughDraftReply
-    .split("\n")
-    .map((line) => line.trim())
-    .find(Boolean);
-  if (firstLine) {
-    return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
-  }
-
-  return new Date(item.createdAt).toLocaleString();
-}
-
-function signalDeltaOf(naturalness: Naturalness) {
-  return naturalness.draftAiLikePercent !== null &&
-    naturalness.rewriteAiLikePercent !== null
-    ? naturalness.draftAiLikePercent - naturalness.rewriteAiLikePercent
-    : null;
-}
-
-function relativeHistoryTime(createdAt: string) {
-  const timestamp = Date.parse(createdAt);
-  if (!Number.isFinite(timestamp)) {
-    return "Recently";
-  }
-
-  const elapsedSeconds = Math.max(Math.floor((Date.now() - timestamp) / 1000), 0);
-  if (elapsedSeconds < 60) {
-    return "Just now";
-  }
-
-  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) {
-    return `${elapsedMinutes}m ago`;
-  }
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) {
-    return `${elapsedHours}h ago`;
-  }
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  return `${elapsedDays}d ago`;
-}
-
 function outOfCreditsHint(paid: boolean, canRedeem: boolean) {
   if (paid) {
     return "Your monthly rewrite quota has been used for this billing period. Use Manage billing in the bar above.";
@@ -344,7 +242,6 @@ export function RewriteWorkspace({
   const [qualityFailure, setQualityFailure] = useState<QualityFailure | null>(
     null,
   );
-  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -360,16 +257,6 @@ export function RewriteWorkspace({
     !loading &&
     trimmedDraftLength >= 10 &&
     draft.length <= rewriteInputLimits.roughDraftReply;
-
-  useEffect(() => {
-    try {
-      clearLegacyRewriteHistory();
-      const saved = readLocalRewriteHistory(rewriteHistoryUserKey);
-      setHistory(saved ? normalizeHistoryItems(JSON.parse(saved)) : []);
-    } catch {
-      setHistory([]);
-    }
-  }, [rewriteHistoryUserKey]);
 
   useEffect(() => {
     setFreeRewritesRemaining(visiblePlanRemaining);
@@ -396,20 +283,6 @@ export function RewriteWorkspace({
     const timer = window.setTimeout(() => setCopied(false), 1800);
     return () => window.clearTimeout(timer);
   }, [copied]);
-
-  function saveHistory(response: RewriteResponse) {
-    const nextItem: HistoryItem = {
-      roughDraftReply: draft,
-      rewrittenText: response.rewrittenText,
-      naturalness: response.naturalness,
-      changeSummary: response.changeSummary,
-      riskNotes: response.riskNotes,
-      createdAt: new Date().toISOString(),
-    };
-    const next = [nextItem, ...history].slice(0, 5);
-    setHistory(next);
-    writeLocalRewriteHistory(rewriteHistoryUserKey, JSON.stringify(next));
-  }
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -475,7 +348,6 @@ export function RewriteWorkspace({
       if (!paid) {
         setFreeRewritesRemaining((current) => Math.max(current - 1, 0));
       }
-      saveHistory(normalizedPayload);
     } catch (submitError) {
       if (submitError instanceof RewriteQualityFailureError) {
         setResult(null);
@@ -504,28 +376,6 @@ export function RewriteWorkspace({
     if (!paid) {
       setShowPostCopyNudge(true);
     }
-  }
-
-  function clearHistory() {
-    setHistory([]);
-    clearLocalRewriteHistory(rewriteHistoryUserKey);
-  }
-
-  function restoreHistory(item: HistoryItem) {
-    setDraft(item.roughDraftReply);
-    setQualityFailure(null);
-    setError("");
-    setResult({
-      rewrittenText: item.rewrittenText,
-      changeSummary: item.changeSummary,
-      riskNotes: item.riskNotes,
-      naturalness: item.naturalness,
-      optimization: {
-        internalStrategiesTried: 1,
-        userUsageCharged: 1,
-        selectionStatus: "passed",
-      },
-    });
   }
 
   function resetWorkspace() {
@@ -567,31 +417,22 @@ export function RewriteWorkspace({
   }
 
   return (
-    <main className="min-h-screen bg-paper text-ink">
-      <div className="mx-auto w-full max-w-6xl px-5 md:px-8 py-8 md:py-10">
-        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-2xl">
-            <Eyebrow>WORKSPACE</Eyebrow>
-            <h1 className="mt-3 font-serif text-3xl leading-tight text-ink md:text-5xl">
-              Rewrite workspace
-            </h1>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink/60">
-              Paste a draft. Get a clearer version that keeps your facts — and
-              see the AI Signal before and after.
-            </p>
-          </div>
-          <Button
-            className="w-full md:w-auto"
-            onClick={resetWorkspace}
-            type="button"
-            variant="secondary"
-          >
-            <FilePlus2 className="h-4 w-4" aria-hidden="true" />
-            New draft
-          </Button>
+    <div className="w-full text-ink">
+      <div className={shell.pageHeaderRow}>
+        <header className={shell.pageHeader}>
+          <h1 className={shell.pageTitle}>Rewrite</h1>
+          <p className={shell.pageDesc}>
+            Paste a draft. Get a clearer version that keeps your facts — and
+            see the AI Signal before and after.
+          </p>
         </header>
+        <Button onClick={resetWorkspace} type="button" variant="secondary">
+          <FilePlus2 className="h-4 w-4" aria-hidden="true" />
+          New draft
+        </Button>
+      </div>
 
-        <div className="mt-6">
+      <div>
           <SubscriptionStatus
             canRedeem={showRedeemAction}
             onRedeemClick={openRedeemModal}
@@ -602,8 +443,8 @@ export function RewriteWorkspace({
           />
         </div>
 
-        <div className="mt-6 grid overflow-hidden rounded-2xl bg-white shadow-soft md:grid-cols-2 md:divide-x md:divide-line">
-          <form className="flex flex-col p-5 md:p-6" onSubmit={submit}>
+        <div className="mt-6 grid overflow-hidden rounded-2xl border border-line bg-white shadow-soft md:grid-cols-2 md:divide-x md:divide-line">
+          <form className="flex flex-col p-6 md:p-8" onSubmit={submit}>
             <div className="mb-4 flex min-h-11 items-center justify-between gap-3">
               <Eyebrow>YOUR DRAFT</Eyebrow>
               <span className="font-mono text-[11px] text-ink/50">
@@ -611,13 +452,13 @@ export function RewriteWorkspace({
               </span>
             </div>
             <Textarea
-              className="min-h-80 flex-1 bg-paper/50 p-4 text-[15px] leading-relaxed focus:bg-white"
+              className="min-h-[28rem] flex-1 bg-paper/50 p-5 text-base leading-relaxed focus:bg-white"
               id="roughDraftReply"
               maxLength={rewriteInputLimits.roughDraftReply}
               minLength={10}
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Paste the email, message, or note you want to rewrite. The rewrite keeps your facts intact."
-              rows={13}
+              rows={16}
               value={draft}
             />
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -640,11 +481,11 @@ export function RewriteWorkspace({
               By choosing Rewrite, you agree that pasted messages and rewrites
               are processed for this request and retained for up to 90 days by
               default. Raw content is then removed, and you can delete history
-              items from the workspace.
+              items from your History page.
             </p>
           </form>
 
-          <section className="flex flex-col border-t border-line p-5 md:border-t-0 md:p-6">
+          <section className="flex flex-col border-t border-line p-6 md:border-t-0 md:p-8">
             <div className="mb-4 flex min-h-11 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Eyebrow tone="accent">IN YOUR VOICE</Eyebrow>
               <div className="flex items-center gap-3">
@@ -675,7 +516,7 @@ export function RewriteWorkspace({
               </div>
             </div>
 
-            <div className="flex min-h-80 flex-1 flex-col rounded-lg border border-line/70 bg-mint/20 p-4 md:p-5">
+            <div className="flex min-h-[28rem] flex-1 flex-col rounded-lg border border-line/70 bg-mint/20 p-5 md:p-6">
               {showOutOfCreditsNudge ? (
                 <OutOfCreditsNudge canRedeem={showRedeemAction} paid={paid} />
               ) : null}
@@ -727,7 +568,7 @@ export function RewriteWorkspace({
                   </p>
                 </div>
               ) : result?.rewrittenText ? (
-                <div className="whitespace-pre-wrap text-[15px] leading-8 text-ink">
+                <div className="whitespace-pre-wrap text-base leading-8 text-ink">
                   {result.rewrittenText}
                 </div>
               ) : qualityFailure ? (
@@ -844,77 +685,7 @@ export function RewriteWorkspace({
           </p>
         ) : null}
 
-        <section className="mt-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <Eyebrow>RECENT REWRITES</Eyebrow>
-              <p className="mt-2 font-mono text-[11px] text-ink/50">
-                {history.length} in history
-              </p>
-            </div>
-            <Button
-              className="w-full px-3 text-ink/55 hover:text-rust sm:w-auto"
-              disabled={!history.length}
-              onClick={clearHistory}
-              type="button"
-              variant="ghost"
-            >
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-              Clear
-            </Button>
-          </div>
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {history.length ? (
-            history.map((item) => {
-              const delta = signalDeltaOf(item.naturalness);
-              return (
-                <Button
-                  className="min-h-0 w-full flex-col items-stretch justify-start gap-3 rounded-lg border border-line bg-white p-4 text-left text-ink hover:border-sage/40 hover:bg-white"
-                  key={item.createdAt}
-                  onClick={() => restoreHistory(item)}
-                  type="button"
-                  variant="ghost"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="line-clamp-1 text-sm font-semibold text-ink">
-                      {historyTitle(item)}
-                    </p>
-                    {delta !== null ? (
-                      <span
-                        className={`shrink-0 rounded-lg px-2 py-1 font-mono text-[10px] font-semibold ${
-                          delta > 0
-                            ? "bg-mint text-sage"
-                            : delta < 0
-                              ? "bg-rust/10 text-rust"
-                              : "bg-paper-deep text-ink/60"
-                        }`}
-                      >
-                        {delta > 0
-                          ? `−${delta}`
-                          : delta < 0
-                            ? `+${Math.abs(delta)}`
-                            : "0"}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="line-clamp-2 text-sm leading-6 text-ink/60">
-                    {item.rewrittenText}
-                  </p>
-                  <p className="font-mono text-[11px] text-ink/45">
-                    {relativeHistoryTime(item.createdAt)}
-                  </p>
-                </Button>
-              );
-            })
-          ) : (
-            <div className="rounded-lg border border-dashed border-line bg-white p-4 text-sm text-ink/50">
-              Your recent rewrites will appear here.
-            </div>
-          )}
-          </div>
-        </section>
-      </div>
       <RedeemCodeCard open={redeemModalOpen} onClose={closeRedeemModal} />
-    </main>
+    </div>
   );
 }

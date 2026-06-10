@@ -9,11 +9,9 @@ import styles from "./shell.module.css";
 type Props = {
   open: boolean;
   onClose: () => void;
-  isDeveloperTier: boolean;
-  devMode: boolean;
 };
 
-export function AppDrawer({ open, onClose, isDeveloperTier, devMode }: Props) {
+export function AppDrawer({ open, onClose }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,11 +91,7 @@ export function AppDrawer({ open, onClose, isDeveloperTier, devMode }: Props) {
             <ShellIcon name="close" size={18} />
           </button>
         </div>
-        <ShellNavGroups
-          isDeveloperTier={isDeveloperTier}
-          devMode={devMode}
-          onNavigate={onClose}
-        />
+        <ShellNavGroups onNavigate={onClose} />
       </div>
     </>
   );

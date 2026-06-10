@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { PageHeader } from "../../../components/app/shell/shell-primitives";
+import {
+  DeveloperUpsell,
+  PageHeader,
+} from "../../../components/app/shell/shell-primitives";
+import { isDeveloperTierStatus } from "../../../components/app/shell/shell-types";
 import styles from "../../../components/app/shell/shell.module.css";
+import { fetchAzureAccountSummary } from "../../../lib/azure-api";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Connect" };
@@ -35,7 +40,22 @@ function ConfigCard({ title, code }: { title: string; code: string }) {
   );
 }
 
-export default function ConnectPage() {
+export default async function ConnectPage() {
+  const account = await fetchAzureAccountSummary();
+  const subscriptionStatus = account?.subscriptionStatus ?? "inactive";
+
+  if (!isDeveloperTierStatus(subscriptionStatus)) {
+    return (
+      <>
+        <PageHeader
+          title="Connect"
+          description="Use Reply In My Voice inside Claude Code, Claude Desktop, Codex, Cursor, or any MCP host — or call the REST API directly."
+        />
+        <DeveloperUpsell />
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader

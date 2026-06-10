@@ -295,12 +295,23 @@
   min-height: calc(100vh - 56px);
 }
 .mainInner {
-  max-width: 1080px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 28px 28px 64px;
+  padding: 30px 32px 72px;
 }
 .pageHeader {
-  margin-bottom: 22px;
+  margin-bottom: 24px;
+}
+.pageHeaderRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.pageHeaderRow .pageHeader {
+  margin-bottom: 0;
 }
 .pageTitle {
   margin: 0;
@@ -523,6 +534,147 @@
   border: 1px solid var(--warn-2);
   border-radius: var(--radius);
   color: var(--ink);
+}
+
+/* ── Console stat cards ───────────────────────────────────── */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.statCard {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.statLabel {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.statValue {
+  margin-top: 7px;
+  font-size: 16px;
+  font-weight: 640;
+  color: var(--ink);
+  word-break: break-word;
+}
+.statSub {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.badgeWarn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+/* ── Section header inside cards ──────────────────────────── */
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.cardTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+}
+.cardDesc {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+/* ── History detail expansion ─────────────────────────────── */
+.histRowBtn {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.histChevron {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-3);
+  transition: transform 0.15s ease;
+}
+.histChevronOpen {
+  transform: rotate(180deg);
+}
+.histPanel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  gap: 14px;
+}
+@media (min-width: 900px) {
+  .histPanel {
+    grid-template-columns: 1fr 1fr;
+  }
+  .histPanelFoot {
+    grid-column: 1 / -1;
+  }
+}
+.histBlock {
+  min-width: 0;
+  background: var(--card-2);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.histBlockLabel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.histBlockAccent {
+  color: var(--accent);
+}
+.histText {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.histPanelFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Danger zone ──────────────────────────────────────────── */
+.dangerCard {
+  background: var(--card);
+  border: 1px solid var(--warn-2);
+  border-radius: var(--radius-lg);
+  padding: 22px;
 }
 
 /* ── Connect / code blocks ────────────────────────────────── */

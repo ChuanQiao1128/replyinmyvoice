@@ -5,19 +5,32 @@ import { ShellIcon } from "./shell-icons";
 import type { ShellIconName } from "./shell-types";
 import styles from "./shell.module.css";
 
-/** Page heading used at the top of each shell route. */
+/** Page heading used at the top of each shell route, with an optional action slot. */
 export function PageHeader({
   title,
   description,
+  actions,
 }: {
   title: string;
   description?: string;
+  actions?: ReactNode;
 }) {
-  return (
+  const heading = (
     <header className={styles.pageHeader}>
       <h1 className={styles.pageTitle}>{title}</h1>
       {description ? <p className={styles.pageDesc}>{description}</p> : null}
     </header>
+  );
+
+  if (!actions) {
+    return heading;
+  }
+
+  return (
+    <div className={styles.pageHeaderRow}>
+      {heading}
+      <div>{actions}</div>
+    </div>
   );
 }
 
@@ -94,6 +107,45 @@ export function UpsellCard({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Shared gate for the developer pages (Keys / Usage / Connect): the features
+ * stay visible to everyone, and accounts without API access are invited to
+ * subscribe — never shown an error.
+ */
+export function DeveloperUpsell() {
+  return (
+    <UpsellCard
+      title="API & MCP access comes with Pro/API"
+      body="One key powers both the REST API and the MCP server — use Reply In My Voice from your own product or inside Claude Code, Claude Desktop, Codex, and Cursor. API calls share the same balance as your web rewrites."
+    >
+      <ul
+        style={{
+          margin: "0 0 16px",
+          padding: 0,
+          listStyle: "none",
+          display: "grid",
+          gap: 8,
+          fontSize: 14,
+          color: "var(--ink-2)",
+        }}
+      >
+        <li>• 90 rewrites per month, shared across web + API</li>
+        <li>• REST API with async jobs and an OpenAPI spec</li>
+        <li>• MCP server for Claude Code, Claude Desktop, Codex, Cursor</li>
+        <li>• Usage dashboard, key rotation, and webhooks</li>
+      </ul>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Link href="/pricing" className="btn btn-primary">
+          Get Pro/API — NZ$19.90/mo
+        </Link>
+        <Link href="/developers" className="btn btn-ghost">
+          Read the docs
+        </Link>
+      </div>
+    </UpsellCard>
   );
 }
 

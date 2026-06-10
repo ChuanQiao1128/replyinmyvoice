@@ -24,7 +24,7 @@ describe("PurchaseHistorySection", () => {
       createElement(PurchaseHistorySection, { payments }),
     );
 
-    expect(html).toContain("Receipts / Purchase history");
+    expect(html).toContain("Purchase history");
     expect(html).toContain("Quick Pack");
     expect(html).toContain("NZD 2.50");
     expect(html).toContain("9 remaining");

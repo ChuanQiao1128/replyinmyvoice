@@ -92,17 +92,18 @@ describe("rewrite workspace surface copy", () => {
   it("describes rewrite history and retention accurately", () => {
     expect(rewriteHistorySource).toContain("rimv.rewrite.history.v1");
     expect(rewriteHistorySource).toContain("REWRITE_HISTORY_STORAGE_KEY_PREFIX");
-    expect(workspaceSource).toContain("readLocalRewriteHistory");
-    expect(workspaceSource).toContain("writeLocalRewriteHistory");
-    expect(workspaceSource).toContain("clearLocalRewriteHistory");
-    expect(workspaceSource).toContain("RECENT REWRITES");
+    // History now lives on the server-backed /app/history page, not inside the
+    // rewrite workspace (no localStorage list there anymore).
+    expect(workspaceSource).not.toContain("readLocalRewriteHistory");
+    expect(workspaceSource).not.toContain("writeLocalRewriteHistory");
+    expect(workspaceSource).not.toContain("RECENT REWRITES");
     expect(workspaceSource).toContain("By choosing Rewrite");
     expect(workspaceSource).toContain("pasted messages and rewrites");
     expect(workspaceSource).toContain("processed for this request and retained");
     expect(workspaceSource).toContain("up to 90 days");
     expect(workspaceSource).toContain("default. Raw content is then removed");
     expect(workspaceSource).toContain("delete history");
-    expect(workspaceSource).toContain("items from the workspace");
+    expect(workspaceSource).toContain("items from your History page");
     expect(privacySource).toContain("up to the configured retention window");
     expect(privacySource).toContain("default 90 days");
     expect(termsSource).toContain("default 90 days");
@@ -141,16 +142,21 @@ describe("rewrite workspace surface copy", () => {
     expect(pastDueBannerSource).toContain("openBillingPortal");
   });
 
-  it("uses the commercial workspace design system without old layout artifacts", () => {
-    expect(workspaceSource).toContain("mx-auto w-full max-w-6xl px-5 md:px-8");
+  it("uses the console workspace design without old layout artifacts", () => {
+    // The workspace fills the app shell (no nested page container) and uses
+    // the shared shell header typography for a consistent console look.
+    expect(workspaceSource).toContain('import shell from "./shell/shell.module.css"');
+    expect(workspaceSource).toContain("shell.pageHeaderRow");
+    expect(workspaceSource).toContain("shell.pageTitle");
+    expect(workspaceSource).not.toContain("max-w-6xl");
+    expect(workspaceSource).not.toContain("min-h-screen");
+    expect(workspaceSource).toContain("min-h-[28rem]");
     expect(workspaceSource).toContain('import { Textarea } from "../ui/textarea"');
     expect(workspaceSource).toContain("<Textarea");
     expect(workspaceSource).not.toContain("<textarea");
     expect(workspaceSource).toContain("md:grid-cols-2");
     expect(workspaceSource).toContain("md:divide-x md:divide-line");
     expect(workspaceSource).toContain("bg-mint/20");
-    expect(workspaceSource).toContain("grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3");
-    expect(workspaceSource).toContain("Your recent rewrites will appear here.");
     expect(workspaceSource).not.toContain("<details");
     expect(workspaceSource).not.toContain("<summary");
     expect(workspaceSource).not.toContain("max-w-5xl");
@@ -188,7 +194,7 @@ describe("rewrite workspace surface copy", () => {
     );
     const copyBody = workspaceSource.slice(
       workspaceSource.indexOf("async function copyReply"),
-      workspaceSource.indexOf("function clearHistory"),
+      workspaceSource.indexOf("function resetWorkspace"),
     );
     expect(submitBody).not.toContain("setShowPostCopyNudge(true)");
     expect(copyBody).toContain("setShowPostCopyNudge(true)");

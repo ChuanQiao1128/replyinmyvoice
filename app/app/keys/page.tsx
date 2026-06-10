@@ -1,22 +1,40 @@
 import type { Metadata } from "next";
 
+import {
+  DeveloperUpsell,
+  PageHeader,
+} from "../../../components/app/shell/shell-primitives";
+import { isDeveloperTierStatus } from "../../../components/app/shell/shell-types";
 import { DeveloperDashboard } from "../../../components/developers/developer-dashboard";
 import { fetchAzureAccountSummary } from "../../../lib/azure-api";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "API keys" };
 
-// The developer console (keys / usage / billing tabs) now lives inside the app
-// shell. /developers/keys permanently redirects here.
+// The developer console lives inside the app shell; /developers/keys 301s
+// here. Accounts without Pro/API see the upsell instead of an error.
 export default async function KeysPage() {
   const account = await fetchAzureAccountSummary();
+  const subscriptionStatus = account?.subscriptionStatus ?? "inactive";
+
+  if (!isDeveloperTierStatus(subscriptionStatus)) {
+    return (
+      <>
+        <PageHeader
+          title="API keys"
+          description="Create and manage keys for the REST API and MCP server."
+        />
+        <DeveloperUpsell />
+      </>
+    );
+  }
 
   return (
     <div className="rimv">
       <DeveloperDashboard
         initialTab="keys"
         paymentGraceEndsAt={account?.paymentGraceEndsAt ?? null}
-        subscriptionStatus={account?.subscriptionStatus ?? "inactive"}
+        subscriptionStatus={subscriptionStatus}
       />
     </div>
   );

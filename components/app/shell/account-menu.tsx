@@ -13,20 +13,10 @@ import styles from "./shell.module.css";
 type Props = {
   email: string | null;
   isAdmin: boolean;
-  isDeveloperTier: boolean;
-  devMode: boolean;
-  onToggleDevMode: () => void;
   rewriteHistoryUserKey?: string;
 };
 
-export function AccountMenu({
-  email,
-  isAdmin,
-  isDeveloperTier,
-  devMode,
-  onToggleDevMode,
-  rewriteHistoryUserKey,
-}: Props) {
+export function AccountMenu({ email, isAdmin, rewriteHistoryUserKey }: Props) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
@@ -79,24 +69,6 @@ export function AccountMenu({
       {open ? (
         <div className={styles.menu} id={menuId} role="menu">
           {email ? <div className={styles.menuEmail}>{email}</div> : null}
-
-          {!isDeveloperTier ? (
-            <div className={styles.toggleRow}>
-              <span>Developer mode</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={devMode}
-                aria-label="Toggle developer mode"
-                className={`${styles.switch} ${devMode ? styles.switchOn : ""}`}
-                onClick={onToggleDevMode}
-              >
-                <span className={styles.switchKnob} />
-              </button>
-            </div>
-          ) : null}
-
-          <div className={styles.menuDivider} />
 
           <Link
             href="/app/account"

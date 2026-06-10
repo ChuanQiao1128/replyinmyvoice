@@ -4,27 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { ShellIcon } from "./shell-icons";
-import { isNavItemActive, visibleNavGroups } from "./shell-types";
+import { isNavItemActive, SHELL_NAV } from "./shell-types";
 import styles from "./shell.module.css";
 
 type NavProps = {
-  isDeveloperTier: boolean;
-  devMode: boolean;
   onNavigate?: () => void;
 };
 
 /** Shared nav rendering for both the desktop sidebar and the mobile drawer. */
-export function ShellNavGroups({
-  isDeveloperTier,
-  devMode,
-  onNavigate,
-}: NavProps) {
+export function ShellNavGroups({ onNavigate }: NavProps) {
   const pathname = usePathname() ?? "/app";
-  const groups = visibleNavGroups(isDeveloperTier, devMode);
 
   return (
     <>
-      {groups.map((group) => (
+      {SHELL_NAV.map((group) => (
         <div key={group.id} className={styles.group}>
           <div className={styles.groupLabel}>{group.label}</div>
           {group.items.map((item) => {
@@ -50,10 +43,10 @@ export function ShellNavGroups({
   );
 }
 
-export function AppSidebar({ isDeveloperTier, devMode }: NavProps) {
+export function AppSidebar() {
   return (
     <nav className={styles.sidebar} aria-label="Workspace navigation">
-      <ShellNavGroups isDeveloperTier={isDeveloperTier} devMode={devMode} />
+      <ShellNavGroups />
     </nav>
   );
 }
