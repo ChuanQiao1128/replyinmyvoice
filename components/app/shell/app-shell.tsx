@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 
 import { AccountMenu } from "./account-menu";
@@ -14,26 +14,11 @@ import styles from "./shell.module.css";
 
 type Props = {
   account: ShellAccount;
-  devModeDefault: boolean;
   children: ReactNode;
 };
 
-export function AppShell({ account, devModeDefault, children }: Props) {
-  const [devMode, setDevMode] = useState(devModeDefault);
+export function AppShell({ account, children }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-
-  const toggleDevMode = useCallback(() => {
-    setDevMode((prev) => {
-      const next = !prev;
-      try {
-        document.cookie = `rimv_devmode=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
-        window.localStorage.setItem("rimv.devmode", next ? "1" : "0");
-      } catch {
-        /* storage unavailable — in-memory toggle still works for this session */
-      }
-      return next;
-    });
-  }, []);
 
   return (
     <div className={styles.shell}>
@@ -63,9 +48,6 @@ export function AppShell({ account, devModeDefault, children }: Props) {
             <AccountMenu
               email={account.email}
               isAdmin={account.isAdmin}
-              isDeveloperTier={account.isDeveloperTier}
-              devMode={devMode}
-              onToggleDevMode={toggleDevMode}
               rewriteHistoryUserKey={account.rewriteHistoryUserKey}
             />
           </div>
@@ -73,21 +55,13 @@ export function AppShell({ account, devModeDefault, children }: Props) {
       </header>
 
       <div className={styles.body}>
-        <AppSidebar
-          isDeveloperTier={account.isDeveloperTier}
-          devMode={devMode}
-        />
+        <AppSidebar />
         <main className={styles.main}>
           <div className={styles.mainInner}>{children}</div>
         </main>
       </div>
 
-      <AppDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        isDeveloperTier={account.isDeveloperTier}
-        devMode={devMode}
-      />
+      <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );
 }

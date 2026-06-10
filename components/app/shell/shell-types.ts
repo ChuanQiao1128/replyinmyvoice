@@ -23,12 +23,15 @@ export type ShellNavItem = {
 export type ShellNavGroup = {
   id: string;
   label: string;
-  /** Developer-only group: shown when the user has API access or Developer mode is on. */
-  developer?: boolean;
   items: ShellNavItem[];
 };
 
-/** The single nav model consumed by both the desktop sidebar and the mobile drawer. */
+/**
+ * The single nav model consumed by both the desktop sidebar and the mobile
+ * drawer. Every group is always visible — developer features are shown to
+ * everyone and the pages themselves upsell Pro/API when the account lacks
+ * API access.
+ */
 export const SHELL_NAV: ShellNavGroup[] = [
   {
     id: "create",
@@ -41,7 +44,6 @@ export const SHELL_NAV: ShellNavGroup[] = [
   {
     id: "developers",
     label: "Developers",
-    developer: true,
     items: [
       { label: "API keys", href: "/app/keys", icon: "key" },
       { label: "Usage", href: "/app/usage", icon: "chart" },
@@ -83,12 +85,21 @@ export function isNavItemActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** Visible groups given tier + the user's Developer-mode toggle. */
-export function visibleNavGroups(
-  isDeveloperTier: boolean,
-  devMode: boolean,
-): ShellNavGroup[] {
-  return SHELL_NAV.filter(
-    (group) => !group.developer || isDeveloperTier || devMode,
-  );
+const developerTierStatuses = new Set(["active", "trialing", "testing"]);
+
+/** Pro/API subscription → API access; everyone else sees the upsell pages. */
+export function isDeveloperTierStatus(subscriptionStatus: string): boolean {
+  return developerTierStatuses.has(subscriptionStatus.trim().toLowerCase());
+}
+
+/** Human plan label — free accounts read "Free", never "Inactive". */
+export function planLabelForStatus(subscriptionStatus: string): string {
+  const normalized = subscriptionStatus.trim().toLowerCase();
+  if (developerTierStatuses.has(normalized)) {
+    return "Pro/API";
+  }
+  if (normalized === "pastdue" || normalized === "past_due") {
+    return "Payment issue";
+  }
+  return "Free";
 }

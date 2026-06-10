@@ -4,37 +4,48 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  isDeveloperTierStatus,
   isNavItemActive,
-  visibleNavGroups,
+  planLabelForStatus,
+  SHELL_NAV,
 } from "../../components/app/shell/shell-types";
 
 const root = process.cwd();
 const source = (path: string) => readFileSync(join(root, path), "utf8");
 
 describe("app shell nav model", () => {
-  it("hides the developers group from consumers", () => {
-    const ids = visibleNavGroups(false, false).map((group) => group.id);
-    expect(ids).toContain("create");
-    expect(ids).toContain("account");
-    expect(ids).not.toContain("developers");
+  it("shows every group to every signed-in user", () => {
+    const ids = SHELL_NAV.map((group) => group.id);
+    expect(ids).toEqual(["create", "developers", "account"]);
   });
 
-  it("shows the developers group for Pro/API tiers", () => {
-    expect(visibleNavGroups(true, false).map((group) => group.id)).toContain(
-      "developers",
-    );
-  });
-
-  it("shows the developers group when developer mode is on", () => {
-    expect(visibleNavGroups(false, true).map((group) => group.id)).toContain(
-      "developers",
-    );
+  it("keeps developer features visible in the sidebar nav", () => {
+    const developers = SHELL_NAV.find((group) => group.id === "developers");
+    expect(developers?.items.map((item) => item.href)).toEqual([
+      "/app/keys",
+      "/app/usage",
+      "/app/connect",
+    ]);
   });
 
   it("marks /app active only on exact match", () => {
     expect(isNavItemActive("/app", "/app")).toBe(true);
     expect(isNavItemActive("/app/history", "/app")).toBe(false);
     expect(isNavItemActive("/app/history", "/app/history")).toBe(true);
+  });
+
+  it("treats only paid subscriptions as developer tier", () => {
+    expect(isDeveloperTierStatus("active")).toBe(true);
+    expect(isDeveloperTierStatus("Trialing")).toBe(true);
+    expect(isDeveloperTierStatus("inactive")).toBe(false);
+    expect(isDeveloperTierStatus("canceled")).toBe(false);
+  });
+
+  it("never labels a free account as Inactive", () => {
+    expect(planLabelForStatus("inactive")).toBe("Free");
+    expect(planLabelForStatus("canceled")).toBe("Free");
+    expect(planLabelForStatus("active")).toBe("Pro/API");
+    expect(planLabelForStatus("PastDue")).toBe("Payment issue");
   });
 });
 
@@ -44,7 +55,21 @@ describe("app shell wiring", () => {
     expect(layout).toContain("fetchAzureAccountSummary");
     expect(layout).toContain('redirect("/sign-in")');
     expect(layout).toContain("<AppShell");
-    expect(layout).toContain("devModeDefault");
+  });
+
+  it("upsells Pro/API on developer pages instead of erroring", () => {
+    for (const page of [
+      "app/app/keys/page.tsx",
+      "app/app/usage/page.tsx",
+      "app/app/connect/page.tsx",
+    ]) {
+      const code = source(page);
+      expect(code).toContain("isDeveloperTierStatus");
+      expect(code).toContain("DeveloperUpsell");
+    }
+    const upsell = source("components/app/shell/shell-primitives.tsx");
+    expect(upsell).toContain('href="/pricing"');
+    expect(upsell).toContain("NZ$19.90/mo");
   });
 
   it("hides the marketing footer on the app shell and admin", () => {
@@ -59,7 +84,14 @@ describe("app shell wiring", () => {
     expect(proxy).toContain("requireSameOrigin");
 
     const ui = source("components/app/history-list.tsx");
-    expect(ui).toContain('"/api/me/rewrites?page=1&pageSize=20"');
+    expect(ui).toContain("/api/me/rewrites?page=");
     expect(ui).toContain('method: "DELETE"');
+  });
+
+  it("keeps the rewrite page free of an embedded history list", () => {
+    const workspace = source("components/app/rewrite-workspace.tsx");
+    expect(workspace).not.toContain("RECENT REWRITES");
+    expect(workspace).not.toContain("readLocalRewriteHistory");
+    expect(workspace).not.toContain("writeLocalRewriteHistory");
   });
 });
