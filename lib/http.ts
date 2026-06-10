@@ -12,8 +12,20 @@ export function requireSameOrigin(request: Request) {
     return null;
   }
 
-  if (!isProduction() && !request.headers.get("origin")) {
-    console.warn("Allowing development POST request with no Origin header.");
+  const hasOrigin = Boolean(request.headers.get("origin"));
+
+  // Browsers omit the Origin header on same-origin GET/HEAD requests, so an
+  // absent Origin on a safe method is same-origin (a genuine cross-origin
+  // request always carries an Origin header, which is checked above). Without
+  // this, every same-origin read fetch — e.g. /api/me, /api/me/rewrites — 403s
+  // in production. State-changing methods stay strict.
+  const method = request.method.toUpperCase();
+  if (!hasOrigin && (method === "GET" || method === "HEAD")) {
+    return null;
+  }
+
+  if (!isProduction() && !hasOrigin) {
+    console.warn("Allowing development request with no Origin header.");
     return null;
   }
 
