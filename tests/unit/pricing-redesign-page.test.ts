@@ -54,10 +54,10 @@ describe("pricing redesign foundation", () => {
 
     expect(trust).toContain("export function PricingTrust()");
     expect(trust).toContain("Every plan includes");
-    expect(trust).toContain("Tone check");
+    expect(trust).toContain("AI Signal");
     expect(trust).toContain("Facts preserved");
-    expect(trust).toContain("Warm · Direct");
-    expect(trust).toContain("Private history");
+    expect(trust).toContain("Server-backed history");
+    expect(trust).toContain("Delete anytime");
     expect(trust).toContain("{/* PRICING-TRUST: expanded in PRICE-04 */}");
 
     expect(faq).toContain("export function PricingFaq()");

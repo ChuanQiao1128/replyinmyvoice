@@ -1407,6 +1407,88 @@ section.block {
   color: #fff;
 }
 
+/* Pricing page: signed-in account hint under the lede */
+.pricing-session-hint {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--accent-soft);
+  border-radius: 999px;
+  background: var(--accent-tint);
+  color: var(--accent-deep);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+/* Developer (Pro/API) card — full-width band below the free + packs row */
+.plan-pro {
+  grid-column: 1 / -1;
+  background: var(--card);
+  border: 1.5px solid var(--accent);
+  border-radius: 18px;
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.plan-pro .pp-pack-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.plan-pro .pp-pack-price {
+  font-family: var(--display);
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.plan-pro .pp-pack-name {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.plan-pro .pp-pack-sub {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+.plan-pro .pp-unit-price {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.plan-pro .pp-pack-desc {
+  font-size: 15px;
+  color: var(--ink-2);
+  line-height: 1.6;
+  max-width: 64ch;
+}
+.plan-pro .pp-pack-desc a {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.plan-pro .plan-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 28px;
+}
+@media (max-width: 720px) {
+  .plan-pro .plan-list {
+    grid-template-columns: 1fr;
+  }
+  .plan-pro .pp-pack-price {
+    font-size: 34px;
+  }
+}
+
 /* clean pack list inside the dark landing pricing panel */
 .pack-list {
   display: flex;

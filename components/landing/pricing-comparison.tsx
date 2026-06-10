@@ -4,7 +4,7 @@ type Plan = {
 };
 
 const plans: Plan[] = [
-  { name: "Trial" },
+  { name: "Free (trial code)" },
   { name: "Quick Pack" },
   { name: "Value Pack", recommended: true },
   { name: "Pro·API" },
@@ -34,7 +34,7 @@ const comparisonRows: ComparisonRow[] = [
     values: ["Trial", "90 days", "90 days", "Monthly"],
   },
   {
-    label: "Tone check",
+    label: "AI Signal",
     values: [included, included, included, included],
   },
   {
@@ -42,15 +42,15 @@ const comparisonRows: ComparisonRow[] = [
     values: [included, included, included, included],
   },
   {
-    label: "Warm · Direct tones",
+    label: "Server-backed history",
     values: [included, included, included, included],
   },
   {
-    label: "Private local history",
-    values: [included, included, included, included],
+    label: "REST API + MCP access",
+    values: [notIncluded, notIncluded, notIncluded, included],
   },
   {
-    label: "Developer API access",
+    label: "Shared web + API balance",
     values: [notIncluded, notIncluded, notIncluded, included],
   },
   {

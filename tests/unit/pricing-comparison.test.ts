@@ -33,6 +33,6 @@ describe("PricingComparison", () => {
       expect(html).toContain(heading);
     }
 
-    expect(html).toContain("Developer API access");
+    expect(html).toContain("REST API + MCP access");
   });
 });
