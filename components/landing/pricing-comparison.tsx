@@ -30,6 +30,10 @@ const comparisonRows: ComparisonRow[] = [
     values: ["Free with code", "NZ$2.50", "NZ$6.90", "NZ$19.90 / mo"],
   },
   {
+    label: "Price per rewrite",
+    values: ["Free trial", "≈ NZ$0.25", "≈ NZ$0.23", "≈ NZ$0.22"],
+  },
+  {
     label: "Validity",
     values: ["Trial", "90 days", "90 days", "Monthly"],
   },
@@ -159,6 +163,10 @@ export function PricingComparison() {
           </tbody>
         </table>
       </div>
+      <p className="pricing-comparison-note">
+        Packs expire 90 days after purchase. Pro/API rewrites reset monthly and
+        do not roll over.
+      </p>
     </section>
   );
 }

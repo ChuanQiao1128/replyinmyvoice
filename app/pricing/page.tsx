@@ -61,8 +61,14 @@ function PlanAction({
   label: string;
 }) {
   if (!configured) {
+    const unavailableTitle =
+      sku === "focus_pack"
+        ? "Focus Pack — available soon"
+        : `${label.replace(/^(Get|Go) /, "")} — available soon`;
+
     return (
       <button
+        aria-disabled="true"
         className="btn btn-ghost btn-lg"
         disabled
         style={{
@@ -71,6 +77,7 @@ function PlanAction({
           width: "100%",
           justifyContent: "center",
         }}
+        title={unavailableTitle}
         type="button"
       >
         Available soon
