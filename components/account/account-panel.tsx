@@ -4,13 +4,20 @@ import {
   AlertCircle,
   AlertTriangle,
   CreditCard,
+  Download,
   ExternalLink,
   Loader2,
   LogOut,
   Send,
   Trash2,
 } from "lucide-react";
-import React, { type FormEvent, useEffect, useMemo, useState } from "react";
+import React, {
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type {
   AzureAccountPayment,
@@ -41,6 +48,8 @@ type SupportRequestType = "refund" | "billing-question";
 
 const packValidityDays = 90;
 const msPerDay = 24 * 60 * 60 * 1000;
+const supportSubmitHoldMs = 2500;
+const historyExportPageSize = 1000;
 const emptyPayments: AzureAccountPayment[] = [];
 const emptySupportRequests: AzureBillingSupportRequest[] = [];
 
@@ -113,8 +122,19 @@ function addDays(date: Date, days: number) {
 }
 
 function paymentOptionLabel(payment: AzureAccountPayment) {
-  const intent = payment.paymentIntentId ?? "No payment intent";
-  return `${intent} · ${formatMoney(payment.amount, payment.currency)} · ${formatDate(payment.date)}`;
+  return `${formatSku(payment.sku)} · ${formatMoney(payment.amount, payment.currency)} · ${formatDate(payment.date)}`;
+}
+
+function supportRequestPurchaseLabel(
+  paymentIntentId: string | null,
+  paymentByIntentId: Map<string, AzureAccountPayment>,
+) {
+  if (!paymentIntentId) {
+    return null;
+  }
+
+  const payment = paymentByIntentId.get(paymentIntentId);
+  return payment ? formatSku(payment.sku) : "Selected purchase";
 }
 
 function requestTypeLabel(type: SupportRequestType) {
@@ -313,6 +333,21 @@ function safeReceiptUrl(value: string | null) {
   }
 }
 
+function downloadJsonFile(payload: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function readJsonError(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
     detail?: string;
@@ -500,6 +535,14 @@ export function AccountPanel(props: Props = {}) {
   const [supportError, setSupportError] = useState<string | null>(null);
   const [supportNotice, setSupportNotice] = useState<string | null>(null);
   const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
+  const [supportSubmitLocked, setSupportSubmitLocked] = useState(false);
+  const [isExportingHistory, setIsExportingHistory] = useState(false);
+  const [historyExportError, setHistoryExportError] = useState<string | null>(
+    null,
+  );
+  const supportUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   useEffect(() => {
     if (demoBundle) {
@@ -534,6 +577,14 @@ export function AccountPanel(props: Props = {}) {
     };
   }, [demoBundle]);
 
+  useEffect(() => {
+    return () => {
+      if (supportUnlockTimerRef.current) {
+        clearTimeout(supportUnlockTimerRef.current);
+      }
+    };
+  }, []);
+
   const readyAccount =
     accountState.status === "ready" ? accountState.account : undefined;
   const payments =
@@ -546,7 +597,17 @@ export function AccountPanel(props: Props = {}) {
     () => payments.filter((payment) => payment.paymentIntentId),
     [payments],
   );
+  const paymentByIntentId = useMemo(() => {
+    const map = new Map<string, AzureAccountPayment>();
+    for (const payment of payments) {
+      if (payment.paymentIntentId) {
+        map.set(payment.paymentIntentId, payment);
+      }
+    }
+    return map;
+  }, [payments]);
   const email = readyAccount?.email?.trim() || "No email on file";
+  const supportSubmitBlocked = isSubmittingSupport || supportSubmitLocked;
   const canConfirmDelete = useMemo(() => {
     const value = confirmation.trim();
     return (
@@ -576,7 +637,14 @@ export function AccountPanel(props: Props = {}) {
 
   async function submitSupportRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (accountState.status !== "ready" || isSubmittingSupport) {
+    if (accountState.status !== "ready") {
+      return;
+    }
+
+    if (supportSubmitBlocked) {
+      setSupportNotice(
+        "One request at a time. You can send another request in a moment.",
+      );
       return;
     }
 
@@ -588,6 +656,7 @@ export function AccountPanel(props: Props = {}) {
 
     setSupportError(null);
     setSupportNotice(null);
+    setSupportSubmitLocked(true);
     setIsSubmittingSupport(true);
 
     try {
@@ -623,6 +692,47 @@ export function AccountPanel(props: Props = {}) {
       );
     } finally {
       setIsSubmittingSupport(false);
+      if (supportUnlockTimerRef.current) {
+        clearTimeout(supportUnlockTimerRef.current);
+      }
+      supportUnlockTimerRef.current = setTimeout(() => {
+        setSupportSubmitLocked(false);
+        supportUnlockTimerRef.current = null;
+      }, supportSubmitHoldMs);
+    }
+  }
+
+  async function exportRewriteHistory() {
+    if (isExportingHistory) {
+      return;
+    }
+
+    setHistoryExportError(null);
+    setIsExportingHistory(true);
+
+    try {
+      const response = await fetch(
+        `/api/me/rewrites?page=1&pageSize=${historyExportPageSize}`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          (await readJsonError(response)) ?? "Could not export rewrite history.",
+        );
+      }
+
+      const payload = (await response.json()) as unknown;
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      downloadJsonFile(payload, `replyinmyvoice-rewrite-history-${dateStamp}.json`);
+    } catch (error) {
+      setHistoryExportError(
+        error instanceof Error
+          ? error.message
+          : "Could not export rewrite history.",
+      );
+    } finally {
+      setIsExportingHistory(false);
     }
   }
 
@@ -876,9 +986,14 @@ export function AccountPanel(props: Props = {}) {
           {supportNotice ? (
             <p className="text-sm font-semibold text-sage">{supportNotice}</p>
           ) : null}
+          {supportSubmitBlocked ? (
+            <p className="text-sm font-medium text-ink/55" role="status">
+              One request at a time. You can send another request in a moment.
+            </p>
+          ) : null}
 
           <div className="flex justify-end">
-            <Button disabled={isSubmittingSupport} type="submit">
+            <Button disabled={supportSubmitBlocked} type="submit">
               {isSubmittingSupport ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
@@ -894,26 +1009,33 @@ export function AccountPanel(props: Props = {}) {
             Recent requests
           </h3>
           <div className="mt-3 grid gap-3">
-            {supportRequests.map((request) => (
-              <div
-                className="rounded-md border border-line bg-paper px-4 py-3"
-                key={request.id}
-              >
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase text-ink/45">
-                  <span>{requestTypeLabel(request.type)}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{request.status}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{formatDateTime(request.createdAt)}</span>
+            {supportRequests.map((request) => {
+              const purchaseLabel = supportRequestPurchaseLabel(
+                request.relatedPaymentIntentId,
+                paymentByIntentId,
+              );
+              return (
+                <div
+                  className="rounded-md border border-line bg-paper px-4 py-3"
+                  key={request.id}
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase text-ink/45">
+                    <span>{requestTypeLabel(request.type)}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{request.status}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{formatDateTime(request.createdAt)}</span>
+                    {purchaseLabel ? (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{purchaseLabel}</span>
+                      </>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm text-ink/70">{request.message}</p>
                 </div>
-                {request.relatedPaymentIntentId ? (
-                  <p className="mt-2 break-all font-mono text-xs text-ink/50">
-                    {request.relatedPaymentIntentId}
-                  </p>
-                ) : null}
-                <p className="mt-2 text-sm text-ink/70">{request.message}</p>
-              </div>
-            ))}
+              );
+            })}
             {supportRequests.length === 0 ? (
               <p className="rounded-md border border-dashed border-line px-4 py-5 text-sm text-ink/55">
                 No billing support requests yet.
@@ -966,6 +1088,40 @@ export function AccountPanel(props: Props = {}) {
                   Type <strong>DELETE</strong> or your email address to confirm.
                 </p>
               </div>
+            </div>
+
+            <div className="mt-5 rounded-md border border-line bg-white/70 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">
+                    Export your rewrite history first
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-ink/60">
+                    Download a JSON copy before deleting this account.
+                  </p>
+                </div>
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled={isExportingHistory}
+                  onClick={() => void exportRewriteHistory()}
+                  type="button"
+                  variant="secondary"
+                >
+                  {isExportingHistory ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Download className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {isExportingHistory
+                    ? "Preparing export..."
+                    : "Export my rewrite history"}
+                </Button>
+              </div>
+              {historyExportError ? (
+                <p className="mt-3 text-sm font-semibold text-rust" role="alert">
+                  {historyExportError}
+                </p>
+              ) : null}
             </div>
 
             <label

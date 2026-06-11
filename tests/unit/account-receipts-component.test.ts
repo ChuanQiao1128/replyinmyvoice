@@ -143,4 +143,69 @@ describe("AccountPanel", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("shows the related pack name on billing support requests", () => {
+    vi.stubGlobal("React", React);
+
+    type AccountPanelProps = NonNullable<Parameters<typeof AccountPanel>[0]>;
+    const AccountPanelForTest =
+      AccountPanel as React.ComponentType<AccountPanelProps>;
+    const props = {
+      demoBundle: {
+        account: {
+          currentPeriodEnd: null,
+          email: "buyer@example.test",
+          externalAuthUserId: "external-buyer-1",
+          paymentGraceEndsAt: null,
+          subscriptionStatus: "inactive",
+          usage: {
+            exhausted: false,
+            periodEnd: null,
+            periodKey: "free:lifetime",
+            quota: 3,
+            remaining: 3,
+            reserved: 0,
+            scope: "free",
+            used: 0,
+          },
+          userId: "user_buyer",
+        },
+        payments: [
+          {
+            amount: 250,
+            currency: "nzd",
+            date: "2026-06-01T00:00:00Z",
+            expiry: null,
+            paymentIntentId: "pi_quick_pack",
+            receiptUrl: null,
+            remaining: 9,
+            sku: "quick_pack",
+          },
+        ],
+        supportRequests: [
+          {
+            createdAt: "2026-06-02T00:00:00Z",
+            id: "support-quick-pack",
+            message: "Please check this purchase.",
+            relatedPaymentIntentId: "pi_quick_pack",
+            resolvedAt: null,
+            status: "open",
+            type: "billing-question",
+            updatedAt: "2026-06-02T00:00:00Z",
+            userId: "user_buyer",
+          },
+        ],
+      },
+    } satisfies AccountPanelProps;
+
+    const html = renderToStaticMarkup(
+      createElement(AccountPanelForTest, props),
+    );
+    const recentRequestsHtml = html.slice(html.indexOf("Recent requests"));
+
+    expect(recentRequestsHtml).toContain("Quick Pack");
+    expect(recentRequestsHtml).not.toContain("pi_quick_pack");
+
+    vi.unstubAllGlobals();
+  });
 });
