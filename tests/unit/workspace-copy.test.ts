@@ -124,6 +124,24 @@ describe("rewrite workspace surface copy", () => {
     expect(aiSignalSource).not.toContain("py-7");
   });
 
+  it("offers a local Try an example draft without starting a rewrite", () => {
+    const loadExampleSource = workspaceSource.slice(
+      workspaceSource.indexOf("function loadExampleDraft"),
+      workspaceSource.indexOf("function cancelRewrite"),
+    );
+
+    expect(workspaceSource).toContain(
+      'import { homepageSampleCases } from "../landing/sample-cases";',
+    );
+    expect(workspaceSource).toContain("workspaceExampleSample.draft");
+    expect(workspaceSource).toContain("Try an example");
+    expect(workspaceSource).toContain("This only fills the draft with a sample.");
+    expect(workspaceSource).toContain("real attempt once quality checks pass");
+    expect(loadExampleSource).toContain("setDraft(workspaceExampleSample.draft)");
+    expect(loadExampleSource).not.toContain("fetch(");
+    expect(loadExampleSource).not.toContain("submit(");
+  });
+
   it("describes rewrite history and retention accurately", () => {
     expect(rewriteHistorySource).toContain("rimv.rewrite.history.v1");
     expect(rewriteHistorySource).toContain("REWRITE_HISTORY_STORAGE_KEY_PREFIX");
