@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { isDeveloperTierStatus } from "../../components/app/shell/shell-types";
 import { BuyButton } from "../../components/landing/buy-button";
+import { PricingCheckoutResume } from "../../components/landing/pricing-checkout-resume";
 import { PricingComparison } from "../../components/landing/pricing-comparison";
 import { PricingFaq } from "../../components/landing/pricing-faq";
 import { PricingTrust } from "../../components/landing/pricing-trust";
@@ -216,6 +217,7 @@ export default async function PricingPage() {
                 Signed in as {sessionEmail} — purchases credit this account.
               </p>
             ) : null}
+            <PricingCheckoutResume />
           </div>
 
           <div className="pricing-wrap">
