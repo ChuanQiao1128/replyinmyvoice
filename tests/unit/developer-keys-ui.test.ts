@@ -15,11 +15,14 @@ describe("developer key management UI source", () => {
 
   it("hosts the developer console inside the app shell", () => {
     const keysPage = source("app/app/keys/page.tsx");
+    expect(keysPage).toContain('from "next/link"');
     expect(keysPage).toContain(
       'from "../../../components/developers/developer-dashboard"',
     );
     expect(keysPage).toContain('from "../../../lib/azure-api"');
     expect(keysPage).toContain('export const dynamic = "force-dynamic"');
+    expect(keysPage).toContain('href="/developers/api"');
+    expect(keysPage).toContain("API docs");
     expect(keysPage).toContain("fetchAzureAccountSummary");
     expect(keysPage).toContain("<DeveloperDashboard");
     expect(keysPage).toContain('initialTab="keys"');
@@ -41,6 +44,8 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain("encodeURIComponent(key.id)");
     expect(panelSource).toContain("maskedKey");
     expect(panelSource).toContain("lastUsedAt");
+    expect(panelSource).toContain("Last used");
+    expect(panelSource).toContain('formatDateTime(key.lastUsedAt, "Never")');
     expect(panelSource).toContain("last30dUsage");
     expect(panelSource).toContain("webhookUrl");
     expect(panelSource).toContain("revokedAt");
@@ -70,6 +75,19 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain("Buy credits");
     expect(panelSource).toContain("Confirm revoke");
     expect(panelSource).toContain("setRevealedKey(null)");
+  });
+
+  it("keeps gated API key access connected to the API docs", () => {
+    const shellPrimitivesSource = source(
+      "components/app/shell/shell-primitives.tsx",
+    );
+
+    expect(shellPrimitivesSource).toContain(
+      "API & MCP access comes with Pro/API",
+    );
+    expect(shellPrimitivesSource).toContain("NZ$19.90/mo");
+    expect(shellPrimitivesSource).toContain('href="/developers/api"');
+    expect(shellPrimitivesSource).toContain("Read API docs");
   });
 
   it("wires signed-in navigation to the key manager", () => {

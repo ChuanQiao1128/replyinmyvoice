@@ -13,10 +13,16 @@ import styles from "./shell.module.css";
 type Props = {
   email: string | null;
   isAdmin: boolean;
+  planLabel: string;
   rewriteHistoryUserKey?: string;
 };
 
-export function AccountMenu({ email, isAdmin, rewriteHistoryUserKey }: Props) {
+export function AccountMenu({
+  email,
+  isAdmin,
+  planLabel,
+  rewriteHistoryUserKey,
+}: Props) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
@@ -68,7 +74,10 @@ export function AccountMenu({ email, isAdmin, rewriteHistoryUserKey }: Props) {
 
       {open ? (
         <div className={styles.menu} id={menuId} role="menu">
-          {email ? <div className={styles.menuEmail}>{email}</div> : null}
+          <div className={styles.menuIdentity}>
+            {email ? <div className={styles.menuEmail}>{email}</div> : null}
+            <span className={styles.menuPlanBadge}>{planLabel}</span>
+          </div>
 
           <Link
             href="/app/account"

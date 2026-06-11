@@ -4,16 +4,27 @@ import {
   CheckCircle2,
   Clipboard,
   CopyCheck,
+  CreditCard,
   FilePlus2,
   Loader2,
   RefreshCw,
   Send,
   Sparkles,
+  Ticket,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
+import { openBillingPortal } from "../../lib/billing-portal";
+import { failureCopy } from "../../lib/failure-copy";
 import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import {
@@ -25,14 +36,21 @@ import {
   type RewriteResponse,
 } from "../../lib/rewrite-response";
 import { NatBar } from "../landing/nat-bar";
-import { Button } from "../ui/button";
+import { homepageSampleCases } from "../landing/sample-cases";
+import { Button, LinkButton } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { workspacePacks } from "./buy-rewrites-dialog";
+import type { CheckoutStatus } from "./checkout-banner";
+import { FirstRunChecklist } from "./first-run-checklist";
 import { RedeemCodeCard } from "./redeem-code-card";
 import shell from "./shell/shell.module.css";
 import { SubscriptionStatus } from "./subscription-status";
 
 const rewriteAttemptPollLimit = 30;
 const rewriteAttemptPollDelayMs = 1500;
+const rewriteSlowPathDelayMs = 35000;
+const draftAutosaveKey = "rimv.workspace.draft.v1";
+const minimumDraftLength = 10;
 
 type QualityFailure = {
   error: string;
@@ -64,6 +82,7 @@ type Props = {
   promoState: PromoAccountState;
   usageExhausted: boolean;
   quotaSources?: QuotaCreditSource[];
+  checkoutStatus?: CheckoutStatus | null;
 };
 
 const progressSteps = [
@@ -71,6 +90,9 @@ const progressSteps = [
   "Building candidate replies",
   "Reviewing quality gates",
 ];
+const workspaceExampleSample = homepageSampleCases[0];
+const signalRegressionTooltip =
+  "the rewrite reads more AI-like than your draft — can happen with very short or already-natural drafts; review before sending.";
 
 function Eyebrow({
   children,
@@ -135,11 +157,32 @@ function qualityFailureFromPayload(payload: unknown): QualityFailure {
   return {
     error:
       payloadString(payload, "error") ??
-      "We could not produce a better version yet. Try again or adjust the draft.",
+      failureCopy.workspace.qualityDefault,
     naturalness: payloadNaturalness(payload),
     reason: payloadString(payload, "reason"),
     charged: false,
   };
+}
+
+function readSavedDraft() {
+  try {
+    return window.localStorage.getItem(draftAutosaveKey) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSavedDraft(draft: string) {
+  try {
+    if (draft.length > 0) {
+      window.localStorage.setItem(draftAutosaveKey, draft);
+      return;
+    }
+
+    window.localStorage.removeItem(draftAutosaveKey);
+  } catch {
+    return;
+  }
 }
 
 class RewriteQualityFailureError extends Error {
@@ -148,21 +191,48 @@ class RewriteQualityFailureError extends Error {
   }
 }
 
-function delay(milliseconds: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+function createAbortError() {
+  const error = new Error("Rewrite cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function delay(milliseconds: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
+    function handleAbort() {
+      window.clearTimeout(timer);
+      reject(createAbortError());
+    }
+
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, milliseconds);
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
+  });
 }
 
 async function readJsonPayload(response: Response) {
   return (await response.json().catch(() => null)) as unknown;
 }
 
-async function pollRewriteAttempt(attemptId: string) {
+async function pollRewriteAttempt(attemptId: string, signal: AbortSignal) {
   for (let attempt = 0; attempt < rewriteAttemptPollLimit; attempt += 1) {
-    await delay(rewriteAttemptPollDelayMs);
+    await delay(rewriteAttemptPollDelayMs, signal);
 
     const response = await fetch(
       `/api/rewrite-attempts/${encodeURIComponent(attemptId)}`,
-      { cache: "no-store" },
+      { cache: "no-store", signal },
     );
     const payload = await readJsonPayload(response);
 
@@ -196,19 +266,98 @@ async function pollRewriteAttempt(attemptId: string) {
 
 function outOfCreditsHint(paid: boolean, canRedeem: boolean) {
   if (paid) {
-    return "Your monthly rewrite quota has been used for this billing period. Use Manage billing in the bar above.";
+    return "Your monthly rewrite quota has been used for this billing period.";
   }
 
   return canRedeem
-    ? "You're out of rewrites. Use Redeem code or Buy rewrites in the bar above."
-    : "You're out of rewrites. Use Buy rewrites in the bar above.";
+    ? "You're out of rewrites. Redeem a code or buy a pack to keep going."
+    : "You're out of rewrites. Buy a pack to keep going.";
+}
+
+function ManageBillingButton({ className = "" }: { className?: string }) {
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState("");
+
+  async function handleManageBilling() {
+    setBillingLoading(true);
+    setBillingError("");
+
+    try {
+      await openBillingPortal();
+    } catch (billingPortalError) {
+      setBillingError(
+        billingPortalError instanceof Error
+          ? billingPortalError.message
+          : "Could not open billing.",
+      );
+      setBillingLoading(false);
+    }
+  }
+
+  return (
+    <div className={className}>
+      <Button
+        className="w-full sm:w-auto"
+        disabled={billingLoading}
+        onClick={() => void handleManageBilling()}
+        type="button"
+        variant="secondary"
+      >
+        <CreditCard className="h-4 w-4" aria-hidden="true" />
+        {billingLoading ? "Opening..." : "Manage billing"}
+      </Button>
+      {billingError ? (
+        <p className="mt-2 text-sm font-medium text-sage" role="alert">
+          {billingError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function LowCreditBanner({
+  paid,
+  remaining,
+  quota,
+}: {
+  paid: boolean;
+  remaining: number;
+  quota: number;
+}) {
+  const total = Math.max(quota, 0);
+  const visibleRemaining = Math.max(remaining, 0);
+
+  return (
+    <section className="mt-4 flex flex-col gap-3 rounded-lg border border-clay/25 bg-clay/10 p-4 text-sm text-ink/70 md:flex-row md:items-center md:justify-between">
+      <div>
+        <p className="font-semibold text-ink">Low rewrite balance</p>
+        <p className="mt-1 leading-6">
+          {visibleRemaining} of {total || "your"} rewrites left. Add more before
+          your next batch of replies.
+        </p>
+      </div>
+      {paid ? (
+        <ManageBillingButton className="shrink-0" />
+      ) : (
+        <LinkButton
+          className="w-full shrink-0 sm:w-auto"
+          href="/pricing"
+          variant="primary"
+        >
+          Get more rewrites
+        </LinkButton>
+      )}
+    </section>
+  );
 }
 
 function OutOfCreditsNudge({
   canRedeem,
+  onRedeemClick,
   paid,
 }: {
   canRedeem: boolean;
+  onRedeemClick: () => void;
   paid: boolean;
 }) {
   return (
@@ -217,6 +366,30 @@ function OutOfCreditsNudge({
         {paid ? "Your monthly limit has been reached." : "No rewrites left."}
       </p>
       <p className="mt-1 leading-6">{outOfCreditsHint(paid, canRedeem)}</p>
+      {paid ? (
+        <ManageBillingButton className="mt-3" />
+      ) : (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          {canRedeem ? (
+            <Button
+              className="w-full sm:w-auto"
+              onClick={onRedeemClick}
+              type="button"
+              variant="secondary"
+            >
+              <Ticket className="h-4 w-4" aria-hidden="true" />
+              Redeem code
+            </Button>
+          ) : null}
+          <LinkButton
+            className="w-full sm:w-auto"
+            href="/pricing"
+            variant="primary"
+          >
+            Buy rewrites
+          </LinkButton>
+        </div>
+      )}
     </div>
   );
 }
@@ -224,6 +397,7 @@ function OutOfCreditsNudge({
 export function RewriteWorkspace({
   appExperience,
   canRedeem,
+  checkoutStatus = null,
   outOfCredits,
   usageLabel,
   subscriptionStatus,
@@ -237,26 +411,55 @@ export function RewriteWorkspace({
   usageExhausted,
 }: Props) {
   const visiblePlanRemaining = Math.max(Math.min(planRemaining, quota), 0);
+  const activeRewriteAbortRef = useRef<AbortController | null>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const [draft, setDraft] = useState("");
+  const [submittedDraft, setSubmittedDraft] = useState("");
   const [result, setResult] = useState<RewriteResponse | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [qualityFailure, setQualityFailure] = useState<QualityFailure | null>(
     null,
   );
   const [loading, setLoading] = useState(false);
+  const [rewriteIsSlow, setRewriteIsSlow] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [resultAnnouncement, setResultAnnouncement] = useState("");
+  const [rewriteSucceededThisSession, setRewriteSucceededThisSession] =
+    useState(false);
   const [freeRewritesRemaining, setFreeRewritesRemaining] = useState(
     () => visiblePlanRemaining,
   );
   const [showPostCopyNudge, setShowPostCopyNudge] = useState(false);
+  const [qualityTipsOpen, setQualityTipsOpen] = useState(false);
   const [redeemModalOpen, setRedeemModalOpen] = useState(false);
+  const [draftAutosaveReady, setDraftAutosaveReady] = useState(false);
+  const [draftRestoreVisible, setDraftRestoreVisible] = useState(false);
 
   const trimmedDraftLength = draft.trim().length;
+  const draftBelowMinimum = trimmedDraftLength < minimumDraftLength;
   const canSubmit =
     !loading &&
-    trimmedDraftLength >= 10 &&
+    trimmedDraftLength >= minimumDraftLength &&
     draft.length <= rewriteInputLimits.roughDraftReply;
+
+  useEffect(() => {
+    const savedDraft = readSavedDraft();
+    if (savedDraft) {
+      setDraft(savedDraft);
+      setDraftRestoreVisible(true);
+    }
+    setDraftAutosaveReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftAutosaveReady) {
+      return;
+    }
+
+    writeSavedDraft(draft);
+  }, [draft, draftAutosaveReady]);
 
   useEffect(() => {
     setFreeRewritesRemaining(visiblePlanRemaining);
@@ -276,6 +479,35 @@ export function RewriteWorkspace({
   }, [loading]);
 
   useEffect(() => {
+    if (!loading) {
+      setRewriteIsSlow(false);
+      return;
+    }
+
+    const timer = window.setTimeout(
+      () => setRewriteIsSlow(true),
+      rewriteSlowPathDelayMs,
+    );
+
+    return () => window.clearTimeout(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    if (!result?.rewrittenText) {
+      return;
+    }
+
+    setResultAnnouncement(
+      "Rewrite complete. Your reply is ready to review and copy.",
+    );
+    const frame = window.requestAnimationFrame(() => {
+      resultHeadingRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [result?.rewrittenText]);
+
+  useEffect(() => {
     if (!copied) {
       return;
     }
@@ -290,9 +522,15 @@ export function RewriteWorkspace({
       return;
     }
 
+    const draftForAttempt = draft;
+    const abortController = new AbortController();
+    activeRewriteAbortRef.current = abortController;
     setLoading(true);
+    setCompareOpen(false);
     setError("");
     setQualityFailure(null);
+    setQualityTipsOpen(false);
+    setResultAnnouncement("");
     setShowPostCopyNudge(false);
 
     try {
@@ -302,9 +540,10 @@ export function RewriteWorkspace({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          roughDraftReply: draft,
+          roughDraftReply: draftForAttempt,
           tone: "warm",
         }),
+        signal: abortController.signal,
       });
       const payload = await readJsonPayload(response);
 
@@ -332,7 +571,7 @@ export function RewriteWorkspace({
               "Rewrite is still processing. Try again in a moment.",
           );
         }
-        normalizedPayload = await pollRewriteAttempt(attemptId);
+        normalizedPayload = await pollRewriteAttempt(attemptId, abortController.signal);
       } else {
         const immediatePayload = normalizeRewriteResponse(payload);
         if (!immediatePayload) {
@@ -343,12 +582,24 @@ export function RewriteWorkspace({
         normalizedPayload = immediatePayload;
       }
 
+      if (abortController.signal.aborted) {
+        return;
+      }
+
       setQualityFailure(null);
+      setSubmittedDraft(draftForAttempt);
       setResult(normalizedPayload);
+      setRewriteSucceededThisSession(true);
       if (!paid) {
         setFreeRewritesRemaining((current) => Math.max(current - 1, 0));
       }
     } catch (submitError) {
+      if (isAbortError(submitError) || abortController.signal.aborted) {
+        setError("");
+        setQualityFailure(null);
+        return;
+      }
+
       if (submitError instanceof RewriteQualityFailureError) {
         setResult(null);
         setQualityFailure(submitError.failure);
@@ -362,8 +613,37 @@ export function RewriteWorkspace({
           : "Could not rewrite this draft.",
       );
     } finally {
-      setLoading(false);
+      if (activeRewriteAbortRef.current === abortController) {
+        activeRewriteAbortRef.current = null;
+        setLoading(false);
+      }
     }
+  }
+
+  function updateDraft(value: string) {
+    setDraft(value);
+    if (draftRestoreVisible) {
+      setDraftRestoreVisible(false);
+    }
+  }
+
+  function clearSavedDraft() {
+    writeSavedDraft("");
+    setDraft("");
+    setDraftRestoreVisible(false);
+  }
+
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) {
+      return;
+    }
+
+    if (!canSubmit) {
+      return;
+    }
+
+    event.preventDefault();
+    void submit();
   }
 
   async function copyReply() {
@@ -379,12 +659,48 @@ export function RewriteWorkspace({
   }
 
   function resetWorkspace() {
+    activeRewriteAbortRef.current?.abort();
+    activeRewriteAbortRef.current = null;
     setDraft("");
+    writeSavedDraft("");
+    setDraftRestoreVisible(false);
+    setSubmittedDraft("");
     setResult(null);
+    setCompareOpen(false);
     setQualityFailure(null);
     setError("");
     setCopied(false);
+    setLoading(false);
+    setRewriteIsSlow(false);
+    setResultAnnouncement("");
+    setQualityTipsOpen(false);
     setShowPostCopyNudge(false);
+  }
+
+  function loadExampleDraft() {
+    setDraft(workspaceExampleSample.draft);
+    setDraftRestoreVisible(false);
+    setSubmittedDraft("");
+    setResult(null);
+    setCompareOpen(false);
+    setQualityFailure(null);
+    setError("");
+    setCopied(false);
+    setResultAnnouncement("");
+    setQualityTipsOpen(false);
+    setShowPostCopyNudge(false);
+  }
+
+  function cancelRewrite() {
+    activeRewriteAbortRef.current?.abort();
+    activeRewriteAbortRef.current = null;
+    setLoading(false);
+    setRewriteIsSlow(false);
+    setError("");
+    setQualityFailure(null);
+    setCopied(false);
+    setCompareOpen(false);
+    setResultAnnouncement("");
   }
 
   const visibleNaturalness = result?.naturalness ?? qualityFailure?.naturalness;
@@ -405,8 +721,19 @@ export function RewriteWorkspace({
     usageExhausted ||
     appExperience === "needsRedeem" ||
     appExperience === "needsBuy";
+  const showLowCreditBanner =
+    !showOutOfCreditsNudge &&
+    remaining > 0 &&
+    (remaining <= 2 || (quota > 0 && remaining / quota <= 0.15));
   const showRedeemAction =
     canRedeem && (!promoState.hasRedeemed || promoState.trialRemaining === 0);
+  const firstRunRewriteBalance = Math.max(
+    remaining,
+    visiblePlanRemaining,
+    freeRewritesRemaining,
+    promoState.trialRemaining,
+    0,
+  );
 
   function openRedeemModal() {
     setRedeemModalOpen(true);
@@ -432,9 +759,18 @@ export function RewriteWorkspace({
         </Button>
       </div>
 
+      <FirstRunChecklist
+        canRedeem={showRedeemAction}
+        onRedeemClick={openRedeemModal}
+        rewriteBalance={firstRunRewriteBalance}
+        rewriteHistoryUserKey={rewriteHistoryUserKey}
+        rewriteSucceededThisSession={rewriteSucceededThisSession}
+      />
+
       <div>
           <SubscriptionStatus
             canRedeem={showRedeemAction}
+            checkoutStatus={checkoutStatus}
             onRedeemClick={openRedeemModal}
             paid={paid}
             paymentGraceEndsAt={paymentGraceEndsAt}
@@ -442,6 +778,10 @@ export function RewriteWorkspace({
             usageLabel={usageLabel}
           />
         </div>
+
+        {showLowCreditBanner ? (
+          <LowCreditBanner paid={paid} quota={quota} remaining={remaining} />
+        ) : null}
 
         <div className="mt-6 grid overflow-hidden rounded-2xl border border-line bg-white shadow-soft md:grid-cols-2 md:divide-x md:divide-line">
           <form className="flex flex-col p-6 md:p-8" onSubmit={submit}>
@@ -452,15 +792,72 @@ export function RewriteWorkspace({
               </span>
             </div>
             <Textarea
-              className="min-h-[28rem] flex-1 bg-paper/50 p-5 text-base leading-relaxed focus:bg-white"
+              className="min-h-[16rem] max-h-[min(28rem,44svh)] flex-1 overflow-y-auto bg-paper/50 p-5 text-base leading-relaxed focus:bg-white md:min-h-[28rem] md:max-h-[min(34rem,68svh)]"
               id="roughDraftReply"
               maxLength={rewriteInputLimits.roughDraftReply}
-              minLength={10}
-              onChange={(event) => setDraft(event.target.value)}
+              minLength={minimumDraftLength}
+              onChange={(event) => updateDraft(event.target.value)}
+              onKeyDown={handleDraftKeyDown}
               placeholder="Paste the email, message, or note you want to rewrite. The rewrite keeps your facts intact."
               rows={16}
               value={draft}
             />
+            <div className="mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+              <p
+                aria-live="polite"
+                className={`font-mono font-semibold ${
+                  draftBelowMinimum ? "text-clay" : "text-sage"
+                }`}
+              >
+                {trimmedDraftLength} / {minimumDraftLength} min
+              </p>
+              {draftBelowMinimum ? (
+                <p className="text-ink/50" role="status">
+                  Add {minimumDraftLength - trimmedDraftLength} more
+                  characters.
+                </p>
+              ) : null}
+            </div>
+            {draftRestoreVisible ? (
+              <div
+                className="mt-3 flex flex-col gap-2 rounded-lg border border-sage/20 bg-mint/50 px-3 py-2 text-sm text-ink/65 sm:flex-row sm:items-center sm:justify-between"
+                role="status"
+              >
+                <span>Restored your draft.</span>
+                <Button
+                  className="min-h-9 w-full px-3 text-ink/65 hover:bg-white sm:w-auto"
+                  onClick={clearSavedDraft}
+                  type="button"
+                  variant="ghost"
+                >
+                  Clear saved draft
+                </Button>
+              </div>
+            ) : null}
+            {!draft.trim() && !loading && !result && !qualityFailure ? (
+              <div className="mt-4 rounded-lg border border-line bg-paper/60 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink">
+                      Want a quick feel for it?
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-ink/50">
+                      This only fills the draft with a sample. Rewrite uses a
+                      real attempt once quality checks pass.
+                    </p>
+                  </div>
+                  <Button
+                    className="w-full shrink-0 sm:w-auto"
+                    onClick={loadExampleDraft}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                    Try an example
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-ink/50">
                 Counts only after quality checks pass.
@@ -486,13 +883,57 @@ export function RewriteWorkspace({
           </form>
 
           <section className="flex flex-col border-t border-line p-6 md:border-t-0 md:p-8">
+            <p aria-live="polite" className="sr-only">
+              {resultAnnouncement}
+            </p>
             <div className="mb-4 flex min-h-11 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <Eyebrow tone="accent">IN YOUR VOICE</Eyebrow>
-              <div className="flex items-center gap-3">
+              <h2
+                className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-sage outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-4"
+                id="rewrite-result-heading"
+                ref={resultHeadingRef}
+                tabIndex={-1}
+              >
+                In your voice
+              </h2>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {result?.rewrittenText ? (
+                  <div
+                    aria-label="Switch rewrite result view"
+                    className="inline-flex rounded-lg border border-line bg-white p-1"
+                    role="group"
+                  >
+                    <button
+                      aria-pressed={!compareOpen}
+                      className={`min-h-9 rounded-md px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] transition ${
+                        compareOpen
+                          ? "text-ink/45 hover:bg-paper hover:text-ink"
+                          : "bg-mint text-sage shadow-sm"
+                      }`}
+                      onClick={() => setCompareOpen(false)}
+                      type="button"
+                    >
+                      View rewrite
+                    </button>
+                    <button
+                      aria-pressed={compareOpen}
+                      className={`min-h-9 rounded-md px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] transition ${
+                        compareOpen
+                          ? "bg-mint text-sage shadow-sm"
+                          : "text-ink/45 hover:bg-paper hover:text-ink"
+                      }`}
+                      onClick={() => setCompareOpen(true)}
+                      type="button"
+                    >
+                      View compare
+                    </button>
+                  </div>
+                ) : null}
                 <Button
+                  aria-label="Copy rewrite to clipboard"
                   className="px-3 text-ink/70 hover:bg-paper"
                   disabled={!result?.rewrittenText}
                   onClick={() => void copyReply()}
+                  title="Copy rewrite to clipboard"
                   type="button"
                   variant="ghost"
                 >
@@ -516,9 +957,16 @@ export function RewriteWorkspace({
               </div>
             </div>
 
-            <div className="flex min-h-[28rem] flex-1 flex-col rounded-lg border border-line/70 bg-mint/20 p-5 md:p-6">
+            <div
+              aria-labelledby="rewrite-result-heading"
+              className="flex min-h-[28rem] flex-1 flex-col rounded-lg border border-line/70 bg-mint/20 p-5 md:p-6"
+            >
               {showOutOfCreditsNudge ? (
-                <OutOfCreditsNudge canRedeem={showRedeemAction} paid={paid} />
+                <OutOfCreditsNudge
+                  canRedeem={showRedeemAction}
+                  onRedeemClick={openRedeemModal}
+                  paid={paid}
+                />
               ) : null}
 
               {loading ? (
@@ -563,14 +1011,56 @@ export function RewriteWorkspace({
                       </li>
                     ))}
                   </ol>
+                  <div className="space-y-2 text-xs leading-5 text-ink/50">
+                    <p>Usually 10–60 seconds.</p>
+                    {rewriteIsSlow ? (
+                      <p className="font-medium text-ink/65" role="status">
+                        Still working — longer than usual.
+                      </p>
+                    ) : null}
+                  </div>
                   <p className="text-xs text-ink/50">
                     Keeping your facts intact and checking quality.
                   </p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-ink/50">
+                      Unfinished rewrites are not charged.
+                    </p>
+                    <Button
+                      className="w-full sm:w-auto"
+                      onClick={cancelRewrite}
+                      type="button"
+                      variant="secondary"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               ) : result?.rewrittenText ? (
-                <div className="whitespace-pre-wrap text-base leading-8 text-ink">
-                  {result.rewrittenText}
-                </div>
+                compareOpen ? (
+                  <div
+                    aria-label="Draft and rewritten reply comparison"
+                    className="grid gap-4 lg:grid-cols-2"
+                  >
+                    <div className="min-w-0 rounded-lg border border-line bg-white/75 p-4">
+                      <Eyebrow>Original draft</Eyebrow>
+                      <div className="mt-3 max-h-[24rem] overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-ink/70">
+                        {submittedDraft || draft}
+                      </div>
+                    </div>
+                    <div className="min-w-0 rounded-lg border border-sage/20 bg-white p-4">
+                      <Eyebrow tone="accent">Rewritten reply</Eyebrow>
+                      <div className="mt-3 max-h-[24rem] overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-ink">
+                        {result.rewrittenText}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap text-base leading-8 text-ink">
+                    {result.rewrittenText}
+                  </div>
+                )
               ) : qualityFailure ? (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">
                   <Sparkles className="mb-3 h-5 w-5 text-sage" aria-hidden="true" />
@@ -580,6 +1070,31 @@ export function RewriteWorkspace({
                   <p className="mt-2 max-w-md text-sm leading-relaxed text-ink/60">
                     {qualityFailure.error}
                   </p>
+                  <p className="mt-4 rounded-lg border border-sage/20 bg-white/80 px-4 py-3 text-sm font-semibold text-sage">
+                    {failureCopy.workspace.notCharged}
+                  </p>
+                  <div className="mt-4 w-full max-w-md rounded-lg border border-line/70 bg-white/70 p-3 text-left">
+                    <Button
+                      aria-controls="quality-failure-tips"
+                      aria-expanded={qualityTipsOpen}
+                      className="w-full justify-between px-3 text-ink/75 hover:bg-paper"
+                      onClick={() => setQualityTipsOpen((open) => !open)}
+                      type="button"
+                      variant="ghost"
+                    >
+                      {failureCopy.workspace.tips.prompt}
+                    </Button>
+                    {qualityTipsOpen ? (
+                      <ul
+                        className="mt-3 space-y-2 px-3 pb-1 text-sm leading-6 text-ink/65"
+                        id="quality-failure-tips"
+                      >
+                        <li>{failureCopy.workspace.tips.longerDraft}</li>
+                        <li>{failureCopy.workspace.tips.clearerFacts}</li>
+                        <li>{failureCopy.workspace.tips.differentTone}</li>
+                      </ul>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">
@@ -594,14 +1109,30 @@ export function RewriteWorkspace({
             {showCopyNudge ? (
               <div className="mt-4 rounded-2xl border border-line bg-mint/70 p-4 text-sm text-ink/70">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-semibold text-ink">
                       Keep writing in your own voice.
                     </p>
                     <p className="mt-1 leading-6">
-                      The Value Pack gives you 30 rewrites for the emails and
-                      messages you actually need to send.
+                      Choose the pack that fits your next batch of emails and
+                      messages.
                     </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      {workspacePacks.map((pack) => (
+                        <div
+                          className="rounded-lg border border-line bg-white/70 p-3"
+                          key={pack.sku}
+                        >
+                          <p className="font-semibold text-ink">{pack.name}</p>
+                          <p className="mt-1 text-sm text-ink/70">
+                            {pack.price}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-ink/50">
+                            {pack.allowance} · {pack.term}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                     <p className="mt-2 font-mono text-[11px] text-ink/50">
                       {freeRewritesRemaining > 0
                         ? `${freeRewritesRemaining} trial rewrite${freeRewritesRemaining === 1 ? "" : "s"} left after this copy.`
@@ -644,13 +1175,20 @@ export function RewriteWorkspace({
                           ? "bg-rust/10 text-rust"
                           : "bg-paper-deep text-ink/60"
                     }`}
-                    title={labelForNaturalness(visibleNaturalness)}
+                    title={
+                      signalRegressed
+                        ? signalRegressionTooltip
+                        : labelForNaturalness(visibleNaturalness)
+                    }
                   >
                     {signalDelta > 0
                       ? `−${signalDelta} pts more natural`
                       : signalRegressed
                         ? `+${Math.abs(signalDelta)} pts`
                         : "Reads natural"}
+                    {signalRegressed ? (
+                      <span className="sr-only">: {signalRegressionTooltip}</span>
+                    ) : null}
                   </span>
                 ) : null}
               </div>

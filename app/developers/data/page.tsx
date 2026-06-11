@@ -19,11 +19,15 @@ const sections = [
   },
   {
     title: "Retention window",
-    text: "API-originated request and result content has a bounded 30-day retention window. After that window, stored input and output content is purged while operational records needed for account, billing, security, and abuse review may be retained.",
+    text: "API-originated request and result content has a bounded 30-day retention window. Workspace history may be retained for up to 90 days, while API request and result records use a separate 30-day retention window. After that window, stored input and output content is purged while operational records needed for account, billing, security, and abuse review may be retained.",
+  },
+  {
+    title: "Processing and residency",
+    text: "API request and result content is processed by Reply In My Voice systems and the rewrite and naturalness providers needed to provide the service. Those providers may process data in the locations where they operate their managed services; TimeAwake Ltd does not promise a specific country, region, or single-region residency unless a separate written agreement says so.",
   },
   {
     title: "Deletion",
-    text: "You can request deletion of API-originated content by contacting TimeAwake Ltd at info@timeawake.co.nz. Deletion is available for retained request and result content, subject to account, security, billing, and legal obligations.",
+    text: "You can delete your account from /app/account or request deletion of API-originated content by contacting TimeAwake Ltd at info@timeawake.co.nz. TimeAwake Ltd will respond to deletion requests within 30 days. Deletion is available for retained request and result content, subject to account, security, billing, and legal obligations.",
   },
   {
     title: "Processors",

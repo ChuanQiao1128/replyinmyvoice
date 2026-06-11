@@ -34,5 +34,11 @@ describe("PricingComparison", () => {
     }
 
     expect(html).toContain("REST API + MCP access");
+    expect(html).toContain("Price per rewrite");
+    expect(html).toContain("≈ NZ$0.25");
+    expect(html).toContain("≈ NZ$0.23");
+    expect(html).toContain("≈ NZ$0.22");
+    expect(html).toContain("Packs expire 90 days after purchase");
+    expect(html).toContain("Pro/API rewrites reset monthly");
   });
 });

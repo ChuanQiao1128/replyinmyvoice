@@ -2,19 +2,29 @@
 
 import {
   AlertCircle,
+  AlertTriangle,
+  CreditCard,
+  Download,
   ExternalLink,
   Loader2,
   LogOut,
   Send,
   Trash2,
 } from "lucide-react";
-import React, { type FormEvent, useEffect, useMemo, useState } from "react";
+import React, {
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type {
   AzureAccountPayment,
   AzureAccountSummary,
   AzureBillingSupportRequest,
 } from "../../lib/azure-api";
+import { openBillingPortal } from "../../lib/billing-portal";
 import { clearLocalRewriteHistory } from "../../lib/rewrite-history";
 import { planLabelForStatus } from "../app/shell/shell-types";
 import { Skeleton } from "../app/shell/shell-primitives";
@@ -35,6 +45,13 @@ type AccountState =
   | { status: "error"; message: string };
 
 type SupportRequestType = "refund" | "billing-question";
+
+const packValidityDays = 90;
+const msPerDay = 24 * 60 * 60 * 1000;
+const supportSubmitHoldMs = 2500;
+const historyExportPageSize = 1000;
+const emptyPayments: AzureAccountPayment[] = [];
+const emptySupportRequests: AzureBillingSupportRequest[] = [];
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -72,9 +89,52 @@ function formatDateTime(value: string | null) {
   }).format(date);
 }
 
+function formatGraceEnd(value: string | null) {
+  if (!value) {
+    return "the grace deadline";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "the grace deadline";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function parseDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
 function paymentOptionLabel(payment: AzureAccountPayment) {
-  const intent = payment.paymentIntentId ?? "No payment intent";
-  return `${intent} · ${formatMoney(payment.amount, payment.currency)} · ${formatDate(payment.date)}`;
+  return `${formatSku(payment.sku)} · ${formatMoney(payment.amount, payment.currency)} · ${formatDate(payment.date)}`;
+}
+
+function supportRequestPurchaseLabel(
+  paymentIntentId: string | null,
+  paymentByIntentId: Map<string, AzureAccountPayment>,
+) {
+  if (!paymentIntentId) {
+    return null;
+  }
+
+  const payment = paymentByIntentId.get(paymentIntentId);
+  return payment ? formatSku(payment.sku) : "Selected purchase";
 }
 
 function requestTypeLabel(type: SupportRequestType) {
@@ -118,6 +178,148 @@ function formatSku(sku: string | null) {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+function isProSku(sku: string | null) {
+  return sku?.trim().toLowerCase() === "pro_api";
+}
+
+function purchaseExpiryDate(payment: AzureAccountPayment) {
+  const explicitExpiry = parseDate(payment.expiry);
+  if (explicitExpiry) {
+    return explicitExpiry;
+  }
+
+  const purchaseDate = parseDate(payment.date);
+  return purchaseDate ? addDays(purchaseDate, packValidityDays) : null;
+}
+
+function daysUntil(date: Date) {
+  const now = new Date();
+  return Math.max(0, Math.ceil((date.getTime() - now.getTime()) / msPerDay));
+}
+
+function PurchaseStatusCell({
+  currentPeriodEnd,
+  payment,
+}: {
+  currentPeriodEnd?: string | null;
+  payment: AzureAccountPayment;
+}) {
+  if (isProSku(payment.sku)) {
+    const nextBillingDate = currentPeriodEnd ?? payment.expiry;
+
+    return (
+      <div className="grid gap-1.5">
+        <span className={shell.badge}>Active</span>
+        <span className="text-xs font-medium text-ink/55">
+          Next billing date
+        </span>
+        <span className="text-sm text-ink/75">{formatDate(nextBillingDate ?? null)}</span>
+      </div>
+    );
+  }
+
+  const expiryDate = purchaseExpiryDate(payment);
+  const expired =
+    !expiryDate || payment.remaining <= 0 || expiryDate.getTime() <= Date.now();
+
+  if (expired) {
+    return (
+      <div className="grid gap-1.5">
+        <span className={`${shell.badge} ${shell.badgeWarn}`}>Expired</span>
+        <span className="text-xs text-ink/55">
+          {formatDate(expiryDate?.toISOString() ?? payment.expiry)}
+        </span>
+      </div>
+    );
+  }
+
+  const expiryDays = daysUntil(expiryDate);
+
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        <span className={shell.badge}>Active</span>
+        <span
+          className={
+            expiryDays <= 14
+              ? `${shell.badge} ${shell.badgeWarn}`
+              : `${shell.badge} ${shell.badgeMuted}`
+          }
+        >
+          Expires in {expiryDays} days
+        </span>
+      </div>
+      <span className="text-xs text-ink/55">{formatDate(expiryDate.toISOString())}</span>
+    </div>
+  );
+}
+
+function PastDueAccountActionCard({
+  paymentGraceEndsAt,
+}: {
+  paymentGraceEndsAt: string | null;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const graceEnd = formatGraceEnd(paymentGraceEndsAt);
+
+  async function handleUpdatePaymentMethod() {
+    setLoading(true);
+    setError("");
+
+    try {
+      await openBillingPortal();
+    } catch (billingError) {
+      setError(
+        billingError instanceof Error
+          ? billingError.message
+          : "Could not open billing.",
+      );
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section
+      className="rounded-lg border border-rust/30 bg-rust/10 p-4 text-ink shadow-soft sm:p-5"
+      role="status"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-rust/20 bg-white/70 text-rust">
+            <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-rust">Payment failed</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink/70">
+              Payment failed - update your payment method by {graceEnd} to keep your plan.
+            </p>
+            {error ? (
+              <p className="mt-2 text-sm font-medium text-rust" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <Button
+          className="w-full sm:w-auto"
+          disabled={loading}
+          onClick={handleUpdatePaymentMethod}
+          type="button"
+          variant="secondary"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <CreditCard className="h-4 w-4" aria-hidden="true" />
+          )}
+          Update payment method
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 function safeReceiptUrl(value: string | null) {
   if (!value) {
     return null;
@@ -129,6 +331,21 @@ function safeReceiptUrl(value: string | null) {
   } catch {
     return null;
   }
+}
+
+function downloadJsonFile(payload: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function readJsonError(response: Response) {
@@ -210,8 +427,10 @@ async function loadAccountBundle() {
 }
 
 export function PurchaseHistorySection({
+  currentPeriodEnd = null,
   payments,
 }: {
+  currentPeriodEnd?: string | null;
   payments: AzureAccountPayment[];
 }) {
   return (
@@ -235,7 +454,7 @@ export function PurchaseHistorySection({
                 <th className="px-4 py-3 font-semibold">Pack</th>
                 <th className="px-4 py-3 font-semibold">Date</th>
                 <th className="px-4 py-3 font-semibold">Amount</th>
-                <th className="px-4 py-3 font-semibold">Expiry</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Remaining</th>
                 <th className="px-4 py-3 font-semibold">Receipt</th>
               </tr>
@@ -257,7 +476,10 @@ export function PurchaseHistorySection({
                       {formatMoney(payment.amount, payment.currency)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-4">
-                      {formatDate(payment.expiry)}
+                      <PurchaseStatusCell
+                        currentPeriodEnd={currentPeriodEnd}
+                        payment={payment}
+                      />
                     </td>
                     <td className="whitespace-nowrap px-4 py-4">
                       {payment.remaining} remaining
@@ -297,7 +519,8 @@ type Props = {
   demoBundle?: AccountBundle;
 };
 
-export function AccountPanel({ demoBundle }: Props = {}) {
+export function AccountPanel(props: Props = {}) {
+  const { demoBundle } = props;
   const [accountState, setAccountState] = useState<AccountState>(
     demoBundle ? { status: "ready", ...demoBundle } : { status: "loading" },
   );
@@ -312,6 +535,14 @@ export function AccountPanel({ demoBundle }: Props = {}) {
   const [supportError, setSupportError] = useState<string | null>(null);
   const [supportNotice, setSupportNotice] = useState<string | null>(null);
   const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
+  const [supportSubmitLocked, setSupportSubmitLocked] = useState(false);
+  const [isExportingHistory, setIsExportingHistory] = useState(false);
+  const [historyExportError, setHistoryExportError] = useState<string | null>(
+    null,
+  );
+  const supportUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   useEffect(() => {
     if (demoBundle) {
@@ -346,16 +577,37 @@ export function AccountPanel({ demoBundle }: Props = {}) {
     };
   }, [demoBundle]);
 
+  useEffect(() => {
+    return () => {
+      if (supportUnlockTimerRef.current) {
+        clearTimeout(supportUnlockTimerRef.current);
+      }
+    };
+  }, []);
+
   const readyAccount =
     accountState.status === "ready" ? accountState.account : undefined;
-  const payments = accountState.status === "ready" ? accountState.payments : [];
+  const payments =
+    accountState.status === "ready" ? accountState.payments : emptyPayments;
   const supportRequests =
-    accountState.status === "ready" ? accountState.supportRequests : [];
+    accountState.status === "ready"
+      ? accountState.supportRequests
+      : emptySupportRequests;
   const paymentOptions = useMemo(
     () => payments.filter((payment) => payment.paymentIntentId),
     [payments],
   );
+  const paymentByIntentId = useMemo(() => {
+    const map = new Map<string, AzureAccountPayment>();
+    for (const payment of payments) {
+      if (payment.paymentIntentId) {
+        map.set(payment.paymentIntentId, payment);
+      }
+    }
+    return map;
+  }, [payments]);
   const email = readyAccount?.email?.trim() || "No email on file";
+  const supportSubmitBlocked = isSubmittingSupport || supportSubmitLocked;
   const canConfirmDelete = useMemo(() => {
     const value = confirmation.trim();
     return (
@@ -385,7 +637,14 @@ export function AccountPanel({ demoBundle }: Props = {}) {
 
   async function submitSupportRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (accountState.status !== "ready" || isSubmittingSupport) {
+    if (accountState.status !== "ready") {
+      return;
+    }
+
+    if (supportSubmitBlocked) {
+      setSupportNotice(
+        "One request at a time. You can send another request in a moment.",
+      );
       return;
     }
 
@@ -397,6 +656,7 @@ export function AccountPanel({ demoBundle }: Props = {}) {
 
     setSupportError(null);
     setSupportNotice(null);
+    setSupportSubmitLocked(true);
     setIsSubmittingSupport(true);
 
     try {
@@ -432,6 +692,47 @@ export function AccountPanel({ demoBundle }: Props = {}) {
       );
     } finally {
       setIsSubmittingSupport(false);
+      if (supportUnlockTimerRef.current) {
+        clearTimeout(supportUnlockTimerRef.current);
+      }
+      supportUnlockTimerRef.current = setTimeout(() => {
+        setSupportSubmitLocked(false);
+        supportUnlockTimerRef.current = null;
+      }, supportSubmitHoldMs);
+    }
+  }
+
+  async function exportRewriteHistory() {
+    if (isExportingHistory) {
+      return;
+    }
+
+    setHistoryExportError(null);
+    setIsExportingHistory(true);
+
+    try {
+      const response = await fetch(
+        `/api/me/rewrites?page=1&pageSize=${historyExportPageSize}`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          (await readJsonError(response)) ?? "Could not export rewrite history.",
+        );
+      }
+
+      const payload = (await response.json()) as unknown;
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      downloadJsonFile(payload, `replyinmyvoice-rewrite-history-${dateStamp}.json`);
+    } catch (error) {
+      setHistoryExportError(
+        error instanceof Error
+          ? error.message
+          : "Could not export rewrite history.",
+      );
+    } finally {
+      setIsExportingHistory(false);
     }
   }
 
@@ -540,6 +841,7 @@ export function AccountPanel({ demoBundle }: Props = {}) {
 
   const account = accountState.account;
   const planLabel = planLabelForStatus(account.subscriptionStatus);
+  const billingPeriodEnd = account.usage.periodEnd ?? account.currentPeriodEnd;
   const planBadgeClass =
     planLabel === "Pro/API"
       ? shell.badge
@@ -564,6 +866,15 @@ export function AccountPanel({ demoBundle }: Props = {}) {
           {isSigningOut ? "Signing out..." : "Sign out"}
         </Button>
       </div>
+
+      {account.subscriptionStatus === "PastDue" ? (
+        <>
+          <PastDueAccountActionCard
+            paymentGraceEndsAt={account.paymentGraceEndsAt}
+          />
+          <div style={{ height: 18 }} />
+        </>
+      ) : null}
 
       <div className={shell.statGrid}>
         <div className={shell.statCard}>
@@ -595,14 +906,17 @@ export function AccountPanel({ demoBundle }: Props = {}) {
             {account.usage.scope === "paid" ? "Renews" : "Period ends"}
           </div>
           <div className={shell.statValue}>
-            {formatDate(account.usage.periodEnd ?? account.currentPeriodEnd)}
+            {formatDate(billingPeriodEnd)}
           </div>
         </div>
       </div>
 
       <div style={{ height: 18 }} />
 
-      <PurchaseHistorySection payments={payments} />
+      <PurchaseHistorySection
+        currentPeriodEnd={billingPeriodEnd}
+        payments={payments}
+      />
 
       <div style={{ height: 18 }} />
 
@@ -672,9 +986,14 @@ export function AccountPanel({ demoBundle }: Props = {}) {
           {supportNotice ? (
             <p className="text-sm font-semibold text-sage">{supportNotice}</p>
           ) : null}
+          {supportSubmitBlocked ? (
+            <p className="text-sm font-medium text-ink/55" role="status">
+              One request at a time. You can send another request in a moment.
+            </p>
+          ) : null}
 
           <div className="flex justify-end">
-            <Button disabled={isSubmittingSupport} type="submit">
+            <Button disabled={supportSubmitBlocked} type="submit">
               {isSubmittingSupport ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
@@ -690,26 +1009,33 @@ export function AccountPanel({ demoBundle }: Props = {}) {
             Recent requests
           </h3>
           <div className="mt-3 grid gap-3">
-            {supportRequests.map((request) => (
-              <div
-                className="rounded-md border border-line bg-paper px-4 py-3"
-                key={request.id}
-              >
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase text-ink/45">
-                  <span>{requestTypeLabel(request.type)}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{request.status}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{formatDateTime(request.createdAt)}</span>
+            {supportRequests.map((request) => {
+              const purchaseLabel = supportRequestPurchaseLabel(
+                request.relatedPaymentIntentId,
+                paymentByIntentId,
+              );
+              return (
+                <div
+                  className="rounded-md border border-line bg-paper px-4 py-3"
+                  key={request.id}
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase text-ink/45">
+                    <span>{requestTypeLabel(request.type)}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{request.status}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{formatDateTime(request.createdAt)}</span>
+                    {purchaseLabel ? (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{purchaseLabel}</span>
+                      </>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm text-ink/70">{request.message}</p>
                 </div>
-                {request.relatedPaymentIntentId ? (
-                  <p className="mt-2 break-all font-mono text-xs text-ink/50">
-                    {request.relatedPaymentIntentId}
-                  </p>
-                ) : null}
-                <p className="mt-2 text-sm text-ink/70">{request.message}</p>
-              </div>
-            ))}
+              );
+            })}
             {supportRequests.length === 0 ? (
               <p className="rounded-md border border-dashed border-line px-4 py-5 text-sm text-ink/55">
                 No billing support requests yet.
@@ -762,6 +1088,40 @@ export function AccountPanel({ demoBundle }: Props = {}) {
                   Type <strong>DELETE</strong> or your email address to confirm.
                 </p>
               </div>
+            </div>
+
+            <div className="mt-5 rounded-md border border-line bg-white/70 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">
+                    Export your rewrite history first
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-ink/60">
+                    Download a JSON copy before deleting this account.
+                  </p>
+                </div>
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled={isExportingHistory}
+                  onClick={() => void exportRewriteHistory()}
+                  type="button"
+                  variant="secondary"
+                >
+                  {isExportingHistory ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Download className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {isExportingHistory
+                    ? "Preparing export..."
+                    : "Export my rewrite history"}
+                </Button>
+              </div>
+              {historyExportError ? (
+                <p className="mt-3 text-sm font-semibold text-rust" role="alert">
+                  {historyExportError}
+                </p>
+              ) : null}
             </div>
 
             <label

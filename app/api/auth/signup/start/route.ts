@@ -14,6 +14,11 @@ import {
   cloudflareClientIpFromRequest,
   checkAuthRateLimit,
 } from "../../../../../lib/auth-rate-limit";
+import {
+  buildAuthRedirectSearchParams,
+  normalizeAuthRedirectParams,
+  type AuthRedirectInput,
+} from "../../../../../lib/auth-redirect-intent";
 import { isDisposableEmail } from "../../../../../lib/disposable-email-domains";
 import { requireSameOrigin } from "../../../../../lib/http";
 import { verifyTurnstileToken } from "../../../../../lib/turnstile";
@@ -37,6 +42,7 @@ export async function POST(request: Request) {
   const entryValue = stringValue(body?.[entryField]);
   const displayName = optionalText(body?.displayName, 160);
   const turnstileToken = stringValue(body?.turnstileToken)?.trim() ?? "";
+  const authRedirect = normalizeAuthRedirectParams(body ?? {});
 
   if (!email) {
     return signupJsonError("Enter a valid email.", 400);
@@ -98,6 +104,7 @@ export async function POST(request: Request) {
       continuationToken,
       displayName,
       email,
+      ...authRedirect,
       exp: Math.floor(nowMs / 1000) + signupFlowTtlSeconds,
       lastSentAt: nowMs,
     };
@@ -109,7 +116,7 @@ export async function POST(request: Request) {
     await setSignupFlowCookie(state, response.cookies);
     return response;
   } catch (error) {
-    return nativeSignupError(error, email);
+    return nativeSignupError(error, email, authRedirect);
   }
 }
 
@@ -145,27 +152,29 @@ function requireContinuationToken(value: unknown) {
   return value;
 }
 
-function nativeSignupError(error: unknown, email: string) {
+function nativeSignupError(error: unknown, email: string, authRedirect: AuthRedirectInput) {
   if (!(error instanceof NativeAuthError)) {
     return signupJsonError("We could not start sign-up. Please try again.", 502);
   }
 
   if (error.appCode === "user_already_exists") {
+    const params = buildAuthRedirectSearchParams(authRedirect, { email });
     return NextResponse.json({
       error: "Account exists. Please sign in.",
-      fallbackRedirect: `/sign-in?email=${encodeURIComponent(email)}`,
+      fallbackRedirect: `/sign-in?${params.toString()}`,
       ok: false,
     }, { status: 409 });
   }
 
   if (error.appCode === entryPolicyCode) {
-    return signupJsonError("Use a stronger sign-up value.", 400);
+    return signupJsonError("Use a stronger password.", 400);
   }
 
   if (error.appCode === "redirect_required") {
+    const params = buildAuthRedirectSearchParams(authRedirect, { loginHint: email });
     return NextResponse.json({
       error: "Continue in browser.",
-      fallbackRedirect: `/api/auth/login?loginHint=${encodeURIComponent(email)}`,
+      fallbackRedirect: `/api/auth/login?${params.toString()}`,
       ok: false,
     }, { status: 409 });
   }

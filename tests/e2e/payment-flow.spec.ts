@@ -210,13 +210,15 @@ test.describe("PAY-06 payment checkout and refund flow", () => {
     ).toBeVisible();
   });
 
-  test("anonymous pricing checkout redirects to sign in with pricing return", async ({
+  test("anonymous pricing checkout redirects to sign in with pricing purchase return", async ({
     page,
   }) => {
     await page.goto("/pricing");
 
     await page.getByRole("button", { name: /Get Quick Pack/ }).click();
 
-    await expect(page).toHaveURL(/\/sign-in\?redirectTo=%2Fpricing$/);
+    await expect(page).toHaveURL(
+      /\/sign-in\?redirectTo=%2Fpricing&intent=buy&sku=quick_pack$/,
+    );
   });
 });

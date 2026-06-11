@@ -168,11 +168,27 @@
   box-shadow: var(--shadow-md);
   z-index: 50;
 }
-.menuEmail {
+.menuIdentity {
   padding: 7px 10px 9px;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.menuEmail {
   font-size: 12.5px;
   color: var(--muted);
   word-break: break-all;
+}
+.menuPlanBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 650;
 }
 .menuItem {
   display: flex;
@@ -434,6 +450,149 @@
   flex-direction: column;
   gap: 12px;
 }
+.skeletonBlock {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-2) 25%,
+    var(--bg-3) 37%,
+    var(--bg-2) 63%
+  );
+  background-size: 400% 100%;
+  animation: shellShimmer 1.4s ease infinite;
+}
+.shellSkeletonPill {
+  min-height: 42px;
+  justify-content: center;
+  pointer-events: none;
+}
+.shellSkeletonDocs {
+  width: 72px;
+  height: 32px;
+  border-radius: 9px;
+}
+.shellSkeletonAvatar {
+  width: 28px;
+  height: 28px;
+}
+.shellSkeletonTiny {
+  width: 44px;
+  height: 10px;
+}
+.shellSkeletonQuotaTop {
+  width: 100%;
+  height: 10px;
+}
+.shellSkeletonQuotaTrack {
+  width: 100%;
+  height: 4px;
+}
+.loadingTitle {
+  height: 31px;
+  max-width: 100%;
+  border-radius: 10px;
+}
+.loadingDescription {
+  height: 15px;
+  max-width: 100%;
+}
+.loadingAction {
+  height: 40px;
+  border-radius: 9px;
+}
+.loadingStack {
+  display: grid;
+  gap: 18px;
+}
+.loadingCardStack {
+  display: grid;
+  gap: 14px;
+}
+.loadingToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  margin-bottom: 18px;
+}
+.loadingWorkspaceGrid {
+  display: grid;
+  overflow: hidden;
+  margin-top: 24px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.loadingPane {
+  min-width: 0;
+  padding: 24px;
+}
+.loadingPane + .loadingPane {
+  border-top: 1px solid var(--rule);
+}
+.loadingTextarea {
+  min-height: 28rem;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+.loadingOutput {
+  min-height: 28rem;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background-color: var(--accent-tint);
+}
+.loadingFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+}
+.loadingDeveloperHero {
+  display: grid;
+  gap: 18px;
+}
+.loadingTabGrid {
+  display: grid;
+  gap: 10px;
+}
+.loadingTable {
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.loadingTableHead,
+.loadingTableRow {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 0.8fr;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+}
+.loadingTableHead {
+  background: var(--card-2);
+}
+.loadingTableRow {
+  border-top: 1px solid var(--rule);
+}
+.loadingConfigCard {
+  padding: 18px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.loadingCodeBlock {
+  height: 112px;
+  margin-top: 12px;
+  border-radius: 10px;
+  background-color: var(--accent-deep);
+}
 .skelLine {
   height: 14px;
   border-radius: 7px;
@@ -460,6 +619,12 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.historyWelcome {
+  margin: 0 0 2px;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.5;
 }
 .listRow {
   display: flex;
@@ -534,6 +699,48 @@
   border: 1px solid var(--warn-2);
   border-radius: var(--radius);
   color: var(--ink);
+}
+.historyPager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 0 2px;
+}
+.historyPagerNote {
+  margin: 0;
+  color: var(--warn);
+  font-size: 13px;
+}
+.historyToastStack {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  margin-top: 4px;
+}
+.historyToast,
+.historyNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(100%, 440px);
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.historyNotice {
+  color: var(--ink-2);
 }
 
 /* ── Console stat cards ───────────────────────────────────── */
@@ -625,6 +832,54 @@
   border-top: 1px solid var(--rule);
   display: grid;
   gap: 14px;
+}
+.histSignal {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--card);
+}
+.histSignalHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.histSignalBar {
+  margin-top: 12px;
+}
+.histSignalBar :global(.nat-bar) {
+  width: 100%;
+  min-width: 0;
+}
+.histSignalLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.histSignalPill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  background: var(--bg-3);
+  padding: 5px 8px;
+}
+.histSignalPillAccent {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.histSignalNote {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-3);
 }
 @media (min-width: 900px) {
   .histPanel {
@@ -740,13 +995,40 @@
   .quotaScope {
     display: none;
   }
+  .loadingTableHead,
+  .loadingTableRow {
+    grid-template-columns: 1fr;
+  }
+  .loadingFooter,
+  .loadingToolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .skeletonBlock,
   .skelLine {
     animation: none;
   }
   .switchKnob {
     transition: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .loadingWorkspaceGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .loadingPane + .loadingPane {
+    border-top: 0;
+    border-left: 1px solid var(--rule);
+  }
+  .loadingDeveloperHero {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    align-items: end;
+  }
+  .loadingTabGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

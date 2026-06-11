@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { AppShell } from "../../components/app/shell/app-shell";
 import {
   isDeveloperTierStatus,
+  planLabelForStatus,
   type ShellAccount,
 } from "../../components/app/shell/shell-types";
 import { isAdminSession } from "../../lib/admin-auth";
@@ -29,6 +30,7 @@ export default async function AppLayout({
 
   const shellAccount: ShellAccount = {
     email: account.email,
+    planLabel: planLabelForStatus(account.subscriptionStatus),
     isDeveloperTier,
     isAdmin,
     quota: {

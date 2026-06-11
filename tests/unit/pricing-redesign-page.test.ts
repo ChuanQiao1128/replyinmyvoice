@@ -17,13 +17,9 @@ describe("pricing redesign foundation", () => {
       'import { PricingComparison } from "../../components/landing/pricing-comparison"',
     );
     expect(pricingPage).toContain(
-      'import { PricingTrust } from "../../components/landing/pricing-trust"',
-    );
-    expect(pricingPage).toContain(
       'import { PricingFaq } from "../../components/landing/pricing-faq"',
     );
     expect(pricingPage).toContain("<PricingComparison />");
-    expect(pricingPage).toContain("<PricingTrust />");
     expect(pricingPage).toContain("<PricingFaq />");
   });
 
@@ -35,11 +31,12 @@ describe("pricing redesign foundation", () => {
     expect(pricingPage).toContain("≈ NZ$0.25 / rewrite");
     expect(pricingPage).toContain("≈ NZ$0.23 / rewrite");
     expect(pricingPage).toContain("≈ NZ$0.22 / rewrite");
+    expect(pricingPage).toContain('aria-disabled="true"');
+    expect(pricingPage).toContain("Focus Pack — available soon");
   });
 
   it("provides downstream component markers and starter content", () => {
     const comparison = source("components/landing/pricing-comparison.tsx");
-    const trust = source("components/landing/pricing-trust.tsx");
     const faq = source("components/landing/pricing-faq.tsx");
 
     expect(comparison).toContain("export function PricingComparison()");
@@ -48,17 +45,11 @@ describe("pricing redesign foundation", () => {
     expect(comparison).toContain("Quick Pack");
     expect(comparison).toContain("Value Pack");
     expect(comparison).toContain("Pro·API");
+    expect(comparison).toContain("Price per rewrite");
+    expect(comparison).toContain("Packs expire 90 days after purchase");
     expect(comparison).toContain(
       "{/* PRICING-COMPARISON: fleshed out in PRICE-02 */}",
     );
-
-    expect(trust).toContain("export function PricingTrust()");
-    expect(trust).toContain("Every plan includes");
-    expect(trust).toContain("AI Signal");
-    expect(trust).toContain("Facts preserved");
-    expect(trust).toContain("Server-backed history");
-    expect(trust).toContain("Delete anytime");
-    expect(trust).toContain("{/* PRICING-TRUST: expanded in PRICE-04 */}");
 
     expect(faq).toContain("export function PricingFaq()");
     expect(faq).toContain("Questions & answers");

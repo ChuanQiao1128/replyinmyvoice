@@ -1,5 +1,12 @@
 import { cookies } from "next/headers";
 
+import {
+  buildPostAuthRedirectPath,
+  normalizeAuthRedirectParams,
+  type AuthRedirectInput,
+  type AuthRedirectIntent,
+  type AuthRedirectSku,
+} from "./auth-redirect-intent";
 import { getAppUrl, optionalEnv, requireEnv } from "./env";
 
 const textEncoder = new TextEncoder();
@@ -39,7 +46,16 @@ type OAuthState = {
   nonce: string;
   codeVerifier: string;
   redirectTo: string;
+  intent?: AuthRedirectIntent;
+  sku?: AuthRedirectSku;
   exp: number;
+};
+
+export type OAuthRedirectStatePayload = {
+  csrf: string;
+  redirectTo: string;
+  intent?: AuthRedirectIntent;
+  sku?: AuthRedirectSku;
 };
 
 export type EntraAuthorizeUrlInput = {
@@ -378,16 +394,64 @@ export function buildEntraTokenRequestBody(input: EntraTokenRequestBodyInput) {
   return body;
 }
 
+export function encodeOAuthRedirectState(
+  input: AuthRedirectInput,
+  csrf: string,
+) {
+  const normalized = normalizeAuthRedirectParams(input);
+  return base64UrlEncode(JSON.stringify({
+    csrf,
+    intent: normalized.intent,
+    redirectTo: normalized.redirectTo,
+    sku: normalized.sku,
+    v: 1,
+  }));
+}
+
+export function decodeOAuthRedirectState(value: string): OAuthRedirectStatePayload | null {
+  try {
+    const parsed = JSON.parse(base64UrlDecode(value)) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const record = parsed as Record<string, unknown>;
+    const csrf = typeof record.csrf === "string" && record.csrf ? record.csrf : null;
+    if (!csrf) {
+      return null;
+    }
+
+    return {
+      csrf,
+      ...normalizeAuthRedirectParams(record),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function createLoginRedirectUrl(
   redirectTo = "/app",
-  options: { loginHint?: string } = {},
+  options: AuthRedirectInput & { loginHint?: string } = {},
 ) {
-  const state = randomBase64Url(24);
+  const csrf = randomBase64Url(24);
+  const redirectParams = normalizeAuthRedirectParams({
+    intent: options.intent,
+    redirectTo,
+    sku: options.sku,
+  });
+  const state = encodeOAuthRedirectState(redirectParams, csrf);
   const nonce = randomBase64Url(24);
   const codeVerifier = randomBase64Url(48);
   const expiresAt = Math.floor(Date.now() / 1000) + 10 * 60;
   const cookieValue = await createSignedCookieValue(
-    { state, nonce, codeVerifier, redirectTo, exp: expiresAt } satisfies OAuthState,
+    {
+      state,
+      nonce,
+      codeVerifier,
+      ...redirectParams,
+      exp: expiresAt,
+    } satisfies OAuthState,
     getSessionSecret(),
   );
 
@@ -768,6 +832,9 @@ export type SignupFlowState = {
   continuationToken: string;
   email: string;
   displayName: string | null;
+  redirectTo?: string;
+  intent?: AuthRedirectIntent;
+  sku?: AuthRedirectSku;
   codeLength: number;
   channelLabel: string | null;
   lastSentAt: number;
@@ -868,7 +935,12 @@ export async function completeEntraCallback(
   );
   expireAuthCookie(responseCookieStore, oauthStateCookieName);
 
-  return { session, redirectTo: oauthState.redirectTo || "/app" };
+  const redirectState = decodeOAuthRedirectState(state) ?? normalizeAuthRedirectParams(oauthState);
+
+  return {
+    session,
+    redirectTo: buildPostAuthRedirectPath(redirectState),
+  };
 }
 
 export async function getCurrentSession(): Promise<AuthSession | null> {

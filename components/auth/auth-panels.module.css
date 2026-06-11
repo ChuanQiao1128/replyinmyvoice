@@ -187,7 +187,8 @@
 }
 
 .visibilityToggle {
-  min-width: 72px;
+  width: 42px;
+  min-width: 42px;
   height: 38px;
   margin-right: 5px;
   border: 1px solid transparent;
@@ -195,8 +196,9 @@
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .visibilityToggle:hover,
@@ -204,6 +206,10 @@
   background: color-mix(in oklab, var(--accent-soft) 70%, transparent);
   color: var(--ink);
   outline: none;
+}
+
+.visibilityToggle svg {
+  flex: 0 0 auto;
 }
 
 .fieldError {
@@ -271,6 +277,8 @@
   margin-bottom: 16px;
   border-radius: 10px;
   padding: 12px 14px;
+  display: grid;
+  gap: 10px;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -285,6 +293,19 @@
   border: 1px solid color-mix(in oklab, var(--good) 30%, var(--rule));
   background: var(--accent-tint);
   color: var(--accent-deep);
+}
+
+.statusAction {
+  justify-self: start;
+  min-height: 40px;
+}
+
+.statusLink {
+  justify-self: start;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .divider {
@@ -440,6 +461,7 @@
   }
 
   .visibilityToggle {
-    min-width: 64px;
+    width: 42px;
+    min-width: 42px;
   }
 }

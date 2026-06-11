@@ -1,3 +1,5 @@
+import { buildFaqPageJsonLd } from "../seo/json-ld";
+
 const questions = [
   {
     q: "What counts as one rewrite?",
@@ -41,12 +43,18 @@ const questions = [
   },
 ] as const;
 
+const pricingFaqJsonLd = buildFaqPageJsonLd(questions);
+
 export function PricingFaq() {
   return (
     <section
       aria-labelledby="pricing-faq-heading"
       className="pricing-section pricing-faq"
     >
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingFaqJsonLd) }}
+      />
       {/* PRICING-FAQ: expanded in PRICE-03 */}
       <div className="pricing-section-head">
         <h2 id="pricing-faq-heading">Questions & answers</h2>

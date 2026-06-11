@@ -1,11 +1,28 @@
 import type { Metadata } from "next";
 
+import { buildBreadcrumbListJsonLd } from "../../components/seo/json-ld";
 import { SiteHeader } from "../../components/site-header";
 
 export const metadata: Metadata = {
   title: "Terms",
   description:
     "Basic product terms for using Reply In My Voice by TimeAwake Ltd.",
+  openGraph: {
+    title: "Reply In My Voice terms",
+    description:
+      "Product terms for trial-code access, rewrite packs, Pro/API quota, cancellation, and responsible use.",
+    url: "https://replyinmyvoice.com/terms",
+    siteName: "Reply In My Voice",
+    type: "website",
+    images: "/og.png",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Reply In My Voice terms",
+    description:
+      "Product terms for trial-code access, rewrite packs, Pro/API quota, cancellation, and responsible use.",
+    images: "/og.png",
+  },
 };
 
 const sections = [
@@ -19,7 +36,7 @@ const sections = [
   },
   {
     title: "No guaranteed writing score",
-    text: "Tone check percentages are reference signals for comparison. They are not a promise that a message will be judged a certain way by any person or system.",
+    text: "AI Signal percentages are reference signals for comparison. They are not a promise that a message will be judged a certain way by any person or system.",
   },
   {
     title: "Billing and quota",
@@ -51,9 +68,20 @@ const sections = [
   },
 ];
 
+const termsBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
+  { name: "Home", item: "https://replyinmyvoice.com/" },
+  { name: "Terms", item: "https://replyinmyvoice.com/terms" },
+]);
+
 export default function TermsPage() {
   return (
     <main className="rimv">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(termsBreadcrumbJsonLd),
+        }}
+      />
       <SiteHeader />
       <section className="page">
         <div className="wrap" style={{ maxWidth: 920 }}>

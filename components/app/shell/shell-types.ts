@@ -71,6 +71,7 @@ export type ShellQuota = {
 /** Serializable account shape passed from the server layout into the client shell. */
 export type ShellAccount = {
   email: string | null;
+  planLabel: string;
   /** Pro/API subscription active → the Developers group shows by default. */
   isDeveloperTier: boolean;
   isAdmin: boolean;

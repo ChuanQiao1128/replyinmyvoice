@@ -1,27 +1,39 @@
 "use client";
 
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { type CSSProperties, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  buildAuthRedirectSearchParams,
+  buildPostAuthRedirectPath,
+  normalizeAuthRedirectParams,
+  type AuthRedirectInput,
+} from "../../lib/auth-redirect-intent";
+import { failureCopy } from "../../lib/failure-copy";
 import styles from "./auth-panels.module.css";
 
 type AuthMode = "sign-in" | "sign-up" | "reset";
 type FieldErrors = Partial<Record<"email" | "password" | "displayName" | "code" | "newEntry" | "confirmEntry", string>>;
 type JsonBody = Record<string, unknown> | null;
+type AuthRedirectPageProps = {
+  redirectTo?: string;
+  intent?: string;
+  sku?: string;
+  showReturnHint?: boolean;
+};
 
-type SignInAuthPageProps = {
+type SignInAuthPageProps = AuthRedirectPageProps & {
   callbackError?: string;
   initialEmail?: string;
-  redirectTo?: string;
   resetSuccess?: boolean;
 };
 
-type SignUpAuthPageProps = {
+type SignUpAuthPageProps = AuthRedirectPageProps & {
   initialEmail?: string;
-  redirectTo?: string;
 };
 
-type ResetAuthPageProps = {
+type ResetAuthPageProps = AuthRedirectPageProps & {
   initialEmail?: string;
 };
 
@@ -81,9 +93,14 @@ export function SignInAuthPage({
   callbackError,
   initialEmail = "",
   redirectTo = defaultRedirectTo,
+  intent,
   resetSuccess = false,
+  showReturnHint = false,
+  sku,
 }: SignInAuthPageProps) {
-  const safeRedirect = safeRedirectTo(redirectTo);
+  const authRedirect = normalizeAuthRedirectParams({ intent, redirectTo, sku });
+  const postAuthRedirect = buildPostAuthRedirectPath(authRedirect);
+  const shouldForwardAuthRedirect = showReturnHint || Boolean(authRedirect.intent || authRedirect.sku);
   const [email, setEmail] = useState(initialEmail);
   const [entry, setEntry] = useState("");
   const [showEntry, setShowEntry] = useState(false);
@@ -92,7 +109,10 @@ export function SignInAuthPage({
   const [fallbackRedirect, setFallbackRedirect] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const googleHref = useMemo(() => buildGoogleHref(safeRedirect, email), [email, safeRedirect]);
+  const googleHref = useMemo(
+    () => buildGoogleHref(authRedirect, email),
+    [authRedirect.intent, authRedirect.redirectTo, authRedirect.sku, email],
+  );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,19 +130,23 @@ export function SignInAuthPage({
 
     try {
       const response = await fetch("/api/auth/signin", {
-        body: JSON.stringify({ email, password: entry, redirectTo: safeRedirect }),
+        body: JSON.stringify({
+          email,
+          password: entry,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
 
       if (response.redirected) {
-        moveToRedirect(response.url, safeRedirect);
+        moveToRedirect(response.url, postAuthRedirect);
         return;
       }
 
       const json = await readJsonBody(response);
       if (response.ok) {
-        window.location.assign(safeRedirect);
+        window.location.assign(postAuthRedirect);
         return;
       }
 
@@ -130,9 +154,9 @@ export function SignInAuthPage({
       if (fallback) {
         setFallbackRedirect(fallback);
       }
-      setFormError(signInErrorMessage(textValue(json?.error)));
+      setFormError(signInErrorMessage(textValue(json?.error), response.status));
     } catch {
-      setFormError("We could not sign you in. Please try again.");
+      setFormError(signInUnavailableMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -154,8 +178,17 @@ export function SignInAuthPage({
         />
 
         {resetSuccess ? (
-          <StatusMessage tone="success">Your sign-in value has been reset. Sign in with the new value.</StatusMessage>
+          <StatusMessage tone="success">
+            <span>Your password has been reset. Sign in with the new password.</span>
+            <Link
+              className={`${styles.statusAction} btn btn-primary btn-lg`}
+              href={withAuthParams("/sign-in", authRedirect, {}, shouldForwardAuthRedirect)}
+            >
+              Continue to sign-in
+            </Link>
+          </StatusMessage>
         ) : null}
+        {shouldForwardAuthRedirect ? <ReturnHint destination={authRedirect.redirectTo} /> : null}
         {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
 
         <form className={styles.form} noValidate onSubmit={handleSubmit}>
@@ -172,6 +205,18 @@ export function SignInAuthPage({
             value={email}
           />
 
+          <div className={styles.formRow}>
+            <span className={styles.hint} id="sign-in-entry-hint">
+              Use at least {minEntryLength} characters.
+            </span>
+            <Link
+              className={styles.textLink}
+              href={withAuthParams("/forgot-password", authRedirect, { email }, shouldForwardAuthRedirect)}
+            >
+              Forgot password?
+            </Link>
+          </div>
+
           <EntryField
             autoComplete="current-password"
             error={fieldErrors.password}
@@ -182,15 +227,6 @@ export function SignInAuthPage({
             toggleShowEntry={() => setShowEntry((value) => !value)}
             value={entry}
           />
-
-          <div className={styles.formRow}>
-            <span className={styles.hint} id="sign-in-entry-hint">
-              Use at least {minEntryLength} characters.
-            </span>
-            <Link className={styles.textLink} href="/forgot-password">
-              Forgot password?
-            </Link>
-          </div>
 
           <button className="btn btn-primary btn-lg" disabled={isSubmitting} type="submit">
             {isSubmitting ? "Signing in..." : "Continue with email"}
@@ -208,7 +244,10 @@ export function SignInAuthPage({
 
         <footer className={styles.panelFooter}>
           <span>New here?</span>
-          <Link className={styles.textLink} href={withEmail("/sign-up", email)}>
+          <Link
+            className={styles.textLink}
+            href={withAuthParams("/sign-up", authRedirect, { email }, shouldForwardAuthRedirect)}
+          >
             Create an account
           </Link>
         </footer>
@@ -219,7 +258,13 @@ export function SignInAuthPage({
 
 export function ResetAuthPage({
   initialEmail = "",
+  redirectTo = defaultRedirectTo,
+  intent,
+  showReturnHint = false,
+  sku,
 }: ResetAuthPageProps) {
+  const authRedirect = normalizeAuthRedirectParams({ intent, redirectTo, sku });
+  const shouldForwardAuthRedirect = showReturnHint || Boolean(authRedirect.intent || authRedirect.sku);
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState("");
@@ -261,7 +306,10 @@ export function ResetAuthPage({
 
     try {
       const response = await fetch("/api/auth/reset/start", {
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -279,9 +327,13 @@ export function ResetAuthPage({
         return;
       }
 
-      setFormError(textValue(json?.error) ?? "We could not start the reset. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: failureCopy.auth.passwordResetUnavailable,
+        noAccount: "If an account exists for that email, we can send a reset code.",
+        unavailable: failureCopy.auth.passwordResetUnavailable,
+      }));
     } catch {
-      setFormError("We could not start the reset. Please try again.");
+      setFormError(failureCopy.auth.passwordResetUnavailable);
     } finally {
       setIsSubmitting(false);
     }
@@ -303,20 +355,30 @@ export function ResetAuthPage({
 
     try {
       const response = await fetch("/api/auth/reset/verify", {
-        body: JSON.stringify({ code: trimmedCode, newPassword: newEntry }),
+        body: JSON.stringify({
+          code: trimmedCode,
+          newPassword: newEntry,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       const json = await readJsonBody(response);
 
       if (response.ok && json?.ok === true) {
-        window.location.assign(textValue(json.next) ?? "/sign-in?reset=success");
+        window.location.assign(
+          textValue(json.next) ??
+            withAuthParams("/sign-in", authRedirect, { reset: "success" }, shouldForwardAuthRedirect),
+        );
         return;
       }
 
-      setFormError(textValue(json?.error) ?? "We could not finish the reset. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: failureCopy.auth.passwordResetUnavailable,
+        unavailable: failureCopy.auth.passwordResetUnavailable,
+      }));
     } catch {
-      setFormError("We could not finish the reset. Please try again.");
+      setFormError(failureCopy.auth.passwordResetUnavailable);
     } finally {
       setIsSubmitting(false);
     }
@@ -344,9 +406,12 @@ export function ResetAuthPage({
       }
 
       setCooldownSeconds(numberValue(json?.cooldownSeconds) ?? 0);
-      setFormError(textValue(json?.error) ?? "We could not resend the code. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: failureCopy.auth.passwordResetUnavailable,
+        unavailable: failureCopy.auth.passwordResetUnavailable,
+      }));
     } catch {
-      setFormError("We could not resend the code. Please try again.");
+      setFormError(failureCopy.auth.passwordResetUnavailable);
     } finally {
       setIsResending(false);
     }
@@ -355,8 +420,8 @@ export function ResetAuthPage({
   return (
     <AuthShell
       eyebrow="Account reset"
-      heading="Reset your sign-in value."
-      lead="Enter your email, then use the code we send to choose a new sign-in value."
+      heading="Reset your password."
+      lead="Enter your email, then use the code we send to choose a new password."
       mode="reset"
     >
       <section aria-labelledby="reset-title" className={styles.panel} style={panelVisualStyle}>
@@ -365,11 +430,12 @@ export function ResetAuthPage({
             <PanelHeader
               id="reset-title"
               eyebrow="Step 1 of 2"
-              title="Reset your sign-in value"
+              title="Reset your password"
               body="Use the email tied to your Reply In My Voice account. We will send a reset code next."
             />
 
             {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+            {shouldForwardAuthRedirect ? <ReturnHint destination={authRedirect.redirectTo} /> : null}
 
             <form className={styles.form} noValidate onSubmit={handleStart}>
               <TextField
@@ -392,7 +458,10 @@ export function ResetAuthPage({
 
             <footer className={styles.panelFooter}>
               <span>Remembered it?</span>
-              <Link className={styles.textLink} href={withEmail("/sign-in", email)}>
+              <Link
+                className={styles.textLink}
+                href={withAuthParams("/sign-in", authRedirect, { email }, shouldForwardAuthRedirect)}
+              >
                 Sign in
               </Link>
             </footer>
@@ -418,15 +487,19 @@ export function ResetAuthPage({
                 name="code"
                 onChange={setCode}
                 placeholder={"0".repeat(Math.min(codeLength, 6))}
-                type="text"
+                type="tel"
                 value={code}
               />
+
+              <p className={styles.hint} id="reset-entry-hint">
+                Use at least {minEntryLength} characters.
+              </p>
 
               <EntryField
                 autoComplete="new-password"
                 error={fieldErrors.newEntry}
                 hintId="reset-entry-hint"
-                label="New sign-in value"
+                label="New password"
                 name="newEntry"
                 onChange={setNewEntry}
                 showEntry={showNewEntry}
@@ -438,17 +511,13 @@ export function ResetAuthPage({
                 autoComplete="new-password"
                 error={fieldErrors.confirmEntry}
                 hintId="reset-entry-hint"
-                label="Confirm sign-in value"
+                label="Confirm password"
                 name="confirmEntry"
                 onChange={setConfirmEntry}
                 showEntry={showNewEntry}
                 toggleShowEntry={() => setShowNewEntry((value) => !value)}
                 value={confirmEntry}
               />
-
-              <p className={styles.hint} id="reset-entry-hint">
-                Use at least {minEntryLength} characters.
-              </p>
 
               <div className={styles.codeActions}>
                 <button className={styles.inlineButton} onClick={() => setStep("email")} type="button">
@@ -482,8 +551,13 @@ export function ResetAuthPage({
 export function SignUpAuthPage({
   initialEmail = "",
   redirectTo = defaultRedirectTo,
+  intent,
+  showReturnHint = false,
+  sku,
 }: SignUpAuthPageProps) {
-  const safeRedirect = safeRedirectTo(redirectTo);
+  const authRedirect = normalizeAuthRedirectParams({ intent, redirectTo, sku });
+  const postAuthRedirect = buildPostAuthRedirectPath(authRedirect);
+  const shouldForwardAuthRedirect = showReturnHint || Boolean(authRedirect.intent || authRedirect.sku);
   const [step, setStep] = useState<"details" | "code">("details");
   const [email, setEmail] = useState(initialEmail);
   const [displayName, setDisplayName] = useState("");
@@ -504,7 +578,10 @@ export function SignUpAuthPage({
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const siteKey = getTurnstileSiteKey();
 
-  const googleHref = useMemo(() => buildGoogleHref(safeRedirect, email), [email, safeRedirect]);
+  const googleHref = useMemo(
+    () => buildGoogleHref(authRedirect, email),
+    [authRedirect.intent, authRedirect.redirectTo, authRedirect.sku, email],
+  );
 
   useEffect(() => {
     const container = turnstileContainerRef.current;
@@ -580,6 +657,13 @@ export function SignUpAuthPage({
     setTurnstileToken("");
   }
 
+  function scrollTurnstileIntoView() {
+    turnstileContainerRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }
+
   async function handleStart(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextErrors = validateEmailEntry(email, entry);
@@ -596,6 +680,7 @@ export function SignUpAuthPage({
 
     if (!turnstileToken) {
       setFormError("Complete the verification and try again.");
+      scrollTurnstileIntoView();
       return;
     }
 
@@ -608,6 +693,7 @@ export function SignUpAuthPage({
           displayName: displayName.trim() || undefined,
           email,
           password: entry,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
           turnstileToken,
         }),
         headers: { "Content-Type": "application/json" },
@@ -630,10 +716,10 @@ export function SignUpAuthPage({
       if (fallback) {
         setFallbackRedirect(fallback);
       }
-      setFormError(textValue(json?.error) ?? "We could not start sign-up. Please try again.");
+      setFormError(signUpStartErrorMessage(response.status, textValue(json?.error), fallback));
       resetTurnstile();
     } catch {
-      setFormError("We could not start sign-up. Please try again.");
+      setFormError(failureCopy.auth.signUpUnavailable);
       resetTurnstile();
     } finally {
       setIsSubmitting(false);
@@ -661,25 +747,31 @@ export function SignUpAuthPage({
 
     try {
       const response = await fetch("/api/auth/signup/verify", {
-        body: JSON.stringify({ code: trimmedCode, redirectTo: safeRedirect }),
+        body: JSON.stringify({
+          code: trimmedCode,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
 
       if (response.redirected) {
-        moveToRedirect(response.url, safeRedirect);
+        moveToRedirect(response.url, postAuthRedirect);
         return;
       }
 
       const json = await readJsonBody(response);
       if (response.ok) {
-        window.location.assign(safeRedirect);
+        window.location.assign(postAuthRedirect);
         return;
       }
 
-      setFormError(textValue(json?.error) ?? "We could not verify the code. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: failureCopy.auth.verificationUnavailable,
+        unavailable: failureCopy.auth.verificationUnavailable,
+      }));
     } catch {
-      setFormError("We could not verify the code. Please try again.");
+      setFormError(failureCopy.auth.verificationUnavailable);
     } finally {
       setIsSubmitting(false);
     }
@@ -707,19 +799,24 @@ export function SignUpAuthPage({
       }
 
       setCooldownSeconds(numberValue(json?.cooldownSeconds) ?? 0);
-      setFormError(textValue(json?.error) ?? "We could not resend the code. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: failureCopy.auth.verificationUnavailable,
+        unavailable: failureCopy.auth.verificationUnavailable,
+      }));
     } catch {
-      setFormError("We could not resend the code. Please try again.");
+      setFormError(failureCopy.auth.verificationUnavailable);
     } finally {
       setIsResending(false);
     }
   }
 
+  const accountExistsHref = fallbackRedirect?.startsWith("/sign-in") ? fallbackRedirect : null;
+
   return (
     <AuthShell
       eyebrow="Create your account"
-      heading="Start with email, a sign-in value, and a quick verification."
-      lead="Create the account in-app, then enter the code sent to your email before opening the workspace."
+      heading="Redeem a trial code after you create your account."
+      lead="Create the account in-app, verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."
       mode="sign-up"
     >
       <section aria-labelledby="sign-up-title" className={styles.panel} style={panelVisualStyle}>
@@ -728,11 +825,21 @@ export function SignUpAuthPage({
             <PanelHeader
               id="sign-up-title"
               eyebrow="Step 1 of 2"
-              title="Create your account"
-              body="Use an email you can access. We will send a verification code next."
+              title="Create your account for trial-code access"
+              body="Verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."
             />
 
-            {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+            {formError ? (
+              <StatusMessage tone="error">
+                <span>{formError}</span>
+                {accountExistsHref ? (
+                  <Link className={styles.statusLink} href={accountExistsHref}>
+                    Sign in
+                  </Link>
+                ) : null}
+              </StatusMessage>
+            ) : null}
+            {shouldForwardAuthRedirect ? <ReturnHint action="verifying" destination={authRedirect.redirectTo} /> : null}
 
             <form className={styles.form} noValidate onSubmit={handleStart}>
               <TextField
@@ -761,6 +868,10 @@ export function SignUpAuthPage({
                 value={displayName}
               />
 
+              <p className={styles.hint} id="sign-up-entry-hint">
+                Use at least {minEntryLength} characters. Keep it unique to this account.
+              </p>
+
               <EntryField
                 autoComplete="new-password"
                 error={fieldErrors.password}
@@ -771,10 +882,6 @@ export function SignUpAuthPage({
                 toggleShowEntry={() => setShowEntry((value) => !value)}
                 value={entry}
               />
-
-              <p className={styles.hint} id="sign-up-entry-hint">
-                Use at least {minEntryLength} characters. Keep it unique to this account.
-              </p>
 
               <div className={styles.turnstileField}>
                 <div
@@ -797,9 +904,9 @@ export function SignUpAuthPage({
               </button>
             </form>
 
-            {fallbackRedirect ? (
+            {fallbackRedirect && !accountExistsHref ? (
               <a className={`${styles.browserFallback} btn btn-ghost btn-lg`} href={fallbackRedirect}>
-                {fallbackRedirect.startsWith("/sign-in") ? "Go to sign in" : "Continue in browser"}
+                Continue in browser
               </a>
             ) : null}
 
@@ -808,7 +915,10 @@ export function SignUpAuthPage({
 
             <footer className={styles.panelFooter}>
               <span>Already have an account?</span>
-              <Link className={styles.textLink} href={withEmail("/sign-in", email)}>
+              <Link
+                className={styles.textLink}
+                href={withAuthParams("/sign-in", authRedirect, { email }, shouldForwardAuthRedirect)}
+              >
                 Sign in
               </Link>
             </footer>
@@ -834,7 +944,7 @@ export function SignUpAuthPage({
                 name="code"
                 onChange={setCode}
                 placeholder={"0".repeat(Math.min(codeLength, 6))}
-                type="text"
+                type="tel"
                 value={code}
               />
 
@@ -1076,9 +1186,14 @@ function EntryField({
           aria-label={`${showEntry ? "Hide" : "Show"} ${label.toLowerCase()}`}
           className={styles.visibilityToggle}
           onClick={toggleShowEntry}
+          title={`${showEntry ? "Hide" : "Show"} ${label.toLowerCase()}`}
           type="button"
         >
-          {showEntry ? "Hide" : "Show"}
+          {showEntry ? (
+            <EyeOff aria-hidden="true" size={18} strokeWidth={2} />
+          ) : (
+            <Eye aria-hidden="true" size={18} strokeWidth={2} />
+          )}
         </button>
       </div>
       {error ? (
@@ -1147,6 +1262,20 @@ function GoogleMark() {
   );
 }
 
+function ReturnHint({
+  action = "signing in",
+  destination,
+}: {
+  action?: "signing in" | "verifying";
+  destination: string;
+}) {
+  return (
+    <p className={styles.hint}>
+      After {action} you&apos;ll return to {destination}.
+    </p>
+  );
+}
+
 function validateEmailEntry(email: string, entry: string) {
   const errors: FieldErrors = {};
   if (!isEmail(email)) {
@@ -1175,7 +1304,7 @@ function validateResetCredentials(code: string, newEntry: string, confirmEntry: 
     errors.newEntry = `Use at least ${minEntryLength} characters.`;
   }
   if (confirmEntry !== newEntry) {
-    errors.confirmEntry = "The two values need to match.";
+    errors.confirmEntry = "The two passwords need to match.";
   }
   return errors;
 }
@@ -1188,15 +1317,8 @@ function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
-function safeRedirectTo(value: string) {
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return defaultRedirectTo;
-  }
-  return value;
-}
-
-function buildGoogleHref(redirectTo: string, email: string) {
-  const params = new URLSearchParams({ redirectTo });
+function buildGoogleHref(authRedirect: AuthRedirectInput, email: string) {
+  const params = buildAuthRedirectSearchParams(authRedirect);
   const normalizedEmail = email.trim();
   if (isEmail(normalizedEmail)) {
     params.set("loginHint", normalizedEmail);
@@ -1204,12 +1326,29 @@ function buildGoogleHref(redirectTo: string, email: string) {
   return `/api/auth/login?${params.toString()}`;
 }
 
-function withEmail(pathname: string, email: string) {
-  const normalizedEmail = email.trim();
-  if (!isEmail(normalizedEmail)) {
-    return pathname;
+function withAuthParams(
+  pathname: string,
+  authRedirect: AuthRedirectInput,
+  extra: Record<string, string> = {},
+  includeAuthParams = true,
+) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(extra)) {
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      continue;
+    }
+    if (key === "email" && !isEmail(normalizedValue)) {
+      continue;
+    }
+    params.set(key, normalizedValue);
   }
-  return `${pathname}?email=${encodeURIComponent(normalizedEmail)}`;
+
+  const finalParams = includeAuthParams
+    ? buildAuthRedirectSearchParams(authRedirect, params)
+    : params;
+  const query = finalParams.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 function moveToRedirect(url: string, fallbackPath: string) {
@@ -1249,29 +1388,110 @@ function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function signInErrorMessage(error: string | null) {
+const rateLimitedMessage = failureCopy.auth.rateLimited;
+const signInUnavailableMessage = failureCopy.auth.signInUnavailable;
+
+function signInErrorMessage(error: string | null, status: number) {
   switch (error) {
     case "invalid_credentials":
-      return "Email or sign-in value is incorrect.";
     case "user_not_found":
-      return "No account found for this email. Create one to continue.";
+      return failureCopy.auth.credentials;
     case "redirect_required":
       return "This account needs browser sign-in.";
-    case "rate_limited":
-      return "Too many attempts. Please try again later.";
     default:
-      return "We could not sign you in. Please try again.";
+      return authErrorMessage(status, error, {
+        fallback: signInUnavailableMessage,
+        unavailable: signInUnavailableMessage,
+      });
   }
+}
+
+function signUpStartErrorMessage(status: number, error: string | null, fallbackRedirect: string | null) {
+  if (fallbackRedirect?.startsWith("/sign-in") || isAccountExistsError(error)) {
+    return "An account already exists for this email.";
+  }
+
+  return authErrorMessage(status, error, {
+    fallback: failureCopy.auth.signUpUnavailable,
+    unavailable: failureCopy.auth.signUpUnavailable,
+  });
+}
+
+function authErrorMessage(
+  status: number,
+  error: string | null,
+  messages: {
+    fallback: string;
+    noAccount?: string;
+    rateLimited?: string;
+    unavailable?: string;
+  },
+) {
+  if (isRateLimitedError(status, error)) {
+    return messages.rateLimited ?? rateLimitedMessage;
+  }
+
+  if (messages.noAccount && isNoAccountError(status, error)) {
+    return messages.noAccount;
+  }
+
+  const passwordPolicy = passwordPolicyMessage(error);
+  if (passwordPolicy) {
+    return passwordPolicy;
+  }
+
+  if (isUnavailableError(status, error)) {
+    return messages.unavailable ?? messages.fallback;
+  }
+
+  return error ?? messages.fallback;
+}
+
+function isRateLimitedError(status: number, error: string | null) {
+  const lower = error?.toLowerCase() ?? "";
+  return status === 429 || error === "rate_limited" || lower.includes("too many");
+}
+
+function isNoAccountError(status: number, error: string | null) {
+  const lower = error?.toLowerCase() ?? "";
+  return status === 404 || error === "user_not_found" || lower.includes("no account");
+}
+
+function isUnavailableError(status: number, error: string | null) {
+  const lower = error?.toLowerCase() ?? "";
+  return (
+    status >= 500 ||
+    error === "signin_failed" ||
+    lower.includes("could not") ||
+    lower.includes("not available") ||
+    lower.includes("server")
+  );
+}
+
+function isAccountExistsError(error: string | null) {
+  return (error?.toLowerCase() ?? "").includes("account exists");
+}
+
+function passwordPolicyMessage(error: string | null) {
+  const lower = error?.toLowerCase() ?? "";
+  if (
+    lower.includes("stronger") &&
+    (lower.includes("password") || lower.includes("credential") || lower.includes("value"))
+  ) {
+    return failureCopy.auth.strongerPassword;
+  }
+
+  return null;
 }
 
 function callbackErrorMessage(error: string) {
   switch (error) {
     case "callback":
     case "callback_failed":
-      return "The browser sign-in could not be completed. Please try again.";
+      return failureCopy.auth.browserSignInFailed;
     case "access_denied":
-      return "The browser sign-in was cancelled.";
+      return failureCopy.auth.browserSignInCancelled;
     default:
-      return "The browser sign-in could not be completed. Please try again.";
+      return failureCopy.auth.browserSignInFailed;
   }
 }

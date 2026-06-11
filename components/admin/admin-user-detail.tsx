@@ -34,6 +34,19 @@ type ActionOutcome = {
   payload: unknown;
 };
 
+type AccountActivityEntry = {
+  id: string;
+  occurredAt: string | null;
+  type: string;
+  amount: string | null;
+  detail: string | null;
+  actor: string | null;
+  sortIndex: number;
+};
+
+type PaymentFilter = "all" | "with-receipt" | "without-receipt";
+type PaymentSortOrder = "newest" | "amount-desc" | "amount-asc";
+
 async function readJsonError(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
     error?: string;
@@ -121,13 +134,220 @@ function valueOrDash(value: string | number | null | undefined) {
   return value === null || value === undefined || value === "" ? "—" : value;
 }
 
+function formatActivityDateTime(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const formatted = formatDateTime(value);
+  return formatted === "Not set" ? "—" : formatted;
+}
+
+function formatAmountWithCurrency(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+) {
+  if (amount === null || amount === undefined) {
+    return null;
+  }
+
+  const normalizedCurrency = currency?.trim().toLowerCase();
+  if (normalizedCurrency === "nzd") {
+    return `NZ$ ${amount}`;
+  }
+
+  return currency ? `${currency.toUpperCase()} ${amount}` : String(amount);
+}
+
+function joinActivityDetail(parts: Array<string | null | undefined>) {
+  const values = parts.filter(
+    (part): part is string => typeof part === "string" && part.trim() !== "",
+  );
+  return values.length > 0 ? values.join(" · ") : null;
+}
+
 function paymentLabel(payment: AdminPayment) {
   const intent = payment.paymentIntentId ?? "No payment intent";
-  const amount =
-    payment.amountTotal !== null && payment.currency
-      ? `${payment.amountTotal} ${payment.currency.toUpperCase()}`
-      : "amount not stored";
+  const amount = formatAmountWithCurrency(payment.amountTotal, payment.currency) ??
+    "amount not stored";
   return `${intent} · ${amount}`;
+}
+
+function activityTimeValue(value: string | null) {
+  if (!value) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function stringValue(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function numberValue(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function booleanValue(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function outcomeType(title: string) {
+  const normalized = title.toLowerCase();
+  if (normalized.includes("refund")) {
+    return "Refund outcome";
+  }
+  if (normalized.includes("credit")) {
+    return "Credit outcome";
+  }
+  if (normalized.includes("suspension") || normalized.includes("unsuspension")) {
+    return "Suspension outcome";
+  }
+
+  return "Admin outcome";
+}
+
+function outcomeAmount(record: Record<string, unknown>, type: string) {
+  if (type === "Refund outcome") {
+    return formatAmountWithCurrency(
+      numberValue(record, "amount", "Amount"),
+      stringValue(record, "currency", "Currency"),
+    );
+  }
+
+  if (type === "Credit outcome") {
+    const amountGranted = numberValue(record, "amountGranted", "AmountGranted");
+    return amountGranted === null ? null : `${amountGranted} granted`;
+  }
+
+  return null;
+}
+
+function outcomeDetail(record: Record<string, unknown>, type: string) {
+  if (type === "Suspension outcome") {
+    const suspended = booleanValue(record, "suspended", "Suspended");
+    const label =
+      suspended === null ? null : suspended ? "Suspended" : "Unsuspended";
+    return joinActivityDetail([
+      label,
+      stringValue(record, "targetUserId", "TargetUserId"),
+    ]);
+  }
+
+  return joinActivityDetail([
+    stringValue(record, "paymentIntentId", "PaymentIntentId"),
+    stringValue(record, "refundId", "RefundId"),
+    stringValue(record, "creditId", "CreditId"),
+    stringValue(record, "targetUserId", "TargetUserId"),
+    stringValue(record, "source", "Source"),
+  ]);
+}
+
+function outcomeActivityEntry(
+  outcome: ActionOutcome | null,
+  sortIndex: number,
+): AccountActivityEntry | null {
+  if (!outcome || !isRecord(outcome.payload)) {
+    return null;
+  }
+
+  const type = outcomeType(outcome.title);
+  const occurredAt =
+    stringValue(outcome.payload, "grantedAt", "GrantedAt") ??
+    stringValue(outcome.payload, "suspendedAt", "SuspendedAt") ??
+    stringValue(outcome.payload, "createdAt", "CreatedAt") ??
+    stringValue(outcome.payload, "updatedAt", "UpdatedAt");
+
+  return {
+    actor: null,
+    amount: outcomeAmount(outcome.payload, type),
+    detail: outcomeDetail(outcome.payload, type),
+    id: `outcome-${type}-${sortIndex}`,
+    occurredAt,
+    sortIndex,
+    type,
+  };
+}
+
+function accountActivityEntries(
+  detail: AdminUserDetailResponse,
+  outcome: ActionOutcome | null,
+) {
+  const entries: AccountActivityEntry[] = [];
+
+  detail.payments.forEach((payment, index) => {
+    entries.push({
+      actor: null,
+      amount: formatAmountWithCurrency(payment.amountTotal, payment.currency),
+      detail: joinActivityDetail([
+        payment.paymentIntentId,
+        payment.sku,
+        payment.eventId,
+      ]),
+      id: `payment-${payment.creditId}-${index}`,
+      occurredAt: payment.grantedAt,
+      sortIndex: index,
+      type: "Payment",
+    });
+  });
+
+  detail.credits.forEach((credit, index) => {
+    entries.push({
+      actor: null,
+      amount: `${credit.amountGranted} granted · ${credit.remaining} remaining`,
+      detail: joinActivityDetail([
+        credit.id,
+        credit.source,
+        credit.paymentIntentId,
+        credit.stripeEventId,
+      ]),
+      id: `credit-${credit.id}-${index}`,
+      occurredAt: credit.grantedAt,
+      sortIndex: detail.payments.length + index,
+      type: "Credit",
+    });
+  });
+
+  const transientOutcome = outcomeActivityEntry(
+    outcome,
+    detail.payments.length + detail.credits.length,
+  );
+  if (transientOutcome) {
+    entries.push(transientOutcome);
+  }
+
+  return entries.sort((left, right) => {
+    const timeDifference =
+      activityTimeValue(right.occurredAt) - activityTimeValue(left.occurredAt);
+    return timeDifference === 0 ? left.sortIndex - right.sortIndex : timeDifference;
+  });
 }
 
 function SummaryItem({
@@ -144,6 +364,92 @@ function SummaryItem({
         {valueOrDash(value)}
       </p>
     </div>
+  );
+}
+
+function AccountActivityPanel({
+  detail,
+  outcome,
+}: {
+  detail: AdminUserDetailResponse;
+  outcome: ActionOutcome | null;
+}) {
+  const activity = accountActivityEntries(detail, outcome);
+
+  return (
+    <section aria-labelledby="account-activity-title">
+      <Card className="overflow-hidden">
+        <div className="border-b border-line px-5 py-4">
+          <h2
+            className="text-xl font-semibold tracking-normal"
+            id="account-activity-title"
+          >
+            Account activity
+          </h2>
+          <p className="mt-1 text-sm text-ink/55">
+            Read-only timeline from the admin response fields currently available.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-b border-line bg-paper-deep/40 text-xs uppercase text-ink/50">
+              <tr>
+                <th
+                  aria-sort="descending"
+                  className="px-5 py-3 font-semibold"
+                  scope="col"
+                >
+                  Time
+                </th>
+                <th className="px-5 py-3 font-semibold" scope="col">
+                  Type
+                </th>
+                <th className="px-5 py-3 font-semibold" scope="col">
+                  Amount
+                </th>
+                <th className="px-5 py-3 font-semibold" scope="col">
+                  Detail
+                </th>
+                {/* Current admin responses do not include acting-admin identity or durable action rows; keep placeholders until a backend pass adds those fields. */}
+                <th className="px-5 py-3 font-semibold" scope="col">
+                  Actor
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {activity.map((entry) => (
+                <tr key={entry.id} className="bg-white/45 align-top">
+                  <td className="whitespace-nowrap px-5 py-4 text-ink/70">
+                    {entry.occurredAt ? (
+                      <time dateTime={entry.occurredAt}>
+                        {formatActivityDateTime(entry.occurredAt)}
+                      </time>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-5 py-4 font-semibold text-ink">
+                    {entry.type}
+                  </td>
+                  <td className="px-5 py-4">{valueOrDash(entry.amount)}</td>
+                  <td className="px-5 py-4 font-mono text-xs">
+                    {valueOrDash(entry.detail)}
+                  </td>
+                  <td className="px-5 py-4">{valueOrDash(entry.actor)}</td>
+                </tr>
+              ))}
+              {activity.length === 0 ? (
+                <tr>
+                  <td className="px-5 py-8 text-center text-ink/55" colSpan={5}>
+                    No account activity rows found.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </section>
   );
 }
 
@@ -234,10 +540,67 @@ function CreditTable({ credits }: { credits: AdminCredit[] }) {
 }
 
 function PaymentTable({ payments }: { payments: AdminPayment[] }) {
+  const [filter, setFilter] = useState<PaymentFilter>("all");
+  const [sortOrder, setSortOrder] = useState<PaymentSortOrder>("newest");
+  const visiblePayments = useMemo(() => {
+    return [...payments]
+      .filter((payment) => {
+        if (filter === "with-receipt") {
+          return Boolean(payment.receiptUrl);
+        }
+        if (filter === "without-receipt") {
+          return !payment.receiptUrl;
+        }
+        return true;
+      })
+      .sort((left, right) => {
+        if (sortOrder === "amount-desc") {
+          return (right.amountTotal ?? -1) - (left.amountTotal ?? -1);
+        }
+        if (sortOrder === "amount-asc") {
+          return (left.amountTotal ?? Number.MAX_SAFE_INTEGER) -
+            (right.amountTotal ?? Number.MAX_SAFE_INTEGER);
+        }
+
+        return activityTimeValue(right.grantedAt) - activityTimeValue(left.grantedAt);
+      });
+  }, [filter, payments, sortOrder]);
+
   return (
     <Card className="overflow-hidden">
-      <div className="border-b border-line px-5 py-4">
-        <h2 className="text-xl font-semibold tracking-normal">Payments</h2>
+      <div className="flex flex-col gap-3 border-b border-line px-5 py-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold tracking-normal">Payments</h2>
+          <p className="mt-1 text-sm text-ink/55">
+            Customer payment amounts are shown with their stored currency label.
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-xs font-semibold uppercase text-ink/50">
+            Filter
+            <select
+              className="mt-1 min-h-10 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold normal-case text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+              onChange={(event) => setFilter(event.target.value as PaymentFilter)}
+              value={filter}
+            >
+              <option value="all">All payments</option>
+              <option value="with-receipt">With receipt</option>
+              <option value="without-receipt">Missing receipt</option>
+            </select>
+          </label>
+          <label className="text-xs font-semibold uppercase text-ink/50">
+            Sort
+            <select
+              className="mt-1 min-h-10 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold normal-case text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+              onChange={(event) => setSortOrder(event.target.value as PaymentSortOrder)}
+              value={sortOrder}
+            >
+              <option value="newest">Newest first</option>
+              <option value="amount-desc">Amount high to low</option>
+              <option value="amount-asc">Amount low to high</option>
+            </select>
+          </label>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
@@ -245,21 +608,22 @@ function PaymentTable({ payments }: { payments: AdminPayment[] }) {
             <tr>
               <th className="px-5 py-3 font-semibold">Payment intent</th>
               <th className="px-5 py-3 font-semibold">SKU</th>
-              <th className="px-5 py-3 font-semibold">Amount</th>
+              <th className="px-5 py-3 font-semibold">Customer payment</th>
               <th className="px-5 py-3 font-semibold">Credits</th>
               <th className="px-5 py-3 font-semibold">Receipt</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {payments.map((payment) => (
+            {visiblePayments.map((payment) => (
               <tr key={payment.creditId} className="bg-white/45">
                 <td className="px-5 py-4 font-mono text-xs">
                   {valueOrDash(payment.paymentIntentId)}
                 </td>
                 <td className="px-5 py-4">{valueOrDash(payment.sku)}</td>
                 <td className="px-5 py-4">
-                  {payment.amountTotal ?? "—"}{" "}
-                  {payment.currency ? payment.currency.toUpperCase() : ""}
+                  {valueOrDash(
+                    formatAmountWithCurrency(payment.amountTotal, payment.currency),
+                  )}
                 </td>
                 <td className="px-5 py-4">
                   {payment.creditsRemaining} of {payment.creditsGranted}
@@ -280,10 +644,12 @@ function PaymentTable({ payments }: { payments: AdminPayment[] }) {
                 </td>
               </tr>
             ))}
-            {payments.length === 0 ? (
+            {visiblePayments.length === 0 ? (
               <tr>
                 <td className="px-5 py-8 text-center text-ink/55" colSpan={5}>
-                  No payment rows found.
+                  {payments.length === 0
+                    ? "No payment rows found."
+                    : "No payments match the current filters."}
                 </td>
               </tr>
             ) : null}
@@ -303,6 +669,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [refundAmount, setRefundAmount] = useState("");
   const [refundCurrency, setRefundCurrency] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [suspensionReason, setSuspensionReason] = useState("");
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -329,6 +696,13 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     () => detail?.payments.filter((payment) => payment.paymentIntentId) ?? [],
     [detail],
   );
+  const selectedRefundPayment = useMemo(
+    () =>
+      selectablePayments.find(
+        (payment) => payment.paymentIntentId === refundPaymentIntentId,
+      ) ?? null,
+    [refundPaymentIntentId, selectablePayments],
+  );
   const requestedPaymentIntentId = searchParams.get("paymentIntentId")?.trim() ?? "";
 
   useEffect(() => {
@@ -349,16 +723,16 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   }, [refundPaymentIntentId, selectablePayments]);
 
   useEffect(() => {
-    const selected = selectablePayments.find(
-      (payment) => payment.paymentIntentId === refundPaymentIntentId,
-    );
-    if (selected?.amountTotal !== null && selected?.amountTotal !== undefined) {
-      setRefundAmount(String(selected.amountTotal));
+    if (
+      selectedRefundPayment?.amountTotal !== null &&
+      selectedRefundPayment?.amountTotal !== undefined
+    ) {
+      setRefundAmount(String(selectedRefundPayment.amountTotal));
     }
-    if (selected?.currency) {
-      setRefundCurrency(selected.currency);
+    if (selectedRefundPayment?.currency) {
+      setRefundCurrency(selectedRefundPayment.currency);
     }
-  }, [refundPaymentIntentId, selectablePayments]);
+  }, [selectedRefundPayment]);
 
   async function runAction(key: string, title: string, action: () => Promise<unknown>) {
     setActionError(null);
@@ -400,23 +774,48 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   async function submitRefund(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = Number.parseInt(refundAmount, 10);
+    const currency = refundCurrency.trim().toLowerCase();
     if (!refundPaymentIntentId.trim()) {
       setActionError("Select a payment intent before issuing a refund.");
+      return;
+    }
+    if (!selectedRefundPayment) {
+      setActionError("Select a stored payment before issuing a refund.");
       return;
     }
     if (!Number.isInteger(amount) || amount <= 0) {
       setActionError("Refund amount must be greater than zero.");
       return;
     }
+    if (
+      selectedRefundPayment.amountTotal === null ||
+      selectedRefundPayment.amountTotal === undefined
+    ) {
+      setActionError("Original payment amount is unavailable for this payment.");
+      return;
+    }
+    if (amount > selectedRefundPayment.amountTotal) {
+      setActionError("Refund amount cannot exceed the original payment amount.");
+      return;
+    }
+    const originalCurrency = selectedRefundPayment.currency?.trim().toLowerCase();
+    if (!originalCurrency) {
+      setActionError("Original payment currency is unavailable for this payment.");
+      return;
+    }
+    if (!currency || currency !== originalCurrency) {
+      setActionError("Refund currency must match the original payment currency.");
+      return;
+    }
 
-    if (!window.confirm(`Issue a refund for ${amount} ${refundCurrency || ""}?`)) {
+    if (!window.confirm(`Issue a refund for ${amount} ${currency.toUpperCase()}?`)) {
       return;
     }
 
     await runAction("refund", "Audit outcome: refund recorded", () =>
       postAction(`/api/admin/users/${userId}/refund`, {
         amount,
-        currency: refundCurrency,
+        currency,
         paymentIntentId: refundPaymentIntentId,
         reason: refundReason,
       }),
@@ -425,19 +824,25 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
   async function submitSuspension(suspended: boolean) {
     const label = suspended ? "suspend" : "unsuspend";
+    const reason = suspensionReason.trim();
+    if (suspended && !reason) {
+      setOutcome(null);
+      setActionError("Enter a suspension reason before suspending this user.");
+      return;
+    }
+
     if (!window.confirm(`Confirm ${label} for this user?`)) {
       return;
     }
 
+    const body = suspended ? { reason, suspended } : { suspended };
     await runAction(
       suspended ? "suspend" : "unsuspend",
       suspended
         ? "Audit outcome: suspension recorded"
         : "Audit outcome: unsuspension recorded",
       () =>
-        postAction(`/api/admin/users/${userId}/suspension`, {
-          suspended,
-        }),
+        postAction(`/api/admin/users/${userId}/suspension`, body),
     );
   }
 
@@ -453,9 +858,19 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
       {state.status === "loading" ? (
         <Card className="p-8">
-          <div className="flex items-center gap-3 text-ink/65">
-            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-            <p>Loading user detail...</p>
+          <div className="flex items-start gap-3">
+            <Loader2
+              className="mt-0.5 h-5 w-5 animate-spin text-clay"
+              aria-hidden="true"
+            />
+            <div>
+              <h1 className="text-2xl font-semibold tracking-normal text-ink">
+                Loading user detail
+              </h1>
+              <p className="mt-2 text-sm text-ink/65">
+                Preparing subscription, payments, credits, and usage.
+              </p>
+            </div>
           </div>
         </Card>
       ) : null}
@@ -466,7 +881,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             <AlertCircle className="mt-0.5 h-5 w-5 text-rust" aria-hidden="true" />
             <div>
               <h1 className="text-2xl font-semibold tracking-normal">
-                User detail is unavailable.
+                Could not load user detail
               </h1>
               <p className="mt-2 text-sm text-ink/65">{state.message}</p>
             </div>
@@ -494,7 +909,10 @@ export function AdminUserDetail({ userId }: { userId: string }) {
                 label="Subscription"
                 value={formatStatus(detail.subscription.status)}
               />
-              <SummaryItem label="Cost to date" value={formatUsd(detail.costToDateUsd)} />
+              <SummaryItem
+                label="Provider cost (USD)"
+                value={formatUsd(detail.costToDateUsd)}
+              />
               <SummaryItem label="Created" value={formatDateTime(detail.createdAt)} />
             </Card>
           </section>
@@ -520,6 +938,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
                 </div>
               </Card>
 
+              <AccountActivityPanel detail={detail} outcome={outcome} />
               <PaymentTable payments={detail.payments} />
               <CreditTable credits={detail.credits} />
               <UsageTable usage={detail.usage} />
@@ -632,6 +1051,17 @@ export function AdminUserDetail({ userId }: { userId: string }) {
                 <h2 className="text-lg font-semibold tracking-normal">
                   Account access
                 </h2>
+                <label className="mt-4 block text-sm font-semibold text-ink/70">
+                  Suspension reason
+                  <Textarea
+                    className="mt-1 min-h-24"
+                    onChange={(event) => setSuspensionReason(event.target.value)}
+                    value={suspensionReason}
+                  />
+                  <span className="mt-1 block text-xs font-normal text-ink/50">
+                    Required before suspending.
+                  </span>
+                </label>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                   <Button
                     disabled={actionLoading !== null}

@@ -40,7 +40,7 @@ export function AppShell({ account, children }: Props) {
             <span className={styles.brandText}>Reply In My Voice</span>
           </Link>
           <div className={styles.topbarRight}>
-            <QuotaPill quota={account.quota} />
+            <QuotaPill paid={account.isDeveloperTier} quota={account.quota} />
             <Link href="/developers" className={styles.docsLink}>
               Docs
               <ShellIcon name="external" size={14} />
@@ -48,6 +48,7 @@ export function AppShell({ account, children }: Props) {
             <AccountMenu
               email={account.email}
               isAdmin={account.isAdmin}
+              planLabel={account.planLabel}
               rewriteHistoryUserKey={account.rewriteHistoryUserKey}
             />
           </div>

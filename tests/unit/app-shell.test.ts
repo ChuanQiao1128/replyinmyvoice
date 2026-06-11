@@ -53,8 +53,20 @@ describe("app shell wiring", () => {
   it("gates auth and renders the shell in the app layout", () => {
     const layout = source("app/app/layout.tsx");
     expect(layout).toContain("fetchAzureAccountSummary");
+    expect(layout).toContain("planLabelForStatus");
+    expect(layout).toContain("planLabel: planLabelForStatus(account.subscriptionStatus)");
     expect(layout).toContain('redirect("/sign-in")');
     expect(layout).toContain("<AppShell");
+  });
+
+  it("passes the computed account plan label into the menu badge", () => {
+    const shellUi = source("components/app/shell/app-shell.tsx");
+    const accountMenu = source("components/app/shell/account-menu.tsx");
+
+    expect(shellUi).toContain("planLabel={account.planLabel}");
+    expect(accountMenu).toContain("planLabel");
+    expect(accountMenu).toContain("{planLabel}");
+    expect(accountMenu).not.toContain("Inactive");
   });
 
   it("upsells Pro/API on developer pages instead of erroring", () => {

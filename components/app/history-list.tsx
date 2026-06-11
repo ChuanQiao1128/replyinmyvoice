@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { NatBar } from "../landing/nat-bar";
 import { ShellIcon } from "./shell/shell-icons";
 import { EmptyState, Skeleton } from "./shell/shell-primitives";
 import styles from "./shell/shell.module.css";
@@ -12,6 +13,9 @@ type HistoryItem = {
   preview: string;
   createdAt: string | null;
 };
+
+const HISTORY_PAGE_SIZE = 20;
+const DELETE_UNDO_MS = 5000;
 
 export type HistoryDetail = {
   draft: string;
@@ -24,6 +28,11 @@ type DetailState =
   | { status: "loading" }
   | { status: "error" }
   | ({ status: "ready" } & HistoryDetail);
+
+type PendingDelete = {
+  item: HistoryItem;
+  index: number;
+};
 
 function readString(record: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
@@ -138,38 +147,213 @@ type Props = {
 export function HistoryList({ demoItems, demoDetail }: Props = {}) {
   const [items, setItems] = useState<HistoryItem[] | null>(demoItems ?? null);
   const [error, setError] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, DetailState>>({});
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [pendingDeletes, setPendingDeletes] = useState<PendingDelete[]>([]);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+  const deleteTimersRef = useRef<Map<string, number>>(new Map());
+
+  const restorePendingDelete = useCallback((pending: PendingDelete) => {
+    setItems((current) => {
+      if (current?.some((item) => item.attemptId === pending.item.attemptId)) {
+        return current;
+      }
+      const next = [...(current ?? [])];
+      next.splice(Math.min(pending.index, next.length), 0, pending.item);
+      return next;
+    });
+  }, []);
+
+  const clearDeleteTimer = useCallback((attemptId: string) => {
+    const timer = deleteTimersRef.current.get(attemptId);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      deleteTimersRef.current.delete(attemptId);
+    }
+  }, []);
+
+  const finalizeDelete = useCallback(
+    async (pending: PendingDelete) => {
+      const attemptId = pending.item.attemptId;
+      deleteTimersRef.current.delete(attemptId);
+      try {
+        const response = await fetch(`/api/me/rewrites/${attemptId}`, {
+          method: "DELETE",
+        });
+        if (!response.ok && response.status !== 204) {
+          throw new Error(`status ${response.status}`);
+        }
+        setPendingDeletes((current) =>
+          current.filter((entry) => entry.item.attemptId !== attemptId),
+        );
+      } catch {
+        setPendingDeletes((current) =>
+          current.filter((entry) => entry.item.attemptId !== attemptId),
+        );
+        restorePendingDelete(pending);
+        setDeleteNotice("Couldn’t delete that rewrite, so it was restored.");
+      }
+    },
+    [restorePendingDelete],
+  );
+
+  const loadPage = useCallback(
+    async (targetPage: number, mode: "replace" | "append") => {
+      if (demoItems) {
+        return;
+      }
+      setError(false);
+      setLoadMoreError(false);
+      if (mode === "replace") {
+        setItems(null);
+        setPage(1);
+        setHasMore(false);
+      } else {
+        setLoadingMore(true);
+      }
+
+      try {
+        const response = await fetch(
+          `/api/me/rewrites?page=${targetPage}&pageSize=${HISTORY_PAGE_SIZE}`,
+          {
+            cache: "no-store",
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`status ${response.status}`);
+        }
+        const payload = (await response.json()) as Record<string, unknown>;
+        const rawItems = (payload.items ?? payload.Items ?? []) as Record<
+          string,
+          unknown
+        >[];
+        const nextItems = rawItems
+          .map(normalizeItem)
+          .filter((item): item is HistoryItem => item !== null);
+        const responsePageSize =
+          readNumber(payload, "pageSize", "PageSize") ?? HISTORY_PAGE_SIZE;
+        const totalCount = readNumber(payload, "totalCount", "TotalCount");
+
+        setItems((current) =>
+          mode === "append" && current ? [...current, ...nextItems] : nextItems,
+        );
+        setPage(targetPage);
+        setHasMore(
+          totalCount !== null
+            ? targetPage * responsePageSize < totalCount
+            : rawItems.length >= responsePageSize,
+        );
+      } catch {
+        if (mode === "replace") {
+          setError(true);
+        } else {
+          setLoadMoreError(true);
+        }
+      } finally {
+        if (mode === "append") {
+          setLoadingMore(false);
+        }
+      }
+    },
+    [demoItems],
+  );
 
   const load = useCallback(async () => {
-    if (demoItems) {
+    await loadPage(1, "replace");
+  }, [loadPage]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) {
       return;
     }
-    setError(false);
-    setItems(null);
-    try {
-      const response = await fetch("/api/me/rewrites?page=1&pageSize=20", {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error(`status ${response.status}`);
+    await loadPage(page + 1, "append");
+  }, [hasMore, loadPage, loadingMore, page]);
+
+  useEffect(() => {
+    const deleteTimers = deleteTimersRef.current;
+    return () => {
+      for (const timer of deleteTimers.values()) {
+        window.clearTimeout(timer);
       }
-      const payload = (await response.json()) as Record<string, unknown>;
-      const rawItems = (payload.items ?? payload.Items ?? []) as Record<
-        string,
-        unknown
-      >[];
-      setItems(
-        rawItems
-          .map(normalizeItem)
-          .filter((item): item is HistoryItem => item !== null),
+      deleteTimers.clear();
+    };
+  }, []);
+
+  const remove = useCallback(
+    (attemptId: string) => {
+      if (!items) {
+        return;
+      }
+      const index = items.findIndex((item) => item.attemptId === attemptId);
+      if (index === -1) {
+        return;
+      }
+      const pending = { item: items[index], index };
+      clearDeleteTimer(attemptId);
+      setDeleteNotice(null);
+      setItems(items.filter((item) => item.attemptId !== attemptId));
+      setOpenId((current) => (current === attemptId ? null : current));
+      setPendingDeletes((current) => [
+        ...current.filter((entry) => entry.item.attemptId !== attemptId),
+        pending,
+      ]);
+      const timer = window.setTimeout(() => {
+        void finalizeDelete(pending);
+      }, DELETE_UNDO_MS);
+      deleteTimersRef.current.set(attemptId, timer);
+    },
+    [clearDeleteTimer, finalizeDelete, items],
+  );
+
+  const undoDelete = useCallback(
+    (attemptId: string) => {
+      const pending = pendingDeletes.find(
+        (entry) => entry.item.attemptId === attemptId,
       );
-    } catch {
-      setError(true);
-    }
-  }, [demoItems]);
+      if (!pending) {
+        return;
+      }
+      clearDeleteTimer(attemptId);
+      setPendingDeletes((current) =>
+        current.filter((entry) => entry.item.attemptId !== attemptId),
+      );
+      setDeleteNotice(null);
+      restorePendingDelete(pending);
+    },
+    [clearDeleteTimer, pendingDeletes, restorePendingDelete],
+  );
+
+  const undoRegion =
+    pendingDeletes.length > 0 || deleteNotice ? (
+      <div className={styles.historyToastStack} aria-live="polite">
+        {pendingDeletes.map((pending) => (
+          <div
+            key={pending.item.attemptId}
+            className={styles.historyToast}
+            role="status"
+          >
+            <span>Rewrite removed. Undo in the next 5 seconds.</span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => undoDelete(pending.item.attemptId)}
+            >
+              Undo
+            </button>
+          </div>
+        ))}
+        {deleteNotice ? (
+          <div className={styles.historyNotice} role="status">
+            {deleteNotice}
+          </div>
+        ) : null}
+      </div>
+    ) : null;
 
   useEffect(() => {
     void load();
@@ -218,25 +402,6 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
     [demoDetail, details, openId],
   );
 
-  const remove = useCallback(async (attemptId: string) => {
-    setDeletingId(attemptId);
-    try {
-      const response = await fetch(`/api/me/rewrites/${attemptId}`, {
-        method: "DELETE",
-      });
-      if (response.ok || response.status === 204) {
-        setItems((current) =>
-          current
-            ? current.filter((item) => item.attemptId !== attemptId)
-            : current,
-        );
-        setOpenId((current) => (current === attemptId ? null : current));
-      }
-    } finally {
-      setDeletingId(null);
-    }
-  }, []);
-
   const copyRewrite = useCallback(async (attemptId: string, text: string) => {
     if (!text) {
       return;
@@ -275,17 +440,23 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
 
   if (items.length === 0) {
     return (
-      <EmptyState
-        icon="history"
-        title="No rewrites yet"
-        body="Rewrites you create are saved here so you can reopen, copy, or delete them across your devices."
-        actions={[{ label: "Start a rewrite", href: "/app", primary: true }]}
-      />
+      <>
+        <EmptyState
+          icon="history"
+          title="Welcome to your history"
+          body="Completed rewrites you create appear here for up to 90 days. After that, raw content is removed. Start from the workspace when you’re ready."
+          actions={[{ label: "Start a rewrite", href: "/app", primary: true }]}
+        />
+        {undoRegion}
+      </>
     );
   }
 
   return (
     <div className={styles.list}>
+      <p className={styles.historyWelcome}>
+        Welcome back. Your newest saved rewrites are shown first.
+      </p>
       {items.map((item) => {
         const open = openId === item.attemptId;
         const detail = details[item.attemptId];
@@ -344,11 +515,58 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                     </div>
                   ) : (
                     <>
+                      {detail.draftSignal !== null &&
+                      detail.rewriteSignal !== null ? (
+                        <div className={styles.histSignal}>
+                          <div className={styles.histSignalHead}>
+                            <span className={styles.histBlockLabel}>
+                              AI Signal · before vs after
+                            </span>
+                            {delta !== null ? (
+                              <span
+                                className={`${styles.badge} ${
+                                  delta > 0
+                                    ? ""
+                                    : delta < 0
+                                      ? styles.badgeWarn
+                                      : styles.badgeMuted
+                                }`}
+                              >
+                                {delta > 0
+                                  ? `−${delta} pts more natural`
+                                  : delta < 0
+                                    ? `+${Math.abs(delta)} pts`
+                                    : "No signal change"}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className={styles.histSignalBar}>
+                            <NatBar
+                              after={detail.rewriteSignal}
+                              before={detail.draftSignal}
+                            />
+                          </div>
+                          <div className={styles.histSignalLegend}>
+                            <span className={styles.histSignalPill}>
+                              Draft {detail.draftSignal}%
+                            </span>
+                            <span
+                              className={`${styles.histSignalPill} ${styles.histSignalPillAccent}`}
+                            >
+                              Rewrite {detail.rewriteSignal}%
+                            </span>
+                          </div>
+                          <p className={styles.histSignalNote}>
+                            A third-party reference signal — lower reads more natural.
+                            It is not a guarantee; review before sending.
+                          </p>
+                        </div>
+                      ) : null}
                       <div className={styles.histBlock}>
                         <span className={styles.histBlockLabel}>
                           Your draft
                           {detail.draftSignal !== null
-                            ? ` · AI signal ${detail.draftSignal}%`
+                            ? ` · AI Signal ${detail.draftSignal}%`
                             : ""}
                         </span>
                         <p className={styles.histText}>
@@ -362,7 +580,7 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                         >
                           In your voice
                           {detail.rewriteSignal !== null
-                            ? ` · AI signal ${detail.rewriteSignal}%`
+                            ? ` · AI Signal ${detail.rewriteSignal}%`
                             : ""}
                         </span>
                         <p className={styles.histText}>
@@ -371,11 +589,6 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                         </p>
                       </div>
                       <div className={styles.histPanelFoot}>
-                        {delta !== null && delta > 0 ? (
-                          <span className={styles.badge}>
-                            −{delta} pts more natural
-                          </span>
-                        ) : null}
                         <button
                           type="button"
                           className="btn btn-primary"
@@ -391,12 +604,9 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                         <button
                           type="button"
                           className={styles.iconBtn}
-                          disabled={deletingId === item.attemptId}
-                          onClick={() => void remove(item.attemptId)}
+                          onClick={() => remove(item.attemptId)}
                         >
-                          {deletingId === item.attemptId
-                            ? "Deleting…"
-                            : "Delete"}
+                          Delete
                         </button>
                       </div>
                     </>
@@ -407,6 +617,24 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
           </article>
         );
       })}
+      {hasMore || loadingMore || loadMoreError ? (
+        <div className={styles.historyPager}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={loadingMore || !hasMore}
+            onClick={() => void loadMore()}
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+          {loadMoreError ? (
+            <p className={styles.historyPagerNote}>
+              Couldn’t load more history. Try again.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {undoRegion}
     </div>
   );
 }

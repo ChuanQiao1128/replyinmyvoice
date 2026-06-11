@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { failureCopy } from "../../lib/failure-copy";
+
 const root = process.cwd();
 
 function source(path: string) {
@@ -19,7 +21,7 @@ describe("pricing and auth visual system", () => {
 
     expect(pricingPage).toContain('<main className="rimv">');
     expect(pricingPage).toContain('className="page"');
-    expect(pricingPage).toContain('className="pricing-wrap"');
+    expect(pricingPage).toContain('className="ptier-grid"');
     expect(pricingPage).toContain(
       "Redeem a trial code. Buy rewrites when you need them.",
     );
@@ -28,7 +30,7 @@ describe("pricing and auth visual system", () => {
     );
     expect(pricingPage).toContain("Trial code access");
     expect(pricingPage).toContain("Redeem a trial code");
-    expect(pricingPage).toContain("Rewrite packs");
+    expect(pricingPage).toContain("One-time packs");
     expect(pricingPage).toContain("Quick Pack");
     expect(pricingPage).toContain("NZ$2.50");
     expect(pricingPage).toContain("10 rewrites");
@@ -67,7 +69,49 @@ describe("pricing and auth visual system", () => {
     expect(authCard).toContain("Entra OAuth sign-in");
     expect(authCard).toContain("Continue with email");
     expect(authCard).toContain("Continue with Google");
+    expect(authCard).toContain("Continue to sign-in");
     expect(authCard).toContain("Redeem a trial code for 3 rewrites");
+    expect(authCard).toContain('import { Eye, EyeOff } from "lucide-react";');
+    expect(authCard).toContain('type="tel"');
+    expect(authCard).toContain('label="New password"');
+    expect(authCard).toContain('label="Confirm password"');
+    expect(authCard).toContain("failureCopy.auth.credentials");
+    expect(authCard).toContain("failureCopy.auth.signInUnavailable");
+    expect(failureCopy.auth.credentials).toBe("Email or password is incorrect.");
+    expect(failureCopy.auth.signInUnavailable).toContain("temporarily unavailable");
+    expect(failureCopy.auth.signInUnavailable).toContain("try again in a few minutes");
+    expect(authCard).toContain("scrollIntoView");
+    expect(authCard).toContain(
+      'heading="Redeem a trial code after you create your account."',
+    );
+    expect(authCard).toContain(
+      'lead="Create the account in-app, verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."',
+    );
+    expect(authCard).toContain(
+      'title="Create your account for trial-code access"',
+    );
+    expect(authCard).toContain(
+      'body="Verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."',
+    );
+    expect(authCard).toContain(
+      '<ReturnHint action="verifying" destination={authRedirect.redirectTo} />',
+    );
+    expect(authCard).toContain(
+      "After {action} you&apos;ll return to {destination}.",
+    );
+    expect(authCard).not.toContain(
+      "Start with email, a sign-in value, and a quick verification.",
+    );
+    expect(authCard).not.toContain("sign-in value");
+    expect(authCard.indexOf('id="sign-in-entry-hint"')).toBeLessThan(
+      authCard.indexOf('hintId="sign-in-entry-hint"'),
+    );
+    expect(authCard.indexOf('id="sign-up-entry-hint"')).toBeLessThan(
+      authCard.indexOf('hintId="sign-up-entry-hint"'),
+    );
+    expect(authCard.indexOf('id="reset-entry-hint"')).toBeLessThan(
+      authCard.indexOf('hintId="reset-entry-hint"'),
+    );
     expect(authCard).not.toContain(
       phrase("Start with three", "free", "rewrites"),
     );

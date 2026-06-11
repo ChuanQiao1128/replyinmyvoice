@@ -9,6 +9,7 @@ import {
   Search,
 } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import type {
@@ -32,6 +33,7 @@ type AdminDashboardState =
   | { status: "error"; message: string };
 
 const pageSize = 25;
+const eraseConfirmationWord = "ERASE";
 
 async function readJsonError(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
@@ -111,6 +113,10 @@ function formatUsd(value: number) {
   }).format(value);
 }
 
+function formatCustomerPaymentAmount(value: number) {
+  return `NZ$ ${value}`;
+}
+
 function formatStatus(value: string) {
   return value
     .trim()
@@ -155,6 +161,30 @@ function StatTile({
   );
 }
 
+function AdminStateCard({
+  icon,
+  title,
+  message,
+}: {
+  icon: ReactNode;
+  title: string;
+  message: string;
+}) {
+  return (
+    <Card className="p-8">
+      <div className="flex items-start gap-3">
+        {icon}
+        <div>
+          <h2 className="text-xl font-semibold tracking-normal text-ink">
+            {title}
+          </h2>
+          <p className="mt-2 text-sm text-ink/65">{message}</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function AdminDashboard() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
@@ -162,6 +192,8 @@ export function AdminDashboard() {
   const [queueActionId, setQueueActionId] = useState<string | null>(null);
   const [userActionError, setUserActionError] = useState<string | null>(null);
   const [userActionId, setUserActionId] = useState<string | null>(null);
+  const [eraseTargetUserId, setEraseTargetUserId] = useState<string | null>(null);
+  const [eraseConfirmation, setEraseConfirmation] = useState("");
 
   useEffect(() => {
     let current = true;
@@ -221,6 +253,13 @@ export function AdminDashboard() {
   const totalPages = state.status === "ready" ? state.users.totalPages : 0;
   const canGoBack = page > 1;
   const canGoForward = totalPages > 0 && page < totalPages;
+  const eraseTargetUser = useMemo(() => {
+    if (state.status !== "ready" || !eraseTargetUserId) {
+      return null;
+    }
+
+    return state.users.users.find((user) => user.id === eraseTargetUserId) ?? null;
+  }, [eraseTargetUserId, state]);
 
   async function resolveSupportRequest(requestId: string) {
     if (state.status !== "ready" || queueActionId) {
@@ -251,15 +290,31 @@ export function AdminDashboard() {
     }
   }
 
-  async function deleteUser(userId: string) {
-    if (state.status !== "ready" || userActionId) {
+  function openEraseConfirmation(userId: string) {
+    if (userActionId) {
       return;
     }
 
-    const confirmed = window.confirm(
-      "Permanently erase this account? This anonymizes the user and removes their data. This cannot be undone.",
-    );
-    if (!confirmed) {
+    setUserActionError(null);
+    setEraseTargetUserId(userId);
+    setEraseConfirmation("");
+  }
+
+  function closeEraseConfirmation() {
+    if (userActionId) {
+      return;
+    }
+
+    setEraseTargetUserId(null);
+    setEraseConfirmation("");
+  }
+
+  async function deleteUser(userId: string) {
+    if (
+      state.status !== "ready" ||
+      userActionId ||
+      eraseConfirmation !== eraseConfirmationWord
+    ) {
       return;
     }
 
@@ -281,6 +336,8 @@ export function AdminDashboard() {
           },
         };
       });
+      setEraseTargetUserId(null);
+      setEraseConfirmation("");
     } catch (error) {
       setUserActionError(
         error instanceof Error ? error.message : "Account erase failed.",
@@ -318,36 +375,46 @@ export function AdminDashboard() {
       </div>
 
       {state.status === "loading" ? (
-        <Card className="p-8">
-          <div className="flex items-center gap-3 text-ink/65">
-            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-            <p>Loading admin data...</p>
-          </div>
-        </Card>
+        <AdminStateCard
+          icon={
+            <Loader2
+              className="mt-0.5 h-5 w-5 animate-spin text-clay"
+              aria-hidden="true"
+            />
+          }
+          title="Loading admin dashboard"
+          message="Preparing stats, support queue, and users."
+        />
       ) : null}
 
       {state.status === "error" ? (
-        <Card className="p-8">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 text-rust" aria-hidden="true" />
-            <div>
-              <h2 className="text-xl font-semibold tracking-normal">
-                Admin data is unavailable.
-              </h2>
-              <p className="mt-2 text-sm text-ink/65">{state.message}</p>
-            </div>
-          </div>
-        </Card>
+        <AdminStateCard
+          icon={
+            <AlertCircle
+              className="mt-0.5 h-5 w-5 text-rust"
+              aria-hidden="true"
+            />
+          }
+          title="Could not load admin dashboard"
+          message={state.message}
+        />
       ) : null}
 
       {state.status === "ready" ? (
         <div className="space-y-6">
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <StatTile label="Total users" value={state.stats.totalUsers} />
             <StatTile label="Paid users" value={state.stats.paidUsers} />
             <StatTile label="Credits remaining" value={state.stats.creditRemaining} />
             <StatTile label="Refund review" value={state.stats.refundReview.flaggedUserCount} />
-            <StatTile label="Cost to date" value={formatUsd(state.stats.costToDateUsd)} />
+            <StatTile
+              label="Customer payments (NZ$)"
+              value={formatCustomerPaymentAmount(state.stats.paymentAmountTotal)}
+            />
+            <StatTile
+              label="Provider cost (USD)"
+              value={formatUsd(state.stats.costToDateUsd)}
+            />
           </section>
 
           <Link
@@ -520,7 +587,9 @@ export function AdminDashboard() {
                     <th className="px-5 py-3 font-semibold">Status</th>
                     <th className="px-5 py-3 font-semibold">Usage</th>
                     <th className="px-5 py-3 font-semibold">Credits</th>
-                    <th className="px-5 py-3 font-semibold">Cost</th>
+                    <th className="px-5 py-3 font-semibold">
+                      Provider cost (USD)
+                    </th>
                     <th className="px-5 py-3 font-semibold">Created</th>
                     <th className="px-5 py-3 font-semibold">Actions</th>
                   </tr>
@@ -563,7 +632,7 @@ export function AdminDashboard() {
                         <Button
                           className="min-h-8 px-3 py-1.5 text-xs text-rust hover:bg-rust/10"
                           disabled={userActionId !== null}
-                          onClick={() => void deleteUser(user.id)}
+                          onClick={() => openEraseConfirmation(user.id)}
                           type="button"
                           variant="secondary"
                         >
@@ -581,12 +650,91 @@ export function AdminDashboard() {
                   {filteredUsers.length === 0 ? (
                     <tr>
                       <td className="px-5 py-8 text-center text-sm text-ink/55" colSpan={7}>
-                        No users match this search.
+                        {state.users.totalCount === 0
+                          ? "No users found."
+                          : "No users match this search."}
+                        <span className="mt-1 block">
+                          {state.users.totalCount === 0
+                            ? "New signups will appear here after they create an account."
+                            : "Adjust the search term to show more users."}
+                        </span>
                       </td>
                     </tr>
                   ) : null}
                 </tbody>
               </table>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {eraseTargetUser ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 px-4 py-8"
+          role="presentation"
+        >
+          <Card
+            aria-labelledby="erase-confirmation-title"
+            aria-modal="true"
+            className="w-full max-w-md border-rust/30 bg-white p-5 shadow-xl"
+            role="dialog"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle
+                className="mt-0.5 h-5 w-5 shrink-0 text-rust"
+                aria-hidden="true"
+              />
+              <div>
+                <h2
+                  className="text-lg font-semibold tracking-normal text-ink"
+                  id="erase-confirmation-title"
+                >
+                  Erase account
+                </h2>
+                <p className="mt-2 text-sm text-ink/65">
+                  This anonymizes the user and removes their data. This cannot
+                  be undone.
+                </p>
+                <p className="mt-3 break-words text-sm font-semibold text-ink">
+                  {eraseTargetUser.email || eraseTargetUser.id}
+                </p>
+              </div>
+            </div>
+            <label className="mt-5 block text-sm font-semibold text-ink/70">
+              Type {eraseConfirmationWord} to confirm account erase.
+              <Input
+                aria-label="Type ERASE to confirm account erase"
+                className="mt-1"
+                onChange={(event) => setEraseConfirmation(event.target.value)}
+                value={eraseConfirmation}
+              />
+            </label>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                disabled={userActionId !== null}
+                onClick={closeEraseConfirmation}
+                type="button"
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-rust text-white hover:bg-rust/90"
+                disabled={
+                  userActionId !== null ||
+                  eraseConfirmation !== eraseConfirmationWord
+                }
+                onClick={() => void deleteUser(eraseTargetUser.id)}
+                type="button"
+              >
+                {userActionId === eraseTargetUser.id ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                Erase account
+              </Button>
             </div>
           </Card>
         </div>

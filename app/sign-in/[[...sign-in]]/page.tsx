@@ -13,14 +13,18 @@ type SignInPageProps = {
 
 export default async function SignInPage({ searchParams }: SignInPageProps) {
   const params = await searchParams;
-  const redirectTo = firstParam(params?.redirectTo) ?? "/app";
+  const rawRedirectTo = firstParam(params?.redirectTo);
+  const redirectTo = rawRedirectTo ?? "/app";
 
   return (
     <SignInAuthPage
       callbackError={firstParam(params?.error)}
       initialEmail={firstParam(params?.email) ?? ""}
+      intent={firstParam(params?.intent)}
       redirectTo={redirectTo}
       resetSuccess={firstParam(params?.reset) === "success"}
+      showReturnHint={rawRedirectTo !== undefined}
+      sku={firstParam(params?.sku)}
     />
   );
 }

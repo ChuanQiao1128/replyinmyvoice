@@ -5,17 +5,13 @@ import { useState } from "react";
 import { homepageSampleCases } from "./sample-cases";
 import { NatBar } from "./nat-bar";
 
-const TONES = ["Warm", "Direct"] as const;
-type Tone = (typeof TONES)[number];
-
 /**
  * Hero centerpiece — a tabbed rough-draft → in-your-voice comparison for each
- * real use case, with the Naturalness Check meter, tone presets, and a copy
- * button. Samples come from the documented, test-aligned fixtures.
+ * real use case, with the Naturalness Check meter and a copy button. Samples
+ * come from the documented, test-aligned fixtures.
  */
 export function InteractiveDemo() {
   const [index, setIndex] = useState(0);
-  const [tone, setTone] = useState<Tone>("Warm");
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -71,9 +67,7 @@ export function InteractiveDemo() {
         <div className="compare-col after">
           <h4>
             In your voice
-            <span className="pill">
-              {tone.toLowerCase()} · {sample.after}%
-            </span>
+            <span className="pill">rewrite · {sample.after}%</span>
           </h4>
           <div className={"compare-body" + (expanded ? "" : " clamped")}>
             {sample.rewrite}
@@ -110,24 +104,9 @@ export function InteractiveDemo() {
           />
           <div className="nat-delta">−{delta} pts</div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div className="tone-toggle" role="group" aria-label="Tone preset">
-            {TONES.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={option === tone ? "active" : ""}
-                onClick={() => setTone(option)}
-                aria-pressed={option === tone}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-          <button type="button" className="copy-btn" onClick={copyReply}>
-            {copied ? "✓ Copied" : "⌘ Copy reply"}
-          </button>
-        </div>
+        <button type="button" className="copy-btn" onClick={copyReply}>
+          {copied ? "✓ Copied" : "⌘ Copy reply"}
+        </button>
       </div>
     </div>
   );

@@ -13,6 +13,12 @@ import {
   authRateLimitPolicies,
   checkAuthRateLimit,
 } from "../../../../../lib/auth-rate-limit";
+import {
+  hasAuthRedirectInput,
+  normalizeAuthRedirectParams,
+  type AuthRedirectIntent,
+  type AuthRedirectSku,
+} from "../../../../../lib/auth-redirect-intent";
 import { getAppUrl, optionalEnv, requireEnv } from "../../../../../lib/env";
 import { requireSameOrigin } from "../../../../../lib/http";
 
@@ -24,6 +30,9 @@ const resetFlowCookieName = "rimv_reset";
 type ResetFlowState = {
   continuationToken: string;
   email: string;
+  redirectTo?: string;
+  intent?: AuthRedirectIntent;
+  sku?: AuthRedirectSku;
   codeLength: number;
   channelLabel: string | null;
   lastSentAt: number;
@@ -38,6 +47,8 @@ export async function POST(request: Request) {
 
   const body = await readJsonObject(request);
   const email = normalizeEmail(body?.email);
+  const authRedirect = normalizeAuthRedirectParams(body ?? {});
+  const shouldStoreAuthRedirect = hasAuthRedirectInput(body ?? {});
 
   if (!email) {
     return resetJsonError("Enter a valid email.", 400);
@@ -70,6 +81,7 @@ export async function POST(request: Request) {
       codeLength,
       continuationToken: requireContinuationToken(challenged.continuation_token),
       email,
+      ...(shouldStoreAuthRedirect ? authRedirect : {}),
       exp: Math.floor(nowMs / 1000) + resetFlowTtlSeconds,
       lastSentAt: nowMs,
     };

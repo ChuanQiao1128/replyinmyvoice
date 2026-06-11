@@ -262,6 +262,59 @@ describe("sign-up route handlers", () => {
     expect(setCookieHeader(response)).toContain(`${signupFlowCookieName}=;`);
   });
 
+  it("threads purchase intent through the email verification redirect", async () => {
+    vi.mocked(signupStart).mockResolvedValueOnce({
+      continuation_token: "signup-start-handle",
+    });
+    vi.mocked(signupChallenge).mockResolvedValueOnce({
+      challenge_target_label: "c***@example.com",
+      code_length: 6,
+      continuation_token: "signup-code-handle",
+    });
+
+    const startResponse = await startSignup(jsonRequest("/api/auth/signup/start", {
+      email: "casey@example.com",
+      [entryField]: entryFixture,
+      intent: "buy",
+      redirectTo: "/pricing",
+      sku: "value_pack",
+      turnstileToken: "signup-token",
+    }));
+    const rawSignupCookie = cookieValue(startResponse, signupFlowCookieName);
+    const decodedSignup = await verifySignedCookieValue<Record<string, unknown>>(
+      rawSignupCookie,
+      cookieSigningValue,
+    );
+    expect(decodedSignup).toMatchObject({
+      intent: "buy",
+      redirectTo: "/pricing",
+      sku: "value_pack",
+    });
+
+    mockCookieStore.get.mockImplementation((name: string) =>
+      name === signupFlowCookieName ? { value: rawSignupCookie } : undefined,
+    );
+    vi.mocked(signupContinue).mockResolvedValueOnce({
+      continuation_token: "signup-verified-handle",
+      token: {
+        access_token: unsignedJwt({ exp: Math.floor(now.getTime() / 1000) + 60 * 60 }),
+        expires_in: 3600,
+        id_token: unsignedJwt(),
+        refresh_token: ["refresh", "fixture"].join("-"),
+        token_type: "Bearer",
+      },
+    });
+
+    const verifyResponse = await verifySignup(jsonRequest("/api/auth/signup/verify", {
+      code: "123456",
+    }));
+
+    expect(verifyResponse.status).toBe(302);
+    expect(verifyResponse.headers.get("location")).toBe(
+      `${appUrl}/pricing?intent=buy&sku=value_pack`,
+    );
+  });
+
   it("maps wrong and expired codes to friendly errors", async () => {
     await storeSignupCookie();
     vi.mocked(signupContinue).mockRejectedValueOnce(

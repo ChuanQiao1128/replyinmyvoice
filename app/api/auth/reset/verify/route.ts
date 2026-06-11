@@ -6,6 +6,14 @@ import {
   verifySignedCookieValue,
 } from "../../../../../lib/entra-auth";
 import {
+  buildAuthRedirectSearchParams,
+  hasAuthRedirectInput,
+  normalizeAuthRedirectParams,
+  type AuthRedirectInput,
+  type AuthRedirectIntent,
+  type AuthRedirectSku,
+} from "../../../../../lib/auth-redirect-intent";
+import {
   NativeAuthError,
   resetContinue,
   resetPoll,
@@ -29,6 +37,9 @@ const resetFlowCookieName = "rimv_reset";
 type ResetFlowState = {
   continuationToken: string;
   email: string;
+  redirectTo?: string;
+  intent?: AuthRedirectIntent;
+  sku?: AuthRedirectSku;
   codeLength: number;
   channelLabel: string | null;
   lastSentAt: number;
@@ -53,6 +64,8 @@ export async function POST(request: Request) {
   const body = await readJsonObject(request);
   const code = optionalText(body?.code, 32);
   const newCredential = stringValue(body?.[newCredentialField]);
+  const bodyAuthRedirect = normalizeAuthRedirectParams(body ?? {});
+  const shouldUseBodyAuthRedirect = hasAuthRedirectInput(body ?? {});
 
   if (!code) {
     return resetJsonError("Enter the verification code.", 400);
@@ -80,7 +93,10 @@ export async function POST(request: Request) {
     });
     await pollUntilSucceeded(requireContinuationToken(submitted.continuation_token));
     const response = NextResponse.json({
-      next: successNext,
+      next: resetSuccessRedirect(
+        flow,
+        shouldUseBodyAuthRedirect ? bodyAuthRedirect : null,
+      ),
       ok: true,
     });
     await clearResetFlowCookie(response.cookies);
@@ -158,6 +174,35 @@ function requireContinuationToken(value: unknown) {
   return value;
 }
 
+function resetSuccessRedirect(
+  flow: ResetFlow,
+  fallback: AuthRedirectInput | null,
+) {
+  const authRedirect = authRedirectFromResetFlow(flow, fallback);
+  if (!authRedirect) {
+    return successNext;
+  }
+
+  const params = buildAuthRedirectSearchParams(authRedirect, { reset: "success" });
+  return `/sign-in?${params.toString()}`;
+}
+
+function authRedirectFromResetFlow(
+  flow: ResetFlow,
+  fallback: AuthRedirectInput | null,
+) {
+  const hasFlowRedirect = Boolean(flow.redirectTo || flow.intent || flow.sku);
+  if (!hasFlowRedirect && !fallback) {
+    return null;
+  }
+
+  return normalizeAuthRedirectParams({
+    intent: flow.intent ?? fallback?.intent,
+    redirectTo: flow.redirectTo ?? fallback?.redirectTo,
+    sku: flow.sku ?? fallback?.sku,
+  });
+}
+
 function resetCookieOptions(maxAge: number) {
   return {
     httpOnly: true,
@@ -210,7 +255,7 @@ async function nativeResetVerifyError(error: unknown) {
   }
 
   if (error.appCode === credentialPolicyCode) {
-    return resetJsonError("Use a stronger account credential.", 400);
+    return resetJsonError("Use a stronger password.", 400);
   }
 
   if (error.appCode === "rate_limited") {
