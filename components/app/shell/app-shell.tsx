@@ -48,6 +48,7 @@ export function AppShell({ account, children }: Props) {
             <AccountMenu
               email={account.email}
               isAdmin={account.isAdmin}
+              planLabel={account.planLabel}
               rewriteHistoryUserKey={account.rewriteHistoryUserKey}
             />
           </div>

@@ -168,11 +168,27 @@
   box-shadow: var(--shadow-md);
   z-index: 50;
 }
-.menuEmail {
+.menuIdentity {
   padding: 7px 10px 9px;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.menuEmail {
   font-size: 12.5px;
   color: var(--muted);
   word-break: break-all;
+}
+.menuPlanBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 650;
 }
 .menuItem {
   display: flex;
