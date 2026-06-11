@@ -2,6 +2,8 @@
 
 import { useState, type KeyboardEvent } from "react";
 
+import { buildFaqPageJsonLd } from "../seo/json-ld";
+
 const faqs = [
   {
     q: "What does this do?",
@@ -37,6 +39,8 @@ const faqs = [
   },
 ];
 
+const faqJsonLd = buildFaqPageJsonLd(faqs);
+
 export function FAQ() {
   const [open, setOpen] = useState(0);
 
@@ -50,6 +54,10 @@ export function FAQ() {
 
   return (
     <section className="block" id="faq">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       <div className="wrap">
         <div className="sec-head">
           <div>

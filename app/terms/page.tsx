@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { buildBreadcrumbListJsonLd } from "../../components/seo/json-ld";
 import { SiteHeader } from "../../components/site-header";
 
 export const metadata: Metadata = {
@@ -67,9 +68,20 @@ const sections = [
   },
 ];
 
+const termsBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
+  { name: "Home", item: "https://replyinmyvoice.com/" },
+  { name: "Terms", item: "https://replyinmyvoice.com/terms" },
+]);
+
 export default function TermsPage() {
   return (
     <main className="rimv">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(termsBreadcrumbJsonLd),
+        }}
+      />
       <SiteHeader />
       <section className="page">
         <div className="wrap" style={{ maxWidth: 920 }}>
