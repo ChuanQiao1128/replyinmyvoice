@@ -4,6 +4,7 @@ import { ArrowRight, CreditCard } from "lucide-react";
 import { useState } from "react";
 
 import { azureApiFetch } from "../../lib/client-azure-api";
+import { failureCopy } from "../../lib/failure-copy";
 import { Button, LinkButton } from "../ui/button";
 import { Card } from "../ui/card";
 
@@ -35,7 +36,7 @@ export function PaywallCard({
       const payload = (await response.json()) as { url?: string; error?: string };
 
       if (!response.ok || !payload.url) {
-        throw new Error(payload.error ?? "Could not start checkout.");
+        throw new Error(payload.error ?? failureCopy.checkout.start);
       }
 
       window.location.href = payload.url;
@@ -43,7 +44,7 @@ export function PaywallCard({
       setError(
         checkoutError instanceof Error
           ? checkoutError.message
-          : "Could not start checkout.",
+          : failureCopy.checkout.start,
       );
       setLoading(false);
     }

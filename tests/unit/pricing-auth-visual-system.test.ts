@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { failureCopy } from "../../lib/failure-copy";
+
 const root = process.cwd();
 
 function source(path: string) {
@@ -73,9 +75,11 @@ describe("pricing and auth visual system", () => {
     expect(authCard).toContain('type="tel"');
     expect(authCard).toContain('label="New password"');
     expect(authCard).toContain('label="Confirm password"');
-    expect(authCard).toContain("Email or password is incorrect.");
-    expect(authCard).toContain("temporarily unavailable");
-    expect(authCard).toContain("try again in a few minutes");
+    expect(authCard).toContain("failureCopy.auth.credentials");
+    expect(authCard).toContain("failureCopy.auth.signInUnavailable");
+    expect(failureCopy.auth.credentials).toBe("Email or password is incorrect.");
+    expect(failureCopy.auth.signInUnavailable).toContain("temporarily unavailable");
+    expect(failureCopy.auth.signInUnavailable).toContain("try again in a few minutes");
     expect(authCard).toContain("scrollIntoView");
     expect(authCard).toContain(
       'heading="Redeem a trial code after you create your account."',

@@ -7,6 +7,7 @@ import {
   safeAuthRedirectSku,
   type AuthRedirectSku,
 } from "../../lib/auth-redirect-intent";
+import { failureCopy } from "../../lib/failure-copy";
 
 type PricingCheckoutResumeIntent = {
   sku: AuthRedirectSku;
@@ -95,7 +96,7 @@ export function PricingCheckoutResume() {
         };
 
         if (!response.ok || !payload.url) {
-          throw new Error(payload.error ?? "Could not continue checkout.");
+          throw new Error(payload.error ?? failureCopy.checkout.continue);
         }
 
         window.location.assign(payload.url);
@@ -108,7 +109,7 @@ export function PricingCheckoutResume() {
         setError(
           checkoutError instanceof Error
             ? checkoutError.message
-            : "Could not continue checkout.",
+            : failureCopy.checkout.continue,
         );
       }
     }
@@ -141,7 +142,7 @@ export function PricingCheckoutResume() {
         <p className="pricing-resume-detail">
           {status === "continuing"
             ? "We are reopening the Stripe checkout for the pack you selected."
-            : error || "Use a pack button below to start checkout again."}
+            : error || failureCopy.checkout.retry}
         </p>
       </div>
       <button
