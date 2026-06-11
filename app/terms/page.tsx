@@ -6,6 +6,22 @@ export const metadata: Metadata = {
   title: "Terms",
   description:
     "Basic product terms for using Reply In My Voice by TimeAwake Ltd.",
+  openGraph: {
+    title: "Reply In My Voice terms",
+    description:
+      "Product terms for trial-code access, rewrite packs, Pro/API quota, cancellation, and responsible use.",
+    url: "https://replyinmyvoice.com/terms",
+    siteName: "Reply In My Voice",
+    type: "website",
+    images: "/og.png",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Reply In My Voice terms",
+    description:
+      "Product terms for trial-code access, rewrite packs, Pro/API quota, cancellation, and responsible use.",
+    images: "/og.png",
+  },
 };
 
 const sections = [
