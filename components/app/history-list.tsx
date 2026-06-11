@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { NatBar } from "../landing/nat-bar";
 import { ShellIcon } from "./shell/shell-icons";
 import { EmptyState, Skeleton } from "./shell/shell-primitives";
 import styles from "./shell/shell.module.css";
@@ -344,11 +345,58 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                     </div>
                   ) : (
                     <>
+                      {detail.draftSignal !== null &&
+                      detail.rewriteSignal !== null ? (
+                        <div className={styles.histSignal}>
+                          <div className={styles.histSignalHead}>
+                            <span className={styles.histBlockLabel}>
+                              AI Signal · before vs after
+                            </span>
+                            {delta !== null ? (
+                              <span
+                                className={`${styles.badge} ${
+                                  delta > 0
+                                    ? ""
+                                    : delta < 0
+                                      ? styles.badgeWarn
+                                      : styles.badgeMuted
+                                }`}
+                              >
+                                {delta > 0
+                                  ? `−${delta} pts more natural`
+                                  : delta < 0
+                                    ? `+${Math.abs(delta)} pts`
+                                    : "No signal change"}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className={styles.histSignalBar}>
+                            <NatBar
+                              after={detail.rewriteSignal}
+                              before={detail.draftSignal}
+                            />
+                          </div>
+                          <div className={styles.histSignalLegend}>
+                            <span className={styles.histSignalPill}>
+                              Draft {detail.draftSignal}%
+                            </span>
+                            <span
+                              className={`${styles.histSignalPill} ${styles.histSignalPillAccent}`}
+                            >
+                              Rewrite {detail.rewriteSignal}%
+                            </span>
+                          </div>
+                          <p className={styles.histSignalNote}>
+                            A third-party reference signal — lower reads more natural.
+                            It is not a guarantee; review before sending.
+                          </p>
+                        </div>
+                      ) : null}
                       <div className={styles.histBlock}>
                         <span className={styles.histBlockLabel}>
                           Your draft
                           {detail.draftSignal !== null
-                            ? ` · AI signal ${detail.draftSignal}%`
+                            ? ` · AI Signal ${detail.draftSignal}%`
                             : ""}
                         </span>
                         <p className={styles.histText}>
@@ -362,7 +410,7 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                         >
                           In your voice
                           {detail.rewriteSignal !== null
-                            ? ` · AI signal ${detail.rewriteSignal}%`
+                            ? ` · AI Signal ${detail.rewriteSignal}%`
                             : ""}
                         </span>
                         <p className={styles.histText}>
@@ -371,11 +419,6 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                         </p>
                       </div>
                       <div className={styles.histPanelFoot}>
-                        {delta !== null && delta > 0 ? (
-                          <span className={styles.badge}>
-                            −{delta} pts more natural
-                          </span>
-                        ) : null}
                         <button
                           type="button"
                           className="btn btn-primary"

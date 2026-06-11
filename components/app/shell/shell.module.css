@@ -769,6 +769,54 @@
   display: grid;
   gap: 14px;
 }
+.histSignal {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--card);
+}
+.histSignalHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.histSignalBar {
+  margin-top: 12px;
+}
+.histSignalBar :global(.nat-bar) {
+  width: 100%;
+  min-width: 0;
+}
+.histSignalLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.histSignalPill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  background: var(--bg-3);
+  padding: 5px 8px;
+}
+.histSignalPillAccent {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.histSignalNote {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
 @media (min-width: 900px) {
   .histPanel {
     grid-template-columns: 1fr 1fr;

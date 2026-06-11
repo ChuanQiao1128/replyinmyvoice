@@ -81,6 +81,8 @@ const progressSteps = [
   "Reviewing quality gates",
 ];
 const workspaceExampleSample = homepageSampleCases[0];
+const signalRegressionTooltip =
+  "the rewrite reads more AI-like than your draft — can happen with very short or already-natural drafts; review before sending.";
 
 function Eyebrow({
   children,
@@ -381,7 +383,9 @@ export function RewriteWorkspace({
   const activeRewriteAbortRef = useRef<AbortController | null>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const [draft, setDraft] = useState("");
+  const [submittedDraft, setSubmittedDraft] = useState("");
   const [result, setResult] = useState<RewriteResponse | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [qualityFailure, setQualityFailure] = useState<QualityFailure | null>(
     null,
   );
@@ -467,9 +471,11 @@ export function RewriteWorkspace({
       return;
     }
 
+    const draftForAttempt = draft;
     const abortController = new AbortController();
     activeRewriteAbortRef.current = abortController;
     setLoading(true);
+    setCompareOpen(false);
     setError("");
     setQualityFailure(null);
     setQualityTipsOpen(false);
@@ -483,7 +489,7 @@ export function RewriteWorkspace({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          roughDraftReply: draft,
+          roughDraftReply: draftForAttempt,
           tone: "warm",
         }),
         signal: abortController.signal,
@@ -530,6 +536,7 @@ export function RewriteWorkspace({
       }
 
       setQualityFailure(null);
+      setSubmittedDraft(draftForAttempt);
       setResult(normalizedPayload);
       setRewriteSucceededThisSession(true);
       if (!paid) {
@@ -578,7 +585,9 @@ export function RewriteWorkspace({
     activeRewriteAbortRef.current?.abort();
     activeRewriteAbortRef.current = null;
     setDraft("");
+    setSubmittedDraft("");
     setResult(null);
+    setCompareOpen(false);
     setQualityFailure(null);
     setError("");
     setCopied(false);
@@ -591,7 +600,9 @@ export function RewriteWorkspace({
 
   function loadExampleDraft() {
     setDraft(workspaceExampleSample.draft);
+    setSubmittedDraft("");
     setResult(null);
+    setCompareOpen(false);
     setQualityFailure(null);
     setError("");
     setCopied(false);
@@ -608,6 +619,7 @@ export function RewriteWorkspace({
     setError("");
     setQualityFailure(null);
     setCopied(false);
+    setCompareOpen(false);
     setResultAnnouncement("");
   }
 
@@ -770,7 +782,39 @@ export function RewriteWorkspace({
               >
                 In your voice
               </h2>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {result?.rewrittenText ? (
+                  <div
+                    aria-label="Switch rewrite result view"
+                    className="inline-flex rounded-lg border border-line bg-white p-1"
+                    role="group"
+                  >
+                    <button
+                      aria-pressed={!compareOpen}
+                      className={`min-h-9 rounded-md px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] transition ${
+                        compareOpen
+                          ? "text-ink/45 hover:bg-paper hover:text-ink"
+                          : "bg-mint text-sage shadow-sm"
+                      }`}
+                      onClick={() => setCompareOpen(false)}
+                      type="button"
+                    >
+                      View rewrite
+                    </button>
+                    <button
+                      aria-pressed={compareOpen}
+                      className={`min-h-9 rounded-md px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] transition ${
+                        compareOpen
+                          ? "bg-mint text-sage shadow-sm"
+                          : "text-ink/45 hover:bg-paper hover:text-ink"
+                      }`}
+                      onClick={() => setCompareOpen(true)}
+                      type="button"
+                    >
+                      View compare
+                    </button>
+                  </div>
+                ) : null}
                 <Button
                   aria-label="Copy rewrite to clipboard"
                   className="px-3 text-ink/70 hover:bg-paper"
@@ -881,9 +925,29 @@ export function RewriteWorkspace({
                   </div>
                 </div>
               ) : result?.rewrittenText ? (
-                <div className="whitespace-pre-wrap text-base leading-8 text-ink">
-                  {result.rewrittenText}
-                </div>
+                compareOpen ? (
+                  <div
+                    aria-label="Draft and rewritten reply comparison"
+                    className="grid gap-4 lg:grid-cols-2"
+                  >
+                    <div className="min-w-0 rounded-lg border border-line bg-white/75 p-4">
+                      <Eyebrow>Original draft</Eyebrow>
+                      <div className="mt-3 max-h-[24rem] overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-ink/70">
+                        {submittedDraft || draft}
+                      </div>
+                    </div>
+                    <div className="min-w-0 rounded-lg border border-sage/20 bg-white p-4">
+                      <Eyebrow tone="accent">Rewritten reply</Eyebrow>
+                      <div className="mt-3 max-h-[24rem] overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-ink">
+                        {result.rewrittenText}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap text-base leading-8 text-ink">
+                    {result.rewrittenText}
+                  </div>
+                )
               ) : qualityFailure ? (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">
                   <Sparkles className="mb-3 h-5 w-5 text-sage" aria-hidden="true" />
@@ -1001,13 +1065,20 @@ export function RewriteWorkspace({
                           ? "bg-rust/10 text-rust"
                           : "bg-paper-deep text-ink/60"
                     }`}
-                    title={labelForNaturalness(visibleNaturalness)}
+                    title={
+                      signalRegressed
+                        ? signalRegressionTooltip
+                        : labelForNaturalness(visibleNaturalness)
+                    }
                   >
                     {signalDelta > 0
                       ? `−${signalDelta} pts more natural`
                       : signalRegressed
                         ? `+${Math.abs(signalDelta)} pts`
                         : "Reads natural"}
+                    {signalRegressed ? (
+                      <span className="sr-only">: {signalRegressionTooltip}</span>
+                    ) : null}
                   </span>
                 ) : null}
               </div>

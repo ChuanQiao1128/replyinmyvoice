@@ -9,6 +9,10 @@ const rewriteHistorySource = readFileSync(
   new URL("../../lib/rewrite-history.ts", import.meta.url),
   "utf8",
 );
+const historyListSource = readFileSync(
+  new URL("../../components/app/history-list.tsx", import.meta.url),
+  "utf8",
+);
 const subscriptionStatusSource = readFileSync(
   new URL("../../components/app/subscription-status.tsx", import.meta.url),
   "utf8",
@@ -122,6 +126,37 @@ describe("rewrite workspace surface copy", () => {
     );
     expect(aiSignalSource).not.toContain("border-dashed");
     expect(aiSignalSource).not.toContain("py-7");
+  });
+
+  it("adds a result compare view and explains AI Signal regressions", () => {
+    const resultPanelSource = workspaceSource.slice(
+      workspaceSource.indexOf('id="rewrite-result-heading"'),
+      workspaceSource.indexOf("{/* AI Signal"),
+    );
+
+    expect(workspaceSource).toContain("compareOpen");
+    expect(workspaceSource).toContain("submittedDraft");
+    expect(resultPanelSource).toContain('aria-label="Switch rewrite result view"');
+    expect(resultPanelSource).toContain("View rewrite");
+    expect(resultPanelSource).toContain("View compare");
+    expect(resultPanelSource).toContain("Original draft");
+    expect(resultPanelSource).toContain("Rewritten reply");
+    expect(workspaceSource).toContain(
+      "the rewrite reads more AI-like than your draft",
+    );
+    expect(workspaceSource).toContain("very short or already-natural drafts");
+    expect(workspaceSource).toContain("review before sending");
+  });
+
+  it("shows the AI Signal meter in history details", () => {
+    expect(historyListSource).toContain('from "../landing/nat-bar"');
+    expect(historyListSource).toContain("NatBar");
+    expect(historyListSource).toContain("AI Signal · before vs after");
+    expect(historyListSource).toContain("Draft {detail.draftSignal}%");
+    expect(historyListSource).toContain("Rewrite {detail.rewriteSignal}%");
+    expect(historyListSource).toContain("A third-party reference signal");
+    expect(historyListSource).toContain("lower reads more natural");
+    expect(historyListSource).toContain("review before sending");
   });
 
   it("offers a local Try an example draft without starting a rewrite", () => {
