@@ -42,6 +42,9 @@ const termsSource = readFileSync(
   "utf8",
 );
 
+const sharedRetentionSentence =
+  "Workspace history may be retained for up to 90 days, while API request and result records use a separate 30-day retention window.";
+
 function phrase(...parts: string[]) {
   return parts.join(" ");
 }
@@ -107,6 +110,20 @@ describe("rewrite workspace surface copy", () => {
     expect(privacySource).toContain("up to the configured retention window");
     expect(privacySource).toContain("default 90 days");
     expect(termsSource).toContain("default 90 days");
+  });
+
+  it("keeps legal copy aligned with AI Signal, review, and retention naming", () => {
+    expect(termsSource).toContain("AI Signal percentages");
+    expect(termsSource).toContain("reference signals for comparison");
+    expect(termsSource).not.toMatch(/tone check/i);
+
+    expect(privacySource).toContain("automated analysis");
+    expect(privacySource).toContain("AI Signal results");
+    expect(privacySource).toContain(
+      "Human review happens only when you report a specific issue",
+    );
+    expect(privacySource).toContain("data export requests, or deletion requests");
+    expect(privacySource).toContain(sharedRetentionSentence);
   });
 
   it("keeps the quota strip as real buttons aligned with the rewrite-packs model", () => {

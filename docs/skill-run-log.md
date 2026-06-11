@@ -5633,3 +5633,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `components/app/shell/shell-skeleton.tsx`, new loading/error route files under `app/app/**` and `app/admin/loading.tsx`, `components/app/shell/shell.module.css`, and this log entry.
 - Verification evidence: pre-change file-presence check failed as expected; post-change required file checks passed; restricted-wording scan over `app components public lib` passed; `npm run typecheck`, `npm run build`, and `npm run test` passed.
 - Limitations: Browser preview was attempted against a local Next dev server and mock API, but Chromium launch was denied by the macOS sandbox and WebKit was not installed. The attempted preview left local test listeners on `127.0.0.1:3210` and `127.0.0.1:45935`; the harness denied both session input and PID signals, so they could not be stopped from this worker turn. No deploy, push, PR, backend, schema, auth, billing, or payment-provider changes were made.
+
+### 2026-06-11 - ui-browser-testing - FE-OPT M0-3 legal naming truth
+
+- Agent: Codex worker
+- Trigger: Issue #692 changes browser-visible legal copy on `/terms`, `/privacy`, and `/developers/data`.
+- Action: Opened and followed the project skill as a frontend verification checklist. Chose source-level unit coverage instead of a live browser screenshot because the change is copy-only and does not alter layout, interaction, auth flow, or component behavior. Added failing copy assertions first, then updated the legal pages.
+- Output artifacts: `app/terms/page.tsx`, `app/privacy/page.tsx`, `app/developers/data/page.tsx`, `tests/unit/workspace-copy.test.ts`, `tests/unit/developers-page.test.ts`, and this log entry.
+- Verification evidence: focused Vitest copy tests failed before the page edits and passed after; `grep -ri "tone check" app/terms/page.tsx` produced no output; `grep -ri "AI Signal" app/terms/page.tsx` found the updated caveat; restricted-wording scan over `app components public lib` produced no output; `npm run typecheck` passed; `npm run test` passed 307/307.
+- Limitations: No browser screenshot or Playwright E2E run was performed because no visual layout or interactive behavior changed. No deploy, push, PR, backend, auth, billing, quota, retention-duration, schema, or payment-provider changes were made.

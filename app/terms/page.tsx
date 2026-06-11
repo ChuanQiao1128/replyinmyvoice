@@ -35,7 +35,7 @@ const sections = [
   },
   {
     title: "No guaranteed writing score",
-    text: "Tone check percentages are reference signals for comparison. They are not a promise that a message will be judged a certain way by any person or system.",
+    text: "AI Signal percentages are reference signals for comparison. They are not a promise that a message will be judged a certain way by any person or system.",
   },
   {
     title: "Billing and quota",

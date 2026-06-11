@@ -27,15 +27,15 @@ export const metadata: Metadata = {
 const sections = [
   {
     title: "What the workspace processes",
-    text: "When you use the rewrite workspace, the app processes the pasted messages, rough drafts, tone preference, and facts you provide so it can produce a revised reply and writing signal.",
+    text: "When you use the rewrite workspace, the app processes the pasted messages, rough drafts, tone preference, and facts you provide so it can produce a revised reply and an AI Signal result.",
   },
   {
     title: "Reply content retention and deletion",
-    text: "Submitted message content, rough drafts, rewritten replies, writing-signal results, and rewrite metadata are retained for up to the configured retention window (default 90 days). After that window, raw content is removed. You can delete items from your history in the app workspace.",
+    text: "Submitted message content, rough drafts, rewritten replies, AI Signal results, and rewrite metadata are retained for up to the configured retention window (default 90 days). Workspace history may be retained for up to 90 days, while API request and result records use a separate 30-day retention window. After the applicable window, raw content is removed. You can delete items from your history in the app workspace.",
   },
   {
     title: "Quality improvement",
-    text: "During the retention window, stored content may be used for internal quality improvement, debugging, and strategy evaluation. This helps us improve the rewrite and repair system over time. We do not sell this content or publish it publicly.",
+    text: "During the retention window, quality improvement uses automated analysis of stored content and metadata for debugging and strategy evaluation. Human review happens only when you report a specific issue and we need to investigate that report. We do not sell this content or publish it publicly.",
   },
   {
     title: "Not used for ad targeting or model training",
@@ -47,7 +47,7 @@ const sections = [
   },
   {
     title: "Vendors and subprocessors",
-    text: "We use Cloudflare (hosting and edge runtime), Microsoft Azure (SQL database and backend services), Microsoft Entra External ID (sign-in), Stripe (payments), and AI providers for rewrite generation (DeepSeek) and writing-signal analysis (Sapling). These subprocessors process the data necessary to deliver the service and are bound by their own data protection terms.",
+    text: "We use Cloudflare (hosting and edge runtime), Microsoft Azure (SQL database and backend services), Microsoft Entra External ID (sign-in), Stripe (payments), and AI providers for rewrite generation (DeepSeek) and AI Signal analysis (Sapling). These subprocessors process the data necessary to deliver the service and are bound by their own data protection terms.",
   },
   {
     title: "Local history",
@@ -59,7 +59,7 @@ const sections = [
   },
   {
     title: "Contact",
-    text: "For privacy questions, contact TimeAwake Ltd. at info@timeawake.co.nz.",
+    text: "For privacy questions, data export requests, or deletion requests, contact TimeAwake Ltd. at info@timeawake.co.nz.",
   },
 ];
 
