@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { McpConfigCopyButton } from "../../../components/developers/mcp-config-copy-button";
 import { SiteHeader } from "../../../components/site-header";
 
 export const metadata: Metadata = {
@@ -107,7 +108,7 @@ const errorRows = [
   {
     status: "402",
     cause: "The account has no paid rewrite credits remaining.",
-    action: "Send the user to the top-up link in the developer dashboard.",
+    action: "Send the user to pricing so they can add paid quota.",
   },
   {
     status: "409",
@@ -128,18 +129,23 @@ const errorRows = [
 
 function CodeBlock({
   children,
+  copyLabel,
   label,
   status,
 }: {
   children: string;
+  copyLabel?: string;
   label: string;
   status?: string;
 }) {
   return (
     <div className="api-seg">
       <div className="api-seg-label">
-        {label}
+        <span>{label}</span>
         {status ? <span className="api-status">{status}</span> : null}
+        {copyLabel ? (
+          <McpConfigCopyButton label={copyLabel} text={children} />
+        ) : null}
       </div>
       <pre className="api-code">
         <code>{children}</code>
@@ -183,7 +189,9 @@ function HostBlock({
             </span>
             <span className="bar-label">local stdio</span>
           </div>
-          <CodeBlock label="Local config">{local}</CodeBlock>
+          <CodeBlock copyLabel="Copy local config" label="Local config">
+            {local}
+          </CodeBlock>
         </div>
         <div className="api-panel">
           <div className="api-bar">
@@ -194,7 +202,9 @@ function HostBlock({
             </span>
             <span className="bar-label">remote HTTP</span>
           </div>
-          <CodeBlock label="Remote config">{remote}</CodeBlock>
+          <CodeBlock copyLabel="Copy remote config" label="Remote config">
+            {remote}
+          </CodeBlock>
         </div>
       </div>
     </article>
@@ -331,6 +341,9 @@ export default function DevelopersMcpPage() {
             <div className="pp-includes-head" id="hosts-heading">
               Host config blocks
             </div>
+            <p className="dev-section-note">
+              Replace rmv_live_xxx with your key from the developer dashboard.
+            </p>
             {hostConfigs.map((config) => (
               <HostBlock
                 body={config.body}
@@ -342,6 +355,65 @@ export default function DevelopersMcpPage() {
             ))}
           </section>
 
+          <section className="dev-section" aria-labelledby="tool-reference-heading">
+            <div className="pp-includes-head" id="tool-reference-heading">
+              Tool reference
+            </div>
+            <div className="dev-reference-grid api-endpoints">
+              <article className="api-endpoint">
+                <div className="ep-head">
+                  <span className="method-badge">tool</span>
+                  <span className="ep-path">rewrite_email</span>
+                </div>
+                <div className="dev-endpoint-body">
+                  <p>
+                    Input: <code>draft</code>, a draft reply string from{" "}
+                    <code>10 to 2400 characters</code>.
+                  </p>
+                  <p>
+                    Output on success: <code>attempt_id</code>,{" "}
+                    <code>rewritten</code>, and optional changes.
+                  </p>
+                  <p>
+                    Remote output at the polling cap: <code>status</code>{" "}
+                    <code>working</code> with <code>attempt_id</code>.
+                  </p>
+                </div>
+              </article>
+              <article className="api-endpoint">
+                <div className="ep-head">
+                  <span className="method-badge">tool</span>
+                  <span className="ep-path">get_rewrite_result</span>
+                </div>
+                <div className="dev-endpoint-body">
+                  <p>
+                    Input: <code>attempt_id</code>, the rewrite attempt id
+                    returned by <code>rewrite_email</code>.
+                  </p>
+                  <p>
+                    Output: <code>status</code> as <code>working</code>,{" "}
+                    <code>succeeded</code>, or <code>failed</code>, plus{" "}
+                    <code>rewritten</code> and optional changes when available.
+                  </p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section className="dev-section" aria-labelledby="remote-heading">
+            <div className="pp-includes-head" id="remote-heading">
+              Remote working state
+            </div>
+            <div className="dev-callout">
+              Remote rewrites usually finish in a few seconds. The remote HTTP
+              endpoint polls for about 50 seconds before returning{" "}
+              <code>status</code> <code>working</code> with an{" "}
+              <code>attempt_id</code>. The host should poll again by calling{" "}
+              <code>get_rewrite_result</code> with that id, using short backoff
+              between retries.
+            </div>
+          </section>
+
           <section className="dev-section" aria-labelledby="billing-heading">
             <div className="pp-includes-head" id="billing-heading">
               Billing, quota, and error UX
@@ -350,11 +422,11 @@ export default function DevelopersMcpPage() {
               A successful MCP rewrite uses <strong>1 credit per rewrite</strong>.
               Polling an existing attempt with <code>get_rewrite_result</code>{" "}
               does not use another credit. If a tool call returns{" "}
-              <code>402</code>, show a top-up link to{" "}
-              <Link href="/developers/keys" className="dev-text-link">
-                the developer dashboard
-              </Link>
-              .
+              <code>402</code>, link the user to{" "}
+              <Link href="/pricing" className="dev-text-link">
+                pricing
+              </Link>{" "}
+              so they can add paid quota.
             </div>
             <div className="dev-table-wrap">
               <table className="dev-table">

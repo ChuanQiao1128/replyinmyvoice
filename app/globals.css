@@ -2155,6 +2155,13 @@ section.block {
   color: var(--muted);
   font-family: var(--mono);
 }
+.dev-section-note {
+  margin-top: 12px;
+  max-width: 70ch;
+  color: var(--ink-2);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
 .dev-hero-meta {
   display: flex;
   flex-wrap: wrap;
@@ -2373,6 +2380,48 @@ section.block {
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.42);
   margin-bottom: 13px;
+}
+.api-copy-button {
+  appearance: none;
+  margin-left: auto;
+  display: inline-flex;
+  min-width: 92px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  padding: 6px 9px;
+  text-transform: uppercase;
+  transition: background 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease;
+  white-space: nowrap;
+}
+.api-copy-button:hover,
+.api-copy-button:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--bg);
+}
+.api-copy-button:focus-visible {
+  outline: 2px solid rgba(143, 214, 164, 0.42);
+  outline-offset: 2px;
+}
+.api-copy-button.is-copied {
+  border-color: rgba(143, 214, 164, 0.38);
+  background: rgba(143, 214, 164, 0.12);
+  color: #8fd6a4;
+}
+.api-copy-button svg {
+  flex: 0 0 auto;
 }
 .api-status {
   color: #8fd6a4;
