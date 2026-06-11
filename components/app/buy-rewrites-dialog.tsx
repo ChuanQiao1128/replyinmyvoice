@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { BuyButton } from "../landing/buy-button";
 import { Card } from "../ui/card";
 
-type WorkspacePack = {
+export type WorkspacePack = {
   sku: string;
   name: string;
   price: string;
@@ -23,7 +23,7 @@ type WorkspacePack = {
 // (not shared with the pricing page) so the pricing-page source-string contract
 // tests stay stable. The real source of truth for what each sku charges is
 // Stripe plus the backend price env vars — this is display copy only.
-const workspacePacks: WorkspacePack[] = [
+export const workspacePacks: WorkspacePack[] = [
   {
     sku: "quick_pack",
     name: "Quick Pack",

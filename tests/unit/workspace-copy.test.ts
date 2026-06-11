@@ -13,6 +13,14 @@ const subscriptionStatusSource = readFileSync(
   new URL("../../components/app/subscription-status.tsx", import.meta.url),
   "utf8",
 );
+const quotaPillSource = readFileSync(
+  new URL("../../components/app/shell/quota-pill.tsx", import.meta.url),
+  "utf8",
+);
+const appShellSource = readFileSync(
+  new URL("../../components/app/shell/app-shell.tsx", import.meta.url),
+  "utf8",
+);
 const pastDueBannerSource = readFileSync(
   new URL("../../components/app/past-due-banner.tsx", import.meta.url),
   "utf8",
@@ -184,7 +192,7 @@ describe("rewrite workspace surface copy", () => {
     expect(buttonSource).toContain("bg-sage");
   });
 
-  it("wires Azure-backed quota and a post-copy upgrade nudge", () => {
+  it("wires Azure-backed quota and post-copy purchase choices", () => {
     expect(appPageSource).toContain("remaining={usage.remaining}");
     expect(appPageSource).toContain("quota={workspaceQuota}");
     expect(appPageSource).toContain("planRemaining={workspacePlanRemaining}");
@@ -199,9 +207,17 @@ describe("rewrite workspace surface copy", () => {
     expect(workspaceSource).toContain("freeRewritesRemaining");
     expect(workspaceSource).toContain("showPostCopyNudge");
     expect(workspaceSource).toContain("Dismiss");
+    expect(workspaceSource).toContain("workspacePacks");
+    expect(workspaceSource).toContain("pack.name");
+    expect(workspaceSource).toContain("pack.price");
+    expect(workspaceSource).toContain("pack.allowance");
+    expect(workspaceSource).toContain("pack.term");
     expect(workspaceSource).toContain('href="/pricing"');
     expect(workspaceSource).toContain("!paid");
     expect(workspaceSource).toContain("trial rewrite");
+    expect(workspaceSource).not.toContain(
+      "The Value Pack gives you 30 rewrites",
+    );
     expect(workspaceSource).not.toContain(phrase("free", "rewrite"));
 
     // The upgrade nudge only appears after a copy, never mid-rewrite.
@@ -215,6 +231,36 @@ describe("rewrite workspace surface copy", () => {
     );
     expect(submitBody).not.toContain("setShowPostCopyNudge(true)");
     expect(copyBody).toContain("setShowPostCopyNudge(true)");
+  });
+
+  it("surfaces low-credit and paid monthly-quota moments in the workspace body", () => {
+    expect(workspaceSource).toContain("showLowCreditBanner");
+    expect(workspaceSource).toContain("remaining <= 2");
+    expect(workspaceSource).toContain("remaining / quota <= 0.15");
+    expect(workspaceSource).toContain("LowCreditBanner");
+    expect(workspaceSource).toContain("Get more rewrites");
+    expect(workspaceSource).toContain("Low rewrite balance");
+
+    const outOfCreditsNudgeSource = workspaceSource.slice(
+      workspaceSource.indexOf("function OutOfCreditsNudge"),
+      workspaceSource.indexOf("export function RewriteWorkspace"),
+    );
+
+    expect(workspaceSource).toContain("openBillingPortal");
+    expect(workspaceSource).toContain("Manage billing");
+    expect(outOfCreditsNudgeSource).toContain("ManageBillingButton");
+    expect(outOfCreditsNudgeSource).toContain("Your monthly limit has been reached.");
+    expect(outOfCreditsNudgeSource).toContain("Buy rewrites");
+    expect(outOfCreditsNudgeSource).toContain("Redeem code");
+  });
+
+  it("routes the quota pill by account type and explains the low state", () => {
+    expect(appShellSource).toContain("paid={account.isDeveloperTier}");
+    expect(quotaPillSource).toContain("paid");
+    expect(quotaPillSource).toContain('paid ? "/app/usage" : "/pricing"');
+    expect(quotaPillSource).toContain("lowStateTitle");
+    expect(quotaPillSource).toContain("title={low ? lowStateTitle : undefined}");
+    expect(quotaPillSource).toContain('aria-label={paid ? "View usage" : "See pricing"}');
   });
 
   it("always renders the workspace and passes promo state into it", () => {
@@ -239,11 +285,9 @@ describe("rewrite workspace surface copy", () => {
 
     expect(workspaceSource).toContain("RedeemCodeCard");
     expect(workspaceSource).toContain("redeemModalOpen");
-    expect(outOfCreditsNudgeSource).toContain("bar above");
-    expect(outOfCreditsNudgeSource).not.toContain("onRedeemClick");
-    expect(outOfCreditsNudgeSource).not.toContain("onManageBillingClick");
-    expect(outOfCreditsNudgeSource).not.toContain("<Button");
-    expect(outOfCreditsNudgeSource).not.toContain("<Link");
+    expect(outOfCreditsNudgeSource).toContain("onRedeemClick");
+    expect(outOfCreditsNudgeSource).toContain("<Button");
+    expect(outOfCreditsNudgeSource).toContain("<LinkButton");
 
     expect(redeemCardSource).toContain("NEXT_PUBLIC_TURNSTILE_SITE_KEY");
     expect(redeemCardSource).toContain(
