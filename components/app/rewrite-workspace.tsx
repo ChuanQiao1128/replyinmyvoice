@@ -4,16 +4,19 @@ import {
   CheckCircle2,
   Clipboard,
   CopyCheck,
+  CreditCard,
   FilePlus2,
   Loader2,
   RefreshCw,
   Send,
   Sparkles,
+  Ticket,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 
+import { openBillingPortal } from "../../lib/billing-portal";
 import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import {
@@ -25,8 +28,9 @@ import {
   type RewriteResponse,
 } from "../../lib/rewrite-response";
 import { NatBar } from "../landing/nat-bar";
-import { Button } from "../ui/button";
+import { Button, LinkButton } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { workspacePacks } from "./buy-rewrites-dialog";
 import type { CheckoutStatus } from "./checkout-banner";
 import { RedeemCodeCard } from "./redeem-code-card";
 import shell from "./shell/shell.module.css";
@@ -198,19 +202,98 @@ async function pollRewriteAttempt(attemptId: string) {
 
 function outOfCreditsHint(paid: boolean, canRedeem: boolean) {
   if (paid) {
-    return "Your monthly rewrite quota has been used for this billing period. Use Manage billing in the bar above.";
+    return "Your monthly rewrite quota has been used for this billing period.";
   }
 
   return canRedeem
-    ? "You're out of rewrites. Use Redeem code or Buy rewrites in the bar above."
-    : "You're out of rewrites. Use Buy rewrites in the bar above.";
+    ? "You're out of rewrites. Redeem a code or buy a pack to keep going."
+    : "You're out of rewrites. Buy a pack to keep going.";
+}
+
+function ManageBillingButton({ className = "" }: { className?: string }) {
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState("");
+
+  async function handleManageBilling() {
+    setBillingLoading(true);
+    setBillingError("");
+
+    try {
+      await openBillingPortal();
+    } catch (billingPortalError) {
+      setBillingError(
+        billingPortalError instanceof Error
+          ? billingPortalError.message
+          : "Could not open billing.",
+      );
+      setBillingLoading(false);
+    }
+  }
+
+  return (
+    <div className={className}>
+      <Button
+        className="w-full sm:w-auto"
+        disabled={billingLoading}
+        onClick={() => void handleManageBilling()}
+        type="button"
+        variant="secondary"
+      >
+        <CreditCard className="h-4 w-4" aria-hidden="true" />
+        {billingLoading ? "Opening..." : "Manage billing"}
+      </Button>
+      {billingError ? (
+        <p className="mt-2 text-sm font-medium text-sage" role="alert">
+          {billingError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function LowCreditBanner({
+  paid,
+  remaining,
+  quota,
+}: {
+  paid: boolean;
+  remaining: number;
+  quota: number;
+}) {
+  const total = Math.max(quota, 0);
+  const visibleRemaining = Math.max(remaining, 0);
+
+  return (
+    <section className="mt-4 flex flex-col gap-3 rounded-lg border border-clay/25 bg-clay/10 p-4 text-sm text-ink/70 md:flex-row md:items-center md:justify-between">
+      <div>
+        <p className="font-semibold text-ink">Low rewrite balance</p>
+        <p className="mt-1 leading-6">
+          {visibleRemaining} of {total || "your"} rewrites left. Add more before
+          your next batch of replies.
+        </p>
+      </div>
+      {paid ? (
+        <ManageBillingButton className="shrink-0" />
+      ) : (
+        <LinkButton
+          className="w-full shrink-0 sm:w-auto"
+          href="/pricing"
+          variant="primary"
+        >
+          Get more rewrites
+        </LinkButton>
+      )}
+    </section>
+  );
 }
 
 function OutOfCreditsNudge({
   canRedeem,
+  onRedeemClick,
   paid,
 }: {
   canRedeem: boolean;
+  onRedeemClick: () => void;
   paid: boolean;
 }) {
   return (
@@ -219,6 +302,30 @@ function OutOfCreditsNudge({
         {paid ? "Your monthly limit has been reached." : "No rewrites left."}
       </p>
       <p className="mt-1 leading-6">{outOfCreditsHint(paid, canRedeem)}</p>
+      {paid ? (
+        <ManageBillingButton className="mt-3" />
+      ) : (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          {canRedeem ? (
+            <Button
+              className="w-full sm:w-auto"
+              onClick={onRedeemClick}
+              type="button"
+              variant="secondary"
+            >
+              <Ticket className="h-4 w-4" aria-hidden="true" />
+              Redeem code
+            </Button>
+          ) : null}
+          <LinkButton
+            className="w-full sm:w-auto"
+            href="/pricing"
+            variant="primary"
+          >
+            Buy rewrites
+          </LinkButton>
+        </div>
+      )}
     </div>
   );
 }
@@ -408,6 +515,10 @@ export function RewriteWorkspace({
     usageExhausted ||
     appExperience === "needsRedeem" ||
     appExperience === "needsBuy";
+  const showLowCreditBanner =
+    !showOutOfCreditsNudge &&
+    remaining > 0 &&
+    (remaining <= 2 || (quota > 0 && remaining / quota <= 0.15));
   const showRedeemAction =
     canRedeem && (!promoState.hasRedeemed || promoState.trialRemaining === 0);
 
@@ -446,6 +557,10 @@ export function RewriteWorkspace({
             usageLabel={usageLabel}
           />
         </div>
+
+        {showLowCreditBanner ? (
+          <LowCreditBanner paid={paid} quota={quota} remaining={remaining} />
+        ) : null}
 
         <div className="mt-6 grid overflow-hidden rounded-2xl border border-line bg-white shadow-soft md:grid-cols-2 md:divide-x md:divide-line">
           <form className="flex flex-col p-6 md:p-8" onSubmit={submit}>
@@ -522,7 +637,11 @@ export function RewriteWorkspace({
 
             <div className="flex min-h-[28rem] flex-1 flex-col rounded-lg border border-line/70 bg-mint/20 p-5 md:p-6">
               {showOutOfCreditsNudge ? (
-                <OutOfCreditsNudge canRedeem={showRedeemAction} paid={paid} />
+                <OutOfCreditsNudge
+                  canRedeem={showRedeemAction}
+                  onRedeemClick={openRedeemModal}
+                  paid={paid}
+                />
               ) : null}
 
               {loading ? (
@@ -598,14 +717,30 @@ export function RewriteWorkspace({
             {showCopyNudge ? (
               <div className="mt-4 rounded-2xl border border-line bg-mint/70 p-4 text-sm text-ink/70">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-semibold text-ink">
                       Keep writing in your own voice.
                     </p>
                     <p className="mt-1 leading-6">
-                      The Value Pack gives you 30 rewrites for the emails and
-                      messages you actually need to send.
+                      Choose the pack that fits your next batch of emails and
+                      messages.
                     </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      {workspacePacks.map((pack) => (
+                        <div
+                          className="rounded-lg border border-line bg-white/70 p-3"
+                          key={pack.sku}
+                        >
+                          <p className="font-semibold text-ink">{pack.name}</p>
+                          <p className="mt-1 text-sm text-ink/70">
+                            {pack.price}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-ink/50">
+                            {pack.allowance} · {pack.term}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                     <p className="mt-2 font-mono text-[11px] text-ink/50">
                       {freeRewritesRemaining > 0
                         ? `${freeRewritesRemaining} trial rewrite${freeRewritesRemaining === 1 ? "" : "s"} left after this copy.`
