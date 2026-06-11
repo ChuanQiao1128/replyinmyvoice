@@ -6,6 +6,7 @@ import {
   capturePaymentBrowserEvent,
   initializePaymentBrowserObservability,
 } from "../../lib/payment-observability-client";
+import { buildAuthRedirectSearchParams } from "../../lib/auth-redirect-intent";
 
 type BuyButtonProps = {
   sku: string;
@@ -41,8 +42,13 @@ export function BuyButton({
       });
 
       if (response.status === 401) {
+        const params = buildAuthRedirectSearchParams({
+          intent: "buy",
+          redirectTo: "/pricing",
+          sku,
+        });
         window.location.assign(
-          `/sign-in?redirectTo=${encodeURIComponent("/pricing")}`,
+          `/sign-in?${params.toString()}`,
         );
         return;
       }

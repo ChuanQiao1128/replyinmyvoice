@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-11 - ui-browser-testing - M1-1 auth redirect intent
+
+- Agent: Codex worker
+- Trigger: GitHub issue #690 changes frontend auth pages, auth redirects, cross-auth links, and browser-visible return messaging.
+- Action: Opened and followed the skill; used focused unit coverage for repeatable redirect behavior and attempted local browser/page verification for the sign-in return target.
+- Output artifacts: `lib/auth-redirect-intent.ts`; `components/auth/google-oauth-card.tsx`; `components/landing/buy-button.tsx`; auth page and route updates under `app/`; `tests/unit/auth-redirect-intent.test.ts`; updated auth route and buy-button unit tests.
+- Verification evidence: Focused auth tests passed; full `npm run test` passed 304/304; `npm run typecheck` passed; guarded source-term scan returned no matches.
+- Limitations: In-app browser was unavailable. Local Playwright could not launch Chromium because the macOS sandbox denied browser process registration. `next dev` started on `127.0.0.1:3100` but served app routes as 404 while repeatedly reporting file-watcher `EMFILE`, so browser-level visual verification was not completed.
+
 ### 2026-06-09 - state-machine-modeling - CLEAN-12 webhook dispatcher cleanup
 
 - Agent: Codex worker

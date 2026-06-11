@@ -14,6 +14,10 @@ import {
   authRateLimitPolicies,
   checkAuthRateLimit,
 } from "../../../../../lib/auth-rate-limit";
+import type {
+  AuthRedirectIntent,
+  AuthRedirectSku,
+} from "../../../../../lib/auth-redirect-intent";
 import { getAppUrl, optionalEnv, requireEnv } from "../../../../../lib/env";
 import { requireSameOrigin } from "../../../../../lib/http";
 
@@ -27,6 +31,9 @@ const resetFlowCookieName = "rimv_reset";
 type ResetFlowState = {
   continuationToken: string;
   email: string;
+  redirectTo?: string;
+  intent?: AuthRedirectIntent;
+  sku?: AuthRedirectSku;
   codeLength: number;
   channelLabel: string | null;
   lastSentAt: number;

@@ -15,10 +15,16 @@ export default async function ResetPage({
   searchParams,
 }: ResetPageProps) {
   const params = await searchParams;
+  const rawRedirectTo = firstParam(params?.redirectTo);
+  const redirectTo = rawRedirectTo ?? "/app";
 
   return (
     <ResetAuthPage
       initialEmail={firstParam(params?.email) ?? ""}
+      intent={firstParam(params?.intent)}
+      redirectTo={redirectTo}
+      showReturnHint={rawRedirectTo !== undefined}
+      sku={firstParam(params?.sku)}
     />
   );
 }

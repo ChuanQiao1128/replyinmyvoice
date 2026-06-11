@@ -11,6 +11,12 @@ import {
   authRateLimitPolicies,
   checkAuthRateLimit,
 } from "../../../../lib/auth-rate-limit";
+import {
+  buildAuthRedirectSearchParams,
+  buildPostAuthRedirectPath,
+  normalizeAuthRedirectParams,
+  type AuthRedirectInput,
+} from "../../../../lib/auth-redirect-intent";
 import { getAppUrl } from "../../../../lib/env";
 import { requireSameOrigin } from "../../../../lib/http";
 
@@ -29,7 +35,8 @@ export async function POST(request: Request) {
   const body = await readJsonObject(request);
   const email = normalizeEmail(body?.email);
   const credential = stringValue(body?.[credentialField]);
-  const redirectTo = safeRedirectTo(body?.redirectTo);
+  const authRedirect = normalizeAuthRedirectParams(body ?? {});
+  const postAuthRedirect = buildPostAuthRedirectPath(authRedirect);
 
   if (!email) {
     return signinJsonError("invalid_request", 400);
@@ -53,7 +60,7 @@ export async function POST(request: Request) {
       email,
       [credentialField]: credential,
     });
-    const response = NextResponse.redirect(`${getAppUrl()}${redirectTo}`, 302);
+    const response = NextResponse.redirect(`${getAppUrl()}${postAuthRedirect}`, 302);
     await createSessionFromTokens({
       accessToken: tokens.access_token,
       idToken: tokens.id_token,
@@ -61,7 +68,7 @@ export async function POST(request: Request) {
     }, response.cookies);
     return response;
   } catch (error) {
-    return nativeSigninError(error, email, redirectTo);
+    return nativeSigninError(error, email, authRedirect);
   }
 }
 
@@ -90,14 +97,7 @@ function stringValue(value: unknown) {
   return typeof value === "string" ? value : null;
 }
 
-function safeRedirectTo(value: unknown) {
-  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
-    return "/app";
-  }
-  return value;
-}
-
-function nativeSigninError(error: unknown, email: string, redirectTo: string) {
+function nativeSigninError(error: unknown, email: string, authRedirect: AuthRedirectInput) {
   if (!(error instanceof NativeAuthError)) {
     return signinJsonError("signin_failed", 502);
   }
@@ -114,7 +114,7 @@ function nativeSigninError(error: unknown, email: string, redirectTo: string) {
   if (appCode === "redirect_required") {
     return NextResponse.json({
       error: "redirect_required",
-      fallbackRedirect: browserFallbackRedirect(email, redirectTo),
+      fallbackRedirect: browserFallbackRedirect(email, authRedirect),
       ok: false,
     }, { status: 409 });
   }
@@ -130,10 +130,7 @@ function signinJsonError(error: string, status: number) {
   return NextResponse.json({ error, ok: false }, { status });
 }
 
-function browserFallbackRedirect(email: string, redirectTo: string) {
-  const params = new URLSearchParams({ loginHint: email });
-  if (redirectTo !== "/app") {
-    params.set("redirectTo", redirectTo);
-  }
+function browserFallbackRedirect(email: string, authRedirect: AuthRedirectInput) {
+  const params = buildAuthRedirectSearchParams(authRedirect, { loginHint: email });
   return `/api/auth/login?${params.toString()}`;
 }
