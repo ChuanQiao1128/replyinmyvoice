@@ -2,6 +2,8 @@
 
 import {
   AlertCircle,
+  AlertTriangle,
+  CreditCard,
   ExternalLink,
   Loader2,
   LogOut,
@@ -15,6 +17,7 @@ import type {
   AzureAccountSummary,
   AzureBillingSupportRequest,
 } from "../../lib/azure-api";
+import { openBillingPortal } from "../../lib/billing-portal";
 import { clearLocalRewriteHistory } from "../../lib/rewrite-history";
 import { planLabelForStatus } from "../app/shell/shell-types";
 import { Skeleton } from "../app/shell/shell-primitives";
@@ -35,6 +38,11 @@ type AccountState =
   | { status: "error"; message: string };
 
 type SupportRequestType = "refund" | "billing-question";
+
+const packValidityDays = 90;
+const msPerDay = 24 * 60 * 60 * 1000;
+const emptyPayments: AzureAccountPayment[] = [];
+const emptySupportRequests: AzureBillingSupportRequest[] = [];
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -70,6 +78,38 @@ function formatDateTime(value: string | null) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function formatGraceEnd(value: string | null) {
+  if (!value) {
+    return "the grace deadline";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "the grace deadline";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function parseDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
 }
 
 function paymentOptionLabel(payment: AzureAccountPayment) {
@@ -116,6 +156,148 @@ function formatSku(sku: string | null) {
   return normalized
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function isProSku(sku: string | null) {
+  return sku?.trim().toLowerCase() === "pro_api";
+}
+
+function purchaseExpiryDate(payment: AzureAccountPayment) {
+  const explicitExpiry = parseDate(payment.expiry);
+  if (explicitExpiry) {
+    return explicitExpiry;
+  }
+
+  const purchaseDate = parseDate(payment.date);
+  return purchaseDate ? addDays(purchaseDate, packValidityDays) : null;
+}
+
+function daysUntil(date: Date) {
+  const now = new Date();
+  return Math.max(0, Math.ceil((date.getTime() - now.getTime()) / msPerDay));
+}
+
+function PurchaseStatusCell({
+  currentPeriodEnd,
+  payment,
+}: {
+  currentPeriodEnd?: string | null;
+  payment: AzureAccountPayment;
+}) {
+  if (isProSku(payment.sku)) {
+    const nextBillingDate = currentPeriodEnd ?? payment.expiry;
+
+    return (
+      <div className="grid gap-1.5">
+        <span className={shell.badge}>Active</span>
+        <span className="text-xs font-medium text-ink/55">
+          Next billing date
+        </span>
+        <span className="text-sm text-ink/75">{formatDate(nextBillingDate ?? null)}</span>
+      </div>
+    );
+  }
+
+  const expiryDate = purchaseExpiryDate(payment);
+  const expired =
+    !expiryDate || payment.remaining <= 0 || expiryDate.getTime() <= Date.now();
+
+  if (expired) {
+    return (
+      <div className="grid gap-1.5">
+        <span className={`${shell.badge} ${shell.badgeWarn}`}>Expired</span>
+        <span className="text-xs text-ink/55">
+          {formatDate(expiryDate?.toISOString() ?? payment.expiry)}
+        </span>
+      </div>
+    );
+  }
+
+  const expiryDays = daysUntil(expiryDate);
+
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        <span className={shell.badge}>Active</span>
+        <span
+          className={
+            expiryDays <= 14
+              ? `${shell.badge} ${shell.badgeWarn}`
+              : `${shell.badge} ${shell.badgeMuted}`
+          }
+        >
+          Expires in {expiryDays} days
+        </span>
+      </div>
+      <span className="text-xs text-ink/55">{formatDate(expiryDate.toISOString())}</span>
+    </div>
+  );
+}
+
+function PastDueAccountActionCard({
+  paymentGraceEndsAt,
+}: {
+  paymentGraceEndsAt: string | null;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const graceEnd = formatGraceEnd(paymentGraceEndsAt);
+
+  async function handleUpdatePaymentMethod() {
+    setLoading(true);
+    setError("");
+
+    try {
+      await openBillingPortal();
+    } catch (billingError) {
+      setError(
+        billingError instanceof Error
+          ? billingError.message
+          : "Could not open billing.",
+      );
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section
+      className="rounded-lg border border-rust/30 bg-rust/10 p-4 text-ink shadow-soft sm:p-5"
+      role="status"
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-rust/20 bg-white/70 text-rust">
+            <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-rust">Payment failed</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink/70">
+              Payment failed - update your payment method by {graceEnd} to keep your plan.
+            </p>
+            {error ? (
+              <p className="mt-2 text-sm font-medium text-rust" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <Button
+          className="w-full sm:w-auto"
+          disabled={loading}
+          onClick={handleUpdatePaymentMethod}
+          type="button"
+          variant="secondary"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <CreditCard className="h-4 w-4" aria-hidden="true" />
+          )}
+          Update payment method
+        </Button>
+      </div>
+    </section>
+  );
 }
 
 function safeReceiptUrl(value: string | null) {
@@ -210,8 +392,10 @@ async function loadAccountBundle() {
 }
 
 export function PurchaseHistorySection({
+  currentPeriodEnd = null,
   payments,
 }: {
+  currentPeriodEnd?: string | null;
   payments: AzureAccountPayment[];
 }) {
   return (
@@ -235,7 +419,7 @@ export function PurchaseHistorySection({
                 <th className="px-4 py-3 font-semibold">Pack</th>
                 <th className="px-4 py-3 font-semibold">Date</th>
                 <th className="px-4 py-3 font-semibold">Amount</th>
-                <th className="px-4 py-3 font-semibold">Expiry</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Remaining</th>
                 <th className="px-4 py-3 font-semibold">Receipt</th>
               </tr>
@@ -257,7 +441,10 @@ export function PurchaseHistorySection({
                       {formatMoney(payment.amount, payment.currency)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-4">
-                      {formatDate(payment.expiry)}
+                      <PurchaseStatusCell
+                        currentPeriodEnd={currentPeriodEnd}
+                        payment={payment}
+                      />
                     </td>
                     <td className="whitespace-nowrap px-4 py-4">
                       {payment.remaining} remaining
@@ -297,7 +484,8 @@ type Props = {
   demoBundle?: AccountBundle;
 };
 
-export function AccountPanel({ demoBundle }: Props = {}) {
+export function AccountPanel(props: Props = {}) {
+  const { demoBundle } = props;
   const [accountState, setAccountState] = useState<AccountState>(
     demoBundle ? { status: "ready", ...demoBundle } : { status: "loading" },
   );
@@ -348,9 +536,12 @@ export function AccountPanel({ demoBundle }: Props = {}) {
 
   const readyAccount =
     accountState.status === "ready" ? accountState.account : undefined;
-  const payments = accountState.status === "ready" ? accountState.payments : [];
+  const payments =
+    accountState.status === "ready" ? accountState.payments : emptyPayments;
   const supportRequests =
-    accountState.status === "ready" ? accountState.supportRequests : [];
+    accountState.status === "ready"
+      ? accountState.supportRequests
+      : emptySupportRequests;
   const paymentOptions = useMemo(
     () => payments.filter((payment) => payment.paymentIntentId),
     [payments],
@@ -540,6 +731,7 @@ export function AccountPanel({ demoBundle }: Props = {}) {
 
   const account = accountState.account;
   const planLabel = planLabelForStatus(account.subscriptionStatus);
+  const billingPeriodEnd = account.usage.periodEnd ?? account.currentPeriodEnd;
   const planBadgeClass =
     planLabel === "Pro/API"
       ? shell.badge
@@ -564,6 +756,15 @@ export function AccountPanel({ demoBundle }: Props = {}) {
           {isSigningOut ? "Signing out..." : "Sign out"}
         </Button>
       </div>
+
+      {account.subscriptionStatus === "PastDue" ? (
+        <>
+          <PastDueAccountActionCard
+            paymentGraceEndsAt={account.paymentGraceEndsAt}
+          />
+          <div style={{ height: 18 }} />
+        </>
+      ) : null}
 
       <div className={shell.statGrid}>
         <div className={shell.statCard}>
@@ -595,14 +796,17 @@ export function AccountPanel({ demoBundle }: Props = {}) {
             {account.usage.scope === "paid" ? "Renews" : "Period ends"}
           </div>
           <div className={shell.statValue}>
-            {formatDate(account.usage.periodEnd ?? account.currentPeriodEnd)}
+            {formatDate(billingPeriodEnd)}
           </div>
         </div>
       </div>
 
       <div style={{ height: 18 }} />
 
-      <PurchaseHistorySection payments={payments} />
+      <PurchaseHistorySection
+        currentPeriodEnd={billingPeriodEnd}
+        payments={payments}
+      />
 
       <div style={{ height: 18 }} />
 
