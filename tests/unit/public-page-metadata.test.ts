@@ -14,6 +14,7 @@ const publicPages = [
   "app/privacy/page.tsx",
   "app/terms/page.tsx",
   "app/developers/page.tsx",
+  "app/developers/api/page.tsx",
   "app/developers/mcp/page.tsx",
 ];
 

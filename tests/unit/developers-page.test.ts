@@ -11,12 +11,79 @@ function source(path: string) {
   return readFileSync(join(root, path), "utf8");
 }
 
-describe("/developers API documentation page", () => {
-  it("documents the live async v1 API and key path", () => {
-    const pageSource = source("app/developers/page.tsx");
+describe("/developers hub and API documentation pages", () => {
+  it("keeps /developers as a two-path commercial hub", () => {
+    const hubSource = source("app/developers/page.tsx");
     const headerSource = source("components/site-header.tsx");
+    const footerSource = source("components/site-footer.tsx");
+    const sitemapSource = source("app/sitemap.ts");
+    const pricingSource = source("app/pricing/page.tsx");
 
     expect(headerSource).toContain('href="/developers"');
+    expect(footerSource).toContain('href="/developers"');
+    expect(sitemapSource).toContain("/developers/api");
+    expect(pricingSource).toContain('href="/developers/api"');
+
+    expect(hubSource).toContain("REST API");
+    expect(hubSource).toContain("MCP server");
+    expect(hubSource).toContain('href="/developers/api"');
+    expect(hubSource).toContain('href="/developers/mcp"');
+    expect(hubSource).toContain('href="/developers/api#quickstart"');
+    expect(hubSource).toContain('href="/api/v1/openapi.json"');
+    expect(hubSource).toContain("OpenAPI specification");
+
+    expect(hubSource).toContain("One API key works for both paths");
+    expect(hubSource).toContain("Website and API rewrites share one balance");
+    expect(hubSource).toContain("Pro/API NZ$19.90/mo");
+    expect(hubSource).toContain("90 rewrites/month shared across web + API");
+    expect(hubSource).toContain("No free API tier");
+    expect(hubSource).toContain("60 requests/min per key");
+    expect(hubSource).toContain('href="/pricing#pro"');
+
+    expect(hubSource).toContain('href: "/developers/terms"');
+    expect(hubSource).toContain('href: "/developers/acceptable-use"');
+    expect(hubSource).toContain('href: "/developers/data"');
+    expect(hubSource).toContain("DevelopersAnchorRedirect");
+
+    expect(hubSource).not.toContain("POST /api/v1/rewrite");
+    expect(hubSource).not.toContain("GET /api/v1/rewrite/{id}");
+    expect(hubSource).not.toContain("GET /api/v1/usage");
+    expect(hubSource).not.toContain('id="quickstart"');
+    expect(hubSource).not.toContain("200 OK");
+  });
+
+  it("redirects legacy /developers section fragments to the API reference route", () => {
+    const redirectSource = source("app/developers/developers-anchor-redirect.tsx");
+
+    for (const hash of [
+      "#quickstart",
+      "#auth",
+      "#api",
+      "#errors",
+      "#guides",
+      "#pricing",
+    ]) {
+      expect(redirectSource).toContain(hash);
+    }
+
+    expect(redirectSource).toContain("window.location.hash");
+    expect(redirectSource).toContain("window.location.replace(`/developers/api${hash}`)");
+  });
+
+  it("moves the live async v1 API reference to /developers/api", () => {
+    const pageSource = source("app/developers/api/page.tsx");
+
+    for (const sectionId of [
+      "quickstart",
+      "auth",
+      "api",
+      "errors",
+      "guides",
+      "pricing",
+    ]) {
+      expect(pageSource).toContain(`id="${sectionId}"`);
+    }
+
     expect(pageSource).toContain('href="/developers/keys"');
     expect(pageSource).toContain('href="/developers/mcp"');
     expect(pageSource).toContain('href="/api/v1/openapi.json"');
@@ -52,9 +119,8 @@ describe("/developers API documentation page", () => {
     expect(pageSource).toContain("30-day retention");
     expect(pageSource).toContain("naturalness reference");
     expect(pageSource).toContain("not accepted in the request");
-    expect(pageSource).toContain('href="/developers/terms"');
-    expect(pageSource).toContain('href="/developers/acceptable-use"');
-    expect(pageSource).toContain('href="/developers/data"');
+    expect(pageSource).not.toContain("Two ways to integrate");
+    expect(pageSource).not.toContain("Overview");
 
     expect(pageSource).not.toContain("analyze-signal");
     expect(pageSource).not.toContain("not yet public");
@@ -76,6 +142,7 @@ describe("/developers API documentation page", () => {
     }
 
     expect(pageSource).toContain('href="/developers/keys"');
+    expect(pageSource).toContain('href="/developers/api"');
     expect(pageSource).toContain("Get a key");
     expect(pageSource).toContain("1 credit per rewrite");
     expect(pageSource).toContain("402");

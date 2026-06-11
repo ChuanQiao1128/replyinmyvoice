@@ -251,7 +251,7 @@ export default function DevelopersMcpPage() {
               <a href="#hosts" className="btn btn-ghost btn-lg">
                 Host configs
               </a>
-              <Link href="/developers" className="btn btn-ghost btn-lg">
+              <Link href="/developers/api" className="btn btn-ghost btn-lg">
                 API docs
               </Link>
             </div>
