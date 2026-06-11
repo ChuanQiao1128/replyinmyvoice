@@ -38,7 +38,7 @@ export function Hero({ signedIn = false }: { signedIn?: boolean }) {
             </Link>
           )}
           <a href="#workflow" className="btn btn-ghost btn-lg">
-            See before &amp; after
+            See an example — no sign-up
           </a>
         </div>
         <div className="hero-stats">

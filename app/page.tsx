@@ -6,6 +6,7 @@ import { Hero } from "../components/landing/hero";
 import { HowItWorks } from "../components/landing/how-it-works";
 import { Naturalness } from "../components/landing/naturalness";
 import { PricingV2 } from "../components/landing/pricing-v2";
+import { StickyCta } from "../components/landing/sticky-cta";
 import { TrustPanel } from "../components/landing/trust-panel";
 import { UseCases } from "../components/landing/use-cases";
 import { SiteHeader } from "../components/site-header";
@@ -33,6 +34,7 @@ export default async function HomePage() {
     <main className="rimv">
       <SiteHeader />
       <Hero signedIn={signedIn} />
+      <StickyCta signedIn={signedIn} />
       <UseCases />
       <HowItWorks />
       <Naturalness />
