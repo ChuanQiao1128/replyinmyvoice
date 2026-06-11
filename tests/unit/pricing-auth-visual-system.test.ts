@@ -67,7 +67,16 @@ describe("pricing and auth visual system", () => {
     expect(authCard).toContain("Entra OAuth sign-in");
     expect(authCard).toContain("Continue with email");
     expect(authCard).toContain("Continue with Google");
+    expect(authCard).toContain("Continue to sign-in");
     expect(authCard).toContain("Redeem a trial code for 3 rewrites");
+    expect(authCard).toContain('import { Eye, EyeOff } from "lucide-react";');
+    expect(authCard).toContain('type="tel"');
+    expect(authCard).toContain('label="New password"');
+    expect(authCard).toContain('label="Confirm password"');
+    expect(authCard).toContain("Email or password is incorrect.");
+    expect(authCard).toContain("temporarily unavailable");
+    expect(authCard).toContain("try again in a few minutes");
+    expect(authCard).toContain("scrollIntoView");
     expect(authCard).toContain(
       'heading="Redeem a trial code after you create your account."',
     );
@@ -88,6 +97,16 @@ describe("pricing and auth visual system", () => {
     );
     expect(authCard).not.toContain(
       "Start with email, a sign-in value, and a quick verification.",
+    );
+    expect(authCard).not.toContain("sign-in value");
+    expect(authCard.indexOf('id="sign-in-entry-hint"')).toBeLessThan(
+      authCard.indexOf('hintId="sign-in-entry-hint"'),
+    );
+    expect(authCard.indexOf('id="sign-up-entry-hint"')).toBeLessThan(
+      authCard.indexOf('hintId="sign-up-entry-hint"'),
+    );
+    expect(authCard.indexOf('id="reset-entry-hint"')).toBeLessThan(
+      authCard.indexOf('hintId="reset-entry-hint"'),
     );
     expect(authCard).not.toContain(
       phrase("Start with three", "free", "rewrites"),

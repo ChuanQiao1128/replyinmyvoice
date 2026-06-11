@@ -255,7 +255,7 @@ async function nativeResetVerifyError(error: unknown) {
   }
 
   if (error.appCode === credentialPolicyCode) {
-    return resetJsonError("Use a stronger account credential.", 400);
+    return resetJsonError("Use a stronger password.", 400);
   }
 
   if (error.appCode === "rate_limited") {

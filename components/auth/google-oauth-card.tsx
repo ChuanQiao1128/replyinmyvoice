@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { type CSSProperties, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -152,9 +153,9 @@ export function SignInAuthPage({
       if (fallback) {
         setFallbackRedirect(fallback);
       }
-      setFormError(signInErrorMessage(textValue(json?.error)));
+      setFormError(signInErrorMessage(textValue(json?.error), response.status));
     } catch {
-      setFormError("We could not sign you in. Please try again.");
+      setFormError(signInUnavailableMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -176,7 +177,15 @@ export function SignInAuthPage({
         />
 
         {resetSuccess ? (
-          <StatusMessage tone="success">Your sign-in value has been reset. Sign in with the new value.</StatusMessage>
+          <StatusMessage tone="success">
+            <span>Your password has been reset. Sign in with the new password.</span>
+            <Link
+              className={`${styles.statusAction} btn btn-primary btn-lg`}
+              href={withAuthParams("/sign-in", authRedirect, {}, shouldForwardAuthRedirect)}
+            >
+              Continue to sign-in
+            </Link>
+          </StatusMessage>
         ) : null}
         {shouldForwardAuthRedirect ? <ReturnHint destination={authRedirect.redirectTo} /> : null}
         {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
@@ -195,17 +204,6 @@ export function SignInAuthPage({
             value={email}
           />
 
-          <EntryField
-            autoComplete="current-password"
-            error={fieldErrors.password}
-            hintId="sign-in-entry-hint"
-            label="Password"
-            onChange={setEntry}
-            showEntry={showEntry}
-            toggleShowEntry={() => setShowEntry((value) => !value)}
-            value={entry}
-          />
-
           <div className={styles.formRow}>
             <span className={styles.hint} id="sign-in-entry-hint">
               Use at least {minEntryLength} characters.
@@ -217,6 +215,17 @@ export function SignInAuthPage({
               Forgot password?
             </Link>
           </div>
+
+          <EntryField
+            autoComplete="current-password"
+            error={fieldErrors.password}
+            hintId="sign-in-entry-hint"
+            label="Password"
+            onChange={setEntry}
+            showEntry={showEntry}
+            toggleShowEntry={() => setShowEntry((value) => !value)}
+            value={entry}
+          />
 
           <button className="btn btn-primary btn-lg" disabled={isSubmitting} type="submit">
             {isSubmitting ? "Signing in..." : "Continue with email"}
@@ -317,9 +326,13 @@ export function ResetAuthPage({
         return;
       }
 
-      setFormError(textValue(json?.error) ?? "We could not start the reset. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+        noAccount: "If an account exists for that email, we can send a reset code.",
+        unavailable: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+      }));
     } catch {
-      setFormError("We could not start the reset. Please try again.");
+      setFormError("Password reset is temporarily unavailable. Please try again in a few minutes.");
     } finally {
       setIsSubmitting(false);
     }
@@ -359,9 +372,12 @@ export function ResetAuthPage({
         return;
       }
 
-      setFormError(textValue(json?.error) ?? "We could not finish the reset. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+        unavailable: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+      }));
     } catch {
-      setFormError("We could not finish the reset. Please try again.");
+      setFormError("Password reset is temporarily unavailable. Please try again in a few minutes.");
     } finally {
       setIsSubmitting(false);
     }
@@ -389,9 +405,12 @@ export function ResetAuthPage({
       }
 
       setCooldownSeconds(numberValue(json?.cooldownSeconds) ?? 0);
-      setFormError(textValue(json?.error) ?? "We could not resend the code. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+        unavailable: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+      }));
     } catch {
-      setFormError("We could not resend the code. Please try again.");
+      setFormError("Password reset is temporarily unavailable. Please try again in a few minutes.");
     } finally {
       setIsResending(false);
     }
@@ -400,8 +419,8 @@ export function ResetAuthPage({
   return (
     <AuthShell
       eyebrow="Account reset"
-      heading="Reset your sign-in value."
-      lead="Enter your email, then use the code we send to choose a new sign-in value."
+      heading="Reset your password."
+      lead="Enter your email, then use the code we send to choose a new password."
       mode="reset"
     >
       <section aria-labelledby="reset-title" className={styles.panel} style={panelVisualStyle}>
@@ -410,7 +429,7 @@ export function ResetAuthPage({
             <PanelHeader
               id="reset-title"
               eyebrow="Step 1 of 2"
-              title="Reset your sign-in value"
+              title="Reset your password"
               body="Use the email tied to your Reply In My Voice account. We will send a reset code next."
             />
 
@@ -467,15 +486,19 @@ export function ResetAuthPage({
                 name="code"
                 onChange={setCode}
                 placeholder={"0".repeat(Math.min(codeLength, 6))}
-                type="text"
+                type="tel"
                 value={code}
               />
+
+              <p className={styles.hint} id="reset-entry-hint">
+                Use at least {minEntryLength} characters.
+              </p>
 
               <EntryField
                 autoComplete="new-password"
                 error={fieldErrors.newEntry}
                 hintId="reset-entry-hint"
-                label="New sign-in value"
+                label="New password"
                 name="newEntry"
                 onChange={setNewEntry}
                 showEntry={showNewEntry}
@@ -487,17 +510,13 @@ export function ResetAuthPage({
                 autoComplete="new-password"
                 error={fieldErrors.confirmEntry}
                 hintId="reset-entry-hint"
-                label="Confirm sign-in value"
+                label="Confirm password"
                 name="confirmEntry"
                 onChange={setConfirmEntry}
                 showEntry={showNewEntry}
                 toggleShowEntry={() => setShowNewEntry((value) => !value)}
                 value={confirmEntry}
               />
-
-              <p className={styles.hint} id="reset-entry-hint">
-                Use at least {minEntryLength} characters.
-              </p>
 
               <div className={styles.codeActions}>
                 <button className={styles.inlineButton} onClick={() => setStep("email")} type="button">
@@ -637,6 +656,13 @@ export function SignUpAuthPage({
     setTurnstileToken("");
   }
 
+  function scrollTurnstileIntoView() {
+    turnstileContainerRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }
+
   async function handleStart(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextErrors = validateEmailEntry(email, entry);
@@ -653,6 +679,7 @@ export function SignUpAuthPage({
 
     if (!turnstileToken) {
       setFormError("Complete the verification and try again.");
+      scrollTurnstileIntoView();
       return;
     }
 
@@ -688,10 +715,10 @@ export function SignUpAuthPage({
       if (fallback) {
         setFallbackRedirect(fallback);
       }
-      setFormError(textValue(json?.error) ?? "We could not start sign-up. Please try again.");
+      setFormError(signUpStartErrorMessage(response.status, textValue(json?.error), fallback));
       resetTurnstile();
     } catch {
-      setFormError("We could not start sign-up. Please try again.");
+      setFormError("Sign-up is temporarily unavailable. Please try again in a few minutes.");
       resetTurnstile();
     } finally {
       setIsSubmitting(false);
@@ -738,9 +765,12 @@ export function SignUpAuthPage({
         return;
       }
 
-      setFormError(textValue(json?.error) ?? "We could not verify the code. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: "Verification is temporarily unavailable. Please try again in a few minutes.",
+        unavailable: "Verification is temporarily unavailable. Please try again in a few minutes.",
+      }));
     } catch {
-      setFormError("We could not verify the code. Please try again.");
+      setFormError("Verification is temporarily unavailable. Please try again in a few minutes.");
     } finally {
       setIsSubmitting(false);
     }
@@ -768,13 +798,18 @@ export function SignUpAuthPage({
       }
 
       setCooldownSeconds(numberValue(json?.cooldownSeconds) ?? 0);
-      setFormError(textValue(json?.error) ?? "We could not resend the code. Please try again.");
+      setFormError(authErrorMessage(response.status, textValue(json?.error), {
+        fallback: "Verification is temporarily unavailable. Please try again in a few minutes.",
+        unavailable: "Verification is temporarily unavailable. Please try again in a few minutes.",
+      }));
     } catch {
-      setFormError("We could not resend the code. Please try again.");
+      setFormError("Verification is temporarily unavailable. Please try again in a few minutes.");
     } finally {
       setIsResending(false);
     }
   }
+
+  const accountExistsHref = fallbackRedirect?.startsWith("/sign-in") ? fallbackRedirect : null;
 
   return (
     <AuthShell
@@ -793,7 +828,16 @@ export function SignUpAuthPage({
               body="Verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."
             />
 
-            {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+            {formError ? (
+              <StatusMessage tone="error">
+                <span>{formError}</span>
+                {accountExistsHref ? (
+                  <Link className={styles.statusLink} href={accountExistsHref}>
+                    Sign in
+                  </Link>
+                ) : null}
+              </StatusMessage>
+            ) : null}
             {shouldForwardAuthRedirect ? <ReturnHint action="verifying" destination={authRedirect.redirectTo} /> : null}
 
             <form className={styles.form} noValidate onSubmit={handleStart}>
@@ -823,6 +867,10 @@ export function SignUpAuthPage({
                 value={displayName}
               />
 
+              <p className={styles.hint} id="sign-up-entry-hint">
+                Use at least {minEntryLength} characters. Keep it unique to this account.
+              </p>
+
               <EntryField
                 autoComplete="new-password"
                 error={fieldErrors.password}
@@ -833,10 +881,6 @@ export function SignUpAuthPage({
                 toggleShowEntry={() => setShowEntry((value) => !value)}
                 value={entry}
               />
-
-              <p className={styles.hint} id="sign-up-entry-hint">
-                Use at least {minEntryLength} characters. Keep it unique to this account.
-              </p>
 
               <div className={styles.turnstileField}>
                 <div
@@ -859,9 +903,9 @@ export function SignUpAuthPage({
               </button>
             </form>
 
-            {fallbackRedirect ? (
+            {fallbackRedirect && !accountExistsHref ? (
               <a className={`${styles.browserFallback} btn btn-ghost btn-lg`} href={fallbackRedirect}>
-                {fallbackRedirect.startsWith("/sign-in") ? "Go to sign in" : "Continue in browser"}
+                Continue in browser
               </a>
             ) : null}
 
@@ -899,7 +943,7 @@ export function SignUpAuthPage({
                 name="code"
                 onChange={setCode}
                 placeholder={"0".repeat(Math.min(codeLength, 6))}
-                type="text"
+                type="tel"
                 value={code}
               />
 
@@ -1141,9 +1185,14 @@ function EntryField({
           aria-label={`${showEntry ? "Hide" : "Show"} ${label.toLowerCase()}`}
           className={styles.visibilityToggle}
           onClick={toggleShowEntry}
+          title={`${showEntry ? "Hide" : "Show"} ${label.toLowerCase()}`}
           type="button"
         >
-          {showEntry ? "Hide" : "Show"}
+          {showEntry ? (
+            <EyeOff aria-hidden="true" size={18} strokeWidth={2} />
+          ) : (
+            <Eye aria-hidden="true" size={18} strokeWidth={2} />
+          )}
         </button>
       </div>
       {error ? (
@@ -1254,7 +1303,7 @@ function validateResetCredentials(code: string, newEntry: string, confirmEntry: 
     errors.newEntry = `Use at least ${minEntryLength} characters.`;
   }
   if (confirmEntry !== newEntry) {
-    errors.confirmEntry = "The two values need to match.";
+    errors.confirmEntry = "The two passwords need to match.";
   }
   return errors;
 }
@@ -1338,19 +1387,100 @@ function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function signInErrorMessage(error: string | null) {
+const rateLimitedMessage = "Too many attempts. Please try again in a few minutes.";
+const signInUnavailableMessage = "Sign-in is temporarily unavailable. Please try again in a few minutes.";
+
+function signInErrorMessage(error: string | null, status: number) {
   switch (error) {
     case "invalid_credentials":
-      return "Email or sign-in value is incorrect.";
     case "user_not_found":
-      return "No account found for this email. Create one to continue.";
+      return "Email or password is incorrect.";
     case "redirect_required":
       return "This account needs browser sign-in.";
-    case "rate_limited":
-      return "Too many attempts. Please try again later.";
     default:
-      return "We could not sign you in. Please try again.";
+      return authErrorMessage(status, error, {
+        fallback: signInUnavailableMessage,
+        unavailable: signInUnavailableMessage,
+      });
   }
+}
+
+function signUpStartErrorMessage(status: number, error: string | null, fallbackRedirect: string | null) {
+  if (fallbackRedirect?.startsWith("/sign-in") || isAccountExistsError(error)) {
+    return "An account already exists for this email.";
+  }
+
+  return authErrorMessage(status, error, {
+    fallback: "Sign-up is temporarily unavailable. Please try again in a few minutes.",
+    unavailable: "Sign-up is temporarily unavailable. Please try again in a few minutes.",
+  });
+}
+
+function authErrorMessage(
+  status: number,
+  error: string | null,
+  messages: {
+    fallback: string;
+    noAccount?: string;
+    rateLimited?: string;
+    unavailable?: string;
+  },
+) {
+  if (isRateLimitedError(status, error)) {
+    return messages.rateLimited ?? rateLimitedMessage;
+  }
+
+  if (messages.noAccount && isNoAccountError(status, error)) {
+    return messages.noAccount;
+  }
+
+  const passwordPolicy = passwordPolicyMessage(error);
+  if (passwordPolicy) {
+    return passwordPolicy;
+  }
+
+  if (isUnavailableError(status, error)) {
+    return messages.unavailable ?? messages.fallback;
+  }
+
+  return error ?? messages.fallback;
+}
+
+function isRateLimitedError(status: number, error: string | null) {
+  const lower = error?.toLowerCase() ?? "";
+  return status === 429 || error === "rate_limited" || lower.includes("too many");
+}
+
+function isNoAccountError(status: number, error: string | null) {
+  const lower = error?.toLowerCase() ?? "";
+  return status === 404 || error === "user_not_found" || lower.includes("no account");
+}
+
+function isUnavailableError(status: number, error: string | null) {
+  const lower = error?.toLowerCase() ?? "";
+  return (
+    status >= 500 ||
+    error === "signin_failed" ||
+    lower.includes("could not") ||
+    lower.includes("not available") ||
+    lower.includes("server")
+  );
+}
+
+function isAccountExistsError(error: string | null) {
+  return (error?.toLowerCase() ?? "").includes("account exists");
+}
+
+function passwordPolicyMessage(error: string | null) {
+  const lower = error?.toLowerCase() ?? "";
+  if (
+    lower.includes("stronger") &&
+    (lower.includes("password") || lower.includes("credential") || lower.includes("value"))
+  ) {
+    return "Use a stronger password.";
+  }
+
+  return null;
 }
 
 function callbackErrorMessage(error: string) {
