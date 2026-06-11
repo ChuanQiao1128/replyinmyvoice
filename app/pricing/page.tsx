@@ -6,6 +6,7 @@ import { BuyButton } from "../../components/landing/buy-button";
 import { PricingComparison } from "../../components/landing/pricing-comparison";
 import { PricingFaq } from "../../components/landing/pricing-faq";
 import { PricingTrust } from "../../components/landing/pricing-trust";
+import { buildProductOfferJsonLd } from "../../components/seo/json-ld";
 import { SiteHeader } from "../../components/site-header";
 import { fetchAzureAccountSummary } from "../../lib/azure-api";
 import { getCurrentSession } from "../../lib/entra-auth";
@@ -126,6 +127,17 @@ const focusPack: Pack = {
   cta: "Get Focus Pack",
 };
 
+const proApiPack: Pack = {
+  sku: "pro_api",
+  name: "Pro/API",
+  price: "NZ$19.90/mo",
+  allowance: "90 rewrites/mo",
+  term: "Monthly subscription",
+  description:
+    "For heavy use and developers. REST API + MCP server, one key, web and API rewrites share one balance.",
+  cta: "Go Pro/API",
+};
+
 const unitPriceBySku = {
   quick_pack: "≈ NZ$0.25 / rewrite",
   value_pack: "≈ NZ$0.23 / rewrite",
@@ -139,8 +151,24 @@ function packGroupLabel(pack: Pack) {
     : "One-time packs";
 }
 
+function nzdOfferPrice(displayPrice: string) {
+  const match = displayPrice.match(/NZ\$(\d+(?:\.\d{2})?)/);
+  return match?.[1] ?? displayPrice;
+}
+
+function productOfferForPack(pack: Pack) {
+  return {
+    name: pack.name,
+    price: nzdOfferPrice(pack.price),
+    priceCurrency: "NZD",
+  };
+}
+
 export default async function PricingPage() {
   const visiblePacks = isFocusPackEnabled() ? [...packs, focusPack] : packs;
+  const productOfferJsonLd = buildProductOfferJsonLd(
+    [...visiblePacks, proApiPack].map(productOfferForPack),
+  );
 
   // Signed-in awareness (PV-3 safe subset): read session + subscription status.
   // fetchAzureAccountSummary returns null when unauthenticated — handled gracefully.
@@ -158,6 +186,10 @@ export default async function PricingPage() {
 
   return (
     <main className="rimv">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productOfferJsonLd) }}
+      />
       <SiteHeader />
       <section className="page">
         <div className="wrap pricing-page">
@@ -292,19 +324,18 @@ export default async function PricingPage() {
               </div>
               <div className="pp-pack-head">
                 <div>
-                  <div className="pp-pack-name">Pro/API</div>
+                  <div className="pp-pack-name">{proApiPack.name}</div>
                   <div className="pp-pack-sub">
-                    90 rewrites/mo · Monthly subscription
+                    {proApiPack.allowance} · {proApiPack.term}
                   </div>
                   <div className="pp-unit-price">
                     {unitPriceBySku["pro_api"]}
                   </div>
                 </div>
-                <div className="pp-pack-price">NZ$19.90/mo</div>
+                <div className="pp-pack-price">{proApiPack.price}</div>
               </div>
               <p className="pp-pack-desc">
-                For heavy use and developers. REST API + MCP server, one key,
-                web and API rewrites share one balance.{" "}
+                {proApiPack.description}{" "}
                 <Link href="/developers">Read the integration docs &rarr;</Link>
               </p>
               <ul className="plan-list">
@@ -325,7 +356,7 @@ export default async function PricingPage() {
                   <PlanAction
                     configured={isPriceConfigured("pro_api")}
                     sku="pro_api"
-                    label="Go Pro/API"
+                    label={proApiPack.cta}
                   />
                 )}
               </div>

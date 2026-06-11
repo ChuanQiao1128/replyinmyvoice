@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { buildBreadcrumbListJsonLd } from "../../components/seo/json-ld";
 import { SiteHeader } from "../../components/site-header";
 
 export const metadata: Metadata = {
@@ -63,9 +64,20 @@ const sections = [
   },
 ];
 
+const privacyBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
+  { name: "Home", item: "https://replyinmyvoice.com/" },
+  { name: "Privacy", item: "https://replyinmyvoice.com/privacy" },
+]);
+
 export default function PrivacyPage() {
   return (
     <main className="rimv">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(privacyBreadcrumbJsonLd),
+        }}
+      />
       <SiteHeader />
       <section className="page">
         <div className="wrap" style={{ maxWidth: 920 }}>
