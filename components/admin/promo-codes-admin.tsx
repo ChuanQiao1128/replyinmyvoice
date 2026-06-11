@@ -9,6 +9,7 @@ import {
   BarChart3,
   CheckCircle2,
   Copy,
+  Download,
   Eye,
   EyeOff,
   Loader2,
@@ -31,6 +32,7 @@ import {
   derivePromoCodeStatus,
   editFormValuesFromCode,
   fieldErrorsFromAdminError,
+  normalizePromoCode,
   type AdminPromoCode,
   type AdminPromoCreateFieldErrors,
   type AdminPromoCreateFormValues,
@@ -41,8 +43,10 @@ import {
   validatePromoCreateForm,
   validatePromoEditForm,
 } from "../../lib/admin-promo-codes";
+import { serializeCsv } from "../../lib/csv-export";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 type PromoCodesAdminProps = {
   initialCodes: AdminPromoCode[];
@@ -51,6 +55,7 @@ type PromoCodesAdminProps = {
 
 type PromoStatusFilter = "all" | AdminPromoStatus;
 type PromoSortOrder = "newest" | "most-redeemed";
+type BulkActionState = "creating" | "disabling" | "exporting" | null;
 
 const statusClasses: Record<AdminPromoStatus, string> = {
   active: "border-clay/25 bg-mint text-clay",
@@ -111,6 +116,14 @@ export function initialFormValues(): AdminPromoCreateFormValues {
   };
 }
 
+function initialBulkFormValues(): AdminPromoCreateFormValues {
+  return {
+    ...initialFormValues(),
+    code: "",
+    displayCode: "",
+  };
+}
+
 function displayCode(code: AdminPromoCode) {
   return code.displayCode || code.code;
 }
@@ -134,6 +147,59 @@ function formatDate(value: string) {
 function dateTimeValue(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function parsedBulkCodes(value: string) {
+  return value
+    .split(/[\n,]+/)
+    .map((code) => code.trim())
+    .filter(Boolean);
+}
+
+function downloadCsv(csv: string, filename: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+}
+
+function promoCodeCsvRows(codes: AdminPromoCode[]) {
+  return codes.map((code) => {
+    const remaining = code.maxRedemptionsGlobal === null
+      ? "unlimited"
+      : Math.max(0, code.maxRedemptionsGlobal - code.redemptionCount);
+
+    return {
+      archivedAt: code.archivedAt,
+      code: code.code,
+      createdAt: code.createdAt,
+      creditsGranted: code.creditsGranted,
+      displayCode: code.displayCode,
+      grantTtlDays: code.grantTtlDays,
+      isActive: code.isActive,
+      maxRedemptionsGlobal: code.maxRedemptionsGlobal,
+      maxRedemptionsPerUser: code.maxRedemptionsPerUser,
+      redemptionCount: code.redemptionCount,
+      remainingRedemptions: remaining,
+      status: code.status,
+      updatedAt: code.updatedAt,
+      validFrom: code.validFrom,
+      validUntil: code.validUntil,
+    };
+  });
 }
 
 function focusableElements(container: HTMLElement) {
@@ -433,6 +499,17 @@ export function PromoCodesAdmin({
   const [formSuccess, setFormSuccess] = useState("");
   const [formSuccessCode, setFormSuccessCode] = useState("");
   const [creating, setCreating] = useState(false);
+  const [bulkCreateModalOpen, setBulkCreateModalOpen] = useState(false);
+  const [bulkCodes, setBulkCodes] = useState("");
+  const [bulkValues, setBulkValues] = useState<AdminPromoCreateFormValues>(() =>
+    initialBulkFormValues(),
+  );
+  const [bulkFieldErrors, setBulkFieldErrors] =
+    useState<AdminPromoCreateFieldErrors>({});
+  const [bulkError, setBulkError] = useState("");
+  const [bulkNotice, setBulkNotice] = useState("");
+  const [bulkAction, setBulkAction] = useState<BulkActionState>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -449,6 +526,7 @@ export function PromoCodesAdmin({
   const [statusFilter, setStatusFilter] = useState<PromoStatusFilter>("all");
   const [sortOrder, setSortOrder] = useState<PromoSortOrder>("newest");
   const createDialogRef = useRef<HTMLDivElement>(null);
+  const bulkCreateDialogRef = useRef<HTMLDivElement>(null);
   const editDialogRef = useRef<HTMLDivElement>(null);
   const statsDrawerRef = useRef<HTMLDivElement>(null);
 
@@ -486,6 +564,20 @@ export function PromoCodesAdmin({
         return dateTimeValue(right.createdAt) - dateTimeValue(left.createdAt);
       });
   }, [baseVisibleCodes, searchTerm, sortOrder, statusFilter]);
+  const selectedVisibleCodes = useMemo(
+    () => visibleCodes.filter((code) => selectedIds.has(code.id)),
+    [selectedIds, visibleCodes],
+  );
+  const selectedActiveCodes = useMemo(
+    () =>
+      selectedVisibleCodes.filter(
+        (code) => code.isActive && code.status !== "archived",
+      ),
+    [selectedVisibleCodes],
+  );
+  const allVisibleSelected = visibleCodes.length > 0 &&
+    visibleCodes.every((code) => selectedIds.has(code.id));
+  const someVisibleSelected = visibleCodes.some((code) => selectedIds.has(code.id));
   const archivedCount = useMemo(
     () => codes.filter((code) => code.status === "archived").length,
     [codes],
@@ -494,6 +586,16 @@ export function PromoCodesAdmin({
   const editingCode = editingId
     ? codes.find((code) => code.id === editingId) ?? null
     : null;
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const knownIds = new Set(codes.map((code) => code.id));
+      const next = new Set(
+        Array.from(current).filter((id) => knownIds.has(id)),
+      );
+      return next.size === current.size ? current : next;
+    });
+  }, [codes]);
 
   const loadDetail = useCallback(async (id: string, isCurrent: () => boolean = () => true) => {
     setDetailLoading(true);
@@ -619,6 +721,16 @@ export function PromoCodesAdmin({
     setFormError("");
   }, []);
 
+  const closeBulkCreateModal = useCallback(() => {
+    if (bulkAction === "creating") {
+      return;
+    }
+
+    setBulkCreateModalOpen(false);
+    setBulkFieldErrors({});
+    setBulkError("");
+  }, [bulkAction]);
+
   const closeStatsDrawer = useCallback(() => {
     setStatsDrawerOpen(false);
     setDetailError("");
@@ -626,6 +738,7 @@ export function PromoCodesAdmin({
 
   function openCreateModal() {
     cancelEdit();
+    setBulkCreateModalOpen(false);
     setStatsDrawerOpen(false);
     setFormValues((current) => (current.code.trim() ? current : initialFormValues()));
     setFieldErrors({});
@@ -633,9 +746,21 @@ export function PromoCodesAdmin({
     setCreateModalOpen(true);
   }
 
+  function openBulkCreateModal() {
+    cancelEdit();
+    setCreateModalOpen(false);
+    setStatsDrawerOpen(false);
+    setBulkValues((current) => current);
+    setBulkFieldErrors({});
+    setBulkError("");
+    setBulkNotice("");
+    setBulkCreateModalOpen(true);
+  }
+
   function openStatsDrawer(code: AdminPromoCode) {
     cancelEdit();
     setCreateModalOpen(false);
+    setBulkCreateModalOpen(false);
     setSelectedId(code.id);
     setDetailError("");
     if (detail?.promoCode.id !== code.id) {
@@ -650,6 +775,37 @@ export function PromoCodesAdmin({
     setFormError("");
     setFormSuccess("");
     setFormSuccessCode("");
+  }
+
+  function updateBulkField(field: keyof AdminPromoCreateFormValues, value: string) {
+    setBulkValues((current) => ({ ...current, [field]: value }));
+    setBulkFieldErrors((current) => ({ ...current, [field]: undefined }));
+    setBulkError("");
+    setBulkNotice("");
+  }
+
+  function toggleCodeSelection(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleVisibleSelection() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) {
+        visibleCodes.forEach((code) => next.delete(code.id));
+      } else {
+        visibleCodes.forEach((code) => next.add(code.id));
+      }
+      return next;
+    });
   }
 
   async function createCode(event: FormEvent<HTMLFormElement>) {
@@ -715,6 +871,129 @@ export function PromoCodesAdmin({
     }
   }
 
+  async function createBulkCodes(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const requestedCodes = parsedBulkCodes(bulkCodes);
+    if (requestedCodes.length === 0) {
+      setBulkError("Enter at least one promo code.");
+      return;
+    }
+
+    const seen = new Set<string>();
+    const validations = requestedCodes.map((rawCode) => {
+      const normalized = normalizePromoCode(rawCode);
+      if (!normalized) {
+        return {
+          error: `${rawCode} is not a valid code.`,
+          payload: null,
+          rawCode,
+        };
+      }
+
+      if (seen.has(normalized)) {
+        return {
+          error: `${rawCode} is listed more than once.`,
+          payload: null,
+          rawCode,
+        };
+      }
+      seen.add(normalized);
+
+      const validation = validatePromoCreateForm({
+        ...bulkValues,
+        code: rawCode,
+        displayCode: rawCode,
+      });
+
+      return validation.ok
+        ? { error: null, payload: validation.payload, rawCode }
+        : {
+            error: Object.values(validation.fieldErrors)[0] ??
+              `${rawCode} is not ready to create.`,
+            payload: null,
+            rawCode,
+          };
+    });
+    const firstValidationError = validations.find((validation) => validation.error);
+    if (firstValidationError) {
+      setBulkError(firstValidationError.error ?? "Fix the bulk create fields.");
+      setBulkFieldErrors({});
+      return;
+    }
+
+    setBulkAction("creating");
+    setBulkError("");
+    setBulkNotice("");
+    setBulkFieldErrors({});
+    const createdCodes: AdminPromoCode[] = [];
+    const failures: string[] = [];
+
+    try {
+      for (const validation of validations) {
+        if (!validation.payload) {
+          continue;
+        }
+
+        const response = await fetch("/api/admin/promo-codes", {
+          body: JSON.stringify(validation.payload),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        });
+        const payload = await readJsonPayload(response);
+        if (!response.ok) {
+          const nextFieldErrors = fieldErrorsFromAdminError(response.status, payload);
+          failures.push(
+            `${validation.rawCode}: ${
+              Object.values(nextFieldErrors)[0] ?? "could not be created"
+            }`,
+          );
+          continue;
+        }
+
+        const nextCode = codeFromPayload(payload);
+        if (!nextCode) {
+          failures.push(`${validation.rawCode}: create response was invalid`);
+          continue;
+        }
+
+        createdCodes.push(nextCode);
+      }
+
+      if (createdCodes.length > 0) {
+        setCodes((current) => [
+          ...createdCodes,
+          ...current.filter(
+            (code) => !createdCodes.some((created) => created.id === code.id),
+          ),
+        ]);
+        setSelectedId(createdCodes[0]?.id ?? selectedId);
+        await refreshList(createdCodes[0]?.id ?? selectedId);
+      }
+
+      if (failures.length > 0) {
+        setBulkError(failures.slice(0, 3).join(" "));
+      }
+
+      if (createdCodes.length > 0) {
+        setBulkNotice(
+          `${pluralize(createdCodes.length, "code")} created${
+            failures.length > 0 ? `, ${pluralize(failures.length, "failure")}.` : "."
+          }`,
+        );
+      }
+
+      if (createdCodes.length > 0 && failures.length === 0) {
+        setBulkCodes("");
+        setBulkValues(initialBulkFormValues());
+        setBulkCreateModalOpen(false);
+      }
+    } finally {
+      setBulkAction(null);
+    }
+  }
+
   async function setCodeActive(code: AdminPromoCode, active: boolean) {
     const action = active ? "enable" : "disable";
     const previousCodes = codes;
@@ -756,6 +1035,102 @@ export function PromoCodesAdmin({
       setCardError(code.id, message);
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function bulkDisableSelected() {
+    if (selectedActiveCodes.length === 0 || bulkAction) {
+      setListError("Select at least one active promo code to disable.");
+      return;
+    }
+
+    setBulkAction("disabling");
+    setBulkNotice("");
+    setListError("");
+    const failures: string[] = [];
+    let disabledCount = 0;
+
+    try {
+      for (const code of selectedActiveCodes) {
+        setUpdatingId(code.id);
+        const response = await fetch(`/api/admin/promo-codes/${code.id}/disable`, {
+          method: "POST",
+        });
+        const payload = await readJsonPayload(response);
+        if (!response.ok) {
+          const message = `Could not disable ${displayCode(code)}.`;
+          failures.push(message);
+          setCardError(code.id, message);
+          continue;
+        }
+
+        const nextCode = codeFromPayload(payload);
+        if (!nextCode) {
+          const message = `Disable response for ${displayCode(code)} was invalid.`;
+          failures.push(message);
+          setCardError(code.id, message);
+          continue;
+        }
+
+        disabledCount += 1;
+        clearCardError(nextCode.id);
+        setCodes((current) => replaceCode(current, nextCode));
+        setSelectedIds((current) => {
+          const next = new Set(current);
+          next.delete(nextCode.id);
+          return next;
+        });
+        if (selectedId === nextCode.id && detail) {
+          setDetail({ ...detail, promoCode: nextCode });
+        }
+      }
+
+      if (disabledCount > 0) {
+        setBulkNotice(`${pluralize(disabledCount, "code")} disabled.`);
+      }
+      if (failures.length > 0) {
+        setListError(failures.slice(0, 3).join(" "));
+      }
+    } finally {
+      setUpdatingId(null);
+      setBulkAction(null);
+    }
+  }
+
+  function exportVisibleCodesCsv() {
+    if (visibleCodes.length === 0 || bulkAction) {
+      setListError("There are no visible promo codes to export.");
+      return;
+    }
+
+    setBulkAction("exporting");
+    setListError("");
+    setBulkNotice("");
+    try {
+      const columns = [
+        "code",
+        "displayCode",
+        "status",
+        "creditsGranted",
+        "grantTtlDays",
+        "redemptionCount",
+        "remainingRedemptions",
+        "maxRedemptionsGlobal",
+        "maxRedemptionsPerUser",
+        "validFrom",
+        "validUntil",
+        "isActive",
+        "createdAt",
+        "updatedAt",
+        "archivedAt",
+      ];
+      const csv = serializeCsv(columns, promoCodeCsvRows(visibleCodes));
+      downloadCsv(csv, "promo-codes.csv");
+      setBulkNotice(`${pluralize(visibleCodes.length, "code")} exported.`);
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : "Could not export CSV.");
+    } finally {
+      setBulkAction(null);
     }
   }
 
@@ -928,6 +1303,7 @@ export function PromoCodesAdmin({
   }
 
   useDialogFocus(createModalOpen, createDialogRef, closeCreateModal);
+  useDialogFocus(bulkCreateModalOpen, bulkCreateDialogRef, closeBulkCreateModal);
   useDialogFocus(isEditModalOpen, editDialogRef, cancelEdit);
   useDialogFocus(statsDrawerOpen, statsDrawerRef, closeStatsDrawer);
 
@@ -1080,6 +1456,169 @@ export function PromoCodesAdmin({
             <Plus className="h-4 w-4" aria-hidden="true" />
           )}
           Create code
+        </Button>
+      </form>
+    );
+  }
+
+  function renderBulkCreateForm() {
+    return (
+      <form className="space-y-4" onSubmit={createBulkCodes}>
+        <div>
+          <label className="text-sm font-semibold text-ink" htmlFor="promo-bulk-codes">
+            Codes
+          </label>
+          <Textarea
+            className="mt-1 min-h-36 font-mono"
+            id="promo-bulk-codes"
+            onChange={(event) => {
+              setBulkCodes(event.target.value);
+              setBulkError("");
+              setBulkNotice("");
+            }}
+            placeholder={"SPRING-2026\nSUMMER-2026\nTEACHERS-2026"}
+            value={bulkCodes}
+          />
+          <p className="mt-1 text-xs text-ink/55">
+            Enter one code per line or separate codes with commas.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label
+              className="text-sm font-semibold text-ink"
+              htmlFor="promo-bulk-credits"
+            >
+              Credits
+            </label>
+            <Input
+              {...fieldErrorProps(bulkFieldErrors.credits, "promo-bulk-credits-error")}
+              id="promo-bulk-credits"
+              inputMode="numeric"
+              onChange={(event) => updateBulkField("credits", event.target.value)}
+              value={bulkValues.credits}
+            />
+            <FieldError id="promo-bulk-credits-error">
+              {bulkFieldErrors.credits}
+            </FieldError>
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="promo-bulk-ttl">
+              TTL days
+            </label>
+            <Input
+              {...fieldErrorProps(bulkFieldErrors.ttlDays, "promo-bulk-ttl-error")}
+              id="promo-bulk-ttl"
+              inputMode="numeric"
+              onChange={(event) => updateBulkField("ttlDays", event.target.value)}
+              value={bulkValues.ttlDays}
+            />
+            <FieldError id="promo-bulk-ttl-error">
+              {bulkFieldErrors.ttlDays}
+            </FieldError>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label
+              className="text-sm font-semibold text-ink"
+              htmlFor="promo-bulk-global-cap"
+            >
+              Global cap
+            </label>
+            <Input
+              {...fieldErrorProps(
+                bulkFieldErrors.globalCap,
+                "promo-bulk-global-cap-error",
+              )}
+              id="promo-bulk-global-cap"
+              inputMode="numeric"
+              onChange={(event) => updateBulkField("globalCap", event.target.value)}
+              placeholder="Unlimited"
+              value={bulkValues.globalCap}
+            />
+            <FieldError id="promo-bulk-global-cap-error">
+              {bulkFieldErrors.globalCap}
+            </FieldError>
+          </div>
+          <div>
+            <label
+              className="text-sm font-semibold text-ink"
+              htmlFor="promo-bulk-per-user-cap"
+            >
+              Per-user cap
+            </label>
+            <Input
+              {...fieldErrorProps(
+                bulkFieldErrors.perUserCap,
+                "promo-bulk-per-user-cap-error",
+              )}
+              id="promo-bulk-per-user-cap"
+              inputMode="numeric"
+              onChange={(event) => updateBulkField("perUserCap", event.target.value)}
+              value={bulkValues.perUserCap}
+            />
+            <FieldError id="promo-bulk-per-user-cap-error">
+              {bulkFieldErrors.perUserCap}
+            </FieldError>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="promo-bulk-from">
+              Valid from
+            </label>
+            <Input
+              {...fieldErrorProps(bulkFieldErrors.validFrom, "promo-bulk-from-error")}
+              id="promo-bulk-from"
+              onChange={(event) => updateBulkField("validFrom", event.target.value)}
+              type="datetime-local"
+              value={bulkValues.validFrom}
+            />
+            <FieldError id="promo-bulk-from-error">
+              {bulkFieldErrors.validFrom}
+            </FieldError>
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="promo-bulk-until">
+              Valid until
+            </label>
+            <Input
+              {...fieldErrorProps(
+                bulkFieldErrors.validUntil,
+                "promo-bulk-until-error",
+              )}
+              id="promo-bulk-until"
+              onChange={(event) => updateBulkField("validUntil", event.target.value)}
+              type="datetime-local"
+              value={bulkValues.validUntil}
+            />
+            <FieldError id="promo-bulk-until-error">
+              {bulkFieldErrors.validUntil}
+            </FieldError>
+          </div>
+        </div>
+
+        {bulkError ? (
+          <p className="rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
+            {bulkError}
+          </p>
+        ) : null}
+
+        <Button
+          className="w-full"
+          disabled={bulkAction === "creating"}
+          type="submit"
+        >
+          {bulkAction === "creating" ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          )}
+          {bulkAction === "creating" ? "Creating..." : "Create codes"}
         </Button>
       </form>
     );
@@ -1286,10 +1825,42 @@ export function PromoCodesAdmin({
               <Ticket className="h-5 w-5 text-clay" aria-hidden="true" />
               <h2 className="text-lg font-semibold text-ink">Codes</h2>
             </div>
-            <Button onClick={openCreateModal} type="button">
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              New code
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={openCreateModal} type="button">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                New code
+              </Button>
+              <Button onClick={openBulkCreateModal} type="button" variant="secondary">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Bulk create
+              </Button>
+              <Button
+                disabled={selectedActiveCodes.length === 0 || bulkAction !== null}
+                onClick={() => void bulkDisableSelected()}
+                type="button"
+                variant="secondary"
+              >
+                {bulkAction === "disabling" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Ban className="h-4 w-4" aria-hidden="true" />
+                )}
+                Bulk disable
+              </Button>
+              <Button
+                disabled={visibleCodes.length === 0 || bulkAction !== null}
+                onClick={exportVisibleCodesCsv}
+                type="button"
+                variant="secondary"
+              >
+                {bulkAction === "exporting" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                )}
+                Export CSV
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_12rem_12rem_auto] lg:items-end">
@@ -1408,6 +1979,12 @@ export function PromoCodesAdmin({
             </div>
           ) : null}
 
+          {bulkNotice ? (
+            <div className="rounded-md border border-clay/25 bg-mint px-3 py-2 text-sm font-medium text-clay">
+              {bulkNotice}
+            </div>
+          ) : null}
+
           {listError ? (
             <p className="rounded-md border border-rust/25 bg-rust/10 px-3 py-2 text-sm font-medium text-rust">
               {listError}
@@ -1433,9 +2010,23 @@ export function PromoCodesAdmin({
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-line">
-              <table role="table" className="min-w-[64rem] w-full divide-y divide-line text-left text-sm">
+              <table role="table" className="min-w-[68rem] w-full divide-y divide-line text-left text-sm">
                 <thead className="bg-paper text-xs uppercase text-ink/55">
                   <tr>
+                    <th className="w-12 px-4 py-3 font-semibold" scope="col">
+                      <input
+                        aria-label="Select visible promo codes"
+                        checked={allVisibleSelected}
+                        className="h-4 w-4 rounded border-line text-clay focus:ring-clay/30"
+                        onChange={toggleVisibleSelection}
+                        ref={(input) => {
+                          if (input) {
+                            input.indeterminate = someVisibleSelected && !allVisibleSelected;
+                          }
+                        }}
+                        type="checkbox"
+                      />
+                    </th>
                     <th className="px-4 py-3 font-semibold" scope="col">Code</th>
                     <th className="px-4 py-3 font-semibold" scope="col">Status</th>
                     <th className="px-4 py-3 font-semibold" scope="col">Credits / TTL</th>
@@ -1453,6 +2044,7 @@ export function PromoCodesAdmin({
                     const isArchived = code.status === "archived";
                     const isBusy = updatingId === code.id;
                     const isSelected = selectedId === code.id;
+                    const isChecked = selectedIds.has(code.id);
                     const isConfirmingArchive = confirmArchiveId === code.id;
                     const rowCopyKey = `row:${code.id}`;
                     const isCopied = copiedKey === rowCopyKey;
@@ -1464,6 +2056,15 @@ export function PromoCodesAdmin({
                         className={isSelected ? "bg-mint/45" : "transition hover:bg-paper/60"}
                         key={code.id}
                       >
+                        <td className="px-4 py-4 align-top">
+                          <input
+                            aria-label={`Select ${codeDisplay}`}
+                            checked={isChecked}
+                            className="h-4 w-4 rounded border-line text-clay focus:ring-clay/30"
+                            onChange={() => toggleCodeSelection(code.id)}
+                            type="checkbox"
+                          />
+                        </td>
                         <td className="px-4 py-4 align-top">
                           <div className="flex min-w-0 items-start gap-2">
                             <div className="min-w-0">
@@ -1667,6 +2268,50 @@ export function PromoCodesAdmin({
               </Button>
             </div>
             {renderCreateForm()}
+          </section>
+        </div>
+      ) : null}
+
+      {bulkCreateModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeBulkCreateModal();
+            }
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="promo-bulk-create-title"
+            aria-modal="true"
+            className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-line bg-white p-5 shadow-crisp focus:outline-none md:p-6"
+            ref={bulkCreateDialogRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Plus className="h-5 w-5 text-clay" aria-hidden="true" />
+                <h2
+                  className="text-lg font-semibold text-ink"
+                  id="promo-bulk-create-title"
+                >
+                  Bulk create
+                </h2>
+              </div>
+              <Button
+                aria-label="Close bulk create form"
+                className="min-h-8 min-w-8 px-2 py-1"
+                disabled={bulkAction === "creating"}
+                onClick={closeBulkCreateModal}
+                type="button"
+                variant="ghost"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+            {renderBulkCreateForm()}
           </section>
         </div>
       ) : null}

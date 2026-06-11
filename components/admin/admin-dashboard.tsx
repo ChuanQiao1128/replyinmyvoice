@@ -9,6 +9,7 @@ import {
   Search,
 } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import type {
@@ -112,6 +113,10 @@ function formatUsd(value: number) {
   }).format(value);
 }
 
+function formatCustomerPaymentAmount(value: number) {
+  return `NZ$ ${value}`;
+}
+
 function formatStatus(value: string) {
   return value
     .trim()
@@ -152,6 +157,30 @@ function StatTile({
       <p className="mt-3 text-2xl font-semibold tracking-normal text-ink">
         {value}
       </p>
+    </Card>
+  );
+}
+
+function AdminStateCard({
+  icon,
+  title,
+  message,
+}: {
+  icon: ReactNode;
+  title: string;
+  message: string;
+}) {
+  return (
+    <Card className="p-8">
+      <div className="flex items-start gap-3">
+        {icon}
+        <div>
+          <h2 className="text-xl font-semibold tracking-normal text-ink">
+            {title}
+          </h2>
+          <p className="mt-2 text-sm text-ink/65">{message}</p>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -346,36 +375,46 @@ export function AdminDashboard() {
       </div>
 
       {state.status === "loading" ? (
-        <Card className="p-8">
-          <div className="flex items-center gap-3 text-ink/65">
-            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-            <p>Loading admin data...</p>
-          </div>
-        </Card>
+        <AdminStateCard
+          icon={
+            <Loader2
+              className="mt-0.5 h-5 w-5 animate-spin text-clay"
+              aria-hidden="true"
+            />
+          }
+          title="Loading admin dashboard"
+          message="Preparing stats, support queue, and users."
+        />
       ) : null}
 
       {state.status === "error" ? (
-        <Card className="p-8">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 text-rust" aria-hidden="true" />
-            <div>
-              <h2 className="text-xl font-semibold tracking-normal">
-                Admin data is unavailable.
-              </h2>
-              <p className="mt-2 text-sm text-ink/65">{state.message}</p>
-            </div>
-          </div>
-        </Card>
+        <AdminStateCard
+          icon={
+            <AlertCircle
+              className="mt-0.5 h-5 w-5 text-rust"
+              aria-hidden="true"
+            />
+          }
+          title="Could not load admin dashboard"
+          message={state.message}
+        />
       ) : null}
 
       {state.status === "ready" ? (
         <div className="space-y-6">
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <StatTile label="Total users" value={state.stats.totalUsers} />
             <StatTile label="Paid users" value={state.stats.paidUsers} />
             <StatTile label="Credits remaining" value={state.stats.creditRemaining} />
             <StatTile label="Refund review" value={state.stats.refundReview.flaggedUserCount} />
-            <StatTile label="Cost to date" value={formatUsd(state.stats.costToDateUsd)} />
+            <StatTile
+              label="Customer payments (NZ$)"
+              value={formatCustomerPaymentAmount(state.stats.paymentAmountTotal)}
+            />
+            <StatTile
+              label="Provider cost (USD)"
+              value={formatUsd(state.stats.costToDateUsd)}
+            />
           </section>
 
           <Link
@@ -548,7 +587,9 @@ export function AdminDashboard() {
                     <th className="px-5 py-3 font-semibold">Status</th>
                     <th className="px-5 py-3 font-semibold">Usage</th>
                     <th className="px-5 py-3 font-semibold">Credits</th>
-                    <th className="px-5 py-3 font-semibold">Cost</th>
+                    <th className="px-5 py-3 font-semibold">
+                      Provider cost (USD)
+                    </th>
                     <th className="px-5 py-3 font-semibold">Created</th>
                     <th className="px-5 py-3 font-semibold">Actions</th>
                   </tr>
@@ -609,7 +650,14 @@ export function AdminDashboard() {
                   {filteredUsers.length === 0 ? (
                     <tr>
                       <td className="px-5 py-8 text-center text-sm text-ink/55" colSpan={7}>
-                        No users match this search.
+                        {state.users.totalCount === 0
+                          ? "No users found."
+                          : "No users match this search."}
+                        <span className="mt-1 block">
+                          {state.users.totalCount === 0
+                            ? "New signups will appear here after they create an account."
+                            : "Adjust the search term to show more users."}
+                        </span>
                       </td>
                     </tr>
                   ) : null}

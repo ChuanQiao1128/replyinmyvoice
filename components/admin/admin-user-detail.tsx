@@ -44,6 +44,9 @@ type AccountActivityEntry = {
   sortIndex: number;
 };
 
+type PaymentFilter = "all" | "with-receipt" | "without-receipt";
+type PaymentSortOrder = "newest" | "amount-desc" | "amount-asc";
+
 async function readJsonError(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
     error?: string;
@@ -148,7 +151,12 @@ function formatAmountWithCurrency(
     return null;
   }
 
-  return currency ? `${amount} ${currency.toUpperCase()}` : String(amount);
+  const normalizedCurrency = currency?.trim().toLowerCase();
+  if (normalizedCurrency === "nzd") {
+    return `NZ$ ${amount}`;
+  }
+
+  return currency ? `${currency.toUpperCase()} ${amount}` : String(amount);
 }
 
 function joinActivityDetail(parts: Array<string | null | undefined>) {
@@ -160,10 +168,8 @@ function joinActivityDetail(parts: Array<string | null | undefined>) {
 
 function paymentLabel(payment: AdminPayment) {
   const intent = payment.paymentIntentId ?? "No payment intent";
-  const amount =
-    payment.amountTotal !== null && payment.currency
-      ? `${payment.amountTotal} ${payment.currency.toUpperCase()}`
-      : "amount not stored";
+  const amount = formatAmountWithCurrency(payment.amountTotal, payment.currency) ??
+    "amount not stored";
   return `${intent} · ${amount}`;
 }
 
@@ -534,10 +540,67 @@ function CreditTable({ credits }: { credits: AdminCredit[] }) {
 }
 
 function PaymentTable({ payments }: { payments: AdminPayment[] }) {
+  const [filter, setFilter] = useState<PaymentFilter>("all");
+  const [sortOrder, setSortOrder] = useState<PaymentSortOrder>("newest");
+  const visiblePayments = useMemo(() => {
+    return [...payments]
+      .filter((payment) => {
+        if (filter === "with-receipt") {
+          return Boolean(payment.receiptUrl);
+        }
+        if (filter === "without-receipt") {
+          return !payment.receiptUrl;
+        }
+        return true;
+      })
+      .sort((left, right) => {
+        if (sortOrder === "amount-desc") {
+          return (right.amountTotal ?? -1) - (left.amountTotal ?? -1);
+        }
+        if (sortOrder === "amount-asc") {
+          return (left.amountTotal ?? Number.MAX_SAFE_INTEGER) -
+            (right.amountTotal ?? Number.MAX_SAFE_INTEGER);
+        }
+
+        return activityTimeValue(right.grantedAt) - activityTimeValue(left.grantedAt);
+      });
+  }, [filter, payments, sortOrder]);
+
   return (
     <Card className="overflow-hidden">
-      <div className="border-b border-line px-5 py-4">
-        <h2 className="text-xl font-semibold tracking-normal">Payments</h2>
+      <div className="flex flex-col gap-3 border-b border-line px-5 py-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold tracking-normal">Payments</h2>
+          <p className="mt-1 text-sm text-ink/55">
+            Customer payment amounts are shown with their stored currency label.
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-xs font-semibold uppercase text-ink/50">
+            Filter
+            <select
+              className="mt-1 min-h-10 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold normal-case text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+              onChange={(event) => setFilter(event.target.value as PaymentFilter)}
+              value={filter}
+            >
+              <option value="all">All payments</option>
+              <option value="with-receipt">With receipt</option>
+              <option value="without-receipt">Missing receipt</option>
+            </select>
+          </label>
+          <label className="text-xs font-semibold uppercase text-ink/50">
+            Sort
+            <select
+              className="mt-1 min-h-10 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold normal-case text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/15"
+              onChange={(event) => setSortOrder(event.target.value as PaymentSortOrder)}
+              value={sortOrder}
+            >
+              <option value="newest">Newest first</option>
+              <option value="amount-desc">Amount high to low</option>
+              <option value="amount-asc">Amount low to high</option>
+            </select>
+          </label>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
@@ -545,21 +608,22 @@ function PaymentTable({ payments }: { payments: AdminPayment[] }) {
             <tr>
               <th className="px-5 py-3 font-semibold">Payment intent</th>
               <th className="px-5 py-3 font-semibold">SKU</th>
-              <th className="px-5 py-3 font-semibold">Amount</th>
+              <th className="px-5 py-3 font-semibold">Customer payment</th>
               <th className="px-5 py-3 font-semibold">Credits</th>
               <th className="px-5 py-3 font-semibold">Receipt</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {payments.map((payment) => (
+            {visiblePayments.map((payment) => (
               <tr key={payment.creditId} className="bg-white/45">
                 <td className="px-5 py-4 font-mono text-xs">
                   {valueOrDash(payment.paymentIntentId)}
                 </td>
                 <td className="px-5 py-4">{valueOrDash(payment.sku)}</td>
                 <td className="px-5 py-4">
-                  {payment.amountTotal ?? "—"}{" "}
-                  {payment.currency ? payment.currency.toUpperCase() : ""}
+                  {valueOrDash(
+                    formatAmountWithCurrency(payment.amountTotal, payment.currency),
+                  )}
                 </td>
                 <td className="px-5 py-4">
                   {payment.creditsRemaining} of {payment.creditsGranted}
@@ -580,10 +644,12 @@ function PaymentTable({ payments }: { payments: AdminPayment[] }) {
                 </td>
               </tr>
             ))}
-            {payments.length === 0 ? (
+            {visiblePayments.length === 0 ? (
               <tr>
                 <td className="px-5 py-8 text-center text-ink/55" colSpan={5}>
-                  No payment rows found.
+                  {payments.length === 0
+                    ? "No payment rows found."
+                    : "No payments match the current filters."}
                 </td>
               </tr>
             ) : null}
@@ -792,9 +858,19 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
       {state.status === "loading" ? (
         <Card className="p-8">
-          <div className="flex items-center gap-3 text-ink/65">
-            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-            <p>Loading user detail...</p>
+          <div className="flex items-start gap-3">
+            <Loader2
+              className="mt-0.5 h-5 w-5 animate-spin text-clay"
+              aria-hidden="true"
+            />
+            <div>
+              <h1 className="text-2xl font-semibold tracking-normal text-ink">
+                Loading user detail
+              </h1>
+              <p className="mt-2 text-sm text-ink/65">
+                Preparing subscription, payments, credits, and usage.
+              </p>
+            </div>
           </div>
         </Card>
       ) : null}
@@ -805,7 +881,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             <AlertCircle className="mt-0.5 h-5 w-5 text-rust" aria-hidden="true" />
             <div>
               <h1 className="text-2xl font-semibold tracking-normal">
-                User detail is unavailable.
+                Could not load user detail
               </h1>
               <p className="mt-2 text-sm text-ink/65">{state.message}</p>
             </div>
@@ -833,7 +909,10 @@ export function AdminUserDetail({ userId }: { userId: string }) {
                 label="Subscription"
                 value={formatStatus(detail.subscription.status)}
               />
-              <SummaryItem label="Cost to date" value={formatUsd(detail.costToDateUsd)} />
+              <SummaryItem
+                label="Provider cost (USD)"
+                value={formatUsd(detail.costToDateUsd)}
+              />
               <SummaryItem label="Created" value={formatDateTime(detail.createdAt)} />
             </Card>
           </section>
