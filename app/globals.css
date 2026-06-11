@@ -1404,6 +1404,39 @@ section.block {
   font-weight: 500;
 }
 
+.pricing-resume-banner {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 720px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-soft);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 18px 48px -34px rgba(16, 31, 25, 0.42);
+}
+
+.pricing-resume-title {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.pricing-resume-detail {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.pricing-resume-cancel {
+  min-width: 92px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 /* Developer (Pro/API) card — full-width band below the free + packs row */
 .plan-pro {
   grid-column: 1 / -1;
