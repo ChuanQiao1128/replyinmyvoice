@@ -13,12 +13,16 @@ type SignUpPageProps = {
 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const params = await searchParams;
-  const redirectTo = firstParam(params?.redirectTo) ?? "/app";
+  const rawRedirectTo = firstParam(params?.redirectTo);
+  const redirectTo = rawRedirectTo ?? "/app";
 
   return (
     <SignUpAuthPage
       initialEmail={firstParam(params?.email) ?? ""}
+      intent={firstParam(params?.intent)}
       redirectTo={redirectTo}
+      showReturnHint={rawRedirectTo !== undefined}
+      sku={firstParam(params?.sku)}
     />
   );
 }

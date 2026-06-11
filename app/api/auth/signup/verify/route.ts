@@ -6,6 +6,11 @@ import {
   readSignupFlowCookie,
 } from "../../../../../lib/entra-auth";
 import {
+  buildPostAuthRedirectPath,
+  normalizeAuthRedirectParams,
+  type AuthRedirectInput,
+} from "../../../../../lib/auth-redirect-intent";
+import {
   NativeAuthError,
   signupContinue,
 } from "../../../../../lib/entra-native-auth";
@@ -24,7 +29,7 @@ export async function POST(request: Request) {
 
   const body = await readJsonObject(request);
   const code = optionalText(body?.code, 32);
-  const redirectTo = safeRedirectTo(body?.redirectTo);
+  const bodyAuthRedirect = normalizeAuthRedirectParams(body ?? {});
 
   if (!code) {
     return signupJsonError("Enter the verification code.", 400);
@@ -42,7 +47,10 @@ export async function POST(request: Request) {
       code,
       continuationToken: flow.continuationToken,
     });
-    const response = NextResponse.redirect(`${getAppUrl()}${redirectTo}`, 302);
+    const response = NextResponse.redirect(
+      `${getAppUrl()}${buildPostAuthRedirectPath(authRedirectFromSignupFlow(flow, bodyAuthRedirect))}`,
+      302,
+    );
     await createSessionFromTokens({
       accessToken: completed.token.access_token,
       idToken: completed.token.id_token,
@@ -75,13 +83,6 @@ function optionalText(value: unknown, maxLength: number) {
   return text && text.length <= maxLength ? text : null;
 }
 
-function safeRedirectTo(value: unknown) {
-  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
-    return "/app";
-  }
-  return value;
-}
-
 function isUsableSignupFlow(
   flow: Awaited<ReturnType<typeof readSignupFlowCookie>>,
 ): flow is SignupFlow {
@@ -92,6 +93,17 @@ function isUsableSignupFlow(
     typeof flow.email === "string" &&
     flow.email,
   );
+}
+
+function authRedirectFromSignupFlow(
+  flow: SignupFlow,
+  fallback: AuthRedirectInput,
+) {
+  return normalizeAuthRedirectParams({
+    intent: flow.intent ?? fallback.intent,
+    redirectTo: flow.redirectTo ?? fallback.redirectTo,
+    sku: flow.sku ?? fallback.sku,
+  });
 }
 
 async function nativeVerifyError(error: unknown) {

@@ -74,7 +74,7 @@ describe("BuyButton checkout flow", () => {
     stateUpdates.error = [];
   });
 
-  it("sends signed-out users to sign in with pricing as the return route", async () => {
+  it("sends signed-out users to sign in with pricing and purchase intent", async () => {
     const assign = vi.fn();
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(null, { status: 401 }),
@@ -91,7 +91,9 @@ describe("BuyButton checkout flow", () => {
       },
       body: JSON.stringify({ sku: "quick_pack" }),
     });
-    expect(assign).toHaveBeenCalledWith("/sign-in?redirectTo=%2Fpricing");
+    expect(assign).toHaveBeenCalledWith(
+      "/sign-in?redirectTo=%2Fpricing&intent=buy&sku=quick_pack",
+    );
     expect(stateUpdates.error).toEqual([""]);
   });
 

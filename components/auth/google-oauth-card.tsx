@@ -3,25 +3,35 @@
 import Link from "next/link";
 import { type CSSProperties, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  buildAuthRedirectSearchParams,
+  buildPostAuthRedirectPath,
+  normalizeAuthRedirectParams,
+  type AuthRedirectInput,
+} from "../../lib/auth-redirect-intent";
 import styles from "./auth-panels.module.css";
 
 type AuthMode = "sign-in" | "sign-up" | "reset";
 type FieldErrors = Partial<Record<"email" | "password" | "displayName" | "code" | "newEntry" | "confirmEntry", string>>;
 type JsonBody = Record<string, unknown> | null;
+type AuthRedirectPageProps = {
+  redirectTo?: string;
+  intent?: string;
+  sku?: string;
+  showReturnHint?: boolean;
+};
 
-type SignInAuthPageProps = {
+type SignInAuthPageProps = AuthRedirectPageProps & {
   callbackError?: string;
   initialEmail?: string;
-  redirectTo?: string;
   resetSuccess?: boolean;
 };
 
-type SignUpAuthPageProps = {
+type SignUpAuthPageProps = AuthRedirectPageProps & {
   initialEmail?: string;
-  redirectTo?: string;
 };
 
-type ResetAuthPageProps = {
+type ResetAuthPageProps = AuthRedirectPageProps & {
   initialEmail?: string;
 };
 
@@ -81,9 +91,14 @@ export function SignInAuthPage({
   callbackError,
   initialEmail = "",
   redirectTo = defaultRedirectTo,
+  intent,
   resetSuccess = false,
+  showReturnHint = false,
+  sku,
 }: SignInAuthPageProps) {
-  const safeRedirect = safeRedirectTo(redirectTo);
+  const authRedirect = normalizeAuthRedirectParams({ intent, redirectTo, sku });
+  const postAuthRedirect = buildPostAuthRedirectPath(authRedirect);
+  const shouldForwardAuthRedirect = showReturnHint || Boolean(authRedirect.intent || authRedirect.sku);
   const [email, setEmail] = useState(initialEmail);
   const [entry, setEntry] = useState("");
   const [showEntry, setShowEntry] = useState(false);
@@ -92,7 +107,10 @@ export function SignInAuthPage({
   const [fallbackRedirect, setFallbackRedirect] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const googleHref = useMemo(() => buildGoogleHref(safeRedirect, email), [email, safeRedirect]);
+  const googleHref = useMemo(
+    () => buildGoogleHref(authRedirect, email),
+    [authRedirect.intent, authRedirect.redirectTo, authRedirect.sku, email],
+  );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,19 +128,23 @@ export function SignInAuthPage({
 
     try {
       const response = await fetch("/api/auth/signin", {
-        body: JSON.stringify({ email, password: entry, redirectTo: safeRedirect }),
+        body: JSON.stringify({
+          email,
+          password: entry,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
 
       if (response.redirected) {
-        moveToRedirect(response.url, safeRedirect);
+        moveToRedirect(response.url, postAuthRedirect);
         return;
       }
 
       const json = await readJsonBody(response);
       if (response.ok) {
-        window.location.assign(safeRedirect);
+        window.location.assign(postAuthRedirect);
         return;
       }
 
@@ -156,6 +178,7 @@ export function SignInAuthPage({
         {resetSuccess ? (
           <StatusMessage tone="success">Your sign-in value has been reset. Sign in with the new value.</StatusMessage>
         ) : null}
+        {shouldForwardAuthRedirect ? <ReturnHint destination={authRedirect.redirectTo} /> : null}
         {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
 
         <form className={styles.form} noValidate onSubmit={handleSubmit}>
@@ -187,7 +210,10 @@ export function SignInAuthPage({
             <span className={styles.hint} id="sign-in-entry-hint">
               Use at least {minEntryLength} characters.
             </span>
-            <Link className={styles.textLink} href="/forgot-password">
+            <Link
+              className={styles.textLink}
+              href={withAuthParams("/forgot-password", authRedirect, { email }, shouldForwardAuthRedirect)}
+            >
               Forgot password?
             </Link>
           </div>
@@ -208,7 +234,10 @@ export function SignInAuthPage({
 
         <footer className={styles.panelFooter}>
           <span>New here?</span>
-          <Link className={styles.textLink} href={withEmail("/sign-up", email)}>
+          <Link
+            className={styles.textLink}
+            href={withAuthParams("/sign-up", authRedirect, { email }, shouldForwardAuthRedirect)}
+          >
             Create an account
           </Link>
         </footer>
@@ -219,7 +248,13 @@ export function SignInAuthPage({
 
 export function ResetAuthPage({
   initialEmail = "",
+  redirectTo = defaultRedirectTo,
+  intent,
+  showReturnHint = false,
+  sku,
 }: ResetAuthPageProps) {
+  const authRedirect = normalizeAuthRedirectParams({ intent, redirectTo, sku });
+  const shouldForwardAuthRedirect = showReturnHint || Boolean(authRedirect.intent || authRedirect.sku);
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState("");
@@ -261,7 +296,10 @@ export function ResetAuthPage({
 
     try {
       const response = await fetch("/api/auth/reset/start", {
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -303,14 +341,21 @@ export function ResetAuthPage({
 
     try {
       const response = await fetch("/api/auth/reset/verify", {
-        body: JSON.stringify({ code: trimmedCode, newPassword: newEntry }),
+        body: JSON.stringify({
+          code: trimmedCode,
+          newPassword: newEntry,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       const json = await readJsonBody(response);
 
       if (response.ok && json?.ok === true) {
-        window.location.assign(textValue(json.next) ?? "/sign-in?reset=success");
+        window.location.assign(
+          textValue(json.next) ??
+            withAuthParams("/sign-in", authRedirect, { reset: "success" }, shouldForwardAuthRedirect),
+        );
         return;
       }
 
@@ -370,6 +415,7 @@ export function ResetAuthPage({
             />
 
             {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+            {shouldForwardAuthRedirect ? <ReturnHint destination={authRedirect.redirectTo} /> : null}
 
             <form className={styles.form} noValidate onSubmit={handleStart}>
               <TextField
@@ -392,7 +438,10 @@ export function ResetAuthPage({
 
             <footer className={styles.panelFooter}>
               <span>Remembered it?</span>
-              <Link className={styles.textLink} href={withEmail("/sign-in", email)}>
+              <Link
+                className={styles.textLink}
+                href={withAuthParams("/sign-in", authRedirect, { email }, shouldForwardAuthRedirect)}
+              >
                 Sign in
               </Link>
             </footer>
@@ -482,8 +531,13 @@ export function ResetAuthPage({
 export function SignUpAuthPage({
   initialEmail = "",
   redirectTo = defaultRedirectTo,
+  intent,
+  showReturnHint = false,
+  sku,
 }: SignUpAuthPageProps) {
-  const safeRedirect = safeRedirectTo(redirectTo);
+  const authRedirect = normalizeAuthRedirectParams({ intent, redirectTo, sku });
+  const postAuthRedirect = buildPostAuthRedirectPath(authRedirect);
+  const shouldForwardAuthRedirect = showReturnHint || Boolean(authRedirect.intent || authRedirect.sku);
   const [step, setStep] = useState<"details" | "code">("details");
   const [email, setEmail] = useState(initialEmail);
   const [displayName, setDisplayName] = useState("");
@@ -504,7 +558,10 @@ export function SignUpAuthPage({
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const siteKey = getTurnstileSiteKey();
 
-  const googleHref = useMemo(() => buildGoogleHref(safeRedirect, email), [email, safeRedirect]);
+  const googleHref = useMemo(
+    () => buildGoogleHref(authRedirect, email),
+    [authRedirect.intent, authRedirect.redirectTo, authRedirect.sku, email],
+  );
 
   useEffect(() => {
     const container = turnstileContainerRef.current;
@@ -608,6 +665,7 @@ export function SignUpAuthPage({
           displayName: displayName.trim() || undefined,
           email,
           password: entry,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
           turnstileToken,
         }),
         headers: { "Content-Type": "application/json" },
@@ -661,19 +719,22 @@ export function SignUpAuthPage({
 
     try {
       const response = await fetch("/api/auth/signup/verify", {
-        body: JSON.stringify({ code: trimmedCode, redirectTo: safeRedirect }),
+        body: JSON.stringify({
+          code: trimmedCode,
+          ...(shouldForwardAuthRedirect ? authRedirect : {}),
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
 
       if (response.redirected) {
-        moveToRedirect(response.url, safeRedirect);
+        moveToRedirect(response.url, postAuthRedirect);
         return;
       }
 
       const json = await readJsonBody(response);
       if (response.ok) {
-        window.location.assign(safeRedirect);
+        window.location.assign(postAuthRedirect);
         return;
       }
 
@@ -733,6 +794,7 @@ export function SignUpAuthPage({
             />
 
             {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
+            {shouldForwardAuthRedirect ? <ReturnHint destination={authRedirect.redirectTo} /> : null}
 
             <form className={styles.form} noValidate onSubmit={handleStart}>
               <TextField
@@ -808,7 +870,10 @@ export function SignUpAuthPage({
 
             <footer className={styles.panelFooter}>
               <span>Already have an account?</span>
-              <Link className={styles.textLink} href={withEmail("/sign-in", email)}>
+              <Link
+                className={styles.textLink}
+                href={withAuthParams("/sign-in", authRedirect, { email }, shouldForwardAuthRedirect)}
+              >
                 Sign in
               </Link>
             </footer>
@@ -1147,6 +1212,14 @@ function GoogleMark() {
   );
 }
 
+function ReturnHint({ destination }: { destination: string }) {
+  return (
+    <p className={styles.hint}>
+      After signing in you'll return to {destination}.
+    </p>
+  );
+}
+
 function validateEmailEntry(email: string, entry: string) {
   const errors: FieldErrors = {};
   if (!isEmail(email)) {
@@ -1188,15 +1261,8 @@ function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
-function safeRedirectTo(value: string) {
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return defaultRedirectTo;
-  }
-  return value;
-}
-
-function buildGoogleHref(redirectTo: string, email: string) {
-  const params = new URLSearchParams({ redirectTo });
+function buildGoogleHref(authRedirect: AuthRedirectInput, email: string) {
+  const params = buildAuthRedirectSearchParams(authRedirect);
   const normalizedEmail = email.trim();
   if (isEmail(normalizedEmail)) {
     params.set("loginHint", normalizedEmail);
@@ -1204,12 +1270,29 @@ function buildGoogleHref(redirectTo: string, email: string) {
   return `/api/auth/login?${params.toString()}`;
 }
 
-function withEmail(pathname: string, email: string) {
-  const normalizedEmail = email.trim();
-  if (!isEmail(normalizedEmail)) {
-    return pathname;
+function withAuthParams(
+  pathname: string,
+  authRedirect: AuthRedirectInput,
+  extra: Record<string, string> = {},
+  includeAuthParams = true,
+) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(extra)) {
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      continue;
+    }
+    if (key === "email" && !isEmail(normalizedValue)) {
+      continue;
+    }
+    params.set(key, normalizedValue);
   }
-  return `${pathname}?email=${encodeURIComponent(normalizedEmail)}`;
+
+  const finalParams = includeAuthParams
+    ? buildAuthRedirectSearchParams(authRedirect, params)
+    : params;
+  const query = finalParams.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 function moveToRedirect(url: string, fallbackPath: string) {

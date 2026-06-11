@@ -209,6 +209,55 @@ describe("reset route handlers", () => {
     expect(setCookieHeader(response)).toContain(`${resetFlowCookieName}=;`);
   });
 
+  it("threads purchase intent through the reset completion sign-in target", async () => {
+    vi.mocked(resetStart).mockResolvedValueOnce({
+      continuation_token: "reset-start-handle",
+    });
+    vi.mocked(resetChallenge).mockResolvedValueOnce({
+      challenge_target_label: "c***@example.com",
+      code_length: 6,
+      continuation_token: "reset-code-handle",
+    });
+
+    const startResponse = await startReset(jsonRequest("/api/auth/reset/start", {
+      email: "casey@example.com",
+      intent: "buy",
+      redirectTo: "/pricing",
+      sku: "value_pack",
+    }));
+    const rawResetCookie = cookieValue(startResponse, resetFlowCookieName);
+    const decodedReset = await verifySignedCookieValue<Record<string, unknown>>(
+      rawResetCookie,
+      cookieSigningValue,
+    );
+    expect(decodedReset).toMatchObject({
+      intent: "buy",
+      redirectTo: "/pricing",
+      sku: "value_pack",
+    });
+
+    mockCookieStore.get.mockImplementation((name: string) =>
+      name === resetFlowCookieName ? { value: rawResetCookie } : undefined,
+    );
+    vi.mocked(resetContinue).mockResolvedValueOnce({
+      continuation_token: "reset-verified-handle",
+    });
+    vi.mocked(resetSubmit).mockResolvedValueOnce({
+      continuation_token: "reset-submitted-handle",
+    });
+    vi.mocked(resetPoll).mockResolvedValueOnce({ status: "succeeded" });
+
+    const verifyResponse = await verifyReset(jsonRequest("/api/auth/reset/verify", {
+      code: "123456",
+      [newCredentialField]: newCredentialFixture,
+    }));
+
+    await expect(readJson(verifyResponse)).resolves.toEqual({
+      next: "/sign-in?reset=success&redirectTo=%2Fpricing&intent=buy&sku=value_pack",
+      ok: true,
+    });
+  });
+
   it("maps wrong codes to a friendly error", async () => {
     await storeResetCookie();
     vi.mocked(resetContinue).mockRejectedValueOnce(
