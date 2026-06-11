@@ -345,7 +345,7 @@ export default async function PricingPage() {
               </div>
               <p className="pp-pack-desc">
                 {proApiPack.description}{" "}
-                <Link href="/developers">Read the integration docs &rarr;</Link>
+                <Link href="/developers/api">Read the integration docs &rarr;</Link>
               </p>
               <ul className="plan-list">
                 <li>90 rewrites per month (web + API share one balance)</li>
