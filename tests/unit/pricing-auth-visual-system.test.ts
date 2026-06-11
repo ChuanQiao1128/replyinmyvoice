@@ -21,12 +21,12 @@ describe("pricing and auth visual system", () => {
 
     expect(pricingPage).toContain('<main className="rimv">');
     expect(pricingPage).toContain('className="page"');
-    expect(pricingPage).toContain('className="ptier-grid"');
+    expect(pricingPage).toContain('className="plist"');
     expect(pricingPage).toContain(
-      "Redeem a trial code. Buy rewrites when you need them.",
+      "A short price list, for replies that still sound like",
     );
     expect(pricingPage).toContain(
-      "Trial codes unlock 3 rewrites with no card.",
+      "unlocks 3 trial rewrites — no card.",
     );
     expect(pricingPage).toContain("Trial code access");
     expect(pricingPage).toContain("Redeem a trial code");

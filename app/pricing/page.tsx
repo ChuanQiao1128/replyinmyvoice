@@ -55,10 +55,12 @@ function PlanAction({
   configured,
   sku,
   label,
+  buttonClassName,
 }: {
   configured: boolean;
   sku: PaidSku;
   label: string;
+  buttonClassName: string;
 }) {
   if (!configured) {
     const unavailableTitle =
@@ -69,9 +71,9 @@ function PlanAction({
     return (
       <button
         aria-disabled="true"
-        className="btn btn-ghost btn-lg ptier-btn"
+        className="btn btn-ghost btn-lg"
         disabled
-        style={{ cursor: "not-allowed", opacity: 0.62 }}
+        style={{ cursor: "not-allowed", opacity: 0.62, width: "100%", justifyContent: "center" }}
         title={unavailableTitle}
         type="button"
       >
@@ -80,7 +82,7 @@ function PlanAction({
     );
   }
 
-  return <BuyButton sku={sku} label={label} />;
+  return <BuyButton sku={sku} label={label} className={buttonClassName} />;
 }
 
 type Pack = {
@@ -102,8 +104,8 @@ const packs: Pack[] = [
     name: "Quick Pack",
     price: "NZ$2.50",
     allowance: "10 rewrites",
-    term: "Valid 90 days",
-    description: "The lowest-cost way to start. No subscription, no auto-renew.",
+    term: "valid 90 days",
+    description: "The lowest-cost way in — try it on one real reply.",
     cta: "Get Quick Pack",
   },
   {
@@ -111,8 +113,8 @@ const packs: Pack[] = [
     name: "Value Pack",
     price: "NZ$6.90",
     allowance: "30 rewrites",
-    term: "Valid 90 days",
-    description: "Best price per rewrite — most people start here.",
+    term: "valid 90 days",
+    description: "The best per-rewrite price of the one-time packs.",
     cta: "Get Value Pack",
     highlight: true,
     badge: "Most popular",
@@ -124,7 +126,7 @@ const focusPack: Pack = {
   name: "Focus Pack",
   price: "NZ$4.90",
   allowance: "20 rewrites",
-  term: "Valid 90 days",
+  term: "valid 90 days",
   description: "A mid-size pack for one concentrated stretch.",
   cta: "Get Focus Pack",
 };
@@ -133,10 +135,10 @@ const proApiPack: Pack = {
   sku: "pro_api",
   name: "Pro/API",
   price: "NZ$19.90/mo",
-  allowance: "90 rewrites/mo",
+  allowance: "90 rewrites / month",
   term: "Monthly subscription",
   description:
-    "REST API + MCP server, one key, web and API rewrites share one balance. For heavy use and developers.",
+    "For heavy use and builders — call the engine from your own code, Claude, or Cursor. Web and API rewrites share one balance.",
   cta: "Go Pro/API",
 };
 
@@ -194,11 +196,14 @@ export default async function PricingPage() {
               <span className="dot" />
               Pricing
             </div>
-            <h1>Redeem a trial code. Buy rewrites when you need them.</h1>
+            <h1>
+              A short price list, for replies that still sound like{" "}
+              <span className="alt">you</span>.
+            </h1>
             <p className="lede">
-              Trial codes unlock 3 rewrites with no card. After
-              that, buy one-time rewrite packs, or go Pro/API for monthly
-              rewrites, REST API, and MCP server access.
+              One-time packs from NZ$2.50 that never auto-renew. Go Pro/API
+              monthly for heavy use, the REST API, and MCP. A trial code
+              unlocks 3 trial rewrites — no card.
             </p>
             {sessionEmail ? (
               <p className="pricing-session-hint">
@@ -208,80 +213,73 @@ export default async function PricingPage() {
             <PricingCheckoutResume />
           </div>
 
-          {/* ── Unified tier cards: trial · one-time packs · Pro/API ── */}
-          <div className="ptier-grid">
-            {/* Trial code */}
-            <article className="ptier">
-              <div className="ptier-kicker">Trial code access</div>
-              <h3 className="ptier-name">Free</h3>
-              <div className="ptier-price">
-                Free<small>3 trial rewrites</small>
-              </div>
-              <div className="ptier-allow">Redeem a code · no card</div>
-              <p className="ptier-desc">
-                Paste one real message, rewrite the reply, and decide whether the
-                workflow fits before you buy.
-              </p>
-              <div className="ptier-cta">
-                <Link className="btn btn-ghost btn-lg ptier-btn" href={trialCtaHref}>
-                  {trialCtaLabel} <span className="btn-arrow">-&gt;</span>
-                </Link>
-              </div>
-              <div className="ptier-note">
-                No card required.{" "}
-                {!session ? (
-                  <>
-                    No code?{" "}
-                    <a href="mailto:info@timeawake.co.nz">Contact us</a>.
-                  </>
-                ) : null}
-              </div>
-            </article>
-
-            {/* One-time packs: Quick, Value (+ Focus when enabled) */}
-            {visiblePacks.map((pack) => (
+          {/* ── The price list: one typeset list instead of a card grid ── */}
+          <div className="plist-head-strip" aria-hidden="true">
+            <span>Price list · NZD</span>
+            <span>Secure checkout by Stripe</span>
+          </div>
+          <div className="plist">
+            {/* One-time packs */}
+            {visiblePacks.map((pack, index) => (
               <article
-                className={"ptier" + (pack.highlight ? " ptier-pop" : "")}
+                className={"plist-row" + (pack.highlight ? " plist-row-pop" : "")}
                 key={pack.sku}
               >
-                {pack.badge ? (
-                  <span className="ptier-badge">{pack.badge}</span>
-                ) : null}
-                <div className="ptier-kicker">One-time packs</div>
-                <h3 className="ptier-name">{pack.name}</h3>
-                <div className="ptier-price">{pack.price}</div>
-                <div className="ptier-allow">
-                  {pack.allowance} · {pack.term}
+                <div className="plist-group">
+                  {index === 0 ? "One-time packs" : ""}
                 </div>
-                <div className="ptier-unit">{unitPriceBySku[pack.sku]}</div>
-                <p className="ptier-desc">{pack.description}</p>
-                <div className="ptier-cta">
+                <div className="plist-id">
+                  <h3 className="plist-name">
+                    {pack.name}
+                    {pack.badge ? (
+                      <span className="plist-stamp">{pack.badge}</span>
+                    ) : null}
+                  </h3>
+                  <p className="plist-desc">{pack.description}</p>
+                </div>
+                <div className="plist-ledger">
+                  <div className="plist-allow">
+                    {pack.allowance} · {pack.term}
+                  </div>
+                  <div className="plist-unit">{unitPriceBySku[pack.sku]}</div>
+                </div>
+                <div className="plist-price">{pack.price}</div>
+                <div className="plist-cta">
                   <PlanAction
                     configured={isPriceConfigured(pack.sku)}
                     sku={pack.sku}
                     label={pack.cta}
+                    buttonClassName={
+                      pack.highlight
+                        ? "btn btn-accent btn-lg"
+                        : "btn btn-ghost btn-lg"
+                    }
                   />
                 </div>
               </article>
             ))}
 
-            {/* Monthly subscription: Pro/API (co-equal developer tier) */}
-            <article className="ptier ptier-dev" id="pro">
-              <div className="ptier-kicker">Monthly subscription</div>
-              <h3 className="ptier-name">
-                {proApiPack.name}
-                <span className="ptier-tag">For developers</span>
-              </h3>
-              <div className="ptier-price">{proApiPack.price}</div>
-              <div className="ptier-allow">90 rewrites/mo · web + API</div>
-              <div className="ptier-unit">{unitPriceBySku["pro_api"]}</div>
-              <p className="ptier-desc">
-                {proApiPack.description}{" "}
-                <Link href="/developers/api">Integration docs &rarr;</Link>
-              </p>
-              <div className="ptier-cta">
+            {/* Monthly subscription — Pro/API: the page's one dark anchor */}
+            <article className="plist-row plist-row-dark" id="pro">
+              <div className="plist-group">Monthly subscription</div>
+              <div className="plist-id">
+                <h3 className="plist-name">
+                  {proApiPack.name}
+                  <span className="plist-chip">REST API + MCP · one key</span>
+                </h3>
+                <p className="plist-desc">
+                  {proApiPack.description}{" "}
+                  <Link href="/developers/api">Integration docs &rarr;</Link>
+                </p>
+              </div>
+              <div className="plist-ledger">
+                <div className="plist-allow">{proApiPack.allowance}</div>
+                <div className="plist-unit">{unitPriceBySku["pro_api"]}</div>
+              </div>
+              <div className="plist-price">{proApiPack.price}</div>
+              <div className="plist-cta">
                 {isOnDeveloperTier ? (
-                  <Link className="btn btn-ghost btn-lg ptier-btn" href="/app/account">
+                  <Link className="btn btn-ghost btn-lg" href="/app/account">
                     Manage billing <span className="btn-arrow">-&gt;</span>
                   </Link>
                 ) : (
@@ -289,22 +287,63 @@ export default async function PricingPage() {
                     configured={isPriceConfigured("pro_api")}
                     sku="pro_api"
                     label={proApiPack.cta}
+                    buttonClassName="btn btn-ghost btn-lg"
                   />
                 )}
+                <div className="plist-cancel">Cancel anytime</div>
               </div>
-              <div className="ptier-note">
-                Billed monthly through Stripe · cancel anytime
+            </article>
+
+            {/* Trial code — a margin note, not a tier */}
+            <article className="plist-row plist-row-note">
+              <div className="plist-group">Trial code access</div>
+              <div className="plist-id">
+                <p className="plist-desc">
+                  Have a trial code? It unlocks <strong>3 trial rewrites</strong>{" "}
+                  in the app — no card needed.
+                  {!session ? (
+                    <>
+                      {" "}
+                      No code? <a href="mailto:info@timeawake.co.nz">Contact us</a>.
+                    </>
+                  ) : null}
+                </p>
+              </div>
+              <div className="plist-ledger">
+                <div className="plist-allow">3 rewrites · no card</div>
+              </div>
+              <div className="plist-price plist-price-note">—</div>
+              <div className="plist-cta">
+                <Link className="btn btn-ghost btn-lg" href={trialCtaHref}>
+                  {trialCtaLabel} <span className="btn-arrow">-&gt;</span>
+                </Link>
               </div>
             </article>
           </div>
 
-          <p className="ptier-foot">
-            One-time packs are valid 90 days and never auto-renew. Pro/API
-            rewrites reset each month and don&apos;t roll over.
+          <p className="plist-foot">
+            Every option includes facts-preserved rewriting, the AI Signal
+            before/after reference (a guide, not a guarantee), and
+            server-backed history. A rewrite that fails our quality bar
+            isn&apos;t charged.
           </p>
 
           <PricingComparison />
           <PricingFaq />
+
+          <div className="plist-closing">
+            <p>
+              Ready when you are — most replies cost about NZ$0.23.
+            </p>
+            <div className="plist-closing-cta">
+              <PlanAction
+                configured={isPriceConfigured("value_pack")}
+                sku="value_pack"
+                label="Get Value Pack"
+                buttonClassName="btn btn-accent btn-lg"
+              />
+            </div>
+          </div>
         </div>
       </section>
     </main>
