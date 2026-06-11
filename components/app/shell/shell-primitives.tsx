@@ -141,8 +141,8 @@ export function DeveloperUpsell() {
         <Link href="/pricing" className="btn btn-primary">
           Get Pro/API — NZ$19.90/mo
         </Link>
-        <Link href="/developers" className="btn btn-ghost">
-          Read the docs
+        <Link href="/developers/api" className="btn btn-ghost">
+          Read API docs
         </Link>
       </div>
     </UpsellCard>
