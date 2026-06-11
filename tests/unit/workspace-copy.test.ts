@@ -13,6 +13,10 @@ const subscriptionStatusSource = readFileSync(
   new URL("../../components/app/subscription-status.tsx", import.meta.url),
   "utf8",
 );
+const firstRunChecklistSource = readFileSync(
+  new URL("../../components/app/first-run-checklist.tsx", import.meta.url),
+  "utf8",
+);
 const quotaPillSource = readFileSync(
   new URL("../../components/app/shell/quota-pill.tsx", import.meta.url),
   "utf8",
@@ -307,5 +311,28 @@ describe("rewrite workspace surface copy", () => {
     expect(redeemCardSource).toContain("code_exhausted");
     expect(redeemCardSource).toContain("ip_velocity");
     expect(redeemCardSource).not.toContain("ReplyAsHuman2026");
+  });
+
+  it("shows an honest first-run checklist without promising automatic credits", () => {
+    expect(workspaceSource).toContain("FirstRunChecklist");
+    expect(workspaceSource).toContain("rewriteSucceededThisSession");
+    expect(workspaceSource).toContain("setRewriteSucceededThisSession(true)");
+    expect(workspaceSource).toContain("rewriteBalance={");
+    expect(workspaceSource).toContain("onRedeemClick={openRedeemModal}");
+
+    expect(firstRunChecklistSource).toContain("rimv.firstrun.dismissed.v1");
+    expect(firstRunChecklistSource).toContain(
+      "redeem a trial code (or buy a pack)",
+    );
+    expect(firstRunChecklistSource).toContain("Get rewrites");
+    expect(firstRunChecklistSource).toContain("First rewrite");
+    expect(firstRunChecklistSource).toContain("For developers");
+    expect(firstRunChecklistSource).toContain('href="/app/keys"');
+    expect(firstRunChecklistSource).toContain('href="/app/connect"');
+    expect(firstRunChecklistSource).toContain("readLocalRewriteHistory");
+    expect(firstRunChecklistSource).toContain("allRequiredStepsDone");
+    expect(firstRunChecklistSource).not.toContain(
+      phrase("free", "rewrites"),
+    );
   });
 });
