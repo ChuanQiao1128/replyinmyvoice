@@ -32,6 +32,7 @@ import { Button, LinkButton } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { workspacePacks } from "./buy-rewrites-dialog";
 import type { CheckoutStatus } from "./checkout-banner";
+import { FirstRunChecklist } from "./first-run-checklist";
 import { RedeemCodeCard } from "./redeem-code-card";
 import shell from "./shell/shell.module.css";
 import { SubscriptionStatus } from "./subscription-status";
@@ -356,6 +357,8 @@ export function RewriteWorkspace({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [rewriteSucceededThisSession, setRewriteSucceededThisSession] =
+    useState(false);
   const [freeRewritesRemaining, setFreeRewritesRemaining] = useState(
     () => visiblePlanRemaining,
   );
@@ -455,6 +458,7 @@ export function RewriteWorkspace({
 
       setQualityFailure(null);
       setResult(normalizedPayload);
+      setRewriteSucceededThisSession(true);
       if (!paid) {
         setFreeRewritesRemaining((current) => Math.max(current - 1, 0));
       }
@@ -521,6 +525,13 @@ export function RewriteWorkspace({
     (remaining <= 2 || (quota > 0 && remaining / quota <= 0.15));
   const showRedeemAction =
     canRedeem && (!promoState.hasRedeemed || promoState.trialRemaining === 0);
+  const firstRunRewriteBalance = Math.max(
+    remaining,
+    visiblePlanRemaining,
+    freeRewritesRemaining,
+    promoState.trialRemaining,
+    0,
+  );
 
   function openRedeemModal() {
     setRedeemModalOpen(true);
@@ -545,6 +556,14 @@ export function RewriteWorkspace({
           New draft
         </Button>
       </div>
+
+      <FirstRunChecklist
+        canRedeem={showRedeemAction}
+        onRedeemClick={openRedeemModal}
+        rewriteBalance={firstRunRewriteBalance}
+        rewriteHistoryUserKey={rewriteHistoryUserKey}
+        rewriteSucceededThisSession={rewriteSucceededThisSession}
+      />
 
       <div>
           <SubscriptionStatus
