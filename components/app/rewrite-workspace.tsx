@@ -14,7 +14,14 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { openBillingPortal } from "../../lib/billing-portal";
 import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
@@ -41,6 +48,8 @@ import { SubscriptionStatus } from "./subscription-status";
 const rewriteAttemptPollLimit = 30;
 const rewriteAttemptPollDelayMs = 1500;
 const rewriteSlowPathDelayMs = 35000;
+const draftAutosaveKey = "rimv.workspace.draft.v1";
+const minimumDraftLength = 10;
 
 type QualityFailure = {
   error: string;
@@ -152,6 +161,27 @@ function qualityFailureFromPayload(payload: unknown): QualityFailure {
     reason: payloadString(payload, "reason"),
     charged: false,
   };
+}
+
+function readSavedDraft() {
+  try {
+    return window.localStorage.getItem(draftAutosaveKey) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSavedDraft(draft: string) {
+  try {
+    if (draft.length > 0) {
+      window.localStorage.setItem(draftAutosaveKey, draft);
+      return;
+    }
+
+    window.localStorage.removeItem(draftAutosaveKey);
+  } catch {
+    return;
+  }
 }
 
 class RewriteQualityFailureError extends Error {
@@ -403,12 +433,32 @@ export function RewriteWorkspace({
   const [showPostCopyNudge, setShowPostCopyNudge] = useState(false);
   const [qualityTipsOpen, setQualityTipsOpen] = useState(false);
   const [redeemModalOpen, setRedeemModalOpen] = useState(false);
+  const [draftAutosaveReady, setDraftAutosaveReady] = useState(false);
+  const [draftRestoreVisible, setDraftRestoreVisible] = useState(false);
 
   const trimmedDraftLength = draft.trim().length;
+  const draftBelowMinimum = trimmedDraftLength < minimumDraftLength;
   const canSubmit =
     !loading &&
-    trimmedDraftLength >= 10 &&
+    trimmedDraftLength >= minimumDraftLength &&
     draft.length <= rewriteInputLimits.roughDraftReply;
+
+  useEffect(() => {
+    const savedDraft = readSavedDraft();
+    if (savedDraft) {
+      setDraft(savedDraft);
+      setDraftRestoreVisible(true);
+    }
+    setDraftAutosaveReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftAutosaveReady) {
+      return;
+    }
+
+    writeSavedDraft(draft);
+  }, [draft, draftAutosaveReady]);
 
   useEffect(() => {
     setFreeRewritesRemaining(visiblePlanRemaining);
@@ -569,6 +619,32 @@ export function RewriteWorkspace({
     }
   }
 
+  function updateDraft(value: string) {
+    setDraft(value);
+    if (draftRestoreVisible) {
+      setDraftRestoreVisible(false);
+    }
+  }
+
+  function clearSavedDraft() {
+    writeSavedDraft("");
+    setDraft("");
+    setDraftRestoreVisible(false);
+  }
+
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) {
+      return;
+    }
+
+    if (!canSubmit) {
+      return;
+    }
+
+    event.preventDefault();
+    void submit();
+  }
+
   async function copyReply() {
     if (!result?.rewrittenText) {
       return;
@@ -585,6 +661,8 @@ export function RewriteWorkspace({
     activeRewriteAbortRef.current?.abort();
     activeRewriteAbortRef.current = null;
     setDraft("");
+    writeSavedDraft("");
+    setDraftRestoreVisible(false);
     setSubmittedDraft("");
     setResult(null);
     setCompareOpen(false);
@@ -600,6 +678,7 @@ export function RewriteWorkspace({
 
   function loadExampleDraft() {
     setDraft(workspaceExampleSample.draft);
+    setDraftRestoreVisible(false);
     setSubmittedDraft("");
     setResult(null);
     setCompareOpen(false);
@@ -712,15 +791,48 @@ export function RewriteWorkspace({
               </span>
             </div>
             <Textarea
-              className="min-h-[28rem] flex-1 bg-paper/50 p-5 text-base leading-relaxed focus:bg-white"
+              className="min-h-[16rem] max-h-[min(28rem,44svh)] flex-1 overflow-y-auto bg-paper/50 p-5 text-base leading-relaxed focus:bg-white md:min-h-[28rem] md:max-h-[min(34rem,68svh)]"
               id="roughDraftReply"
               maxLength={rewriteInputLimits.roughDraftReply}
-              minLength={10}
-              onChange={(event) => setDraft(event.target.value)}
+              minLength={minimumDraftLength}
+              onChange={(event) => updateDraft(event.target.value)}
+              onKeyDown={handleDraftKeyDown}
               placeholder="Paste the email, message, or note you want to rewrite. The rewrite keeps your facts intact."
               rows={16}
               value={draft}
             />
+            <div className="mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+              <p
+                aria-live="polite"
+                className={`font-mono font-semibold ${
+                  draftBelowMinimum ? "text-clay" : "text-sage"
+                }`}
+              >
+                {trimmedDraftLength} / {minimumDraftLength} min
+              </p>
+              {draftBelowMinimum ? (
+                <p className="text-ink/50" role="status">
+                  Add {minimumDraftLength - trimmedDraftLength} more
+                  characters.
+                </p>
+              ) : null}
+            </div>
+            {draftRestoreVisible ? (
+              <div
+                className="mt-3 flex flex-col gap-2 rounded-lg border border-sage/20 bg-mint/50 px-3 py-2 text-sm text-ink/65 sm:flex-row sm:items-center sm:justify-between"
+                role="status"
+              >
+                <span>Restored your draft.</span>
+                <Button
+                  className="min-h-9 w-full px-3 text-ink/65 hover:bg-white sm:w-auto"
+                  onClick={clearSavedDraft}
+                  type="button"
+                  variant="ghost"
+                >
+                  Clear saved draft
+                </Button>
+              </div>
+            ) : null}
             {!draft.trim() && !loading && !result && !qualityFailure ? (
               <div className="mt-4 rounded-lg border border-line bg-paper/60 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
