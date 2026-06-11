@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
+const sharedRetentionSentence =
+  "Workspace history may be retained for up to 90 days, while API request and result records use a separate 30-day retention window.";
 
 function source(path: string) {
   return readFileSync(join(root, path), "utf8");
@@ -114,6 +116,7 @@ describe("/developers API documentation page", () => {
     expect(dataSource).toContain("RewriteAttempt");
     expect(dataSource).toContain("input and output");
     expect(dataSource).toContain("bounded 30-day retention");
+    expect(dataSource).toContain(sharedRetentionSentence);
     expect(dataSource).toContain("purged");
     expect(dataSource).toContain("rewrite and naturalness providers");
   });

@@ -19,7 +19,7 @@ const sections = [
   },
   {
     title: "Retention window",
-    text: "API-originated request and result content has a bounded 30-day retention window. After that window, stored input and output content is purged while operational records needed for account, billing, security, and abuse review may be retained.",
+    text: "API-originated request and result content has a bounded 30-day retention window. Workspace history may be retained for up to 90 days, while API request and result records use a separate 30-day retention window. After that window, stored input and output content is purged while operational records needed for account, billing, security, and abuse review may be retained.",
   },
   {
     title: "Deletion",
