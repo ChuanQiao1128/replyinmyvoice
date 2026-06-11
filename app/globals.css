@@ -1811,6 +1811,13 @@ section.block {
   outline-offset: 3px;
 }
 
+.pricing-comparison-note {
+  margin-top: 12px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
 .pricing-comparison-table {
   width: 100%;
   min-width: 760px;

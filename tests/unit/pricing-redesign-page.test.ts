@@ -35,6 +35,8 @@ describe("pricing redesign foundation", () => {
     expect(pricingPage).toContain("≈ NZ$0.25 / rewrite");
     expect(pricingPage).toContain("≈ NZ$0.23 / rewrite");
     expect(pricingPage).toContain("≈ NZ$0.22 / rewrite");
+    expect(pricingPage).toContain('aria-disabled="true"');
+    expect(pricingPage).toContain("Focus Pack — available soon");
   });
 
   it("provides downstream component markers and starter content", () => {
@@ -48,6 +50,8 @@ describe("pricing redesign foundation", () => {
     expect(comparison).toContain("Quick Pack");
     expect(comparison).toContain("Value Pack");
     expect(comparison).toContain("Pro·API");
+    expect(comparison).toContain("Price per rewrite");
+    expect(comparison).toContain("Packs expire 90 days after purchase");
     expect(comparison).toContain(
       "{/* PRICING-COMPARISON: fleshed out in PRICE-02 */}",
     );
