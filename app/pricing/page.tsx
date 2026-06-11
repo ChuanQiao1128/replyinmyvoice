@@ -71,9 +71,9 @@ function PlanAction({
     return (
       <button
         aria-disabled="true"
-        className="btn btn-ghost btn-lg"
+        className="btn btn-ghost btn-lg pcard-btn"
         disabled
-        style={{ cursor: "not-allowed", opacity: 0.62, width: "100%", justifyContent: "center" }}
+        style={{ cursor: "not-allowed", opacity: 0.62 }}
         title={unavailableTitle}
         type="button"
       >
@@ -97,7 +97,7 @@ type Pack = {
   badge?: string;
 };
 
-// One-time packs (the everyday-replies path).
+// One-time packs (kept as data for JSON-LD + Focus Pack gating).
 const packs: Pack[] = [
   {
     sku: "quick_pack",
@@ -105,7 +105,7 @@ const packs: Pack[] = [
     price: "NZ$2.50",
     allowance: "10 rewrites",
     term: "valid 90 days",
-    description: "The lowest-cost way in — try it on one real reply.",
+    description: "Try it on real replies, no commitment.",
     cta: "Get Quick Pack",
   },
   {
@@ -114,7 +114,7 @@ const packs: Pack[] = [
     price: "NZ$6.90",
     allowance: "30 rewrites",
     term: "valid 90 days",
-    description: "The best per-rewrite price of the one-time packs.",
+    description: "The best one-time unit price.",
     cta: "Get Value Pack",
     highlight: true,
     badge: "Most popular",
@@ -137,8 +137,7 @@ const proApiPack: Pack = {
   price: "NZ$19.90/mo",
   allowance: "90 rewrites / month",
   term: "Monthly subscription",
-  description:
-    "For heavy use and builders — call the engine from your own code, Claude, or Cursor. Web and API rewrites share one balance.",
+  description: "For heavy use and developers.",
   cta: "Go Pro/API",
 };
 
@@ -162,11 +161,20 @@ function productOfferForPack(pack: Pack) {
   };
 }
 
+function Check() {
+  return (
+    <span aria-hidden="true" className="pcard-check">
+      ✓
+    </span>
+  );
+}
+
 export default async function PricingPage() {
   const visiblePacks = isFocusPackEnabled() ? [...packs, focusPack] : packs;
   const productOfferJsonLd = buildProductOfferJsonLd(
     [...visiblePacks, proApiPack].map(productOfferForPack),
   );
+  const focusEnabled = isFocusPackEnabled();
 
   // Signed-in awareness (PV-3 safe subset): read session + subscription status.
   // fetchAzureAccountSummary returns null when unauthenticated — handled gracefully.
@@ -191,19 +199,11 @@ export default async function PricingPage() {
       <SiteHeader />
       <section className="page">
         <div className="wrap pricing-page">
-          <div className="page-head">
-            <div className="eyebrow">
-              <span className="dot" />
-              Pricing
-            </div>
-            <h1>
-              A short price list, for replies that still sound like{" "}
-              <span className="alt">you</span>.
-            </h1>
+          <div className="pcards-head">
+            <h1>Pricing</h1>
             <p className="lede">
-              One-time packs from NZ$2.50 that never auto-renew. Go Pro/API
-              monthly for heavy use, the REST API, and MCP. A trial code
-              unlocks 3 trial rewrites — no card.
+              Pay per rewrite with one-time packs, or go monthly for heavy use
+              and the API. A trial code unlocks 3 trial rewrites — no card.
             </p>
             {sessionEmail ? (
               <p className="pricing-session-hint">
@@ -213,137 +213,144 @@ export default async function PricingPage() {
             <PricingCheckoutResume />
           </div>
 
-          {/* ── The price list: one typeset list instead of a card grid ── */}
-          <div className="plist-head-strip" aria-hidden="true">
-            <span>Price list · NZD</span>
-            <span>Secure checkout by Stripe</span>
-          </div>
-          <div className="plist">
+          {/* Canonical plan cards (modeled on familiar plan-page layouts) */}
+          <div className={"pcards" + (focusEnabled ? " pcards-5" : "")}>
+            {/* Trial — code-gated */}
+            <article className="pcard">
+              <h3 className="pcard-name">Trial</h3>
+              <p className="pcard-tag">Try it with a team-issued code</p>
+              <div className="pcard-price">
+                NZ$0 <small>/ with a trial code</small>
+              </div>
+              <Link className="btn btn-primary btn-lg pcard-btn" href={trialCtaHref}>
+                {trialCtaLabel}
+              </Link>
+              <ul className="pcard-list">
+                <li>
+                  <Check />
+                  3 trial rewrites
+                </li>
+                <li>
+                  <Check />
+                  No card needed
+                </li>
+                <li>
+                  <Check />
+                  Full engine — facts preserved
+                </li>
+                <li>
+                  <Check />
+                  AI Signal before/after on every rewrite
+                </li>
+              </ul>
+              <p className="pcard-foot">
+                Trial code access · No code?{" "}
+                <a href="mailto:info@timeawake.co.nz">Contact us</a>
+              </p>
+            </article>
+
             {/* One-time packs */}
-            {visiblePacks.map((pack, index) => (
+            {visiblePacks.map((pack) => (
               <article
-                className={"plist-row" + (pack.highlight ? " plist-row-pop" : "")}
+                className={"pcard" + (pack.highlight ? " pcard-pop" : "")}
                 key={pack.sku}
               >
-                <div className="plist-group">
-                  {index === 0 ? "One-time packs" : ""}
+                {pack.badge ? (
+                  <span className="pcard-badge">{pack.badge}</span>
+                ) : null}
+                <h3 className="pcard-name">{pack.name}</h3>
+                <p className="pcard-tag">{pack.description}</p>
+                <div className="pcard-price">
+                  {pack.price} <small>/ one-time</small>
                 </div>
-                <div className="plist-id">
-                  <h3 className="plist-name">
-                    {pack.name}
-                    {pack.badge ? (
-                      <span className="plist-stamp">{pack.badge}</span>
-                    ) : null}
-                  </h3>
-                  <p className="plist-desc">{pack.description}</p>
-                </div>
-                <div className="plist-ledger">
-                  <div className="plist-allow">
-                    {pack.allowance} · {pack.term}
-                  </div>
-                  <div className="plist-unit">{unitPriceBySku[pack.sku]}</div>
-                </div>
-                <div className="plist-price">{pack.price}</div>
-                <div className="plist-cta">
-                  <PlanAction
-                    configured={isPriceConfigured(pack.sku)}
-                    sku={pack.sku}
-                    label={pack.cta}
-                    buttonClassName={
-                      pack.highlight
-                        ? "btn btn-accent btn-lg"
-                        : "btn btn-ghost btn-lg"
-                    }
-                  />
-                </div>
+                <PlanAction
+                  configured={isPriceConfigured(pack.sku)}
+                  sku={pack.sku}
+                  label={pack.cta}
+                  buttonClassName={
+                    pack.highlight
+                      ? "btn btn-accent btn-lg pcard-btn"
+                      : "btn btn-primary btn-lg pcard-btn"
+                  }
+                />
+                <ul className="pcard-list">
+                  <li>
+                    <Check />
+                    {pack.allowance}, {pack.term}
+                  </li>
+                  <li>
+                    <Check />
+                    {unitPriceBySku[pack.sku]}
+                  </li>
+                  <li>
+                    <Check />
+                    One-time — never auto-renews
+                  </li>
+                  <li>
+                    <Check />
+                    AI Signal + server-backed history
+                  </li>
+                </ul>
+                <p className="pcard-foot">One-time packs · Checkout by Stripe</p>
               </article>
             ))}
 
-            {/* Monthly subscription — Pro/API: the page's one dark anchor */}
-            <article className="plist-row plist-row-dark" id="pro">
-              <div className="plist-group">Monthly subscription</div>
-              <div className="plist-id">
-                <h3 className="plist-name">
-                  {proApiPack.name}
-                  <span className="plist-chip">REST API + MCP · one key</span>
-                </h3>
-                <p className="plist-desc">
-                  {proApiPack.description}{" "}
-                  <Link href="/developers/api">Integration docs &rarr;</Link>
-                </p>
+            {/* Pro/API — monthly */}
+            <article className="pcard" id="pro">
+              <h3 className="pcard-name">Pro/API</h3>
+              <p className="pcard-tag">{proApiPack.description}</p>
+              <div className="pcard-price">
+                NZ$19.90 <small>/ month</small>
               </div>
-              <div className="plist-ledger">
-                <div className="plist-allow">{proApiPack.allowance}</div>
-                <div className="plist-unit">{unitPriceBySku["pro_api"]}</div>
-              </div>
-              <div className="plist-price">{proApiPack.price}</div>
-              <div className="plist-cta">
-                {isOnDeveloperTier ? (
-                  <Link className="btn btn-ghost btn-lg" href="/app/account">
-                    Manage billing <span className="btn-arrow">-&gt;</span>
-                  </Link>
-                ) : (
-                  <PlanAction
-                    configured={isPriceConfigured("pro_api")}
-                    sku="pro_api"
-                    label={proApiPack.cta}
-                    buttonClassName="btn btn-ghost btn-lg"
-                  />
-                )}
-                <div className="plist-cancel">Cancel anytime</div>
-              </div>
-            </article>
-
-            {/* Trial code — a margin note, not a tier */}
-            <article className="plist-row plist-row-note">
-              <div className="plist-group">Trial code access</div>
-              <div className="plist-id">
-                <p className="plist-desc">
-                  Have a trial code? It unlocks <strong>3 trial rewrites</strong>{" "}
-                  in the app — no card needed.
-                  {!session ? (
-                    <>
-                      {" "}
-                      No code? <a href="mailto:info@timeawake.co.nz">Contact us</a>.
-                    </>
-                  ) : null}
-                </p>
-              </div>
-              <div className="plist-ledger">
-                <div className="plist-allow">3 rewrites · no card</div>
-              </div>
-              <div className="plist-price plist-price-note">—</div>
-              <div className="plist-cta">
-                <Link className="btn btn-ghost btn-lg" href={trialCtaHref}>
-                  {trialCtaLabel} <span className="btn-arrow">-&gt;</span>
+              {isOnDeveloperTier ? (
+                <Link className="btn btn-primary btn-lg pcard-btn" href="/app/account">
+                  Manage billing
                 </Link>
-              </div>
+              ) : (
+                <PlanAction
+                  configured={isPriceConfigured("pro_api")}
+                  sku="pro_api"
+                  label={proApiPack.cta}
+                  buttonClassName="btn btn-primary btn-lg pcard-btn"
+                />
+              )}
+              <ul className="pcard-list">
+                <li>
+                  <Check />
+                  90 rewrites every month
+                </li>
+                <li>
+                  <Check />
+                  REST API + MCP server access
+                </li>
+                <li>
+                  <Check />
+                  One key — web + API share one balance
+                </li>
+                <li>
+                  <Check />
+                  {unitPriceBySku["pro_api"]}
+                </li>
+                <li>
+                  <Check />
+                  Cancel anytime
+                </li>
+              </ul>
+              <p className="pcard-foot">
+                Monthly subscription ·{" "}
+                <Link href="/developers/api">Integration docs</Link>
+              </p>
             </article>
           </div>
 
-          <p className="plist-foot">
-            Every option includes facts-preserved rewriting, the AI Signal
-            before/after reference (a guide, not a guarantee), and
-            server-backed history. A rewrite that fails our quality bar
-            isn&apos;t charged.
+          <p className="pcards-note">
+            Facts preserved on every rewrite · AI Signal is a before/after
+            reference, not a guarantee · A rewrite that fails our quality bar
+            isn&apos;t charged
           </p>
 
           <PricingComparison />
           <PricingFaq />
-
-          <div className="plist-closing">
-            <p>
-              Ready when you are — most replies cost about NZ$0.23.
-            </p>
-            <div className="plist-closing-cta">
-              <PlanAction
-                configured={isPriceConfigured("value_pack")}
-                sku="value_pack"
-                label="Get Value Pack"
-                buttonClassName="btn btn-accent btn-lg"
-              />
-            </div>
-          </div>
         </div>
       </section>
     </main>

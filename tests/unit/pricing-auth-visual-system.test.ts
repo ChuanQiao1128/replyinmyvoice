@@ -21,10 +21,8 @@ describe("pricing and auth visual system", () => {
 
     expect(pricingPage).toContain('<main className="rimv">');
     expect(pricingPage).toContain('className="page"');
-    expect(pricingPage).toContain('className="plist"');
-    expect(pricingPage).toContain(
-      "A short price list, for replies that still sound like",
-    );
+    expect(pricingPage).toContain('className={"pcards"');
+    expect(pricingPage).toContain("<h1>Pricing</h1>");
     expect(pricingPage).toContain(
       "unlocks 3 trial rewrites — no card.",
     );
