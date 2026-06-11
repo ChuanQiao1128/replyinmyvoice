@@ -146,7 +146,19 @@ describe("/developers hub and API documentation pages", () => {
     expect(pageSource).toContain("Get a key");
     expect(pageSource).toContain("1 credit per rewrite");
     expect(pageSource).toContain("402");
-    expect(pageSource).toContain("top-up");
+    expect(pageSource).toContain('href="/pricing"');
+    expect(pageSource).toContain("Copy local config");
+    expect(pageSource).toContain("Copy remote config");
+    expect(pageSource).toContain("Replace rmv_live_xxx with your key");
+    expect(pageSource).toContain("Tool reference");
+    expect(pageSource).toContain("draft");
+    expect(pageSource).toContain("10 to 2400 characters");
+    expect(pageSource).toContain("attempt_id");
+    expect(pageSource).toContain("rewritten");
+    expect(pageSource).toContain("optional changes");
+    expect(pageSource).toContain("usually finish in a few seconds");
+    expect(pageSource).toContain("about 50 seconds");
+    expect(pageSource).toContain("poll again");
     expect(pageSource).toContain("meaning and facts intact");
 
     expect(pageSource).not.toContain("analyze_signal");
