@@ -604,6 +604,12 @@
   flex-direction: column;
   gap: 12px;
 }
+.historyWelcome {
+  margin: 0 0 2px;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
 .listRow {
   display: flex;
   align-items: flex-start;
@@ -677,6 +683,48 @@
   border: 1px solid var(--warn-2);
   border-radius: var(--radius);
   color: var(--ink);
+}
+.historyPager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 0 2px;
+}
+.historyPagerNote {
+  margin: 0;
+  color: var(--warn);
+  font-size: 13px;
+}
+.historyToastStack {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  margin-top: 4px;
+}
+.historyToast,
+.historyNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(100%, 440px);
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.historyNotice {
+  color: var(--ink-2);
 }
 
 /* ── Console stat cards ───────────────────────────────────── */
