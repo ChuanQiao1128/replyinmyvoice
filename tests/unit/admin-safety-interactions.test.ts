@@ -272,6 +272,16 @@ function adminUsers(): AdminUsersListResponse {
   };
 }
 
+function emptyAdminUsers(): AdminUsersListResponse {
+  return {
+    page: 1,
+    pageSize: 25,
+    totalCount: 0,
+    totalPages: 0,
+    users: [],
+  };
+}
+
 function supportQueue(): AdminBillingSupportRequest[] {
   return [];
 }
@@ -374,7 +384,7 @@ describe("admin safety interactions", () => {
     const activityText = activityPanel?.textContent ?? "";
     expect(activityText).toContain("Payment");
     expect(activityText).toContain("pi_activity_payment");
-    expect(activityText).toContain("1200 NZD");
+    expect(activityText).toContain("NZ$ 1200");
     expect(activityText).toContain("Credit");
     expect(activityText).toContain("credit_activity_admin");
     expect(activityText).toContain("7 granted");
@@ -575,6 +585,101 @@ describe("admin safety interactions", () => {
 
     await act(async () => {
       root.unmount();
+    });
+  });
+
+  it("renders polished admin dashboard loading, error, and empty states", async () => {
+    installDom("/admin");
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    const { act, AdminDashboard, createElement, createRoot } =
+      await loadAdminModules();
+    const loadingContainer = document.createElement("div");
+    document.body.append(loadingContainer);
+    const loadingRoot = createRoot(loadingContainer);
+
+    await act(async () => {
+      loadingRoot.render(createElement(AdminDashboard));
+    });
+
+    expect(loadingContainer.textContent).toContain("Loading admin dashboard");
+    expect(loadingContainer.textContent).toContain(
+      "Preparing stats, support queue, and users.",
+    );
+
+    await act(async () => {
+      loadingRoot.unmount();
+    });
+
+    vi.resetModules();
+    vi.doUnmock("next/link");
+    vi.doUnmock("next/navigation");
+    installDom("/admin");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url === "/api/admin/stats") {
+          return Promise.resolve(jsonResponse({ error: "Stats are offline." }, 500));
+        }
+        return Promise.resolve(jsonResponse({}));
+      }),
+    );
+
+    const errorModules = await loadAdminModules();
+    const errorContainer = document.createElement("div");
+    document.body.append(errorContainer);
+    const errorRoot = errorModules.createRoot(errorContainer);
+
+    await errorModules.act(async () => {
+      errorRoot.render(errorModules.createElement(errorModules.AdminDashboard));
+    });
+    await flushReact(errorModules.act);
+
+    expect(errorContainer.textContent).toContain("Could not load admin dashboard");
+    expect(errorContainer.textContent).toContain("Stats are offline.");
+
+    await errorModules.act(async () => {
+      errorRoot.unmount();
+    });
+
+    vi.resetModules();
+    vi.doUnmock("next/link");
+    vi.doUnmock("next/navigation");
+    installDom("/admin");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url === "/api/admin/stats") {
+          return Promise.resolve(jsonResponse(adminStats()));
+        }
+        if (url.startsWith("/api/admin/users?")) {
+          return Promise.resolve(jsonResponse(emptyAdminUsers()));
+        }
+        if (url === "/api/admin/billing-support-requests") {
+          return Promise.resolve(jsonResponse(supportQueue()));
+        }
+        return Promise.resolve(jsonResponse({ error: "Unexpected request." }, 500));
+      }),
+    );
+
+    const emptyModules = await loadAdminModules();
+    const emptyContainer = document.createElement("div");
+    document.body.append(emptyContainer);
+    const emptyRoot = emptyModules.createRoot(emptyContainer);
+
+    await emptyModules.act(async () => {
+      emptyRoot.render(emptyModules.createElement(emptyModules.AdminDashboard));
+    });
+    await flushReact(emptyModules.act);
+
+    expect(emptyContainer.textContent).toContain("No users found.");
+    expect(emptyContainer.textContent).toContain(
+      "New signups will appear here after they create an account.",
+    );
+    expect(emptyContainer.textContent).toContain("Provider cost (USD)");
+
+    await emptyModules.act(async () => {
+      emptyRoot.unmount();
     });
   });
 });

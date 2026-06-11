@@ -104,6 +104,9 @@ describe("PromoCodesAdmin", () => {
 
     expect(markup).toContain('role="table"');
     expect(markup).toContain("New code");
+    expect(markup).toContain("Bulk create");
+    expect(markup).toContain("Bulk disable");
+    expect(markup).toContain("Export CSV");
     expect(markup).not.toContain("Selected code");
     expect(markup).toContain('aria-label="Copy code SPRING-2026"');
     expect(markup).toContain('aria-label="View stats for SPRING-2026"');
