@@ -7,6 +7,7 @@ import {
   initializePaymentBrowserObservability,
 } from "../../lib/payment-observability-client";
 import { buildAuthRedirectSearchParams } from "../../lib/auth-redirect-intent";
+import { failureCopy } from "../../lib/failure-copy";
 
 type BuyButtonProps = {
   sku: string;
@@ -65,7 +66,7 @@ export function BuyButton({
           status: response.status,
         });
         failureCaptured = true;
-        throw new Error(payload.error ?? "Could not start checkout.");
+        throw new Error(payload.error ?? failureCopy.checkout.start);
       }
 
       window.location.assign(payload.url);
@@ -79,7 +80,7 @@ export function BuyButton({
       setError(
         checkoutError instanceof Error
           ? checkoutError.message
-          : "Could not start checkout.",
+          : failureCopy.checkout.start,
       );
       setLoading(false);
     }

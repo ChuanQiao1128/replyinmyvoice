@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { failureCopy } from "../../lib/failure-copy";
+
 type Act = typeof import("react").act;
 type CreateElement = typeof import("react").createElement;
 type CreateRoot = typeof import("react-dom/client").createRoot;
@@ -178,15 +180,35 @@ describe("rewrite workspace surface copy", () => {
   it("keeps a safe failure state and the reference-signal disclaimer", () => {
     expect(workspaceSource).toContain("titleForQualityFailure");
     expect(workspaceSource).toContain("Still high");
-    expect(workspaceSource).toContain(
-      "We could not produce a better version yet",
-    );
-    expect(workspaceSource).toContain("This attempt was not charged.");
-    expect(workspaceSource).toContain("What can I change?");
-    expect(workspaceSource).toContain("longer draft");
-    expect(workspaceSource).toContain("clearer facts");
-    expect(workspaceSource).toContain("different tone");
+    expect(workspaceSource).toContain("failureCopy.workspace.qualityDefault");
+    expect(workspaceSource).toContain("failureCopy.workspace.notCharged");
+    expect(workspaceSource).toContain("failureCopy.workspace.tips.prompt");
+    expect(workspaceSource).toContain("failureCopy.workspace.tips.longerDraft");
+    expect(workspaceSource).toContain("failureCopy.workspace.tips.clearerFacts");
+    expect(workspaceSource).toContain("failureCopy.workspace.tips.differentTone");
     expect(workspaceSource).toContain("reference signal");
+  });
+
+  it("keeps failure-state copy in one shared module", () => {
+    expect(failureCopy.checkout.start).toBe("Could not start checkout.");
+    expect(failureCopy.checkout.continue).toBe("Could not continue checkout.");
+    expect(failureCopy.checkout.retry).toBe(
+      "Use a pack button below to start checkout again.",
+    );
+    expect(failureCopy.auth.rateLimited).toBe(
+      "Too many attempts. Please try again in a few minutes.",
+    );
+    expect(failureCopy.auth.credentials).toBe(
+      "Email or password is incorrect.",
+    );
+    expect(failureCopy.auth.signInUnavailable).toBe(
+      "Sign-in is temporarily unavailable. Please try again in a few minutes.",
+    );
+    expect(failureCopy.workspace.qualityDefault).toBe(
+      "We could not produce a better version yet. Try again or adjust the draft.",
+    );
+    expect(failureCopy.workspace.notCharged).toContain("not charged");
+    expect(failureCopy.workspace.tips.longerDraft).toContain("longer draft");
   });
 
   it("sets wait expectations, allows cancellation, and announces results accessibly", () => {

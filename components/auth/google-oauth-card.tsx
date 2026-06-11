@@ -10,6 +10,7 @@ import {
   normalizeAuthRedirectParams,
   type AuthRedirectInput,
 } from "../../lib/auth-redirect-intent";
+import { failureCopy } from "../../lib/failure-copy";
 import styles from "./auth-panels.module.css";
 
 type AuthMode = "sign-in" | "sign-up" | "reset";
@@ -327,12 +328,12 @@ export function ResetAuthPage({
       }
 
       setFormError(authErrorMessage(response.status, textValue(json?.error), {
-        fallback: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+        fallback: failureCopy.auth.passwordResetUnavailable,
         noAccount: "If an account exists for that email, we can send a reset code.",
-        unavailable: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+        unavailable: failureCopy.auth.passwordResetUnavailable,
       }));
     } catch {
-      setFormError("Password reset is temporarily unavailable. Please try again in a few minutes.");
+      setFormError(failureCopy.auth.passwordResetUnavailable);
     } finally {
       setIsSubmitting(false);
     }
@@ -373,11 +374,11 @@ export function ResetAuthPage({
       }
 
       setFormError(authErrorMessage(response.status, textValue(json?.error), {
-        fallback: "Password reset is temporarily unavailable. Please try again in a few minutes.",
-        unavailable: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+        fallback: failureCopy.auth.passwordResetUnavailable,
+        unavailable: failureCopy.auth.passwordResetUnavailable,
       }));
     } catch {
-      setFormError("Password reset is temporarily unavailable. Please try again in a few minutes.");
+      setFormError(failureCopy.auth.passwordResetUnavailable);
     } finally {
       setIsSubmitting(false);
     }
@@ -406,11 +407,11 @@ export function ResetAuthPage({
 
       setCooldownSeconds(numberValue(json?.cooldownSeconds) ?? 0);
       setFormError(authErrorMessage(response.status, textValue(json?.error), {
-        fallback: "Password reset is temporarily unavailable. Please try again in a few minutes.",
-        unavailable: "Password reset is temporarily unavailable. Please try again in a few minutes.",
+        fallback: failureCopy.auth.passwordResetUnavailable,
+        unavailable: failureCopy.auth.passwordResetUnavailable,
       }));
     } catch {
-      setFormError("Password reset is temporarily unavailable. Please try again in a few minutes.");
+      setFormError(failureCopy.auth.passwordResetUnavailable);
     } finally {
       setIsResending(false);
     }
@@ -718,7 +719,7 @@ export function SignUpAuthPage({
       setFormError(signUpStartErrorMessage(response.status, textValue(json?.error), fallback));
       resetTurnstile();
     } catch {
-      setFormError("Sign-up is temporarily unavailable. Please try again in a few minutes.");
+      setFormError(failureCopy.auth.signUpUnavailable);
       resetTurnstile();
     } finally {
       setIsSubmitting(false);
@@ -766,11 +767,11 @@ export function SignUpAuthPage({
       }
 
       setFormError(authErrorMessage(response.status, textValue(json?.error), {
-        fallback: "Verification is temporarily unavailable. Please try again in a few minutes.",
-        unavailable: "Verification is temporarily unavailable. Please try again in a few minutes.",
+        fallback: failureCopy.auth.verificationUnavailable,
+        unavailable: failureCopy.auth.verificationUnavailable,
       }));
     } catch {
-      setFormError("Verification is temporarily unavailable. Please try again in a few minutes.");
+      setFormError(failureCopy.auth.verificationUnavailable);
     } finally {
       setIsSubmitting(false);
     }
@@ -799,11 +800,11 @@ export function SignUpAuthPage({
 
       setCooldownSeconds(numberValue(json?.cooldownSeconds) ?? 0);
       setFormError(authErrorMessage(response.status, textValue(json?.error), {
-        fallback: "Verification is temporarily unavailable. Please try again in a few minutes.",
-        unavailable: "Verification is temporarily unavailable. Please try again in a few minutes.",
+        fallback: failureCopy.auth.verificationUnavailable,
+        unavailable: failureCopy.auth.verificationUnavailable,
       }));
     } catch {
-      setFormError("Verification is temporarily unavailable. Please try again in a few minutes.");
+      setFormError(failureCopy.auth.verificationUnavailable);
     } finally {
       setIsResending(false);
     }
@@ -1387,14 +1388,14 @@ function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-const rateLimitedMessage = "Too many attempts. Please try again in a few minutes.";
-const signInUnavailableMessage = "Sign-in is temporarily unavailable. Please try again in a few minutes.";
+const rateLimitedMessage = failureCopy.auth.rateLimited;
+const signInUnavailableMessage = failureCopy.auth.signInUnavailable;
 
 function signInErrorMessage(error: string | null, status: number) {
   switch (error) {
     case "invalid_credentials":
     case "user_not_found":
-      return "Email or password is incorrect.";
+      return failureCopy.auth.credentials;
     case "redirect_required":
       return "This account needs browser sign-in.";
     default:
@@ -1411,8 +1412,8 @@ function signUpStartErrorMessage(status: number, error: string | null, fallbackR
   }
 
   return authErrorMessage(status, error, {
-    fallback: "Sign-up is temporarily unavailable. Please try again in a few minutes.",
-    unavailable: "Sign-up is temporarily unavailable. Please try again in a few minutes.",
+    fallback: failureCopy.auth.signUpUnavailable,
+    unavailable: failureCopy.auth.signUpUnavailable,
   });
 }
 
@@ -1477,7 +1478,7 @@ function passwordPolicyMessage(error: string | null) {
     lower.includes("stronger") &&
     (lower.includes("password") || lower.includes("credential") || lower.includes("value"))
   ) {
-    return "Use a stronger password.";
+    return failureCopy.auth.strongerPassword;
   }
 
   return null;
@@ -1487,10 +1488,10 @@ function callbackErrorMessage(error: string) {
   switch (error) {
     case "callback":
     case "callback_failed":
-      return "The browser sign-in could not be completed. Please try again.";
+      return failureCopy.auth.browserSignInFailed;
     case "access_denied":
-      return "The browser sign-in was cancelled.";
+      return failureCopy.auth.browserSignInCancelled;
     default:
-      return "The browser sign-in could not be completed. Please try again.";
+      return failureCopy.auth.browserSignInFailed;
   }
 }

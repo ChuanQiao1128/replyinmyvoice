@@ -24,6 +24,7 @@ import {
 } from "react";
 
 import { openBillingPortal } from "../../lib/billing-portal";
+import { failureCopy } from "../../lib/failure-copy";
 import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
 import { rewriteInputLimits } from "../../lib/rewrite-limits";
 import {
@@ -156,7 +157,7 @@ function qualityFailureFromPayload(payload: unknown): QualityFailure {
   return {
     error:
       payloadString(payload, "error") ??
-      "We could not produce a better version yet. Try again or adjust the draft.",
+      failureCopy.workspace.qualityDefault,
     naturalness: payloadNaturalness(payload),
     reason: payloadString(payload, "reason"),
     charged: false,
@@ -1070,7 +1071,7 @@ export function RewriteWorkspace({
                     {qualityFailure.error}
                   </p>
                   <p className="mt-4 rounded-lg border border-sage/20 bg-white/80 px-4 py-3 text-sm font-semibold text-sage">
-                    This attempt was not charged.
+                    {failureCopy.workspace.notCharged}
                   </p>
                   <div className="mt-4 w-full max-w-md rounded-lg border border-line/70 bg-white/70 p-3 text-left">
                     <Button
@@ -1081,19 +1082,16 @@ export function RewriteWorkspace({
                       type="button"
                       variant="ghost"
                     >
-                      What can I change?
+                      {failureCopy.workspace.tips.prompt}
                     </Button>
                     {qualityTipsOpen ? (
                       <ul
                         className="mt-3 space-y-2 px-3 pb-1 text-sm leading-6 text-ink/65"
                         id="quality-failure-tips"
                       >
-                        <li>Add a longer draft with the main point included.</li>
-                        <li>Use clearer facts, names, dates, and constraints.</li>
-                        <li>
-                          Try a different tone in the draft, such as warmer or
-                          more direct.
-                        </li>
+                        <li>{failureCopy.workspace.tips.longerDraft}</li>
+                        <li>{failureCopy.workspace.tips.clearerFacts}</li>
+                        <li>{failureCopy.workspace.tips.differentTone}</li>
                       </ul>
                     ) : null}
                   </div>
