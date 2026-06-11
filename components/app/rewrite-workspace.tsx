@@ -27,6 +27,7 @@ import {
 import { NatBar } from "../landing/nat-bar";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import type { CheckoutStatus } from "./checkout-banner";
 import { RedeemCodeCard } from "./redeem-code-card";
 import shell from "./shell/shell.module.css";
 import { SubscriptionStatus } from "./subscription-status";
@@ -64,6 +65,7 @@ type Props = {
   promoState: PromoAccountState;
   usageExhausted: boolean;
   quotaSources?: QuotaCreditSource[];
+  checkoutStatus?: CheckoutStatus | null;
 };
 
 const progressSteps = [
@@ -224,6 +226,7 @@ function OutOfCreditsNudge({
 export function RewriteWorkspace({
   appExperience,
   canRedeem,
+  checkoutStatus = null,
   outOfCredits,
   usageLabel,
   subscriptionStatus,
@@ -435,6 +438,7 @@ export function RewriteWorkspace({
       <div>
           <SubscriptionStatus
             canRedeem={showRedeemAction}
+            checkoutStatus={checkoutStatus}
             onRedeemClick={openRedeemModal}
             paid={paid}
             paymentGraceEndsAt={paymentGraceEndsAt}

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import type { CheckoutStatus } from "../../components/app/checkout-banner";
 import { RewriteWorkspace } from "../../components/app/rewrite-workspace";
 import { fetchAzureAccountSummary } from "../../lib/azure-api";
 import {
@@ -13,7 +14,22 @@ export const dynamic = "force-dynamic";
 
 const paidStatuses = new Set(["active", "trialing", "testing"]);
 
-export default async function AppPage() {
+type AppSearchParams = Record<string, string | string[] | undefined>;
+
+type AppPageProps = {
+  searchParams?: Promise<AppSearchParams>;
+};
+
+function checkoutStatusFromParam(
+  value: string | string[] | undefined,
+): CheckoutStatus | null {
+  const checkout = Array.isArray(value) ? value[0] : value;
+  return checkout === "success" || checkout === "cancelled" ? checkout : null;
+}
+
+export default async function AppPage({ searchParams }: AppPageProps = {}) {
+  const params = await searchParams;
+  const checkoutStatus = checkoutStatusFromParam(params?.checkout);
   const account = await fetchAzureAccountSummary();
 
   if (!account) {
@@ -63,6 +79,7 @@ export default async function AppPage() {
     <RewriteWorkspace
         appExperience={appExperience}
         canRedeem={canRedeem}
+        checkoutStatus={checkoutStatus}
         outOfCredits={outOfCredits}
         paid={paid}
         planRemaining={workspacePlanRemaining}
