@@ -242,13 +242,6 @@ test("admin dashboard exposes promo navigation and user erase controls", async (
     await route.fulfill({ json: adminUserDetailPayload() });
   });
 
-  page.on("dialog", async (dialog) => {
-    expect(dialog.message()).toBe(
-      "Permanently erase this account? This anonymizes the user and removes their data. This cannot be undone.",
-    );
-    await dialog.accept();
-  });
-
   await page.goto("/admin");
 
   await expect(page.getByRole("link", { name: "Promo codes" })).toHaveAttribute(
@@ -266,6 +259,25 @@ test("admin dashboard exposes promo navigation and user erase controls", async (
     name: /customer@example\.test/,
   });
   await customerRow.getByRole("button", { name: "Delete" }).click();
+
+  const eraseDialog = page.getByRole("dialog", { name: "Erase account" });
+  await expect(eraseDialog).toBeVisible();
+  await expect(
+    eraseDialog.getByText("Type ERASE to confirm account erase."),
+  ).toBeVisible();
+  await expect(eraseDialog.getByRole("button", { name: "Erase account" }))
+    .toBeDisabled();
+
+  await eraseDialog
+    .getByLabel("Type ERASE to confirm account erase")
+    .fill("erase");
+  await expect(eraseDialog.getByRole("button", { name: "Erase account" }))
+    .toBeDisabled();
+
+  await eraseDialog
+    .getByLabel("Type ERASE to confirm account erase")
+    .fill("ERASE");
+  await eraseDialog.getByRole("button", { name: "Erase account" }).click();
 
   expect(deleteCalled).toBe(true);
   await expect(customerRow).toHaveCount(0);

@@ -32,6 +32,7 @@ type AdminDashboardState =
   | { status: "error"; message: string };
 
 const pageSize = 25;
+const eraseConfirmationWord = "ERASE";
 
 async function readJsonError(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
@@ -162,6 +163,8 @@ export function AdminDashboard() {
   const [queueActionId, setQueueActionId] = useState<string | null>(null);
   const [userActionError, setUserActionError] = useState<string | null>(null);
   const [userActionId, setUserActionId] = useState<string | null>(null);
+  const [eraseTargetUserId, setEraseTargetUserId] = useState<string | null>(null);
+  const [eraseConfirmation, setEraseConfirmation] = useState("");
 
   useEffect(() => {
     let current = true;
@@ -221,6 +224,13 @@ export function AdminDashboard() {
   const totalPages = state.status === "ready" ? state.users.totalPages : 0;
   const canGoBack = page > 1;
   const canGoForward = totalPages > 0 && page < totalPages;
+  const eraseTargetUser = useMemo(() => {
+    if (state.status !== "ready" || !eraseTargetUserId) {
+      return null;
+    }
+
+    return state.users.users.find((user) => user.id === eraseTargetUserId) ?? null;
+  }, [eraseTargetUserId, state]);
 
   async function resolveSupportRequest(requestId: string) {
     if (state.status !== "ready" || queueActionId) {
@@ -251,15 +261,31 @@ export function AdminDashboard() {
     }
   }
 
-  async function deleteUser(userId: string) {
-    if (state.status !== "ready" || userActionId) {
+  function openEraseConfirmation(userId: string) {
+    if (userActionId) {
       return;
     }
 
-    const confirmed = window.confirm(
-      "Permanently erase this account? This anonymizes the user and removes their data. This cannot be undone.",
-    );
-    if (!confirmed) {
+    setUserActionError(null);
+    setEraseTargetUserId(userId);
+    setEraseConfirmation("");
+  }
+
+  function closeEraseConfirmation() {
+    if (userActionId) {
+      return;
+    }
+
+    setEraseTargetUserId(null);
+    setEraseConfirmation("");
+  }
+
+  async function deleteUser(userId: string) {
+    if (
+      state.status !== "ready" ||
+      userActionId ||
+      eraseConfirmation !== eraseConfirmationWord
+    ) {
       return;
     }
 
@@ -281,6 +307,8 @@ export function AdminDashboard() {
           },
         };
       });
+      setEraseTargetUserId(null);
+      setEraseConfirmation("");
     } catch (error) {
       setUserActionError(
         error instanceof Error ? error.message : "Account erase failed.",
@@ -563,7 +591,7 @@ export function AdminDashboard() {
                         <Button
                           className="min-h-8 px-3 py-1.5 text-xs text-rust hover:bg-rust/10"
                           disabled={userActionId !== null}
-                          onClick={() => void deleteUser(user.id)}
+                          onClick={() => openEraseConfirmation(user.id)}
                           type="button"
                           variant="secondary"
                         >
@@ -587,6 +615,78 @@ export function AdminDashboard() {
                   ) : null}
                 </tbody>
               </table>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {eraseTargetUser ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 px-4 py-8"
+          role="presentation"
+        >
+          <Card
+            aria-labelledby="erase-confirmation-title"
+            aria-modal="true"
+            className="w-full max-w-md border-rust/30 bg-white p-5 shadow-xl"
+            role="dialog"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle
+                className="mt-0.5 h-5 w-5 shrink-0 text-rust"
+                aria-hidden="true"
+              />
+              <div>
+                <h2
+                  className="text-lg font-semibold tracking-normal text-ink"
+                  id="erase-confirmation-title"
+                >
+                  Erase account
+                </h2>
+                <p className="mt-2 text-sm text-ink/65">
+                  This anonymizes the user and removes their data. This cannot
+                  be undone.
+                </p>
+                <p className="mt-3 break-words text-sm font-semibold text-ink">
+                  {eraseTargetUser.email || eraseTargetUser.id}
+                </p>
+              </div>
+            </div>
+            <label className="mt-5 block text-sm font-semibold text-ink/70">
+              Type {eraseConfirmationWord} to confirm account erase.
+              <Input
+                aria-label="Type ERASE to confirm account erase"
+                className="mt-1"
+                onChange={(event) => setEraseConfirmation(event.target.value)}
+                value={eraseConfirmation}
+              />
+            </label>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                disabled={userActionId !== null}
+                onClick={closeEraseConfirmation}
+                type="button"
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-rust text-white hover:bg-rust/90"
+                disabled={
+                  userActionId !== null ||
+                  eraseConfirmation !== eraseConfirmationWord
+                }
+                onClick={() => void deleteUser(eraseTargetUser.id)}
+                type="button"
+              >
+                {userActionId === eraseTargetUser.id ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                Erase account
+              </Button>
             </div>
           </Card>
         </div>
