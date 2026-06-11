@@ -5615,3 +5615,12 @@ claude-heavy-planning-handoff
 - Output artifacts: PR #688 (main `c17f121`) — app/pricing/page.tsx, components/landing/pricing-{comparison,faq,trust}.tsx (Sonnet), app/globals.css (supervisor CSS fix), pricing-* contract tests; PLAN §11b.
 - Verification evidence: preview screenshots desktop+mobile (dev card reads correctly post-fix); tsc + 298 unit + build + cf:build green; live smoke — /pricing 200, "AI Signal" present + "Tone check" gone, "local history"/"tone preset" claims gone, "REST API + MCP" + "#pro" + "Free (trial code)" present; cloudflare-worker deploy SUCCESS, dotnet-azure no-op.
 - Limitations: buy-intent-through-auth OAuth round-trip (FE-B1/B2) excluded — auth-flow risk, needs an owner-session test. Signed-in pricing rendering (account hint / Pro "manage billing" swap) verified structurally + signed-out path in preview; the live signed-in view wants an owner logged-in pass. Reinforced lesson: Sonnet-workflow UI output passes tests but leaves visual/layout gaps — the supervisor preview-verify+fix step is required, not optional.
+
+### 2026-06-11 - ui-browser-testing - FE-OPT M0-1 loading skeletons
+
+- Agent: Codex worker
+- Trigger: Issue #689 adds browser-visible App Router loading states for `/app/*` and `/admin`, plus the `/app` shell error fallback.
+- Action: Opened and followed the project skill. Read the app shell, shell primitives/CSS, the existing admin promo-code loading pattern, target pages, and Playwright setup. Added a shared app-shell skeleton helper using existing shell primitives, route-specific loading files, and a branded `/app` error boundary.
+- Output artifacts: `components/app/shell/shell-skeleton.tsx`, new loading/error route files under `app/app/**` and `app/admin/loading.tsx`, `components/app/shell/shell.module.css`, and this log entry.
+- Verification evidence: pre-change file-presence check failed as expected; post-change required file checks passed; restricted-wording scan over `app components public lib` passed; `npm run typecheck`, `npm run build`, and `npm run test` passed.
+- Limitations: Browser preview was attempted against a local Next dev server and mock API, but Chromium launch was denied by the macOS sandbox and WebKit was not installed. The attempted preview left local test listeners on `127.0.0.1:3210` and `127.0.0.1:45935`; the harness denied both session input and PID signals, so they could not be stopped from this worker turn. No deploy, push, PR, backend, schema, auth, billing, or payment-provider changes were made.
