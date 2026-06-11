@@ -28,6 +28,7 @@ import {
   type RewriteResponse,
 } from "../../lib/rewrite-response";
 import { NatBar } from "../landing/nat-bar";
+import { homepageSampleCases } from "../landing/sample-cases";
 import { Button, LinkButton } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { workspacePacks } from "./buy-rewrites-dialog";
@@ -79,6 +80,7 @@ const progressSteps = [
   "Building candidate replies",
   "Reviewing quality gates",
 ];
+const workspaceExampleSample = homepageSampleCases[0];
 
 function Eyebrow({
   children,
@@ -587,6 +589,17 @@ export function RewriteWorkspace({
     setShowPostCopyNudge(false);
   }
 
+  function loadExampleDraft() {
+    setDraft(workspaceExampleSample.draft);
+    setResult(null);
+    setQualityFailure(null);
+    setError("");
+    setCopied(false);
+    setResultAnnouncement("");
+    setQualityTipsOpen(false);
+    setShowPostCopyNudge(false);
+  }
+
   function cancelRewrite() {
     activeRewriteAbortRef.current?.abort();
     activeRewriteAbortRef.current = null;
@@ -696,6 +709,30 @@ export function RewriteWorkspace({
               rows={16}
               value={draft}
             />
+            {!draft.trim() && !loading && !result && !qualityFailure ? (
+              <div className="mt-4 rounded-lg border border-line bg-paper/60 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink">
+                      Want a quick feel for it?
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-ink/50">
+                      This only fills the draft with a sample. Rewrite uses a
+                      real attempt once quality checks pass.
+                    </p>
+                  </div>
+                  <Button
+                    className="w-full shrink-0 sm:w-auto"
+                    onClick={loadExampleDraft}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                    Try an example
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-ink/50">
                 Counts only after quality checks pass.

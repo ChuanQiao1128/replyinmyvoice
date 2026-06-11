@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-11 - ui-browser-testing - W2-C Try an example workspace
+
+- Agent: Codex worker
+- Trigger: GitHub issue #705 changes the browser-visible `/app` rewrite workspace empty state and requires proof that loading a sample draft does not start a rewrite request.
+- Action: Opened and followed the skill; used a focused React DOM unit test for the repeatable workspace click behavior and attempted a Playwright browser launch smoke through the available Node REPL.
+- Output artifacts: `components/app/rewrite-workspace.tsx`; `tests/unit/workspace-copy.test.ts`; `tests/unit/workspace-try-example.test.ts`; `package.json`; `package-lock.json`.
+- Verification evidence: Red run first failed because the Try an example control was absent; focused interaction test passed after implementation. Final gates passed: `npx vitest run tests/unit/workspace-try-example.test.ts`; `npx vitest run tests/unit/workspace-copy.test.ts`; `npx vitest run tests/unit/landing-demo-samples.test.ts`; `npm run typecheck`; `npm run test`; `npm run lint`; `git diff --check`; guarded source-term scan over `app`, `components`, `public`, and `lib`.
+- Limitations: Local Playwright could not launch Chromium because the macOS sandbox denied the browser process registration. No provider call, quota use, deploy, push, PR, payment change, secret inspection, or production branch action was performed.
+
 ### 2026-06-11 - ui-browser-testing - M1-6 landing conversion CTA
 
 - Agent: Codex worker
