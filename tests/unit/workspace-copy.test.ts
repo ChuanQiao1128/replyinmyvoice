@@ -1,5 +1,10 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { Window } from "happy-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+type Act = typeof import("react").act;
+type CreateElement = typeof import("react").createElement;
+type CreateRoot = typeof import("react-dom/client").createRoot;
 
 const workspaceSource = readFileSync(
   new URL("../../components/app/rewrite-workspace.tsx", import.meta.url),
@@ -65,7 +70,96 @@ function phrase(...parts: string[]) {
   return parts.join(" ");
 }
 
+function installDom() {
+  const testWindow = new Window({ url: "http://localhost/app" });
+
+  vi.stubGlobal("window", testWindow);
+  vi.stubGlobal("self", testWindow);
+  vi.stubGlobal("document", testWindow.document);
+  vi.stubGlobal("navigator", testWindow.navigator);
+  vi.stubGlobal("HTMLElement", testWindow.HTMLElement);
+  vi.stubGlobal("HTMLTextAreaElement", testWindow.HTMLTextAreaElement);
+  vi.stubGlobal("Element", testWindow.Element);
+  vi.stubGlobal("Node", testWindow.Node);
+  vi.stubGlobal("Text", testWindow.Text);
+  vi.stubGlobal("Event", testWindow.Event);
+  vi.stubGlobal("MouseEvent", testWindow.MouseEvent);
+  vi.stubGlobal("KeyboardEvent", testWindow.KeyboardEvent);
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    testWindow.requestAnimationFrame.bind(testWindow),
+  );
+  vi.stubGlobal(
+    "cancelAnimationFrame",
+    testWindow.cancelAnimationFrame.bind(testWindow),
+  );
+
+  (
+    globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT: boolean;
+    }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+
+  return testWindow;
+}
+
+async function loadWorkspaceModules() {
+  const react = await import("react");
+  vi.stubGlobal("React", react);
+  vi.doMock("next/navigation", () => ({
+    useRouter: () => ({
+      refresh: vi.fn(),
+    }),
+  }));
+
+  const [reactDom, workspace, samples] = await Promise.all([
+    import("react-dom/client"),
+    import("../../components/app/rewrite-workspace"),
+    import("../../components/landing/sample-cases"),
+  ]);
+
+  return {
+    act: react.act as Act,
+    createElement: react.createElement as CreateElement,
+    createRoot: reactDom.createRoot as CreateRoot,
+    RewriteWorkspace: workspace.RewriteWorkspace,
+    homepageSampleCases: samples.homepageSampleCases,
+  };
+}
+
+const workspaceProps = {
+  appExperience: "ok" as const,
+  canRedeem: false,
+  checkoutStatus: null,
+  outOfCredits: false,
+  usageLabel: "3 rewrites remaining",
+  subscriptionStatus: "Active",
+  paymentGraceEndsAt: null,
+  paid: false,
+  quota: 3,
+  planRemaining: 3,
+  promoState: {
+    hasRedeemed: true,
+    trialExpiresAt: null,
+    trialRemaining: 3,
+  },
+  rewriteHistoryUserKey: "test-user",
+  remaining: 3,
+  usageExhausted: false,
+};
+
+function buttonByText(container: HTMLElement, text: string) {
+  return Array.from(container.querySelectorAll("button")).find((button) =>
+    button.textContent?.includes(text),
+  );
+}
+
 describe("rewrite workspace surface copy", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
   it("is a single-input workspace without the old wizard scaffolding", () => {
     // The simplified workspace submits only the draft plus a default tone,
     // so the backend RewriteRequest contract is unchanged.
@@ -252,7 +346,14 @@ describe("rewrite workspace surface copy", () => {
     expect(workspaceSource).toContain("shell.pageTitle");
     expect(workspaceSource).not.toContain("max-w-6xl");
     expect(workspaceSource).not.toContain("min-h-screen");
-    expect(workspaceSource).toContain("min-h-[28rem]");
+    expect(workspaceSource).toContain("draftAutosaveKey");
+    expect(workspaceSource).toContain("rimv.workspace.draft.v1");
+    expect(workspaceSource).toContain("handleDraftKeyDown");
+    expect(workspaceSource).toContain("event.metaKey");
+    expect(workspaceSource).toContain("event.ctrlKey");
+    expect(workspaceSource).toContain("min-h-[16rem]");
+    expect(workspaceSource).toContain("max-h-[min(28rem,44svh)]");
+    expect(workspaceSource).toContain("md:min-h-[28rem]");
     expect(workspaceSource).toContain('import { Textarea } from "../ui/textarea"');
     expect(workspaceSource).toContain("<Textarea");
     expect(workspaceSource).not.toContain("<textarea");
@@ -407,5 +508,137 @@ describe("rewrite workspace surface copy", () => {
     expect(firstRunChecklistSource).not.toContain(
       phrase("free", "rewrites"),
     );
+  });
+
+  it("restores only the saved draft from localStorage and can clear it", async () => {
+    const testWindow = installDom();
+    const savedDraft =
+      "Please send a warmer version that keeps the Friday pickup details.";
+    testWindow.localStorage.setItem("rimv.workspace.draft.v1", savedDraft);
+    testWindow.localStorage.setItem("rimv.workspace.unrelated.v1", "kept");
+    vi.stubGlobal("fetch", vi.fn());
+
+    const { act, createElement, createRoot, RewriteWorkspace } =
+      await loadWorkspaceModules();
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(RewriteWorkspace, workspaceProps));
+    });
+
+    const textarea =
+      container.querySelector<HTMLTextAreaElement>("#roughDraftReply");
+
+    expect(textarea?.value).toBe(savedDraft);
+    expect(container.textContent).toContain("Restored your draft.");
+    expect(testWindow.localStorage.getItem("rimv.workspace.unrelated.v1")).toBe(
+      "kept",
+    );
+
+    await act(async () => {
+      const clearButton = buttonByText(container, "Clear saved draft");
+      expect(clearButton).toBeTruthy();
+      clearButton?.dispatchEvent(
+        new testWindow.MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+        }) as unknown as Event,
+      );
+    });
+
+    expect(textarea?.value).toBe("");
+    expect(testWindow.localStorage.getItem("rimv.workspace.draft.v1")).toBeNull();
+    expect(container.textContent).not.toContain("Restored your draft.");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("submits a valid draft with Cmd+Enter", async () => {
+    const testWindow = installDom();
+    const rewriteResponse = {
+      rewrittenText: "This is the rewritten reply.",
+      changeSummary: [],
+      riskNotes: [],
+      naturalness: {
+        draftAiLikePercent: 70,
+        rewriteAiLikePercent: 20,
+        changePoints: 50,
+        label: "lower",
+      },
+      optimization: {
+        internalStrategiesTried: 1,
+        userUsageCharged: 1,
+      },
+    };
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(rewriteResponse), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const {
+      act,
+      createElement,
+      createRoot,
+      RewriteWorkspace,
+      homepageSampleCases,
+    } = await loadWorkspaceModules();
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(RewriteWorkspace, workspaceProps));
+    });
+
+    await act(async () => {
+      const tryExampleButton = buttonByText(container, "Try an example");
+      expect(tryExampleButton).toBeTruthy();
+      tryExampleButton?.dispatchEvent(
+        new testWindow.MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+        }) as unknown as Event,
+      );
+    });
+
+    const textarea =
+      container.querySelector<HTMLTextAreaElement>("#roughDraftReply");
+    expect(textarea?.value).toBe(homepageSampleCases[0].draft);
+
+    await act(async () => {
+      textarea?.dispatchEvent(
+        new testWindow.KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Enter",
+          metaKey: true,
+        }) as unknown as Event,
+      );
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/rewrite",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          roughDraftReply: homepageSampleCases[0].draft,
+          tone: "warm",
+        }),
+      }),
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 });
