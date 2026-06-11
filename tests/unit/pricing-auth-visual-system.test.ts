@@ -68,6 +68,27 @@ describe("pricing and auth visual system", () => {
     expect(authCard).toContain("Continue with email");
     expect(authCard).toContain("Continue with Google");
     expect(authCard).toContain("Redeem a trial code for 3 rewrites");
+    expect(authCard).toContain(
+      'heading="Redeem a trial code after you create your account."',
+    );
+    expect(authCard).toContain(
+      'lead="Create the account in-app, verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."',
+    );
+    expect(authCard).toContain(
+      'title="Create your account for trial-code access"',
+    );
+    expect(authCard).toContain(
+      'body="Verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."',
+    );
+    expect(authCard).toContain(
+      '<ReturnHint action="verifying" destination={authRedirect.redirectTo} />',
+    );
+    expect(authCard).toContain(
+      "After {action} you&apos;ll return to {destination}.",
+    );
+    expect(authCard).not.toContain(
+      "Start with email, a sign-in value, and a quick verification.",
+    );
     expect(authCard).not.toContain(
       phrase("Start with three", "free", "rewrites"),
     );

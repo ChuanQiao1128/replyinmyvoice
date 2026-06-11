@@ -779,8 +779,8 @@ export function SignUpAuthPage({
   return (
     <AuthShell
       eyebrow="Create your account"
-      heading="Start with email, a sign-in value, and a quick verification."
-      lead="Create the account in-app, then enter the code sent to your email before opening the workspace."
+      heading="Redeem a trial code after you create your account."
+      lead="Create the account in-app, verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."
       mode="sign-up"
     >
       <section aria-labelledby="sign-up-title" className={styles.panel} style={panelVisualStyle}>
@@ -789,12 +789,12 @@ export function SignUpAuthPage({
             <PanelHeader
               id="sign-up-title"
               eyebrow="Step 1 of 2"
-              title="Create your account"
-              body="Use an email you can access. We will send a verification code next."
+              title="Create your account for trial-code access"
+              body="Verify your email, then redeem a trial code (or buy a pack) to unlock 3 rewrites."
             />
 
             {formError ? <StatusMessage tone="error">{formError}</StatusMessage> : null}
-            {shouldForwardAuthRedirect ? <ReturnHint destination={authRedirect.redirectTo} /> : null}
+            {shouldForwardAuthRedirect ? <ReturnHint action="verifying" destination={authRedirect.redirectTo} /> : null}
 
             <form className={styles.form} noValidate onSubmit={handleStart}>
               <TextField
@@ -1212,10 +1212,16 @@ function GoogleMark() {
   );
 }
 
-function ReturnHint({ destination }: { destination: string }) {
+function ReturnHint({
+  action = "signing in",
+  destination,
+}: {
+  action?: "signing in" | "verifying";
+  destination: string;
+}) {
   return (
     <p className={styles.hint}>
-      After signing in you&apos;ll return to {destination}.
+      After {action} you&apos;ll return to {destination}.
     </p>
   );
 }
