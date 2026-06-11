@@ -80,4 +80,16 @@ describe("SiteHeader", () => {
     expect(html).not.toContain('href="/admin"');
     expect(html).not.toContain(">Admin</a>");
   });
+
+  it("renders the signed-out mobile menu with accessible button state", async () => {
+    vi.mocked(getCurrentSession).mockResolvedValue(null);
+
+    const html = await renderHeader();
+
+    expect(html).toContain('class="mobile-nav-menu"');
+    expect(html).toContain('type="button"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-controls="site-mobile-nav-panel"');
+    expect(html).not.toContain("<summary");
+  });
 });

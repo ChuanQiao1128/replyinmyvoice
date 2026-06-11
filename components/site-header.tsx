@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { isAdminSession } from "../lib/admin-auth";
 import { getCurrentSession } from "../lib/entra-auth";
+import { SiteHeaderMobileMenu } from "./site-header-mobile-menu";
 import { SignOutLink } from "./sign-out-link";
 
 type Props = {
@@ -41,35 +42,12 @@ export async function SiteHeader({ rewriteHistoryUserKey }: Props = {}) {
               </>
             )}
           </div>
-          <details className="mobile-nav-menu">
-            <summary className="mobile-nav-trigger" aria-label="Menu">
-              <span>Menu</span>
-              <span className="mobile-nav-trigger-mark" aria-hidden="true">
-                +
-              </span>
-            </summary>
-            <div className="mobile-nav-panel">
-              <Link href="/pricing">Pricing</Link>
-              <Link href="/developers">Developers</Link>
-              {!session ? (
-                <>
-                  <Link href="/sign-in">Sign in</Link>
-                  <Link href="/sign-up" className="mobile-nav-cta">
-                    Start rewriting
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <Link href="/developers/keys">API keys</Link>
-                  {isAdmin ? <Link href="/admin">Admin</Link> : null}
-                  <SignOutLink rewriteHistoryUserKey={signOutUserKey} />
-                  <Link href="/app" className="mobile-nav-cta">
-                    Open app
-                  </Link>
-                </>
-              )}
-            </div>
-          </details>
+          <SiteHeaderMobileMenu
+            isAdmin={isAdmin}
+            primaryCta={primaryCta}
+            signedIn={Boolean(session)}
+            signOutUserKey={signOutUserKey}
+          />
           <Link href={primaryCta.href} className="btn btn-primary nav-primary-cta">
             {primaryCta.label} <span className="btn-arrow">→</span>
           </Link>

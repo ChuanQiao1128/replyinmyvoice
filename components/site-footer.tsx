@@ -32,6 +32,18 @@ export function SiteFooter() {
               <li>
                 <Link href="/developers">Developers</Link>
               </li>
+              <li>
+                <Link href="/developers/api">API docs</Link>
+              </li>
+              <li>
+                <Link href="/developers/api#quickstart">API quickstart</Link>
+              </li>
+              <li>
+                <Link href="/developers/mcp">MCP setup</Link>
+              </li>
+              <li>
+                <Link href="/developers/keys">API keys</Link>
+              </li>
             </ul>
           </div>
           <div>
@@ -58,7 +70,7 @@ export function SiteFooter() {
                 <Link href="/sign-up">Sign up</Link>
               </li>
               <li>
-                <Link href="/app">Billing</Link>
+                <Link href="/app/account">Billing</Link>
               </li>
             </ul>
           </div>
