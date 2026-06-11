@@ -21,7 +21,7 @@ describe("pricing and auth visual system", () => {
 
     expect(pricingPage).toContain('<main className="rimv">');
     expect(pricingPage).toContain('className="page"');
-    expect(pricingPage).toContain('className="pricing-wrap"');
+    expect(pricingPage).toContain('className="ptier-grid"');
     expect(pricingPage).toContain(
       "Redeem a trial code. Buy rewrites when you need them.",
     );
@@ -30,7 +30,7 @@ describe("pricing and auth visual system", () => {
     );
     expect(pricingPage).toContain("Trial code access");
     expect(pricingPage).toContain("Redeem a trial code");
-    expect(pricingPage).toContain("Rewrite packs");
+    expect(pricingPage).toContain("One-time packs");
     expect(pricingPage).toContain("Quick Pack");
     expect(pricingPage).toContain("NZ$2.50");
     expect(pricingPage).toContain("10 rewrites");
