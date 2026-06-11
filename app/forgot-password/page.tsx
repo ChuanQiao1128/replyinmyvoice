@@ -3,8 +3,8 @@ import { ResetAuthPage } from "@/components/auth/google-oauth-card";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Reset sign-in",
-  description: "Reset your Reply In My Voice account sign-in value.",
+  title: "Reset password",
+  description: "Reset your Reply In My Voice account password.",
 };
 
 type ResetPageProps = {

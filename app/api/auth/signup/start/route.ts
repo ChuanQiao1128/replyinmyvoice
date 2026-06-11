@@ -167,7 +167,7 @@ function nativeSignupError(error: unknown, email: string, authRedirect: AuthRedi
   }
 
   if (error.appCode === entryPolicyCode) {
-    return signupJsonError("Use a stronger sign-up value.", 400);
+    return signupJsonError("Use a stronger password.", 400);
   }
 
   if (error.appCode === "redirect_required") {
