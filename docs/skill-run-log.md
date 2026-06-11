@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-11 - ui-browser-testing - M1-6 landing conversion CTA
+
+- Agent: Codex worker
+- Trigger: GitHub issue #695 changes landing-page UI, mobile responsive CTA behavior, demo controls, and browser-visible CTA copy.
+- Action: Opened and followed the skill; used focused unit coverage for the mobile sticky CTA wiring, hero no-sign-up demo label, and removal of the inactive tone preset control before implementation.
+- Output artifacts: `components/landing/sticky-cta.tsx`; `components/landing/hero.tsx`; `components/landing/interactive-demo.tsx`; `app/page.tsx`; `app/globals.css`; `tests/unit/landing-conversion.test.ts`.
+- Verification evidence: Red run first failed on the old label, inactive tone control, and missing sticky CTA; focused conversion test passed after implementation. Final gates passed: `npx vitest run tests/unit/landing-demo-samples.test.ts`; `npm run typecheck`; `npm run build`; `npm run test`; changed-diff proof-claim grep; banned-substring grep; `git diff --check`. A production `next start` server returned 200 for `/` and included the updated no-sign-up demo link.
+- Limitations: In-app Browser was unavailable. Local Playwright could not launch bundled Chromium or system Chrome because the macOS sandbox denied browser process registration, so responsive screenshots and real browser interaction could not be completed. `next dev` also served `/` as 404 while repeatedly reporting file-watcher `EMFILE`; production build/start served `/` correctly. No provider calls, quota use, deploy, push, PR, payment changes, or secret inspection were performed.
+
 ### 2026-06-11 - ui-browser-testing - M1-1 auth redirect intent
 
 - Agent: Codex worker

@@ -690,34 +690,16 @@ select {
   border-color: var(--ink);
 }
 
-.tone-toggle {
-  display: inline-flex;
-  border: 1px solid var(--rule-2);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.tone-toggle button {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--ink-2);
-  padding: 9px 14px;
-  font-family: var(--sans);
-  font-size: 12.5px;
-  cursor: pointer;
-  font-weight: 500;
-}
-.tone-toggle button.active {
-  background: var(--ink);
-  color: var(--bg);
-}
-
 /* ── sections ────────────────────────────────────────────────── */
 
 section.block {
   padding: clamp(72px, 8vw, 120px) 0;
   border-top: 1px solid var(--rule);
   position: relative;
+}
+
+.sticky-mobile-cta {
+  display: none;
 }
 .sec-head {
   display: grid;
@@ -2712,6 +2694,81 @@ section.block {
   .wrap {
     padding: 0 24px;
   }
+  .sticky-mobile-cta {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 10px 10px 14px;
+    background: rgba(252, 250, 244, 0.96);
+    border: 1px solid var(--rule-2);
+    border-radius: 8px;
+    box-shadow: 0 18px 50px -28px rgba(17, 21, 15, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(calc(100% + 24px));
+    transition:
+      opacity 0.18s ease,
+      transform 0.18s ease;
+  }
+  .sticky-mobile-cta.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .sticky-mobile-cta-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .sticky-mobile-cta-label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .sticky-mobile-cta-note {
+    font-size: 12px;
+    line-height: 1.25;
+    color: var(--muted);
+  }
+  .sticky-mobile-cta-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .sticky-mobile-cta .btn {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .sticky-mobile-cta-close {
+    appearance: none;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--ink-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      color 0.15s ease,
+      background 0.15s ease;
+  }
+  .sticky-mobile-cta-close:hover {
+    background: var(--bg-2);
+    border-color: var(--ink);
+    color: var(--ink);
+  }
   .nav-inner {
     gap: 12px;
   }
@@ -2751,6 +2808,18 @@ section.block {
 @media (max-width: 440px) {
   .wrap {
     padding: 0 16px;
+  }
+  .sticky-mobile-cta {
+    left: 10px;
+    right: 10px;
+    gap: 8px;
+    padding-left: 12px;
+  }
+  .sticky-mobile-cta-note {
+    display: none;
+  }
+  .sticky-mobile-cta .btn {
+    padding: 10px 11px;
   }
   .nav-inner {
     gap: 8px;
