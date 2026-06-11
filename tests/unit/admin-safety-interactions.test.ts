@@ -189,6 +189,45 @@ function adminDetail(): AdminUserDetailResponse {
   };
 }
 
+function adminDetailWithActivity(): AdminUserDetailResponse {
+  return {
+    ...adminDetail(),
+    credits: [
+      {
+        amountConsumed: 2,
+        amountGranted: 7,
+        amountTotal: null,
+        currency: null,
+        expiresAt: "2026-09-01T00:00:00.000Z",
+        grantedAt: "2026-06-01T09:00:00.000Z",
+        id: "credit_activity_admin",
+        paymentIntentId: null,
+        remaining: 5,
+        sku: null,
+        source: "ADMIN",
+        stripeEventId: null,
+      },
+    ],
+    payments: [
+      {
+        amountTotal: 1200,
+        creditId: "credit_activity_payment",
+        creditsConsumed: 1,
+        creditsGranted: 40,
+        creditsRemaining: 39,
+        currency: "nzd",
+        eventId: "evt_activity_payment",
+        expiresAt: "2026-09-01T10:00:00.000Z",
+        grantedAt: "2026-06-02T10:00:00.000Z",
+        paymentIntentId: "pi_activity_payment",
+        receiptUrl: null,
+        sku: "pro",
+        source: "stripe",
+      },
+    ],
+  };
+}
+
 function adminStats(): AdminStatsResponse {
   return {
     costToDateUsd: 12,
@@ -307,6 +346,42 @@ describe("admin safety interactions", () => {
     );
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("renders account activity from existing detail response fields in newest-first order", async () => {
+    installDom("/admin/users/user_admin_target");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(jsonResponse(adminDetailWithActivity())));
+
+    const { act, AdminUserDetail, createElement, createRoot } =
+      await loadAdminModules();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(AdminUserDetail, { userId: "user_admin_target" }));
+    });
+    await flushReact(act);
+
+    const activityPanel = Array.from(container.querySelectorAll("section")).find(
+      (section) => section.textContent?.includes("Account activity"),
+    );
+    expect(activityPanel).toBeTruthy();
+    const activityText = activityPanel?.textContent ?? "";
+    expect(activityText).toContain("Payment");
+    expect(activityText).toContain("pi_activity_payment");
+    expect(activityText).toContain("1200 NZD");
+    expect(activityText).toContain("Credit");
+    expect(activityText).toContain("credit_activity_admin");
+    expect(activityText).toContain("7 granted");
+    expect(activityText).toContain("—");
+    expect(activityText.indexOf("pi_activity_payment")).toBeLessThan(
+      activityText.indexOf("credit_activity_admin"),
+    );
 
     await act(async () => {
       root.unmount();

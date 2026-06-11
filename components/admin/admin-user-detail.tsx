@@ -34,6 +34,16 @@ type ActionOutcome = {
   payload: unknown;
 };
 
+type AccountActivityEntry = {
+  id: string;
+  occurredAt: string | null;
+  type: string;
+  amount: string | null;
+  detail: string | null;
+  actor: string | null;
+  sortIndex: number;
+};
+
 async function readJsonError(response: Response) {
   const payload = (await response.json().catch(() => null)) as {
     error?: string;
@@ -121,6 +131,33 @@ function valueOrDash(value: string | number | null | undefined) {
   return value === null || value === undefined || value === "" ? "—" : value;
 }
 
+function formatActivityDateTime(value: string | null) {
+  if (!value) {
+    return "—";
+  }
+
+  const formatted = formatDateTime(value);
+  return formatted === "Not set" ? "—" : formatted;
+}
+
+function formatAmountWithCurrency(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+) {
+  if (amount === null || amount === undefined) {
+    return null;
+  }
+
+  return currency ? `${amount} ${currency.toUpperCase()}` : String(amount);
+}
+
+function joinActivityDetail(parts: Array<string | null | undefined>) {
+  const values = parts.filter(
+    (part): part is string => typeof part === "string" && part.trim() !== "",
+  );
+  return values.length > 0 ? values.join(" · ") : null;
+}
+
 function paymentLabel(payment: AdminPayment) {
   const intent = payment.paymentIntentId ?? "No payment intent";
   const amount =
@@ -128,6 +165,183 @@ function paymentLabel(payment: AdminPayment) {
       ? `${payment.amountTotal} ${payment.currency.toUpperCase()}`
       : "amount not stored";
   return `${intent} · ${amount}`;
+}
+
+function activityTimeValue(value: string | null) {
+  if (!value) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function stringValue(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function numberValue(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function booleanValue(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function outcomeType(title: string) {
+  const normalized = title.toLowerCase();
+  if (normalized.includes("refund")) {
+    return "Refund outcome";
+  }
+  if (normalized.includes("credit")) {
+    return "Credit outcome";
+  }
+  if (normalized.includes("suspension") || normalized.includes("unsuspension")) {
+    return "Suspension outcome";
+  }
+
+  return "Admin outcome";
+}
+
+function outcomeAmount(record: Record<string, unknown>, type: string) {
+  if (type === "Refund outcome") {
+    return formatAmountWithCurrency(
+      numberValue(record, "amount", "Amount"),
+      stringValue(record, "currency", "Currency"),
+    );
+  }
+
+  if (type === "Credit outcome") {
+    const amountGranted = numberValue(record, "amountGranted", "AmountGranted");
+    return amountGranted === null ? null : `${amountGranted} granted`;
+  }
+
+  return null;
+}
+
+function outcomeDetail(record: Record<string, unknown>, type: string) {
+  if (type === "Suspension outcome") {
+    const suspended = booleanValue(record, "suspended", "Suspended");
+    const label =
+      suspended === null ? null : suspended ? "Suspended" : "Unsuspended";
+    return joinActivityDetail([
+      label,
+      stringValue(record, "targetUserId", "TargetUserId"),
+    ]);
+  }
+
+  return joinActivityDetail([
+    stringValue(record, "paymentIntentId", "PaymentIntentId"),
+    stringValue(record, "refundId", "RefundId"),
+    stringValue(record, "creditId", "CreditId"),
+    stringValue(record, "targetUserId", "TargetUserId"),
+    stringValue(record, "source", "Source"),
+  ]);
+}
+
+function outcomeActivityEntry(
+  outcome: ActionOutcome | null,
+  sortIndex: number,
+): AccountActivityEntry | null {
+  if (!outcome || !isRecord(outcome.payload)) {
+    return null;
+  }
+
+  const type = outcomeType(outcome.title);
+  const occurredAt =
+    stringValue(outcome.payload, "grantedAt", "GrantedAt") ??
+    stringValue(outcome.payload, "suspendedAt", "SuspendedAt") ??
+    stringValue(outcome.payload, "createdAt", "CreatedAt") ??
+    stringValue(outcome.payload, "updatedAt", "UpdatedAt");
+
+  return {
+    actor: null,
+    amount: outcomeAmount(outcome.payload, type),
+    detail: outcomeDetail(outcome.payload, type),
+    id: `outcome-${type}-${sortIndex}`,
+    occurredAt,
+    sortIndex,
+    type,
+  };
+}
+
+function accountActivityEntries(
+  detail: AdminUserDetailResponse,
+  outcome: ActionOutcome | null,
+) {
+  const entries: AccountActivityEntry[] = [];
+
+  detail.payments.forEach((payment, index) => {
+    entries.push({
+      actor: null,
+      amount: formatAmountWithCurrency(payment.amountTotal, payment.currency),
+      detail: joinActivityDetail([
+        payment.paymentIntentId,
+        payment.sku,
+        payment.eventId,
+      ]),
+      id: `payment-${payment.creditId}-${index}`,
+      occurredAt: payment.grantedAt,
+      sortIndex: index,
+      type: "Payment",
+    });
+  });
+
+  detail.credits.forEach((credit, index) => {
+    entries.push({
+      actor: null,
+      amount: `${credit.amountGranted} granted · ${credit.remaining} remaining`,
+      detail: joinActivityDetail([
+        credit.id,
+        credit.source,
+        credit.paymentIntentId,
+        credit.stripeEventId,
+      ]),
+      id: `credit-${credit.id}-${index}`,
+      occurredAt: credit.grantedAt,
+      sortIndex: detail.payments.length + index,
+      type: "Credit",
+    });
+  });
+
+  const transientOutcome = outcomeActivityEntry(
+    outcome,
+    detail.payments.length + detail.credits.length,
+  );
+  if (transientOutcome) {
+    entries.push(transientOutcome);
+  }
+
+  return entries.sort((left, right) => {
+    const timeDifference =
+      activityTimeValue(right.occurredAt) - activityTimeValue(left.occurredAt);
+    return timeDifference === 0 ? left.sortIndex - right.sortIndex : timeDifference;
+  });
 }
 
 function SummaryItem({
@@ -144,6 +358,92 @@ function SummaryItem({
         {valueOrDash(value)}
       </p>
     </div>
+  );
+}
+
+function AccountActivityPanel({
+  detail,
+  outcome,
+}: {
+  detail: AdminUserDetailResponse;
+  outcome: ActionOutcome | null;
+}) {
+  const activity = accountActivityEntries(detail, outcome);
+
+  return (
+    <section aria-labelledby="account-activity-title">
+      <Card className="overflow-hidden">
+        <div className="border-b border-line px-5 py-4">
+          <h2
+            className="text-xl font-semibold tracking-normal"
+            id="account-activity-title"
+          >
+            Account activity
+          </h2>
+          <p className="mt-1 text-sm text-ink/55">
+            Read-only timeline from the admin response fields currently available.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-b border-line bg-paper-deep/40 text-xs uppercase text-ink/50">
+              <tr>
+                <th
+                  aria-sort="descending"
+                  className="px-5 py-3 font-semibold"
+                  scope="col"
+                >
+                  Time
+                </th>
+                <th className="px-5 py-3 font-semibold" scope="col">
+                  Type
+                </th>
+                <th className="px-5 py-3 font-semibold" scope="col">
+                  Amount
+                </th>
+                <th className="px-5 py-3 font-semibold" scope="col">
+                  Detail
+                </th>
+                {/* Current admin responses do not include acting-admin identity or durable action rows; keep placeholders until a backend pass adds those fields. */}
+                <th className="px-5 py-3 font-semibold" scope="col">
+                  Actor
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {activity.map((entry) => (
+                <tr key={entry.id} className="bg-white/45 align-top">
+                  <td className="whitespace-nowrap px-5 py-4 text-ink/70">
+                    {entry.occurredAt ? (
+                      <time dateTime={entry.occurredAt}>
+                        {formatActivityDateTime(entry.occurredAt)}
+                      </time>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-5 py-4 font-semibold text-ink">
+                    {entry.type}
+                  </td>
+                  <td className="px-5 py-4">{valueOrDash(entry.amount)}</td>
+                  <td className="px-5 py-4 font-mono text-xs">
+                    {valueOrDash(entry.detail)}
+                  </td>
+                  <td className="px-5 py-4">{valueOrDash(entry.actor)}</td>
+                </tr>
+              ))}
+              {activity.length === 0 ? (
+                <tr>
+                  <td className="px-5 py-8 text-center text-ink/55" colSpan={5}>
+                    No account activity rows found.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </section>
   );
 }
 
@@ -559,6 +859,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
                 </div>
               </Card>
 
+              <AccountActivityPanel detail={detail} outcome={outcome} />
               <PaymentTable payments={detail.payments} />
               <CreditTable credits={detail.credits} />
               <UsageTable usage={detail.usage} />
