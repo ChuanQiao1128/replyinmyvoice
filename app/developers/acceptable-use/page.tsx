@@ -27,7 +27,7 @@ const sections = [
   },
   {
     title: "Access and resale",
-    text: "Do not resell raw access to the API, share keys outside your organization, or present the API as a standalone pass-through service. Build integrations that add clear customer value and keep keys under your control.",
+    text: "Do not resell raw access to the API. Raw access means making Reply In My Voice API capacity, credentials, or endpoints available as the main thing you sell, instead of embedding it inside your own reviewed product workflow. Allowed example: a value-add integration that uses your server-side key inside your product, adds your own customer workflow, and keeps keys under your control. Disallowed example: a bare pass-through service or key sharing arrangement that lets others use Reply In My Voice directly through your account.",
   },
   {
     title: "Your customers and users",

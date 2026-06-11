@@ -190,6 +190,11 @@ describe("/developers hub and API documentation pages", () => {
     expect(acceptableUseSource).toContain("illegal, deceptive, abusive, or harassing");
     expect(acceptableUseSource).toContain("overload or reverse-engineer");
     expect(acceptableUseSource).toContain("resell raw access");
+    expect(acceptableUseSource).toContain("Allowed example");
+    expect(acceptableUseSource).toContain("value-add integration");
+    expect(acceptableUseSource).toContain("Disallowed example");
+    expect(acceptableUseSource).toContain("bare pass-through service");
+    expect(acceptableUseSource).toContain("key sharing");
 
     expect(dataSource).toContain("Data & Retention");
     expect(dataSource).toContain("RewriteAttempt");
@@ -198,5 +203,9 @@ describe("/developers hub and API documentation pages", () => {
     expect(dataSource).toContain(sharedRetentionSentence);
     expect(dataSource).toContain("purged");
     expect(dataSource).toContain("rewrite and naturalness providers");
+    expect(dataSource).toContain("Processing and residency");
+    expect(dataSource).toContain("does not promise a specific country, region, or single-region residency");
+    expect(dataSource).toContain("/app/account");
+    expect(dataSource).toContain("within 30 days");
   });
 });
