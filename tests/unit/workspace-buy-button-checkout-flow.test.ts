@@ -147,7 +147,10 @@ function isButtonElement(element: ElementLike) {
   );
 }
 
-async function renderSubscriptionStatus(paid = false) {
+async function renderSubscriptionStatus(
+  paid = false,
+  checkoutStatus: "success" | "cancelled" | null = null,
+) {
   vi.stubGlobal("React", {
     createElement(
       type: unknown,
@@ -168,16 +171,43 @@ async function renderSubscriptionStatus(paid = false) {
     "../../components/app/subscription-status"
   );
 
-  return asElement(
-    SubscriptionStatus({
-      status: paid ? "Active" : "Inactive",
-      usageLabel: paid ? "80 rewrites left" : "3 rewrites left",
-      paid,
-      paymentGraceEndsAt: null,
-      canRedeem: false,
-      onRedeemClick: vi.fn(),
-    }),
-  );
+  const props = {
+    status: paid ? "Active" : "Inactive",
+    usageLabel: paid ? "80 rewrites left" : "3 rewrites left",
+    paid,
+    paymentGraceEndsAt: null,
+    canRedeem: false,
+    checkoutStatus,
+    onRedeemClick: vi.fn(),
+  } satisfies Parameters<typeof SubscriptionStatus>[0] & {
+    checkoutStatus: "success" | "cancelled" | null;
+  };
+
+  return asElement(SubscriptionStatus(props));
+}
+
+async function renderCheckoutBanner(
+  status: "success" | "cancelled" | null,
+  usageLabel = "3 rewrites left",
+) {
+  vi.stubGlobal("React", {
+    createElement(
+      type: unknown,
+      props: Record<string, unknown> | null,
+      ...children: unknown[]
+    ) {
+      return {
+        type,
+        props: {
+          ...(props ?? {}),
+          children: children.length === 1 ? children[0] : children,
+        },
+      };
+    },
+  });
+
+  const { CheckoutBanner } = await import("../../components/app/checkout-banner");
+  return CheckoutBanner({ status, usageLabel });
 }
 
 async function clickButton(label: string, paid = false) {
@@ -247,6 +277,33 @@ function stubPricingWindow(search: string, hash = "") {
       assign: vi.fn(),
       hash,
       pathname: "/pricing",
+      search,
+    },
+    history: {
+      state: { unit: true },
+      replaceState: vi.fn(
+        (_state: unknown, _title: string, nextPath: string | URL | null) => {
+          const nextUrl = new URL(
+            String(nextPath),
+            "https://replyinmyvoice.test",
+          );
+          windowStub.location.pathname = nextUrl.pathname;
+          windowStub.location.search = nextUrl.search;
+          windowStub.location.hash = nextUrl.hash;
+        },
+      ),
+    },
+  };
+
+  vi.stubGlobal("window", windowStub);
+  return windowStub;
+}
+
+function stubAppWindow(search: string, hash = "") {
+  const windowStub = {
+    location: {
+      hash,
+      pathname: "/app",
       search,
     },
     history: {
@@ -414,6 +471,72 @@ describe("workspace Buy rewrites pack picker", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(assign).not.toHaveBeenCalled();
     expect(stateUpdates.loading).toContain(true);
+  });
+
+  it("renders purchase confirmation once and strips the checkout param", async () => {
+    const windowStub = stubAppWindow("?checkout=success&keep=usage", "#draft");
+
+    resetHookRender();
+    const root = asElement(await renderCheckoutBanner("success"));
+    const text = textContent(root);
+
+    expect(text).toContain("Purchase confirmed");
+    expect(text).toContain("3 rewrites left");
+    expect(windowStub.history.replaceState).toHaveBeenCalledWith(
+      { unit: true },
+      "",
+      "/app?keep=usage#draft",
+    );
+
+    resetHookRender();
+    const clearedRoot = await renderCheckoutBanner(null);
+    expect(clearedRoot).toBeNull();
+  });
+
+  it("renders cancelled checkout once with a pricing retry path", async () => {
+    const windowStub = stubAppWindow("?checkout=cancelled&keep=workspace");
+
+    resetHookRender();
+    const root = asElement(await renderCheckoutBanner("cancelled"));
+    const text = textContent(root);
+
+    expect(text).toContain("Checkout cancelled");
+    expect(text).toContain("No charge was made");
+    expect(windowStub.history.replaceState).toHaveBeenCalledWith(
+      { unit: true },
+      "",
+      "/app?keep=workspace",
+    );
+
+    const pricingLink = walkElements(root).find(
+      (element) =>
+        typeof element.type === "function" &&
+        element.type.name === "LinkButton" &&
+        textContent(element).includes("Back to pricing"),
+    );
+    expect(pricingLink?.props.href).toBe("/pricing");
+
+    resetHookRender();
+    const clearedRoot = await renderCheckoutBanner(null);
+    expect(clearedRoot).toBeNull();
+  });
+
+  it("threads checkout status into the subscription strip", async () => {
+    vi.stubGlobal("window", {
+      location: { hash: "", pathname: "/app", search: "" },
+      history: { replaceState: vi.fn(), state: null },
+    });
+
+    resetHookRender();
+    const root = await renderSubscriptionStatus(false, "success");
+    const banner = walkElements(root).find(
+      (element) =>
+        typeof element.type === "function" &&
+        element.type.name === "CheckoutBanner",
+    );
+
+    expect(banner?.props.status).toBe("success");
+    expect(banner?.props.usageLabel).toBe("3 rewrites left");
   });
 
   it("renders the pack picker dialog wired to a close handler", async () => {

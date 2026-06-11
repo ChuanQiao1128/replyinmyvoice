@@ -6,6 +6,7 @@ import { useState } from "react";
 import { openBillingPortal } from "../../lib/billing-portal";
 import { Button } from "../ui/button";
 import { BuyRewritesDialog } from "./buy-rewrites-dialog";
+import { CheckoutBanner, type CheckoutStatus } from "./checkout-banner";
 import { PastDueBanner } from "./past-due-banner";
 
 type Props = {
@@ -14,6 +15,7 @@ type Props = {
   paid: boolean;
   paymentGraceEndsAt: string | null;
   canRedeem: boolean;
+  checkoutStatus?: CheckoutStatus | null;
   onRedeemClick: () => void;
 };
 
@@ -23,6 +25,7 @@ export function SubscriptionStatus({
   paid,
   paymentGraceEndsAt,
   canRedeem,
+  checkoutStatus = null,
   onRedeemClick,
 }: Props) {
   const [loading, setLoading] = useState(false);
@@ -47,6 +50,7 @@ export function SubscriptionStatus({
 
   return (
     <div className="space-y-3">
+      <CheckoutBanner status={checkoutStatus} usageLabel={usageLabel} />
       {status === "PastDue" ? (
         <PastDueBanner paymentGraceEndsAt={paymentGraceEndsAt} />
       ) : null}
