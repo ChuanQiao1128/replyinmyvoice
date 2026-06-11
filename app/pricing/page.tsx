@@ -14,6 +14,22 @@ export const metadata: Metadata = {
   title: "Pricing",
   description:
     "Redeem a trial code for 3 rewrites, then buy one-time rewrite packs or go Pro/API for monthly rewrites, REST API, and MCP server access.",
+  openGraph: {
+    title: "Reply In My Voice pricing",
+    description:
+      "Compare trial-code access, Quick Pack, Value Pack, and Pro/API options for replies that still sound like you.",
+    url: "https://replyinmyvoice.com/pricing",
+    siteName: "Reply In My Voice",
+    type: "website",
+    images: "/og.png",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Reply In My Voice pricing",
+    description:
+      "Compare trial-code access, Quick Pack, Value Pack, and Pro/API options for replies that still sound like you.",
+    images: "/og.png",
+  },
 };
 
 type PaidSku = "quick_pack" | "value_pack" | "pro_api" | "focus_pack";

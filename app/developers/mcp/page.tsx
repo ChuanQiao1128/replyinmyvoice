@@ -13,12 +13,16 @@ export const metadata: Metadata = {
     description:
       "Connect Claude Code, Codex, Claude Desktop, or Cursor to Reply In My Voice through local stdio or remote HTTP.",
     url: "https://replyinmyvoice.com/developers/mcp",
+    siteName: "Reply In My Voice",
+    type: "website",
+    images: "/og.png",
   },
   twitter: {
     card: "summary_large_image",
     title: "Reply In My Voice MCP server",
     description:
       "Connect Claude Code, Codex, Claude Desktop, or Cursor to Reply In My Voice through local stdio or remote HTTP.",
+    images: "/og.png",
   },
 };
 

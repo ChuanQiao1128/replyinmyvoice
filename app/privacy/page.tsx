@@ -6,6 +6,22 @@ export const metadata: Metadata = {
   title: "Privacy",
   description:
     "How Reply In My Voice handles account, billing, and reply workspace data.",
+  openGraph: {
+    title: "Reply In My Voice privacy",
+    description:
+      "How TimeAwake Ltd. handles account, billing, workspace, and rewrite history data for Reply In My Voice.",
+    url: "https://replyinmyvoice.com/privacy",
+    siteName: "Reply In My Voice",
+    type: "website",
+    images: "/og.png",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Reply In My Voice privacy",
+    description:
+      "How TimeAwake Ltd. handles account, billing, workspace, and rewrite history data for Reply In My Voice.",
+    images: "/og.png",
+  },
 };
 
 const sections = [

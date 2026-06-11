@@ -1215,7 +1215,7 @@ function GoogleMark() {
 function ReturnHint({ destination }: { destination: string }) {
   return (
     <p className={styles.hint}>
-      After signing in you'll return to {destination}.
+      After signing in you&apos;ll return to {destination}.
     </p>
   );
 }

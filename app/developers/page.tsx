@@ -13,12 +13,16 @@ export const metadata: Metadata = {
     description:
       "Add async, fact-preserving reply rewrites to your own product with a paid-quota API key.",
     url: "https://replyinmyvoice.com/developers",
+    siteName: "Reply In My Voice",
+    type: "website",
+    images: "/og.png",
   },
   twitter: {
     card: "summary_large_image",
     title: "Reply In My Voice for developers",
     description:
       "Add async, fact-preserving reply rewrites to your own product with a paid-quota API key.",
+    images: "/og.png",
   },
 };
 
