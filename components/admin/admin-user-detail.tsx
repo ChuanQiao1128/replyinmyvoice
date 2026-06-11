@@ -303,6 +303,7 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [refundAmount, setRefundAmount] = useState("");
   const [refundCurrency, setRefundCurrency] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [suspensionReason, setSuspensionReason] = useState("");
   const [outcome, setOutcome] = useState<ActionOutcome | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -329,6 +330,13 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     () => detail?.payments.filter((payment) => payment.paymentIntentId) ?? [],
     [detail],
   );
+  const selectedRefundPayment = useMemo(
+    () =>
+      selectablePayments.find(
+        (payment) => payment.paymentIntentId === refundPaymentIntentId,
+      ) ?? null,
+    [refundPaymentIntentId, selectablePayments],
+  );
   const requestedPaymentIntentId = searchParams.get("paymentIntentId")?.trim() ?? "";
 
   useEffect(() => {
@@ -349,16 +357,16 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   }, [refundPaymentIntentId, selectablePayments]);
 
   useEffect(() => {
-    const selected = selectablePayments.find(
-      (payment) => payment.paymentIntentId === refundPaymentIntentId,
-    );
-    if (selected?.amountTotal !== null && selected?.amountTotal !== undefined) {
-      setRefundAmount(String(selected.amountTotal));
+    if (
+      selectedRefundPayment?.amountTotal !== null &&
+      selectedRefundPayment?.amountTotal !== undefined
+    ) {
+      setRefundAmount(String(selectedRefundPayment.amountTotal));
     }
-    if (selected?.currency) {
-      setRefundCurrency(selected.currency);
+    if (selectedRefundPayment?.currency) {
+      setRefundCurrency(selectedRefundPayment.currency);
     }
-  }, [refundPaymentIntentId, selectablePayments]);
+  }, [selectedRefundPayment]);
 
   async function runAction(key: string, title: string, action: () => Promise<unknown>) {
     setActionError(null);
@@ -400,23 +408,48 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   async function submitRefund(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = Number.parseInt(refundAmount, 10);
+    const currency = refundCurrency.trim().toLowerCase();
     if (!refundPaymentIntentId.trim()) {
       setActionError("Select a payment intent before issuing a refund.");
+      return;
+    }
+    if (!selectedRefundPayment) {
+      setActionError("Select a stored payment before issuing a refund.");
       return;
     }
     if (!Number.isInteger(amount) || amount <= 0) {
       setActionError("Refund amount must be greater than zero.");
       return;
     }
+    if (
+      selectedRefundPayment.amountTotal === null ||
+      selectedRefundPayment.amountTotal === undefined
+    ) {
+      setActionError("Original payment amount is unavailable for this payment.");
+      return;
+    }
+    if (amount > selectedRefundPayment.amountTotal) {
+      setActionError("Refund amount cannot exceed the original payment amount.");
+      return;
+    }
+    const originalCurrency = selectedRefundPayment.currency?.trim().toLowerCase();
+    if (!originalCurrency) {
+      setActionError("Original payment currency is unavailable for this payment.");
+      return;
+    }
+    if (!currency || currency !== originalCurrency) {
+      setActionError("Refund currency must match the original payment currency.");
+      return;
+    }
 
-    if (!window.confirm(`Issue a refund for ${amount} ${refundCurrency || ""}?`)) {
+    if (!window.confirm(`Issue a refund for ${amount} ${currency.toUpperCase()}?`)) {
       return;
     }
 
     await runAction("refund", "Audit outcome: refund recorded", () =>
       postAction(`/api/admin/users/${userId}/refund`, {
         amount,
-        currency: refundCurrency,
+        currency,
         paymentIntentId: refundPaymentIntentId,
         reason: refundReason,
       }),
@@ -425,19 +458,25 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
   async function submitSuspension(suspended: boolean) {
     const label = suspended ? "suspend" : "unsuspend";
+    const reason = suspensionReason.trim();
+    if (suspended && !reason) {
+      setOutcome(null);
+      setActionError("Enter a suspension reason before suspending this user.");
+      return;
+    }
+
     if (!window.confirm(`Confirm ${label} for this user?`)) {
       return;
     }
 
+    const body = suspended ? { reason, suspended } : { suspended };
     await runAction(
       suspended ? "suspend" : "unsuspend",
       suspended
         ? "Audit outcome: suspension recorded"
         : "Audit outcome: unsuspension recorded",
       () =>
-        postAction(`/api/admin/users/${userId}/suspension`, {
-          suspended,
-        }),
+        postAction(`/api/admin/users/${userId}/suspension`, body),
     );
   }
 
@@ -632,6 +671,17 @@ export function AdminUserDetail({ userId }: { userId: string }) {
                 <h2 className="text-lg font-semibold tracking-normal">
                   Account access
                 </h2>
+                <label className="mt-4 block text-sm font-semibold text-ink/70">
+                  Suspension reason
+                  <Textarea
+                    className="mt-1 min-h-24"
+                    onChange={(event) => setSuspensionReason(event.target.value)}
+                    value={suspensionReason}
+                  />
+                  <span className="mt-1 block text-xs font-normal text-ink/50">
+                    Required before suspending.
+                  </span>
+                </label>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                   <Button
                     disabled={actionLoading !== null}
