@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-11 - ui-browser-testing - W3-D keys wayfinding and upsell
+
+- Agent: Codex worker
+- Trigger: GitHub issue #720 changes browser-visible `/app/keys` wayfinding, gated developer upsell copy/actions, and API-key table affordances.
+- Action: Opened and followed the skill; used focused source-level unit coverage for the `/app/keys` API-docs breadcrumb, the gated `/developers/api` docs path, and the server-backed `lastUsedAt` table rendering.
+- Output artifacts: `app/app/keys/page.tsx`; `components/app/shell/shell-primitives.tsx`; `tests/unit/developer-keys-ui.test.ts`.
+- Verification evidence: Red run first failed on the missing `/app/keys` `next/link` import and missing `/developers/api` upsell href. Final gates passed: `npx vitest run tests/unit/developer-keys-ui.test.ts`; `npm run typecheck`; `npm run test`; `npm run lint`; `npm run build`; `git diff --check`; guarded source-term scan over `app`, `components`, `public`, and `lib`.
+- Limitations: Browser screenshot/interactive verification was not completed because this worker only exposed Node REPL tooling, not a direct in-app browser controller. Npm's default cache path was not writable in the sandbox, so verification commands used a writable temporary npm cache. Local git commit was attempted but blocked by sandbox permissions on worktree metadata outside the writable root. No provider call, quota use, deploy, push, PR, payment change, secret inspection, or production branch action was performed.
+
 ### 2026-06-11 - ui-browser-testing - W2-C Try an example workspace
 
 - Agent: Codex worker
