@@ -102,7 +102,17 @@ describe("/developers hub and API documentation pages", () => {
     expect(pageSource).toContain("Authorization: Bearer rmv_live_");
     expect(pageSource).toContain("Idempotency-Key");
     expect(pageSource).toContain("X-RateLimit-");
+    expect(pageSource).toContain("X-RateLimit-Limit: 60");
+    expect(pageSource).toContain("X-RateLimit-Remaining: 59");
+    expect(pageSource).toContain("X-RateLimit-Reset: 1812345678");
     expect(pageSource).toContain("60 requests per minute");
+    expect(pageSource).toContain("Submit request - Node (fetch)");
+    expect(pageSource).toContain("Submit request - Python (requests)");
+    expect(pageSource).toContain("Poll request - Node (fetch)");
+    expect(pageSource).toContain("Poll request - Python (requests)");
+    expect(pageSource).toContain("process.env.RIMV_API_KEY");
+    expect(pageSource).toContain("requests.post");
+    expect(pageSource).toContain("requests.get");
 
     for (const errorCode of [
       "invalid_request",

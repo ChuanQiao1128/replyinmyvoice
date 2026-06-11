@@ -65,8 +65,47 @@ const submitCurl = `curl https://replyinmyvoice.com/api/v1/rewrite \\
   -H "Idempotency-Key: crm-reply-123" \\
   -d '{ "draft": "Sam, your order is delayed and ships next week." }'`;
 
+const submitNode = `const apiKey = process.env.RIMV_API_KEY ?? "rmv_live_xxx";
+
+const response = await fetch("https://replyinmyvoice.com/api/v1/rewrite", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer " + apiKey,
+    "Content-Type": "application/json",
+    "Idempotency-Key": "crm-reply-123",
+  },
+  body: JSON.stringify({
+    draft: "Sam, your order is delayed and ships next week.",
+  }),
+});
+
+console.log(response.status, response.headers.get("Location"));
+console.log(await response.json());`;
+
+const submitPython = `import os
+import requests
+
+api_key = os.environ.get("RIMV_API_KEY", "rmv_live_xxx")
+
+response = requests.post(
+    "https://replyinmyvoice.com/api/v1/rewrite",
+    headers={
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "crm-reply-123",
+    },
+    json={"draft": "Sam, your order is delayed and ships next week."},
+    timeout=30,
+)
+
+print(response.status_code, response.headers.get("Location"))
+print(response.json())`;
+
 const submitResponse = `HTTP/1.1 202 Accepted
 Location: /api/v1/rewrite/rw_123
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 59
+X-RateLimit-Reset: 1812345678
 
 {
   "id": "rw_123",
@@ -75,6 +114,34 @@ Location: /api/v1/rewrite/rw_123
 
 const pollCurl = `curl https://replyinmyvoice.com/api/v1/rewrite/rw_123 \\
   -H "Authorization: Bearer rmv_live_xxx"`;
+
+const pollNode = `const apiKey = process.env.RIMV_API_KEY ?? "rmv_live_xxx";
+const id = "rw_123";
+
+const response = await fetch(
+  "https://replyinmyvoice.com/api/v1/rewrite/" + encodeURIComponent(id),
+  {
+    headers: {
+      Authorization: "Bearer " + apiKey,
+    },
+  },
+);
+
+console.log(await response.json());`;
+
+const pollPython = `import os
+import requests
+
+api_key = os.environ.get("RIMV_API_KEY", "rmv_live_xxx")
+job_id = "rw_123"
+
+response = requests.get(
+    f"https://replyinmyvoice.com/api/v1/rewrite/{job_id}",
+    headers={"Authorization": f"Bearer {api_key}"},
+    timeout=30,
+)
+
+print(response.json())`;
 
 const pollProcessing = `{
   "id": "rw_123",
@@ -253,11 +320,23 @@ export default function DevelopersPage() {
                   </span>
                   <span className="bar-label">Submit and poll</span>
                 </div>
-                <CodeBlock label="Submit request">{submitCurl}</CodeBlock>
+                <CodeBlock label="Submit request - curl">{submitCurl}</CodeBlock>
+                <CodeBlock label="Submit request - Node (fetch)">
+                  {submitNode}
+                </CodeBlock>
+                <CodeBlock label="Submit request - Python (requests)">
+                  {submitPython}
+                </CodeBlock>
                 <CodeBlock label="Submit response" status="202 Accepted">
                   {submitResponse}
                 </CodeBlock>
-                <CodeBlock label="Poll request">{pollCurl}</CodeBlock>
+                <CodeBlock label="Poll request - curl">{pollCurl}</CodeBlock>
+                <CodeBlock label="Poll request - Node (fetch)">
+                  {pollNode}
+                </CodeBlock>
+                <CodeBlock label="Poll request - Python (requests)">
+                  {pollPython}
+                </CodeBlock>
                 <CodeBlock label="Poll response">{pollSucceeded}</CodeBlock>
               </div>
             </div>
