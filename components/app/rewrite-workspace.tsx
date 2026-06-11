@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 
 import { openBillingPortal } from "../../lib/billing-portal";
 import type { AppExperience, PromoAccountState } from "../../lib/promo-app-state";
@@ -39,6 +39,7 @@ import { SubscriptionStatus } from "./subscription-status";
 
 const rewriteAttemptPollLimit = 30;
 const rewriteAttemptPollDelayMs = 1500;
+const rewriteSlowPathDelayMs = 35000;
 
 type QualityFailure = {
   error: string;
@@ -155,21 +156,48 @@ class RewriteQualityFailureError extends Error {
   }
 }
 
-function delay(milliseconds: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+function createAbortError() {
+  const error = new Error("Rewrite cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function delay(milliseconds: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
+    function handleAbort() {
+      window.clearTimeout(timer);
+      reject(createAbortError());
+    }
+
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, milliseconds);
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
+  });
 }
 
 async function readJsonPayload(response: Response) {
   return (await response.json().catch(() => null)) as unknown;
 }
 
-async function pollRewriteAttempt(attemptId: string) {
+async function pollRewriteAttempt(attemptId: string, signal: AbortSignal) {
   for (let attempt = 0; attempt < rewriteAttemptPollLimit; attempt += 1) {
-    await delay(rewriteAttemptPollDelayMs);
+    await delay(rewriteAttemptPollDelayMs, signal);
 
     const response = await fetch(
       `/api/rewrite-attempts/${encodeURIComponent(attemptId)}`,
-      { cache: "no-store" },
+      { cache: "no-store", signal },
     );
     const payload = await readJsonPayload(response);
 
@@ -348,21 +376,26 @@ export function RewriteWorkspace({
   usageExhausted,
 }: Props) {
   const visiblePlanRemaining = Math.max(Math.min(planRemaining, quota), 0);
+  const activeRewriteAbortRef = useRef<AbortController | null>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const [draft, setDraft] = useState("");
   const [result, setResult] = useState<RewriteResponse | null>(null);
   const [qualityFailure, setQualityFailure] = useState<QualityFailure | null>(
     null,
   );
   const [loading, setLoading] = useState(false);
+  const [rewriteIsSlow, setRewriteIsSlow] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [resultAnnouncement, setResultAnnouncement] = useState("");
   const [rewriteSucceededThisSession, setRewriteSucceededThisSession] =
     useState(false);
   const [freeRewritesRemaining, setFreeRewritesRemaining] = useState(
     () => visiblePlanRemaining,
   );
   const [showPostCopyNudge, setShowPostCopyNudge] = useState(false);
+  const [qualityTipsOpen, setQualityTipsOpen] = useState(false);
   const [redeemModalOpen, setRedeemModalOpen] = useState(false);
 
   const trimmedDraftLength = draft.trim().length;
@@ -389,6 +422,35 @@ export function RewriteWorkspace({
   }, [loading]);
 
   useEffect(() => {
+    if (!loading) {
+      setRewriteIsSlow(false);
+      return;
+    }
+
+    const timer = window.setTimeout(
+      () => setRewriteIsSlow(true),
+      rewriteSlowPathDelayMs,
+    );
+
+    return () => window.clearTimeout(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    if (!result?.rewrittenText) {
+      return;
+    }
+
+    setResultAnnouncement(
+      "Rewrite complete. Your reply is ready to review and copy.",
+    );
+    const frame = window.requestAnimationFrame(() => {
+      resultHeadingRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [result?.rewrittenText]);
+
+  useEffect(() => {
     if (!copied) {
       return;
     }
@@ -403,9 +465,13 @@ export function RewriteWorkspace({
       return;
     }
 
+    const abortController = new AbortController();
+    activeRewriteAbortRef.current = abortController;
     setLoading(true);
     setError("");
     setQualityFailure(null);
+    setQualityTipsOpen(false);
+    setResultAnnouncement("");
     setShowPostCopyNudge(false);
 
     try {
@@ -418,6 +484,7 @@ export function RewriteWorkspace({
           roughDraftReply: draft,
           tone: "warm",
         }),
+        signal: abortController.signal,
       });
       const payload = await readJsonPayload(response);
 
@@ -445,7 +512,7 @@ export function RewriteWorkspace({
               "Rewrite is still processing. Try again in a moment.",
           );
         }
-        normalizedPayload = await pollRewriteAttempt(attemptId);
+        normalizedPayload = await pollRewriteAttempt(attemptId, abortController.signal);
       } else {
         const immediatePayload = normalizeRewriteResponse(payload);
         if (!immediatePayload) {
@@ -456,6 +523,10 @@ export function RewriteWorkspace({
         normalizedPayload = immediatePayload;
       }
 
+      if (abortController.signal.aborted) {
+        return;
+      }
+
       setQualityFailure(null);
       setResult(normalizedPayload);
       setRewriteSucceededThisSession(true);
@@ -463,6 +534,12 @@ export function RewriteWorkspace({
         setFreeRewritesRemaining((current) => Math.max(current - 1, 0));
       }
     } catch (submitError) {
+      if (isAbortError(submitError) || abortController.signal.aborted) {
+        setError("");
+        setQualityFailure(null);
+        return;
+      }
+
       if (submitError instanceof RewriteQualityFailureError) {
         setResult(null);
         setQualityFailure(submitError.failure);
@@ -476,7 +553,10 @@ export function RewriteWorkspace({
           : "Could not rewrite this draft.",
       );
     } finally {
-      setLoading(false);
+      if (activeRewriteAbortRef.current === abortController) {
+        activeRewriteAbortRef.current = null;
+        setLoading(false);
+      }
     }
   }
 
@@ -493,12 +573,29 @@ export function RewriteWorkspace({
   }
 
   function resetWorkspace() {
+    activeRewriteAbortRef.current?.abort();
+    activeRewriteAbortRef.current = null;
     setDraft("");
     setResult(null);
     setQualityFailure(null);
     setError("");
     setCopied(false);
+    setLoading(false);
+    setRewriteIsSlow(false);
+    setResultAnnouncement("");
+    setQualityTipsOpen(false);
     setShowPostCopyNudge(false);
+  }
+
+  function cancelRewrite() {
+    activeRewriteAbortRef.current?.abort();
+    activeRewriteAbortRef.current = null;
+    setLoading(false);
+    setRewriteIsSlow(false);
+    setError("");
+    setQualityFailure(null);
+    setCopied(false);
+    setResultAnnouncement("");
   }
 
   const visibleNaturalness = result?.naturalness ?? qualityFailure?.naturalness;
@@ -624,13 +721,25 @@ export function RewriteWorkspace({
           </form>
 
           <section className="flex flex-col border-t border-line p-6 md:border-t-0 md:p-8">
+            <p aria-live="polite" className="sr-only">
+              {resultAnnouncement}
+            </p>
             <div className="mb-4 flex min-h-11 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <Eyebrow tone="accent">IN YOUR VOICE</Eyebrow>
+              <h2
+                className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-sage outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-4"
+                id="rewrite-result-heading"
+                ref={resultHeadingRef}
+                tabIndex={-1}
+              >
+                In your voice
+              </h2>
               <div className="flex items-center gap-3">
                 <Button
+                  aria-label="Copy rewrite to clipboard"
                   className="px-3 text-ink/70 hover:bg-paper"
                   disabled={!result?.rewrittenText}
                   onClick={() => void copyReply()}
+                  title="Copy rewrite to clipboard"
                   type="button"
                   variant="ghost"
                 >
@@ -654,7 +763,10 @@ export function RewriteWorkspace({
               </div>
             </div>
 
-            <div className="flex min-h-[28rem] flex-1 flex-col rounded-lg border border-line/70 bg-mint/20 p-5 md:p-6">
+            <div
+              aria-labelledby="rewrite-result-heading"
+              className="flex min-h-[28rem] flex-1 flex-col rounded-lg border border-line/70 bg-mint/20 p-5 md:p-6"
+            >
               {showOutOfCreditsNudge ? (
                 <OutOfCreditsNudge
                   canRedeem={showRedeemAction}
@@ -705,9 +817,31 @@ export function RewriteWorkspace({
                       </li>
                     ))}
                   </ol>
+                  <div className="space-y-2 text-xs leading-5 text-ink/50">
+                    <p>Usually 10–60 seconds.</p>
+                    {rewriteIsSlow ? (
+                      <p className="font-medium text-ink/65" role="status">
+                        Still working — longer than usual.
+                      </p>
+                    ) : null}
+                  </div>
                   <p className="text-xs text-ink/50">
                     Keeping your facts intact and checking quality.
                   </p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-ink/50">
+                      Unfinished rewrites are not charged.
+                    </p>
+                    <Button
+                      className="w-full sm:w-auto"
+                      onClick={cancelRewrite}
+                      type="button"
+                      variant="secondary"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               ) : result?.rewrittenText ? (
                 <div className="whitespace-pre-wrap text-base leading-8 text-ink">
@@ -722,6 +856,34 @@ export function RewriteWorkspace({
                   <p className="mt-2 max-w-md text-sm leading-relaxed text-ink/60">
                     {qualityFailure.error}
                   </p>
+                  <p className="mt-4 rounded-lg border border-sage/20 bg-white/80 px-4 py-3 text-sm font-semibold text-sage">
+                    This attempt was not charged.
+                  </p>
+                  <div className="mt-4 w-full max-w-md rounded-lg border border-line/70 bg-white/70 p-3 text-left">
+                    <Button
+                      aria-controls="quality-failure-tips"
+                      aria-expanded={qualityTipsOpen}
+                      className="w-full justify-between px-3 text-ink/75 hover:bg-paper"
+                      onClick={() => setQualityTipsOpen((open) => !open)}
+                      type="button"
+                      variant="ghost"
+                    >
+                      What can I change?
+                    </Button>
+                    {qualityTipsOpen ? (
+                      <ul
+                        className="mt-3 space-y-2 px-3 pb-1 text-sm leading-6 text-ink/65"
+                        id="quality-failure-tips"
+                      >
+                        <li>Add a longer draft with the main point included.</li>
+                        <li>Use clearer facts, names, dates, and constraints.</li>
+                        <li>
+                          Try a different tone in the draft, such as warmer or
+                          more direct.
+                        </li>
+                      </ul>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">
