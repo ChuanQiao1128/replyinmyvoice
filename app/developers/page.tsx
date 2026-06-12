@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { homepageSampleCases } from "../../components/landing/sample-cases";
 import { SiteHeader } from "../../components/site-header";
 import { DevelopersAnchorRedirect } from "./developers-anchor-redirect";
 
@@ -39,6 +38,26 @@ const pathCards = [
     body: "Connect Reply In My Voice as a tool inside Claude Code, Claude Desktop, Codex, Cursor, or any MCP host.",
     href: "/developers/mcp",
     cta: "MCP setup",
+  },
+];
+
+const integrationBenefits = [
+  {
+    title: "REST API — build it into your product",
+    benefits: [
+      "Two-endpoint contract: submit a draft, poll the job — plain JSON, no SDK required (an official TypeScript SDK exists if you want one).",
+      "Only succeeded rewrites consume credits. Failed jobs, rejected requests, and polling are free.",
+      "Safe retries with Idempotency-Key, documented rate-limit headers, and a published OpenAPI spec.",
+    ],
+  },
+  {
+    title: "MCP server — give it to your agent",
+    benefits: [
+      "Works inside Claude Code, Claude Desktop, Cursor, Codex, and any MCP host — no integration code.",
+      "Install in one step: a Cursor deep link or a single claude mcp add command.",
+      "Two simple tools (rewrite_email, get_rewrite_result) your agent can call mid-workflow.",
+      "Same key and same balance as the REST API and the web workspace.",
+    ],
   },
 ];
 
@@ -93,16 +112,6 @@ const legalLinks = [
 ];
 
 const evaluationTrialClaim = "A trial code unlocks 3 trial rewrites — no card.";
-const proofCase = homepageSampleCases[1] ?? homepageSampleCases[0];
-const proofJobJson = JSON.stringify(
-  {
-    id: "7f3c2c1a-9d4e-4b8a-b1f2-3a5d8e9c0f11",
-    status: "succeeded",
-    rewrittenText: proofCase.rewrite,
-  },
-  null,
-  2,
-);
 
 export default function DevelopersPage() {
   return (
@@ -140,39 +149,22 @@ export default function DevelopersPage() {
             </div>
           </div>
 
-          <section className="dev-section" aria-labelledby="proof-heading">
-            <div className="pp-includes-head" id="proof-heading">
-              Production output
+          <section className="dev-section" aria-labelledby="integrate-heading">
+            <div className="pp-includes-head" id="integrate-heading">
+              Why integrate
             </div>
-            <article className="v2card">
-              <p className="dev-section-note" style={{ marginTop: 0 }}>
-                Real output from the production engine — the same engine behind
-                the web workspace and the API.
-              </p>
-              <div className="dev-code-grid">
-                <div>
-                  <h3>Rough draft</h3>
-                  <p>{proofCase.draft}</p>
-                </div>
-                <div>
-                  <h3>Rewritten reply</h3>
-                  <p>{proofCase.rewrite}</p>
-                </div>
-              </div>
-              <div className="api-panel" aria-label="Succeeded job JSON body">
-                <div className="api-bar">
-                  <span className="dots">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                  <span className="bar-label">Succeeded job</span>
-                </div>
-                <div className="api-seg">
-                  <pre className="api-code">{proofJobJson}</pre>
-                </div>
-              </div>
-            </article>
+            <div className="dev-two-col">
+              {integrationBenefits.map((card) => (
+                <article className="v2card" key={card.title}>
+                  <h3>{card.title}</h3>
+                  <ul className="content-list">
+                    {card.benefits.map((benefit) => (
+                      <li key={benefit}>{benefit}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
           </section>
 
           <section className="dev-section" aria-labelledby="evaluation-heading">
