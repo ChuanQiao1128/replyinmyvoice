@@ -33,6 +33,9 @@ describe("/developers hub and API documentation pages", () => {
     expect(hubSource).toContain('href="/developers/api#quickstart"');
     expect(hubSource).toContain('href="/api/v1/openapi.json"');
     expect(hubSource).toContain("OpenAPI specification");
+    expect(hubSource).toContain("Why integrate");
+    expect(hubSource).toContain("Only succeeded rewrites consume credits");
+    expect(hubSource).toContain("no integration code");
 
     expect(hubSource).toContain("One API key works for both paths");
     expect(hubSource).toContain("Website and API rewrites share one balance");
