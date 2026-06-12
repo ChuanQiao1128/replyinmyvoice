@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-12 - ui-browser-testing - DEV02 MCP connect string fixes
+
+- Agent: Codex worker
+- Trigger: GitHub issue #755 changes browser-visible `/app/connect` MCP setup snippets and pinned unit assertions for the public MCP server registration name.
+- Action: Opened and followed the skill; used focused unit/source assertions for the app connect snippets alongside MCP package URL/version tests before applying the narrow string and version fixes.
+- Output artifacts: `app/app/connect/page.tsx`; `app/api/mcp/route.ts`; `packages/mcp-server/package.json`; `packages/mcp-server/package-lock.json`; `packages/mcp-server/src/config.ts`; `packages/mcp-server/src/index.ts`; `packages/mcp-server/src/version.ts`; `tests/unit/app-shell.test.ts`; `tests/unit/mcp-server-config.test.ts`; `tests/unit/mcp-package-version.test.ts`.
+- Verification evidence: Red focused run failed on the old key URL, old package version, missing shared version marker, and old hyphenated server name. Final focused tests passed; `npm --prefix packages/mcp-server run build`, `npm run typecheck`, and `npm run test` passed; acceptance greps returned no matches for the retired key URL or hyphenated server name.
+- Limitations: No live browser screenshot was taken because the changed UI surface is static setup copy and the gated page is covered by source-level unit checks. No `npm publish`, deploy, push, PR, payment change, provider call, secret inspection, or production branch action was performed.
+
 ### 2026-06-11 - ui-browser-testing - W3-D keys wayfinding and upsell
 
 - Agent: Codex worker

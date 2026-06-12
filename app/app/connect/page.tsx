@@ -12,13 +12,13 @@ import { fetchAzureAccountSummary } from "../../../lib/azure-api";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Connect" };
 
-const CLAUDE_CODE = `claude mcp add reply-in-my-voice \\
+const CLAUDE_CODE = `claude mcp add replyinmyvoice \\
   --env REPLY_IN_MY_VOICE_API_KEY=rmv_live_xxx \\
   -- npx -y @replyinmyvoiceashuman/mcp-server`;
 
 const JSON_CONFIG = `{
   "mcpServers": {
-    "reply-in-my-voice": {
+    "replyinmyvoice": {
       "command": "npx",
       "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
       "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }

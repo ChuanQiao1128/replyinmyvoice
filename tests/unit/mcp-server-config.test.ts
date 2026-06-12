@@ -10,6 +10,11 @@ describe("MCP server configuration", () => {
     expect(() => readServerConfig({})).toThrow(MISSING_API_KEY_MESSAGE);
   });
 
+  it("points users to the current app API key page", () => {
+    expect(MISSING_API_KEY_MESSAGE).toContain("https://replyinmyvoice.com/app/keys");
+    expect(MISSING_API_KEY_MESSAGE).not.toContain("app/api-keys");
+  });
+
   it("reads the API key and defaults to the production API base URL", () => {
     expect(
       readServerConfig({
