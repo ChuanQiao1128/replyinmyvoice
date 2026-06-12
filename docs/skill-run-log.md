@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-12 - ui-browser-testing - DEV12 SDK docs section
+
+- Agent: Codex worker
+- Trigger: GitHub issue #760 changes the browser-visible `/developers/api` reference page and pins source-level copy for the new SDK section.
+- Action: Opened and followed the skill; used a focused unit test first for the new `Official SDK` heading and install command, then added the page section and attempted local browser verification after starting the Next dev server.
+- Output artifacts: `app/developers/api/page.tsx`; `packages/sdk/README.md`; `tests/unit/developers-page.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Red focused test failed on the missing `Official SDK` string before implementation. Final gates passed: `npx vitest run tests/unit/developers-page.test.ts`; `npm run typecheck`; `npm run test`; `git diff --check`; `grep -c "replyinmyvoice-api" app/developers/api/page.tsx` returned 4; the README cleanup count check returned 0; guarded source-term scan over `app`, `components`, `public`, and `lib` returned no matches.
+- Limitations: Browser screenshot verification could not complete because local Chromium launch was denied by the macOS permission layer after the browser binary was installed into temporary storage; `next dev` also reported file-watcher `EMFILE` warnings while serving `127.0.0.1:3000`. No SDK source/version change, `npm publish`, deploy, push, PR, payment change, provider call, production branch action, or secret inspection was performed.
+
 ### 2026-06-12 - ui-browser-testing - DEV02 MCP connect string fixes
 
 - Agent: Codex worker

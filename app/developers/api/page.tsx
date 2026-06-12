@@ -230,6 +230,28 @@ response = requests.post(
 print(response.status_code, response.headers.get("Location"))
 print(response.json())`;
 
+const sdkInstall = `npm install replyinmyvoice-api`;
+
+const sdkQuickstart = `import { RimvApiError, createClient } from "replyinmyvoice-api";
+
+const client = createClient({
+  apiKey: process.env.RIMV_API_KEY!,
+});
+
+try {
+  const { rewrittenText } = await client.rewrite(
+    "Sam, your order is delayed and ships next week.",
+  );
+
+  console.log(rewrittenText);
+} catch (error) {
+  if (error instanceof RimvApiError) {
+    console.error(error.code, error.message, error.status);
+  }
+
+  throw error;
+}`;
+
 const submitResponse = `HTTP/1.1 202 Accepted
 Location: /api/v1/rewrite/${exampleJobId}
 X-RateLimit-Limit: 60
@@ -481,6 +503,41 @@ export default function DevelopersPage() {
                   {pollPython}
                 </CodeBlock>
                 <CodeBlock label="Poll response">{pollSucceeded}</CodeBlock>
+              </div>
+            </div>
+            <div className="dev-two-col">
+              <article className="v2card">
+                <h3>Official SDK</h3>
+                <p>
+                  Install the published TypeScript client when you want the
+                  submit-and-poll loop handled for you. The <code>rewrite()</code>{" "}
+                  helper submits the draft, polls until completion, and returns
+                  <code>rewrittenText</code>.
+                </p>
+                <p>
+                  Handle <code>RimvApiError</code> for API errors, rate limits,
+                  quota errors, failed jobs, and client-side timeouts.
+                </p>
+                <a
+                  href="https://www.npmjs.com/package/replyinmyvoice-api"
+                  className="dev-text-link"
+                >
+                  View replyinmyvoice-api on npm
+                </a>
+              </article>
+              <div className="api-panel dev-api-panel">
+                <div className="api-bar">
+                  <span className="dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="bar-label">TypeScript client</span>
+                </div>
+                <CodeBlock label="Install">{sdkInstall}</CodeBlock>
+                <CodeBlock label="Auto-polling SDK rewrite">
+                  {sdkQuickstart}
+                </CodeBlock>
               </div>
             </div>
           </section>

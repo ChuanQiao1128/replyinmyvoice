@@ -60,7 +60,7 @@ await client.rewrite(draft);
 await client.getUsage();
 ```
 
-`submitRewrite()` returns `{ id, status }`. `getRewrite()` returns the current job state. `getUsage()` returns `{ scope, quota, used, remaining, periodEnd }`, where `periodEnd` can be `null` for sandbox or free usage.
+`submitRewrite()` returns `{ id, status }`. `getRewrite()` returns the current job state. `getUsage()` returns `{ scope, quota, used, remaining, periodEnd }`, where `periodEnd` can be `null` when no paid period is active.
 
 ## Errors
 
