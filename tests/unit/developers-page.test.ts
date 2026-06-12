@@ -38,6 +38,9 @@ describe("/developers hub and API documentation pages", () => {
     expect(hubSource).toContain("90 rewrites/month shared across web + API");
     expect(hubSource).toContain("No free API tier");
     expect(hubSource).toContain("60 requests/min per key");
+    expect(hubSource).toContain("A trial code unlocks 3 trial rewrites — no card.");
+    expect(hubSource).toContain("same engine the API calls");
+    expect(hubSource).toContain("≈ NZ$0.22 / rewrite");
     expect(hubSource).toContain('href="/pricing#pro"');
 
     expect(hubSource).toContain('href: "/developers/terms"');
