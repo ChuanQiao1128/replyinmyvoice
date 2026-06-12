@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -86,10 +86,24 @@ describe("app shell wiring", () => {
 
   it("uses the public MCP server name in the app connect snippets", () => {
     const connectPage = source("app/app/connect/page.tsx");
+    const hostConfigPath = "components/developers/mcp-host-configs.ts";
+    const hostConfigSource = existsSync(join(root, hostConfigPath))
+      ? source(hostConfigPath)
+      : "";
+    const combinedSource = `${connectPage}\n${hostConfigSource}`;
 
-    expect(connectPage).toContain("claude mcp add replyinmyvoice");
-    expect(connectPage).toContain('"replyinmyvoice":');
+    expect(connectPage).toContain("mcp-host-configs");
+    expect(connectPage).toContain("McpConfigCopyButton");
+    expect(combinedSource).toContain("claude mcp add replyinmyvoice");
+    expect(connectPage).toContain("Codex (TOML)");
+    expect(connectPage).toContain("Remote HTTP");
+    expect(connectPage).toContain('href="/developers/mcp"');
+    expect(connectPage).toContain("&larr; MCP guide");
+    expect(hostConfigSource).toContain('"replyinmyvoice":');
+    expect(hostConfigSource).toContain("[mcp_servers.replyinmyvoice]");
+    expect(hostConfigSource).toContain("https://replyinmyvoice.com/api/mcp");
     expect(connectPage).not.toContain("reply-in-my-voice");
+    expect(hostConfigSource).not.toContain("reply-in-my-voice");
   });
 
   it("hides the marketing footer on the app shell and admin", () => {

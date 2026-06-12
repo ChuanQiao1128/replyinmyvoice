@@ -3,6 +3,14 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { McpConfigCopyButton } from "../../../components/developers/mcp-config-copy-button";
+import {
+  claudeRemoteInstall,
+  cursorInstallHref,
+  localInstall,
+  mcpHostConfigs,
+  remoteEndpoint,
+  vscodeRemoteInstall,
+} from "../../../components/developers/mcp-host-configs";
 import { SiteHeader } from "../../../components/site-header";
 
 export const metadata: Metadata = {
@@ -26,110 +34,6 @@ export const metadata: Metadata = {
     images: "/og.png",
   },
 };
-
-const localInstall = `npx @replyinmyvoiceashuman/mcp-server`;
-
-const remoteHttpMcpConfig = {
-  mcpServers: {
-    replyinmyvoice: {
-      url: "https://replyinmyvoice.com/api/mcp",
-      headers: { Authorization: "Bearer rmv_live_xxx" },
-    },
-  },
-} as const;
-
-const remoteHttpServerConfig = remoteHttpMcpConfig.mcpServers.replyinmyvoice;
-const remoteAuthorizationHeader = `Authorization: ${remoteHttpServerConfig.headers.Authorization}`;
-
-const remoteEndpoint = `${remoteHttpServerConfig.url}
-${remoteAuthorizationHeader}`;
-
-const cursorInstallConfigBase64 = Buffer.from(
-  JSON.stringify(remoteHttpMcpConfig),
-  "utf8",
-).toString("base64");
-
-const cursorInstallHref = `cursor://anysphere.cursor-deeplink/mcp/install?name=replyinmyvoice&config=${encodeURIComponent(
-  cursorInstallConfigBase64,
-)}`;
-
-const claudeRemoteInstall = `claude mcp add replyinmyvoice --transport http --url ${remoteHttpServerConfig.url} --header "${remoteAuthorizationHeader}"`;
-
-const vscodeMcpInstallConfig = {
-  name: "replyinmyvoice",
-  ...remoteHttpServerConfig,
-} as const;
-
-const vscodeRemoteInstall = `code --add-mcp '${JSON.stringify(
-  vscodeMcpInstallConfig,
-)}'`;
-
-const hostConfigs = [
-  {
-    title: "Claude Code",
-    body: "Use the local command when you want the host to launch the server on your machine. Use the remote URL when your workspace supports HTTP MCP.",
-    local: `claude mcp add replyinmyvoice \\
-  --env REPLY_IN_MY_VOICE_API_KEY=rmv_live_xxx \\
-  -- npx -y @replyinmyvoiceashuman/mcp-server`,
-    remote: `claude mcp add replyinmyvoice \\
-  --transport http \\
-  --url https://replyinmyvoice.com/api/mcp \\
-  --header "Authorization: Bearer rmv_live_xxx"`,
-  },
-  {
-    title: "Codex",
-    body: "Add one of these entries to your Codex MCP config. The local version reads the key from env; the remote version sends the Bearer header.",
-    local: `[mcp_servers.replyinmyvoice]
-command = "npx"
-args = ["-y", "@replyinmyvoiceashuman/mcp-server"]
-env = { REPLY_IN_MY_VOICE_API_KEY = "rmv_live_xxx" }`,
-    remote: `[mcp_servers.replyinmyvoice]
-url = "https://replyinmyvoice.com/api/mcp"
-headers = { Authorization = "Bearer rmv_live_xxx" }`,
-  },
-  {
-    title: "Claude Desktop",
-    body: "Put the block inside the app's MCP server config, then fully restart the desktop app so it reloads the server list.",
-    local: `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "command": "npx",
-      "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
-      "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
-    }
-  }
-}`,
-    remote: `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "url": "https://replyinmyvoice.com/api/mcp",
-      "headers": { "Authorization": "Bearer rmv_live_xxx" }
-    }
-  }
-}`,
-  },
-  {
-    title: "Cursor",
-    body: "Use Settings -> MCP or edit the MCP JSON file directly. The same tool names are available over local stdio and remote HTTP.",
-    local: `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "command": "npx",
-      "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
-      "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
-    }
-  }
-}`,
-    remote: `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "url": "https://replyinmyvoice.com/api/mcp",
-      "headers": { "Authorization": "Bearer rmv_live_xxx" }
-    }
-  }
-}`,
-  },
-];
 
 const errorRows = [
   {
@@ -443,7 +347,7 @@ export default function DevelopersMcpPage() {
             <p className="dev-section-note">
               Replace rmv_live_xxx with your key from the developer dashboard.
             </p>
-            {hostConfigs.map((config) => (
+            {mcpHostConfigs.map((config) => (
               <HostBlock
                 body={config.body}
                 key={config.title}

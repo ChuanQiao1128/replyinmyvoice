@@ -7,35 +7,51 @@ import {
 } from "../../../components/app/shell/shell-primitives";
 import { isDeveloperTierStatus } from "../../../components/app/shell/shell-types";
 import styles from "../../../components/app/shell/shell.module.css";
+import { McpConfigCopyButton } from "../../../components/developers/mcp-config-copy-button";
+import {
+  claudeCodeHostConfig,
+  codexHostConfig,
+} from "../../../components/developers/mcp-host-configs";
 import { fetchAzureAccountSummary } from "../../../lib/azure-api";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Connect" };
 
-const CLAUDE_CODE = `claude mcp add replyinmyvoice \\
-  --env REPLY_IN_MY_VOICE_API_KEY=rmv_live_xxx \\
-  -- npx -y @replyinmyvoiceashuman/mcp-server`;
+function McpGuideLink() {
+  return (
+    <div className="mb-4">
+      <Link href="/developers/mcp" className="btn btn-ghost">
+        &larr; MCP guide
+      </Link>
+    </div>
+  );
+}
 
-const JSON_CONFIG = `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "command": "npx",
-      "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
-      "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
-    }
-  }
-}`;
-
-const CURL = `curl https://replyinmyvoice.com/api/v1/rewrite \\
-  -H "Authorization: Bearer rmv_live_xxx" \\
-  -H "Content-Type: application/json" \\
-  -d '{"draft":"your rough reply"}'`;
-
-function ConfigCard({ title, code }: { title: string; code: string }) {
+function ConfigCard({
+  code,
+  copyLabel,
+  label,
+  title,
+}: {
+  code: string;
+  copyLabel: string;
+  label: string;
+  title: string;
+}) {
   return (
     <div className={styles.configCard}>
-      <h2 className={styles.configTitle}>{title}</h2>
-      <pre className={styles.codeBlock}>{code}</pre>
+      <div className={styles.configHeader}>
+        <div>
+          <h2 className={styles.configTitle}>{title}</h2>
+          <div className={styles.configMeta}>{label}</div>
+        </div>
+        <div className={styles.configCopy}>
+          <McpConfigCopyButton label={copyLabel} text={code} />
+        </div>
+      </div>
+      <pre className={styles.codeBlock}>
+        <code>{code}</code>
+      </pre>
     </div>
   );
 }
@@ -47,9 +63,10 @@ export default async function ConnectPage() {
   if (!isDeveloperTierStatus(subscriptionStatus)) {
     return (
       <>
+        <McpGuideLink />
         <PageHeader
           title="Connect"
-          description="Use Reply In My Voice inside Claude Code, Claude Desktop, Codex, Cursor, or any MCP host — or call the REST API directly."
+          description="Use Reply In My Voice inside Claude Code, Codex, or another MCP host."
         />
         <DeveloperUpsell />
       </>
@@ -58,9 +75,10 @@ export default async function ConnectPage() {
 
   return (
     <>
+      <McpGuideLink />
       <PageHeader
         title="Connect"
-        description="Use Reply In My Voice inside Claude Code, Claude Desktop, Codex, Cursor, or any MCP host — or call the REST API directly. One key, shared with your web balance."
+        description="Use Reply In My Voice inside Claude Code, Codex, or another MCP host. One key, shared with your web balance."
       />
 
       <div className={styles.calloutRow}>
@@ -71,16 +89,28 @@ export default async function ConnectPage() {
           Create a key
         </Link>
         <Link href="/developers/mcp" className="btn btn-ghost">
-          Full setup guide
+          Full MCP guide
         </Link>
       </div>
 
-      <ConfigCard title="Claude Code (CLI)" code={CLAUDE_CODE} />
       <ConfigCard
-        title="Claude Desktop / Codex / Cursor (config file)"
-        code={JSON_CONFIG}
+        code={claudeCodeHostConfig.local}
+        copyLabel="Copy Claude Code command"
+        label="Local stdio command"
+        title="Claude Code (CLI)"
       />
-      <ConfigCard title="REST API (curl)" code={CURL} />
+      <ConfigCard
+        code={codexHostConfig.local}
+        copyLabel="Copy Codex local config"
+        label="Local stdio config"
+        title="Codex (TOML)"
+      />
+      <ConfigCard
+        code={codexHostConfig.remote}
+        copyLabel="Copy Codex remote config"
+        label="Codex TOML config"
+        title="Remote HTTP"
+      />
     </>
   );
 }

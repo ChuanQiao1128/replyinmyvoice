@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -168,15 +168,21 @@ describe("/developers hub and API documentation pages", () => {
 
   it("documents MCP connection options and host snippets", () => {
     const pageSource = source("app/developers/mcp/page.tsx");
+    const hostConfigPath = "components/developers/mcp-host-configs.ts";
+    const hostConfigSource = existsSync(join(root, hostConfigPath))
+      ? source(hostConfigPath)
+      : "";
+    const combinedSource = `${pageSource}\n${hostConfigSource}`;
 
+    expect(pageSource).toContain("mcp-host-configs");
     expect(pageSource).toContain("Reply In My Voice MCP server");
-    expect(pageSource).toContain("npx @replyinmyvoiceashuman/mcp-server");
-    expect(pageSource).toContain("https://replyinmyvoice.com/api/mcp");
-    expect(pageSource).toContain("Authorization");
-    expect(pageSource).toContain("Bearer rmv_live_xxx");
+    expect(combinedSource).toContain("npx @replyinmyvoiceashuman/mcp-server");
+    expect(combinedSource).toContain("https://replyinmyvoice.com/api/mcp");
+    expect(combinedSource).toContain("Authorization");
+    expect(combinedSource).toContain("Bearer rmv_live_xxx");
 
     for (const host of ["Claude Code", "Codex", "Claude Desktop", "Cursor"]) {
-      expect(pageSource).toContain(host);
+      expect(combinedSource).toContain(host);
     }
 
     expect(pageSource).toContain('href="/developers/keys"');
@@ -184,11 +190,11 @@ describe("/developers hub and API documentation pages", () => {
     expect(pageSource).toContain("Get a key");
     expect(pageSource).toContain("Install in your host");
     expect(pageSource).toContain("Add to Cursor");
-    expect(pageSource).toContain("cursor://anysphere.cursor-deeplink/mcp/install");
+    expect(combinedSource).toContain("cursor://anysphere.cursor-deeplink/mcp/install");
     expect(pageSource).toContain("Copy Claude install command");
-    expect(pageSource).toContain("remoteAuthorizationHeader");
-    expect(pageSource).toContain('--header "${remoteAuthorizationHeader}"');
-    expect(pageSource).toContain("code --add-mcp");
+    expect(combinedSource).toContain("remoteAuthorizationHeader");
+    expect(combinedSource).toContain('--header "${remoteAuthorizationHeader}"');
+    expect(combinedSource).toContain("code --add-mcp");
     expect(pageSource).toContain("Copy VS Code install command");
     expect(pageSource).toContain("Replace the rmv_live_xxx placeholder with your key before using the installed config.");
     expect(pageSource).toContain("1 credit per rewrite");
