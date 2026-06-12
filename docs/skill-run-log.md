@@ -45,6 +45,15 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-12 - ui-browser-testing - DEV09 legal copy batch
+
+- Agent: Codex worker
+- Trigger: GitHub issue #762 changes browser-visible developer legal copy on `/developers/data` and `/developers/terms`.
+- Action: Opened and followed the skill; used focused source-level unit coverage for the legal copy requirements before implementation, then attempted local browser verification and used a production-rendered route smoke as fallback.
+- Output artifacts: `app/developers/data/page.tsx`; `app/developers/terms/page.tsx`; `tests/unit/developers-page.test.ts`; `docs/skill-run-log.md`.
+- Verification evidence: Red focused test first failed on the missing no-SLA line. Final checks passed: `npm run test -- tests/unit/developers-page.test.ts`; required greps for `SLA` and `within 30 days`; `npm run typecheck`; `npm run test`; `npm run build`; `git diff --check`; production `next start` smoke for `/developers/data` and `/developers/terms` returned required copy.
+- Limitations: Playwright Chromium install succeeded into temporary storage, but browser launch was denied by the macOS permission layer. `next dev` emitted repeated file-watcher `EMFILE` warnings and returned 404 for `/developers/terms`, so the rendered smoke used the successful production build instead. No deploy, push, PR, payment change, provider call, production branch action, or secret inspection was performed.
+
 ### 2026-06-12 - ui-browser-testing - DEV12 SDK docs section
 
 - Agent: Codex worker

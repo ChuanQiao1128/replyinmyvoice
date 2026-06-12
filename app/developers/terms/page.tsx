@@ -40,8 +40,12 @@ const sections: ApiTermsSection[] = [
     linkText: "Read the Acceptable Use Policy",
   },
   {
-    title: "signal",
+    title: "The signal field",
     text: "The signal field is an informational naturalness reference for comparing draft and rewritten text. It may change as providers, scoring, and product behavior evolve, and it is not a guarantee of how any person or system will respond to a message.",
+  },
+  {
+    title: "Availability",
+    text: "No uptime SLA is offered at this tier.",
   },
   {
     title: "Service changes and termination",
