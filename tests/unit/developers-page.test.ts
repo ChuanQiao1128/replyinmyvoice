@@ -98,13 +98,18 @@ describe("/developers hub and API documentation pages", () => {
     expect(pageSource).toContain('"status": "succeeded"');
     expect(pageSource).toContain('"rewrittenText"');
     expect(pageSource).toContain('"signal"');
+    expect(pageSource).toContain('"code": "engine_unavailable"');
+    expect(pageSource).toContain("7f3c2c1a-9d4e-4b8a-b1f2-3a5d8e9c0f11");
+    expect(pageSource).not.toContain("rw_123");
 
     expect(pageSource).toContain("Authorization: Bearer rmv_live_");
     expect(pageSource).toContain("Idempotency-Key");
+    expect(pageSource).toContain("Idempotency-Key must be 120 characters or fewer.");
     expect(pageSource).toContain("X-RateLimit-");
     expect(pageSource).toContain("X-RateLimit-Limit: 60");
     expect(pageSource).toContain("X-RateLimit-Remaining: 59");
     expect(pageSource).toContain("X-RateLimit-Reset: 1812345678");
+    expect(pageSource).toContain("Retry-After: 42");
     expect(pageSource).toContain("60 requests per minute");
     expect(pageSource).toContain("Submit request - Node (fetch)");
     expect(pageSource).toContain("Submit request - Python (requests)");
@@ -120,11 +125,25 @@ describe("/developers hub and API documentation pages", () => {
       "invalid_key",
       "quota_exhausted",
       "idempotency_conflict",
+      "not_found",
       "rate_limited",
+      "rewrite_failed",
+      "proxy_request_failed",
     ]) {
       expect(pageSource).toContain(errorCode);
     }
 
+    expect(pageSource).toContain("Drafts under 10 characters are rejected before a job is accepted and are uncharged.");
+    expect(pageSource).toContain("Unknown job id, or a job owned by another account/key.");
+    expect(pageSource).toContain("Submit-time failure before a rewrite job is accepted.");
+    expect(pageSource).toContain("Gateway error between the website API route and backend.");
+    expect(pageSource).toContain("429 responses also include Retry-After so clients know how many seconds to wait.");
+    expect(pageSource).toContain("periodEnd is string | null");
+    expect(pageSource).toContain("The REST API is path-versioned under /api/v1.");
+    expect(pageSource).toContain("Breaking changes ship under a new path version");
+    expect(pageSource).toContain("What to expect");
+    expect(pageSource).toContain("Jobs usually finish in seconds and may take up to about 50 s under load.");
+    expect(pageSource).toContain("If a job is still processing after about 60 s, treat the attempt as failed; it is uncharged.");
     expect(pageSource).toContain("only a succeeded rewrite costs 1");
     expect(pageSource).toContain("30-day retention");
     expect(pageSource).toContain("naturalness reference");
