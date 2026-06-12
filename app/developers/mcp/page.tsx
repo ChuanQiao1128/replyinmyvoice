@@ -29,8 +29,40 @@ export const metadata: Metadata = {
 
 const localInstall = `npx @replyinmyvoiceashuman/mcp-server`;
 
-const remoteEndpoint = `https://replyinmyvoice.com/api/mcp
-Authorization: Bearer rmv_live_xxx`;
+const remoteHttpMcpConfig = {
+  mcpServers: {
+    replyinmyvoice: {
+      url: "https://replyinmyvoice.com/api/mcp",
+      headers: { Authorization: "Bearer rmv_live_xxx" },
+    },
+  },
+} as const;
+
+const remoteHttpServerConfig = remoteHttpMcpConfig.mcpServers.replyinmyvoice;
+const remoteAuthorizationHeader = `Authorization: ${remoteHttpServerConfig.headers.Authorization}`;
+
+const remoteEndpoint = `${remoteHttpServerConfig.url}
+${remoteAuthorizationHeader}`;
+
+const cursorInstallConfigBase64 = Buffer.from(
+  JSON.stringify(remoteHttpMcpConfig),
+  "utf8",
+).toString("base64");
+
+const cursorInstallHref = `cursor://anysphere.cursor-deeplink/mcp/install?name=replyinmyvoice&config=${encodeURIComponent(
+  cursorInstallConfigBase64,
+)}`;
+
+const claudeRemoteInstall = `claude mcp add replyinmyvoice --transport http --url ${remoteHttpServerConfig.url} --header "${remoteAuthorizationHeader}"`;
+
+const vscodeMcpInstallConfig = {
+  name: "replyinmyvoice",
+  ...remoteHttpServerConfig,
+} as const;
+
+const vscodeRemoteInstall = `code --add-mcp '${JSON.stringify(
+  vscodeMcpInstallConfig,
+)}'`;
 
 const hostConfigs = [
   {
@@ -267,6 +299,69 @@ export default function DevelopersMcpPage() {
             </div>
           </div>
 
+          <section className="dev-section" aria-labelledby="install-heading">
+            <div className="pp-includes-head" id="install-heading">
+              Install in your host
+            </div>
+            <p className="dev-section-note">
+              {
+                "Replace the rmv_live_xxx placeholder with your key before using the installed config."
+              }
+            </p>
+            <div className="dev-meta-grid">
+              <div className="api-panel">
+                <div className="api-bar">
+                  <span className="dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="bar-label">Cursor</span>
+                </div>
+                <div className="api-seg">
+                  <div className="api-seg-label">
+                    <span>Remote HTTP deeplink</span>
+                  </div>
+                  <a className="btn btn-accent" href={cursorInstallHref}>
+                    Add to Cursor <span className="btn-arrow">→</span>
+                  </a>
+                </div>
+              </div>
+              <div className="api-panel">
+                <div className="api-bar">
+                  <span className="dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="bar-label">Claude Code</span>
+                </div>
+                <CodeBlock
+                  copyLabel="Copy Claude install command"
+                  label="Remote HTTP command"
+                >
+                  {claudeRemoteInstall}
+                </CodeBlock>
+              </div>
+              <div className="api-panel">
+                <div className="api-bar">
+                  <span className="dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="bar-label">VS Code</span>
+                </div>
+                <CodeBlock
+                  copyLabel="Copy VS Code install command"
+                  label="Remote HTTP command"
+                >
+                  {vscodeRemoteInstall}
+                </CodeBlock>
+              </div>
+            </div>
+          </section>
+
           <section className="dev-section" aria-labelledby="what-heading">
             <div className="pp-includes-head" id="what-heading">
               What it gives the host
@@ -331,8 +426,12 @@ export default function DevelopersMcpPage() {
                   </span>
                   <span className="bar-label">connection targets</span>
                 </div>
-                <CodeBlock label="Local stdio">{localInstall}</CodeBlock>
-                <CodeBlock label="Remote HTTP">{remoteEndpoint}</CodeBlock>
+                <CodeBlock copyLabel="Copy local target" label="Local stdio">
+                  {localInstall}
+                </CodeBlock>
+                <CodeBlock copyLabel="Copy remote target" label="Remote HTTP">
+                  {remoteEndpoint}
+                </CodeBlock>
               </div>
             </div>
           </section>
@@ -368,7 +467,8 @@ export default function DevelopersMcpPage() {
                 <div className="dev-endpoint-body">
                   <p>
                     Input: <code>draft</code>, a draft reply string from{" "}
-                    <code>10 to 2400 characters</code>.
+                    <code>10 to 2400 characters</code> and within the{" "}
+                    <code>300-word draft limit</code>.
                   </p>
                   <p>
                     Output on success: <code>attempt_id</code>,{" "}
@@ -410,7 +510,10 @@ export default function DevelopersMcpPage() {
               <code>status</code> <code>working</code> with an{" "}
               <code>attempt_id</code>. The host should poll again by calling{" "}
               <code>get_rewrite_result</code> with that id, using short backoff
-              between retries.
+              between retries.{" "}
+              {
+                "Local stdio polls for up to about 2 minutes and currently does not return an attempt_id on timeout; prefer remote HTTP for long-running jobs."
+              }
             </div>
           </section>
 
