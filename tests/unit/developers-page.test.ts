@@ -147,6 +147,7 @@ describe("/developers hub and API documentation pages", () => {
     expect(pageSource).toContain("Submit-time failure before a rewrite job is accepted.");
     expect(pageSource).toContain("Gateway error between the website API route and backend.");
     expect(pageSource).toContain("429 responses also include Retry-After so clients know how many seconds to wait.");
+    expect(pageSource).toContain("include the response timestamp and endpoint");
     expect(pageSource).toContain("periodEnd is string | null");
     expect(pageSource).toContain("The REST API is path-versioned under /api/v1.");
     expect(pageSource).toContain("Breaking changes ship under a new path version");

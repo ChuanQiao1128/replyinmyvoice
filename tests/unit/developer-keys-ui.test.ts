@@ -168,6 +168,7 @@ describe("developer key management UI source", () => {
     expect(usageSource).toContain('href="/developers/api#errors"');
     expect(usageSource).toContain("What does this mean?");
     expect(usageSource).toContain("web and API rewrites share this balance");
+    expect(usageSource).toContain("request id field");
   });
 
   it("keeps the usage chart dependency-free and accessible", () => {
