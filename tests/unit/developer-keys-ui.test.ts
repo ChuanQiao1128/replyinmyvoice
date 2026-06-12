@@ -80,6 +80,14 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain("setRevealedKey(null)");
   });
 
+  it("points the key manager API reference card at the API reference", () => {
+    const panelSource = source("components/developers/api-keys-panel.tsx");
+
+    expect(panelSource).toContain("API reference");
+    expect(panelSource).toContain('href="/developers/api"');
+    expect(panelSource).not.toContain('href="/developers"');
+  });
+
   it("keeps gated API key access connected to the API docs", () => {
     const shellPrimitivesSource = source(
       "components/app/shell/shell-primitives.tsx",
@@ -120,6 +128,19 @@ describe("developer key management UI source", () => {
     expect(dashboardSource).toContain('subscriptionStatus === "PastDue"');
   });
 
+  it("syncs developer dashboard tabs to stable app routes", () => {
+    const dashboardSource = source("components/developers/developer-dashboard.tsx");
+
+    expect(dashboardSource).toContain('import Link from "next/link"');
+    expect(dashboardSource).toContain("usePathname");
+    expect(dashboardSource).toContain("useSearchParams");
+    expect(dashboardSource).toContain('href: "/app/keys"');
+    expect(dashboardSource).toContain('href: "/app/usage"');
+    expect(dashboardSource).toContain('href: "/app/keys?tab=billing"');
+    expect(dashboardSource).not.toContain("useState<DashboardTab>");
+    expect(dashboardSource).not.toContain("setActiveTab");
+  });
+
   it("loads usage data from the same-origin account API routes", () => {
     const usagePath = "components/developers/usage-panel.tsx";
 
@@ -142,6 +163,11 @@ describe("developer key management UI source", () => {
     expect(usageSource).toContain("No calls yet");
     expect(usageSource).toContain("remaining");
     expect(usageSource).toContain("periodEnd");
+    expect(usageSource).toContain('href="/developers/api"');
+    expect(usageSource).toContain("API docs");
+    expect(usageSource).toContain('href="/developers/api#errors"');
+    expect(usageSource).toContain("What does this mean?");
+    expect(usageSource).toContain("web and API rewrites share this balance");
   });
 
   it("keeps the usage chart dependency-free and accessible", () => {

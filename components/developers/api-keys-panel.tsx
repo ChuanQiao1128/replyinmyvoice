@@ -1340,8 +1340,12 @@ export function ApiKeysPanel() {
             Review request shapes and response examples before connecting your
             product.
           </p>
-          <LinkButton className="mt-5 w-full" href="/developers" variant="secondary">
-            View developer page
+          <LinkButton
+            className="mt-5 w-full"
+            href="/developers/api"
+            variant="secondary"
+          >
+            View API reference
           </LinkButton>
         </Card>
       </aside>
