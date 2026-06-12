@@ -120,6 +120,8 @@ describe("/developers hub and API documentation pages", () => {
     expect(pageSource).toContain("Submit request - Python (requests)");
     expect(pageSource).toContain("Poll request - Node (fetch)");
     expect(pageSource).toContain("Poll request - Python (requests)");
+    expect(pageSource).toContain("Official SDK");
+    expect(pageSource).toContain("npm install replyinmyvoice-api");
     expect(pageSource).toContain("process.env.RIMV_API_KEY");
     expect(pageSource).toContain("requests.post");
     expect(pageSource).toContain("requests.get");
