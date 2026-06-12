@@ -7,7 +7,7 @@ export interface McpServerConfig {
 
 export const DEFAULT_BASE_URL = "https://replyinmyvoice.com";
 export const MISSING_API_KEY_MESSAGE =
-  "Set REPLY_IN_MY_VOICE_API_KEY env var. Get one at https://replyinmyvoice.com/app/api-keys";
+  "Set REPLY_IN_MY_VOICE_API_KEY env var. Get one at https://replyinmyvoice.com/app/keys";
 
 export function readServerConfig(env: ConfigEnv = process.env): McpServerConfig {
   const apiKey = env.REPLY_IN_MY_VOICE_API_KEY?.trim();

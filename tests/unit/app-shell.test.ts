@@ -84,6 +84,14 @@ describe("app shell wiring", () => {
     expect(upsell).toContain("NZ$19.90/mo");
   });
 
+  it("uses the public MCP server name in the app connect snippets", () => {
+    const connectPage = source("app/app/connect/page.tsx");
+
+    expect(connectPage).toContain("claude mcp add replyinmyvoice");
+    expect(connectPage).toContain('"replyinmyvoice":');
+    expect(connectPage).not.toContain("reply-in-my-voice");
+  });
+
   it("hides the marketing footer on the app shell and admin", () => {
     const gate = source("components/chrome-gate.tsx");
     expect(gate).toContain('"/app"');

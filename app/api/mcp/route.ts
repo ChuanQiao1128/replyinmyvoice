@@ -15,6 +15,7 @@ import {
   listTools,
   type ToolOutput,
 } from "../../../packages/mcp-server/src/tools";
+import { MCP_SERVER_VERSION } from "../../../packages/mcp-server/src/version";
 import { isAllowedOrigin } from "../../../lib/security";
 
 export const dynamic = "force-dynamic";
@@ -104,7 +105,7 @@ function createServer(apiKey: string, request: Request): Server {
   const server = new Server(
     {
       name: "replyinmyvoice-remote",
-      version: "0.1.0",
+      version: MCP_SERVER_VERSION,
     },
     {
       capabilities: { tools: {} },
