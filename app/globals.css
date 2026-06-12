@@ -2464,6 +2464,43 @@ section.block {
 .dev-table tbody tr:last-child td {
   border-bottom: 0;
 }
+.openapi-table-wrap {
+  margin-top: 20px;
+}
+.openapi-table {
+  min-width: 980px;
+}
+.openapi-table td {
+  width: 20%;
+}
+.openapi-table td:nth-child(2),
+.openapi-table td:nth-child(3) {
+  width: 24%;
+}
+.openapi-table strong {
+  display: block;
+  color: var(--ink);
+  font-weight: 500;
+}
+.openapi-table p {
+  margin-top: 6px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.openapi-list {
+  margin: 0;
+  padding-left: 17px;
+  color: var(--ink-2);
+}
+.openapi-list li + li {
+  margin-top: 6px;
+}
+.openapi-caption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
 
 /* ── api panel + endpoints (developers) ──────────────────────── */
 
