@@ -29,6 +29,7 @@ type UsageSummary = {
 type RecentUsageCall = {
   createdAt: string;
   endpoint: string;
+  // Add a request id field to the backend recent-usage payload before showing a request-id column here.
   keyLast4: string | null;
   latencyMs: number | null;
   statusCode: number;

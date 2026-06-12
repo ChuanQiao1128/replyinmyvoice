@@ -81,6 +81,8 @@ const shortDraftQuickstartNote =
   "Drafts under 10 characters are rejected before a job is accepted and are uncharged.";
 const rateLimitRetryAfterNote =
   "429 responses also include Retry-After so clients know how many seconds to wait.";
+const supportContextNote =
+  "If you contact support about an API response, include the response timestamp and endpoint.";
 const idempotencyLimitNote = "Idempotency-Key must be 120 characters or fewer.";
 const signalRequestNote = "signal is not accepted in the request.";
 const periodEndNote =
@@ -749,6 +751,7 @@ export default function DevelopersPage() {
                 "Rejected requests, failed jobs, and timeouts are uncharged; only a succeeded rewrite costs 1."
               }
             </div>
+            <div className="dev-callout">{supportContextNote}</div>
             <div className="dev-table-wrap">
               <table className="dev-table">
                 <thead>
