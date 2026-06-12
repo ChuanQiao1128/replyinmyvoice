@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
-const sharedRetentionSentence =
-  "Workspace history may be retained for up to 90 days, while API request and result records use a separate 30-day retention window.";
+const apiRetentionSentence =
+  "API-originated request and result content has a bounded 30-day retention window.";
+const workspaceRetentionSentence =
+  "Workspace history may be retained for up to 90 days.";
 
 function source(path: string) {
   return readFileSync(join(root, path), "utf8");
@@ -234,6 +236,8 @@ describe("/developers hub and API documentation pages", () => {
     expect(termsSource).toContain("no free tier");
     expect(termsSource).toContain("informational naturalness reference");
     expect(termsSource).toContain("not a guarantee");
+    expect(termsSource).toContain("No uptime SLA is offered at this tier.");
+    expect(termsSource).toContain('title: "The signal field"');
 
     expect(acceptableUseSource).toContain("Acceptable Use Policy");
     expect(acceptableUseSource).toContain("illegal, deceptive, abusive, or harassing");
@@ -248,10 +252,16 @@ describe("/developers hub and API documentation pages", () => {
     expect(dataSource).toContain("Data & Retention");
     expect(dataSource).toContain("RewriteAttempt");
     expect(dataSource).toContain("input and output");
-    expect(dataSource).toContain("bounded 30-day retention");
-    expect(dataSource).toContain(sharedRetentionSentence);
+    expect(dataSource).toContain(apiRetentionSentence);
+    expect(dataSource).toContain(workspaceRetentionSentence);
+    expect(dataSource.match(/30-day retention window/g)).toHaveLength(1);
     expect(dataSource).toContain("purged");
-    expect(dataSource).toContain("rewrite and naturalness providers");
+    expect(dataSource).toContain("Cloudflare (hosting and edge runtime)");
+    expect(dataSource).toContain("Microsoft Azure (SQL database and backend services)");
+    expect(dataSource).toContain("Microsoft Entra External ID (sign-in)");
+    expect(dataSource).toContain("Stripe (payments)");
+    expect(dataSource).toContain("rewrite generation (DeepSeek)");
+    expect(dataSource).toContain("AI Signal analysis (Sapling)");
     expect(dataSource).toContain("Processing and residency");
     expect(dataSource).toContain("does not promise a specific country, region, or single-region residency");
     expect(dataSource).toContain("/app/account");
