@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { SiteHeader } from "../../../components/site-header";
+import openApiSpec from "../../../public/openapi.json";
 
 export const metadata: Metadata = {
   title: "REST API reference",
@@ -30,7 +31,8 @@ const errorRows = [
   {
     status: "400",
     code: "invalid_request",
-    cause: "Missing JSON, missing draft, empty draft, or a draft value that is not text.",
+    cause:
+      "Missing JSON, missing draft, empty draft, a draft under 10 characters, or a draft value that is not text.",
   },
   {
     status: "400",
@@ -48,6 +50,11 @@ const errorRows = [
     cause: "The account has no paid rewrite quota remaining.",
   },
   {
+    status: "404",
+    code: "not_found",
+    cause: "Unknown job id, or a job owned by another account/key.",
+  },
+  {
     status: "409",
     code: "idempotency_conflict",
     cause: "The same Idempotency-Key was reused with a different request body.",
@@ -57,7 +64,131 @@ const errorRows = [
     code: "rate_limited",
     cause: "The key has reached its 60 requests per minute limit.",
   },
+  {
+    status: "500",
+    code: "rewrite_failed",
+    cause: "Submit-time failure before a rewrite job is accepted.",
+  },
+  {
+    status: "502",
+    code: "proxy_request_failed",
+    cause: "Gateway error between the website API route and backend.",
+  },
 ];
+
+const exampleJobId = "7f3c2c1a-9d4e-4b8a-b1f2-3a5d8e9c0f11";
+const shortDraftQuickstartNote =
+  "Drafts under 10 characters are rejected before a job is accepted and are uncharged.";
+const rateLimitRetryAfterNote =
+  "429 responses also include Retry-After so clients know how many seconds to wait.";
+const supportContextNote =
+  "If you contact support about an API response, include the response timestamp and endpoint.";
+const idempotencyLimitNote = "Idempotency-Key must be 120 characters or fewer.";
+const signalRequestNote = "signal is not accepted in the request.";
+const periodEndNote =
+  "periodEnd is string | null; paid subscription windows return a timestamp, while credit-only windows may return null.";
+const versioningNote =
+  "The REST API is path-versioned under /api/v1. Breaking changes ship under a new path version so existing v1 clients can keep their integration stable while they migrate.";
+const whatToExpectNote =
+  "Jobs usually finish in seconds and may take up to about 50 s under load. If a job is still processing after about 60 s, treat the attempt as failed; it is uncharged. Resubmit with a fresh Idempotency-Key.";
+
+const httpMethods = ["get", "post", "put", "patch", "delete"] as const;
+
+type HttpMethod = (typeof httpMethods)[number];
+type OpenApiParameterRef = { $ref: string };
+type OpenApiParameter = {
+  name: string;
+  in: string;
+  required?: boolean;
+};
+type OpenApiOperation = {
+  summary?: string;
+  description?: string;
+  security?: Array<Record<string, unknown>>;
+  parameters?: Array<OpenApiParameter | OpenApiParameterRef>;
+  requestBody?: {
+    required?: boolean;
+  };
+  responses?: Record<string, { description?: string }>;
+};
+type OpenApiPathItem = Partial<Record<HttpMethod, OpenApiOperation>>;
+type OpenApiRow = {
+  key: string;
+  method: string;
+  path: string;
+  summary: string;
+  description: string;
+  inputs: string[];
+  responses: string[];
+};
+
+const openApiPaths = openApiSpec.paths as Record<string, OpenApiPathItem>;
+const openApiParameters = openApiSpec.components.parameters as Record<
+  string,
+  OpenApiParameter
+>;
+
+function refName(ref: string) {
+  return ref.split("/").at(-1) ?? ref;
+}
+
+function parameterLabel(parameter: OpenApiParameter | OpenApiParameterRef) {
+  const resolved =
+    "$ref" in parameter ? openApiParameters[refName(parameter.$ref)] : parameter;
+
+  if (!resolved) {
+    return "$ref" in parameter ? refName(parameter.$ref) : parameter.name;
+  }
+
+  return `${resolved.name} ${resolved.required ? "required" : "optional"} ${
+    resolved.in
+  }`;
+}
+
+function operationInputs(operation: OpenApiOperation) {
+  const inputs = operation.parameters?.map(parameterLabel) ?? [];
+
+  if (operation.security?.length) {
+    inputs.unshift("Authorization bearer key");
+  }
+
+  if (operation.requestBody) {
+    inputs.push(
+      operation.requestBody.required ? "JSON body required" : "JSON body optional",
+    );
+  }
+
+  return inputs.length > 0 ? inputs : ["No parameters"];
+}
+
+function operationResponses(operation: OpenApiOperation) {
+  return Object.entries(operation.responses ?? {}).map(([status, response]) =>
+    response.description ? `${status}: ${response.description}` : status,
+  );
+}
+
+const openApiRows: OpenApiRow[] = Object.entries(openApiPaths).flatMap(
+  ([path, pathItem]) =>
+    httpMethods.flatMap((method) => {
+      const operation = pathItem[method];
+
+      if (!operation) {
+        return [];
+      }
+
+      return [
+        {
+          key: `${method}:${path}`,
+          method: method.toUpperCase(),
+          path,
+          summary: operation.summary ?? `${method.toUpperCase()} ${path}`,
+          description: operation.description ?? "",
+          inputs: operationInputs(operation),
+          responses: operationResponses(operation),
+        },
+      ];
+    }),
+);
 
 const submitCurl = `curl https://replyinmyvoice.com/api/v1/rewrite \\
   -H "Authorization: Bearer rmv_live_xxx" \\
@@ -101,22 +232,44 @@ response = requests.post(
 print(response.status_code, response.headers.get("Location"))
 print(response.json())`;
 
+const sdkInstall = `npm install replyinmyvoice-api`;
+
+const sdkQuickstart = `import { RimvApiError, createClient } from "replyinmyvoice-api";
+
+const client = createClient({
+  apiKey: process.env.RIMV_API_KEY!,
+});
+
+try {
+  const { rewrittenText } = await client.rewrite(
+    "Sam, your order is delayed and ships next week.",
+  );
+
+  console.log(rewrittenText);
+} catch (error) {
+  if (error instanceof RimvApiError) {
+    console.error(error.code, error.message, error.status);
+  }
+
+  throw error;
+}`;
+
 const submitResponse = `HTTP/1.1 202 Accepted
-Location: /api/v1/rewrite/rw_123
+Location: /api/v1/rewrite/${exampleJobId}
 X-RateLimit-Limit: 60
 X-RateLimit-Remaining: 59
 X-RateLimit-Reset: 1812345678
 
 {
-  "id": "rw_123",
+  "id": "${exampleJobId}",
   "status": "processing"
 }`;
 
-const pollCurl = `curl https://replyinmyvoice.com/api/v1/rewrite/rw_123 \\
+const pollCurl = `curl https://replyinmyvoice.com/api/v1/rewrite/${exampleJobId} \\
   -H "Authorization: Bearer rmv_live_xxx"`;
 
 const pollNode = `const apiKey = process.env.RIMV_API_KEY ?? "rmv_live_xxx";
-const id = "rw_123";
+const id = "${exampleJobId}";
 
 const response = await fetch(
   "https://replyinmyvoice.com/api/v1/rewrite/" + encodeURIComponent(id),
@@ -133,7 +286,7 @@ const pollPython = `import os
 import requests
 
 api_key = os.environ.get("RIMV_API_KEY", "rmv_live_xxx")
-job_id = "rw_123"
+job_id = "${exampleJobId}"
 
 response = requests.get(
     f"https://replyinmyvoice.com/api/v1/rewrite/{job_id}",
@@ -144,12 +297,12 @@ response = requests.get(
 print(response.json())`;
 
 const pollProcessing = `{
-  "id": "rw_123",
+  "id": "${exampleJobId}",
   "status": "processing"
 }`;
 
 const pollSucceeded = `{
-  "id": "rw_123",
+  "id": "${exampleJobId}",
   "status": "succeeded",
   "rewrittenText": "Hi Sam, thanks for your patience. Your order is running a little behind and ships next week.",
   "signal": {
@@ -159,10 +312,10 @@ const pollSucceeded = `{
 }`;
 
 const pollFailed = `{
-  "id": "rw_123",
+  "id": "${exampleJobId}",
   "status": "failed",
   "error": {
-    "code": "rewrite_failed",
+    "code": "engine_unavailable",
     "message": "The rewrite could not be completed."
   }
 }`;
@@ -174,6 +327,19 @@ const usageResponse = `{
   "used": 12,
   "remaining": 78,
   "periodEnd": "2026-07-01T00:00:00Z"
+}`;
+
+const rateLimitedResponse = `HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1812345678
+
+{
+  "error": {
+    "code": "rate_limited",
+    "message": "Request limit reached. Please retry later."
+  }
 }`;
 
 const errorBody = `{
@@ -260,8 +426,8 @@ export default function DevelopersPage() {
               <a href="#quickstart" className="btn btn-ghost btn-lg">
                 Quickstart
               </a>
-              <a href="/api/v1/openapi.json" className="btn btn-ghost btn-lg">
-                OpenAPI specification
+              <a href="#openapi" className="btn btn-ghost btn-lg">
+                Browse full spec
               </a>
             </div>
           </div>
@@ -296,6 +462,7 @@ export default function DevelopersPage() {
                       <code>202 Accepted</code> with an <code>id</code>,{" "}
                       <code>status</code>, and <code>Location</code> header.
                     </p>
+                    <p>{shortDraftQuickstartNote}</p>
                   </div>
                 </div>
                 <div className="dev-step">
@@ -340,6 +507,41 @@ export default function DevelopersPage() {
                 <CodeBlock label="Poll response">{pollSucceeded}</CodeBlock>
               </div>
             </div>
+            <div className="dev-two-col">
+              <article className="v2card">
+                <h3>Official SDK</h3>
+                <p>
+                  Install the published TypeScript client when you want the
+                  submit-and-poll loop handled for you. The <code>rewrite()</code>{" "}
+                  helper submits the draft, polls until completion, and returns
+                  <code>rewrittenText</code>.
+                </p>
+                <p>
+                  Handle <code>RimvApiError</code> for API errors, rate limits,
+                  quota errors, failed jobs, and client-side timeouts.
+                </p>
+                <a
+                  href="https://www.npmjs.com/package/replyinmyvoice-api"
+                  className="dev-text-link"
+                >
+                  View replyinmyvoice-api on npm
+                </a>
+              </article>
+              <div className="api-panel dev-api-panel">
+                <div className="api-bar">
+                  <span className="dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="bar-label">TypeScript client</span>
+                </div>
+                <CodeBlock label="Install">{sdkInstall}</CodeBlock>
+                <CodeBlock label="Auto-polling SDK rewrite">
+                  {sdkQuickstart}
+                </CodeBlock>
+              </div>
+            </div>
           </section>
 
           <section className="dev-section" id="auth" aria-labelledby="auth-heading">
@@ -379,8 +581,8 @@ export default function DevelopersPage() {
               >
                 <p>
                   Request body is exactly <code>{'{ "draft": "..." }'}</code>.
-                  The draft must be at or below 300 words and at or below 2400
-                  chars. <code>signal</code> is not accepted in the request.
+                  The draft must be at least 10 characters, at or below 300
+                  words, and at or below 2400 chars. {signalRequestNote}
                 </p>
                 <ul className="dev-list">
                   <li>
@@ -433,6 +635,9 @@ export default function DevelopersPage() {
                     <code>remaining</code>, <code>periodEnd</code>
                   </li>
                   <li>
+                    {periodEndNote}
+                  </li>
+                  <li>
                     API calls and website rewrites share the same balance.
                   </li>
                   <li>
@@ -441,6 +646,7 @@ export default function DevelopersPage() {
                 </ul>
               </EndpointCard>
             </div>
+            <div className="dev-callout">{versioningNote}</div>
 
             <div className="dev-code-grid">
               <div className="api-panel">
@@ -473,6 +679,69 @@ export default function DevelopersPage() {
             </div>
           </section>
 
+          <section className="dev-section" id="openapi" aria-labelledby="openapi-heading">
+            <div className="pp-includes-head" id="openapi-heading">
+              Browse the full spec
+            </div>
+            <p className="dev-section-note">
+              This read-only view is generated from the checked-in OpenAPI
+              specification. It describes endpoints, required inputs, and
+              responses without running calls or collecting key values.
+            </p>
+            <div
+              className="dev-table-wrap openapi-table-wrap"
+              aria-label="Read-only OpenAPI operations"
+            >
+              <table className="dev-table openapi-table">
+                <thead>
+                  <tr>
+                    <th>Method</th>
+                    <th>Endpoint</th>
+                    <th>Summary</th>
+                    <th>Inputs</th>
+                    <th>Responses</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openApiRows.map((row) => (
+                    <tr key={row.key}>
+                      <td>
+                        <span className="method-badge">{row.method}</span>
+                      </td>
+                      <td>
+                        <code>{row.path}</code>
+                      </td>
+                      <td>
+                        <strong>{row.summary}</strong>
+                        {row.description ? <p>{row.description}</p> : null}
+                      </td>
+                      <td>
+                        <ul className="openapi-list">
+                          {row.inputs.map((input) => (
+                            <li key={input}>{input}</li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td>
+                        <ul className="openapi-list">
+                          {row.responses.map((response) => (
+                            <li key={response}>{response}</li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="openapi-caption">
+              OpenAPI specification:{" "}
+              <a href="/api/v1/openapi.json" className="dev-text-link">
+                Raw OpenAPI JSON
+              </a>
+            </p>
+          </section>
+
           <section className="dev-section" id="errors" aria-labelledby="errors-heading">
             <div className="pp-includes-head" id="errors-heading">
               Errors, limits, and idempotency
@@ -482,6 +751,7 @@ export default function DevelopersPage() {
                 "Rejected requests, failed jobs, and timeouts are uncharged; only a succeeded rewrite costs 1."
               }
             </div>
+            <div className="dev-callout">{supportContextNote}</div>
             <div className="dev-table-wrap">
               <table className="dev-table">
                 <thead>
@@ -514,15 +784,20 @@ export default function DevelopersPage() {
                   <code>X-RateLimit-Limit</code>,{" "}
                   <code>X-RateLimit-Remaining</code>, and{" "}
                   <code>X-RateLimit-Reset</code> headers to slow clients before
-                  they receive <code>429 rate_limited</code>.
+                  they receive <code>429 rate_limited</code>.{" "}
+                  {rateLimitRetryAfterNote}
                 </p>
+                <CodeBlock label="429 context" status="429 Too Many Requests">
+                  {rateLimitedResponse}
+                </CodeBlock>
               </article>
               <article className="v2card">
                 <h3>Idempotency-Key</h3>
                 <p>
                   Send one <code>Idempotency-Key</code> per logical submit. The
                   same key and same draft return the same job id; the same key
-                  with a changed body returns <code>409 idempotency_conflict</code>.
+                  with a changed body returns{" "}
+                  <code>409 idempotency_conflict</code>. {idempotencyLimitNote}
                 </p>
               </article>
             </div>
@@ -549,6 +824,10 @@ export default function DevelopersPage() {
                   uncharged. It is safe to resubmit the same draft; use a fresh{" "}
                   <code>Idempotency-Key</code> when you want a new attempt.
                 </p>
+              </article>
+              <article className="v2card">
+                <h3>What to expect</h3>
+                <p>{whatToExpectNote}</p>
               </article>
             </div>
           </section>

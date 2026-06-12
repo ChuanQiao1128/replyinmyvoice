@@ -3,6 +3,14 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { McpConfigCopyButton } from "../../../components/developers/mcp-config-copy-button";
+import {
+  claudeRemoteInstall,
+  cursorInstallHref,
+  localInstall,
+  mcpHostConfigs,
+  remoteEndpoint,
+  vscodeRemoteInstall,
+} from "../../../components/developers/mcp-host-configs";
 import { SiteHeader } from "../../../components/site-header";
 
 export const metadata: Metadata = {
@@ -26,78 +34,6 @@ export const metadata: Metadata = {
     images: "/og.png",
   },
 };
-
-const localInstall = `npx @replyinmyvoiceashuman/mcp-server`;
-
-const remoteEndpoint = `https://replyinmyvoice.com/api/mcp
-Authorization: Bearer rmv_live_xxx`;
-
-const hostConfigs = [
-  {
-    title: "Claude Code",
-    body: "Use the local command when you want the host to launch the server on your machine. Use the remote URL when your workspace supports HTTP MCP.",
-    local: `claude mcp add replyinmyvoice \\
-  --env REPLY_IN_MY_VOICE_API_KEY=rmv_live_xxx \\
-  -- npx -y @replyinmyvoiceashuman/mcp-server`,
-    remote: `claude mcp add replyinmyvoice \\
-  --transport http \\
-  --url https://replyinmyvoice.com/api/mcp \\
-  --header "Authorization: Bearer rmv_live_xxx"`,
-  },
-  {
-    title: "Codex",
-    body: "Add one of these entries to your Codex MCP config. The local version reads the key from env; the remote version sends the Bearer header.",
-    local: `[mcp_servers.replyinmyvoice]
-command = "npx"
-args = ["-y", "@replyinmyvoiceashuman/mcp-server"]
-env = { REPLY_IN_MY_VOICE_API_KEY = "rmv_live_xxx" }`,
-    remote: `[mcp_servers.replyinmyvoice]
-url = "https://replyinmyvoice.com/api/mcp"
-headers = { Authorization = "Bearer rmv_live_xxx" }`,
-  },
-  {
-    title: "Claude Desktop",
-    body: "Put the block inside the app's MCP server config, then fully restart the desktop app so it reloads the server list.",
-    local: `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "command": "npx",
-      "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
-      "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
-    }
-  }
-}`,
-    remote: `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "url": "https://replyinmyvoice.com/api/mcp",
-      "headers": { "Authorization": "Bearer rmv_live_xxx" }
-    }
-  }
-}`,
-  },
-  {
-    title: "Cursor",
-    body: "Use Settings -> MCP or edit the MCP JSON file directly. The same tool names are available over local stdio and remote HTTP.",
-    local: `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "command": "npx",
-      "args": ["-y", "@replyinmyvoiceashuman/mcp-server"],
-      "env": { "REPLY_IN_MY_VOICE_API_KEY": "rmv_live_xxx" }
-    }
-  }
-}`,
-    remote: `{
-  "mcpServers": {
-    "replyinmyvoice": {
-      "url": "https://replyinmyvoice.com/api/mcp",
-      "headers": { "Authorization": "Bearer rmv_live_xxx" }
-    }
-  }
-}`,
-  },
-];
 
 const errorRows = [
   {
@@ -267,6 +203,69 @@ export default function DevelopersMcpPage() {
             </div>
           </div>
 
+          <section className="dev-section" aria-labelledby="install-heading">
+            <div className="pp-includes-head" id="install-heading">
+              Install in your host
+            </div>
+            <p className="dev-section-note">
+              {
+                "Replace the rmv_live_xxx placeholder with your key before using the installed config."
+              }
+            </p>
+            <div className="dev-meta-grid">
+              <div className="api-panel">
+                <div className="api-bar">
+                  <span className="dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="bar-label">Cursor</span>
+                </div>
+                <div className="api-seg">
+                  <div className="api-seg-label">
+                    <span>Remote HTTP deeplink</span>
+                  </div>
+                  <a className="btn btn-accent" href={cursorInstallHref}>
+                    Add to Cursor <span className="btn-arrow">→</span>
+                  </a>
+                </div>
+              </div>
+              <div className="api-panel">
+                <div className="api-bar">
+                  <span className="dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="bar-label">Claude Code</span>
+                </div>
+                <CodeBlock
+                  copyLabel="Copy Claude install command"
+                  label="Remote HTTP command"
+                >
+                  {claudeRemoteInstall}
+                </CodeBlock>
+              </div>
+              <div className="api-panel">
+                <div className="api-bar">
+                  <span className="dots">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="bar-label">VS Code</span>
+                </div>
+                <CodeBlock
+                  copyLabel="Copy VS Code install command"
+                  label="Remote HTTP command"
+                >
+                  {vscodeRemoteInstall}
+                </CodeBlock>
+              </div>
+            </div>
+          </section>
+
           <section className="dev-section" aria-labelledby="what-heading">
             <div className="pp-includes-head" id="what-heading">
               What it gives the host
@@ -331,8 +330,12 @@ export default function DevelopersMcpPage() {
                   </span>
                   <span className="bar-label">connection targets</span>
                 </div>
-                <CodeBlock label="Local stdio">{localInstall}</CodeBlock>
-                <CodeBlock label="Remote HTTP">{remoteEndpoint}</CodeBlock>
+                <CodeBlock copyLabel="Copy local target" label="Local stdio">
+                  {localInstall}
+                </CodeBlock>
+                <CodeBlock copyLabel="Copy remote target" label="Remote HTTP">
+                  {remoteEndpoint}
+                </CodeBlock>
               </div>
             </div>
           </section>
@@ -344,7 +347,7 @@ export default function DevelopersMcpPage() {
             <p className="dev-section-note">
               Replace rmv_live_xxx with your key from the developer dashboard.
             </p>
-            {hostConfigs.map((config) => (
+            {mcpHostConfigs.map((config) => (
               <HostBlock
                 body={config.body}
                 key={config.title}
@@ -368,7 +371,8 @@ export default function DevelopersMcpPage() {
                 <div className="dev-endpoint-body">
                   <p>
                     Input: <code>draft</code>, a draft reply string from{" "}
-                    <code>10 to 2400 characters</code>.
+                    <code>10 to 2400 characters</code> and within the{" "}
+                    <code>300-word draft limit</code>.
                   </p>
                   <p>
                     Output on success: <code>attempt_id</code>,{" "}
@@ -410,7 +414,10 @@ export default function DevelopersMcpPage() {
               <code>status</code> <code>working</code> with an{" "}
               <code>attempt_id</code>. The host should poll again by calling{" "}
               <code>get_rewrite_result</code> with that id, using short backoff
-              between retries.
+              between retries.{" "}
+              {
+                "Local stdio polls for up to about 2 minutes and currently does not return an attempt_id on timeout; prefer remote HTTP for long-running jobs."
+              }
             </div>
           </section>
 

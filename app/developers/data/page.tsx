@@ -19,7 +19,7 @@ const sections = [
   },
   {
     title: "Retention window",
-    text: "API-originated request and result content has a bounded 30-day retention window. Workspace history may be retained for up to 90 days, while API request and result records use a separate 30-day retention window. After that window, stored input and output content is purged while operational records needed for account, billing, security, and abuse review may be retained.",
+    text: "API-originated request and result content has a bounded 30-day retention window. Workspace history may be retained for up to 90 days. After the applicable window, stored input and output content is purged while operational records needed for account, billing, security, and abuse review may be retained.",
   },
   {
     title: "Processing and residency",
@@ -31,7 +31,7 @@ const sections = [
   },
   {
     title: "Processors",
-    text: "API content is processed by the rewrite and naturalness providers needed to provide the service. Hosting, database, authentication, billing, and operational providers may also process the minimum data needed for their role.",
+    text: "API content may be processed by Cloudflare (hosting and edge runtime), Microsoft Azure (SQL database and backend services), Microsoft Entra External ID (sign-in), Stripe (payments), and AI providers for rewrite generation (DeepSeek) and AI Signal analysis (Sapling). These providers process the minimum data needed for their role.",
   },
   {
     title: "API keys and account records",

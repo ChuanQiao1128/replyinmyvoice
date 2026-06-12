@@ -12,6 +12,7 @@ import {
   type McpServerConfig,
 } from "./config.js";
 import { callTool, listTools, type ToolOutput } from "./tools/index.js";
+import { MCP_SERVER_VERSION } from "./version.js";
 
 export interface CreateServerOptions {
   name?: string;
@@ -27,7 +28,7 @@ export function createServer(options: CreateServerOptions = {}): Server {
   const server = new Server(
     {
       name: options.name ?? "replyinmyvoice",
-      version: options.version ?? "0.0.1",
+      version: options.version ?? MCP_SERVER_VERSION,
     },
     {
       capabilities: { tools: {} },

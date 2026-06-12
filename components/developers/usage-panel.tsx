@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertCircle, Clock3, Download, Loader2, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button, LinkButton } from "../ui/button";
@@ -28,6 +29,7 @@ type UsageSummary = {
 type RecentUsageCall = {
   createdAt: string;
   endpoint: string;
+  // Add a request id field to the backend recent-usage payload before showing a request-id column here.
   keyLast4: string | null;
   latencyMs: number | null;
   statusCode: number;
@@ -126,6 +128,10 @@ function statusClass(statusCode: number) {
   }
 
   return "border-rust/25 bg-rust/10 text-rust";
+}
+
+function isErrorStatus(statusCode: number) {
+  return statusCode < 200 || statusCode >= 300;
 }
 
 function formatLatency(value: number | null) {
@@ -306,6 +312,13 @@ export function UsagePanel() {
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto">
+            <LinkButton
+              className="w-full sm:w-auto"
+              href="/developers/api"
+              variant="ghost"
+            >
+              &larr; API docs
+            </LinkButton>
             <div className="flex w-full flex-col gap-2 sm:flex-row">
               <Button
                 className="w-full sm:w-auto"
@@ -405,6 +418,9 @@ export function UsagePanel() {
                 {summary.used} used this period. Period ends{" "}
                 {formatPeriodEnd(summary.periodEnd)}.
               </p>
+              <p className="mt-3 text-sm text-ink/65">
+                Only succeeded rewrites consume credits — web and API rewrites share this balance; polling and failed jobs are free.
+              </p>
 
               {exhausted ? (
                 <div className="mt-5 rounded-md border border-rust/25 bg-rust/5 p-4">
@@ -480,6 +496,14 @@ export function UsagePanel() {
                           >
                             {call.statusCode}
                           </span>
+                          {isErrorStatus(call.statusCode) ? (
+                            <Link
+                              className="mt-2 block text-xs font-semibold text-rust underline-offset-4 hover:underline"
+                              href="/developers/api#errors"
+                            >
+                              What does this mean?
+                            </Link>
+                          ) : null}
                         </td>
                         <td className="whitespace-nowrap px-4 py-4">
                           {formatLatency(call.latencyMs)}

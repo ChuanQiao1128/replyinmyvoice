@@ -50,7 +50,10 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain("webhookUrl");
     expect(panelSource).toContain("revokedAt");
     expect(panelSource).toContain("isTest");
-    expect(panelSource).toContain("test: isTest");
+    expect(panelSource).toContain("apiKey.isTest");
+    expect(panelSource).toContain('aria-label="Test key"');
+    expect(panelSource).not.toContain("test: isTest");
+    expect(panelSource).not.toContain("test: true");
     expect(panelSource).not.toContain("localStorage");
     expect(panelSource).not.toContain("sessionStorage");
   });
@@ -59,8 +62,8 @@ describe("developer key management UI source", () => {
     const panelSource = source("components/developers/api-keys-panel.tsx");
 
     expect(panelSource).toContain("Create key");
-    expect(panelSource).toContain("Create test key");
-    expect(panelSource).toContain('aria-label="Test key"');
+    expect(panelSource).not.toContain("Create test key");
+    expect(panelSource).not.toContain("submitCreateKey(true)");
     expect(panelSource).toContain("Copy key");
     expect(panelSource).toContain("you won't see this again");
     expect(panelSource).toContain("Rotate");
@@ -75,6 +78,14 @@ describe("developer key management UI source", () => {
     expect(panelSource).toContain("Buy credits");
     expect(panelSource).toContain("Confirm revoke");
     expect(panelSource).toContain("setRevealedKey(null)");
+  });
+
+  it("points the key manager API reference card at the API reference", () => {
+    const panelSource = source("components/developers/api-keys-panel.tsx");
+
+    expect(panelSource).toContain("API reference");
+    expect(panelSource).toContain('href="/developers/api"');
+    expect(panelSource).not.toContain('href="/developers"');
   });
 
   it("keeps gated API key access connected to the API docs", () => {
@@ -117,6 +128,19 @@ describe("developer key management UI source", () => {
     expect(dashboardSource).toContain('subscriptionStatus === "PastDue"');
   });
 
+  it("syncs developer dashboard tabs to stable app routes", () => {
+    const dashboardSource = source("components/developers/developer-dashboard.tsx");
+
+    expect(dashboardSource).toContain('import Link from "next/link"');
+    expect(dashboardSource).toContain("usePathname");
+    expect(dashboardSource).toContain("useSearchParams");
+    expect(dashboardSource).toContain('href: "/app/keys"');
+    expect(dashboardSource).toContain('href: "/app/usage"');
+    expect(dashboardSource).toContain('href: "/app/keys?tab=billing"');
+    expect(dashboardSource).not.toContain("useState<DashboardTab>");
+    expect(dashboardSource).not.toContain("setActiveTab");
+  });
+
   it("loads usage data from the same-origin account API routes", () => {
     const usagePath = "components/developers/usage-panel.tsx";
 
@@ -139,6 +163,12 @@ describe("developer key management UI source", () => {
     expect(usageSource).toContain("No calls yet");
     expect(usageSource).toContain("remaining");
     expect(usageSource).toContain("periodEnd");
+    expect(usageSource).toContain('href="/developers/api"');
+    expect(usageSource).toContain("API docs");
+    expect(usageSource).toContain('href="/developers/api#errors"');
+    expect(usageSource).toContain("What does this mean?");
+    expect(usageSource).toContain("web and API rewrites share this balance");
+    expect(usageSource).toContain("request id field");
   });
 
   it("keeps the usage chart dependency-free and accessible", () => {
