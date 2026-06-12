@@ -91,6 +91,8 @@ describe("/developers hub and API documentation pages", () => {
     expect(pageSource).toContain('href="/developers/mcp"');
     expect(pageSource).toContain('href="/api/v1/openapi.json"');
     expect(pageSource).toContain("OpenAPI specification");
+    expect(pageSource).toContain("Browse the full spec");
+    expect(pageSource).toContain("Raw OpenAPI JSON");
     expect(pageSource).toContain("Get your API key");
 
     expect(pageSource).toContain("POST /api/v1/rewrite");

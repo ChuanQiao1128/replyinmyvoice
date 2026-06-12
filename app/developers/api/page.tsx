@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { SiteHeader } from "../../../components/site-header";
+import openApiSpec from "../../../public/openapi.json";
 
 export const metadata: Metadata = {
   title: "REST API reference",
@@ -88,6 +89,104 @@ const versioningNote =
   "The REST API is path-versioned under /api/v1. Breaking changes ship under a new path version so existing v1 clients can keep their integration stable while they migrate.";
 const whatToExpectNote =
   "Jobs usually finish in seconds and may take up to about 50 s under load. If a job is still processing after about 60 s, treat the attempt as failed; it is uncharged. Resubmit with a fresh Idempotency-Key.";
+
+const httpMethods = ["get", "post", "put", "patch", "delete"] as const;
+
+type HttpMethod = (typeof httpMethods)[number];
+type OpenApiParameterRef = { $ref: string };
+type OpenApiParameter = {
+  name: string;
+  in: string;
+  required?: boolean;
+};
+type OpenApiOperation = {
+  summary?: string;
+  description?: string;
+  security?: Array<Record<string, unknown>>;
+  parameters?: Array<OpenApiParameter | OpenApiParameterRef>;
+  requestBody?: {
+    required?: boolean;
+  };
+  responses?: Record<string, { description?: string }>;
+};
+type OpenApiPathItem = Partial<Record<HttpMethod, OpenApiOperation>>;
+type OpenApiRow = {
+  key: string;
+  method: string;
+  path: string;
+  summary: string;
+  description: string;
+  inputs: string[];
+  responses: string[];
+};
+
+const openApiPaths = openApiSpec.paths as Record<string, OpenApiPathItem>;
+const openApiParameters = openApiSpec.components.parameters as Record<
+  string,
+  OpenApiParameter
+>;
+
+function refName(ref: string) {
+  return ref.split("/").at(-1) ?? ref;
+}
+
+function parameterLabel(parameter: OpenApiParameter | OpenApiParameterRef) {
+  const resolved =
+    "$ref" in parameter ? openApiParameters[refName(parameter.$ref)] : parameter;
+
+  if (!resolved) {
+    return "$ref" in parameter ? refName(parameter.$ref) : parameter.name;
+  }
+
+  return `${resolved.name} ${resolved.required ? "required" : "optional"} ${
+    resolved.in
+  }`;
+}
+
+function operationInputs(operation: OpenApiOperation) {
+  const inputs = operation.parameters?.map(parameterLabel) ?? [];
+
+  if (operation.security?.length) {
+    inputs.unshift("Authorization bearer key");
+  }
+
+  if (operation.requestBody) {
+    inputs.push(
+      operation.requestBody.required ? "JSON body required" : "JSON body optional",
+    );
+  }
+
+  return inputs.length > 0 ? inputs : ["No parameters"];
+}
+
+function operationResponses(operation: OpenApiOperation) {
+  return Object.entries(operation.responses ?? {}).map(([status, response]) =>
+    response.description ? `${status}: ${response.description}` : status,
+  );
+}
+
+const openApiRows: OpenApiRow[] = Object.entries(openApiPaths).flatMap(
+  ([path, pathItem]) =>
+    httpMethods.flatMap((method) => {
+      const operation = pathItem[method];
+
+      if (!operation) {
+        return [];
+      }
+
+      return [
+        {
+          key: `${method}:${path}`,
+          method: method.toUpperCase(),
+          path,
+          summary: operation.summary ?? `${method.toUpperCase()} ${path}`,
+          description: operation.description ?? "",
+          inputs: operationInputs(operation),
+          responses: operationResponses(operation),
+        },
+      ];
+    }),
+);
 
 const submitCurl = `curl https://replyinmyvoice.com/api/v1/rewrite \\
   -H "Authorization: Bearer rmv_live_xxx" \\
@@ -303,8 +402,8 @@ export default function DevelopersPage() {
               <a href="#quickstart" className="btn btn-ghost btn-lg">
                 Quickstart
               </a>
-              <a href="/api/v1/openapi.json" className="btn btn-ghost btn-lg">
-                OpenAPI specification
+              <a href="#openapi" className="btn btn-ghost btn-lg">
+                Browse full spec
               </a>
             </div>
           </div>
@@ -519,6 +618,69 @@ export default function DevelopersPage() {
                 <CodeBlock label="Error body">{errorBody}</CodeBlock>
               </div>
             </div>
+          </section>
+
+          <section className="dev-section" id="openapi" aria-labelledby="openapi-heading">
+            <div className="pp-includes-head" id="openapi-heading">
+              Browse the full spec
+            </div>
+            <p className="dev-section-note">
+              This read-only view is generated from the checked-in OpenAPI
+              specification. It describes endpoints, required inputs, and
+              responses without running calls or collecting key values.
+            </p>
+            <div
+              className="dev-table-wrap openapi-table-wrap"
+              aria-label="Read-only OpenAPI operations"
+            >
+              <table className="dev-table openapi-table">
+                <thead>
+                  <tr>
+                    <th>Method</th>
+                    <th>Endpoint</th>
+                    <th>Summary</th>
+                    <th>Inputs</th>
+                    <th>Responses</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openApiRows.map((row) => (
+                    <tr key={row.key}>
+                      <td>
+                        <span className="method-badge">{row.method}</span>
+                      </td>
+                      <td>
+                        <code>{row.path}</code>
+                      </td>
+                      <td>
+                        <strong>{row.summary}</strong>
+                        {row.description ? <p>{row.description}</p> : null}
+                      </td>
+                      <td>
+                        <ul className="openapi-list">
+                          {row.inputs.map((input) => (
+                            <li key={input}>{input}</li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td>
+                        <ul className="openapi-list">
+                          {row.responses.map((response) => (
+                            <li key={response}>{response}</li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="openapi-caption">
+              OpenAPI specification:{" "}
+              <a href="/api/v1/openapi.json" className="dev-text-link">
+                Raw OpenAPI JSON
+              </a>
+            </p>
           </section>
 
           <section className="dev-section" id="errors" aria-labelledby="errors-heading">
