@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Clipboard,
   CreditCard,
-  FlaskConical,
   KeyRound,
   Link2,
   Loader2,
@@ -274,14 +273,6 @@ export function CreatedKeyReveal({
               {revealedKey.key}
             </code>
           </div>
-          {revealedKey.isTest ? (
-            <span
-              aria-label="Test key"
-              className="mt-3 inline-flex rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 text-xs font-semibold text-ink"
-            >
-              Test
-            </span>
-          ) : null}
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Button onClick={onCopy} type="button">
               <Clipboard className="h-4 w-4" aria-hidden="true" />
@@ -517,7 +508,7 @@ export function ApiKeysPanel() {
     return keysState.keys.filter((key) => !key.revokedAt).length;
   }, [keysState]);
 
-  async function submitCreateKey(isTest: boolean) {
+  async function submitCreateKey() {
     if (isCreating) {
       return;
     }
@@ -538,7 +529,7 @@ export function ApiKeysPanel() {
 
     try {
       const response = await fetch("/api/keys", {
-        body: JSON.stringify({ name: trimmedName, test: isTest }),
+        body: JSON.stringify({ name: trimmedName }),
         cache: "no-store",
         headers: {
           "Content-Type": "application/json",
@@ -560,11 +551,7 @@ export function ApiKeysPanel() {
       created = (await response.json()) as CreatedApiKey;
       setRevealedKey(created);
       setName("");
-      setCreateNotice(
-        isTest
-          ? "Test key created. Copy it before leaving this page."
-          : "Key created. Copy it before leaving this page.",
-      );
+      setCreateNotice("Key created. Copy it before leaving this page.");
       setKeysState((current) => {
         if (current.status !== "ready" || !created) {
           return current;
@@ -600,7 +587,7 @@ export function ApiKeysPanel() {
 
   function createKey(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void submitCreateKey(false);
+    void submitCreateKey();
   }
 
   async function copyKey() {
@@ -1342,19 +1329,6 @@ export function ApiKeysPanel() {
                   <Plus className="h-4 w-4" aria-hidden="true" />
                 )}
                 {isCreating ? "Creating..." : "Create key"}
-              </Button>
-              <Button
-                disabled={isCreating}
-                onClick={() => void submitCreateKey(true)}
-                type="button"
-                variant="secondary"
-              >
-                {isCreating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <FlaskConical className="h-4 w-4" aria-hidden="true" />
-                )}
-                Create test key
               </Button>
             </div>
           </form>
