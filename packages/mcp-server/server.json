@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ChuanQiao1128/replyinmyvoice",
+  "title": "Reply In My Voice",
+  "description": "MCP server for natural, concise reply rewrites with meaning and facts preserved.",
+  "repository": {
+    "url": "https://github.com/ChuanQiao1128/replyinmyvoice",
+    "source": "github"
+  },
+  "version": "0.1.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@replyinmyvoiceashuman/mcp-server",
+      "version": "0.1.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "REPLY_IN_MY_VOICE_API_KEY",
+          "description": "Reply In My Voice API key for local stdio use.",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://replyinmyvoice.com/api/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer API key for Reply In My Voice.",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

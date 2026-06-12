@@ -1,0 +1,28 @@
+# Reply In My Voice
+
+Reply In My Voice provides natural, concise reply rewrites with meaning and facts preserved.
+
+## Links
+
+- REST API docs: https://replyinmyvoice.com/developers/api
+- MCP setup: https://replyinmyvoice.com/developers/mcp
+- OpenAPI schema: https://replyinmyvoice.com/api/v1/openapi.json
+- Pricing: https://replyinmyvoice.com/pricing
+
+## Facts
+
+- REST submit endpoint: `POST /api/v1/rewrite`
+- REST result endpoint: `GET /api/v1/rewrite/{id}`
+- Authentication: Bearer `rmv_live_` key
+- Workflow: async submit and poll
+- Pro/API price: NZ$19.90/month
+- Paid quota: 90 rewrites/month shared across web and API
+- Free API tier: none
+- Rate limit: 60 requests/minute per key
+- Successful rewrites consume quota; failed jobs and polling do not.
+
+## MCP
+
+- Remote endpoint: `https://replyinmyvoice.com/api/mcp`
+- npm package: `@replyinmyvoiceashuman/mcp-server`
+- Tools: `rewrite_email`, `get_rewrite_result`
