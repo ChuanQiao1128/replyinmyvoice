@@ -1,7 +1,9 @@
 "use client";
 
 import { BarChart3, CreditCard, KeyRound } from "lucide-react";
-import { useId, useState } from "react";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useId } from "react";
 
 import { PastDueBanner } from "../app/past-due-banner";
 import { ApiKeysPanel } from "./api-keys-panel";
@@ -12,24 +14,28 @@ type DashboardTab = "keys" | "usage" | "billing";
 
 const tabs: {
   description: string;
+  href: string;
   icon: typeof KeyRound;
   id: DashboardTab;
   label: string;
 }[] = [
   {
     description: "Create, reveal, and revoke API keys.",
+    href: "/app/keys",
     icon: KeyRound,
     id: "keys",
     label: "Keys",
   },
   {
     description: "Review call volume, quota, and recent requests.",
+    href: "/app/usage",
     icon: BarChart3,
     id: "usage",
     label: "Usage",
   },
   {
     description: "Plan and payment records.",
+    href: "/app/keys?tab=billing",
     icon: CreditCard,
     id: "billing",
     label: "Billing",
@@ -42,12 +48,34 @@ type Props = {
   initialTab?: DashboardTab;
 };
 
+function routeMatches(pathname: string | null, href: string) {
+  return pathname === href || pathname?.startsWith(`${href}/`);
+}
+
+function tabFromRoute(
+  pathname: string | null,
+  tabParam: string | null,
+  fallback: DashboardTab,
+): DashboardTab {
+  if (routeMatches(pathname, "/app/usage")) {
+    return "usage";
+  }
+
+  if (routeMatches(pathname, "/app/keys")) {
+    return tabParam === "billing" ? "billing" : "keys";
+  }
+
+  return fallback;
+}
+
 export function DeveloperDashboard({
   paymentGraceEndsAt,
   subscriptionStatus,
   initialTab = "keys",
 }: Props) {
-  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeTab = tabFromRoute(pathname, searchParams.get("tab"), initialTab);
   const tabGroupId = useId();
 
   return (
@@ -84,23 +112,23 @@ export function DeveloperDashboard({
               const selected = activeTab === tab.id;
 
               return (
-                <button
+                <Link
                   aria-controls={`${tabGroupId}-${tab.id}-panel`}
+                  aria-current={selected ? "page" : undefined}
                   aria-selected={selected}
                   className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clay/35 ${
                     selected
                       ? "bg-white text-ink shadow-soft"
                       : "text-ink/60 hover:bg-white/70 hover:text-ink"
                   }`}
+                  href={tab.href}
                   id={`${tabGroupId}-${tab.id}-tab`}
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
                   role="tab"
-                  type="button"
                 >
                   <Icon className="h-4 w-4" aria-hidden="true" />
                   {tab.label}
-                </button>
+                </Link>
               );
             })}
           </div>
