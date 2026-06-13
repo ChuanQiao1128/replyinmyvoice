@@ -6010,3 +6010,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/developers/page.tsx`, `tests/unit/developers-page.test.ts`, and this log entry.
 - Verification evidence: exact focused `npx vitest run tests/unit/developers-page.test.ts` initially failed before tests started with `SecItemCopyMatching failed -50`; with `NODE_USE_SYSTEM_CA` cleared, the same focused command passed 5/5. `grep -c "Production output" app/developers/page.tsx || true` returned `0`; `grep -ci "Why integrate" app/developers/page.tsx` returned `1`; hub forbidden endpoint/status string scan produced no output; restricted wording scan over `app components public lib` produced no output; exact `npm run typecheck` passed; exact `npm run test` failed before tests started with the same keychain error, then `NODE_USE_SYSTEM_CA= npm run test` passed 69 files and 358 tests; exact `npm run build` failed before building with the same keychain error, then `NODE_USE_SYSTEM_CA= npm run build` passed.
 - Limitations: Browser verification was attempted but blocked because `next start` could not bind to `127.0.0.1:3137` or `0.0.0.0:3137` in the sandbox (`listen EPERM`), so no desktop/mobile screenshot was captured. The successful build still emitted pre-existing hook dependency warnings in `components/auth/google-oauth-card.tsx`. No other page/component, sample-case file, backend endpoint, API route, schema, payment, secret, deploy, push, or PR changes were made.
+
+### 2026-06-13 - system-spec-synthesis - HARD-01 issue #780 engine contract
+
+- Agent: Codex worker
+- Trigger: Issue #780 freezes the rewrite-engine boundary and required an implementation-ready contract document plus swap recipe across backend job, v1 API, webhook, cost logger, and Next proxy consumers.
+- Action: Opened and followed the project skill as a contract-planning checklist. Read `AGENTS.md`, `CLAUDE.md`, the HARD-01 issue brief, and production-hardening master spec; converted the brief corrections into an open `ErrorCode` contract, a recommended `EngineEmittable` set, required/optional `ResultJson` shape, `ProviderCalls` rule, and swap-recipe documentation.
+- Output artifacts: `docs/rewrite-engine-contract.md`, `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteEngineClient.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, and this log entry.
+- Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600; `npm run test` passed 70 files and 360 tests; `npm run typecheck` passed.
+- Limitations: Local commit was attempted but blocked because the git worktree index is under `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-780`, outside writable roots. No deploy, push, PR, migration, payment, secret, live config, or engine-internal logic change was made.
+
+### 2026-06-13 - resilience-test-generation - HARD-01 issue #780 failure-code contract
+
+- Agent: Codex worker
+- Trigger: Issue #780 pins provider timeout/failure, malformed success JSON, missing naturalness metadata, webhook body fallback, and no-row cost logging behavior around the rewrite job boundary.
+- Action: Opened and followed the project skill as a failure-mode test checklist. Covered timeout, unexpected provider exception, malformed success payload, quota release, v1 fallback, webhook fallback, and missing `ProviderCalls` cost-log behavior using deterministic local fakes and SQLite-backed repositories.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `tests/unit/rewrite-engine-contract.test.ts`, and this log entry.
+- Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600; `npm run test` passed 70 files and 360 tests.
+- Limitations: This issue documents current model-code pass-throughs and pins surrounding behavior only; it intentionally does not change current rewrite-engine internals, provider retry policy, writing-signal metric capture, or client-facing recovery copy.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-01 issue #780 contract tests
+
+- Agent: Codex worker
+- Trigger: Issue #780 required new C# xUnit contract tests for `ProcessRewriteJobHandler`, v1 API result mapping, webhook body mapping, cost logging, and the provider adapter.
+- Action: Opened and followed the project skill for test-level selection. Added a single backend contract suite using existing `DbFixture`, real repositories, deterministic fakes, and copied v1 function-construction patterns; asserted persisted quota/reservation/attempt state rather than only return values.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, provider declaration move files, and this log entry.
+- Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600.
+- Limitations: The .NET restore step emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, schema change, external provider call, deploy, push, PR, or production config change was made.
