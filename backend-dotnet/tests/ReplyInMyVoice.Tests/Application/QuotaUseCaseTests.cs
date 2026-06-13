@@ -320,6 +320,76 @@ public sealed class QuotaUseCaseTests
     }
 
     [Fact]
+    public async Task ExpiredReservationForSoftDeletedAttemptStillReleased()
+    {
+        await using var fixture = await QuotaUseCaseDbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var periodId = Guid.NewGuid();
+        var attemptId = Guid.NewGuid();
+        var reservationId = Guid.NewGuid();
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                Id = periodId,
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 0,
+                ReservedCount = 1,
+                CreatedAt = now.AddMinutes(-20),
+                UpdatedAt = now.AddMinutes(-20),
+            });
+            seedDb.RewriteAttempts.Add(new RewriteAttempt
+            {
+                Id = attemptId,
+                UserId = user.Id,
+                IdempotencyKey = "idem-soft-expired",
+                RequestHash = "hash-soft-expired",
+                RequestJson = "{\"roughDraftReply\":\"Thanks for your message.\"}",
+                Status = RewriteAttemptStatus.Processing,
+                DeletedAt = now.AddMinutes(-1),
+                CreatedAt = now.AddMinutes(-20),
+                ExpiresAt = now.AddMinutes(-5),
+            });
+            seedDb.UsageReservations.Add(new UsageReservation
+            {
+                Id = reservationId,
+                UserId = user.Id,
+                UsagePeriodId = periodId,
+                RewriteAttemptId = attemptId,
+                Status = UsageReservationStatus.Pending,
+                CreatedAt = now.AddMinutes(-20),
+                ExpiresAt = now.AddMinutes(-5),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        int released;
+        await using (var cleanupDb = fixture.CreateContext())
+        {
+            released = await CreateExpiredHandler(cleanupDb).HandleAsync(
+                new ReleaseExpiredReservationsCommand(now, BatchSize: 10));
+        }
+
+        released.Should().Be(1);
+        await using var verifyDb = fixture.CreateContext();
+        var period = await verifyDb.UsagePeriods.SingleAsync(x => x.Id == periodId);
+        period.ReservedCount.Should().Be(0);
+        var reservation = await verifyDb.UsageReservations.SingleAsync(x => x.Id == reservationId);
+        reservation.Status.Should().Be(UsageReservationStatus.Expired);
+        reservation.ReleasedAt.Should().Be(now);
+        var attempt = await verifyDb.RewriteAttempts
+            .IgnoreQueryFilters()
+            .SingleAsync(x => x.Id == attemptId);
+        attempt.Status.Should().Be(RewriteAttemptStatus.Expired);
+        attempt.ErrorCode.Should().Be("processing_timed_out");
+        attempt.CompletedAt.Should().Be(now);
+    }
+
+    [Fact]
     public async Task FinalizeQuotaSuccessAsync_does_not_overwrite_expired_reservation()
     {
         await using var fixture = await QuotaUseCaseDbFixture.CreateAsync();

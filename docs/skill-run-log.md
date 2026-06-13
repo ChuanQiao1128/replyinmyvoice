@@ -45,6 +45,42 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-13 - data-module-review - HARD-13 data hygiene
+
+- Agent: Codex worker
+- Trigger: GitHub issue #792 changes EF Core model configuration, repositories, usage counters, idempotency lookups, retention hard-delete behavior, and persistence invariants.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `RewriteAttempt`, `UsageReservation`, `WebhookDelivery`, `AppDbContext`, repository readers, retention service, sandbox writers, and existing SQLite-backed tests. Findings: no migration was needed; the legacy API-key counter stays mapped but is marked obsolete; user reads inherit the soft-delete filter while audited system recovery and erasure paths use explicit filter escape hatches.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/SandboxAttemptConventions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; repository and retention service updates; `ApiKeyCounterContractTests.cs`; `RewriteAttemptQueryFilterTests.cs`; retention, quota, webhook, account, admin, and history test updates.
+- Verification evidence: Focused backend selection passed 49/49; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641; `CurrentPeriodUsage` source grep outside `Entities/ApiKey.cs` and migrations returned no output; migrations diff was empty.
+- Limitations: No migration, frontend file, deploy, push, PR, live provider call, payment action, secret inspection, or production branch action was performed. Local commit was attempted but blocked by sandbox permissions on git worktree metadata outside the writable root.
+
+### 2026-06-13 - state-machine-modeling - HARD-13 rewrite attempt visibility and recovery
+
+- Agent: Codex worker
+- Trigger: GitHub issue #792 changes persisted rewrite attempt visibility, quota reservation expiry recovery, webhook delivery handling, erasure, and retention workflows.
+- Action: Opened and followed the skill. State list: rewrite attempts remain `Pending`, `Processing`, `Succeeded`, `Failed`, or `Expired`; `DeletedAt` is a visibility marker, not a lifecycle status. Event list: user soft delete, system idempotency replay, expired reservation cleanup, terminal webhook enqueue and claim, cost logging, account/admin erasure, retention scrub, and sandbox TTL purge. Transition table: user-facing list/detail paths hide soft-deleted rows; system recovery paths read them; expired pending or processing attempts transition to `Expired`; erasure scrubs request/result payloads; sandbox purge hard-deletes only old test-key rows without reservation or webhook dependencies. Invariants: no-charge quota release still runs, idempotency uniqueness is respected, terminal webhooks still dispatch, and privacy scrub covers soft-deleted rows.
+- Output artifacts: `AppDbContext` query filter; `IgnoreQueryFilters()` at audited system paths; `QuotaUseCaseTests.ExpiredReservationForSoftDeletedAttemptStillReleased`; `WebhookOutboxUseCaseTests.DispatchDueWebhooksAsync_delivers_when_attempt_is_soft_deleted`; account/admin erasure tests; retention tests.
+- Verification evidence: Focused backend selection passed 49/49; full backend suite passed 641/641; the only source `HasQueryFilter` hit was `RewriteAttempt.DeletedAt == null`.
+- Limitations: Existing reservation expiry semantics were preserved: expired reservations keep the existing `Expired` status while quota is released via counters and `ReleasedAt`. No new enum, state table, API status, migration, queue, or deployment behavior was added.
+
+### 2026-06-13 - resilience-test-generation - HARD-13 idempotency and recovery coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #792 adds tests for idempotency replay, expired quota reservation recovery, webhook dispatch recovery, erasure recovery, and retention cleanup under soft-delete.
+- Action: Opened and followed the skill. Critical operations: replay idempotency keys despite soft-delete, release expired quota reservations without charging, claim webhooks with attempt navigation intact, scrub soft-deleted payloads, and purge old sandbox attempts safely. Dependency boundaries: EF Core SQLite database, repository query filters, unit-of-work transaction paths, webhook sender fake, timer function wrapper, and retention service.
+- Output artifacts: New `RewriteAttemptQueryFilterTests.cs`; new `ApiKeyCounterContractTests.cs`; updated `QuotaUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `RetentionServiceTests.cs`, `AccountUseCaseTests.cs`, and `AdminDeleteUserTests.cs`.
+- Verification evidence: Red run first failed on missing sandbox convention and purge API before implementation. Final focused run passed 49/49; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641; source-only guarded-term scans returned no output.
+- Limitations: No live Stripe, OpenAI-compatible provider, writing-signal provider, Azure, Cloudflare, production database, deploy, push, PR, payment action, or secret inspection was performed. Package advisory metadata lookup emitted NU1900 warnings while tests exited 0.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-13 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #792 adds and changes C#/.NET xUnit tests for EF Core query filters, repositories, quota cleanup, webhooks, erasure, retention, and function timer wiring.
+- Action: Opened and followed the skill; wrote failing tests before production changes, used EF Core SQLite integration tests and deterministic handwritten fakes, then implemented the smallest additive-only backend change set.
+- Output artifacts: `ApiKeyCounterContractTests.cs`; `RewriteAttemptQueryFilterTests.cs`; updates to `RetentionServiceTests.cs`, `QuotaUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `AccountUseCaseTests.cs`, `AdminDeleteUserTests.cs`, and `RewriteHistoryTests.cs`.
+- Verification evidence: Initial focused run failed at compile time on missing `SandboxAttemptConventions` and `PurgeExpiredSandboxAttemptsAsync`. Final focused command passed 49/49. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641. `git diff --check` passed.
+- Limitations: No frontend tests were run because no frontend files changed and no browser-visible behavior changed. Local commit was attempted but blocked by sandbox permissions on worktree git metadata outside the writable root. No deploy, push, PR, production branch action, live provider call, payment action, or secret inspection was performed.
+
 ### 2026-06-13 - resilience-test-generation - HARD-07 provider circuit breaker failures
 
 - Agent: Codex worker

@@ -37,7 +37,7 @@ public sealed class V1RewriteHttpFunctions(
     private const int MaximumDraftWords = 300;
     private const int MaximumDraftCharacters = 2400;
     private const int MaximumIdempotencyKeyLength = 120;
-    private const string SandboxAttemptPrefix = "test:";
+    private const string SandboxAttemptPrefix = SandboxAttemptConventions.IdempotencyKeyPrefix;
     private const string SandboxUsagePeriodKey = "test:sandbox";
     private const string SandboxResultJson = """
         {
@@ -559,6 +559,7 @@ public sealed class V1RewriteHttpFunctions(
         var sandboxIdempotencyKey = BuildSandboxIdempotencyKey(apiKeyId, idempotencyKey);
         var requestHash = ComputeSha256(draft);
         var existingAttempt = await db.RewriteAttempts
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .SingleOrDefaultAsync(
                 x => x.UserId == userId && x.IdempotencyKey == sandboxIdempotencyKey,

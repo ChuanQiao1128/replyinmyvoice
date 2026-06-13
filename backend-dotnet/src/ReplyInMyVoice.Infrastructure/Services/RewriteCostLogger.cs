@@ -58,6 +58,7 @@ public sealed class RewriteCostLogger(
         }
 
         var attempt = await db.RewriteAttempts
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == entry.AttemptId, ct);
         if (attempt is null)

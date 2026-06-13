@@ -25,6 +25,7 @@ public sealed class WebhookDeliveryService(
     {
         await using var db = dbContextFactory();
         var attempt = await db.RewriteAttempts
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(x => x.ApiKey)
             .SingleOrDefaultAsync(x => x.Id == attemptId, cancellationToken);

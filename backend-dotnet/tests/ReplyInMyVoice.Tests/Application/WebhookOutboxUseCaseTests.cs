@@ -62,6 +62,52 @@ public sealed class WebhookOutboxUseCaseTests
     }
 
     [Fact]
+    public async Task DispatchDueWebhooksAsync_delivers_when_attempt_is_soft_deleted()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var signingValue = new string('e', 64);
+        var now = DateTimeOffset.Parse("2026-06-06T02:00:00Z");
+        var attemptId = await SeedWebhookDeliveryAsync(
+            fixture,
+            user.Id,
+            signingValue,
+            RewriteAttemptStatus.Succeeded,
+            "{\"rewrittenText\":\"Hi Sam, the report is ready.\",\"naturalness\":{\"draftAiLikePercent\":78,\"rewriteAiLikePercent\":24},\"changeSummary\":[],\"riskNotes\":[]}",
+            deletedAt: now.AddMinutes(-1));
+
+        await using (var claimDb = fixture.CreateContext())
+        {
+            var claimed = await new WebhookDeliveryRepository(claimDb).ClaimDueAsync(
+                now,
+                "claim-check",
+                batchSize: 10,
+                claimLease: TimeSpan.FromSeconds(45),
+                CancellationToken.None);
+
+            claimed.Should().ContainSingle();
+            claimed[0].RewriteAttempt.Should().NotBeNull();
+            claimed[0].RewriteAttempt!.Id.Should().Be(attemptId);
+        }
+
+        var sender = new RecordingWebhookDeliverySender(new WebhookSendResult(200));
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateWebhookHandler(handlerDb, sender);
+
+        var dispatched = await handler.HandleAsync(
+            new DispatchDueWebhooksCommand(now, "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        dispatched.Should().Be(1);
+        sender.Requests.Should().ContainSingle().Subject.EventId.Should().Be(attemptId);
+        await using var verifyDb = fixture.CreateContext();
+        var delivery = await verifyDb.WebhookDeliveries.SingleAsync();
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Delivered);
+        delivery.AttemptCount.Should().Be(1);
+        delivery.DeliveredAt.Should().Be(now);
+    }
+
+    [Fact]
     public async Task DispatchDueWebhooksAsync_reschedules_failed_attempt_with_backoff()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -364,7 +410,8 @@ public sealed class WebhookOutboxUseCaseTests
         string? errorCode = null,
         int attemptCount = 0,
         int maxAttempts = 5,
-        bool includeWebhookSecret = true)
+        bool includeWebhookSecret = true,
+        DateTimeOffset? deletedAt = null)
     {
         await using var db = fixture.CreateContext();
         var apiKey = new ApiKey
@@ -389,6 +436,7 @@ public sealed class WebhookOutboxUseCaseTests
             ErrorCode = errorCode,
             CreatedAt = DateTimeOffset.Parse("2026-06-06T01:58:00Z"),
             CompletedAt = DateTimeOffset.Parse("2026-06-06T01:59:00Z"),
+            DeletedAt = deletedAt,
             ExpiresAt = DateTimeOffset.Parse("2026-06-06T02:08:00Z"),
         };
         var delivery = new WebhookDelivery

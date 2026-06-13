@@ -108,7 +108,9 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
         listBody.Items.Select(x => x.AttemptId).Should().Equal(retained.Id);
 
         await using var verifyDb = CreateContext();
-        var deletedAttempt = await verifyDb.RewriteAttempts.SingleAsync(x => x.Id == deleted.Id);
+        var deletedAttempt = await verifyDb.RewriteAttempts
+            .IgnoreQueryFilters()
+            .SingleAsync(x => x.Id == deleted.Id);
         deletedAttempt.DeletedAt.Should().NotBeNull();
     }
 
