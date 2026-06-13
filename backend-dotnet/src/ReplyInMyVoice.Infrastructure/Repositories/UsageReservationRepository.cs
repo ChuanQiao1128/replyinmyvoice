@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Repositories;
@@ -18,6 +19,95 @@ public sealed class UsageReservationRepository(AppDbContext db) : IUsageReservat
         await db.UsageReservations
             .AsTracking()
             .SingleOrDefaultAsync(x => x.RewriteAttemptId == attemptId, ct);
+
+    public async Task<int> TryTransitionFromPendingAsync(
+        Guid reservationId,
+        UsageReservationStatus targetStatus,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        const string pending = nameof(UsageReservationStatus.Pending);
+
+        return targetStatus switch
+        {
+            UsageReservationStatus.Finalized => await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE UsageReservations
+                SET Status = {nameof(UsageReservationStatus.Finalized)},
+                    FinalizedAt = {now},
+                    RowVersion = {rowVersion}
+                WHERE Id = {reservationId}
+                  AND Status = {pending}
+                """,
+                ct),
+            UsageReservationStatus.Released => await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE UsageReservations
+                SET Status = {nameof(UsageReservationStatus.Released)},
+                    ReleasedAt = {now},
+                    RowVersion = {rowVersion}
+                WHERE Id = {reservationId}
+                  AND Status = {pending}
+                """,
+                ct),
+            UsageReservationStatus.Expired => await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE UsageReservations
+                SET Status = {nameof(UsageReservationStatus.Expired)},
+                    ReleasedAt = {now},
+                    RowVersion = {rowVersion}
+                WHERE Id = {reservationId}
+                  AND Status = {pending}
+                """,
+                ct),
+            _ => throw new ArgumentOutOfRangeException(nameof(targetStatus), targetStatus, "Unsupported reservation transition target."),
+        };
+    }
+
+    public async Task<int> ReleaseClaimedCounterAsync(
+        Guid reservationId,
+        Guid usagePeriodId,
+        Guid? rewriteCreditId,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        if (rewriteCreditId is { } creditId)
+        {
+            return await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE RewriteCredits
+                SET AmountConsumed = CASE WHEN AmountConsumed > 0 THEN AmountConsumed - 1 ELSE 0 END,
+                    RowVersion = {rowVersion}
+                WHERE Id = {creditId}
+                  AND EXISTS (
+                    SELECT 1
+                    FROM UsageReservations
+                    WHERE Id = {reservationId}
+                      AND RewriteCreditId = {creditId}
+                  )
+                """,
+                ct);
+        }
+
+        return await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE UsagePeriods
+            SET ReservedCount = CASE WHEN ReservedCount > 0 THEN ReservedCount - 1 ELSE 0 END,
+                UpdatedAt = {now},
+                RowVersion = {rowVersion}
+            WHERE Id = {usagePeriodId}
+              AND EXISTS (
+                SELECT 1
+                FROM UsageReservations
+                WHERE Id = {reservationId}
+                  AND UsagePeriodId = {usagePeriodId}
+                  AND RewriteCreditId IS NULL
+              )
+            """,
+            ct);
+    }
 
     public async Task<IReadOnlyList<UsageReservation>> ListExpiredPendingBatchAsync(
         DateTimeOffset now,

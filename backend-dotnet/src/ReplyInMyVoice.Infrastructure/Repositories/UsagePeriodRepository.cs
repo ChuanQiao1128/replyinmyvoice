@@ -29,6 +29,79 @@ public sealed class UsagePeriodRepository(AppDbContext db) : IUsagePeriodReposit
                 x => x.UserId == userId && x.PeriodKey == periodKey,
                 ct);
 
+    public async Task<int> TryReserveSlotAsync(
+        Guid usagePeriodId,
+        int quotaLimit,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        return await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE UsagePeriods
+            SET ReservedCount = ReservedCount + 1,
+                QuotaLimit = {quotaLimit},
+                UpdatedAt = {now},
+                RowVersion = {rowVersion}
+            WHERE Id = {usagePeriodId}
+              AND UsedCount + ReservedCount < {quotaLimit}
+            """,
+            ct);
+    }
+
+    public async Task<int> RefreshQuotaLimitAsync(
+        Guid usagePeriodId,
+        int quotaLimit,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        return await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE UsagePeriods
+            SET QuotaLimit = {quotaLimit},
+                UpdatedAt = {now},
+                RowVersion = {rowVersion}
+            WHERE Id = {usagePeriodId}
+            """,
+            ct);
+    }
+
+    public async Task<int> FinalizeReservedSlotAsync(
+        Guid usagePeriodId,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        return await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE UsagePeriods
+            SET ReservedCount = CASE WHEN ReservedCount > 0 THEN ReservedCount - 1 ELSE 0 END,
+                UsedCount = UsedCount + 1,
+                UpdatedAt = {now},
+                RowVersion = {rowVersion}
+            WHERE Id = {usagePeriodId}
+            """,
+            ct);
+    }
+
+    public async Task<int> ReleaseReservedSlotAsync(
+        Guid usagePeriodId,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        return await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE UsagePeriods
+            SET ReservedCount = CASE WHEN ReservedCount > 0 THEN ReservedCount - 1 ELSE 0 END,
+                UpdatedAt = {now},
+                RowVersion = {rowVersion}
+            WHERE Id = {usagePeriodId}
+            """,
+            ct);
+    }
+
     public async Task<IReadOnlyList<UsagePeriod>> ListByUserIdAsync(
         Guid userId,
         CancellationToken ct = default) =>

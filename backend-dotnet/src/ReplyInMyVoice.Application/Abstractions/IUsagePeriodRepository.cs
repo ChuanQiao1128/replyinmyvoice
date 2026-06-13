@@ -13,6 +13,28 @@ public interface IUsagePeriodRepository
         string periodKey,
         CancellationToken ct = default);
 
+    Task<int> TryReserveSlotAsync(
+        Guid usagePeriodId,
+        int quotaLimit,
+        DateTimeOffset now,
+        CancellationToken ct = default);
+
+    Task<int> RefreshQuotaLimitAsync(
+        Guid usagePeriodId,
+        int quotaLimit,
+        DateTimeOffset now,
+        CancellationToken ct = default);
+
+    Task<int> FinalizeReservedSlotAsync(
+        Guid usagePeriodId,
+        DateTimeOffset now,
+        CancellationToken ct = default);
+
+    Task<int> ReleaseReservedSlotAsync(
+        Guid usagePeriodId,
+        DateTimeOffset now,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<UsagePeriod>> ListByUserIdAsync(
         Guid userId,
         CancellationToken ct = default);

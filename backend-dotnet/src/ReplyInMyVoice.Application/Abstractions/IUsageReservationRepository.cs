@@ -8,6 +8,19 @@ public interface IUsageReservationRepository
 
     Task<UsageReservation?> GetByAttemptIdAsync(Guid attemptId, CancellationToken ct = default);
 
+    Task<int> TryTransitionFromPendingAsync(
+        Guid reservationId,
+        Domain.Enums.UsageReservationStatus targetStatus,
+        DateTimeOffset now,
+        CancellationToken ct = default);
+
+    Task<int> ReleaseClaimedCounterAsync(
+        Guid reservationId,
+        Guid usagePeriodId,
+        Guid? rewriteCreditId,
+        DateTimeOffset now,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<UsageReservation>> ListExpiredPendingBatchAsync(
         DateTimeOffset now,
         int batchSize,

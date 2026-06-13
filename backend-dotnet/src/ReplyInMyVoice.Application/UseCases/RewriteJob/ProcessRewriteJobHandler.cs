@@ -33,6 +33,8 @@ public sealed class ProcessRewriteJobHandler(
     IRewriteEngineClient rewriteEngine,
     IRewriteCostLogger costLogger)
 {
+    private const int ReservationRaceMaxAttempts = 3;
+
     public async Task HandleAsync(
         ProcessRewriteJobCommand command,
         CancellationToken ct = default)
@@ -245,11 +247,6 @@ public sealed class ProcessRewriteJobHandler(
             {
                 var attempt = await RequireAttemptAsync(attemptId, transactionCt);
                 var reservation = await RequireReservationAsync(attemptId, transactionCt);
-                UsagePeriod? period = null;
-                if (reservation.RewriteCreditId is null)
-                {
-                    period = await RequireUsagePeriodAsync(reservation.UsagePeriodId, transactionCt);
-                }
 
                 if (attempt.Status == RewriteAttemptStatus.Succeeded &&
                     reservation.Status == UsageReservationStatus.Finalized)
@@ -263,18 +260,20 @@ public sealed class ProcessRewriteJobHandler(
                     return false;
                 }
 
-                if (reservation.RewriteCreditId is null)
+                var claimed = await reservations.TryTransitionFromPendingAsync(
+                    reservation.Id,
+                    UsageReservationStatus.Finalized,
+                    now,
+                    transactionCt) == 1;
+                if (!claimed)
                 {
-                    var usagePeriod = period!;
-                    usagePeriod.ReservedCount = Math.Max(0, usagePeriod.ReservedCount - 1);
-                    usagePeriod.UsedCount += 1;
-                    usagePeriod.UpdatedAt = now;
-                    usagePeriod.RowVersion = Guid.NewGuid();
+                    return false;
                 }
 
-                reservation.Status = UsageReservationStatus.Finalized;
-                reservation.FinalizedAt = now;
-                reservation.RowVersion = Guid.NewGuid();
+                if (reservation.RewriteCreditId is null)
+                {
+                    await usagePeriods.FinalizeReservedSlotAsync(reservation.UsagePeriodId, now, transactionCt);
+                }
 
                 attempt.Status = RewriteAttemptStatus.Succeeded;
                 attempt.ResultJson = resultJson;
@@ -284,7 +283,8 @@ public sealed class ProcessRewriteJobHandler(
                 await unitOfWork.SaveChangesAsync(transactionCt);
                 return true;
             },
-            IsolationLevel.Serializable,
+            IsolationLevel.ReadCommitted,
+            ReservationRaceMaxAttempts,
             ct);
     }
 
@@ -297,30 +297,25 @@ public sealed class ProcessRewriteJobHandler(
         await unitOfWork.ExecuteInTransactionAsync(
             async transactionCt =>
             {
-                var attempt = await RequireAttemptAsync(attemptId, transactionCt);
                 var reservation = await RequireReservationAsync(attemptId, transactionCt);
-
-                if (reservation.Status == UsageReservationStatus.Pending)
+                var claimed = await reservations.TryTransitionFromPendingAsync(
+                    reservation.Id,
+                    UsageReservationStatus.Released,
+                    now,
+                    transactionCt) == 1;
+                if (claimed)
                 {
                     if (reservation.RewriteCreditId is { } creditId)
                     {
-                        var credit = await RequireCreditAsync(creditId, transactionCt);
-                        credit.AmountConsumed = Math.Max(0, credit.AmountConsumed - 1);
-                        credit.RowVersion = Guid.NewGuid();
+                        await credits.ReleaseConsumedAsync(creditId, transactionCt);
                     }
                     else
                     {
-                        var period = await RequireUsagePeriodAsync(reservation.UsagePeriodId, transactionCt);
-                        period.ReservedCount = Math.Max(0, period.ReservedCount - 1);
-                        period.UpdatedAt = now;
-                        period.RowVersion = Guid.NewGuid();
+                        await usagePeriods.ReleaseReservedSlotAsync(reservation.UsagePeriodId, now, transactionCt);
                     }
-
-                    reservation.Status = UsageReservationStatus.Released;
-                    reservation.ReleasedAt = now;
-                    reservation.RowVersion = Guid.NewGuid();
                 }
 
+                var attempt = await RequireAttemptAsync(attemptId, transactionCt);
                 if (attempt.Status is RewriteAttemptStatus.Pending or RewriteAttemptStatus.Processing)
                 {
                     attempt.Status = RewriteAttemptStatus.Failed;
@@ -330,8 +325,10 @@ public sealed class ProcessRewriteJobHandler(
                 }
 
                 await unitOfWork.SaveChangesAsync(transactionCt);
+                return true;
             },
-            IsolationLevel.Serializable,
+            IsolationLevel.ReadCommitted,
+            ReservationRaceMaxAttempts,
             ct);
     }
 
@@ -372,14 +369,6 @@ public sealed class ProcessRewriteJobHandler(
     private async Task<UsageReservation> RequireReservationAsync(Guid attemptId, CancellationToken ct) =>
         await reservations.GetByAttemptIdAsync(attemptId, ct) ??
         throw new InvalidOperationException($"Usage reservation for attempt '{attemptId}' was not found.");
-
-    private async Task<UsagePeriod> RequireUsagePeriodAsync(Guid usagePeriodId, CancellationToken ct) =>
-        await usagePeriods.GetByIdAsync(usagePeriodId, ct) ??
-        throw new InvalidOperationException($"Usage period '{usagePeriodId}' was not found.");
-
-    private async Task<RewriteCredit> RequireCreditAsync(Guid creditId, CancellationToken ct) =>
-        await credits.GetByIdAsync(creditId, ct) ??
-        throw new InvalidOperationException($"Rewrite credit '{creditId}' was not found.");
 
     private static bool IsValidResultJson(string? resultJson)
     {

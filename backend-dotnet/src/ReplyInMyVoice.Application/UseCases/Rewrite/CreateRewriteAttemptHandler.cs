@@ -30,12 +30,15 @@ public sealed class CreateRewriteAttemptHandler(
 
     public async Task<ApplicationResult<RewriteAttemptDto>> HandleAsync(
         CreateRewriteAttemptCommand command,
-        CancellationToken ct = default) =>
-        await unitOfWork.ExecuteInTransactionAsync(
+        CancellationToken ct = default)
+    {
+        // Admission is decided inside conditional UPDATE statements under row locks; unique-index races are retried by UnitOfWork.
+        return await unitOfWork.ExecuteInTransactionAsync(
             transactionCt => HandleCoreAsync(command, transactionCt),
-            IsolationLevel.Serializable,
+            IsolationLevel.ReadCommitted,
             ReservationRaceMaxAttempts,
             ct);
+    }
 
     private async Task<ApplicationResult<RewriteAttemptDto>> HandleCoreAsync(
         CreateRewriteAttemptCommand command,
@@ -73,82 +76,82 @@ public sealed class CreateRewriteAttemptHandler(
             command.UserId,
             command.PeriodKey,
             ct);
-        var attempt = CreatePendingAttempt(command, requestHash);
-        var usedCount = period?.UsedCount ?? 0;
-        var reservedCount = period?.ReservedCount ?? 0;
+        var wonPeriodSlot = period is null
+            ? command.QuotaLimit > 0
+            : await usagePeriods.TryReserveSlotAsync(
+                period.Id,
+                command.QuotaLimit,
+                command.Now,
+                ct) == 1;
 
-        if (usedCount + reservedCount >= command.QuotaLimit)
+        Guid? consumedCreditId = null;
+        if (!wonPeriodSlot)
         {
-            var credit = await credits.GetUsableForReservationAsync(
+            var creditIds = await credits.ListUsableForReservationIdsAsync(
                 command.UserId,
                 command.Now,
                 ct);
-            if (credit is null)
+
+            foreach (var creditId in creditIds)
+            {
+                if (await credits.TryConsumeForReservationAsync(creditId, ct) == 1)
+                {
+                    consumedCreditId = creditId;
+                    break;
+                }
+            }
+
+            if (consumedCreditId is null)
             {
                 return ApplicationResult<RewriteAttemptDto>.QuotaExceeded();
             }
-
-            period = await PrepareUsagePeriodAsync(period, command, ct);
-            credit.AmountConsumed += 1;
-            credit.RowVersion = Guid.NewGuid();
-
-            await attempts.AddAsync(attempt, ct);
-            await reservations.AddAsync(new UsageReservation
-            {
-                UserId = command.UserId,
-                UsagePeriod = period,
-                RewriteAttempt = attempt,
-                RewriteCredit = credit,
-                Status = UsageReservationStatus.Pending,
-                CreatedAt = command.Now,
-                ExpiresAt = command.Now.Add(ReservationTtl),
-            }, ct);
-            await outboxMessages.AddAsync(CreateRewriteJobOutboxMessage(attempt.Id, command.Now), ct);
-            await unitOfWork.SaveChangesAsync(ct);
-            return ApplicationResult<RewriteAttemptDto>.Created(RewriteAttemptDto.FromAttempt(attempt));
         }
 
-        period = await PrepareUsagePeriodAsync(period, command, ct);
-        period.ReservedCount += 1;
-        period.RowVersion = Guid.NewGuid();
-        await attempts.AddAsync(attempt, ct);
-        await reservations.AddAsync(new UsageReservation
-        {
-            UserId = command.UserId,
-            UsagePeriod = period,
-            RewriteAttempt = attempt,
-            Status = UsageReservationStatus.Pending,
-            CreatedAt = command.Now,
-            ExpiresAt = command.Now.Add(ReservationTtl),
-        }, ct);
-        await outboxMessages.AddAsync(CreateRewriteJobOutboxMessage(attempt.Id, command.Now), ct);
-        await unitOfWork.SaveChangesAsync(ct);
-        return ApplicationResult<RewriteAttemptDto>.Created(RewriteAttemptDto.FromAttempt(attempt));
-    }
-
-    private async Task<UsagePeriod> PrepareUsagePeriodAsync(
-        UsagePeriod? period,
-        CreateRewriteAttemptCommand command,
-        CancellationToken ct)
-    {
+        UsagePeriod? newPeriod = null;
+        Guid? existingPeriodId = period?.Id;
         if (period is null)
         {
-            period = new UsagePeriod
+            newPeriod = new UsagePeriod
             {
                 UserId = command.UserId,
                 PeriodKey = command.PeriodKey,
                 QuotaLimit = command.QuotaLimit,
+                ReservedCount = wonPeriodSlot ? 1 : 0,
                 CreatedAt = command.Now,
                 UpdatedAt = command.Now,
             };
-            await usagePeriods.AddAsync(period, ct);
-            return period;
+            await usagePeriods.AddAsync(newPeriod, ct);
+        }
+        else if (!wonPeriodSlot)
+        {
+            await usagePeriods.RefreshQuotaLimitAsync(period.Id, command.QuotaLimit, command.Now, ct);
         }
 
-        period.QuotaLimit = command.QuotaLimit;
-        period.UpdatedAt = command.Now;
-        period.RowVersion = Guid.NewGuid();
-        return period;
+        var attempt = CreatePendingAttempt(command, requestHash);
+        await attempts.AddAsync(attempt, ct);
+
+        var reservation = new UsageReservation
+        {
+            UserId = command.UserId,
+            RewriteAttempt = attempt,
+            RewriteCreditId = consumedCreditId,
+            Status = UsageReservationStatus.Pending,
+            CreatedAt = command.Now,
+            ExpiresAt = command.Now.Add(ReservationTtl),
+        };
+        if (newPeriod is not null)
+        {
+            reservation.UsagePeriod = newPeriod;
+        }
+        else
+        {
+            reservation.UsagePeriodId = existingPeriodId!.Value;
+        }
+
+        await reservations.AddAsync(reservation, ct);
+        await outboxMessages.AddAsync(CreateRewriteJobOutboxMessage(attempt.Id, command.Now), ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        return ApplicationResult<RewriteAttemptDto>.Created(RewriteAttemptDto.FromAttempt(attempt));
     }
 
     private static RewriteAttempt CreatePendingAttempt(
