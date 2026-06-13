@@ -164,7 +164,20 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ProcessStripeWebhookHandler>();
         services.AddScoped<ProcessExpiredPaymentGraceHandler>();
         services.AddScoped<ProcessPaymentGraceRemindersHandler>();
-        services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
+        var consumerRewriteLimit = int.TryParse(configuration["CONSUMER_REWRITE_RATE_LIMIT_PER_MINUTE"], out var parsedConsumerLimit)
+            ? parsedConsumerLimit
+            : 6;
+        services.AddScoped<IUserRewriteRateLimiter>(sp => new UserRewriteRateLimiter(
+            sp.GetRequiredService<Func<AppDbContext>>(),
+            consumerRewriteLimit));
+        var precheckEnabled = !string.Equals(configuration["API_RATE_LIMIT_PRECHECK_ENABLED"], "false", StringComparison.OrdinalIgnoreCase);
+        services.AddSingleton<InProcessRateLimitGate>();
+        services.AddScoped<ApiKeyRateLimiter>();
+        services.AddScoped<IApiKeyRateLimiter>(sp => precheckEnabled
+            ? new PreCheckedApiKeyRateLimiter(
+                sp.GetRequiredService<ApiKeyRateLimiter>(),
+                sp.GetRequiredService<InProcessRateLimitGate>())
+            : sp.GetRequiredService<ApiKeyRateLimiter>());
         services.AddScoped<WebhookDeliveryService>();
         services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();

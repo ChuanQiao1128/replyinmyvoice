@@ -25,6 +25,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsage> ApiKeyUsages => Set<ApiKeyUsage>();
     public DbSet<ApiKeyRateLimitWindow> ApiKeyRateLimitWindows => Set<ApiKeyRateLimitWindow>();
+    public DbSet<UserRewriteRateLimitWindow> UserRewriteRateLimitWindows => Set<UserRewriteRateLimitWindow>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
     public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
@@ -407,6 +408,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(x => x.ApiKey)
                 .WithMany(x => x.RateLimitWindows)
                 .HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserRewriteRateLimitWindow>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.UserId, x.WindowStart }).IsUnique();
+            entity.HasIndex(x => x.WindowStart);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

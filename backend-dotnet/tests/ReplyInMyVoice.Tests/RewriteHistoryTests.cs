@@ -135,7 +135,8 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
             getOrCreateUserHandler,
             findUserHandler,
             createRewriteAttemptHandler,
-            getRewriteAttemptHandler);
+            getRewriteAttemptHandler,
+            new UserRewriteRateLimiter(() => db, 0));
     }
 
     private async Task<AppUser> SeedUserAsync(string externalAuthUserId)

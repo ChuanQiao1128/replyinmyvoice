@@ -12,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -998,7 +999,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        await using var factory = CreateFactory();
+        await using var factory = CreateFactory(configureServices: DisableConsumerRewriteRateLimiter);
         var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_paid_quota");
 
@@ -1145,7 +1146,18 @@ public sealed class RewriteApiTests : IAsyncLifetime
         lastProcessed.GetProperty("maxAgeMinutes").GetInt32().Should().Be(60);
     }
 
-    private WebApplicationFactory<Program> CreateFactory(string environment = "Testing")
+    private static void DisableConsumerRewriteRateLimiter(IServiceCollection services)
+    {
+        services.RemoveAll<IUserRewriteRateLimiter>();
+        services.AddScoped<IUserRewriteRateLimiter>(sp =>
+            new UserRewriteRateLimiter(
+                sp.GetRequiredService<Func<AppDbContext>>(),
+                0));
+    }
+
+    private WebApplicationFactory<Program> CreateFactory(
+        string environment = "Testing",
+        Action<IServiceCollection>? configureServices = null)
     {
         return new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
@@ -1162,6 +1174,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
                     services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
                     services.AddSingleton<InMemoryRewriteJobPublisher>();
                     services.AddSingleton<IRewriteJobPublisher>(sp => sp.GetRequiredService<InMemoryRewriteJobPublisher>());
+                    configureServices?.Invoke(services);
                 });
             });
     }

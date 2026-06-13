@@ -1,0 +1,28 @@
+{
+  "name": "replyinmyvoice rewrite rate limits",
+  "kind": "zone",
+  "phase": "http_ratelimit",
+  "rules": [
+    {
+      "description": "Limit rewrite submit traffic at the Cloudflare edge",
+      "expression": "(http.request.uri.path eq \"/api/rewrite\" and http.request.method eq \"POST\") or starts_with(http.request.uri.path, \"/api/v1/rewrite\")",
+      "action": "block",
+      "action_parameters": {
+        "response": {
+          "status_code": 429,
+          "content_type": "application/json",
+          "content": "{\"error\":{\"code\":\"rate_limited\",\"message\":\"Too many requests. Please retry later.\"}}"
+        }
+      },
+      "ratelimit": {
+        "characteristics": [
+          "ip.src",
+          "cf.colo.id"
+        ],
+        "period": 60,
+        "requests_per_period": 120,
+        "mitigation_timeout": 60
+      }
+    }
+  ]
+}

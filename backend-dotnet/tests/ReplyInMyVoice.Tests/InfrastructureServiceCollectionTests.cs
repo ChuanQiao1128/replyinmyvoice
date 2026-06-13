@@ -82,6 +82,39 @@ public sealed class InfrastructureServiceCollectionTests
     }
 
     [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_user_rewrite_rate_limiter_with_default_limit()
+    {
+        var provider = BuildProvider([]);
+
+        using var scope = provider.CreateScope();
+        var limiter = scope.ServiceProvider.GetRequiredService<IUserRewriteRateLimiter>();
+
+        limiter.Should().BeOfType<UserRewriteRateLimiter>();
+        limiter.Enabled.Should().BeTrue();
+        limiter.LimitPerMinute.Should().Be(6);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_wraps_api_key_rate_limiter_with_in_process_precheck_by_default()
+    {
+        var defaultProvider = BuildProvider([]);
+        var disabledProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["API_RATE_LIMIT_PRECHECK_ENABLED"] = "false",
+        });
+
+        using var defaultScope = defaultProvider.CreateScope();
+        using var disabledScope = disabledProvider.CreateScope();
+
+        defaultScope.ServiceProvider.GetRequiredService<IApiKeyRateLimiter>()
+            .Should()
+            .BeOfType<PreCheckedApiKeyRateLimiter>();
+        disabledScope.ServiceProvider.GetRequiredService<IApiKeyRateLimiter>()
+            .Should()
+            .BeOfType<ApiKeyRateLimiter>();
+    }
+
+    [Fact]
     public void AddReplyInMyVoiceInfrastructure_registers_outbox_handlers_and_dispatch_observer()
     {
         var provider = BuildProvider([]);

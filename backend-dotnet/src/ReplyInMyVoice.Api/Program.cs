@@ -145,6 +145,7 @@ app.MapPost("/api/rewrite", async (
     [FromBody] RewriteRequest request,
     GetOrCreateUserHandler getOrCreateUserHandler,
     CreateRewriteAttemptHandler createRewriteAttemptHandler,
+    IUserRewriteRateLimiter userRateLimiter,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -179,6 +180,35 @@ app.MapPost("/api/rewrite", async (
             externalUserId,
             ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration)),
         cancellationToken);
+    var now = DateTimeOffset.UtcNow;
+    if (userRateLimiter.Enabled)
+    {
+        var rateLimit = await userRateLimiter.CheckAndIncrementAsync(
+            user.Id,
+            now,
+            cancellationToken);
+        if (rateLimit.IsUnavailable)
+        {
+            return V1Error(
+                "rate_limit_unavailable",
+                "Rewrite limit could not be checked. Please retry shortly.",
+                StatusCodes.Status503ServiceUnavailable);
+        }
+
+        SetV1RateLimitHeaders(
+            httpRequest.HttpContext.Response,
+            rateLimit,
+            rateLimit.IsLimited,
+            now);
+        if (rateLimit.IsLimited)
+        {
+            return V1Error(
+                "rate_limited",
+                "Rewrite rate limit reached. Please wait a moment and retry.",
+                StatusCodes.Status429TooManyRequests);
+        }
+    }
+
     var plan = AccountUsagePlans.GetUsagePlan(user, builder.Configuration);
 
     var result = await createRewriteAttemptHandler.HandleAsync(
@@ -188,7 +218,7 @@ app.MapPost("/api/rewrite", async (
             request,
             plan.PeriodKey,
             plan.QuotaLimit,
-            DateTimeOffset.UtcNow),
+            now),
         cancellationToken);
 
     if (result.Kind == ApplicationResultKind.QuotaExceeded)
