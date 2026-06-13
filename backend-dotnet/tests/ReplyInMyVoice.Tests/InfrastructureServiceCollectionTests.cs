@@ -16,6 +16,7 @@ using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
+using ReplyInMyVoice.Infrastructure.Resilience;
 using ReplyInMyVoice.Infrastructure.Services;
 using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
 using AppStripeReconciliationAlerter = ReplyInMyVoice.Application.Abstractions.IStripeReconciliationAlerter;
@@ -285,6 +286,62 @@ public sealed class InfrastructureServiceCollectionTests
         socketsHandler!.AllowAutoRedirect.Should().BeFalse();
         socketsHandler.ConnectCallback.Should().NotBeNull();
         socketsHandler.ConnectTimeout.Should().BeLessThanOrEqualTo(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_singleton_circuit_breaker_registry_with_default_options()
+    {
+        var provider = BuildProvider([]);
+
+        var firstRegistry = provider.GetRequiredService<ProviderCircuitBreakerRegistry>();
+        var secondRegistry = provider.GetRequiredService<ProviderCircuitBreakerRegistry>();
+        var options = provider.GetRequiredService<ProviderCircuitBreakerOptions>();
+
+        firstRegistry.Should().BeSameAs(secondRegistry);
+        options.SamplingDuration.Should().Be(TimeSpan.FromSeconds(30));
+        options.BreakDuration.Should().Be(TimeSpan.FromSeconds(30));
+        options.MinimumThroughput.Should().Be(8);
+        options.FailureRatio.Should().Be(0.5);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_binds_circuit_breaker_options_from_environment_and_clamps_invalid_values()
+    {
+        var validProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["PROVIDER_CIRCUIT_SAMPLING_SEC"] = "10",
+            ["PROVIDER_CIRCUIT_BREAK_SEC"] = "60",
+            ["PROVIDER_CIRCUIT_MIN_SAMPLES"] = "4",
+            ["PROVIDER_CIRCUIT_FAILURE_RATIO"] = "0.25",
+        });
+        var invalidProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["PROVIDER_CIRCUIT_MIN_SAMPLES"] = "0",
+            ["PROVIDER_CIRCUIT_FAILURE_RATIO"] = "2.0",
+        });
+
+        var validOptions = validProvider.GetRequiredService<ProviderCircuitBreakerOptions>();
+        var invalidOptions = invalidProvider.GetRequiredService<ProviderCircuitBreakerOptions>();
+
+        validOptions.SamplingDuration.Should().Be(TimeSpan.FromSeconds(10));
+        validOptions.BreakDuration.Should().Be(TimeSpan.FromSeconds(60));
+        validOptions.MinimumThroughput.Should().Be(4);
+        validOptions.FailureRatio.Should().Be(0.25);
+        invalidOptions.MinimumThroughput.Should().Be(8);
+        invalidOptions.FailureRatio.Should().Be(0.5);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_attaches_resilience_handler_to_provider_clients()
+    {
+        var provider = BuildProvider([]);
+        var handlerFactory = provider.GetRequiredService<IHttpMessageHandlerFactory>();
+
+        using var modelHandler = handlerFactory.CreateHandler(nameof(OpenAiCompatibleRewriteModelClient));
+        using var signalHandler = handlerFactory.CreateHandler(nameof(SaplingWritingSignalClient));
+
+        FindHandler<ProviderHttpResilienceHandler>(modelHandler).Should().NotBeNull();
+        FindHandler<ProviderHttpResilienceHandler>(signalHandler).Should().NotBeNull();
     }
 
     [Fact]

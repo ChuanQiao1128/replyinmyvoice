@@ -1,9 +1,10 @@
-using System.Net;
+using System.Globalization;
 using Azure.Messaging.ServiceBus;
 using Microsoft.ApplicationInsights;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
@@ -25,6 +26,7 @@ using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Repositories;
+using ReplyInMyVoice.Infrastructure.Resilience;
 using ReplyInMyVoice.Infrastructure.Services;
 using AppStripeBillingClient = ReplyInMyVoice.Application.Abstractions.IStripeBillingClient;
 using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
@@ -176,6 +178,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
+        services.AddSingleton(ReadProviderCircuitBreakerOptions(configuration));
+        services.TryAddSingleton<IProviderResilienceEvents, NoOpProviderResilienceEvents>();
+        services.AddSingleton(sp => new ProviderCircuitBreakerRegistry(
+            sp.GetRequiredService<ProviderCircuitBreakerOptions>(),
+            sp.GetRequiredService<ILoggerFactory>(),
+            sp.GetRequiredService<IProviderResilienceEvents>()));
         services.AddScoped<ApplicationStripeBillingClient>(sp =>
             new ApplicationStripeBillingClient(
                 configuration,
@@ -319,13 +327,36 @@ public static class ServiceCollectionExtensions
     {
         services
             .AddHttpClient(name)
-            .AddResilienceHandler();
+            .AddHttpMessageHandler(sp => new ProviderHttpResilienceHandler(
+                sp.GetRequiredService<ProviderCircuitBreakerRegistry>().GetOrAdd(name)));
 
         return services;
     }
 
-    private static IHttpClientBuilder AddResilienceHandler(this IHttpClientBuilder builder) =>
-        builder.AddHttpMessageHandler(() => new ProviderHttpResilienceHandler());
+    private static ProviderCircuitBreakerOptions ReadProviderCircuitBreakerOptions(IConfiguration configuration) =>
+        new(
+            TimeSpan.FromSeconds(ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_SAMPLING_SEC", 30)),
+            TimeSpan.FromSeconds(ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_BREAK_SEC", 30)),
+            ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_MIN_SAMPLES", 8),
+            ReadFailureRatio(configuration, "PROVIDER_CIRCUIT_FAILURE_RATIO", 0.5));
+
+    private static int ReadPositiveInt(IConfiguration configuration, string name, int defaultValue) =>
+        int.TryParse(
+            configuration[name],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var parsed) && parsed >= 1
+            ? parsed
+            : defaultValue;
+
+    private static double ReadFailureRatio(IConfiguration configuration, string name, double defaultValue) =>
+        double.TryParse(
+            configuration[name],
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var parsed) && parsed > 0 && parsed <= 1
+            ? parsed
+            : defaultValue;
 
     private static INotificationEmailProvider CreateNotificationEmailProvider(
         IConfiguration configuration,
@@ -459,203 +490,4 @@ public static class ServiceCollectionExtensions
         }
     }
 
-    private sealed class ProviderHttpResilienceHandler : DelegatingHandler
-    {
-        private static readonly TimeSpan BaseRetryDelay = TimeSpan.FromMilliseconds(250);
-        private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(5);
-        private static readonly TimeSpan CircuitSamplingDuration = TimeSpan.FromSeconds(30);
-        private static readonly TimeSpan CircuitBreakDuration = TimeSpan.FromSeconds(30);
-        private const int MaxRetryAttempts = 3;
-        private const int CircuitMinimumThroughput = 8;
-        private const double CircuitFailureRatio = 0.5;
-
-        private readonly object _circuitLock = new();
-        private readonly Queue<CircuitSample> _circuitSamples = new();
-        private DateTimeOffset? _circuitOpenUntil;
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            var snapshot = await BufferedHttpRequestSnapshot.CreateAsync(request, cancellationToken);
-
-            for (var attempt = 0; attempt <= MaxRetryAttempts; attempt++)
-            {
-                ThrowIfCircuitOpen();
-
-                try
-                {
-                    using var attemptRequest = snapshot.CreateRequest();
-                    var response = await base.SendAsync(attemptRequest, cancellationToken);
-                    if (!IsTransientStatusCode(response.StatusCode))
-                    {
-                        RecordCircuitResult(success: true);
-                        return response;
-                    }
-
-                    if (attempt == MaxRetryAttempts)
-                    {
-                        RecordCircuitResult(success: false);
-                        return response;
-                    }
-
-                    var delay = RetryDelay(attempt, response);
-                    response.Dispose();
-                    await Task.Delay(delay, cancellationToken);
-                }
-                catch (Exception exception) when (IsTransientException(exception, cancellationToken))
-                {
-                    if (attempt == MaxRetryAttempts)
-                    {
-                        RecordCircuitResult(success: false);
-                        throw;
-                    }
-
-                    await Task.Delay(RetryDelay(attempt, response: null), cancellationToken);
-                }
-            }
-
-            throw new InvalidOperationException("Provider HTTP retry loop exited unexpectedly.");
-        }
-
-        private void ThrowIfCircuitOpen()
-        {
-            var now = DateTimeOffset.UtcNow;
-            lock (_circuitLock)
-            {
-                if (_circuitOpenUntil is null)
-                {
-                    return;
-                }
-
-                if (now < _circuitOpenUntil.Value)
-                {
-                    throw new HttpRequestException("Provider HTTP circuit is open.");
-                }
-
-                _circuitOpenUntil = null;
-                _circuitSamples.Clear();
-            }
-        }
-
-        private void RecordCircuitResult(bool success)
-        {
-            var now = DateTimeOffset.UtcNow;
-            lock (_circuitLock)
-            {
-                while (_circuitSamples.Count > 0 &&
-                       now - _circuitSamples.Peek().ObservedAt > CircuitSamplingDuration)
-                {
-                    _circuitSamples.Dequeue();
-                }
-
-                _circuitSamples.Enqueue(new CircuitSample(now, success));
-                if (_circuitSamples.Count < CircuitMinimumThroughput)
-                {
-                    return;
-                }
-
-                var failures = _circuitSamples.Count(sample => !sample.Success);
-                if ((double)failures / _circuitSamples.Count >= CircuitFailureRatio)
-                {
-                    _circuitOpenUntil = now + CircuitBreakDuration;
-                }
-            }
-        }
-
-        private static TimeSpan RetryDelay(int attempt, HttpResponseMessage? response)
-        {
-            if (response?.Headers.RetryAfter?.Delta is { } retryAfterDelta &&
-                retryAfterDelta > TimeSpan.Zero)
-            {
-                return retryAfterDelta + Jitter();
-            }
-
-            if (response?.Headers.RetryAfter?.Date is { } retryAfterDate)
-            {
-                var retryAfter = retryAfterDate - DateTimeOffset.UtcNow;
-                if (retryAfter > TimeSpan.Zero)
-                {
-                    return retryAfter + Jitter();
-                }
-            }
-
-            var backoffMs = BaseRetryDelay.TotalMilliseconds * Math.Pow(2, attempt);
-            var backoff = TimeSpan.FromMilliseconds(Math.Min(backoffMs, MaxRetryDelay.TotalMilliseconds));
-            return backoff + Jitter();
-        }
-
-        private static TimeSpan Jitter() =>
-            TimeSpan.FromMilliseconds(Random.Shared.Next(0, 100));
-
-        private static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
-            statusCode == HttpStatusCode.TooManyRequests ||
-            (int)statusCode >= 500;
-
-        private static bool IsTransientException(Exception exception, CancellationToken cancellationToken) =>
-            exception is HttpRequestException ||
-            exception is TimeoutException ||
-            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
-    }
-
-    private sealed record CircuitSample(DateTimeOffset ObservedAt, bool Success);
-
-    private sealed record BufferedHttpRequestSnapshot(
-        HttpMethod Method,
-        Uri? RequestUri,
-        Version Version,
-        HttpVersionPolicy VersionPolicy,
-        IReadOnlyList<KeyValuePair<string, IEnumerable<string>>> Headers,
-        byte[]? Content,
-        IReadOnlyList<KeyValuePair<string, IEnumerable<string>>> ContentHeaders)
-    {
-        public static async Task<BufferedHttpRequestSnapshot> CreateAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            byte[]? content = null;
-            var contentHeaders = Array.Empty<KeyValuePair<string, IEnumerable<string>>>();
-            if (request.Content is not null)
-            {
-                content = await request.Content.ReadAsByteArrayAsync(cancellationToken);
-                contentHeaders = request.Content.Headers.ToArray();
-            }
-
-            return new BufferedHttpRequestSnapshot(
-                request.Method,
-                request.RequestUri,
-                request.Version,
-                request.VersionPolicy,
-                request.Headers.ToArray(),
-                content,
-                contentHeaders);
-        }
-
-        public HttpRequestMessage CreateRequest()
-        {
-            var request = new HttpRequestMessage(Method, RequestUri)
-            {
-                Version = Version,
-                VersionPolicy = VersionPolicy,
-            };
-
-            foreach (var header in Headers)
-            {
-                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-
-            if (Content is null)
-            {
-                return request;
-            }
-
-            request.Content = new ByteArrayContent(Content);
-            foreach (var header in ContentHeaders)
-            {
-                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-
-            return request;
-        }
-    }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -9,6 +10,7 @@ using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.RewriteEngine;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Providers;
+using ReplyInMyVoice.Infrastructure.Resilience;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -173,6 +175,90 @@ public sealed class RewriteProviderAdapterTests
         // the raw document score of 100 — so a fact-complete email is not failed on a single
         // stock closer (the original outlier-domination bug the old raw-overall score had).
         result.AiLikePercent.Should().Be(25);
+    }
+
+    [Fact]
+    public async Task Open_model_circuit_fails_fast_with_existing_error_code()
+    {
+        var innerHandlerInvocations = 0;
+        using var provider = BuildProviderWithProviderCircuit(
+            nameof(OpenAiCompatibleRewriteModelClient),
+            _ =>
+            {
+                innerHandlerInvocations++;
+                return Task.FromResult(JsonResponse(
+                    """
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "content": "{\"rewrittenText\":\"This should not be used.\"}"
+                          }
+                        }
+                      ]
+                    }
+                    """));
+            });
+        ForceOpenCircuit(provider, nameof(OpenAiCompatibleRewriteModelClient));
+
+        var stopwatch = Stopwatch.StartNew();
+        var result = await provider.GetRequiredService<IRewriteModelClient>()
+            .GenerateCandidateAsync(ModelRequest(), CancellationToken.None);
+
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1));
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be("model_network_failed");
+        innerHandlerInvocations.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Open_sapling_circuit_fails_fast_with_unavailable_signal()
+    {
+        var innerHandlerInvocations = 0;
+        using var provider = BuildProviderWithProviderCircuit(
+            nameof(SaplingWritingSignalClient),
+            _ =>
+            {
+                innerHandlerInvocations++;
+                return Task.FromResult(JsonResponse("""{"score":0.0}"""));
+            });
+        ForceOpenCircuit(provider, nameof(SaplingWritingSignalClient));
+
+        var result = await provider.GetRequiredService<IWritingSignalClient>()
+            .MeasureAsync("Please reply to Jordan today.", CancellationToken.None);
+
+        result.Available.Should().BeFalse();
+        innerHandlerInvocations.Should().Be(0);
+    }
+
+    private static ServiceProvider BuildProviderWithProviderCircuit(
+        string clientName,
+        Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OPENAI_BASE_URL"] = "https://api.deepseek.com",
+                ["DEEPSEEK_API_KEY"] = "deepseek-test-key",
+                ["OPENAI_MODEL_MID_WRITER"] = "deepseek-v4-pro",
+                ["SAPLING_API_KEY"] = "sapling-test-key",
+                ["PROVIDER_CIRCUIT_MIN_SAMPLES"] = "1",
+                ["PROVIDER_CIRCUIT_FAILURE_RATIO"] = "1.0",
+            })
+            .Build();
+
+        services.AddReplyInMyVoiceInfrastructure(configuration, "Testing");
+        services
+            .AddHttpClient(clientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new RecordingHttpHandler(handler));
+        return services.BuildServiceProvider();
+    }
+
+    private static void ForceOpenCircuit(ServiceProvider provider, string providerName)
+    {
+        var breaker = provider.GetRequiredService<ProviderCircuitBreakerRegistry>().GetOrAdd(providerName);
+        breaker.Record(breaker.Acquire(), success: false);
     }
 
     private static RewriteModelRequest ModelRequest()
