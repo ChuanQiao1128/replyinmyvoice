@@ -197,6 +197,9 @@
               }
             }
           },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
           "429": {
             "description": "The API key reached its request rate limit.",
             "headers": {
@@ -334,6 +337,9 @@
               }
             }
           },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
           "429": {
             "description": "The API key reached its request rate limit.",
             "headers": {
@@ -439,6 +445,9 @@
               }
             }
           },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
           "429": {
             "description": "The API key reached its request rate limit.",
             "headers": {
@@ -537,6 +546,28 @@
           "type": "integer",
           "minimum": 1,
           "example": 42
+        }
+      }
+    },
+    "responses": {
+      "PayloadTooLarge": {
+        "description": "Request body exceeded the transport size limit.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "payloadTooLarge": {
+                "value": {
+                  "error": {
+                    "code": "payload_too_large",
+                    "message": "Request body must be 65536 bytes or smaller."
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

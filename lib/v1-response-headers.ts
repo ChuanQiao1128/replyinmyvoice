@@ -1,5 +1,6 @@
 const V1_RESPONSE_HEADERS = [
   "Retry-After",
+  "X-Correlation-Id",
   "X-RateLimit-Limit",
   "X-RateLimit-Remaining",
   "X-RateLimit-Reset",

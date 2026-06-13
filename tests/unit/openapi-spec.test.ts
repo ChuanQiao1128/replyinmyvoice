@@ -72,7 +72,7 @@ describe("public/openapi.json", () => {
     ]) {
       expect(method.security).toEqual([{ ApiKeyBearer: [] }]);
       for (const [status, response] of Object.entries(method.responses)) {
-        if (status === "401") {
+        if (status === "401" || status === "413") {
           expect(response).not.toHaveProperty("headers.X-RateLimit-Limit");
           expect(response).not.toHaveProperty("headers.X-RateLimit-Remaining");
           expect(response).not.toHaveProperty("headers.X-RateLimit-Reset");
@@ -88,6 +88,24 @@ describe("public/openapi.json", () => {
     expect(spec.paths["/api/v1/rewrite"].post.responses["429"].headers).toHaveProperty(
       "Retry-After",
     );
+  });
+
+  it("documents transport payload limit errors with the shared error schema", () => {
+    const spec = loadOpenApiSpec();
+
+    for (const response of [
+      spec.paths["/api/v1/rewrite"].post.responses["413"],
+      spec.paths["/api/v1/rewrite/{id}"].get.responses["413"],
+      spec.paths["/api/v1/usage"].get.responses["413"],
+    ]) {
+      expect(response).toEqual({ $ref: "#/components/responses/PayloadTooLarge" });
+    }
+
+    expect(
+      spec.components.responses.PayloadTooLarge.content["application/json"].schema,
+    ).toEqual({
+      $ref: "#/components/schemas/Error",
+    });
   });
 
   it("documents UUID rewrite ids and omits stale rewrite examples", () => {
