@@ -6,13 +6,14 @@ namespace ReplyInMyVoice.Application.Common;
 public sealed record StripeWebhookPayloadDto(
     string EventId,
     string Type,
-    StripeWebhookObjectDto Object)
+    StripeWebhookObjectDto Object,
+    DateTimeOffset? EventCreatedAt = null)
 {
     public StripeWebhookPayloadDto(
         string eventId,
         string type,
         string rawBody)
-        : this(eventId, type, ParseObject(rawBody))
+        : this(eventId, type, ParseObject(rawBody), ParseEventCreatedAt(rawBody))
     {
     }
 
@@ -54,6 +55,12 @@ public sealed record StripeWebhookPayloadDto(
             DueDate: GetUnixDateTime(stripeObject, "due_date"),
             HostedInvoiceUrl: GetString(stripeObject, "hosted_invoice_url"),
             InvoicePdf: GetString(stripeObject, "invoice_pdf"));
+    }
+
+    private static DateTimeOffset? ParseEventCreatedAt(string rawBody)
+    {
+        using var document = JsonDocument.Parse(rawBody);
+        return GetUnixDateTime(document.RootElement, "created");
     }
 
     private static string? ResolveExternalAuthUserId(JsonElement stripeObject) =>

@@ -1,6 +1,8 @@
 using System.Net.Http;
 using System.Reflection;
 using FluentAssertions;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,6 +81,36 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ReconcileStripeHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ProcessRewriteJobHandler>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_resolves_noop_business_metrics_without_telemetry_client()
+    {
+        var provider = BuildProvider([]);
+
+        provider.GetRequiredService<IBusinessMetrics>()
+            .Should()
+            .BeSameAs(NoOpBusinessMetrics.Instance);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_resolves_app_insights_business_metrics_when_telemetry_client_registered()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection([])
+            .Build();
+        var services = new ServiceCollection();
+        using var telemetryConfiguration = new TelemetryConfiguration
+        {
+            ConnectionString = "InstrumentationKey=00000000-0000-0000-0000-000000000000",
+        };
+        services.AddSingleton(new TelemetryClient(telemetryConfiguration));
+        services.AddReplyInMyVoiceInfrastructure(configuration, "Testing");
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IBusinessMetrics>()
+            .Should()
+            .BeOfType<AppInsightsBusinessMetrics>();
     }
 
     [Fact]

@@ -6109,3 +6109,57 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, provider declaration move files, and this log entry.
 - Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600.
 - Limitations: The .NET restore step emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, schema change, external provider call, deploy, push, PR, or production config change was made.
+
+### 2026-06-13 - system-spec-synthesis - HARD-11 issue #790 observability metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 and `plans/production-hardening/issues/HARD-11-observability-metrics-alerts.md` define a multi-module observability contract across Application handlers, Infrastructure DI, provider resilience, and Azure alert artifacts.
+- Action: Opened and followed the skill as an implementation-spec checklist. Read `AGENTS.md`, `CLAUDE.md`, the HARD-11 brief, and `plans/production-hardening/SPEC.md`; treated the brief as the approved spec and mapped it to Application-owned metric constants, non-throwing Infrastructure emission, post-transaction handler hooks, and operator-run alert artifacts.
+- Output artifacts: `IBusinessMetrics`, `AppInsightsBusinessMetrics`, handler metric hooks, `infra/alerts/create-business-metric-alerts.sh`, `infra/alerts/README.md`, tests, and this log entry.
+- Verification evidence: focused HARD-11 test command first failed on the missing metrics abstraction, then passed 74/74 after implementation; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644; shell acceptance checks for alert syntax, metric-name centralization, workflow references, source wording scan, and file scope passed.
+- Limitations: No separate spec document was written because the issue brief is the authoritative implementation spec for this supervised worker task. No deploy, push, PR, payment action, secret change, migration, or frontend change was made.
+
+### 2026-06-13 - cloud-architecture-cost-review - HARD-11 issue #790 alert pack
+
+- Agent: Codex worker
+- Trigger: Issue #790 ships Azure Monitor alert definitions that may create paid alert resources when an operator runs the script.
+- Action: Opened and followed the skill as a cost/readiness gate. Read `docs/manual-setup.md`, `docs/next-development-brief.md`, `docs/dotnet-azure-full-run-result.md`, `docs/dotnet-azure-blocker-preflight.md`, and `docs/business-qa-and-deploy-result.md`; selected five Application Insights custom-metric query alerts plus one native Service Bus DLQ metric alert; kept the script operator-run only with `AZURE_ALLOW_PAID_RESOURCES=true`.
+- Output artifacts: `infra/alerts/create-business-metric-alerts.sh`, `infra/alerts/README.md`, and this log entry.
+- Verification evidence: `bash -n infra/alerts/create-business-metric-alerts.sh` passed; `grep -c scheduled-query` returned 5; `grep -n AZURE_ALLOW_PAID_RESOURCES` and `grep -n DeadletteredMessages` found the guard and native metric; `grep -rn infra/alerts .github/` produced no output.
+- Limitations: Exact current Azure pricing was not checked because the brief supplied an approximate low monthly estimate and the script was not run. Running the script remains an owner/operator action.
+
+### 2026-06-13 - state-machine-modeling - HARD-11 issue #790 post-state metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 observes rewrite job release paths, outbox processing, webhook processing, and provider circuit transitions without changing their lifecycle semantics.
+- Action: Opened and followed the skill as a state-safety checklist. State list reviewed: outbox `Pending/Processing/Sent/Failed`, Stripe event `Processing/Processed/Failed`, rewrite attempt `Pending/Processing/Succeeded/Failed/Expired`, reservation `Pending/Finalized/Released`, provider circuit `Closed/Open/HalfOpen`. Event list reviewed: outbox claim/send/fail, webhook process/replay/fail, rewrite release/finalize, circuit open/recover. Metrics were placed after existing state mutations or on the existing resilience event.
+- Output artifacts: handler metric hooks in `DispatchDueOutboxHandler`, `ProcessStripeWebhookHandler`, `ProcessRewriteJobHandler`, resilience event metrics, corresponding tests, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full backend suite passed 644/644. New tests assert duplicate webhook replay emits no failure or lag metric, success emits no failure metric, and release metrics follow existing release behavior.
+- Limitations: No lifecycle state, enum, transition rule, persistence schema, or queue processing behavior was changed.
+
+### 2026-06-13 - data-module-review - HARD-11 issue #790 outbox backlog query
+
+- Agent: Codex worker
+- Trigger: Issue #790 adds an outbox repository read for oldest incomplete message age and emits metrics around existing persistence mutations.
+- Action: Opened and followed the skill as a persistence-safety review. Owned data reviewed: `OutboxMessage`, `StripeEvent`, `RewriteAttempt`, `UsageReservation`, `UsagePeriod`, and `RewriteCredit`. Added only a read query over existing outbox `Pending/Processing` rows with the repo's SQLite branch pattern; no migration or destructive data change.
+- Output artifacts: `IOutboxMessageRepository.GetOldestIncompleteCreatedAtAsync`, `OutboxMessageRepository.GetOldestIncompleteCreatedAtAsync`, outbox metric tests, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full backend suite passed 644/644; `git diff --name-only` check found no migration, frontend, package, or public asset file.
+- Limitations: The backlog metric is a gauge over existing rows and can include retry-scheduled rows by design; exact transition accounting for idempotent release remains outside this issue.
+
+### 2026-06-13 - resilience-test-generation - HARD-11 issue #790 resilience metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 tests provider circuit-open metrics, Stripe sync failure/replay behavior, outbox failure/backlog behavior, and rewrite quota release behavior.
+- Action: Opened and followed the skill as a failure-mode test matrix. Covered transient provider 5xx opening the shared circuit, open-circuit fast rejection, successful provider responses, webhook duplicate replay, sync failure after transaction, provider exception release path, quality failure release path, and empty outbox gauge behavior using deterministic local fakes.
+- Output artifacts: `BusinessMetricsTests`, `ProviderHttpResilienceHandlerTests`, `RewriteJobUseCaseTests`, `WebhookOutboxUseCaseTests`, `StripeEventUseCaseTests`, `RecordingBusinessMetrics`, and this log entry.
+- Verification evidence: initial focused test command failed before implementation because `IBusinessMetrics` was missing; after implementation, focused command passed 74/74 and full Release suite passed 644/644.
+- Limitations: No live Stripe, Azure, OpenAI-compatible, Sapling, or Service Bus endpoint was called. The alert script was syntax-checked only and not executed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-11 issue #790 business metrics tests
+
+- Agent: Codex worker
+- Trigger: Issue #790 requires new C# xUnit tests for Application handler metrics, DI resolution, App Insights adapter behavior, and provider resilience behavior.
+- Action: Opened and followed the skill for test-level selection. Added xUnit tests using `DbFixture`, real repositories, deterministic fake providers/handlers, a spy telemetry channel, and a recording metrics double; asserted persisted state where relevant and metric name/dimension/value records for each emission site.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/BusinessMetricsTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/TestDoubles/RecordingBusinessMetrics.cs`, modified Application test files, modified `InfrastructureServiceCollectionTests`, modified `ProviderHttpResilienceHandlerTests`, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644.
+- Limitations: Tests use local fakes and do not export telemetry to Azure. No API/UI/browser verification was needed because no browser-visible or HTTP contract surface changed.

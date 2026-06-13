@@ -7,13 +7,15 @@ public sealed class DispatchDueOutboxHandler(
     IOutboxMessageRepository outboxMessages,
     IEnumerable<IOutboxMessageHandler> messageHandlers,
     IOutboxDispatchObserver dispatchObserver,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    IBusinessMetrics? metrics = null)
 {
     private const int ClaimRaceMaxAttempts = 5;
     private static readonly TimeSpan ClaimLease = TimeSpan.FromSeconds(30);
 
     private readonly Dictionary<string, IOutboxMessageHandler> _messageHandlers = messageHandlers
         .ToDictionary(x => x.MessageType, StringComparer.Ordinal);
+    private readonly IBusinessMetrics _metrics = metrics ?? NoOpBusinessMetrics.Instance;
 
     public async Task<int> HandleAsync(
         DispatchDueOutboxCommand command,
@@ -52,12 +54,24 @@ public sealed class DispatchDueOutboxHandler(
             {
                 var failure = await outboxMessages.MarkFailedAttemptAsync(message.Id, command.Now, ex.Message, ct);
                 await unitOfWork.SaveChangesAsync(ct);
+                _metrics.Record(
+                    BusinessMetricNames.OutboxFailedTotal,
+                    1,
+                    BusinessMetricDimensions.MessageType,
+                    message.MessageType);
                 if (failure.Status == ReplyInMyVoice.Domain.Enums.OutboxMessageStatus.Failed)
                 {
                     await dispatchObserver.OnTerminalFailureAsync(message, ex.Message, ct);
                 }
             }
         }
+
+        var oldestIncompleteCreatedAt = await outboxMessages.GetOldestIncompleteCreatedAtAsync(ct);
+        _metrics.Record(
+            BusinessMetricNames.OutboxBacklogAgeSeconds,
+            oldestIncompleteCreatedAt is { } oldest
+                ? Math.Max(0, (command.Now - oldest).TotalSeconds)
+                : 0);
 
         return messages.Count;
     }

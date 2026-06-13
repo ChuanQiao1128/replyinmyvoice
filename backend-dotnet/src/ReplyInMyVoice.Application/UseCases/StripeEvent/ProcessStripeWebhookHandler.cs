@@ -12,11 +12,13 @@ public sealed class ProcessStripeWebhookHandler(
     IRewriteCreditRepository credits,
     IStripeInvoiceRepository invoices,
     IOutboxMessageRepository outboxMessages,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    IBusinessMetrics? metrics = null)
 {
     private const int DefaultPaymentGraceDays = 7;
     private const int PaymentGraceReminderElapsedDays = 5;
     private const int PaymentGraceReminderRemainingDays = 2;
+    private readonly IBusinessMetrics _metrics = metrics ?? NoOpBusinessMetrics.Instance;
 
     public async Task<bool> HandleAsync(
         ProcessStripeWebhookCommand command,
@@ -24,9 +26,11 @@ public sealed class ProcessStripeWebhookHandler(
     {
         try
         {
+            string? syncFailureForMetrics = null;
             var processed = await unitOfWork.ExecuteInTransactionAsync(
                 async transactionCt =>
                 {
+                    syncFailureForMetrics = null;
                     var stripeEvent = await stripeEvents.BeginProcessingAsync(
                         command.Payload.EventId,
                         command.Payload.Type,
@@ -43,6 +47,7 @@ public sealed class ProcessStripeWebhookHandler(
                         transactionCt);
                     if (syncFailure is not null)
                     {
+                        syncFailureForMetrics = syncFailure;
                         stripeEvents.MarkFailed(stripeEvent, syncFailure, command.Now);
                         await unitOfWork.SaveChangesAsync(transactionCt);
                         return false;
@@ -55,6 +60,18 @@ public sealed class ProcessStripeWebhookHandler(
                 IsolationLevel.Serializable,
                 ct);
 
+            if (syncFailureForMetrics is not null)
+            {
+                RecordFailedMetric(command.Payload.Type);
+            }
+
+            if (processed && command.Payload.EventCreatedAt is { } eventCreatedAt)
+            {
+                _metrics.Record(
+                    BusinessMetricNames.WebhookProcessingLagSeconds,
+                    Math.Max(0, (command.Now - eventCreatedAt).TotalSeconds));
+            }
+
             return processed;
         }
         catch (Exception ex)
@@ -66,10 +83,18 @@ public sealed class ProcessStripeWebhookHandler(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            RecordFailedMetric(command.Payload.Type);
             await MarkFailedAsync(command.Payload, ex.Message, command.Now, ct);
             throw;
         }
     }
+
+    private void RecordFailedMetric(string eventType) =>
+        _metrics.Record(
+            BusinessMetricNames.StripeEventFailedTotal,
+            1,
+            BusinessMetricDimensions.EventType,
+            eventType);
 
     private async Task<string?> SyncPayloadAsync(
         StripeWebhookPayloadDto payload,

@@ -8,6 +8,7 @@ using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Repositories;
+using ReplyInMyVoice.Tests.TestDoubles;
 
 namespace ReplyInMyVoice.Tests.Application;
 
@@ -332,6 +333,74 @@ public sealed class WebhookOutboxUseCaseTests
         (await firstDispatch).Should().Be(1);
     }
 
+    [Fact]
+    public async Task DispatchDueOutboxAsync_records_backlog_age_of_oldest_unsent_message()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        await SeedOutboxAsync(
+            fixture,
+            Guid.NewGuid(),
+            now.AddSeconds(-120),
+            messageType: "UnknownMessageType");
+        var metrics = new RecordingBusinessMetrics();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateOutboxHandler(handlerDb, metrics: metrics);
+
+        await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now, "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        metrics.Records.Should().Contain(record =>
+            record.Name == BusinessMetricNames.OutboxBacklogAgeSeconds &&
+            record.Value >= 120);
+    }
+
+    [Fact]
+    public async Task DispatchDueOutboxAsync_records_zero_backlog_age_when_outbox_is_empty()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        var metrics = new RecordingBusinessMetrics();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateOutboxHandler(handlerDb, metrics: metrics);
+
+        await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now, "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.OutboxBacklogAgeSeconds &&
+            record.Value == 0 &&
+            record.DimensionName == null &&
+            record.DimensionValue == null);
+    }
+
+    [Fact]
+    public async Task DispatchDueOutboxAsync_records_failed_metric_with_message_type_dimension()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        await SeedOutboxAsync(
+            fixture,
+            Guid.NewGuid(),
+            now,
+            messageType: "UnknownMessageType");
+        var metrics = new RecordingBusinessMetrics();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateOutboxHandler(handlerDb, metrics: metrics);
+
+        await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.OutboxFailedTotal &&
+            record.Value == 1 &&
+            record.DimensionName == BusinessMetricDimensions.MessageType &&
+            record.DimensionValue == "UnknownMessageType");
+    }
+
     private static DispatchDueWebhooksHandler CreateWebhookHandler(
         ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
         IWebhookDeliverySender sender) =>
@@ -343,17 +412,31 @@ public sealed class WebhookOutboxUseCaseTests
     private static DispatchDueOutboxHandler CreateOutboxHandler(
         ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
         params IOutboxMessageHandler[] handlers) =>
-        CreateOutboxHandler(db, new RecordingOutboxDispatchObserver(), handlers);
+        CreateOutboxHandler(db, new RecordingOutboxDispatchObserver(), null, handlers);
 
     private static DispatchDueOutboxHandler CreateOutboxHandler(
         ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
         IOutboxDispatchObserver observer,
         params IOutboxMessageHandler[] handlers) =>
+        CreateOutboxHandler(db, observer, null, handlers);
+
+    private static DispatchDueOutboxHandler CreateOutboxHandler(
+        ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
+        IBusinessMetrics metrics,
+        params IOutboxMessageHandler[] handlers) =>
+        CreateOutboxHandler(db, new RecordingOutboxDispatchObserver(), metrics, handlers);
+
+    private static DispatchDueOutboxHandler CreateOutboxHandler(
+        ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
+        IOutboxDispatchObserver observer,
+        IBusinessMetrics? metrics,
+        params IOutboxMessageHandler[] handlers) =>
         new(
             new OutboxMessageRepository(db),
             handlers,
             observer,
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            metrics);
 
     private static async Task<Guid> SeedWebhookDeliveryAsync(
         DbFixture fixture,
@@ -414,12 +497,13 @@ public sealed class WebhookOutboxUseCaseTests
         Guid attemptId,
         DateTimeOffset now,
         int attemptCount = 0,
-        int maxAttempts = 10)
+        int maxAttempts = 10,
+        string messageType = "RewriteJobCreated")
     {
         await using var db = fixture.CreateContext();
         db.OutboxMessages.Add(new OutboxMessage
         {
-            MessageType = "RewriteJobCreated",
+            MessageType = messageType,
             PayloadJson = $$"""{"attemptId":"{{attemptId}}"}""",
             Status = OutboxMessageStatus.Pending,
             CreatedAt = now,

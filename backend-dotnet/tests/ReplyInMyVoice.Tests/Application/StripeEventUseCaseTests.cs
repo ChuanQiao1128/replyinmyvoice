@@ -9,6 +9,7 @@ using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
+using ReplyInMyVoice.Tests.TestDoubles;
 
 namespace ReplyInMyVoice.Tests.Application;
 
@@ -1154,14 +1155,136 @@ public sealed class StripeEventUseCaseTests
         outbox.PayloadJson.Should().NotContain(earlyUser.Id.ToString());
     }
 
-    private static ProcessStripeWebhookHandler CreateWebhookHandler(AppDbContext db) =>
+    [Fact]
+    public async Task ProcessStripeWebhookAsync_records_processing_lag_from_event_created_timestamp()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:30:00Z");
+        var metrics = new RecordingBusinessMetrics();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateWebhookHandler(handlerDb, metrics);
+        var created = now.AddSeconds(-300).ToUnixTimeSeconds();
+
+        var processed = await HandleWebhookAsync(
+            handler,
+            "evt_application_lag",
+            "customer.created",
+            $$"""
+            {
+              "id": "evt_application_lag",
+              "type": "customer.created",
+              "created": {{created}},
+              "data": {
+                "object": {
+                  "id": "cus_application_lag"
+                }
+              }
+            }
+            """,
+            now);
+
+        processed.Should().BeTrue();
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.WebhookProcessingLagSeconds &&
+            record.Value == 300 &&
+            record.DimensionName == null &&
+            record.DimensionValue == null);
+    }
+
+    [Fact]
+    public async Task ProcessStripeWebhookAsync_records_failed_metric_with_event_type_dimension_when_sync_fails()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:35:00Z");
+        var metrics = new RecordingBusinessMetrics();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateWebhookHandler(handlerDb, metrics);
+
+        var processed = await HandleWebhookAsync(
+            handler,
+            "evt_application_sync_failure",
+            "checkout.session.completed",
+            """
+            {
+              "id": "evt_application_sync_failure",
+              "type": "checkout.session.completed",
+              "data": {
+                "object": {
+                  "customer": "cus_application_missing",
+                  "mode": "payment",
+                  "payment_status": "paid",
+                  "payment_intent": "pi_application_missing",
+                  "amount_total": 1200,
+                  "currency": "nzd"
+                }
+              }
+            }
+            """,
+            now);
+
+        processed.Should().BeFalse();
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.StripeEventFailedTotal &&
+            record.Value == 1 &&
+            record.DimensionName == BusinessMetricDimensions.EventType &&
+            record.DimensionValue == "checkout.session.completed");
+    }
+
+    [Fact]
+    public async Task ProcessStripeWebhookAsync_does_not_record_failed_metric_for_duplicate_events()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:40:00Z");
+        var rawBody = """
+        {
+          "id": "evt_application_duplicate_metric",
+          "type": "customer.created",
+          "data": {
+            "object": {
+              "id": "cus_application_duplicate_metric"
+            }
+          }
+        }
+        """;
+        await using (var firstHandlerDb = fixture.CreateContext())
+        {
+            var firstHandler = CreateWebhookHandler(firstHandlerDb);
+            (await HandleWebhookAsync(
+                firstHandler,
+                "evt_application_duplicate_metric",
+                "customer.created",
+                rawBody,
+                now)).Should().BeTrue();
+        }
+
+        var metrics = new RecordingBusinessMetrics();
+        await using var replayHandlerDb = fixture.CreateContext();
+        var replayHandler = CreateWebhookHandler(replayHandlerDb, metrics);
+
+        var replay = await HandleWebhookAsync(
+            replayHandler,
+            "evt_application_duplicate_metric",
+            "customer.created",
+            rawBody,
+            now.AddSeconds(30));
+
+        replay.Should().BeFalse();
+        metrics.Records.Should().NotContain(record =>
+            record.Name == BusinessMetricNames.StripeEventFailedTotal ||
+            record.Name == BusinessMetricNames.WebhookProcessingLagSeconds);
+    }
+
+    private static ProcessStripeWebhookHandler CreateWebhookHandler(
+        AppDbContext db,
+        IBusinessMetrics? metrics = null) =>
         new(
             new StripeEventRepository(db),
             new AppUserRepository(db),
             new RewriteCreditRepository(db),
             new StripeInvoiceRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            metrics);
 
     private static async Task<bool> HandleWebhookAsync(
         ProcessStripeWebhookHandler handler,

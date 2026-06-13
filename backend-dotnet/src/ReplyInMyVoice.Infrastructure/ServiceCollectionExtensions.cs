@@ -102,6 +102,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
         services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
+        services.AddSingleton<IBusinessMetrics>(sp =>
+            sp.GetService<TelemetryClient>() is { } telemetryClient
+                ? new AppInsightsBusinessMetrics(telemetryClient)
+                : NoOpBusinessMetrics.Instance);
         services.AddScoped<ICreditExpiryNotifier, CreditExpiryNotifier>();
         services.AddScoped<ITaxTurnoverNotifier, TaxTurnoverNotifier>();
         services.AddScoped<ITaxTurnoverSettingsProvider, TaxTurnoverSettingsProvider>();
@@ -179,7 +183,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RetentionService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
         services.AddSingleton(ReadProviderCircuitBreakerOptions(configuration));
-        services.TryAddSingleton<IProviderResilienceEvents, NoOpProviderResilienceEvents>();
+        services.TryAddSingleton<IProviderResilienceEvents>(sp =>
+            new BusinessMetricsProviderResilienceEvents(sp.GetRequiredService<IBusinessMetrics>()));
         services.AddSingleton(sp => new ProviderCircuitBreakerRegistry(
             sp.GetRequiredService<ProviderCircuitBreakerOptions>(),
             sp.GetRequiredService<ILoggerFactory>(),

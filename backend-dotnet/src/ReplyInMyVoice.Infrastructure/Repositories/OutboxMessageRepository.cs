@@ -75,6 +75,27 @@ public sealed class OutboxMessageRepository(AppDbContext db) : IOutboxMessageRep
         message.RowVersion = Guid.NewGuid();
     }
 
+    public async Task<DateTimeOffset?> GetOldestIncompleteCreatedAtAsync(CancellationToken ct = default)
+    {
+        if (db.Database.IsSqlite())
+        {
+            var createdAtValues = await db.OutboxMessages
+                .AsNoTracking()
+                .Where(x => x.Status == OutboxMessageStatus.Pending || x.Status == OutboxMessageStatus.Processing)
+                .Select(x => x.CreatedAt)
+                .ToListAsync(ct);
+
+            return createdAtValues.Count == 0 ? null : createdAtValues.Min();
+        }
+
+        return await db.OutboxMessages
+            .AsNoTracking()
+            .Where(x => x.Status == OutboxMessageStatus.Pending || x.Status == OutboxMessageStatus.Processing)
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => (DateTimeOffset?)x.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<OutboxMessageFailureInfo> MarkFailedAttemptAsync(
         Guid messageId,
         DateTimeOffset now,
