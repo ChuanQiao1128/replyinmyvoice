@@ -53,7 +53,7 @@ public sealed class ProcessRewriteJobHandler(
         {
             await ExecuteAttemptMutationAsync(
                 command.AttemptId,
-                mutationCt => ReleaseAsync(command.AttemptId, "reservation_expired", now, mutationCt),
+                mutationCt => ReleaseAsync(command.AttemptId, RewriteEngineErrorCodes.ReservationExpired, now, mutationCt),
                 ct);
             return;
         }
@@ -69,7 +69,7 @@ public sealed class ProcessRewriteJobHandler(
         {
             await ExecuteAttemptMutationAsync(
                 command.AttemptId,
-                mutationCt => ReleaseAsync(command.AttemptId, "request_json_parse_failed", now, mutationCt),
+                mutationCt => ReleaseAsync(command.AttemptId, RewriteEngineErrorCodes.RequestJsonParseFailed, now, mutationCt),
                 ct);
             return;
         }
@@ -92,7 +92,7 @@ public sealed class ProcessRewriteJobHandler(
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             var timeoutFinishedAt = DateTimeOffset.UtcNow;
-            const string timeoutErrorCode = "provider_timeout";
+            const string timeoutErrorCode = RewriteEngineErrorCodes.ProviderTimeout;
             await WriteCostLogAsync(
                 command.AttemptId,
                 request,
@@ -112,7 +112,7 @@ public sealed class ProcessRewriteJobHandler(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var failureFinishedAt = DateTimeOffset.UtcNow;
-            const string failureErrorCode = "provider_failed";
+            const string failureErrorCode = RewriteEngineErrorCodes.ProviderFailed;
             await WriteCostLogAsync(
                 command.AttemptId,
                 request,
@@ -150,7 +150,9 @@ public sealed class ProcessRewriteJobHandler(
             return;
         }
 
-        var errorCode = result.Success ? "provider_json_parse_failed" : result.ErrorCode ?? "provider_failed";
+        var errorCode = result.Success
+            ? RewriteEngineErrorCodes.ProviderJsonParseFailed
+            : result.ErrorCode ?? RewriteEngineErrorCodes.ProviderFailed;
         await WriteCostLogAsync(
             command.AttemptId,
             request,

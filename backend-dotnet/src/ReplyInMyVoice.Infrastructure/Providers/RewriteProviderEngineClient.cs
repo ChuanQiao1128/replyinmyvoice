@@ -3,6 +3,11 @@ using ReplyInMyVoice.Domain.Contracts;
 
 namespace ReplyInMyVoice.Infrastructure.Providers;
 
+/// <summary>
+/// Boundary adapter from the current <see cref="IRewriteProvider"/> implementation to the frozen
+/// <see cref="IRewriteEngineClient"/> port. This adapter owns the call-capture scope used by the
+/// provider path; direct engine implementations must populate ProviderCalls themselves.
+/// </summary>
 public sealed class RewriteProviderEngineClient(IRewriteProvider provider) : IRewriteEngineClient
 {
     public async Task<RewriteEngineResult> RewriteAsync(
@@ -25,7 +30,7 @@ public sealed class RewriteProviderEngineClient(IRewriteProvider provider) : IRe
             return new RewriteEngineResult(
                 ResultJson: null,
                 Success: false,
-                ErrorCode: "provider_timeout",
+                ErrorCode: RewriteEngineErrorCodes.ProviderTimeout,
                 Map(providerCallCapture.Calls));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -33,7 +38,7 @@ public sealed class RewriteProviderEngineClient(IRewriteProvider provider) : IRe
             return new RewriteEngineResult(
                 ResultJson: null,
                 Success: false,
-                ErrorCode: "provider_failed",
+                ErrorCode: RewriteEngineErrorCodes.ProviderFailed,
                 Map(providerCallCapture.Calls));
         }
     }
