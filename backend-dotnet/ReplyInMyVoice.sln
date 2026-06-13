@@ -25,6 +25,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReplyInMyVoice.Eval", "tool
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReplyInMyVoice.Application", "src\ReplyInMyVoice.Application\ReplyInMyVoice.Application.csproj", "{A38E999A-0A0C-49E1-9313-B532B9A969FF}"
 EndProject
+# MigrationGuard is nested under the tools solution folder.
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReplyInMyVoice.MigrationGuard", "tools\ReplyInMyVoice.MigrationGuard\ReplyInMyVoice.MigrationGuard.csproj", "{84970F2D-EDDF-4B8C-8B1C-6869F02E1A1C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -66,6 +69,10 @@ Global
 		{A38E999A-0A0C-49E1-9313-B532B9A969FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A38E999A-0A0C-49E1-9313-B532B9A969FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A38E999A-0A0C-49E1-9313-B532B9A969FF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{84970F2D-EDDF-4B8C-8B1C-6869F02E1A1C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{84970F2D-EDDF-4B8C-8B1C-6869F02E1A1C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{84970F2D-EDDF-4B8C-8B1C-6869F02E1A1C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{84970F2D-EDDF-4B8C-8B1C-6869F02E1A1C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{ADF2AB3E-B543-4AEB-8E5C-EE9A6A7C81AD} = {1ACB8F1F-AD9B-45C9-96F3-2523131DE9CA}
@@ -76,5 +83,6 @@ Global
 		{BA266D6E-FDE6-4F9C-83CF-A6707FB8D49A} = {1ACB8F1F-AD9B-45C9-96F3-2523131DE9CA}
 		{B21B6504-C1F2-4C28-BBE5-734C632C7352} = {22F11C5A-384B-4C5B-A191-BE80688B2895}
 		{A38E999A-0A0C-49E1-9313-B532B9A969FF} = {1ACB8F1F-AD9B-45C9-96F3-2523131DE9CA}
+		{84970F2D-EDDF-4B8C-8B1C-6869F02E1A1C} = {22F11C5A-384B-4C5B-A191-BE80688B2895}
 	EndGlobalSection
 EndGlobal
