@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.StripeEvent;
@@ -51,22 +52,41 @@ public sealed class StripeEventUseCaseTests
         await using var handlerDb = fixture.CreateContext();
         var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:05:00Z");
-        var payload = new StripeWebhookPayloadDto(
+        var rawBody = $$"""
+        {
+          "id": "evt_application_checkout",
+          "type": "checkout.session.completed",
+          "data": {
+            "object": {
+              "customer": "cus_application_checkout",
+              "client_reference_id": "{{user.ExternalAuthUserId}}",
+              "mode": "payment",
+              "payment_status": "paid",
+              "payment_intent": "pi_application_checkout",
+              "amount_total": 1200,
+              "currency": "nzd",
+              "metadata": {
+                "sku": "value_pack",
+                "rewrites": "30",
+                "externalAuthUserId": "{{user.ExternalAuthUserId}}"
+              }
+            }
+          }
+        }
+        """;
+
+        var first = await HandleWebhookAsync(
+            handler,
             "evt_application_checkout",
             "checkout.session.completed",
-            new StripeWebhookObjectDto(
-                CustomerId: "cus_application_checkout",
-                ExternalAuthUserId: user.ExternalAuthUserId,
-                CheckoutMode: "payment",
-                PaymentStatus: "paid",
-                GrantedRewrites: 30,
-                PaymentIntentId: "pi_application_checkout",
-                AmountTotal: 1200,
-                Currency: "nzd",
-                Sku: "value_pack"));
-
-        var first = await handler.HandleAsync(new ProcessStripeWebhookCommand(payload, now));
-        var replay = await handler.HandleAsync(new ProcessStripeWebhookCommand(payload, now.AddSeconds(1)));
+            rawBody,
+            now);
+        var replay = await HandleWebhookAsync(
+            handler,
+            "evt_application_checkout",
+            "checkout.session.completed",
+            rawBody,
+            now.AddSeconds(1));
 
         first.Should().BeTrue();
         replay.Should().BeFalse();
@@ -129,9 +149,10 @@ public sealed class StripeEventUseCaseTests
         await using (var orphanDb = fixture.CreateContext())
         {
             var storedEvent = await orphanDb.StripeEvents.SingleAsync(x => x.EventId == "evt_application_orphan_checkout");
-            storedEvent.Status.Should().Be(StripeEventStatus.Failed);
+            storedEvent.Status.Should().Be(StripeEventStatus.Pending);
             storedEvent.AttemptCount.Should().Be(1);
             storedEvent.LastError.Should().Contain("No matching user");
+            storedEvent.LockedUntil.Should().BeAfter(now);
             (await orphanDb.RewriteCredits.CountAsync()).Should().Be(0);
         }
 
@@ -254,20 +275,31 @@ public sealed class StripeEventUseCaseTests
 
         await using var handlerDb = fixture.CreateContext();
         var handler = CreateWebhookHandler(handlerDb);
-        var payload = new StripeWebhookPayloadDto(
+        var rawBody = $$"""
+        {
+          "id": "evt_application_invoice_failed",
+          "type": "invoice.payment_failed",
+          "data": {
+            "object": {
+              "id": "in_application_failed",
+              "customer": "cus_application_invoice",
+              "subscription": "sub_application_invoice",
+              "attempt_count": 2,
+              "next_payment_attempt": {{now.AddDays(3).ToUnixTimeSeconds()}},
+              "amount_due": 900,
+              "amount_paid": 0,
+              "currency": "nzd"
+            }
+          }
+        }
+        """;
+
+        var processed = await HandleWebhookAsync(
+            handler,
             "evt_application_invoice_failed",
             "invoice.payment_failed",
-            new StripeWebhookObjectDto(
-                Id: "in_application_failed",
-                CustomerId: "cus_application_invoice",
-                SubscriptionId: "sub_application_invoice",
-                AttemptCount: 2,
-                NextPaymentAttempt: now.AddDays(3),
-                AmountDue: 900,
-                AmountPaid: 0,
-                Currency: "nzd"));
-
-        var processed = await handler.HandleAsync(new ProcessStripeWebhookCommand(payload, now));
+            rawBody,
+            now);
 
         processed.Should().BeTrue();
 
@@ -300,26 +332,39 @@ public sealed class StripeEventUseCaseTests
         await using var handlerDb = fixture.CreateContext();
         var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:11:00Z");
-        var payload = new StripeWebhookPayloadDto(
+        var rawBody = $$"""
+        {
+          "id": "evt_application_invoice_failed_unknown",
+          "type": "invoice.payment_failed",
+          "data": {
+            "object": {
+              "id": "in_application_failed_unknown",
+              "customer": "cus_application_unknown",
+              "subscription": "sub_application_unknown",
+              "attempt_count": 2,
+              "next_payment_attempt": {{now.AddDays(3).ToUnixTimeSeconds()}},
+              "amount_due": 900,
+              "amount_paid": 0,
+              "currency": "nzd"
+            }
+          }
+        }
+        """;
+
+        var processed = await HandleWebhookAsync(
+            handler,
             "evt_application_invoice_failed_unknown",
             "invoice.payment_failed",
-            new StripeWebhookObjectDto(
-                Id: "in_application_failed_unknown",
-                CustomerId: "cus_application_unknown",
-                SubscriptionId: "sub_application_unknown",
-                AttemptCount: 2,
-                NextPaymentAttempt: now.AddDays(3),
-                AmountDue: 900,
-                AmountPaid: 0,
-                Currency: "nzd"));
-
-        var processed = await handler.HandleAsync(new ProcessStripeWebhookCommand(payload, now));
+            rawBody,
+            now);
 
         processed.Should().BeFalse();
         await using var verifyDb = fixture.CreateContext();
         var storedEvent = await verifyDb.StripeEvents.SingleAsync(x => x.EventId == "evt_application_invoice_failed_unknown");
-        storedEvent.Status.Should().Be(StripeEventStatus.Failed);
+        storedEvent.Status.Should().Be(StripeEventStatus.Pending);
+        storedEvent.AttemptCount.Should().Be(1);
         storedEvent.LastError.Should().Contain("No matching user");
+        storedEvent.LockedUntil.Should().BeAfter(now);
         (await verifyDb.OutboxMessages.CountAsync()).Should().Be(0);
     }
 
@@ -340,16 +385,27 @@ public sealed class StripeEventUseCaseTests
         var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:15:00Z");
         var currentPeriodEnd = DateTimeOffset.Parse("2026-07-09T00:15:00Z");
-        var payload = new StripeWebhookPayloadDto(
+        var rawBody = $$"""
+        {
+          "id": "evt_application_subscription",
+          "type": "customer.subscription.updated",
+          "data": {
+            "object": {
+              "id": "sub_application_subscription",
+              "customer": "cus_application_subscription",
+              "status": "active",
+              "current_period_end": {{currentPeriodEnd.ToUnixTimeSeconds()}}
+            }
+          }
+        }
+        """;
+
+        var processed = await HandleWebhookAsync(
+            handler,
             "evt_application_subscription",
             "customer.subscription.updated",
-            new StripeWebhookObjectDto(
-                Id: "sub_application_subscription",
-                CustomerId: "cus_application_subscription",
-                Status: "active",
-                CurrentPeriodEnd: currentPeriodEnd));
-
-        var processed = await handler.HandleAsync(new ProcessStripeWebhookCommand(payload, now));
+            rawBody,
+            now);
 
         processed.Should().BeTrue();
 
@@ -873,9 +929,10 @@ public sealed class StripeEventUseCaseTests
         await using (var orphanDb = fixture.CreateContext())
         {
             var storedEvent = await orphanDb.StripeEvents.SingleAsync(x => x.EventId == "evt_application_refund_before_grant");
-            storedEvent.Status.Should().Be(StripeEventStatus.Failed);
+            storedEvent.Status.Should().Be(StripeEventStatus.Pending);
             storedEvent.AttemptCount.Should().Be(1);
             storedEvent.LastError.Should().Contain("No matching rewrite credit");
+            storedEvent.LockedUntil.Should().BeAfter(now);
             (await orphanDb.RewriteCredits.CountAsync()).Should().Be(0);
         }
 
@@ -1154,24 +1211,49 @@ public sealed class StripeEventUseCaseTests
         outbox.PayloadJson.Should().NotContain(earlyUser.Id.ToString());
     }
 
-    private static ProcessStripeWebhookHandler CreateWebhookHandler(AppDbContext db) =>
+    private static StripeWebhookHarness CreateWebhookHandler(AppDbContext db) =>
         new(
-            new StripeEventRepository(db),
-            new AppUserRepository(db),
-            new RewriteCreditRepository(db),
-            new StripeInvoiceRepository(db),
-            new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new IngestStripeWebhookHandler(
+                new StripeEventRepository(db),
+                new UnitOfWork(db)),
+            new ProcessPendingStripeEventsHandler(
+                new StripeEventRepository(db),
+                new StripeEventPayloadSynchronizer(
+                    new AppUserRepository(db),
+                    new RewriteCreditRepository(db),
+                    new StripeInvoiceRepository(db),
+                    new OutboxMessageRepository(db)),
+                new RewriteCreditRepository(db),
+                new UnitOfWork(db),
+                new StripeEventProcessingOptions(MaxAttempts: 8, InlineBudgetSeconds: 8),
+                NullLogger<ProcessPendingStripeEventsHandler>.Instance));
 
     private static async Task<bool> HandleWebhookAsync(
-        ProcessStripeWebhookHandler handler,
+        StripeWebhookHarness handler,
         string eventId,
         string type,
         string rawBody,
-        DateTimeOffset now) =>
-        await handler.HandleAsync(new ProcessStripeWebhookCommand(
-            new StripeWebhookPayloadDto(eventId, type, rawBody),
+        DateTimeOffset now)
+    {
+        var ingestResult = await handler.Ingest.HandleAsync(new IngestStripeWebhookCommand(
+            eventId,
+            type,
+            rawBody,
             now));
+        if (ingestResult == StripeWebhookIngestResult.AlreadyProcessed)
+        {
+            return false;
+        }
+
+        return await handler.Processor.HandleAsync(new ProcessPendingStripeEventsCommand(
+            now,
+            BatchSize: 1,
+            eventId)) > 0;
+    }
+
+    private sealed record StripeWebhookHarness(
+        IngestStripeWebhookHandler Ingest,
+        ProcessPendingStripeEventsHandler Processor);
 
     private static void ConfigurePastDue(
         AppDbContext db,

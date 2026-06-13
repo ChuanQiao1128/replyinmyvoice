@@ -1,4 +1,3 @@
-using System.Data;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Entities;
@@ -6,69 +5,24 @@ using ReplyInMyVoice.Domain.Enums;
 
 namespace ReplyInMyVoice.Application.UseCases.StripeEvent;
 
-public sealed class ProcessStripeWebhookHandler(
-    IStripeEventRepository stripeEvents,
+public sealed class StripeEventPayloadSynchronizer(
     IAppUserRepository appUsers,
     IRewriteCreditRepository credits,
     IStripeInvoiceRepository invoices,
-    IOutboxMessageRepository outboxMessages,
-    IUnitOfWork unitOfWork)
+    IOutboxMessageRepository outboxMessages)
 {
     private const int DefaultPaymentGraceDays = 7;
     private const int PaymentGraceReminderElapsedDays = 5;
     private const int PaymentGraceReminderRemainingDays = 2;
 
-    public async Task<bool> HandleAsync(
-        ProcessStripeWebhookCommand command,
-        CancellationToken ct = default)
+    public async Task<string?> SyncAsync(
+        StripeWebhookPayloadDto payload,
+        DateTimeOffset now,
+        List<Func<CancellationToken, Task>> postCommitActions,
+        CancellationToken ct)
     {
-        try
-        {
-            var processed = await unitOfWork.ExecuteInTransactionAsync(
-                async transactionCt =>
-                {
-                    var stripeEvent = await stripeEvents.BeginProcessingAsync(
-                        command.Payload.EventId,
-                        command.Payload.Type,
-                        command.Now,
-                        transactionCt);
-                    if (stripeEvent is null)
-                    {
-                        return false;
-                    }
-
-                    var syncFailure = await SyncPayloadAsync(
-                        command.Payload,
-                        command.Now,
-                        transactionCt);
-                    if (syncFailure is not null)
-                    {
-                        stripeEvents.MarkFailed(stripeEvent, syncFailure, command.Now);
-                        await unitOfWork.SaveChangesAsync(transactionCt);
-                        return false;
-                    }
-
-                    stripeEvents.MarkProcessed(stripeEvent, command.Now);
-                    await unitOfWork.SaveChangesAsync(transactionCt);
-                    return true;
-                },
-                IsolationLevel.Serializable,
-                ct);
-
-            return processed;
-        }
-        catch (Exception ex)
-            when (command.Payload.Type == "checkout.session.completed" &&
-                credits.IsStripeEventIdWriteFailure(ex))
-        {
-            await MarkProcessedAfterCheckoutGrantConflictAsync(command.Payload, command.Now, ct);
-            return false;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            await MarkFailedAsync(command.Payload, ex.Message, command.Now, ct);
-            throw;
-        }
+        _ = postCommitActions;
+        return await SyncPayloadAsync(payload, now, ct);
     }
 
     private async Task<string?> SyncPayloadAsync(
@@ -459,84 +413,6 @@ public sealed class ProcessStripeWebhookHandler(
         return null;
     }
 
-    private async Task MarkProcessedAfterCheckoutGrantConflictAsync(
-        StripeWebhookPayloadDto payload,
-        DateTimeOffset now,
-        CancellationToken ct)
-    {
-        await unitOfWork.ExecuteInTransactionAsync(
-            async transactionCt =>
-            {
-                var stripeEvent = await stripeEvents.GetByEventIdAsync(payload.EventId, transactionCt);
-                if (stripeEvent is null)
-                {
-                    await stripeEvents.AddAsync(new Domain.Entities.StripeEvent
-                    {
-                        EventId = payload.EventId,
-                        Type = payload.Type,
-                        Status = StripeEventStatus.Processed,
-                        AttemptCount = 1,
-                        CreatedAt = now,
-                        LastAttemptAt = now,
-                        ProcessedAt = now,
-                    }, transactionCt);
-                }
-                else if (stripeEvent.Status != StripeEventStatus.Processed)
-                {
-                    stripeEvent.Type = payload.Type;
-                    stripeEvent.AttemptCount += 1;
-                    stripeEvent.LastAttemptAt = now;
-                    stripeEvents.MarkProcessed(stripeEvent, now);
-                }
-
-                await unitOfWork.SaveChangesAsync(transactionCt);
-            },
-            IsolationLevel.Serializable,
-            ct);
-    }
-
-    private async Task MarkFailedAsync(
-        StripeWebhookPayloadDto payload,
-        string error,
-        DateTimeOffset now,
-        CancellationToken ct)
-    {
-        await unitOfWork.ExecuteInTransactionAsync(
-            async transactionCt =>
-            {
-                var stripeEvent = await stripeEvents.GetByEventIdAsync(payload.EventId, transactionCt);
-                if (stripeEvent?.Status == StripeEventStatus.Processed)
-                {
-                    return;
-                }
-
-                var truncatedError = TruncateStripeEventError(error);
-                if (stripeEvent is null)
-                {
-                    await stripeEvents.AddAsync(new Domain.Entities.StripeEvent
-                    {
-                        EventId = payload.EventId,
-                        Type = payload.Type,
-                        Status = StripeEventStatus.Failed,
-                        AttemptCount = 1,
-                        CreatedAt = now,
-                        LastAttemptAt = now,
-                        LastError = truncatedError,
-                    }, transactionCt);
-                }
-                else
-                {
-                    stripeEvent.Type = payload.Type;
-                    stripeEvent.AttemptCount += 1;
-                    stripeEvents.MarkFailed(stripeEvent, truncatedError, now);
-                }
-
-                await unitOfWork.SaveChangesAsync(transactionCt);
-            },
-            IsolationLevel.Serializable,
-            ct);
-    }
-
     private static bool HasPaymentGrace(AppUser user) =>
         user.PaymentFailedAt is not null || user.PaymentGraceEndsAt is not null;
 
@@ -685,9 +561,6 @@ public sealed class ProcessStripeWebhookHandler(
             _ => "open",
         };
     }
-
-    private static string TruncateStripeEventError(string error) =>
-        error.Length > 1000 ? error[..1000] : error;
 
     private static string? Normalize(string? value)
     {
