@@ -45,6 +45,33 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-13 - resilience-test-generation - HARD-07 provider circuit breaker failures
+
+- Agent: Codex worker
+- Trigger: GitHub issue #786 changes provider retry, timeout, circuit-open fast-fail, and recovery behavior for OpenAI-compatible model and Sapling writing-signal HTTP clients.
+- Action: Opened and followed the skill. Critical operation: named provider HTTP send through the resilience handler. Dependency boundaries: HttpClientFactory named clients, provider HTTP transport, caller cancellation token, model client, writing-signal client, and no-charge provider failure path. Failure matrix covered: transient 429 retry, transient 5xx terminal sampling, caller-token cancellation, shared cross-chain open state, half-open probe success and failure, and open-circuit client mapping.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Resilience/*`; `ProviderCircuitBreakerTests.cs`; `ProviderHttpResilienceHandlerTests.cs`; updated `InfrastructureServiceCollectionTests.cs` and `RewriteProviderAdapterTests.cs`.
+- Verification evidence: Focused red run failed on missing resilience types; focused final run passed 18/18; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 627/627; changed-file and frontend guarded-term scans returned no output.
+- Limitations: No live OpenAI, Sapling, Azure, database production endpoint, deploy, push, PR, payment action, or secret inspection was performed. NuGet advisory metadata lookup emitted NU1900 warnings while the test command exited 0.
+
+### 2026-06-13 - state-machine-modeling - HARD-07 circuit lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #786 changes a multi-step circuit lifecycle with explicit Closed, Open, and HalfOpen transitions.
+- Action: Opened and followed the skill. State list: `Closed`, `Open`, `HalfOpen`. Event list: terminal success, terminal failure, break duration elapsed, probe success, probe failure, concurrent acquire while open or probing, and stale probe expiry. Transition table: `Closed` records terminal samples and opens when throughput and ratio thresholds are met; `Open` rejects until break expiry then moves to `HalfOpen`; `HalfOpen` allows one probe, closes on success, reopens on failure, and rejects concurrent acquires until probe expiry. Invariants: one breaker per provider name per process, no network touch while open, one half-open probe at a time, probe success clears samples, and probe failure opens for another break duration.
+- Output artifacts: `ProviderCircuitBreaker.cs`, `ProviderCircuitBreakerRegistry.cs`, `ProviderCircuitBreakerTests.cs`, `ProviderHttpResilienceHandlerTests.cs`.
+- Verification evidence: Unit tests cover below-minimum throughput, failure ratio opening, sample-window eviction, single-probe half-open behavior, probe success/failure transitions, stale probe expiry, and transition event emission; full backend suite passed 627/627.
+- Limitations: State is intentionally process-local and not persisted or distributed; no EF model, migration, AppDbContext, production telemetry implementation, or cloud runtime was changed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-07 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #786 adds C#/.NET xUnit coverage for Infrastructure DI, HttpClientFactory handler wiring, provider HTTP resilience, and adapter error mapping.
+- Action: Opened and followed the skill; wrote failing tests first, verified the missing-type red state, then implemented the smallest Infrastructure-only change to satisfy the issue. Used xUnit, FluentAssertions, HttpMessageInvoker, IHttpMessageHandlerFactory, and deterministic handwritten HttpMessageHandler fakes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ProviderCircuitBreakerTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ProviderHttpResilienceHandlerTests.cs`; updated `InfrastructureServiceCollectionTests.cs`; updated `RewriteProviderAdapterTests.cs`.
+- Verification evidence: Initial focused command failed at compile time on missing `ReplyInMyVoice.Infrastructure.Resilience` types. Final focused command passed 18/18. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 627/627.
+- Limitations: No frontend tests were run because no frontend files changed. Local git commit was attempted but blocked by sandbox permissions on worktree git metadata outside the writable root. No deploy, push, PR, live provider call, secret inspection, or production branch action was performed.
+
 ### 2026-06-13 - system-spec-synthesis - HARD-02 outbox notification implementation
 
 - Agent: Codex worker
