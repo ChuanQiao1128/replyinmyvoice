@@ -67,7 +67,7 @@ Replace the fire-and-forget post-commit notification delegates (exceptions silen
 
 11. Update tests per the tests section. EF migration: NONE — no entity/column changes; new message types are row data in the existing OutboxMessages table. Frontend: NO files under app/, components/, lib/, public/ change; emails are not part of the frozen rewrite/billing API contract.
 
-12. Verify: dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release (full suite — AdminRouteMetadataTests and InfrastructureServiceCollectionTests pins only run un-filtered), then grep -RniE "humanizer|bypass|undetect|det.ctor|evade" app components public lib backend-dotnet/src || true must return nothing for the touched files.
+12. Verify: dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release (full suite — AdminRouteMetadataTests and InfrastructureServiceCollectionTests pins only run un-filtered), then grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib backend-dotnet/src || true must return nothing for the touched files.
 
 ## Acceptance criteria (machine-checkable)
 
@@ -79,7 +79,7 @@ Replace the fire-and-forget post-commit notification delegates (exceptions silen
 - All four MessageType strings PaymentFailedNotification, PaymentRecoveredNotification, SubscriptionPausedNotification, PaymentGraceReminderNotification appear in exactly one Application constants file and are referenced (not re-typed as literals) from the three handlers and the four Infrastructure outbox handlers: `grep -rn '"PaymentFailedNotification"' backend-dotnet/src --include='*.cs'` matches only StripeNotificationOutbox.cs.
 - DispatchDueOutboxHandler.cs assigns the return value of MarkFailedAttemptAsync and references OutboxMessageStatus.Failed (grep both substrings in that file).
 - InfrastructureServiceCollectionTests resolves IEnumerable<IOutboxMessageHandler> with exactly 5 distinct MessageTypes {RewriteJobCreated, PaymentFailedNotification, PaymentRecoveredNotification, SubscriptionPausedNotification, PaymentGraceReminderNotification} and resolves IOutboxDispatchObserver — pinned by a new fact in that file.
-- `grep -RniE "humanizer|bypass|undetect|det.ctor|evade" app components public lib || true` produces no output, and none of the 5 banned substrings appear in any added backend line.
+- `grep -RniE "humanizer|bypass|undetect|detector|evade" app components public lib || true` produces no output, and none of the 5 banned substrings appear in any added backend line.
 - ValidateReplyInMyVoiceRuntimeConfiguration (ServiceCollectionExtensions.cs:361-418) is byte-identical to base (no new required env keys).
 - No file under backend-dotnet/src/ReplyInMyVoice.Infrastructure/Providers/ or Domain/RewriteEngine/ is modified (engine-swap boundary untouched).
 

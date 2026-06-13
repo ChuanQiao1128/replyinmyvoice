@@ -6,6 +6,7 @@ namespace ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 public sealed class DispatchDueOutboxHandler(
     IOutboxMessageRepository outboxMessages,
     IEnumerable<IOutboxMessageHandler> messageHandlers,
+    IOutboxDispatchObserver dispatchObserver,
     IUnitOfWork unitOfWork)
 {
     private const int ClaimRaceMaxAttempts = 5;
@@ -49,8 +50,12 @@ public sealed class DispatchDueOutboxHandler(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                await outboxMessages.MarkFailedAttemptAsync(message.Id, command.Now, ex.Message, ct);
+                var failure = await outboxMessages.MarkFailedAttemptAsync(message.Id, command.Now, ex.Message, ct);
                 await unitOfWork.SaveChangesAsync(ct);
+                if (failure.Status == ReplyInMyVoice.Domain.Enums.OutboxMessageStatus.Failed)
+                {
+                    await dispatchObserver.OnTerminalFailureAsync(message, ex.Message, ct);
+                }
             }
         }
 

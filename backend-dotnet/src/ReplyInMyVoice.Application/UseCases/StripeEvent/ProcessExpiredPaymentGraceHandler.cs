@@ -7,7 +7,7 @@ namespace ReplyInMyVoice.Application.UseCases.StripeEvent;
 
 public sealed class ProcessExpiredPaymentGraceHandler(
     IAppUserRepository appUsers,
-    IStripeEventNotifier notifier,
+    IOutboxMessageRepository outboxMessages,
     IStripeSubscriptionCancellationService cancellationService,
     IUnitOfWork unitOfWork)
 {
@@ -41,8 +41,13 @@ public sealed class ProcessExpiredPaymentGraceHandler(
                         ClearPaymentGrace(user);
                         user.UpdatedAt = command.Now;
                         user.RowVersion = Guid.NewGuid();
-                        postCommitActions.Add(actionCt =>
-                            notifier.EnqueueSubscriptionPausedNotificationAsync(user, actionCt));
+                        await outboxMessages.AddAsync(
+                            StripeNotificationOutboxMessageFactory.Create(
+                                StripeNotificationOutboxMessageTypes.SubscriptionPaused,
+                                user.Id,
+                                command.Now,
+                                user.Id.ToString()),
+                            transactionCt);
                     }
 
                     await unitOfWork.SaveChangesAsync(transactionCt);

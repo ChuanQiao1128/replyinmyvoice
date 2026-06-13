@@ -45,6 +45,51 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-13 - system-spec-synthesis - HARD-02 outbox notification implementation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #781 changes multi-module Application, Infrastructure, DI, and test behavior for Stripe webhook and payment-grace notification delivery.
+- Action: Opened and followed the skill; used `AGENTS.md`, `CLAUDE.md`, the HARD-02 issue brief, and `plans/production-hardening/SPEC.md` as source inputs, with the issue brief as the implementation-ready spec.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/StripeNotificationOutbox.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IOutboxDispatchObserver.cs`; Infrastructure outbox handler and observer files; updated HARD-02 brief verification regex.
+- Verification evidence: Focused red-green run first failed on missing observer/contract types, then passed 10/10; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 610/610.
+- Limitations: No new architecture, schema, deployment, secret, frontend, provider, or live payment behavior was introduced beyond the issue scope.
+
+### 2026-06-13 - state-machine-modeling - HARD-02 outbox and webhook lifecycle
+
+- Agent: Codex worker
+- Trigger: The task changes webhook, subscription grace, and outbox dispatch lifecycles with persisted statuses and terminal failure behavior.
+- Action: Opened and followed the skill. State list: Stripe event `Processed` or `Failed`; subscription/payment grace active, recovered, or paused; outbox `Pending`, `Processing`, `Sent`, or `Failed`. Event list: payment failed, payment recovered, subscription terminal update, grace reminder due, grace expired, outbox dispatch success, retryable dispatch failure, and terminal dispatch failure. Transition table: successful state-change transactions write pending notification rows; failed webhook sync writes no notification row; dispatch success marks sent; non-terminal failure reschedules pending with backoff; max-attempt failure marks failed and notifies the observer. Invariants: no notification row without committed state change, duplicate webhook events do not duplicate rows, cancellation remains post-commit, and terminal outbox failure becomes visible after the row is saved as failed.
+- Output artifacts: Updated `ProcessStripeWebhookHandler.cs`, `ProcessPaymentGraceRemindersHandler.cs`, `ProcessExpiredPaymentGraceHandler.cs`, `DispatchDueOutboxHandler.cs`, and related tests.
+- Verification evidence: Added/updated xUnit coverage for outbox row creation, duplicate replay, no-row-on-sync-failure, retry backoff, and terminal observer invocation; full backend suite passed 610/610.
+- Limitations: No new state enum, migration, admin requeue surface, live timer execution, or live email/provider call was added.
+
+### 2026-06-13 - data-module-review - HARD-02 outbox persistence invariants
+
+- Agent: Codex worker
+- Trigger: The task changes EF-backed outbox persistence, transaction boundaries, repository usage, and idempotent webhook side effects.
+- Action: Opened and followed the skill; reviewed `OutboxMessage`, `IOutboxMessageRepository`, `OutboxMessageRepository`, Stripe event handlers, existing EF SQLite tests, and DI registrations. Findings: no migration was needed because the existing outbox table already supports the required message type, payload, retry, and status fields. Suggested tests were implemented for atomic state change plus outbox row creation, no row on failed sync, missing-user dispatch no-op success, and terminal failure visibility.
+- Output artifacts: `StripeNotificationOutbox.cs`; Application handler updates; Infrastructure outbox handlers; `StripeEventUseCaseTests.cs`; `StripeNotificationOutboxHandlerTests.cs`; `WebhookOutboxUseCaseTests.cs`.
+- Verification evidence: `git diff --name-only -- backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations app components lib public` returned no files; no Providers or Domain rewrite-engine files were changed; full backend suite passed 610/610.
+- Limitations: Did not add indexes, columns, tables, migrations, schema constraints, production data access, or destructive data changes.
+
+### 2026-06-13 - resilience-test-generation - HARD-02 notification retry and failure visibility
+
+- Agent: Codex worker
+- Trigger: The task changes retry, backoff, terminal failure, Stripe webhook replay, and failure recovery behavior for notification dispatch.
+- Action: Opened and followed the skill. Critical operations: write durable notification outbox rows with state changes, dispatch notification rows through existing outbox retry policy, and surface terminal dispatch failure. Dependency boundaries: EF Core SQLite test database, Stripe webhook payload parsing, outbox repository, user repository, existing notifier abstraction, and optional telemetry observer. Failure matrix covered: duplicate webhook replay, webhook sync failure, missing user at dispatch time, notifier exception with retry/backoff, and max-attempt terminal failure.
+- Output artifacts: New and updated tests in `StripeEventUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `StripeWebhookApiTests.cs`, and `StripeNotificationOutboxHandlerTests.cs`.
+- Verification evidence: Focused red-green run passed 10/10 after implementation; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 610/610; app/public guarded term scan and diff-scoped added-backend source scan returned no output.
+- Limitations: No live Stripe, email, App Insights, Azure timer, external queue, deployment, or real payment action was exercised; NuGet advisory metadata lookup emitted NU1900 warnings while tests still exited 0.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-02 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: The task adds and changes C#/.NET xUnit tests for Stripe webhook handling, outbox dispatch, Infrastructure DI, and function-level webhook persistence.
+- Action: Opened and followed the skill; wrote failing tests first, used EF Core SQLite integration tests and deterministic handwritten fakes, then implemented the smallest Application and Infrastructure changes to satisfy the issue acceptance.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeNotificationOutboxHandlerTests.cs`; updated `StripeEventUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `StripeWebhookApiTests.cs`, and `InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Initial focused run failed with missing `IOutboxDispatchObserver`; final focused run passed 10/10; full backend suite passed 610/610; acceptance greps for removed inline notification machinery and centralized message type literals passed by output inspection.
+- Limitations: No frontend tests were run because no frontend files changed. No deploy, push, PR, live provider call, secret inspection, or production branch action was performed.
+
 ### 2026-06-12 - ui-browser-testing - DEV09 legal copy batch
 
 - Agent: Codex worker

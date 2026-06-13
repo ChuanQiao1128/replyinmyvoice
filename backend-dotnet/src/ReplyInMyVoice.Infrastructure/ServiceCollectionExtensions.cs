@@ -1,5 +1,6 @@
 using System.Net;
 using Azure.Messaging.ServiceBus;
+using Microsoft.ApplicationInsights;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -165,6 +166,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<WebhookDeliveryService>();
         services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, PaymentFailedNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, PaymentRecoveredNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, SubscriptionPausedNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, PaymentGraceReminderNotificationOutboxMessageHandler>();
+        services.AddScoped<IOutboxDispatchObserver>(sp => new OutboxDispatchTelemetryObserver(
+            sp.GetRequiredService<ILogger<OutboxDispatchTelemetryObserver>>(),
+            sp.GetService<TelemetryClient>()));
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
