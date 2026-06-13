@@ -58,6 +58,34 @@ public sealed class OutboxMessageRepository(AppDbContext db) : IOutboxMessageRep
         return messages;
     }
 
+    public async Task<OutboxMessage?> ClaimByIdAsync(
+        Guid messageId,
+        DateTimeOffset now,
+        string lockedBy,
+        TimeSpan claimLease,
+        CancellationToken ct = default)
+    {
+        var message = await db.OutboxMessages
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == messageId, ct);
+
+        if (message is null ||
+            (message.Status != OutboxMessageStatus.Pending && message.Status != OutboxMessageStatus.Processing) ||
+            message.NextAttemptAt > now ||
+            (message.LockedUntil is not null && message.LockedUntil > now))
+        {
+            return null;
+        }
+
+        message.Status = OutboxMessageStatus.Processing;
+        message.LockedBy = lockedBy;
+        message.LockedUntil = now.Add(claimLease);
+        message.LastAttemptAt = now;
+        message.RowVersion = Guid.NewGuid();
+
+        return message;
+    }
+
     public async Task MarkSentAsync(
         Guid messageId,
         DateTimeOffset now,

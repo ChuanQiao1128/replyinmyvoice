@@ -37,28 +37,71 @@ public sealed class DispatchDueOutboxHandler(
 
         foreach (var message in messages)
         {
-            try
-            {
-                if (!_messageHandlers.TryGetValue(message.MessageType, out var handler))
-                {
-                    throw new InvalidOperationException($"Unsupported outbox message type: {message.MessageType}");
-                }
-
-                await handler.HandleAsync(message, ct);
-                await outboxMessages.MarkSentAsync(message.Id, command.Now, ct);
-                await unitOfWork.SaveChangesAsync(ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                var failure = await outboxMessages.MarkFailedAttemptAsync(message.Id, command.Now, ex.Message, ct);
-                await unitOfWork.SaveChangesAsync(ct);
-                if (failure.Status == ReplyInMyVoice.Domain.Enums.OutboxMessageStatus.Failed)
-                {
-                    await dispatchObserver.OnTerminalFailureAsync(message, ex.Message, ct);
-                }
-            }
+            await DispatchClaimedMessageAsync(message, command.Now, ct);
         }
 
         return messages.Count;
+    }
+
+    public async Task<bool> TryDispatchOneAsync(
+        DispatchOutboxMessageCommand command,
+        CancellationToken ct = default)
+    {
+        var message = await unitOfWork.ExecuteInTransactionAsync(
+            async transactionCt =>
+            {
+                var claimed = await outboxMessages.ClaimByIdAsync(
+                    command.OutboxMessageId,
+                    command.Now,
+                    command.LockedBy,
+                    ClaimLease,
+                    transactionCt);
+                if (claimed is not null)
+                {
+                    await unitOfWork.SaveChangesAsync(transactionCt);
+                }
+
+                return claimed;
+            },
+            IsolationLevel.Serializable,
+            ClaimRaceMaxAttempts,
+            ct);
+
+        if (message is null)
+        {
+            return false;
+        }
+
+        return await DispatchClaimedMessageAsync(message, command.Now, ct);
+    }
+
+    private async Task<bool> DispatchClaimedMessageAsync(
+        ReplyInMyVoice.Domain.Entities.OutboxMessage message,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        try
+        {
+            if (!_messageHandlers.TryGetValue(message.MessageType, out var handler))
+            {
+                throw new InvalidOperationException($"Unsupported outbox message type: {message.MessageType}");
+            }
+
+            await handler.HandleAsync(message, ct);
+            await outboxMessages.MarkSentAsync(message.Id, now, ct);
+            await unitOfWork.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var failure = await outboxMessages.MarkFailedAttemptAsync(message.Id, now, ex.Message, ct);
+            await unitOfWork.SaveChangesAsync(ct);
+            if (failure.Status == ReplyInMyVoice.Domain.Enums.OutboxMessageStatus.Failed)
+            {
+                await dispatchObserver.OnTerminalFailureAsync(message, ex.Message, ct);
+            }
+
+            return false;
+        }
     }
 }

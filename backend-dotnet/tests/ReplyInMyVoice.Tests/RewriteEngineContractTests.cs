@@ -537,7 +537,8 @@ public sealed class RewriteEngineContractTests
                 reservations,
                 credits,
                 outboxMessages,
-                unitOfWork),
+                unitOfWork,
+                new NoopOutboxFastPathDispatcher()),
             new GetRewriteAttemptHandler(rewriteAttempts),
             new GetAccountSummaryHandler(
                 appUsers,

@@ -61,6 +61,7 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<AppStripeReconciliationAlerter>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteEngineClient>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteCostLogger>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IOutboxFastPathDispatcher>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetOrCreateUserHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<FindUserHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetAccountSummaryHandler>().Should().NotBeNull();
@@ -79,6 +80,35 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ReconcileStripeHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ProcessRewriteJobHandler>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_clamps_outbox_fast_path_timeout()
+    {
+        var defaultProvider = BuildProvider([]);
+        var lowProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OUTBOX_FAST_PATH_TIMEOUT_SEC"] = "0",
+        });
+        var highProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OUTBOX_FAST_PATH_TIMEOUT_SEC"] = "90",
+        });
+        var disabledProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OUTBOX_FAST_PATH_ENABLED"] = "false",
+        });
+
+        var defaultOptions = defaultProvider.GetRequiredService<OutboxFastPathOptions>();
+        var lowOptions = lowProvider.GetRequiredService<OutboxFastPathOptions>();
+        var highOptions = highProvider.GetRequiredService<OutboxFastPathOptions>();
+        var disabledOptions = disabledProvider.GetRequiredService<OutboxFastPathOptions>();
+
+        defaultOptions.Enabled.Should().BeTrue();
+        defaultOptions.Timeout.Should().Be(TimeSpan.FromSeconds(5));
+        lowOptions.Timeout.Should().Be(TimeSpan.FromSeconds(1));
+        highOptions.Timeout.Should().Be(TimeSpan.FromSeconds(30));
+        disabledOptions.Enabled.Should().BeFalse();
     }
 
     [Fact]

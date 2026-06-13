@@ -6109,3 +6109,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, provider declaration move files, and this log entry.
 - Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600.
 - Limitations: The .NET restore step emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, schema change, external provider call, deploy, push, PR, or production config change was made.
+
+### 2026-06-13 - system-spec-synthesis - HARD-06 issue #785 outbox fast path
+
+- Agent: Codex worker
+- Trigger: Issue #785 required converting the HARD-06 brief into implementation-ready API/job/data contracts across the rewrite attempt handler, outbox repository, dispatcher, DI, and tests.
+- Action: Opened and followed the project skill as a scope and contract checklist. Read `AGENTS.md`, `CLAUDE.md`, `plans/production-hardening/SPEC.md`, and `plans/production-hardening/issues/HARD-06-outbox-fastpath-dispatch.md`; kept the hook post-commit in `CreateRewriteAttemptHandler`, preserved the external consumer and v1 HTTP contracts, and avoided provider, rewrite-engine, frontend, package, deployment, and migration paths.
+- Output artifacts: `IOutboxFastPathDispatcher`, `DispatchOutboxMessageCommand`, `OutboxFastPathDispatcher`, `ClaimByIdAsync`, `TryDispatchOneAsync`, updated DI registration, updated API and outbox tests, and this log entry.
+- Verification evidence: focused fast-path/API/DI test command passed 15/15; broader backend-focused command passed 73/73; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641.
+- Limitations: The spec was not written as a separate markdown artifact because the issue brief was already the authoritative implementation spec and scope required code/test changes only.
+
+### 2026-06-13 - state-machine-modeling - HARD-06 issue #785 outbox lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #785 changes the outbox message lifecycle by adding a single-message fast-path claim and dispatch route.
+- Action: Opened and followed the project skill to model allowed states and transitions before implementation. Treated `Pending` and expired-lock `Processing` as claimable, `Sent` and future-due rows as non-claimable, active timer locks as non-claimable, successful dispatch as `Sent`, and failed dispatch as `Pending` with backoff or terminal `Failed` through the existing timer discipline.
+- Output artifacts: `OutboxMessageRepository.ClaimByIdAsync`, `DispatchDueOutboxHandler.TryDispatchOneAsync`, `OutboxFastPathDispatchTests`, updated `RewriteApiTests`, and this log entry.
+- Verification evidence: `OutboxFastPathDispatchTests` covered pending-to-sent, active-lock skip, already-sent skip, future-due skip, failure backoff, unknown message type failure, and timer-after-fast-path no redispatch; full Release suite passed 641/641.
+- Limitations: No schema or enum changes were made; this only adds a new claim path over the existing persisted outbox states.
+
+### 2026-06-13 - data-module-review - HARD-06 issue #785 outbox repository
+
+- Agent: Codex worker
+- Trigger: Issue #785 adds a repository primitive and changes persisted outbox row mutation behavior after rewrite-attempt creation.
+- Action: Opened and followed the project skill as a persistence correctness checklist. Read the outbox entity, repository, unit-of-work transaction retry behavior, dispatch handler, and SQLite-backed tests together; implemented `ClaimByIdAsync` as a tracked primary-key lookup with in-memory due/lock/status checks and the same lock, timestamp, and row-version mutation as `ClaimDueAsync`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IOutboxMessageRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/OutboxMessageRepository.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/OutboxFastPathDispatchTests.cs`, and this log entry.
+- Verification evidence: `git diff --check` produced no output; forbidden path check produced no output for provider, rewrite-engine, frontend, package, or migration paths; full Release suite passed 641/641.
+- Limitations: A local commit was attempted but blocked because the git worktree index is outside writable roots. No database migration, destructive data change, secret, deploy, push, or PR action was made.
+
+### 2026-06-13 - resilience-test-generation - HARD-06 issue #785 fast-path failure handling
+
+- Agent: Codex worker
+- Trigger: Issue #785 requires best-effort post-commit dispatch where queue publish, claim, and table failures must not fail the API caller and must preserve timer retry behavior.
+- Action: Opened and followed the project skill as a failure-mode checklist. Added deterministic local tests for publisher failure, unknown outbox message type, active timer lock, already-sent row, future-due retry row, disabled fast path, table-drop claim exception, and timer no-redispatch after fast-path success.
+- Output artifacts: `OutboxFastPathDispatchTests`, new API failure-path test in `RewriteApiTests`, `OutboxFastPathDispatcher`, and this log entry.
+- Verification evidence: focused fast-path/API/DI test command passed 15/15; broader backend-focused command passed 73/73; full Release suite passed 641/641.
+- Limitations: The live p50 latency improvement cannot be measured locally; the implementation emits the required success log line and preserves `SentAt` for post-deploy measurement.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-06 issue #785 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: Issue #785 adds and updates C# xUnit, WebApplicationFactory, DI, repository, and outbox worker/service tests.
+- Action: Opened and followed the project skill for test-level selection. Wrote failing tests before production changes, verified the red stage failed on the missing fast-path API, then implemented production code and updated all direct `CreateRewriteAttemptHandler` test constructions, including the additional `RewriteEngineContractTests` construction present in this branch.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/OutboxFastPathDispatchTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`, `InfrastructureServiceCollectionTests`, five listed helper updates plus the extra contract-test helper update, and this log entry.
+- Verification evidence: red command `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter OutboxFastPathDispatchTests` failed on missing fast-path types; focused implementation command passed 15/15; broader backend-focused command passed 73/73; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641.
+- Limitations: Restore/test emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. Local commit was blocked by the sandboxed git metadata location.
