@@ -1,4 +1,6 @@
 using System.Globalization;
+using Azure.Core;
+using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Microsoft.ApplicationInsights;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +23,7 @@ using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
+using ReplyInMyVoice.Infrastructure.Configuration;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -56,8 +59,7 @@ public static class ServiceCollectionExtensions
 
         services.AddDbContext<AppDbContext>(options =>
         {
-            var connectionString = configuration.GetConnectionString("DefaultConnection")
-                ?? configuration["DATABASE_URL"];
+            var connectionString = SqlConnectionStringResolver.Resolve(configuration);
 
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
@@ -224,12 +226,23 @@ public static class ServiceCollectionExtensions
             ?? configuration["ServiceBus"]
             ?? configuration["SERVICEBUS_CONNECTION_STRING"]
             ?? configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"];
+        var managedIdentityEnabled = ManagedIdentityConfiguration.IsEnabled(configuration);
+        var serviceBusNamespace = ManagedIdentityConfiguration.ResolveServiceBusFullyQualifiedNamespace(configuration);
         var queueName = configuration["ServiceBus:QueueName"]
             ?? configuration["SERVICEBUS_QUEUE_NAME"]
             ?? configuration["AZURE_SERVICE_BUS_QUEUE"]
             ?? "rewrite-jobs";
 
-        if (!string.IsNullOrWhiteSpace(serviceBusConnection))
+        if (managedIdentityEnabled && serviceBusNamespace is not null)
+        {
+            services.AddSingleton<TokenCredential>(_ => new DefaultAzureCredential());
+            services.AddSingleton(sp => new ServiceBusClient(
+                serviceBusNamespace,
+                sp.GetRequiredService<TokenCredential>()));
+            services.AddSingleton(sp => sp.GetRequiredService<ServiceBusClient>().CreateSender(queueName));
+            services.AddSingleton<IRewriteJobPublisher, AzureServiceBusRewriteJobPublisher>();
+        }
+        else if (!string.IsNullOrWhiteSpace(serviceBusConnection))
         {
             services.AddSingleton(_ => new ServiceBusClient(serviceBusConnection));
             services.AddSingleton(sp => sp.GetRequiredService<ServiceBusClient>().CreateSender(queueName));
@@ -410,20 +423,30 @@ public static class ServiceCollectionExtensions
         }
 
         var missing = new List<string>();
+        var managedIdentityEnabled = ManagedIdentityConfiguration.IsEnabled(configuration);
+        var hasManagedIdentitySqlSettings = managedIdentityEnabled &&
+            !string.IsNullOrWhiteSpace(configuration["AZURE_SQL_SERVER"]) &&
+            !string.IsNullOrWhiteSpace(configuration["AZURE_SQL_DATABASE"]);
+        var hasManagedIdentityServiceBusSettings = managedIdentityEnabled &&
+            ManagedIdentityConfiguration.ResolveServiceBusFullyQualifiedNamespace(configuration) is not null;
 
         if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("DefaultConnection")) &&
-            string.IsNullOrWhiteSpace(configuration["DATABASE_URL"]))
+            string.IsNullOrWhiteSpace(configuration["DATABASE_URL"]) &&
+            !hasManagedIdentitySqlSettings)
         {
-            missing.Add("ConnectionStrings:DefaultConnection or DATABASE_URL");
+            missing.Add(
+                "ConnectionStrings:DefaultConnection or DATABASE_URL (or USE_MANAGED_IDENTITY=true with AZURE_SQL_SERVER and AZURE_SQL_DATABASE)");
         }
 
         if (requireServiceBusConsumer &&
             string.IsNullOrWhiteSpace(configuration.GetConnectionString("ServiceBus")) &&
             string.IsNullOrWhiteSpace(configuration["ServiceBus"]) &&
             string.IsNullOrWhiteSpace(configuration["SERVICEBUS_CONNECTION_STRING"]) &&
-            string.IsNullOrWhiteSpace(configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"]))
+            string.IsNullOrWhiteSpace(configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"]) &&
+            !hasManagedIdentityServiceBusSettings)
         {
-            missing.Add("ConnectionStrings:ServiceBus or ServiceBus or SERVICEBUS_CONNECTION_STRING or AZURE_SERVICE_BUS_CONNECTION_STRING");
+            missing.Add(
+                "ConnectionStrings:ServiceBus or ServiceBus or SERVICEBUS_CONNECTION_STRING or AZURE_SERVICE_BUS_CONNECTION_STRING or USE_MANAGED_IDENTITY=true with ServiceBus__fullyQualifiedNamespace or SERVICEBUS_FULLY_QUALIFIED_NAMESPACE");
         }
 
         if (string.IsNullOrWhiteSpace(configuration["STRIPE_SECRET_KEY"]))

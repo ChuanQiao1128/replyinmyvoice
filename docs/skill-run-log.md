@@ -45,6 +45,42 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-13 - cloud-architecture-cost-review - HARD-10 managed identity rollout
+
+- Agent: Codex worker
+- Trigger: GitHub issue #789 changes Azure SQL and Service Bus authentication posture for the Azure Functions backend without executing infrastructure.
+- Action: Opened and followed the skill; reviewed `docs/manual-setup.md`, `docs/next-development-brief.md`, `docs/dotnet-azure-full-run-result.md`, `plans/production-hardening/SPEC.md`, and the HARD-10 issue brief. Recommended option: keep the existing Azure Functions plus Azure SQL plus Service Bus architecture and add reversible, flag-gated Managed Identity wiring at DI/configuration plus an operator runbook. Rejected options: new hosting resources, always-on compute, schema changes, and live infrastructure execution.
+- Output artifacts: `docs/managed-identity-rollout.md`; managed-identity DI/configuration changes under `backend-dotnet/src/ReplyInMyVoice.Infrastructure`; readiness and worker consistency updates.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release` exited 0; `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 654/654; scope checks found no frontend path, migration, or engine/provider file changes; `Azure.Identity` appears only in `ReplyInMyVoice.Infrastructure.csproj`.
+- Limitations: No Azure CLI command, deployment, live role assignment, DNS change, Stripe action, or secret inspection was performed. NuGet advisory metadata lookup emitted NU1900 warnings while build/test commands exited 0.
+
+### 2026-06-13 - system-spec-synthesis - HARD-10 implementation checkpointing
+
+- Agent: Codex worker
+- Trigger: GitHub issue #789 and `plans/production-hardening/issues/HARD-10-managed-identity-sql-servicebus.md` provide architecture and rollout requirements that needed conversion into executable implementation checkpoints.
+- Action: Opened and followed the skill; treated `AGENTS.md`, `CLAUDE.md`, the production-hardening master spec, and the HARD-10 issue brief as source inputs. Implementation checkpoints covered flag parsing, Service Bus namespace precedence, SQL connection-string resolution, runtime validation alternatives, readiness JSON, worker consistency, runbook content, and backend verification.
+- Output artifacts: `ManagedIdentityConfiguration.cs`, `SqlConnectionStringResolver.cs`, Infrastructure DI updates, HealthFunction readiness updates, Worker updates, managed-identity xUnit coverage, and `docs/managed-identity-rollout.md`.
+- Verification evidence: Focused red run failed on the missing managed-identity configuration type; focused final run passed 45/45; full backend suite passed 654/654.
+- Limitations: Did not create a separate design document because the unattended worker instruction identified the issue body and HARD-10 brief as authoritative scope and directed implementation without waiting for approval.
+
+### 2026-06-13 - data-module-review - HARD-10 SQL connection configuration
+
+- Agent: Codex worker
+- Trigger: The issue changes EF Core SQL connection-string resolution and production validation alternatives, without changing schema.
+- Action: Opened and followed the skill; ran `scan_data_risks.py --limit 80`, reviewed the EF registration and validation paths, and checked that the change is limited to connection construction with no tables, migrations, counters, transactions, or persistence invariants modified.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/SqlConnectionStringResolver.cs`; SQL-focused tests in `InfrastructureServiceCollectionTests.cs` and `SqlConnectionStringResolverTests.cs`.
+- Verification evidence: Data risk scan completed and reported existing broad quota/idempotency signals outside this scoped change; scope checks found no files under `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations`; SQL tests assert credential stripping, parsed `SqlAuthenticationMethod.ActiveDirectoryDefault`, malformed-input non-echo, passthrough, and build-from-settings behavior; full backend suite passed 654/654.
+- Limitations: No EF model, migration, production database, data backfill, or live SQL login was changed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-10 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: The issue adds and changes C#/.NET xUnit coverage for Infrastructure DI, SQL connection resolution, Service Bus client selection, Function readiness JSON, and Worker compilation.
+- Action: Opened and followed the skill; wrote the managed-identity tests before production changes, captured the expected red compile state, then implemented the minimal helpers and DI updates to satisfy the tests. Used xUnit, FluentAssertions, SQLite-backed AppDbContext readiness tests, and offline Azure SDK client construction.
+- Output artifacts: `InfrastructureServiceCollectionTests.cs`; `ManagedIdentityConfigurationTests.cs`; `SqlConnectionStringResolverTests.cs`; `HealthFunctionReadinessTests.cs`; related backend source changes.
+- Verification evidence: Initial focused command failed on missing `ReplyInMyVoice.Infrastructure.Configuration.ManagedIdentityConfiguration`; final focused command passed 45/45; `dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release` exited 0; `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 654/654.
+- Limitations: No frontend tests were run because no frontend files changed. Local `git add`/commit was blocked by sandbox permissions on worktree git metadata outside the writable root. No deploy, push, PR, live Azure call, payment action, or secret inspection was performed.
+
 ### 2026-06-13 - resilience-test-generation - HARD-07 provider circuit breaker failures
 
 - Agent: Codex worker

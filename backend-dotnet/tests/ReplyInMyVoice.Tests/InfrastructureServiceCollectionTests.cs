@@ -1,10 +1,12 @@
 using System.Net.Http;
 using System.Reflection;
+using Azure.Messaging.ServiceBus;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
+using Microsoft.Data.SqlClient;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.BillingSupport;
@@ -16,6 +18,7 @@ using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
+using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Resilience;
 using ReplyInMyVoice.Infrastructure.Services;
 using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
@@ -165,6 +168,198 @@ public sealed class InfrastructureServiceCollectionTests
         exception.Message.Should().NotContain("DATABASE_URL");
         exception.Message.Should().NotContain("STRIPE_SECRET_KEY");
         exception.Message.Should().NotContain("SAPLING_API_KEY");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_uses_managed_identity_service_bus_client_when_flag_and_namespace_are_set()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["ServiceBus:fullyQualifiedNamespace"] = "rimv-test.servicebus.windows.net",
+        });
+
+        provider.GetRequiredService<IRewriteJobPublisher>()
+            .Should()
+            .BeOfType<AzureServiceBusRewriteJobPublisher>();
+        provider.GetRequiredService<ServiceBusClient>()
+            .FullyQualifiedNamespace
+            .Should()
+            .Be("rimv-test.servicebus.windows.net");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_prefers_managed_identity_service_bus_over_connection_string_when_flag_is_on()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["ServiceBus:fullyQualifiedNamespace"] = "rimv-test.servicebus.windows.net",
+            ["ConnectionStrings:ServiceBus"] = "Endpoint=sb://other.servicebus.windows.net/;SharedAccessKeyName=x;SharedAccessKey=y",
+        });
+
+        provider.GetRequiredService<IRewriteJobPublisher>()
+            .Should()
+            .BeOfType<AzureServiceBusRewriteJobPublisher>();
+        provider.GetRequiredService<ServiceBusClient>()
+            .FullyQualifiedNamespace
+            .Should()
+            .Be("rimv-test.servicebus.windows.net");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("false")]
+    public void AddReplyInMyVoiceInfrastructure_keeps_connection_string_service_bus_when_managed_identity_flag_is_off(
+        string? flagValue)
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:ServiceBus"] = "Endpoint=sb://other.servicebus.windows.net/;SharedAccessKeyName=x;SharedAccessKey=y",
+        };
+        if (flagValue is not null)
+        {
+            values["USE_MANAGED_IDENTITY"] = flagValue;
+        }
+
+        var provider = BuildProvider(values);
+
+        provider.GetRequiredService<IRewriteJobPublisher>()
+            .Should()
+            .BeOfType<AzureServiceBusRewriteJobPublisher>();
+        provider.GetRequiredService<ServiceBusClient>()
+            .FullyQualifiedNamespace
+            .Should()
+            .Be("other.servicebus.windows.net");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_falls_back_to_connection_string_when_managed_identity_namespace_is_missing()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["ConnectionStrings:ServiceBus"] = "Endpoint=sb://other.servicebus.windows.net/;SharedAccessKeyName=x;SharedAccessKey=y",
+        });
+
+        provider.GetRequiredService<ServiceBusClient>()
+            .FullyQualifiedNamespace
+            .Should()
+            .Be("other.servicebus.windows.net");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_rewrites_sql_connection_for_managed_identity()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["ConnectionStrings:DefaultConnection"] =
+                "Server=localhost;Database=ReplyInMyVoiceTest;User Id=test-user;Password=test-password;TrustServerCertificate=True",
+        });
+
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>();
+        using var db = new AppDbContext(options);
+        var connectionString = db.Database.GetConnectionString();
+        var builder = new SqlConnectionStringBuilder(connectionString);
+
+        builder.Authentication.Should().Be(SqlAuthenticationMethod.ActiveDirectoryDefault);
+        connectionString.Should().Contain("Authentication=ActiveDirectoryDefault");
+        connectionString.Should().NotContain("Password");
+        connectionString.Should().NotContain("User ID");
+        db.Database.CreateExecutionStrategy().GetType().Name.Should().Be("SqlServerRetryingExecutionStrategy");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_builds_sql_connection_from_azure_sql_settings_when_managed_identity_is_on()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["AZURE_SQL_SERVER"] = "rimv-sql.database.windows.net",
+            ["AZURE_SQL_DATABASE"] = "rimv-db",
+        });
+
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>();
+        using var db = new AppDbContext(options);
+        var connectionString = db.Database.GetConnectionString();
+        var builder = new SqlConnectionStringBuilder(connectionString);
+
+        db.Database.IsSqlServer().Should().BeTrue();
+        builder.DataSource.Should().Be("rimv-sql.database.windows.net");
+        builder.InitialCatalog.Should().Be("rimv-db");
+        builder.Authentication.Should().Be(SqlAuthenticationMethod.ActiveDirectoryDefault);
+        builder.Encrypt.ToString().Should().Be("True");
+        builder.ConnectTimeout.Should().Be(30);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_leaves_sql_connection_unchanged_when_managed_identity_flag_is_off()
+    {
+        const string configuredConnectionString =
+            "Server=localhost;Database=ReplyInMyVoiceTest;User Id=test;Password=test;TrustServerCertificate=True";
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "false",
+            ["ConnectionStrings:DefaultConnection"] = configuredConnectionString,
+        });
+
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>();
+        using var db = new AppDbContext(options);
+
+        db.Database.GetConnectionString().Should().Be(configuredConnectionString);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_accepts_managed_identity_service_bus_for_required_consumer_validation()
+    {
+        var values = CompleteProductionConfiguration();
+        values["USE_MANAGED_IDENTITY"] = "true";
+        values["ServiceBus:fullyQualifiedNamespace"] = "rimv-test.servicebus.windows.net";
+
+        var act = () => BuildProvider(
+            values,
+            environmentName: "Production",
+            requireServiceBusConsumer: true);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_accepts_managed_identity_sql_settings_in_production_validation()
+    {
+        var values = CompleteProductionConfiguration();
+        values.Remove("DATABASE_URL");
+        values["USE_MANAGED_IDENTITY"] = "true";
+        values["AZURE_SQL_SERVER"] = "rimv-sql.database.windows.net";
+        values["AZURE_SQL_DATABASE"] = "rimv-db";
+
+        var act = () => BuildProvider(values, environmentName: "Production");
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_reports_managed_identity_setting_names_when_service_bus_is_unconfigured()
+    {
+        var values = CompleteProductionConfiguration();
+        values["USE_MANAGED_IDENTITY"] = "true";
+
+        var act = () => BuildProvider(
+            values,
+            environmentName: "Production",
+            requireServiceBusConsumer: true);
+
+        var exception = act.Should().Throw<InvalidOperationException>().Which;
+        exception.Message.Should().Contain("SERVICEBUS_CONNECTION_STRING");
+        exception.Message.Should().Contain("SERVICEBUS_FULLY_QUALIFIED_NAMESPACE");
+        exception.Message.Should().Contain("ServiceBus__fullyQualifiedNamespace");
+        exception.Message.Should().NotContain("stripe-test-key");
+        exception.Message.Should().NotContain("deepseek-test-key");
+        exception.Message.Should().NotContain("sapling-test-key");
     }
 
     [Theory]
