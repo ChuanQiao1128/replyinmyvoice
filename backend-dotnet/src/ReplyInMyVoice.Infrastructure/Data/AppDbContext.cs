@@ -135,6 +135,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Type).HasMaxLength(160);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(x => x.LastError).HasMaxLength(1000);
+            entity.Property(x => x.PayloadJson).IsRequired(false);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
             entity.HasIndex(x => new { x.Status, x.LockedUntil });
         });

@@ -15,7 +15,9 @@ namespace ReplyInMyVoice.Functions.Functions;
 public sealed class StripeWebhookFunction(
     IConfiguration configuration,
     IHostEnvironment environment,
-    ProcessStripeWebhookHandler processStripeWebhookHandler,
+    IngestStripeWebhookHandler ingestStripeWebhookHandler,
+    ProcessPendingStripeEventsHandler processPendingStripeEventsHandler,
+    StripeEventProcessingOptions stripeEventProcessingOptions,
     ILogger<StripeWebhookFunction> logger)
 {
     [Function("StripeWebhook")]
@@ -115,13 +117,16 @@ public sealed class StripeWebhookFunction(
                 StatusCodes.Status400BadRequest);
         }
 
-        bool processed;
+        StripeWebhookIngestResult ingestResult;
+        var now = DateTimeOffset.UtcNow;
         try
         {
-            processed = await processStripeWebhookHandler.HandleAsync(
-                new ProcessStripeWebhookCommand(
-                    new StripeWebhookPayloadDto(eventId, eventType, rawBody),
-                    DateTimeOffset.UtcNow),
+            ingestResult = await ingestStripeWebhookHandler.HandleAsync(
+                new IngestStripeWebhookCommand(
+                    eventId,
+                    eventType,
+                    rawBody,
+                    now),
                 cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -130,10 +135,47 @@ public sealed class StripeWebhookFunction(
                 ex,
                 "{PaymentObservabilityEvent} Stripe webhook processing failed for correlation {CorrelationId}, event {EventId} of type {EventType}.",
                 "webhook_failed",
-                eventId,
+                requestCorrelationId,
                 eventId,
                 eventType);
             throw;
+        }
+
+        var processed = false;
+        if (ingestResult != StripeWebhookIngestResult.AlreadyProcessed &&
+            stripeEventProcessingOptions.InlineBudgetSeconds > 0)
+        {
+            using var inlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            inlineCts.CancelAfter(TimeSpan.FromSeconds(stripeEventProcessingOptions.InlineBudgetSeconds));
+            try
+            {
+                processed = await processPendingStripeEventsHandler.HandleAsync(
+                    new ProcessPendingStripeEventsCommand(
+                        now,
+                        BatchSize: 1,
+                        eventId),
+                    inlineCts.Token) > 0;
+            }
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(
+                    ex,
+                    "{PaymentObservabilityEvent} Stripe webhook inline processing deferred for correlation {CorrelationId}, event {EventId} of type {EventType}.",
+                    "webhook_inline_deferred",
+                    requestCorrelationId,
+                    eventId,
+                    eventType);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(
+                    ex,
+                    "{PaymentObservabilityEvent} Stripe webhook inline processing deferred for correlation {CorrelationId}, event {EventId} of type {EventType}.",
+                    "webhook_inline_deferred",
+                    requestCorrelationId,
+                    eventId,
+                    eventType);
+            }
         }
 
         return new OkObjectResult(new { received = true, processed });

@@ -11,6 +11,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -335,9 +336,83 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
         (await verifyDb.RewriteCredits.CountAsync()).Should().Be(0);
     }
 
+    [Fact]
+    public async Task Stripe_webhook_returns_200_with_pending_event_when_inline_processing_fails()
+    {
+        const string externalAuthUserId = "clerk_inline_insert_failure";
+        await SeedCreditCheckoutUserAsync(externalAuthUserId);
+        await using (var db = CreateContext())
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TRIGGER RejectRewriteCreditInsert
+                BEFORE INSERT ON RewriteCredits
+                BEGIN
+                    SELECT RAISE(FAIL, 'rewrite credit insert blocked');
+                END;
+                """);
+        }
+
+        var function = CreateFunction();
+        var payload = CreatePaidCheckoutPayload("evt_inline_insert_failure", externalAuthUserId);
+        var before = DateTimeOffset.UtcNow;
+
+        var response = await function.Run(CreateFunctionRequest(payload), CancellationToken.None);
+
+        response.Should().BeOfType<OkObjectResult>();
+        await using var verifyDb = CreateContext();
+        var stored = await verifyDb.StripeEvents.SingleAsync(x => x.EventId == "evt_inline_insert_failure");
+        stored.Status.Should().Be(StripeEventStatus.Pending);
+        stored.AttemptCount.Should().Be(1);
+        stored.LastError.Should().NotBeNullOrWhiteSpace();
+        stored.LockedUntil.Should().BeAfter(before);
+        stored.PayloadJson.Should().Be(payload);
+    }
+
+    [Fact]
+    public async Task Stripe_webhook_defers_processing_when_inline_budget_disabled()
+    {
+        const string externalAuthUserId = "clerk_inline_disabled";
+        await SeedCreditCheckoutUserAsync(externalAuthUserId);
+        var function = CreateFunction(inlineBudgetSeconds: 0);
+        var payload = CreatePaidCheckoutPayload("evt_inline_disabled", externalAuthUserId);
+
+        var response = await function.Run(CreateFunctionRequest(payload), CancellationToken.None);
+
+        response.Should().BeOfType<OkObjectResult>();
+        await using (var pendingDb = CreateContext())
+        {
+            var stored = await pendingDb.StripeEvents.SingleAsync(x => x.EventId == "evt_inline_disabled");
+            stored.Status.Should().Be(StripeEventStatus.Pending);
+            stored.AttemptCount.Should().Be(0);
+            stored.PayloadJson.Should().Be(payload);
+            (await pendingDb.RewriteCredits.CountAsync()).Should().Be(0);
+        }
+
+        await using (var processorDb = CreateContext())
+        {
+            var processor = CreateProcessor(
+                processorDb,
+                new StripeEventProcessingOptions(MaxAttempts: 8, InlineBudgetSeconds: 0));
+            (await processor.HandleAsync(new ProcessPendingStripeEventsCommand(
+                DateTimeOffset.UtcNow,
+                BatchSize: 1,
+                "evt_inline_disabled")))
+                .Should()
+                .Be(1);
+        }
+
+        await using var verifyDb = CreateContext();
+        var processedEvent = await verifyDb.StripeEvents.SingleAsync(x => x.EventId == "evt_inline_disabled");
+        processedEvent.Status.Should().Be(StripeEventStatus.Processed);
+        processedEvent.PayloadJson.Should().BeNull();
+        (await verifyDb.RewriteCredits.CountAsync(x => x.StripeEventId == "evt_inline_disabled")).Should().Be(1);
+    }
+
     private StripeWebhookFunction CreateFunction(
         string environment = "Testing",
-        string? webhookSecret = "whsec_test_secret")
+        string? webhookSecret = "whsec_test_secret",
+        int inlineBudgetSeconds = 8)
     {
         var settings = new Dictionary<string, string?>();
         if (webhookSecret is not null)
@@ -350,18 +425,31 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
                 .AddInMemoryCollection(settings)
                 .Build(),
             new TestHostEnvironment(environment),
-            CreateWebhookHandler(CreateContext()),
+            CreateIngestHandler(CreateContext()),
+            CreateProcessor(
+                CreateContext(),
+                new StripeEventProcessingOptions(MaxAttempts: 8, InlineBudgetSeconds: inlineBudgetSeconds)),
+            new StripeEventProcessingOptions(MaxAttempts: 8, InlineBudgetSeconds: inlineBudgetSeconds),
             NullLogger<StripeWebhookFunction>.Instance);
     }
 
-    private static ProcessStripeWebhookHandler CreateWebhookHandler(AppDbContext db) =>
+    private static IngestStripeWebhookHandler CreateIngestHandler(AppDbContext db) =>
+        new(new StripeEventRepository(db), new UnitOfWork(db));
+
+    private static ProcessPendingStripeEventsHandler CreateProcessor(
+        AppDbContext db,
+        StripeEventProcessingOptions options) =>
         new(
             new StripeEventRepository(db),
-            new AppUserRepository(db),
+            new StripeEventPayloadSynchronizer(
+                new AppUserRepository(db),
+                new RewriteCreditRepository(db),
+                new StripeInvoiceRepository(db),
+                new OutboxMessageRepository(db)),
             new RewriteCreditRepository(db),
-            new StripeInvoiceRepository(db),
-            new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            options,
+            NullLogger<ProcessPendingStripeEventsHandler>.Instance);
 
     private AppDbContext CreateContext()
     {

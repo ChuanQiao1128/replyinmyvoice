@@ -6109,3 +6109,57 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, provider declaration move files, and this log entry.
 - Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600.
 - Limitations: The .NET restore step emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, schema change, external provider call, deploy, push, PR, or production config change was made.
+
+### 2026-06-13 - cloud-architecture-cost-review - HARD-03 issue #782 webhook background processing
+
+- Agent: Codex worker
+- Trigger: Issue #782 adds timer-driven Stripe event processing on Azure Functions and changes webhook retry ownership.
+- Action: Opened and followed the project fallback skill as an architecture/cost gate. Confirmed the required option stays on the existing Azure Functions app with a 15-second timer trigger and no new paid resource type; rejected adding an always-on worker or new queue as outside scope and higher fixed-cost risk.
+- Output artifacts: implementation stayed within existing Functions/API/Application/Infrastructure projects; no cloud provisioning artifact was added.
+- Verification evidence: read `plans/production-hardening/SPEC.md`, `plans/production-hardening/issues/HARD-03-webhook-ingest-then-process.md`, and the skill; Docker daemon check showed the local SQL Server container gate could not run because Docker was not running.
+- Limitations: No exact cloud pricing lookup was needed because no new service or tier was selected. No deploy, Azure resource creation, DNS, live payment, secret, or production config change was made.
+
+### 2026-06-13 - system-spec-synthesis - HARD-03 issue #782 implementation contract
+
+- Agent: Codex worker
+- Trigger: Issue #782 and the HARD-03 brief convert webhook behavior into an ingest row, processor job, retry lifecycle, and additive migration contract.
+- Action: Opened and followed the skill as an implementation-spec checklist after reading `AGENTS.md`, `CLAUDE.md`, production-hardening master spec, and the HARD-03 brief. Converted the brief into scoped components: ingest command/handler, processor command/handler, payload synchronizer, timer function, HTTP inline fast path, options record, repository claim primitive, additive migration, and backend tests.
+- Output artifacts: `IngestStripeWebhookHandler`, `ProcessPendingStripeEventsHandler`, `StripeEventPayloadSynchronizer`, `StripeEventProcessorTimerFunction`, `StripeEventProcessingOptions`, updated webhook routes, migration files, and test updates.
+- Verification evidence: focused Stripe/DI suite passed 62/62; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 638/638; one-migration SQL script generation produced only `ALTER TABLE [StripeEvents] ADD [PayloadJson] nvarchar(max) NULL` plus migration-history bookkeeping.
+- Limitations: The local SQL Server container gate could not run because Docker daemon was unavailable. The first EF migration attempt via the API startup timed out after five minutes and wrote a duplicate migration; the duplicate timestamp was deleted, and the retained migration was generated through the Infrastructure design-time factory and inspected.
+
+### 2026-06-13 - state-machine-modeling - HARD-03 issue #782 Stripe event lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #782 changes the persisted Stripe event lifecycle from synchronous Processing/Processed/Failed to durable Pending, leased Processing, Processed, and terminal Failed.
+- Action: Opened and followed the skill before implementation. Modeled states, events, transitions, invariants, illegal transitions, persistence implications, and tests: invalid signatures create no row; new valid delivery creates Pending with payload; due Pending or expired Processing lease claims to Processing and increments attempts; success reaches Processed and scrubs payload; transient sync failure returns to Pending with backoff; max attempts or missing payload reaches terminal Failed; processed redelivery is ignored; active Processing lease is not claimed; fresh delivery re-arms Pending/Failed by clearing backoff.
+- Output artifacts: `StripeEventStatus.Pending`, `StripeEvent.PayloadJson`, repository `ClaimDueAsync`/`MarkRetryScheduled`, ingest/processor handlers, timer function, updated API/Functions webhook flow, and lifecycle tests in `StripeEventProcessingUseCaseTests`.
+- Verification evidence: focused lifecycle/API tests passed 62/62; full backend suite passed 638/638; duplicate processed webhook test still returns `processed:false` and one event row.
+- Limitations: Strict per-customer ordering remains out of scope per HARD-03; processing uses CreatedAt order and existing idempotency/state sync backstops.
+
+### 2026-06-13 - data-module-review - HARD-03 issue #782 StripeEvents persistence
+
+- Agent: Codex worker
+- Trigger: Issue #782 changes EF Core entity shape, migration, repository transactions, idempotency rows, and retry persistence.
+- Action: Opened and followed the skill for data invariants. Reviewed `StripeEvent`, `AppDbContext`, migrations, `StripeEventRepository`, `RewriteCreditRepository`, unit-of-work retry behavior, outbox claim pattern, and SQLite test fixtures. Kept the migration additive, preserved the `StripeEvents.EventId` key, reused `(Status, LockedUntil)`, added SQLite in-memory date filtering for claims, refreshed locally tracked StripeEvent rows before state decisions, and kept checkout credit uniqueness as the idempotency backstop.
+- Output artifacts: nullable `PayloadJson`, one-operation migration `20260613030348_AddStripeEventPayloadJson`, updated snapshot, repository claim/retry methods, and tests for idempotent ingest, stale lease reclaim, unique credit conflict, and payload scrubbing.
+- Verification evidence: migration file scan returned only `AddColumn`; one-migration SQL script showed `ALTER TABLE [StripeEvents] ADD [PayloadJson] nvarchar(max) NULL`; focused tests passed 62/62; full backend suite passed 638/638.
+- Limitations: Docker daemon was unavailable, so the SQL Server container migration apply gate could not be run locally. No retention purge for old terminal Failed payloads was added because HARD-03 lists it as adjacent work.
+
+### 2026-06-13 - resilience-test-generation - HARD-03 issue #782 webhook retry behavior
+
+- Agent: Codex worker
+- Trigger: Issue #782 changes Stripe webhook replay, inline processing failure handling, retry backoff, stale lease recovery, poisoned terminal failure, malformed/missing payload handling, and duplicate events.
+- Action: Opened and followed the skill as a failure-matrix checklist. Added tests at the lowest useful level: SQLite-backed use-case tests for ingest, retry, stale lease, payload missing, batch ordering, and checkout unique conflict; Functions API tests for signature rejection side effects, inline failure 200/Pending, inline disabled deferral, and duplicate processed response.
+- Output artifacts: `StripeEventProcessingUseCaseTests`, updates to `StripeEventUseCaseTests`, `StripeWebhookApiTests`, processor failure handling, and structured poison/deferred logs.
+- Verification evidence: TDD red phase first failed on missing new handler/options types; focused Stripe/DI suite later passed 62/62; full backend suite passed 638/638; restricted source-wording scan over changed non-deleted files produced no output.
+- Limitations: No live Stripe, Azure, email, or production database endpoint was called. Docker SQL Server gate could not run because the daemon was unavailable.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-03 issue #782 backend tests
+
+- Agent: Codex worker
+- Trigger: Issue #782 requires C# xUnit/EF SQLite/Webhook tests and full backend suite verification for the Stripe webhook ingest-then-process split.
+- Action: Opened and followed the project skill for test-level selection. Wrote failing tests before production code, using real repositories, `DbFixture`, SQLite triggers for write failure, and Functions-host request helpers. Updated legacy Stripe use-case tests to round-trip through raw JSON ingest and process-single-event helper, including both orphan replay intermediate Pending assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventProcessingUseCaseTests.cs`, updates to `StripeEventUseCaseTests.cs`, `StripeWebhookApiTests.cs`, `InfrastructureServiceCollectionTests.cs`, and this log entry.
+- Verification evidence: first focused run failed on missing new types; focused Stripe/DI command passed 62/62 after implementation; `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 638/638.
+- Limitations: Restore/build/test emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but all builds and tests completed. No frontend files changed, so npm gates were not run.

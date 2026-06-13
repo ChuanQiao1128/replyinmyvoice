@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
@@ -161,7 +162,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SendCreditExpiryRemindersHandler>();
         services.AddScoped<ProcessRewriteJobHandler>();
         services.AddScoped<TryMarkStripeEventProcessedHandler>();
-        services.AddScoped<ProcessStripeWebhookHandler>();
+        services.AddScoped<IngestStripeWebhookHandler>();
+        services.AddScoped<ProcessPendingStripeEventsHandler>();
+        services.AddScoped<StripeEventPayloadSynchronizer>();
         services.AddScoped<ProcessExpiredPaymentGraceHandler>();
         services.AddScoped<ProcessPaymentGraceRemindersHandler>();
         services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
@@ -178,6 +181,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
+        services.AddSingleton(ReadStripeEventProcessingOptions(configuration));
         services.AddSingleton(ReadProviderCircuitBreakerOptions(configuration));
         services.TryAddSingleton<IProviderResilienceEvents, NoOpProviderResilienceEvents>();
         services.AddSingleton(sp => new ProviderCircuitBreakerRegistry(
@@ -340,6 +344,11 @@ public static class ServiceCollectionExtensions
             ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_MIN_SAMPLES", 8),
             ReadFailureRatio(configuration, "PROVIDER_CIRCUIT_FAILURE_RATIO", 0.5));
 
+    private static StripeEventProcessingOptions ReadStripeEventProcessingOptions(IConfiguration configuration) =>
+        new(
+            ReadBoundedInt(configuration, "STRIPE_EVENT_MAX_ATTEMPTS", defaultValue: 8, minimum: 1, maximum: 50),
+            ReadBoundedInt(configuration, "STRIPE_WEBHOOK_INLINE_BUDGET_SEC", defaultValue: 8, minimum: 0, maximum: 20));
+
     private static int ReadPositiveInt(IConfiguration configuration, string name, int defaultValue) =>
         int.TryParse(
             configuration[name],
@@ -348,6 +357,25 @@ public static class ServiceCollectionExtensions
             out var parsed) && parsed >= 1
             ? parsed
             : defaultValue;
+
+    private static int ReadBoundedInt(
+        IConfiguration configuration,
+        string name,
+        int defaultValue,
+        int minimum,
+        int maximum)
+    {
+        if (!int.TryParse(
+                configuration[name],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var parsed))
+        {
+            return defaultValue;
+        }
+
+        return Math.Clamp(parsed, minimum, maximum);
+    }
 
     private static double ReadFailureRatio(IConfiguration configuration, string name, double defaultValue) =>
         double.TryParse(

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.BillingSupport;
@@ -79,6 +80,10 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ReconcileStripeHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ProcessRewriteJobHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IngestStripeWebhookHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ProcessPendingStripeEventsHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<StripeEventPayloadSynchronizer>().Should().NotBeNull();
+        provider.GetRequiredService<StripeEventProcessingOptions>().Should().NotBeNull();
     }
 
     [Fact]
