@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Entities;
@@ -12,11 +13,16 @@ public sealed class ProcessStripeWebhookHandler(
     IRewriteCreditRepository credits,
     IStripeInvoiceRepository invoices,
     IOutboxMessageRepository outboxMessages,
+    IAdminUserRepository adminUsers,
     IUnitOfWork unitOfWork)
 {
     private const int DefaultPaymentGraceDays = 7;
     private const int PaymentGraceReminderElapsedDays = 5;
     private const int PaymentGraceReminderRemainingDays = 2;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     public async Task<bool> HandleAsync(
         ProcessStripeWebhookCommand command,
@@ -87,10 +93,16 @@ public sealed class ProcessStripeWebhookHandler(
                 await SyncCheckoutSessionAsync(payload, now, ct),
             "invoice.payment_failed" =>
                 await SyncInvoicePaymentFailedAsync(payload, now, ct),
+            "invoice.payment_action_required" =>
+                await SyncInvoicePaymentActionRequiredAsync(payload, now, ct),
             "invoice.payment_succeeded" =>
                 await SyncInvoicePaymentSucceededAsync(payload, now, ct),
             "invoice.paid" or "invoice.finalized" =>
                 await SyncStripeInvoiceAsync(payload, now, ct),
+            "customer.deleted" =>
+                await SyncCustomerDeletedAsync(payload, now, ct),
+            "customer.source.expiring" =>
+                await SyncCustomerSourceExpiringAsync(payload, now, ct),
             "charge.refunded" =>
                 await RevokeRefundedChargeCreditsAsync(payload.Object, ct),
             "charge.dispute.created" or "charge.dispute.closed" =>
@@ -200,6 +212,60 @@ public sealed class ProcessStripeWebhookHandler(
         return null;
     }
 
+    private async Task<string?> SyncInvoicePaymentActionRequiredAsync(
+        StripeWebhookPayloadDto payload,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var stripeObject = payload.Object;
+        var customerId = Normalize(stripeObject.CustomerId);
+        var subscriptionId = Normalize(stripeObject.SubscriptionId);
+        if (string.IsNullOrWhiteSpace(customerId) && string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return null;
+        }
+
+        var user = await appUsers.FindByStripeCustomerOrSubscriptionAsync(customerId, subscriptionId, ct);
+        if (user is null)
+        {
+            return $"No matching user for Stripe invoice payment_action_required customer {customerId ?? "unknown"} subscription {subscriptionId ?? "unknown"}.";
+        }
+
+        var invoiceSyncFailure = await UpsertStripeInvoiceAsync(
+            user,
+            "invoice.payment_action_required",
+            stripeObject,
+            now,
+            ct);
+        if (invoiceSyncFailure is not null)
+        {
+            return invoiceSyncFailure;
+        }
+
+        user.StripeCustomerId = customerId ?? user.StripeCustomerId;
+        user.StripeSubscriptionId = subscriptionId ?? user.StripeSubscriptionId;
+        if (subscriptionId is not null &&
+            !string.Equals(Normalize(stripeObject.BillingReason), "subscription_create", StringComparison.OrdinalIgnoreCase))
+        {
+            user.SubscriptionStatus = SubscriptionStatus.PastDue;
+            user.PaymentFailedAt ??= now;
+            user.PaymentGraceEndsAt ??= ResolvePaymentGraceEndsAt(stripeObject, user.CurrentPeriodEnd, now);
+        }
+
+        user.UpdatedAt = now;
+        user.RowVersion = Guid.NewGuid();
+        await outboxMessages.AddAsync(
+            StripeNotificationOutboxMessageFactory.CreatePaymentActionRequired(
+                user.Id,
+                Normalize(stripeObject.Id),
+                Normalize(stripeObject.HostedInvoiceUrl),
+                now,
+                payload.EventId),
+            ct);
+
+        return null;
+    }
+
     private async Task<string?> SyncInvoicePaymentSucceededAsync(
         StripeWebhookPayloadDto payload,
         DateTimeOffset now,
@@ -277,6 +343,88 @@ public sealed class ProcessStripeWebhookHandler(
         }
 
         return await UpsertStripeInvoiceAsync(user, payload.Type, payload.Object, now, ct);
+    }
+
+    private async Task<string?> SyncCustomerDeletedAsync(
+        StripeWebhookPayloadDto payload,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var customerId = Normalize(payload.Object.Id);
+        if (customerId is null)
+        {
+            return null;
+        }
+
+        var user = await appUsers.GetByStripeCustomerIdAsync(customerId, ct);
+        if (user is null)
+        {
+            return null;
+        }
+
+        var previousCustomerId = user.StripeCustomerId;
+        var previousSubscriptionId = user.StripeSubscriptionId;
+        var previousStatus = user.SubscriptionStatus;
+
+        user.StripeCustomerId = null;
+        user.StripeSubscriptionId = null;
+        user.SubscriptionStatus = SubscriptionStatus.Inactive;
+        ClearPaymentGrace(user);
+        user.UpdatedAt = now;
+        user.RowVersion = Guid.NewGuid();
+
+        await adminUsers.AddAuditLogAsync(new AdminAuditLog
+        {
+            AdminExternalAuthUserId = "system:stripe-webhook",
+            AdminEmail = "system@replyinmyvoice.com",
+            Action = "stripe.customer.deleted",
+            TargetUserId = user.Id,
+            DetailsJson = JsonSerializer.Serialize(
+                new
+                {
+                    stripeEventId = payload.EventId,
+                    stripeCustomerId = previousCustomerId,
+                    stripeSubscriptionId = previousSubscriptionId,
+                    previousSubscriptionStatus = previousStatus.ToString(),
+                },
+                JsonOptions),
+            CreatedAt = now,
+        }, ct);
+
+        return null;
+    }
+
+    private async Task<string?> SyncCustomerSourceExpiringAsync(
+        StripeWebhookPayloadDto payload,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var stripeObject = payload.Object;
+        var customerId = Normalize(stripeObject.CustomerId);
+        if (customerId is null)
+        {
+            return null;
+        }
+
+        var user = await appUsers.GetByStripeCustomerIdAsync(customerId, ct);
+        if (user is null ||
+            user.SubscriptionStatus is not (SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue))
+        {
+            return null;
+        }
+
+        await outboxMessages.AddAsync(
+            StripeNotificationOutboxMessageFactory.CreateCardExpiring(
+                user.Id,
+                Normalize(stripeObject.CardBrand),
+                Normalize(stripeObject.CardLast4),
+                stripeObject.CardExpMonth,
+                stripeObject.CardExpYear,
+                now,
+                payload.EventId),
+            ct);
+
+        return null;
     }
 
     private async Task<string?> SyncSubscriptionObjectAsync(

@@ -237,6 +237,63 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Run_signed_payment_action_required_event_returns_processed_and_enqueues_notification()
+    {
+        const string webhookSecret = "whsec_test_secret";
+        var userId = Guid.NewGuid();
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "clerk_signed_action_required",
+                Email = "signed-action-required@example.com",
+                StripeCustomerId = "cus_signed_action_required",
+                StripeSubscriptionId = "sub_signed_action_required",
+                SubscriptionStatus = SubscriptionStatus.Active,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var function = CreateFunction("Production", webhookSecret);
+        var payload = JsonSerializer.Serialize(new
+        {
+            id = "evt_signed_action_required",
+            @object = "event",
+            api_version = "2025-08-27.basil",
+            request = (string?)null,
+            type = "invoice.payment_action_required",
+            data = new
+            {
+                @object = new
+                {
+                    id = "in_signed_action_required",
+                    @object = "invoice",
+                    customer = "cus_signed_action_required",
+                    subscription = "sub_signed_action_required",
+                    billing_reason = "subscription_cycle",
+                    hosted_invoice_url = "https://billing.test/in_signed_action_required",
+                    amount_due = 900,
+                    amount_paid = 0,
+                    currency = "nzd"
+                }
+            }
+        });
+
+        var response = await function.Run(CreateSignedFunctionRequest(payload, webhookSecret), CancellationToken.None);
+
+        var ok = response.Should().BeOfType<OkObjectResult>().Subject;
+        JsonSerializer.Serialize(ok.Value).Should().Contain("\"processed\":true");
+        await using var verifyDb = CreateContext();
+        var outbox = await verifyDb.OutboxMessages.SingleAsync();
+        outbox.MessageType.Should().Be(StripeNotificationOutboxMessageTypes.PaymentActionRequired);
+        outbox.CorrelationId.Should().Be("evt_signed_action_required");
+        outbox.PayloadJson.Should().Contain(userId.ToString());
+    }
+
+    [Fact]
     public async Task Stripe_webhook_rejects_wrong_secret_signature_in_production_without_persisting_event_or_grant()
     {
         const string webhookSecret = "whsec_test_secret";
@@ -361,6 +418,7 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
             new RewriteCreditRepository(db),
             new StripeInvoiceRepository(db),
             new OutboxMessageRepository(db),
+            new AdminUserRepository(db),
             new UnitOfWork(db));
 
     private AppDbContext CreateContext()

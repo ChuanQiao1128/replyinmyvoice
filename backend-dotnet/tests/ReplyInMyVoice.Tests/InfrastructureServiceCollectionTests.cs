@@ -97,6 +97,8 @@ public sealed class InfrastructureServiceCollectionTests
             StripeNotificationOutboxMessageTypes.PaymentRecovered,
             StripeNotificationOutboxMessageTypes.SubscriptionPaused,
             StripeNotificationOutboxMessageTypes.PaymentGraceReminder,
+            StripeNotificationOutboxMessageTypes.PaymentActionRequired,
+            StripeNotificationOutboxMessageTypes.CardExpiring,
         ]);
         handlers.Select(x => x.MessageType).Should().OnlyHaveUniqueItems();
         scopedProvider.GetRequiredService<IOutboxDispatchObserver>().Should().NotBeNull();

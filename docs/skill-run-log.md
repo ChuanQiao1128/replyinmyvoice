@@ -6109,3 +6109,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, provider declaration move files, and this log entry.
 - Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600.
 - Limitations: The .NET restore step emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, schema change, external provider call, deploy, push, PR, or production config change was made.
+
+### 2026-06-13 - state-machine-modeling - HARD-04 issue #783 Stripe lifecycle events
+
+- Agent: Codex worker
+- Trigger: Issue #783 changes subscription, grace-window, Stripe webhook inbox, and outbox notification lifecycle behavior for `invoice.payment_action_required`, `customer.deleted`, and `customer.source.expiring`.
+- Action: Opened and followed the project skill before editing. Modeled the affected states as `Active` / `Trialing` / `PastDue` / `Inactive`, with duplicate event IDs treated as no-op replay, renewal action-required events moving to `PastDue` without restarting existing grace timestamps, initial subscription-create action-required events notifying without grace mutation, customer deletion as terminal unlink to `Inactive`, and card expiry as notification-only for recurring statuses.
+- Output artifacts: `ProcessStripeWebhookHandler` transition branches, `StripeEventUseCaseTests` lifecycle tests, and this log entry.
+- Verification evidence: initial focused use-case tests failed against current behavior, then focused backend coverage passed 79/79; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 645/645.
+- Limitations: No live Stripe endpoint configuration was changed; enabling the new event types remains an owner/ops step outside this worker issue.
+
+### 2026-06-13 - data-module-review - HARD-04 issue #783 Stripe persistence invariants
+
+- Agent: Codex worker
+- Trigger: Issue #783 mutates EF-backed `AppUser`, `StripeInvoice`, `OutboxMessage`, `StripeEvent`, and `AdminAuditLog` rows without a schema migration.
+- Action: Opened and followed the project skill as a persistence checklist. Kept all writes inside the existing `ProcessStripeWebhookHandler` unit-of-work transaction, reused the Stripe event inbox as the idempotency boundary, reused the existing outbox table and dispatcher, added no EF model or migration changes, and asserted persisted final state rather than only handler return values.
+- Output artifacts: DTO parsing additions, webhook processor persistence changes, outbox payload factory additions, admin audit write for customer deletion, and data-state assertions in `StripeEventUseCaseTests`.
+- Verification evidence: migration diff check produced no changed files under `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/`; `.github/workflows/dotnet-azure.yml` diff check produced no output; full backend Release suite passed 645/645.
+- Limitations: The two new Stripe notification handlers were added to the repo's existing consolidated Stripe outbox handler file instead of creating separate handler files, because HARD-02 had already centralized these handlers there.
+
+### 2026-06-13 - resilience-test-generation - HARD-04 issue #783 webhook replay and outbox recovery
+
+- Agent: Codex worker
+- Trigger: Issue #783 requires duplicate webhook replay protection, failed orphan-event replay, and outbox dispatcher retry behavior for new Stripe notification messages.
+- Action: Opened and followed the project skill as a failure-mode checklist. Added tests for duplicate event no-op, unknown user failure followed by successful replay, second distinct `customer.deleted` after unlink, skipped card-expiry notification for inactive users, explicit-ignore events with no side effects, dispatcher success for both new message types, missing-user outbox completion, and invalid-payload retry with `AttemptCount` / `LastError`.
+- Output artifacts: `StripeEventUseCaseTests`, `StripeNotificationOutboxHandlerTests`, `StripeWebhookApiTests`, and this log entry.
+- Verification evidence: focused backend command first failed on missing behavior, then passed 79/79; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 645/645.
+- Limitations: Tests use local SQLite-backed repositories and hand-written fakes only; no live Stripe, email provider, Azure, or external service was called.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-04 issue #783 backend acceptance tests
+
+- Agent: Codex worker
+- Trigger: Issue #783 adds C#/.NET webhook, notifier, outbox dispatcher, signed HTTP webhook, and DI-registration test coverage.
+- Action: Opened and followed the project skill for test-level selection. Added xUnit coverage using existing `DbFixture`, real repositories, `ProcessStripeWebhookHandler`, `StripeWebhookFunction`, `DispatchDueOutboxHandler`, and deterministic notification/billing fakes; updated pinned infrastructure registration expectations.
+- Output artifacts: `StripeEventUseCaseTests`, `StripeNotificationOutboxHandlerTests`, `StripeEventNotifierTests`, `StripeWebhookApiTests`, `InfrastructureServiceCollectionTests`, and this log entry.
+- Verification evidence: targeted Release test command passed 79/79; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 645/645; `git diff --check` produced no output; restricted wording scans produced no output.
+- Limitations: Restore emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. A local commit was attempted and blocked because the git worktree index is under `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-783`, outside writable roots. No deploy, push, PR, migration, payment secret, or live billing action was performed.

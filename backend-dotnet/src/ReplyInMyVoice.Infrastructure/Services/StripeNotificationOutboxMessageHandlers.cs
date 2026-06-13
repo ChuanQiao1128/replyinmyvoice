@@ -35,10 +35,13 @@ internal abstract class StripeNotificationOutboxMessageHandlerBase(
             return;
         }
 
-        await NotifyAsync(user, ct);
+        await NotifyAsync(user, payload, ct);
     }
 
-    protected abstract Task NotifyAsync(AppUser user, CancellationToken ct);
+    protected abstract Task NotifyAsync(
+        AppUser user,
+        StripeNotificationOutboxPayload payload,
+        CancellationToken ct);
 }
 
 internal sealed class PaymentFailedNotificationOutboxMessageHandler(
@@ -48,7 +51,10 @@ internal sealed class PaymentFailedNotificationOutboxMessageHandler(
 {
     public override string MessageType => StripeNotificationOutboxMessageTypes.PaymentFailed;
 
-    protected override Task NotifyAsync(AppUser user, CancellationToken ct) =>
+    protected override Task NotifyAsync(
+        AppUser user,
+        StripeNotificationOutboxPayload payload,
+        CancellationToken ct) =>
         Notifier.EnqueueFailedPaymentNotificationAsync(user, ct);
 }
 
@@ -59,7 +65,10 @@ internal sealed class PaymentRecoveredNotificationOutboxMessageHandler(
 {
     public override string MessageType => StripeNotificationOutboxMessageTypes.PaymentRecovered;
 
-    protected override Task NotifyAsync(AppUser user, CancellationToken ct) =>
+    protected override Task NotifyAsync(
+        AppUser user,
+        StripeNotificationOutboxPayload payload,
+        CancellationToken ct) =>
         Notifier.EnqueuePaymentRecoveredNotificationAsync(user, ct);
 }
 
@@ -70,7 +79,10 @@ internal sealed class SubscriptionPausedNotificationOutboxMessageHandler(
 {
     public override string MessageType => StripeNotificationOutboxMessageTypes.SubscriptionPaused;
 
-    protected override Task NotifyAsync(AppUser user, CancellationToken ct) =>
+    protected override Task NotifyAsync(
+        AppUser user,
+        StripeNotificationOutboxPayload payload,
+        CancellationToken ct) =>
         Notifier.EnqueueSubscriptionPausedNotificationAsync(user, ct);
 }
 
@@ -81,6 +93,43 @@ internal sealed class PaymentGraceReminderNotificationOutboxMessageHandler(
 {
     public override string MessageType => StripeNotificationOutboxMessageTypes.PaymentGraceReminder;
 
-    protected override Task NotifyAsync(AppUser user, CancellationToken ct) =>
+    protected override Task NotifyAsync(
+        AppUser user,
+        StripeNotificationOutboxPayload payload,
+        CancellationToken ct) =>
         Notifier.EnqueuePaymentGraceReminderNotificationAsync(user, ct);
+}
+
+internal sealed class StripePaymentActionRequiredOutboxMessageHandler(
+    IAppUserRepository appUsers,
+    IStripeEventNotifier notifier)
+    : StripeNotificationOutboxMessageHandlerBase(appUsers, notifier)
+{
+    public override string MessageType => StripeNotificationOutboxMessageTypes.PaymentActionRequired;
+
+    protected override Task NotifyAsync(
+        AppUser user,
+        StripeNotificationOutboxPayload payload,
+        CancellationToken ct) =>
+        Notifier.EnqueuePaymentActionRequiredNotificationAsync(user, payload.HostedInvoiceUrl, ct);
+}
+
+internal sealed class StripeCardExpiringOutboxMessageHandler(
+    IAppUserRepository appUsers,
+    IStripeEventNotifier notifier)
+    : StripeNotificationOutboxMessageHandlerBase(appUsers, notifier)
+{
+    public override string MessageType => StripeNotificationOutboxMessageTypes.CardExpiring;
+
+    protected override Task NotifyAsync(
+        AppUser user,
+        StripeNotificationOutboxPayload payload,
+        CancellationToken ct) =>
+        Notifier.EnqueueCardExpiringNotificationAsync(
+            user,
+            payload.Brand,
+            payload.Last4,
+            payload.ExpMonth,
+            payload.ExpYear,
+            ct);
 }

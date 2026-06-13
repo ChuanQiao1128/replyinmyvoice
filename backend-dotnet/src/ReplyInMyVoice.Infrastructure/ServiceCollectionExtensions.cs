@@ -172,6 +172,8 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IOutboxMessageHandler, PaymentRecoveredNotificationOutboxMessageHandler>();
         services.AddTransient<IOutboxMessageHandler, SubscriptionPausedNotificationOutboxMessageHandler>();
         services.AddTransient<IOutboxMessageHandler, PaymentGraceReminderNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, StripePaymentActionRequiredOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, StripeCardExpiringOutboxMessageHandler>();
         services.AddScoped<IOutboxDispatchObserver>(sp => new OutboxDispatchTelemetryObserver(
             sp.GetRequiredService<ILogger<OutboxDispatchTelemetryObserver>>(),
             sp.GetService<TelemetryClient>()));
