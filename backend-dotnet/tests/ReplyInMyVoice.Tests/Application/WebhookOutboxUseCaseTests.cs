@@ -241,8 +241,9 @@ public sealed class WebhookOutboxUseCaseTests
         var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
         await SeedOutboxAsync(fixture, Guid.NewGuid(), now);
         var outboxHandler = new RecordingOutboxMessageHandler("RewriteJobCreated", fail: true);
+        var observer = new RecordingOutboxDispatchObserver();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateOutboxHandler(handlerDb, outboxHandler);
+        var handler = CreateOutboxHandler(handlerDb, observer, outboxHandler);
 
         var dispatched = await handler.HandleAsync(
             new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
@@ -258,6 +259,7 @@ public sealed class WebhookOutboxUseCaseTests
         outbox.LockedBy.Should().BeNull();
         outbox.LockedUntil.Should().BeNull();
         outbox.SentAt.Should().BeNull();
+        observer.Failures.Should().BeEmpty();
     }
 
     [Fact]
@@ -272,8 +274,9 @@ public sealed class WebhookOutboxUseCaseTests
             attemptCount: 9,
             maxAttempts: 10);
         var outboxHandler = new RecordingOutboxMessageHandler("RewriteJobCreated", fail: true);
+        var observer = new RecordingOutboxDispatchObserver();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateOutboxHandler(handlerDb, outboxHandler);
+        var handler = CreateOutboxHandler(handlerDb, observer, outboxHandler);
 
         var dispatched = await handler.HandleAsync(
             new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
@@ -287,6 +290,10 @@ public sealed class WebhookOutboxUseCaseTests
         outbox.LastError.Should().Contain("handler failed");
         outbox.LockedBy.Should().BeNull();
         outbox.LockedUntil.Should().BeNull();
+        var failure = observer.Failures.Should().ContainSingle().Subject;
+        failure.MessageId.Should().Be(outbox.Id);
+        failure.MessageType.Should().Be("RewriteJobCreated");
+        failure.Error.Should().Contain("handler failed");
     }
 
     [Fact]
@@ -336,9 +343,16 @@ public sealed class WebhookOutboxUseCaseTests
     private static DispatchDueOutboxHandler CreateOutboxHandler(
         ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
         params IOutboxMessageHandler[] handlers) =>
+        CreateOutboxHandler(db, new RecordingOutboxDispatchObserver(), handlers);
+
+    private static DispatchDueOutboxHandler CreateOutboxHandler(
+        ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
+        IOutboxDispatchObserver observer,
+        params IOutboxMessageHandler[] handlers) =>
         new(
             new OutboxMessageRepository(db),
             handlers,
+            observer,
             new UnitOfWork(db));
 
     private static async Task<Guid> SeedWebhookDeliveryAsync(
@@ -521,5 +535,23 @@ internal sealed class BlockingOutboxMessageHandler(string messageType) : Recordi
             _firstHandleStarted.TrySetResult();
             await _releaseFirstHandle.Task.WaitAsync(ct);
         }
+    }
+}
+
+internal sealed record OutboxDispatchFailure(Guid MessageId, string MessageType, string Error);
+
+internal sealed class RecordingOutboxDispatchObserver : IOutboxDispatchObserver
+{
+    private readonly List<OutboxDispatchFailure> _failures = [];
+
+    public IReadOnlyList<OutboxDispatchFailure> Failures => _failures;
+
+    public Task OnTerminalFailureAsync(
+        OutboxMessage message,
+        string error,
+        CancellationToken ct = default)
+    {
+        _failures.Add(new OutboxDispatchFailure(message.Id, message.MessageType, error));
+        return Task.CompletedTask;
     }
 }

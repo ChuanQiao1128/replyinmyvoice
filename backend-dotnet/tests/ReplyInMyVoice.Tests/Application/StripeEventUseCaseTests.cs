@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Application.Abstractions;
@@ -48,7 +49,7 @@ public sealed class StripeEventUseCaseTests
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:05:00Z");
         var payload = new StripeWebhookPayloadDto(
             "evt_application_checkout",
@@ -91,7 +92,7 @@ public sealed class StripeEventUseCaseTests
     {
         await using var fixture = await DbFixture.CreateAsync();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var externalAuthUserId = $"clerk_{Guid.NewGuid():N}";
         var now = DateTimeOffset.Parse("2026-06-09T00:06:00Z");
         var rawBody = $$"""
@@ -185,7 +186,7 @@ public sealed class StripeEventUseCaseTests
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:07:00Z");
 
         var processed = await HandleWebhookAsync(
@@ -236,7 +237,7 @@ public sealed class StripeEventUseCaseTests
     }
 
     [Fact]
-    public async Task ProcessWebhookEventAsync_invoice_payment_failed_enters_grace_and_notifies_after_commit()
+    public async Task ProcessWebhookEventAsync_invoice_payment_failed_enters_grace_and_writes_payment_failed_notification_outbox_row()
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
@@ -251,9 +252,8 @@ public sealed class StripeEventUseCaseTests
             await seedDb.SaveChangesAsync();
         }
 
-        var notifier = new RecordingStripeEventNotifier();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, notifier);
+        var handler = CreateWebhookHandler(handlerDb);
         var payload = new StripeWebhookPayloadDto(
             "evt_application_invoice_failed",
             "invoice.payment_failed",
@@ -270,7 +270,6 @@ public sealed class StripeEventUseCaseTests
         var processed = await handler.HandleAsync(new ProcessStripeWebhookCommand(payload, now));
 
         processed.Should().BeTrue();
-        notifier.Messages.Should().Equal(("failed-payment", user.Id));
 
         await using var verifyDb = fixture.CreateContext();
         var updatedUser = await verifyDb.AppUsers.SingleAsync(x => x.Id == user.Id);
@@ -284,6 +283,44 @@ public sealed class StripeEventUseCaseTests
         invoice.UserId.Should().Be(user.Id);
         invoice.Status.Should().Be("open");
         invoice.AttemptCount.Should().Be(2);
+
+        var outbox = await AssertSingleOutboxMessageAsync(
+            verifyDb,
+            StripeNotificationOutboxMessageTypes.PaymentFailed,
+            user.Id,
+            "evt_application_invoice_failed");
+        outbox.CreatedAt.Should().Be(now);
+        outbox.NextAttemptAt.Should().Be(now);
+    }
+
+    [Fact]
+    public async Task ProcessWebhookEventAsync_sync_failure_writes_no_notification_outbox_row()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateWebhookHandler(handlerDb);
+        var now = DateTimeOffset.Parse("2026-06-09T00:11:00Z");
+        var payload = new StripeWebhookPayloadDto(
+            "evt_application_invoice_failed_unknown",
+            "invoice.payment_failed",
+            new StripeWebhookObjectDto(
+                Id: "in_application_failed_unknown",
+                CustomerId: "cus_application_unknown",
+                SubscriptionId: "sub_application_unknown",
+                AttemptCount: 2,
+                NextPaymentAttempt: now.AddDays(3),
+                AmountDue: 900,
+                AmountPaid: 0,
+                Currency: "nzd"));
+
+        var processed = await handler.HandleAsync(new ProcessStripeWebhookCommand(payload, now));
+
+        processed.Should().BeFalse();
+        await using var verifyDb = fixture.CreateContext();
+        var storedEvent = await verifyDb.StripeEvents.SingleAsync(x => x.EventId == "evt_application_invoice_failed_unknown");
+        storedEvent.Status.Should().Be(StripeEventStatus.Failed);
+        storedEvent.LastError.Should().Contain("No matching user");
+        (await verifyDb.OutboxMessages.CountAsync()).Should().Be(0);
     }
 
     [Fact]
@@ -300,7 +337,7 @@ public sealed class StripeEventUseCaseTests
         }
 
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:15:00Z");
         var currentPeriodEnd = DateTimeOffset.Parse("2026-07-09T00:15:00Z");
         var payload = new StripeWebhookPayloadDto(
@@ -336,7 +373,7 @@ public sealed class StripeEventUseCaseTests
         }
 
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:16:00Z");
 
         var first = await HandleWebhookAsync(
@@ -401,7 +438,7 @@ public sealed class StripeEventUseCaseTests
         }
 
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:17:00Z");
 
         var processed = await HandleWebhookAsync(
@@ -441,7 +478,7 @@ public sealed class StripeEventUseCaseTests
     }
 
     [Fact]
-    public async Task ProcessWebhookEventAsync_invoice_payment_succeeded_after_failure_clears_grace_and_notifies_once()
+    public async Task ProcessWebhookEventAsync_invoice_payment_succeeded_after_failure_clears_grace_and_writes_recovered_notification_once()
     {
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
@@ -458,9 +495,8 @@ public sealed class StripeEventUseCaseTests
             await seedDb.SaveChangesAsync();
         }
 
-        var notifier = new RecordingStripeEventNotifier();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, notifier);
+        var handler = CreateWebhookHandler(handlerDb);
         const string rawBody = """
         {
           "id": "evt_application_recovered",
@@ -490,13 +526,18 @@ public sealed class StripeEventUseCaseTests
 
         first.Should().BeTrue();
         replay.Should().BeFalse();
-        notifier.Messages.Should().Equal(("payment-recovered", user.Id));
 
         await using var verifyDb = fixture.CreateContext();
         var updatedUser = await verifyDb.AppUsers.SingleAsync(x => x.Id == user.Id);
         updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Active);
         updatedUser.PaymentFailedAt.Should().BeNull();
         updatedUser.PaymentGraceEndsAt.Should().BeNull();
+
+        await AssertSingleOutboxMessageAsync(
+            verifyDb,
+            StripeNotificationOutboxMessageTypes.PaymentRecovered,
+            user.Id,
+            "evt_application_recovered");
     }
 
     [Fact]
@@ -514,7 +555,7 @@ public sealed class StripeEventUseCaseTests
         }
 
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var paidNow = DateTimeOffset.Parse("2026-06-09T00:19:00Z");
         const string paidBody = """
         {
@@ -625,7 +666,7 @@ public sealed class StripeEventUseCaseTests
     [Theory]
     [InlineData("unpaid")]
     [InlineData("canceled")]
-    public async Task ProcessWebhookEventAsync_terminal_subscription_status_from_grace_downgrades_and_notifies_once(
+    public async Task ProcessWebhookEventAsync_terminal_subscription_status_from_grace_downgrades_and_writes_paused_notification_once(
         string stripeStatus)
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -645,9 +686,8 @@ public sealed class StripeEventUseCaseTests
             await seedDb.SaveChangesAsync();
         }
 
-        var notifier = new RecordingStripeEventNotifier();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, notifier);
+        var handler = CreateWebhookHandler(handlerDb);
         var rawBody = $$"""
         {
           "id": "evt_application_terminal_{{stripeStatus}}",
@@ -678,13 +718,18 @@ public sealed class StripeEventUseCaseTests
 
         first.Should().BeTrue();
         replay.Should().BeFalse();
-        notifier.Messages.Should().Equal(("subscription-paused", user.Id));
 
         await using var verifyDb = fixture.CreateContext();
         var updatedUser = await verifyDb.AppUsers.SingleAsync(x => x.Id == user.Id);
         updatedUser.SubscriptionStatus.Should().Be(SubscriptionStatus.Inactive);
         updatedUser.PaymentFailedAt.Should().BeNull();
         updatedUser.PaymentGraceEndsAt.Should().BeNull();
+
+        await AssertSingleOutboxMessageAsync(
+            verifyDb,
+            StripeNotificationOutboxMessageTypes.SubscriptionPaused,
+            user.Id,
+            $"evt_application_terminal_{stripeStatus}");
     }
 
     [Theory]
@@ -709,7 +754,7 @@ public sealed class StripeEventUseCaseTests
         }
 
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:22:00Z");
 
         var processed = await HandleWebhookAsync(
@@ -762,7 +807,7 @@ public sealed class StripeEventUseCaseTests
         }
 
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:23:00Z");
 
         var processed = await HandleWebhookAsync(
@@ -799,7 +844,7 @@ public sealed class StripeEventUseCaseTests
         await using var fixture = await DbFixture.CreateAsync();
         var user = await fixture.CreateUserAsync();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
         var now = DateTimeOffset.Parse("2026-06-09T00:24:00Z");
         const string refundEvent = """
         {
@@ -926,7 +971,7 @@ public sealed class StripeEventUseCaseTests
         }
 
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateWebhookHandler(handlerDb, new RecordingStripeEventNotifier());
+        var handler = CreateWebhookHandler(handlerDb);
 
         var oldSizeRefund = await HandleWebhookAsync(
             handler,
@@ -1023,23 +1068,17 @@ public sealed class StripeEventUseCaseTests
             await seedDb.SaveChangesAsync();
         }
 
-        var notifier = new RecordingStripeEventNotifier();
         var cancellation = new RecordingStripeSubscriptionCancellationService();
         await using var handlerDb = fixture.CreateContext();
         var handler = new ProcessExpiredPaymentGraceHandler(
             new AppUserRepository(handlerDb),
-            notifier,
+            new OutboxMessageRepository(handlerDb),
             cancellation,
             new UnitOfWork(handlerDb));
 
         var processed = await handler.HandleAsync(new ProcessExpiredPaymentGraceCommand(now, BatchSize: 1));
 
         processed.Should().Be(2);
-        notifier.Messages.Should().BeEquivalentTo(
-        [
-            ("subscription-paused", firstExpiredUser.Id),
-            ("subscription-paused", secondExpiredUser.Id),
-        ]);
         cancellation.SubscriptionIds.Should().BeEquivalentTo(
         [
             "sub_first_expired",
@@ -1060,6 +1099,20 @@ public sealed class StripeEventUseCaseTests
         var stillInGrace = await verifyDb.AppUsers.SingleAsync(x => x.Id == stillInGraceUser.Id);
         stillInGrace.SubscriptionStatus.Should().Be(SubscriptionStatus.PastDue);
         stillInGrace.PaymentGraceEndsAt.Should().Be(now.AddDays(2));
+
+        var outboxMessages = await verifyDb.OutboxMessages
+            .Where(x => x.MessageType == StripeNotificationOutboxMessageTypes.SubscriptionPaused)
+            .ToListAsync();
+        outboxMessages.Should().HaveCount(2);
+        outboxMessages.Should().OnlyContain(x =>
+            x.Status == OutboxMessageStatus.Pending &&
+            x.AttemptCount == 0 &&
+            x.MaxAttempts == 10);
+        outboxMessages.Select(ReadOutboxPayloadUserId).Should().BeEquivalentTo(
+        [
+            firstExpiredUser.Id,
+            secondExpiredUser.Id,
+        ]);
     }
 
     [Fact]
@@ -1076,17 +1129,15 @@ public sealed class StripeEventUseCaseTests
             await seedDb.SaveChangesAsync();
         }
 
-        var notifier = new RecordingStripeEventNotifier();
         await using var handlerDb = fixture.CreateContext();
         var handler = new ProcessPaymentGraceRemindersHandler(
             new AppUserRepository(handlerDb),
-            notifier,
+            new OutboxMessageRepository(handlerDb),
             new UnitOfWork(handlerDb));
 
         var processed = await handler.HandleAsync(new ProcessPaymentGraceRemindersCommand(now, BatchSize: 1));
 
         processed.Should().Be(1);
-        notifier.Messages.Should().Equal(("payment-grace-reminder", dueUser.Id));
 
         await using var verifyDb = fixture.CreateContext();
         var early = await verifyDb.AppUsers.SingleAsync(x => x.Id == earlyUser.Id);
@@ -1094,17 +1145,22 @@ public sealed class StripeEventUseCaseTests
 
         var due = await verifyDb.AppUsers.SingleAsync(x => x.Id == dueUser.Id);
         due.PaymentGraceReminderSentAt.Should().Be(now);
+
+        var outbox = await AssertSingleOutboxMessageAsync(
+            verifyDb,
+            StripeNotificationOutboxMessageTypes.PaymentGraceReminder,
+            dueUser.Id,
+            dueUser.Id.ToString());
+        outbox.PayloadJson.Should().NotContain(earlyUser.Id.ToString());
     }
 
-    private static ProcessStripeWebhookHandler CreateWebhookHandler(
-        AppDbContext db,
-        IStripeEventNotifier notifier) =>
+    private static ProcessStripeWebhookHandler CreateWebhookHandler(AppDbContext db) =>
         new(
             new StripeEventRepository(db),
             new AppUserRepository(db),
             new RewriteCreditRepository(db),
             new StripeInvoiceRepository(db),
-            notifier,
+            new OutboxMessageRepository(db),
             new UnitOfWork(db));
 
     private static async Task<bool> HandleWebhookAsync(
@@ -1132,33 +1188,26 @@ public sealed class StripeEventUseCaseTests
         user.PaymentGraceEndsAt = graceEndsAt;
     }
 
-    private sealed class RecordingStripeEventNotifier : IStripeEventNotifier
+    private static async Task<OutboxMessage> AssertSingleOutboxMessageAsync(
+        AppDbContext db,
+        string messageType,
+        Guid userId,
+        string correlationId)
     {
-        public List<(string Kind, Guid UserId)> Messages { get; } = [];
+        var outbox = await db.OutboxMessages.SingleAsync(x => x.MessageType == messageType);
+        outbox.Status.Should().Be(OutboxMessageStatus.Pending);
+        outbox.AttemptCount.Should().Be(0);
+        outbox.MaxAttempts.Should().Be(10);
+        outbox.CorrelationId.Should().Be(correlationId);
+        outbox.PayloadJson.Should().Contain(userId.ToString());
+        ReadOutboxPayloadUserId(outbox).Should().Be(userId);
+        return outbox;
+    }
 
-        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, CancellationToken ct = default)
-        {
-            Messages.Add(("failed-payment", user.Id));
-            return Task.CompletedTask;
-        }
-
-        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, CancellationToken ct = default)
-        {
-            Messages.Add(("subscription-paused", user.Id));
-            return Task.CompletedTask;
-        }
-
-        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, CancellationToken ct = default)
-        {
-            Messages.Add(("payment-grace-reminder", user.Id));
-            return Task.CompletedTask;
-        }
-
-        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, CancellationToken ct = default)
-        {
-            Messages.Add(("payment-recovered", user.Id));
-            return Task.CompletedTask;
-        }
+    private static Guid ReadOutboxPayloadUserId(OutboxMessage message)
+    {
+        using var payload = JsonDocument.Parse(message.PayloadJson);
+        return payload.RootElement.GetProperty("userId").GetGuid();
     }
 
     private sealed class RecordingStripeSubscriptionCancellationService : IStripeSubscriptionCancellationService

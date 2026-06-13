@@ -97,6 +97,59 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Webhook_invoice_payment_failed_persists_notification_outbox_row()
+    {
+        var userId = Guid.NewGuid();
+        await using (var db = CreateContext())
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = "clerk_invoice_failed_outbox",
+                Email = "invoice-failed-outbox@example.com",
+                StripeCustomerId = "cus_invoice_failed_outbox",
+                StripeSubscriptionId = "sub_invoice_failed_outbox",
+                SubscriptionStatus = SubscriptionStatus.Active,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var function = CreateFunction();
+        var payload = JsonSerializer.Serialize(new
+        {
+            id = "evt_invoice_failed_outbox",
+            type = "invoice.payment_failed",
+            data = new
+            {
+                @object = new
+                {
+                    id = "in_invoice_failed_outbox",
+                    customer = "cus_invoice_failed_outbox",
+                    subscription = "sub_invoice_failed_outbox",
+                    attempt_count = 2,
+                    next_payment_attempt = 1770000000,
+                    amount_due = 900,
+                    amount_paid = 0,
+                    currency = "nzd"
+                }
+            }
+        });
+
+        var response = await function.Run(CreateFunctionRequest(payload), CancellationToken.None);
+
+        response.Should().BeOfType<OkObjectResult>();
+        await using var verifyDb = CreateContext();
+        var outbox = await verifyDb.OutboxMessages.SingleAsync();
+        outbox.MessageType.Should().Be(StripeNotificationOutboxMessageTypes.PaymentFailed);
+        outbox.Status.Should().Be(OutboxMessageStatus.Pending);
+        outbox.MaxAttempts.Should().Be(10);
+        outbox.CorrelationId.Should().Be("evt_invoice_failed_outbox");
+        outbox.PayloadJson.Should().Contain(userId.ToString());
+    }
+
+    [Fact]
     public async Task Stripe_webhook_marks_deleted_subscription_as_canceled()
     {
         await using (var db = CreateContext())
@@ -307,7 +360,7 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
             new AppUserRepository(db),
             new RewriteCreditRepository(db),
             new StripeInvoiceRepository(db),
-            new NoopStripeEventNotifier(),
+            new OutboxMessageRepository(db),
             new UnitOfWork(db));
 
     private AppDbContext CreateContext()
@@ -413,18 +466,4 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
-    private sealed class NoopStripeEventNotifier : IStripeEventNotifier
-    {
-        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, CancellationToken ct = default) =>
-            Task.CompletedTask;
-
-        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, CancellationToken ct = default) =>
-            Task.CompletedTask;
-    }
 }

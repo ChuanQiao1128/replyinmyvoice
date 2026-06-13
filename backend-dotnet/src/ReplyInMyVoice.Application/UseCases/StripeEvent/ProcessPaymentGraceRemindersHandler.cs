@@ -6,7 +6,7 @@ namespace ReplyInMyVoice.Application.UseCases.StripeEvent;
 
 public sealed class ProcessPaymentGraceRemindersHandler(
     IAppUserRepository appUsers,
-    IStripeEventNotifier notifier,
+    IOutboxMessageRepository outboxMessages,
     IUnitOfWork unitOfWork)
 {
     private const int PaymentGraceReminderElapsedDays = 5;
@@ -25,7 +25,6 @@ public sealed class ProcessPaymentGraceRemindersHandler(
         while (true)
         {
             ct.ThrowIfCancellationRequested();
-            var postCommitActions = new List<Func<CancellationToken, Task>>();
 
             var batchCount = await unitOfWork.ExecuteInTransactionAsync(
                 async transactionCt =>
@@ -43,8 +42,13 @@ public sealed class ProcessPaymentGraceRemindersHandler(
                         user.PaymentGraceReminderSentAt = command.Now;
                         user.UpdatedAt = command.Now;
                         user.RowVersion = Guid.NewGuid();
-                        postCommitActions.Add(actionCt =>
-                            notifier.EnqueuePaymentGraceReminderNotificationAsync(user, actionCt));
+                        await outboxMessages.AddAsync(
+                            StripeNotificationOutboxMessageFactory.Create(
+                                StripeNotificationOutboxMessageTypes.PaymentGraceReminder,
+                                user.Id,
+                                command.Now,
+                                user.Id.ToString()),
+                            transactionCt);
                     }
 
                     await unitOfWork.SaveChangesAsync(transactionCt);
@@ -52,11 +56,6 @@ public sealed class ProcessPaymentGraceRemindersHandler(
                 },
                 IsolationLevel.Serializable,
                 ct);
-
-            if (batchCount > 0)
-            {
-                await RunPostCommitActionsAsync(postCommitActions, ct);
-            }
 
             processedCount += batchCount;
             if (batchCount < command.BatchSize)
@@ -80,19 +79,4 @@ public sealed class ProcessPaymentGraceRemindersHandler(
         return reminderAt <= now;
     }
 
-    private static async Task RunPostCommitActionsAsync(
-        IReadOnlyList<Func<CancellationToken, Task>> postCommitActions,
-        CancellationToken ct)
-    {
-        foreach (var action in postCommitActions)
-        {
-            try
-            {
-                await action(ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-            }
-        }
-    }
 }

@@ -11,6 +11,7 @@ using ReplyInMyVoice.Application.UseCases.BillingSupport;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
+using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -77,6 +78,27 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ReconcileStripeHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ProcessRewriteJobHandler>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_outbox_handlers_and_dispatch_observer()
+    {
+        var provider = BuildProvider([]);
+
+        using var scope = provider.CreateScope();
+        var scopedProvider = scope.ServiceProvider;
+        var handlers = scopedProvider.GetServices<IOutboxMessageHandler>().ToList();
+
+        handlers.Select(x => x.MessageType).Should().BeEquivalentTo(
+        [
+            "RewriteJobCreated",
+            StripeNotificationOutboxMessageTypes.PaymentFailed,
+            StripeNotificationOutboxMessageTypes.PaymentRecovered,
+            StripeNotificationOutboxMessageTypes.SubscriptionPaused,
+            StripeNotificationOutboxMessageTypes.PaymentGraceReminder,
+        ]);
+        handlers.Select(x => x.MessageType).Should().OnlyHaveUniqueItems();
+        scopedProvider.GetRequiredService<IOutboxDispatchObserver>().Should().NotBeNull();
     }
 
     [Fact]

@@ -11,7 +11,7 @@ public sealed class ProcessStripeWebhookHandler(
     IAppUserRepository appUsers,
     IRewriteCreditRepository credits,
     IStripeInvoiceRepository invoices,
-    IStripeEventNotifier notifier,
+    IOutboxMessageRepository outboxMessages,
     IUnitOfWork unitOfWork)
 {
     private const int DefaultPaymentGraceDays = 7;
@@ -22,7 +22,6 @@ public sealed class ProcessStripeWebhookHandler(
         ProcessStripeWebhookCommand command,
         CancellationToken ct = default)
     {
-        var postCommitActions = new List<Func<CancellationToken, Task>>();
         try
         {
             var processed = await unitOfWork.ExecuteInTransactionAsync(
@@ -41,7 +40,6 @@ public sealed class ProcessStripeWebhookHandler(
                     var syncFailure = await SyncPayloadAsync(
                         command.Payload,
                         command.Now,
-                        postCommitActions,
                         transactionCt);
                     if (syncFailure is not null)
                     {
@@ -56,11 +54,6 @@ public sealed class ProcessStripeWebhookHandler(
                 },
                 IsolationLevel.Serializable,
                 ct);
-
-            if (processed)
-            {
-                await RunPostCommitActionsAsync(postCommitActions, ct);
-            }
 
             return processed;
         }
@@ -81,12 +74,11 @@ public sealed class ProcessStripeWebhookHandler(
     private async Task<string?> SyncPayloadAsync(
         StripeWebhookPayloadDto payload,
         DateTimeOffset now,
-        List<Func<CancellationToken, Task>> postCommitActions,
         CancellationToken ct)
     {
         if (payload.Type.StartsWith("customer.subscription.", StringComparison.Ordinal))
         {
-            return await SyncSubscriptionObjectAsync(payload, now, postCommitActions, ct);
+            return await SyncSubscriptionObjectAsync(payload, now, ct);
         }
 
         return payload.Type switch
@@ -94,9 +86,9 @@ public sealed class ProcessStripeWebhookHandler(
             "checkout.session.completed" =>
                 await SyncCheckoutSessionAsync(payload, now, ct),
             "invoice.payment_failed" =>
-                await SyncInvoicePaymentFailedAsync(payload, now, postCommitActions, ct),
+                await SyncInvoicePaymentFailedAsync(payload, now, ct),
             "invoice.payment_succeeded" =>
-                await SyncInvoicePaymentSucceededAsync(payload, now, postCommitActions, ct),
+                await SyncInvoicePaymentSucceededAsync(payload, now, ct),
             "invoice.paid" or "invoice.finalized" =>
                 await SyncStripeInvoiceAsync(payload, now, ct),
             "charge.refunded" =>
@@ -162,7 +154,6 @@ public sealed class ProcessStripeWebhookHandler(
     private async Task<string?> SyncInvoicePaymentFailedAsync(
         StripeWebhookPayloadDto payload,
         DateTimeOffset now,
-        List<Func<CancellationToken, Task>> postCommitActions,
         CancellationToken ct)
     {
         var stripeObject = payload.Object;
@@ -198,7 +189,13 @@ public sealed class ProcessStripeWebhookHandler(
         user.PaymentGraceReminderSentAt = null;
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
-        postCommitActions.Add(actionCt => notifier.EnqueueFailedPaymentNotificationAsync(user, actionCt));
+        await outboxMessages.AddAsync(
+            StripeNotificationOutboxMessageFactory.Create(
+                StripeNotificationOutboxMessageTypes.PaymentFailed,
+                user.Id,
+                now,
+                payload.EventId),
+            ct);
 
         return null;
     }
@@ -206,7 +203,6 @@ public sealed class ProcessStripeWebhookHandler(
     private async Task<string?> SyncInvoicePaymentSucceededAsync(
         StripeWebhookPayloadDto payload,
         DateTimeOffset now,
-        List<Func<CancellationToken, Task>> postCommitActions,
         CancellationToken ct)
     {
         var stripeObject = payload.Object;
@@ -250,7 +246,13 @@ public sealed class ProcessStripeWebhookHandler(
         user.RowVersion = Guid.NewGuid();
         if (recoveredToActive)
         {
-            postCommitActions.Add(actionCt => notifier.EnqueuePaymentRecoveredNotificationAsync(user, actionCt));
+            await outboxMessages.AddAsync(
+                StripeNotificationOutboxMessageFactory.Create(
+                    StripeNotificationOutboxMessageTypes.PaymentRecovered,
+                    user.Id,
+                    now,
+                    payload.EventId),
+                ct);
         }
 
         return null;
@@ -280,7 +282,6 @@ public sealed class ProcessStripeWebhookHandler(
     private async Task<string?> SyncSubscriptionObjectAsync(
         StripeWebhookPayloadDto payload,
         DateTimeOffset now,
-        List<Func<CancellationToken, Task>> postCommitActions,
         CancellationToken ct)
     {
         var stripeObject = payload.Object;
@@ -319,7 +320,13 @@ public sealed class ProcessStripeWebhookHandler(
         {
             if (wasInPaymentGrace)
             {
-                postCommitActions.Add(actionCt => notifier.EnqueueSubscriptionPausedNotificationAsync(user, actionCt));
+                await outboxMessages.AddAsync(
+                    StripeNotificationOutboxMessageFactory.Create(
+                        StripeNotificationOutboxMessageTypes.SubscriptionPaused,
+                        user.Id,
+                        now,
+                        payload.EventId),
+                    ct);
             }
 
             ClearPaymentGrace(user);
@@ -528,22 +535,6 @@ public sealed class ProcessStripeWebhookHandler(
             },
             IsolationLevel.Serializable,
             ct);
-    }
-
-    private static async Task RunPostCommitActionsAsync(
-        IReadOnlyList<Func<CancellationToken, Task>> postCommitActions,
-        CancellationToken ct)
-    {
-        foreach (var action in postCommitActions)
-        {
-            try
-            {
-                await action(ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-            }
-        }
     }
 
     private static bool HasPaymentGrace(AppUser user) =>
