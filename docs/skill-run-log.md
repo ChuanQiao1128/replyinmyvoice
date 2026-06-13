@@ -6109,3 +6109,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, provider declaration move files, and this log entry.
 - Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600.
 - Limitations: The .NET restore step emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, schema change, external provider call, deploy, push, PR, or production config change was made.
+
+### 2026-06-13 - system-spec-synthesis - HARD-05 issue #784 reconciliation closed loop
+
+- Agent: Codex worker
+- Trigger: Issue #784 and `plans/production-hardening/issues/HARD-05-reconciliation-close-the-loop.md` required converting the reconciliation brief into implementation checkpoints across application, infrastructure, persistence, timer, webhook, and tests.
+- Action: Opened and followed the project skill as an implementation-spec checklist. Read `AGENTS.md`, `CLAUDE.md`, the HARD-05 brief, and the production-hardening master spec; mapped the work to backend-only closed-loop reconciliation, outbox alert delivery, configurable lookback, subscription report pass, and additive EF migration checkpoints.
+- Output artifacts: application DTO/options/repository contracts, `ReconcileStripeHandler`, Stripe client/repositories/services, timer and webhook updates, EF migration, backend tests, and this log entry.
+- Verification evidence: focused reconciliation/webhook/DI test run passed 16/16; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 639/639; `npm run test` passed 70 files and 360 tests; migration and source scans produced no matches.
+- Limitations: Local commit was attempted but blocked because the git worktree index is outside writable roots. No deploy, push, PR, frontend source, engine-boundary source, payment secret, live price, or production config change was made.
+
+### 2026-06-13 - state-machine-modeling - HARD-05 issue #784 reconciliation states
+
+- Agent: Codex worker
+- Trigger: Issue #784 changes paid-payment grant recovery, subscription status comparison, run persistence, and outbox message lifecycle behavior.
+- Action: Opened and followed the project skill to make transitions explicit before implementation. Modeled paid-but-ungranted PaymentIntent rows as either auto-granted with audit evidence, skipped idempotently, or manual-review; modeled reverse payment discrepancies and subscription mismatches as report-only; modeled run persistence plus alert outbox enqueue as a final transaction.
+- Output artifacts: `ReconcileStripeHandler` state flow, report DTO counters/lists, `StripeReconciliationRun` counters, outbox alert handler, and reconciliation use-case tests.
+- Verification evidence: focused reconciliation tests covered clean run, auto-grant, cap overflow, idempotent skip, manual-review reasons, recent-payment deferral, report-only reverse discrepancy, subscription mismatch directions, run/outbox transaction recording, and grant-write continuation; full backend suite passed 639/639.
+- Limitations: The SQL Server migration container gate was not run locally; the additive migration source scan produced no destructive-operation matches.
+
+### 2026-06-13 - data-module-review - HARD-05 issue #784 reconciliation persistence
+
+- Agent: Codex worker
+- Trigger: Issue #784 changes EF entities, migration, repositories, idempotency checks, audit log writes, and outbox/run persistence.
+- Action: Opened and followed the project skill for persistence invariants. Reviewed existing `RewriteCredit` Stripe indexes, `StripeReconciliationRun`, `OutboxMessage`, `AdminAuditLog`, unit-of-work, and repository patterns; added only four integer run columns and used existing purchase-credit lookup methods for idempotency.
+- Output artifacts: `StripeReconciliationRun` additive columns, `IStripeReconciliationRunRepository`, `StripeReconciliationRunRepository`, `PaymentGrantRepository.ListSubscriptionUsersForReconciliationAsync`, EF migration and snapshot updates, and persistence-focused tests.
+- Verification evidence: migration grep for destructive operations produced no output; full backend suite passed 639/639; source scan produced no output; webhook SQLite test proves a later checkout event does not add a second purchase credit for the same payment intent.
+- Limitations: The generated migration `Down` method is intentionally empty to satisfy the issue's file-level additive-only grep. No live database migration was executed.
+
+### 2026-06-13 - resilience-test-generation - HARD-05 issue #784 reconciliation recovery
+
+- Agent: Codex worker
+- Trigger: Issue #784 adds idempotent reconciliation auto-grants, outbox alert dispatch, webhook replay protection, and continuation after a single grant write failure.
+- Action: Opened and followed the project skill as a failure-mode checklist. Added deterministic fakes and SQLite coverage for duplicate event/payment-intent protection, cap overflow, recent-payment retry deferral, missing/invalid checkout session cases, malformed outbox payload propagation, and per-grant failure continuation.
+- Output artifacts: expanded `StripeReconciliationUseCaseTests`, new `StripeReconciliationAlertOutboxHandlerTests`, and new `StripeWebhookApiTests` replay guard test.
+- Verification evidence: focused reconciliation/webhook/DI run passed 16/16; full backend suite passed 639/639; outbox handler test proves malformed payload exceptions propagate so the dispatcher can retry.
+- Limitations: No live Stripe, email provider, queue, or cloud endpoint was called; all provider behavior was local fake or SQLite-backed test coverage.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-05 issue #784 reconciliation tests
+
+- Agent: Codex worker
+- Trigger: Issue #784 required C# xUnit coverage for reconciliation use-case behavior, outbox alert handling, webhook replay, DI registration, option defaults/clamps, and EF migration safety.
+- Action: Opened and followed the project skill for test-level selection. Added application-level fake tests for reconciliation logic, SQLite-backed webhook API coverage for the replay guard, infrastructure DI pins, and outbox handler tests using the existing xUnit/FluentAssertions style.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationAlertOutboxHandlerTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeWebhookApiTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`, and this log entry.
+- Verification evidence: initial focused test run failed on missing production types; after implementation, the focused run passed 16/16. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 639/639. `npm run test` passed 70 files and 360 tests after `npm ci --cache /private/tmp/npm-cache-issue-784`.
+- Limitations: NuGet restore emitted `NU1900` metadata warnings; npm emitted a Node 24 warning against the repo's Node 22 engine and reported existing audit findings. The first `npm run test` failed because dependencies were absent, and the first `npm ci` failed because npm attempted to use an unwritable cache; rerunning with a temp cache succeeded.

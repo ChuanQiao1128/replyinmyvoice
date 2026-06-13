@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
@@ -94,6 +95,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBillingSupportRepository, BillingSupportRepository>();
         services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
         services.AddScoped<IPaymentGrantRepository, PaymentGrantRepository>();
+        services.AddScoped<IStripeReconciliationRunRepository, StripeReconciliationRunRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
         services.AddScoped<IApiKeyUsageRepository, ApiKeyUsageRepository>();
         services.AddScoped<IAdminUserRepository, AdminUserRepository>();
@@ -172,6 +174,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IOutboxMessageHandler, PaymentRecoveredNotificationOutboxMessageHandler>();
         services.AddTransient<IOutboxMessageHandler, SubscriptionPausedNotificationOutboxMessageHandler>();
         services.AddTransient<IOutboxMessageHandler, PaymentGraceReminderNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, StripeReconciliationAlertOutboxMessageHandler>();
         services.AddScoped<IOutboxDispatchObserver>(sp => new OutboxDispatchTelemetryObserver(
             sp.GetRequiredService<ILogger<OutboxDispatchTelemetryObserver>>(),
             sp.GetService<TelemetryClient>()));
@@ -179,6 +182,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RetentionService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
         services.AddSingleton(ReadProviderCircuitBreakerOptions(configuration));
+        services.AddSingleton(ReadStripeReconciliationOptions(configuration));
         services.TryAddSingleton<IProviderResilienceEvents, NoOpProviderResilienceEvents>();
         services.AddSingleton(sp => new ProviderCircuitBreakerRegistry(
             sp.GetRequiredService<ProviderCircuitBreakerOptions>(),
@@ -199,7 +203,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IStripeEventNotifier, StripeEventNotifier>();
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());
-        services.AddScoped<AppStripePaymentReconciliationClient, StripePaymentReconciliationClient>();
+        services.AddScoped<AppStripePaymentReconciliationClient>(sp => new StripePaymentReconciliationClient(
+            sp.GetRequiredService<AppStripeBillingClient>(),
+            configuration));
         services.AddScoped<LegacyStripeReconciliationAlerter>(sp => new StripeReconciliationNotificationAlerter(
             configuration,
             sp.GetRequiredService<INotificationService>(),
@@ -339,6 +345,26 @@ public static class ServiceCollectionExtensions
             TimeSpan.FromSeconds(ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_BREAK_SEC", 30)),
             ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_MIN_SAMPLES", 8),
             ReadFailureRatio(configuration, "PROVIDER_CIRCUIT_FAILURE_RATIO", 0.5));
+
+    private static StripeReconciliationOptions ReadStripeReconciliationOptions(IConfiguration configuration) =>
+        new(
+            ReadClampedInt(configuration, "RECONCILIATION_AUTO_GRANT_MAX", 10, 0, 100),
+            ReadClampedInt(configuration, "RECONCILIATION_MIN_PAYMENT_AGE_MINUTES", 60, 0, 1440),
+            ReadClampedInt(configuration, "RECONCILIATION_WINDOW_DAYS", 3, 1, 30));
+
+    private static int ReadClampedInt(
+        IConfiguration configuration,
+        string name,
+        int defaultValue,
+        int min,
+        int max) =>
+        int.TryParse(
+            configuration[name],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var parsed)
+            ? Math.Clamp(parsed, min, max)
+            : defaultValue;
 
     private static int ReadPositiveInt(IConfiguration configuration, string name, int defaultValue) =>
         int.TryParse(

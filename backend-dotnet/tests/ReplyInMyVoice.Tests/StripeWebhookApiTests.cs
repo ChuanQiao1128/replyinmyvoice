@@ -150,6 +150,60 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CheckoutCompleted_does_not_double_grant_when_reconciliation_credit_exists_for_payment_intent()
+    {
+        const string webhookSecret = "whsec_test_secret";
+        const string eventId = "evt_checkout_after_reconciliation";
+        const string externalAuthUserId = "clerk_checkout_after_reconciliation";
+        var paymentIntentId = $"pi_{eventId}";
+        await using (var db = CreateContext())
+        {
+            var userId = Guid.NewGuid();
+            db.AppUsers.Add(new AppUser
+            {
+                Id = userId,
+                ExternalAuthUserId = externalAuthUserId,
+                Email = "checkout-after-reconciliation@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            db.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = userId,
+                Source = "PURCHASE",
+                AmountGranted = 10,
+                OriginalAmountGranted = 10,
+                AmountConsumed = 0,
+                GrantedAt = DateTimeOffset.UtcNow.AddMinutes(-10),
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(90),
+                StripeEventId = $"reconciliation:{paymentIntentId}",
+                StripePaymentIntentId = paymentIntentId,
+                StripeSku = "quick_pack",
+                StripeAmountTotal = 1200,
+                StripeCurrency = "nzd",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var function = CreateFunction("Production", webhookSecret);
+        var payload = CreatePaidCheckoutPayload(eventId, externalAuthUserId);
+
+        var response = await function.Run(
+            CreateSignedFunctionRequest(payload, webhookSecret),
+            CancellationToken.None);
+
+        response.Should().BeOfType<OkObjectResult>();
+        await using var verifyDb = CreateContext();
+        var stripeEvent = await verifyDb.StripeEvents.SingleAsync(x => x.EventId == eventId);
+        stripeEvent.Status.Should().Be(StripeEventStatus.Processed);
+        var credits = await verifyDb.RewriteCredits
+            .Where(x => x.StripePaymentIntentId == paymentIntentId)
+            .ToListAsync();
+        credits.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task Stripe_webhook_marks_deleted_subscription_as_canceled()
     {
         await using (var db = CreateContext())

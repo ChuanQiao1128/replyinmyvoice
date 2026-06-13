@@ -126,8 +126,12 @@ public sealed class ProcessStripeWebhookHandler(
         user.UpdatedAt = now;
         user.RowVersion = Guid.NewGuid();
 
+        var paymentIntentId = Normalize(stripeObject.PaymentIntentId);
         if (IsPaidPaymentSession(stripeObject) &&
             !await credits.ExistsByStripeEventIdAsync(payload.EventId, ct) &&
+            (paymentIntentId is null ||
+                !(await credits.ListByStripePaymentIntentIdAsync(paymentIntentId, ct))
+                .Any(x => x.Source == "PURCHASE")) &&
             ResolveGrantedRewrites(stripeObject) is { } rewrites)
         {
             await credits.AddAsync(new RewriteCredit
@@ -140,7 +144,7 @@ public sealed class ProcessStripeWebhookHandler(
                 GrantedAt = now,
                 ExpiresAt = now.AddDays(90),
                 StripeEventId = payload.EventId,
-                StripePaymentIntentId = Normalize(stripeObject.PaymentIntentId),
+                StripePaymentIntentId = paymentIntentId,
                 StripeReceiptUrl = Normalize(stripeObject.ReceiptUrl),
                 StripeSku = Normalize(stripeObject.Sku),
                 StripeAmountTotal = stripeObject.AmountTotal,

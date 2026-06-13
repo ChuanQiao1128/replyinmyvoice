@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 
 namespace ReplyInMyVoice.Infrastructure.Repositories;
@@ -61,4 +62,21 @@ public sealed class PaymentGrantRepository(AppDbContext db) : IPaymentGrantRepos
                 x.GrantedAt))
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<SubscriptionUserSnapshot>> ListSubscriptionUsersForReconciliationAsync(
+        CancellationToken ct = default) =>
+        await db.AppUsers
+            .AsNoTracking()
+            .Where(x =>
+                x.SubscriptionStatus != SubscriptionStatus.Testing &&
+                (x.StripeSubscriptionId != null ||
+                    x.SubscriptionStatus == SubscriptionStatus.Active ||
+                    x.SubscriptionStatus == SubscriptionStatus.Trialing ||
+                    x.SubscriptionStatus == SubscriptionStatus.PastDue))
+            .Select(x => new SubscriptionUserSnapshot(
+                x.Id,
+                x.StripeCustomerId,
+                x.StripeSubscriptionId,
+                x.SubscriptionStatus))
+            .ToListAsync(ct);
 }
