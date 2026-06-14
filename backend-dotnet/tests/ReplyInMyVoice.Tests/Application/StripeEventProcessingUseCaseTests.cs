@@ -437,7 +437,10 @@ public sealed class StripeEventProcessingUseCaseTests
     }
 
     private static IngestStripeWebhookHandler CreateIngestHandler(AppDbContext db) =>
-        new(new StripeEventRepository(db), new UnitOfWork(db));
+        new(
+            new StripeEventRepository(db),
+            new UnitOfWork(db),
+            NullLogger<IngestStripeWebhookHandler>.Instance);
 
     private static ProcessPendingStripeEventsHandler CreateProcessor(
         AppDbContext db,

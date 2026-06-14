@@ -1840,7 +1840,8 @@ public sealed class StripeEventUseCaseTests
         new(
             new IngestStripeWebhookHandler(
                 new StripeEventRepository(db),
-                new UnitOfWork(db)),
+                new UnitOfWork(db),
+                NullLogger<IngestStripeWebhookHandler>.Instance),
             new ProcessPendingStripeEventsHandler(
                 new StripeEventRepository(db),
                 new StripeEventPayloadSynchronizer(

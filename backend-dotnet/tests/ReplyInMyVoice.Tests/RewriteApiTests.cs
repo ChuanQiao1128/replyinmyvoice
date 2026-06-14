@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -1279,14 +1280,18 @@ public sealed class RewriteApiTests : IAsyncLifetime
             new RewriteCostLogger(() => CreateContext()));
 
     private static ReleaseExpiredReservationsHandler CreateExpiredHandler(AppDbContext db) =>
-        new(new UsageReservationRepository(db), new UnitOfWork(db));
+        new(
+            new UsageReservationRepository(db),
+            new UnitOfWork(db),
+            NullLogger<ReleaseExpiredReservationsHandler>.Instance);
 
     private static FinalizeQuotaSuccessHandler CreateFinalizeHandler(AppDbContext db) =>
         new(
             new RewriteAttemptRepository(db),
             new UsageReservationRepository(db),
             new UsagePeriodRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NullLogger<FinalizeQuotaSuccessHandler>.Instance);
 
     private static HttpClient CreateClient(WebApplicationFactory<Program> factory) =>
         factory.CreateClient(new WebApplicationFactoryClientOptions
