@@ -49,3 +49,14 @@ plans/MONEY-MADE.txt
 .delivery/
 playwright-report/
 .playwright-mcp/
+
+# Local-only screenshots (marketing/interview captures, not part of the app)
+/dev-api-desktop.jpeg
+/dev-hub-desktop.jpeg
+/dev-mcp-desktop.jpeg
+/pricing-live-faq.jpeg
+/pricing-live-fold.jpeg
+/pricing-live-table.jpeg
+
+# Interview-prep scratch input (regenerated; not product code)
+plans/interview/_reverify-input.json

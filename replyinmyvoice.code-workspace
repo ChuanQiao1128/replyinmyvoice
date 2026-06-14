@@ -1,0 +1,31 @@
+{
+  "folders": [
+    { "name": "frontend (Next.js)", "path": "." },
+    { "name": "backend (.NET / Azure)", "path": "backend-dotnet" }
+  ],
+  "settings": {
+    "files.exclude": {
+      "plans": true,
+      "docs": true,
+      "agent-skills": true,
+      "dev": true,
+      "AGENTS.md": true,
+      "CLAUDE.md": true,
+      ".mcp.json": true,
+      "local-env.md": true,
+      "replyinmyvoice_requirements.md": true,
+      "dev-api-desktop.jpeg": true,
+      "dev-hub-desktop.jpeg": true,
+      "dev-mcp-desktop.jpeg": true,
+      "pricing-live-faq.jpeg": true,
+      "pricing-live-fold.jpeg": true,
+      "pricing-live-table.jpeg": true,
+      "**/.next": true,
+      "**/.open-next": true,
+      "**/.wrangler": true,
+      "**/node_modules": true,
+      "**/*.tsbuildinfo": true,
+      "backend-dotnet/artifacts": true
+    }
+  }
+}
