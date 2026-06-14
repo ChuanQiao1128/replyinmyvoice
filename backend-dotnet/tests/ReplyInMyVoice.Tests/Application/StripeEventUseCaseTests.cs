@@ -541,7 +541,9 @@ public sealed class StripeEventUseCaseTests
         await using (var orphanDb = fixture.CreateContext())
         {
             var storedEvent = await orphanDb.StripeEvents.SingleAsync(x => x.EventId == "evt_application_action_unknown");
-            storedEvent.Status.Should().Be(StripeEventStatus.Failed);
+            storedEvent.Status.Should().Be(StripeEventStatus.Pending);
+            storedEvent.AttemptCount.Should().Be(1);
+            storedEvent.LockedUntil.Should().BeAfter(now);
             storedEvent.LastError.Should().Contain("No matching user");
             (await orphanDb.OutboxMessages.CountAsync()).Should().Be(0);
         }
