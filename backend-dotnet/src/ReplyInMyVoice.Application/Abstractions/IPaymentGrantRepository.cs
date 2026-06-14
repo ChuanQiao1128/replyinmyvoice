@@ -1,3 +1,5 @@
+using ReplyInMyVoice.Domain.Enums;
+
 namespace ReplyInMyVoice.Application.Abstractions;
 
 public interface IPaymentGrantRepository
@@ -7,6 +9,9 @@ public interface IPaymentGrantRepository
         DateTimeOffset windowEnd,
         IReadOnlyCollection<string> paymentIntentIds,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<SubscriptionUserSnapshot>> ListSubscriptionUsersForReconciliationAsync(
+        CancellationToken ct = default);
 }
 
 public sealed record PaymentGrantSnapshot(
@@ -15,3 +20,9 @@ public sealed record PaymentGrantSnapshot(
     long? AmountTotal,
     string? Currency,
     DateTimeOffset GrantedAt);
+
+public sealed record SubscriptionUserSnapshot(
+    Guid UserId,
+    string? StripeCustomerId,
+    string? StripeSubscriptionId,
+    SubscriptionStatus Status);

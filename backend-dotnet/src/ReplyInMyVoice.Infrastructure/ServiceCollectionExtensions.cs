@@ -95,6 +95,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBillingSupportRepository, BillingSupportRepository>();
         services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
         services.AddScoped<IPaymentGrantRepository, PaymentGrantRepository>();
+        services.AddScoped<IStripeReconciliationRunRepository, StripeReconciliationRunRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
         services.AddScoped<IApiKeyUsageRepository, ApiKeyUsageRepository>();
         services.AddScoped<IAdminUserRepository, AdminUserRepository>();
@@ -177,6 +178,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IOutboxMessageHandler, PaymentGraceReminderNotificationOutboxMessageHandler>();
         services.AddTransient<IOutboxMessageHandler, StripePaymentActionRequiredOutboxMessageHandler>();
         services.AddTransient<IOutboxMessageHandler, StripeCardExpiringOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, StripeReconciliationAlertOutboxMessageHandler>();
         services.AddScoped<IOutboxDispatchObserver>(sp => new OutboxDispatchTelemetryObserver(
             sp.GetRequiredService<ILogger<OutboxDispatchTelemetryObserver>>(),
             sp.GetService<TelemetryClient>()));
@@ -185,6 +187,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
         services.AddSingleton(ReadStripeEventProcessingOptions(configuration));
         services.AddSingleton(ReadProviderCircuitBreakerOptions(configuration));
+        services.AddSingleton(ReadStripeReconciliationOptions(configuration));
         services.TryAddSingleton<IProviderResilienceEvents, NoOpProviderResilienceEvents>();
         services.AddSingleton(sp => new ProviderCircuitBreakerRegistry(
             sp.GetRequiredService<ProviderCircuitBreakerOptions>(),
@@ -205,7 +208,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IStripeEventNotifier, StripeEventNotifier>();
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());
-        services.AddScoped<AppStripePaymentReconciliationClient, StripePaymentReconciliationClient>();
+        services.AddScoped<AppStripePaymentReconciliationClient>(sp => new StripePaymentReconciliationClient(
+            sp.GetRequiredService<AppStripeBillingClient>(),
+            configuration));
         services.AddScoped<LegacyStripeReconciliationAlerter>(sp => new StripeReconciliationNotificationAlerter(
             configuration,
             sp.GetRequiredService<INotificationService>(),
@@ -350,6 +355,25 @@ public static class ServiceCollectionExtensions
         new(
             ReadBoundedInt(configuration, "STRIPE_EVENT_MAX_ATTEMPTS", defaultValue: 8, minimum: 1, maximum: 50),
             ReadBoundedInt(configuration, "STRIPE_WEBHOOK_INLINE_BUDGET_SEC", defaultValue: 8, minimum: 0, maximum: 20));
+    private static StripeReconciliationOptions ReadStripeReconciliationOptions(IConfiguration configuration) =>
+        new(
+            ReadClampedInt(configuration, "RECONCILIATION_AUTO_GRANT_MAX", 10, 0, 100),
+            ReadClampedInt(configuration, "RECONCILIATION_MIN_PAYMENT_AGE_MINUTES", 60, 0, 1440),
+            ReadClampedInt(configuration, "RECONCILIATION_WINDOW_DAYS", 3, 1, 30));
+
+    private static int ReadClampedInt(
+        IConfiguration configuration,
+        string name,
+        int defaultValue,
+        int min,
+        int max) =>
+        int.TryParse(
+            configuration[name],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var parsed)
+            ? Math.Clamp(parsed, min, max)
+            : defaultValue;
 
     private static int ReadPositiveInt(IConfiguration configuration, string name, int defaultValue) =>
         int.TryParse(

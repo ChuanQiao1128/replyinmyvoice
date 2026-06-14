@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.BillingSupport;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -56,6 +57,7 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IBillingSupportRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IBillingSupportRequestRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IPaymentGrantRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IStripeReconciliationRunRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IAccountUsagePlanProvider>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IUnitOfWork>().Should().NotBeNull();
         scopedProvider.GetRequiredService<AppStripePaymentReconciliationClient>().Should().NotBeNull();
@@ -104,9 +106,32 @@ public sealed class InfrastructureServiceCollectionTests
             StripeNotificationOutboxMessageTypes.PaymentGraceReminder,
             StripeNotificationOutboxMessageTypes.PaymentActionRequired,
             StripeNotificationOutboxMessageTypes.CardExpiring,
+            "StripeReconciliationAlertRequested",
         ]);
         handlers.Select(x => x.MessageType).Should().OnlyHaveUniqueItems();
         scopedProvider.GetRequiredService<IOutboxDispatchObserver>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_reconciliation_option_defaults_and_clamps()
+    {
+        var defaultProvider = BuildProvider([]);
+        var clampedProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["RECONCILIATION_AUTO_GRANT_MAX"] = "999",
+            ["RECONCILIATION_MIN_PAYMENT_AGE_MINUTES"] = "-1",
+            ["RECONCILIATION_WINDOW_DAYS"] = "100",
+        });
+
+        var defaults = defaultProvider.GetRequiredService<StripeReconciliationOptions>();
+        defaults.AutoGrantMaxPerRun.Should().Be(10);
+        defaults.MinPaymentAgeMinutes.Should().Be(60);
+        defaults.WindowDays.Should().Be(3);
+
+        var clamped = clampedProvider.GetRequiredService<StripeReconciliationOptions>();
+        clamped.AutoGrantMaxPerRun.Should().Be(100);
+        clamped.MinPaymentAgeMinutes.Should().Be(0);
+        clamped.WindowDays.Should().Be(30);
     }
 
     [Fact]

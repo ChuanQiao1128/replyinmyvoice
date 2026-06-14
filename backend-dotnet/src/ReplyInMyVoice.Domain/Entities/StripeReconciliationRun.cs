@@ -12,6 +12,10 @@ public sealed class StripeReconciliationRun
     public int PaidButNoGrantCount { get; set; }
     public int GrantButNoPaymentCount { get; set; }
     public int AmountMismatchCount { get; set; }
+    public int SubscriptionMismatchCount { get; set; }
+    public int AutoGrantedCount { get; set; }
+    public int AutoGrantSkippedCount { get; set; }
+    public int ManualReviewCount { get; set; }
     public string ReportJson { get; set; } = "{}";
     public Guid RowVersion { get; set; } = Guid.NewGuid();
 }
