@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -86,13 +87,20 @@ public sealed class ExpiredReservationCleanupServiceTests
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NullLogger<ReserveQuotaHandler>.Instance);
 
     private static MarkQuotaProcessingHandler CreateMarkProcessingHandler(AppDbContext db) =>
-        new(new RewriteAttemptRepository(db), new UnitOfWork(db));
+        new(
+            new RewriteAttemptRepository(db),
+            new UnitOfWork(db),
+            NullLogger<MarkQuotaProcessingHandler>.Instance);
 
     private static ReleaseExpiredReservationsHandler CreateExpiredHandler(AppDbContext db) =>
-        new(new UsageReservationRepository(db), new UnitOfWork(db));
+        new(
+            new UsageReservationRepository(db),
+            new UnitOfWork(db),
+            NullLogger<ReleaseExpiredReservationsHandler>.Instance);
 
     private static ReserveQuotaCommand ReserveCommand(
         Guid userId,

@@ -223,7 +223,8 @@ public sealed class CorrelationIdPropagationTests
             new UsageReservationRepository(reserveDb),
             new RewriteCreditRepository(reserveDb),
             new OutboxMessageRepository(reserveDb),
-            new UnitOfWork(reserveDb)).HandleAsync(new ReserveQuotaCommand(
+            new UnitOfWork(reserveDb),
+            NullLogger<ReserveQuotaHandler>.Instance).HandleAsync(new ReserveQuotaCommand(
                 userId,
                 idempotencyKey,
                 $"hash-{idempotencyKey}",

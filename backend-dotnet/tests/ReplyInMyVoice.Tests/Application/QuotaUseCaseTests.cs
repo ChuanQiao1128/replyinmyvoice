@@ -2,6 +2,8 @@ using System.Data;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -188,6 +190,67 @@ public sealed class QuotaUseCaseTests
     }
 
     [Fact]
+    public async Task ReserveQuotaAsync_logs_successful_reservation_without_request_content()
+    {
+        await using var fixture = await QuotaUseCaseDbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var logger = new RecordingLogger<ReserveQuotaHandler>();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateReserveHandler(handlerDb, logger: logger);
+
+        var result = await handler.HandleAsync(ReserveCommand(
+            user.Id,
+            "idem-log-created",
+            "hash-log-created",
+            now,
+            quotaLimit: 3));
+
+        result.Kind.Should().Be(ReserveQuotaResultKind.Created);
+        logger.Records.Should().Contain(record =>
+            record.Level == LogLevel.Information &&
+            record.EventName == "quota_reserved" &&
+            record.Message.Contains(result.AttemptId.ToString(), StringComparison.Ordinal));
+        logger.Records.Select(record => record.Message).Should().AllSatisfy(message =>
+        {
+            message.Should().NotContain("roughDraftReply");
+            message.Should().NotContain("Thanks for your message. I will reply soon.");
+        });
+    }
+
+    [Fact]
+    public async Task ReserveQuotaAsync_logs_quota_exhausted_at_warning()
+    {
+        await using var fixture = await QuotaUseCaseDbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = "free:lifetime",
+                QuotaLimit = 3,
+                UsedCount = 3,
+                ReservedCount = 0,
+                CreatedAt = now.AddDays(-1),
+                UpdatedAt = now.AddDays(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        var logger = new RecordingLogger<ReserveQuotaHandler>();
+        await using var handlerDb = fixture.CreateContext();
+        var result = await CreateReserveHandler(handlerDb, logger: logger).HandleAsync(
+            ReserveCommand(user.Id, "idem-log-exhausted", "hash-log-exhausted", now, quotaLimit: 3));
+
+        result.Kind.Should().Be(ReserveQuotaResultKind.QuotaExceeded);
+        logger.Records.Should().Contain(record =>
+            record.Level == LogLevel.Warning &&
+            record.EventName == "quota_exhausted");
+    }
+
+    [Fact]
     public async Task ReserveQuotaAsync_uses_retrying_transaction_for_reservation_races()
     {
         await using var fixture = await QuotaUseCaseDbFixture.CreateAsync();
@@ -247,6 +310,33 @@ public sealed class QuotaUseCaseTests
         period.ReservedCount.Should().Be(0);
         (await verifyDb.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Finalized);
         (await verifyDb.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task FinalizeQuotaSuccessAsync_logs_successful_finalization()
+    {
+        await using var fixture = await QuotaUseCaseDbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        Guid attemptId;
+        await using (var reserveDb = fixture.CreateContext())
+        {
+            var reserve = await CreateReserveHandler(reserveDb).HandleAsync(
+                ReserveCommand(user.Id, "idem-log-finalize", "hash-log-finalize", now, quotaLimit: 3));
+            attemptId = reserve.AttemptId;
+        }
+
+        var logger = new RecordingLogger<FinalizeQuotaSuccessHandler>();
+        await using var finalizeDb = fixture.CreateContext();
+        await CreateFinalizeHandler(finalizeDb, logger).HandleAsync(new FinalizeQuotaSuccessCommand(
+            attemptId,
+            "{\"rewrittenText\":\"hello\"}",
+            now.AddMinutes(1)));
+
+        logger.Records.Should().Contain(record =>
+            record.Level == LogLevel.Information &&
+            record.EventName == "quota_finalized" &&
+            record.Message.Contains(attemptId.ToString(), StringComparison.Ordinal));
     }
 
     [Fact]
@@ -431,35 +521,53 @@ public sealed class QuotaUseCaseTests
 
     private static ReserveQuotaHandler CreateReserveHandler(
         AppDbContext db,
-        IUnitOfWork? unitOfWork = null) =>
+        IUnitOfWork? unitOfWork = null,
+        ILogger<ReserveQuotaHandler>? logger = null) =>
         new(
             new UsagePeriodRepository(db),
             new RewriteAttemptRepository(db),
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            unitOfWork ?? new UnitOfWork(db));
+            unitOfWork ?? new UnitOfWork(db),
+            logger ?? NullLogger<ReserveQuotaHandler>.Instance);
 
-    private static FinalizeQuotaSuccessHandler CreateFinalizeHandler(AppDbContext db) =>
+    private static FinalizeQuotaSuccessHandler CreateFinalizeHandler(
+        AppDbContext db,
+        ILogger<FinalizeQuotaSuccessHandler>? logger = null) =>
         new(
             new RewriteAttemptRepository(db),
             new UsageReservationRepository(db),
             new UsagePeriodRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            logger ?? NullLogger<FinalizeQuotaSuccessHandler>.Instance);
 
-    private static MarkQuotaProcessingHandler CreateMarkProcessingHandler(AppDbContext db) =>
-        new(new RewriteAttemptRepository(db), new UnitOfWork(db));
+    private static MarkQuotaProcessingHandler CreateMarkProcessingHandler(
+        AppDbContext db,
+        ILogger<MarkQuotaProcessingHandler>? logger = null) =>
+        new(
+            new RewriteAttemptRepository(db),
+            new UnitOfWork(db),
+            logger ?? NullLogger<MarkQuotaProcessingHandler>.Instance);
 
-    private static ReleaseQuotaHandler CreateReleaseHandler(AppDbContext db) =>
+    private static ReleaseQuotaHandler CreateReleaseHandler(
+        AppDbContext db,
+        ILogger<ReleaseQuotaHandler>? logger = null) =>
         new(
             new RewriteAttemptRepository(db),
             new UsageReservationRepository(db),
             new UsagePeriodRepository(db),
             new RewriteCreditRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            logger ?? NullLogger<ReleaseQuotaHandler>.Instance);
 
-    private static ReleaseExpiredReservationsHandler CreateExpiredHandler(AppDbContext db) =>
-        new(new UsageReservationRepository(db), new UnitOfWork(db));
+    private static ReleaseExpiredReservationsHandler CreateExpiredHandler(
+        AppDbContext db,
+        ILogger<ReleaseExpiredReservationsHandler>? logger = null) =>
+        new(
+            new UsageReservationRepository(db),
+            new UnitOfWork(db),
+            logger ?? NullLogger<ReleaseExpiredReservationsHandler>.Instance);
 
     private static ReserveQuotaCommand ReserveCommand(
         Guid userId,
@@ -523,6 +631,51 @@ public sealed class QuotaUseCaseTests
             }
 
             throw new InvalidOperationException("Retry simulation did not reach a successful attempt.");
+        }
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        private readonly List<LogRecord> _records = [];
+
+        public IReadOnlyList<LogRecord> Records => _records;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull =>
+            NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            _records.Add(new LogRecord(logLevel, ExtractEventName(state), formatter(state, exception)));
+        }
+
+        private static string ExtractEventName<TState>(TState state)
+        {
+            if (state is IEnumerable<KeyValuePair<string, object?>> values)
+            {
+                var eventName = values.FirstOrDefault(value => value.Key == "QuotaLifecycleEvent").Value;
+                return eventName?.ToString() ?? string.Empty;
+            }
+
+            return string.Empty;
+        }
+    }
+
+    private sealed record LogRecord(LogLevel Level, string EventName, string Message);
+
+    private sealed class NullScope : IDisposable
+    {
+        public static readonly NullScope Instance = new();
+
+        public void Dispose()
+        {
         }
     }
 

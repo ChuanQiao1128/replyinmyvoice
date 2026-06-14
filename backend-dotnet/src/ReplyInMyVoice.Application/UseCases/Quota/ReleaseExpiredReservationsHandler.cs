@@ -1,4 +1,5 @@
 using System.Data;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Domain.Enums;
 
@@ -6,8 +7,12 @@ namespace ReplyInMyVoice.Application.UseCases.Quota;
 
 public sealed class ReleaseExpiredReservationsHandler(
     IUsageReservationRepository reservations,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ILogger<ReleaseExpiredReservationsHandler> logger)
 {
+    private const string QuotaReservationExpiredEvent = "quota_reservation_expired";
+    private const string QuotaExpiredReservationsBatchEvent = "quota_expired_reservations_batch";
+
     public async Task<int> HandleAsync(
         ReleaseExpiredReservationsCommand command,
         CancellationToken ct = default)
@@ -31,6 +36,7 @@ public sealed class ReleaseExpiredReservationsHandler(
                         transactionCt);
 
                     var claimedCount = 0;
+                    var releasedReservations = new List<ExpiredReservationLogInfo>();
                     foreach (var reservation in expiredReservations)
                     {
                         var reason = reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Processing
@@ -58,21 +64,47 @@ public sealed class ReleaseExpiredReservationsHandler(
                         reservation.RewriteAttempt.ErrorCode = reason;
                         reservation.RewriteAttempt.CompletedAt = command.Now;
                         claimedCount++;
+                        releasedReservations.Add(new ExpiredReservationLogInfo(
+                            reservation.Id,
+                            reservation.RewriteAttemptId,
+                            reason));
                     }
 
                     await unitOfWork.SaveChangesAsync(transactionCt);
-                    return new BatchReleaseResult(claimedCount, expiredReservations.Count);
+                    return new BatchReleaseResult(claimedCount, expiredReservations.Count, releasedReservations);
                 },
                 IsolationLevel.ReadCommitted,
                 ct);
 
+            foreach (var reservation in batchResult.ReleasedReservations)
+            {
+                logger.LogInformation(
+                    "{QuotaLifecycleEvent} Expired quota reservation {ReservationId} for attempt {AttemptId} with reason {Reason}.",
+                    QuotaReservationExpiredEvent,
+                    reservation.ReservationId,
+                    reservation.AttemptId,
+                    reservation.Reason);
+            }
+
             releasedCount += batchResult.ClaimedCount;
             if (batchResult.ListedCount < command.BatchSize)
             {
+                logger.LogInformation(
+                    "{QuotaLifecycleEvent} Released {ReleasedCount} expired quota reservations.",
+                    QuotaExpiredReservationsBatchEvent,
+                    releasedCount);
                 return releasedCount;
             }
         }
     }
 
-    private sealed record BatchReleaseResult(int ClaimedCount, int ListedCount);
+    private sealed record BatchReleaseResult(
+        int ClaimedCount,
+        int ListedCount,
+        IReadOnlyList<ExpiredReservationLogInfo> ReleasedReservations);
+
+    private sealed record ExpiredReservationLogInfo(
+        Guid ReservationId,
+        Guid AttemptId,
+        string Reason);
 }

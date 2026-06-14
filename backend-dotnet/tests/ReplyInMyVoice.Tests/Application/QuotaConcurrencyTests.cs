@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Domain.Entities;
@@ -189,17 +190,22 @@ public sealed class QuotaConcurrencyTests
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NullLogger<ReserveQuotaHandler>.Instance);
 
     private static FinalizeQuotaSuccessHandler CreateFinalizeHandler(AppDbContext db) =>
         new(
             new RewriteAttemptRepository(db),
             new UsageReservationRepository(db),
             new UsagePeriodRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NullLogger<FinalizeQuotaSuccessHandler>.Instance);
 
     private static ReleaseExpiredReservationsHandler CreateExpiredHandler(AppDbContext db) =>
-        new(new UsageReservationRepository(db), new UnitOfWork(db));
+        new(
+            new UsageReservationRepository(db),
+            new UnitOfWork(db),
+            NullLogger<ReleaseExpiredReservationsHandler>.Instance);
 
     private static ReserveQuotaCommand ReserveCommand(
         Guid userId,

@@ -6883,3 +6883,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/DbExceptionClassifierTests.cs` and this log entry.
 - Verification evidence: red run failed at compile due missing classifier; green run passed 12/12; `dotnet test ReplyInMyVoice.sln -c Release` passed 873/873; restricted-word guard over changed tracked files returned no rows, and the exact source/test guard returned no rows after ignored build output was removed.
 - Limitations: The test suite intentionally avoids Testcontainers and live SQL Server per issue scope. Build emitted existing NuGet advisory-source warnings when package metadata could not be fetched.
+
+### 2026-06-15 - state-machine-modeling - OBS-LOG issue #824 quota lifecycle observability
+
+- Agent: Codex worker
+- Trigger: Issue #824 instruments existing quota reservation and webhook ingest lifecycle outcomes with structured logs.
+- Action: Opened and followed the project skill as a lifecycle checklist. Modeled no state changes: reservation attempts still move through existing Pending, Processing, Finalized, Released, and Expired outcomes, while duplicate, exhausted, and ineligible events remain rejected or no-op outcomes. Added logs around terminal outcomes without altering transition predicates, counters, or persistence.
+- Output artifacts: typed logger injection and structured terminal logs in the five quota handlers plus webhook ingest handler, and this log entry.
+- Verification evidence: focused quota tests passed 13/13; focused Stripe event tests passed 35/35; full Release suite passed 876/876. Payload and restricted-term grep guards returned no rows.
+- Limitations: This issue intentionally does not add correlation-id plumbing, schema changes, retry behavior changes, or deployment readiness work.
+
+### 2026-06-15 - dotnet-backend-testing - OBS-LOG issue #824 logging assertions
+
+- Agent: Codex worker
+- Trigger: Issue #824 adds C#/.NET backend logging assertions for quota lifecycle handlers.
+- Action: Opened and followed the project skill for test selection. Added in-class xUnit/FluentAssertions tests with a hand-written recording `ILogger<T>` before implementation, verified the red run failed at the expected handler constructor arity errors, then added typed loggers and updated direct test helper construction sites to use `NullLogger<T>.Instance`.
+- Output artifacts: new logging assertions in `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`, updated constructor call sites, and this log entry.
+- Verification evidence: initial quota filter failed at compile before implementation; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~QuotaUseCaseTests"` passed 13/13, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~StripeEventUseCaseTests"` passed 35/35, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 876/876.
+- Limitations: Build emitted existing NuGet advisory-source warnings when package metadata could not be fetched. The logger-count acceptance pipeline found all six files; with default macOS `wc` it exits nonzero because `wc -l` pads the count before `grep -qx 6`, while the same pipeline passes when GNU coreutils `wc` is exported on `PATH`.

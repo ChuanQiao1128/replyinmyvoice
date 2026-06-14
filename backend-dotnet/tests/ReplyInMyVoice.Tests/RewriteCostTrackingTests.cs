@@ -7,6 +7,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Domain.Contracts;
@@ -154,7 +155,8 @@ public sealed class RewriteCostTrackingTests
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NullLogger<ReserveQuotaHandler>.Instance);
 
     private static ProcessRewriteJobHandler CreateProcessHandler(
         AppDbContext db,
