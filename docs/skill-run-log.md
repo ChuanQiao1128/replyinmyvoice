@@ -6901,3 +6901,30 @@ claude-heavy-planning-handoff
 - Output artifacts: new logging assertions in `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`, updated constructor call sites, and this log entry.
 - Verification evidence: initial quota filter failed at compile before implementation; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~QuotaUseCaseTests"` passed 13/13, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~StripeEventUseCaseTests"` passed 35/35, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 876/876.
 - Limitations: Build emitted existing NuGet advisory-source warnings when package metadata could not be fetched. The logger-count acceptance pipeline found all six files; with default macOS `wc` it exits nonzero because `wc -l` pads the count before `grep -qx 6`, while the same pipeline passes when GNU coreutils `wc` is exported on `PATH`.
+
+### 2026-06-15 - resilience-test-generation - API-DLQ issue #825 Service Bus settlement
+
+- Agent: Codex worker
+- Trigger: Issue #825 changes Azure Service Bus poison-message and redelivery behavior in the deployed Functions consumer.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operation: process one rewrite job queue message without wasting retries on unprocessable payloads. Boundaries: Azure Functions Service Bus binding, message settlement actions, JSON deserialization, SQLite-backed handler dependencies, and local fakes. Matrix covered malformed payload, JSON null payload, empty attempt id, missing attempt, unexpected handler exception, and success.
+- Output artifacts: explicit `DeadLetterMessageAsync` calls for `invalid_json`, `invalid_job`, and `attempt_not_found`; explicit `CompleteMessageAsync` on success; focused `RewriteJobFunctionTests`.
+- Verification evidence: initial focused run failed against the old two-argument `Run` contract; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteJobFunctionTests` passed 6/6 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 882/882.
+- Limitations: Tests use `ServiceBusModelFactory` messages and a recording `ServiceBusMessageActions` fake; no live Service Bus queue, Azure Functions host, deploy, push, or PR action was run.
+
+### 2026-06-15 - state-machine-modeling - API-DLQ issue #825 queue message lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #825 changes queue job lifecycle handling for invalid, missing-attempt, transient-failure, and success paths.
+- Action: Opened and followed the project skill for a minimal lifecycle model. States: received, completed, dead-lettered, and abandoned-for-redelivery. Events: malformed payload, JSON null payload, empty attempt id, missing attempt, handler success, and unexpected handler exception. Allowed transitions: unprocessable payloads and missing attempts move from received to dead-lettered with stable reason codes; success moves to completed; unexpected handler exceptions are rethrown so the runtime can redeliver.
+- Output artifacts: `RewriteJobFunction` settlement branches, `host.json` Service Bus settings, and focused state-transition tests in `RewriteJobFunctionTests`.
+- Verification evidence: focused function tests passed 6/6; `grep -n "DeadLetterMessageAsync" src/ReplyInMyVoice.Functions/Functions/RewriteJobFunction.cs` showed four production dead-letter call sites plus the test-overload no-op override; full Release suite passed 882/882.
+- Limitations: No persisted job-status model or database schema changed. The state model is limited to message settlement at the deployed Functions consumer boundary.
+
+### 2026-06-15 - dotnet-backend-testing - API-DLQ issue #825 function tests
+
+- Agent: Codex worker
+- Trigger: Issue #825 adds C#/.NET unit coverage for the deployed `RewriteJobFunction` Service Bus consumer.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions tests before production changes using `ServiceBusModelFactory`, a hand-written `ServiceBusMessageActions` recorder, the existing `DbFixture`, real repositories for handler paths, and deterministic fakes for the rewrite engine and unexpected repository failure.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobFunctionTests.cs`, plus the function signature and host configuration changes required for those tests.
+- Verification evidence: red run failed at compile because the old function exposed only `Run(string, CancellationToken)`; after implementation and one corrected transient-failure setup, focused tests passed 6/6 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 882/882.
+- Limitations: The existing correlation propagation test still uses a direct string overload retained in `RewriteJobFunction` without a trigger attribute, so no extra out-of-scope test file needed to change.
