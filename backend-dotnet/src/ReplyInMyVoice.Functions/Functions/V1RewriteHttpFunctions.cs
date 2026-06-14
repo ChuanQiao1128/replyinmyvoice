@@ -73,7 +73,15 @@ public sealed class V1RewriteHttpFunctions(
             return V1Problem(V1ErrorCatalog.InvalidKey);
         }
 
-        var rateLimit = auth.ApiKeyId is null
+        ApiKeyRateLimitResult? rateLimit = null;
+        if (!ApiKeyScopes.Allows(auth.Scopes, ApiKeyScopes.Rewrite))
+        {
+            return await CompleteAsync(
+                V1InsufficientScopeProblem(),
+                StatusCodes.Status403Forbidden);
+        }
+
+        rateLimit = auth.ApiKeyId is null
             ? null
             : await rateLimiter.CheckAndIncrementAsync(
                 auth.ApiKeyId.Value,
@@ -623,6 +631,13 @@ public sealed class V1RewriteHttpFunctions(
 
     private static IActionResult V1Problem(V1ErrorCatalog.V1Error error) =>
         FunctionHttpResults.Problem(error.Message, error.Message, error.StatusCode, error.Code);
+
+    private static IActionResult V1InsufficientScopeProblem() =>
+        FunctionHttpResults.Problem(
+            "This API key does not have the required scope.",
+            "This API key does not have the required scope.",
+            StatusCodes.Status403Forbidden,
+            "insufficient_scope");
 
     private async Task<IActionResult> CompleteWithUsageAsync(
         Guid? apiKeyId,

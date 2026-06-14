@@ -6649,3 +6649,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteValidationTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1ErrorCatalog.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1RewriteValidation.cs`, and this log entry.
 - Verification evidence: initial focused test command failed at compile time because `V1ErrorCatalog` was absent; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~V1RewriteValidationTests` passed 9/9, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiInputHardeningTests` passed 16/16, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 811/811.
 - Limitations: Restore emitted existing `NU1900` package vulnerability metadata warnings when the NuGet service index could not be loaded, but restore/build/test completed. No frontend, browser, external provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-14 - data-module-review - API-SCOPE issue #813 API key scope enforcement
+
+- Agent: Codex worker
+- Trigger: Issue #813 reads the persisted `ApiKey.Scope` JSON value and changes how V1 API requests are authorized from that stored data.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Kept the `ApiKey.Scope` entity default and database schema unchanged, treated null/blank/empty/invalid scope JSON as default-full at parse time, and made only non-empty parsed arrays restrict the V1 rewrite submit path.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Common/ApiKeyScopes.cs`, updated V1 API key auth carriers, focused resolver/API tests, and this log entry.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiKeyAuthResolverTests` passed 15/15; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~V1RewriteRateLimitTests` passed 10/10; full `dotnet test ReplyInMyVoice.sln -c Release` passed 824/824.
+- Limitations: No EF migration, schema change, key generation surface change, payment action, deploy, push, or PR action was run.
+
+### 2026-06-14 - dotnet-backend-testing - API-SCOPE issue #813 resolver and V1 tests
+
+- Agent: Codex worker
+- Trigger: Issue #813 requires C#/.NET resolver tests and V1 HTTP tests for API key scope parsing, default-full behavior, and restricted rewrite submit denial.
+- Action: Opened and followed the project skill for backend test selection. Added resolver tests for default, restricted rewrite, restricted non-rewrite, and blank/invalid parsing; added WebApplicationFactory V1 tests proving restricted live keys return 403 before rewrite attempt/reservation/outbox rows and default-full scopes still submit and read usage.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyAuthResolverTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRateLimitTests.cs`, V1 host scope guards, and this log entry.
+- Verification evidence: initial focused test run failed before implementation because `ApiKeyScopes` and `ApiKeyAuthResult.Scopes` were missing; after implementation, the resolver filter passed 15/15, the V1 rate-limit filter passed 10/10, and full Release suite passed 824/824.
+- Limitations: The V1 WebApplicationFactory acceptance tests exercise the ASP.NET API host, so the same guard was mirrored there in addition to the Functions host. No frontend, browser, external provider, payment, deploy, push, or PR action was run.

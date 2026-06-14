@@ -142,6 +142,61 @@ public sealed class V1RewriteRateLimitTests
     }
 
     [Fact]
+    public async Task V1_rewrite_submit_rejects_live_key_without_rewrite_scope_before_attempt_creation()
+    {
+        await using var fixture = await FileBackedApiDbFixture.CreateAsync();
+        var (_, token) = await SeedApiKeyUserAsync(
+            fixture,
+            "clerk_v1_missing_rewrite_scope",
+            SubscriptionStatus.Active,
+            DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            scope: "[\"usage\"]");
+        await using var factory = CreateFactory(fixture);
+        var client = CreateClient(factory);
+
+        var response = await PostV1RewriteAsync(
+            client,
+            token,
+            "v1-missing-rewrite-scope",
+            ValidV1Draft());
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        await AssertErrorCodeAsync(response, "insufficient_scope");
+        await using var verifyDb = fixture.CreateContext();
+        (await verifyDb.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await verifyDb.UsageReservations.CountAsync()).Should().Be(0);
+        (await verifyDb.OutboxMessages.CountAsync()).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("default", null)]
+    [InlineData("empty", "")]
+    [InlineData("whitespace", "   ")]
+    [InlineData("empty-array", "[]")]
+    public async Task V1_rewrite_submit_and_usage_allow_full_default_scopes(string keySuffix, string? scope)
+    {
+        await using var fixture = await FileBackedApiDbFixture.CreateAsync();
+        var (_, token) = await SeedApiKeyUserAsync(
+            fixture,
+            $"clerk_v1_full_scope_{keySuffix}",
+            SubscriptionStatus.Active,
+            DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            scope: scope);
+        await using var factory = CreateFactory(fixture);
+        var client = CreateClient(factory);
+
+        var submit = await PostV1RewriteAsync(
+            client,
+            token,
+            $"v1-full-scope-{keySuffix}",
+            ValidV1Draft());
+        var usage = await GetV1UsageAsync(client, token);
+
+        submit.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        usage.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task V1_rewrite_submit_returns_429_when_db_window_was_filled_by_another_instance()
     {
         const int rateLimitPerMinute = 2;
@@ -241,7 +296,8 @@ public sealed class V1RewriteRateLimitTests
         string externalAuthUserId,
         SubscriptionStatus subscriptionStatus,
         DateTimeOffset? currentPeriodEnd,
-        int rateLimitPerMinute = 60)
+        int rateLimitPerMinute = 60,
+        string? scope = null)
     {
         Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestApiKeyPepper);
         var now = DateTimeOffset.UtcNow;
@@ -269,7 +325,7 @@ public sealed class V1RewriteRateLimitTests
                 continue;
             }
 
-            db.ApiKeys.Add(new ApiKey
+            var apiKey = new ApiKey
             {
                 User = user,
                 Name = keyIndex == 0 ? "V1 rate limit key" : $"V1 rate limit key {keyIndex}",
@@ -278,7 +334,13 @@ public sealed class V1RewriteRateLimitTests
                 RateLimitPerMinute = rateLimitPerMinute,
                 CreatedAt = now,
                 UpdatedAt = now,
-            });
+            };
+            if (scope is not null)
+            {
+                apiKey.Scope = scope;
+            }
+
+            db.ApiKeys.Add(apiKey);
             keyIndex += 1;
         }
 
@@ -298,6 +360,13 @@ public sealed class V1RewriteRateLimitTests
         };
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         request.Headers.Add("Idempotency-Key", idempotencyKey);
+        return client.SendAsync(request);
+    }
+
+    private static Task<HttpResponseMessage> GetV1UsageAsync(HttpClient client, string token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/usage");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         return client.SendAsync(request);
     }
 

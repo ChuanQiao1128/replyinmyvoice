@@ -258,7 +258,24 @@ app.MapPost("/api/v1/rewrite", async (
         return V1CatalogError(V1ErrorCatalog.InvalidKey);
     }
 
-    var rateLimit = auth.ApiKeyId is null
+    ApiKeyRateLimitResult? rateLimit = null;
+    if (!ApiKeyScopes.Allows(auth.Scopes, ApiKeyScopes.Rewrite))
+    {
+        return await CompleteV1Async(
+            db,
+            auth.ApiKeyId,
+            V1Error(
+                "insufficient_scope",
+                "This API key does not have the required scope.",
+                StatusCodes.Status403Forbidden),
+            StatusCodes.Status403Forbidden,
+            stopwatch,
+            now,
+            cancellationToken,
+            response: httpRequest.HttpContext.Response);
+    }
+
+    rateLimit = auth.ApiKeyId is null
         ? null
         : await rateLimiter.CheckAndIncrementAsync(
             auth.ApiKeyId.Value,
@@ -1176,7 +1193,12 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
         db.Entry(apiKey).State = EntityState.Unchanged;
     }
 
-    return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute, apiKey.IsTest);
+    return new ApiKeyAuthResult(
+        apiKey.UserId,
+        apiKey.Id,
+        apiKey.RateLimitPerMinute,
+        apiKey.IsTest,
+        ApiKeyScopes.Parse(apiKey.Scope));
 }
 
 static bool HasKnownApiKeyPrefix(string token) =>
@@ -1696,7 +1718,12 @@ public sealed record V1ErrorResponse(V1Error Error);
 
 public sealed record V1Error(string Code, string Message);
 
-public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute, bool IsTest = false);
+public sealed record ApiKeyAuthResult(
+    Guid? UserId,
+    Guid? ApiKeyId,
+    int RateLimitPerMinute,
+    bool IsTest = false,
+    IReadOnlySet<string>? Scopes = null);
 
 public sealed record V1SandboxAttemptResult(Guid AttemptId, bool IsConflict);
 

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -61,6 +62,94 @@ public sealed class ApiKeyAuthResolverTests
         resolved.IsTest.Should().BeTrue();
         var stored = await db.ApiKeys.SingleAsync();
         stored.LastUsedAt.Should().Be(now);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_returns_empty_scope_set_for_default_scope()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var token = "rmv_live_default_scope_resolver_key";
+        var now = DateTimeOffset.Parse("2026-06-04T12:00:00Z");
+
+        await SeedApiKeyAsync(fixture, user.Id, token);
+        await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
+        var request = CreateRequest(token);
+
+        var resolved = await resolver.ResolveAsync(
+            request,
+            now,
+            CancellationToken.None);
+
+        resolved.UserId.Should().Be(user.Id);
+        resolved.Scopes.Should().NotBeNull();
+        resolved.Scopes.Should().BeEmpty();
+        ApiKeyScopes.Allows(resolved.Scopes!, ApiKeyScopes.Rewrite).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_returns_restricted_rewrite_scope_for_json_array()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var token = "rmv_live_rewrite_scope_resolver_key";
+        var now = DateTimeOffset.Parse("2026-06-04T12:00:00Z");
+
+        await SeedApiKeyAsync(fixture, user.Id, token, scope: "[\"rewrite\"]");
+        await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
+        var request = CreateRequest(token);
+
+        var resolved = await resolver.ResolveAsync(
+            request,
+            now,
+            CancellationToken.None);
+
+        resolved.Scopes.Should().NotBeNull();
+        resolved.Scopes.Should().Contain(ApiKeyScopes.Rewrite);
+        ApiKeyScopes.Allows(resolved.Scopes!, ApiKeyScopes.Rewrite).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_returns_non_empty_scope_set_when_rewrite_scope_is_absent()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var token = "rmv_live_usage_scope_resolver_key";
+        var now = DateTimeOffset.Parse("2026-06-04T12:00:00Z");
+
+        await SeedApiKeyAsync(fixture, user.Id, token, scope: "[\"usage\"]");
+        await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
+        var request = CreateRequest(token);
+
+        var resolved = await resolver.ResolveAsync(
+            request,
+            now,
+            CancellationToken.None);
+
+        resolved.Scopes.Should().NotBeNull();
+        resolved.Scopes.Should().Contain("usage");
+        resolved.Scopes.Should().NotContain(ApiKeyScopes.Rewrite);
+        ApiKeyScopes.Allows(resolved.Scopes!, ApiKeyScopes.Rewrite).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("[]")]
+    [InlineData("{")]
+    public void ApiKeyScopes_Parse_treats_blank_empty_and_invalid_values_as_full(string? scope)
+    {
+        var parsed = ApiKeyScopes.Parse(scope);
+
+        parsed.Should().BeEmpty();
+        ApiKeyScopes.Allows(parsed, ApiKeyScopes.Rewrite).Should().BeTrue();
     }
 
     [Fact]
@@ -178,11 +267,12 @@ public sealed class ApiKeyAuthResolverTests
         string token,
         DateTimeOffset? expiresAt = null,
         DateTimeOffset? revokedAt = null,
-        bool isTest = false)
+        bool isTest = false,
+        string? scope = null)
     {
         var now = DateTimeOffset.Parse("2026-06-04T11:00:00Z");
         await using var db = fixture.CreateContext();
-        db.ApiKeys.Add(new ApiKey
+        var apiKey = new ApiKey
         {
             UserId = userId,
             Name = "Resolver key",
@@ -193,7 +283,13 @@ public sealed class ApiKeyAuthResolverTests
             RevokedAt = revokedAt,
             CreatedAt = now,
             UpdatedAt = now,
-        });
+        };
+        if (scope is not null)
+        {
+            apiKey.Scope = scope;
+        }
+
+        db.ApiKeys.Add(apiKey);
         await db.SaveChangesAsync();
     }
 
