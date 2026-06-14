@@ -3,6 +3,7 @@ using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure;
 
 var builder = FunctionsApplication.CreateBuilder(args);
@@ -17,6 +18,7 @@ builder.Configuration.AddJsonFile(
     reloadOnChange: false);
 
 builder.ConfigureFunctionsWebApplication();
+builder.UseMiddleware<HttpHardeningMiddleware>();
 
 builder.Services
     .AddApplicationInsightsTelemetryWorkerService()

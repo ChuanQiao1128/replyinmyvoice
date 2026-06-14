@@ -177,6 +177,32 @@ claude-heavy-planning-handoff
 - Output artifacts: `ApiKeyCounterContractTests.cs`; `RewriteAttemptQueryFilterTests.cs`; updates to `RetentionServiceTests.cs`, `QuotaUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `AccountUseCaseTests.cs`, `AdminDeleteUserTests.cs`, and `RewriteHistoryTests.cs`.
 - Verification evidence: Initial focused run failed at compile time on missing `SandboxAttemptConventions` and `PurgeExpiredSandboxAttemptsAsync`. Final focused command passed 49/49. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641. `git diff --check` passed.
 - Limitations: No frontend tests were run because no frontend files changed and no browser-visible behavior changed. Local commit was attempted but blocked by sandbox permissions on worktree git metadata outside the writable root. No deploy, push, PR, production branch action, live provider call, payment action, or secret inspection was performed.
+### 2026-06-13 - system-spec-synthesis - HARD-14 HTTP hardening contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #793 changes HTTP transport contracts, public v1 OpenAPI responses, error-envelope behavior, and frontend security-header configuration.
+- Action: Opened and followed the skill; used `AGENTS.md`, `CLAUDE.md`, `plans/production-hardening/SPEC.md`, and `plans/production-hardening/issues/HARD-14-http-hardening.md` as source inputs, with the issue brief as the implementation-ready spec.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Http/HttpHardeningMiddleware.cs`; `FunctionHttpResults.cs`; `Program.cs`; `next.config.ts`; `lib/v1-response-headers.ts`; `public/openapi.json`; targeted backend and vitest tests.
+- Verification evidence: Focused backend tests passed 18/18; focused frontend tests passed 22/22; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 645/645; full `npm run test` passed 364/364; `npm run typecheck` passed.
+- Limitations: No schema, migration, rewrite engine, quota, billing, deployment, live provider call, payment action, push, PR, production branch action, or secret inspection was performed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-14 Functions HTTP tests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #793 adds C#/.NET middleware and result-helper behavior requiring xUnit coverage for request caps, correlation IDs, and error-envelope parity.
+- Action: Opened and followed the skill; wrote failing tests first, confirmed the red state on missing `HttpHardeningMiddleware` and `PayloadTooLarge`, then implemented the smallest Functions HTTP changes to satisfy the issue scope.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpHardeningMiddlewareTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/FunctionHttpResultsTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Http/HttpHardeningMiddleware.cs`; `FunctionHttpResults.cs`; `Program.cs`.
+- Verification evidence: Initial focused run failed at compile time on missing hardening types/helpers. Final focused command passed 18/18. Full backend suite passed 645/645 with `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release`.
+- Limitations: The static middleware core is unit-tested; the existing `WebApplicationFactory` route path did not execute Functions worker middleware directly, so no host-level middleware assertion was kept. NuGet advisory metadata emitted NU1900 warnings while test commands exited 0. Local git commit was attempted but blocked by sandbox permissions on git metadata outside the writable worktree.
+
+### 2026-06-13 - ui-browser-testing - HARD-14 frontend headers and API docs pins
+
+- Agent: Codex worker
+- Trigger: GitHub issue #793 changes browser-visible developer API documentation plus Next response-header configuration and v1 proxy header forwarding.
+- Action: Opened and followed the skill; used focused vitest source/route coverage for the security headers, OpenAPI 413 response references, developer error-code row, and v1 proxy correlation-header forwarding.
+- Output artifacts: `next.config.ts`; `lib/v1-response-headers.ts`; `app/developers/api/page.tsx`; `public/openapi.json`; `tests/unit/security-headers.test.ts`; updated `openapi-spec`, `public-rewrite-api-route`, and `developers-page` tests.
+- Verification evidence: Focused frontend command passed 22/22. Full `npm run test` passed 364/364. `npm run typecheck` passed. Header and guarded-term grep checks returned the expected no-output results where applicable.
+- Limitations: No Playwright or screenshot verification was run because the frontend change is static docs/config/proxy behavior covered by unit and source-level tests. `npm ci` required a writable `/private/tmp` cache because the default supervisor npm cache contained root-owned entries; install completed afterward. No deploy, push, PR, payment action, provider call, production branch action, or secret inspection was performed.
 
 ### 2026-06-13 - resilience-test-generation - HARD-07 provider circuit breaker failures
 

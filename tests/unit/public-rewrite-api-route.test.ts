@@ -202,6 +202,34 @@ describe("/api/v1/rewrite Next proxy routes", () => {
     );
   });
 
+  it("forwards X-Correlation-Id from the backend", async () => {
+    const backendBody = { id: rewriteId, status: "processing" };
+    const body = JSON.stringify({ draft: "Please send the update tomorrow." });
+    fetchMock().mockResolvedValueOnce(
+      Response.json(backendBody, {
+        headers: {
+          "X-Correlation-Id": "req-abc.123_X",
+        },
+        status: 202,
+      }),
+    );
+
+    const response = await POST(
+      request("/api/v1/rewrite", {
+        body,
+        headers: {
+          authorization,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual(backendBody);
+    expect(response.status).toBe(202);
+    expect(response.headers.get("X-Correlation-Id")).toBe("req-abc.123_X");
+  });
+
   it("surfaces backend auth rejection for result requests without credentials", async () => {
     const backendBody = {
       error: {

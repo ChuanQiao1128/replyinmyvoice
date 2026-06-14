@@ -138,6 +138,7 @@ describe("/developers hub and API documentation pages", () => {
       "quota_exhausted",
       "idempotency_conflict",
       "not_found",
+      "payload_too_large",
       "rate_limited",
       "rewrite_failed",
       "proxy_request_failed",
