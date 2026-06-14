@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Tests;
@@ -24,11 +25,11 @@ public sealed class ApiKeyAuthResolverTests
 
         await SeedApiKeyAsync(fixture, user.Id, token);
         await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
         var request = CreateRequest(token);
 
-        var resolvedUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+        var resolvedUserId = await resolver.ResolveUserIdAsync(
             request,
-            db,
             now,
             CancellationToken.None);
 
@@ -48,11 +49,11 @@ public sealed class ApiKeyAuthResolverTests
 
         await SeedApiKeyAsync(fixture, user.Id, token, isTest: true);
         await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
         var request = CreateRequest(token);
 
-        var resolved = await ApiKeyAuthResolver.ResolveAsync(
+        var resolved = await resolver.ResolveAsync(
             request,
-            db,
             now,
             CancellationToken.None);
 
@@ -69,11 +70,11 @@ public sealed class ApiKeyAuthResolverTests
         await using var fixture = await DbFixture.CreateAsync();
         var now = DateTimeOffset.Parse("2026-06-04T12:00:00Z");
         await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
         var request = CreateRequest("rmv_live_missing_resolver_key");
 
-        var resolvedUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+        var resolvedUserId = await resolver.ResolveUserIdAsync(
             request,
-            db,
             now,
             CancellationToken.None);
 
@@ -95,11 +96,11 @@ public sealed class ApiKeyAuthResolverTests
             token,
             revokedAt: now.AddMinutes(-5));
         await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
         var request = CreateRequest(token);
 
-        var resolvedUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+        var resolvedUserId = await resolver.ResolveUserIdAsync(
             request,
-            db,
             now,
             CancellationToken.None);
 
@@ -123,11 +124,11 @@ public sealed class ApiKeyAuthResolverTests
             token,
             expiresAt: now.AddSeconds(-1));
         await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
         var request = CreateRequest(token);
 
-        var resolvedUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+        var resolvedUserId = await resolver.ResolveUserIdAsync(
             request,
-            db,
             now,
             CancellationToken.None);
 
@@ -143,10 +144,10 @@ public sealed class ApiKeyAuthResolverTests
         await using var fixture = await DbFixture.CreateAsync();
         var now = DateTimeOffset.Parse("2026-06-04T12:00:00Z");
         await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
 
-        var resolvedUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+        var resolvedUserId = await resolver.ResolveUserIdAsync(
             new DefaultHttpContext().Request,
-            db,
             now,
             CancellationToken.None);
 
@@ -160,11 +161,11 @@ public sealed class ApiKeyAuthResolverTests
         await using var fixture = await DbFixture.CreateAsync();
         var now = DateTimeOffset.Parse("2026-06-04T12:00:00Z");
         await using var db = fixture.CreateContext();
+        var resolver = CreateResolver(db);
         var request = CreateRequest("rmv_preview_resolver_key");
 
-        var resolvedUserId = await ApiKeyAuthResolver.ResolveUserIdAsync(
+        var resolvedUserId = await resolver.ResolveUserIdAsync(
             request,
-            db,
             now,
             CancellationToken.None);
 
@@ -202,4 +203,7 @@ public sealed class ApiKeyAuthResolverTests
         context.Request.Headers.Authorization = $"Bearer {token}";
         return context.Request;
     }
+
+    private static ApiKeyAuthResolver CreateResolver(AppDbContext db) =>
+        new(new ApiKeyRepository(db), new UnitOfWork(db));
 }

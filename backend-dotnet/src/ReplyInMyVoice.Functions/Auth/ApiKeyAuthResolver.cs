@@ -1,28 +1,28 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
-using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Functions.Auth;
 
-public static class ApiKeyAuthResolver
+public sealed class ApiKeyAuthResolver(
+    IApiKeyRepository apiKeys,
+    IUnitOfWork unitOfWork)
 {
     private const string LiveKeyPrefix = "rmv_live_";
     private const string TestKeyPrefix = "rmv_test_";
 
-    public static async Task<Guid?> ResolveUserIdAsync(
+    public async Task<Guid?> ResolveUserIdAsync(
         HttpRequest request,
-        AppDbContext db,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var auth = await ResolveAsync(request, db, now, cancellationToken);
+        var auth = await ResolveAsync(request, now, cancellationToken);
         return auth.UserId;
     }
 
-    public static async Task<ApiKeyAuthResult> ResolveAsync(
+    public async Task<ApiKeyAuthResult> ResolveAsync(
         HttpRequest request,
-        AppDbContext db,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -34,8 +34,7 @@ public static class ApiKeyAuthResolver
         }
 
         var keyHash = ApiKeyHashing.ComputeHash(token);
-        var apiKey = await db.ApiKeys
-            .SingleOrDefaultAsync(x => x.KeyHash == keyHash, cancellationToken);
+        var apiKey = await apiKeys.GetByKeyHashAsync(keyHash, cancellationToken);
 
         if (apiKey is null ||
             apiKey.RevokedAt is not null ||
@@ -44,15 +43,14 @@ public static class ApiKeyAuthResolver
             return new ApiKeyAuthResult(null, null, 0);
         }
 
-        apiKey.LastUsedAt = now;
+        apiKeys.TouchLastUsed(apiKey, now);
         try
         {
-            await db.SaveChangesAsync(cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException)
         {
-            // This timestamp is best-effort and must not block an otherwise valid key.
-            db.Entry(apiKey).State = EntityState.Unchanged;
+            apiKeys.DiscardPendingChanges(apiKey);
         }
 
         return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute, apiKey.IsTest);

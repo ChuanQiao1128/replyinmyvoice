@@ -1,9 +1,12 @@
 using ReplyInMyVoice.Application.Common;
+using ReplyInMyVoice.Domain.Entities;
 
 namespace ReplyInMyVoice.Application.Abstractions;
 
 public interface IApiKeyUsageRepository
 {
+    Task AddAsync(ApiKeyUsage usage, CancellationToken ct = default);
+
     Task<IReadOnlyDictionary<Guid, ApiUsageCountDto>> CountByApiKeyAsync(
         IReadOnlyCollection<Guid> apiKeyIds,
         DateTimeOffset windowStart,

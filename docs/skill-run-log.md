@@ -6613,3 +6613,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/MigrationStartupProjectTests.cs` and this log entry.
 - Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~MigrationStartupProjectTests` passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 800/800.
 - Limitations: Restore emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No frontend, browser, provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-14 - data-module-review - STRUCT-03 issue #811 repository routing
+
+- Agent: Codex worker
+- Trigger: Issue #811 changes EF-backed repository ports, API key timestamp persistence, API usage writes, V1 sandbox rewrite attempt idempotency, and removes direct `AppDbContext` access from the V1 Functions handler and API key resolver.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Reviewed the owned entities (`ApiKey`, `ApiKeyUsage`, `RewriteAttempt`, `AppUser`), repository staging conventions, unit-of-work commit boundary, existing unique idempotency index, and the sandbox `IgnoreQueryFilters` repository path. Added an API key repository cleanup hook so a failed best-effort timestamp write does not leave a pending EF change in the request scope.
+- Output artifacts: updated API key/API usage repository ports and implementations, refactored `ApiKeyAuthResolver`, refactored `V1RewriteHttpFunctions`, new `V1RewriteRepositoryRoutingTests`, updated constructor tests, and this log entry.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py backend-dotnet --limit 80` ran as a review aid; focused repository-routing tests passed 2/2; behavior-preservation filter passed 46/46; full `dotnet test ReplyInMyVoice.sln -c Release` passed 802/802; direct `AppDbContext` and `DDD-64` greps were clean.
+- Limitations: No EF migration, schema change, new index, SQL Server live run, Azure command, payment action, push, or PR action was run. The broad scan reported existing persistence signals unrelated to this patch.
+
+### 2026-06-14 - dotnet-backend-testing - STRUCT-03 issue #811 V1 repository routing tests
+
+- Agent: Codex worker
+- Trigger: Issue #811 requires new C#/.NET coverage proving V1 live and sandbox submit paths persist through repository ports while existing resolver, V1 rate-limit, and rewrite API behavior remains unchanged.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions tests with a file-backed SQLite fixture and recording repository wrappers around real repositories, then updated existing resolver and direct-constructor tests for the new resolver service and repository dependencies.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRepositoryRoutingTests.cs`, updated `ApiKeyAuthResolverTests`, `ApiInputHardeningTests`, `RewriteEngineContractTests`, and this log entry.
+- Verification evidence: the first focused routing test run failed before implementation because the new repository methods were missing; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~V1RewriteRepositoryRoutingTests"` passed 2/2, the resolver/rate-limit/rewrite API filter passed 46/46, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 802/802.
+- Limitations: Tests use local SQLite and deterministic in-process fakes only. No frontend, browser, external provider, payment, deploy, push, or PR action was run.

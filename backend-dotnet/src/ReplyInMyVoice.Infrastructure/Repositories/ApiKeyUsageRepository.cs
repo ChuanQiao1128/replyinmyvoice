@@ -8,6 +8,11 @@ namespace ReplyInMyVoice.Infrastructure.Repositories;
 
 public sealed class ApiKeyUsageRepository(AppDbContext db) : IApiKeyUsageRepository
 {
+    public async Task AddAsync(ApiKeyUsage usage, CancellationToken ct = default)
+    {
+        await db.ApiKeyUsages.AddAsync(usage, ct);
+    }
+
     public async Task<IReadOnlyDictionary<Guid, ApiUsageCountDto>> CountByApiKeyAsync(
         IReadOnlyCollection<Guid> apiKeyIds,
         DateTimeOffset windowStart,

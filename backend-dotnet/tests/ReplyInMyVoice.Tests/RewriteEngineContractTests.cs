@@ -17,6 +17,7 @@ using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -522,12 +523,18 @@ public sealed class RewriteEngineContractTests
         var outboxMessages = new OutboxMessageRepository(db);
         var promoRedemptions = new PromoCodeRedemptionRepository(db);
         var promoCodes = new PromoCodeRepository(db);
+        var apiKeys = new ApiKeyRepository(db);
+        var apiKeyUsages = new ApiKeyUsageRepository(db);
         var usagePlans = new AccountUsagePlanProvider(configuration);
         var unitOfWork = new UnitOfWork(db);
 
         return new V1RewriteHttpFunctions(
             configuration,
-            db,
+            new ApiKeyAuthResolver(apiKeys, unitOfWork),
+            appUsers,
+            rewriteAttempts,
+            apiKeyUsages,
+            unitOfWork,
             new ApiKeyRateLimiter(createContext),
             new HasPaidApiEntitlementHandler(appUsers, credits),
             new CreateRewriteAttemptHandler(

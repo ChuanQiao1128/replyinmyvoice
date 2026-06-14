@@ -3,6 +3,7 @@ using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure;
 
@@ -28,5 +29,6 @@ builder.Services.AddReplyInMyVoiceInfrastructure(
     builder.Configuration,
     builder.Environment.EnvironmentName,
     requireServiceBusConsumer: true);
+builder.Services.AddScoped<ApiKeyAuthResolver>();
 
 builder.Build().Run();

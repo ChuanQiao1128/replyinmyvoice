@@ -6,8 +6,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
@@ -16,14 +16,17 @@ using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
-using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Functions.Functions;
 
 public sealed class V1RewriteHttpFunctions(
     IConfiguration configuration,
-    AppDbContext db,
+    ApiKeyAuthResolver authResolver,
+    IAppUserRepository appUsers,
+    IRewriteAttemptRepository rewriteAttempts,
+    IApiKeyUsageRepository apiKeyUsages,
+    IUnitOfWork unitOfWork,
     IApiKeyRateLimiter rateLimiter,
     HasPaidApiEntitlementHandler hasPaidApiEntitlementHandler,
     CreateRewriteAttemptHandler createRewriteAttemptHandler,
@@ -64,9 +67,8 @@ public sealed class V1RewriteHttpFunctions(
     {
         var stopwatch = Stopwatch.StartNew();
         var now = DateTimeOffset.UtcNow;
-        var auth = await ApiKeyAuthResolver.ResolveAsync(
+        var auth = await authResolver.ResolveAsync(
             request,
-            db,
             now,
             cancellationToken);
 
@@ -126,10 +128,7 @@ public sealed class V1RewriteHttpFunctions(
                 StatusCodes.Status400BadRequest);
         }
 
-        // TODO(DDD): no internal-user lookup handler yet - DDD-64
-        var user = await db.AppUsers
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == auth.UserId.Value, cancellationToken);
+        var user = await appUsers.GetByIdAsync(auth.UserId.Value, cancellationToken);
         if (user is null)
         {
             return await CompleteAsync(
@@ -151,7 +150,6 @@ public sealed class V1RewriteHttpFunctions(
 
         if (auth.IsTest)
         {
-            // TODO(DDD): no sandbox-attempt handler yet - DDD-64
             var sandboxResult = await CreateSandboxAttemptAsync(
                 user.Id,
                 auth.ApiKeyId!.Value,
@@ -277,9 +275,8 @@ public sealed class V1RewriteHttpFunctions(
     {
         var stopwatch = Stopwatch.StartNew();
         var now = DateTimeOffset.UtcNow;
-        var auth = await ApiKeyAuthResolver.ResolveAsync(
+        var auth = await authResolver.ResolveAsync(
             request,
-            db,
             now,
             cancellationToken);
 
@@ -383,9 +380,8 @@ public sealed class V1RewriteHttpFunctions(
     {
         var stopwatch = Stopwatch.StartNew();
         var now = DateTimeOffset.UtcNow;
-        var auth = await ApiKeyAuthResolver.ResolveAsync(
+        var auth = await authResolver.ResolveAsync(
             request,
-            db,
             now,
             cancellationToken);
 
@@ -460,10 +456,7 @@ public sealed class V1RewriteHttpFunctions(
                 rateLimit: rateLimit);
         }
 
-        // TODO(DDD): no internal-user lookup handler yet - DDD-64
-        var user = await db.AppUsers
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == auth.UserId.Value, cancellationToken);
+        var user = await appUsers.GetByIdAsync(auth.UserId.Value, cancellationToken);
         if (user is null)
         {
             return await CompleteWithUsageAsync(
@@ -547,7 +540,6 @@ public sealed class V1RewriteHttpFunctions(
         });
     }
 
-    // TODO(DDD): remaining V1 inline db - DDD-64
     private async Task<SandboxAttemptResult> CreateSandboxAttemptAsync(
         Guid userId,
         Guid apiKeyId,
@@ -558,12 +550,10 @@ public sealed class V1RewriteHttpFunctions(
     {
         var sandboxIdempotencyKey = BuildSandboxIdempotencyKey(apiKeyId, idempotencyKey);
         var requestHash = ComputeSha256(draft);
-        var existingAttempt = await db.RewriteAttempts
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .SingleOrDefaultAsync(
-                x => x.UserId == userId && x.IdempotencyKey == sandboxIdempotencyKey,
-                cancellationToken);
+        var existingAttempt = await rewriteAttempts.GetByUserIdAndIdempotencyKeyAsync(
+            userId,
+            sandboxIdempotencyKey,
+            cancellationToken);
 
         if (existingAttempt is not null)
         {
@@ -594,8 +584,8 @@ public sealed class V1RewriteHttpFunctions(
             ExpiresAt = now.AddMinutes(15),
         };
 
-        db.RewriteAttempts.Add(attempt);
-        await db.SaveChangesAsync(cancellationToken);
+        await rewriteAttempts.AddAsync(attempt, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return new SandboxAttemptResult(attempt.Id, IsConflict: false);
     }
@@ -719,7 +709,6 @@ public sealed class V1RewriteHttpFunctions(
         }
     }
 
-    // TODO(DDD): remaining V1 inline db - DDD-64
     private async Task TryWriteApiKeyUsageAsync(
         Guid? apiKeyId,
         string requestId,
@@ -736,7 +725,7 @@ public sealed class V1RewriteHttpFunctions(
 
         try
         {
-            db.ApiKeyUsages.Add(new ApiKeyUsage
+            await apiKeyUsages.AddAsync(new ApiKeyUsage
             {
                 ApiKeyId = apiKeyId.Value,
                 RequestId = requestId,
@@ -744,8 +733,8 @@ public sealed class V1RewriteHttpFunctions(
                 StatusCode = statusCode,
                 LatencyMs = latencyMs,
                 CreatedAt = now,
-            });
-            await db.SaveChangesAsync(cancellationToken);
+            }, cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
         }
         catch (Exception)
         {

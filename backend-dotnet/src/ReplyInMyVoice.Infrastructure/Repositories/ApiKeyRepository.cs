@@ -12,6 +12,13 @@ public sealed class ApiKeyRepository(AppDbContext db) : IApiKeyRepository
         await db.ApiKeys.AddAsync(apiKey, ct);
     }
 
+    public async Task<ApiKey?> GetByKeyHashAsync(
+        string keyHash,
+        CancellationToken ct = default) =>
+        await db.ApiKeys
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.KeyHash == keyHash, ct);
+
     public async Task<ApiKey?> GetByIdForUserAsync(
         Guid userId,
         Guid keyId,
@@ -29,4 +36,14 @@ public sealed class ApiKeyRepository(AppDbContext db) : IApiKeyRepository
             .AsNoTracking()
             .Where(x => x.UserId == userId)
             .ToListAsync(ct);
+
+    public void TouchLastUsed(ApiKey apiKey, DateTimeOffset now)
+    {
+        apiKey.LastUsedAt = now;
+    }
+
+    public void DiscardPendingChanges(ApiKey apiKey)
+    {
+        db.Entry(apiKey).State = EntityState.Unchanged;
+    }
 }
