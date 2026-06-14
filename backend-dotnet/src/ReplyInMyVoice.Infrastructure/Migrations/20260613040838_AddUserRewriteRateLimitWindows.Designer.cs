@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ReplyInMyVoice.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using ReplyInMyVoice.Infrastructure.Data;
 namespace ReplyInMyVoice.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260613040838_AddUserRewriteRateLimitWindows")]
+    partial class AddUserRewriteRateLimitWindows
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1386,9 +1389,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("LockedUntil")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<string>("PayloadJson")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTimeOffset?>("ProcessedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -1488,19 +1488,10 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<int>("AmountMismatchCount")
                         .HasColumnType("int");
 
-                    b.Property<int>("AutoGrantSkippedCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("AutoGrantedCount")
-                        .HasColumnType("int");
-
                     b.Property<DateTimeOffset>("CompletedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("GrantButNoPaymentCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ManualReviewCount")
                         .HasColumnType("int");
 
                     b.Property<int>("PaidButNoGrantCount")
@@ -1521,9 +1512,6 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("StripePaymentCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SubscriptionMismatchCount")
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset>("WindowEnd")

@@ -45,6 +45,69 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-13 - cloud-architecture-cost-review - HARD-08 edge rate-limit artifact
+
+- Agent: Codex worker
+- Trigger: GitHub issue #787 adds a Cloudflare WAF rate-rule artifact and production-hardening behavior around the rewrite surface.
+- Action: Opened and followed the skill as a pre-implementation cost/architecture gate. Selected option: config-only Cloudflare edge rate rule plus existing Azure Functions/.NET and EF Core layers. Rejected options: live Cloudflare apply, CI workflow apply, new always-on services, or paid infrastructure changes.
+- Output artifacts: `infra/cloudflare/waf-rate-limit.json`; `infra/cloudflare/waf-rate-limit.md`; readiness checklist read through `README.md`, `docs/manual-setup.md`, `docs/dotnet-azure-blocker-preflight.md`, and `docs/business-qa-and-deploy-result.md`.
+- Verification evidence: WAF JSON parsed with Node; `.github/` grep for `waf-rate-limit` returned no matches; no deploy command, DNS change, domain change, or payment setting change was run.
+- Limitations: Exact provider pricing was not checked because no paid resource was created or resized. The Cloudflare rule remains an unapplied owner-reviewed artifact.
+
+### 2026-06-13 - system-spec-synthesis - HARD-08 layered rate limiting
+
+- Agent: Codex worker
+- Trigger: GitHub issue #787 and `plans/production-hardening/issues/HARD-08-layered-rate-limiting.md` define API behavior, data model, DI, frontend proxy, and infra artifact changes.
+- Action: Opened and followed the skill. Used `AGENTS.md`, `CLAUDE.md`, the HARD-08 issue body, the HARD-08 brief, and `plans/production-hardening/SPEC.md` as source inputs; treated the issue brief as the approved implementation-ready spec for this unattended worker run.
+- Output artifacts: Consumer per-user DB limiter, v1 pre-check decorator, EF migration, Cloudflare WAF artifact, Next proxy 429 mapping, and focused backend/frontend tests.
+- Verification evidence: Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641; `npm run typecheck` passed; `npm run test` passed 361/361; static acceptance greps passed.
+- Limitations: No separate design document was written because the supervisor-provided issue brief was authoritative and the unattended worker instructions said not to stop for approval.
+
+### 2026-06-13 - state-machine-modeling - HARD-08 rate-limit windows
+
+- Agent: Codex worker
+- Trigger: The task changes request lifecycle behavior before quota reservation and adds current-minute persisted/user and per-process/API-key windows.
+- Action: Opened and followed the skill. State list: consumer limiter disabled, allowed, limited, unavailable; v1 pre-check under local threshold or shed; DB window allowed, limited, or unavailable. Events: request arrival, minute window change, DB row insert, DB row increment, unique-index race, SQLite busy, pre-check count above limit, and limiter unavailable. Invariants: consumer check occurs before quota reservation; limited/unavailable consumer requests create no attempt, reservation, or outbox row; v1 DB row stays authoritative when the local gate is cold; new minute creates a new window row.
+- Output artifacts: `UserRewriteRateLimiter.cs`; `InProcessRateLimitGate.cs`; `PreCheckedApiKeyRateLimiter.cs`; `ConsumerRewriteRateLimitTests.cs`; `InProcessRateLimitGateTests.cs`; updated `V1RewriteRateLimitTests.cs`.
+- Verification evidence: Tests cover allowed/limited/unavailable/disabled consumer states, minute reset, pre-check shed, non-positive v1 limit delegation, and DB-authoritative v1 cold-gate behavior; full backend suite passed 641/641.
+- Limitations: Window retention/purge is unchanged and intentionally out of HARD-08 scope.
+
+### 2026-06-13 - data-module-review - HARD-08 user rewrite rate-limit persistence
+
+- Agent: Codex worker
+- Trigger: The task adds an EF Core entity, DbSet, model configuration, additive migration, unique index, and concurrency behavior.
+- Action: Opened and followed the skill; reviewed the existing `ApiKeyRateLimitWindow`/`ApiKeyRateLimiter` pattern, `AppDbContext`, migrations, and EF SQLite test harnesses before implementing the user-window mirror.
+- Output artifacts: `UserRewriteRateLimitWindow.cs`; `AppDbContext.cs` configuration; `20260613040838_AddUserRewriteRateLimitWindows.cs`; `AppDbContextModelSnapshot.cs`; `UserRewriteRateLimiter.cs`.
+- Verification evidence: Static migration check found exactly one `*_AddUserRewriteRateLimitWindows.cs`, with `CreateTable`/`CreateIndex` and no `DropTable`, `DropColumn`, or `AlterColumn`; index-name grep found hits in both the migration and limiter; full backend suite passed 641/641.
+- Limitations: The migration `Down` method is intentionally empty to satisfy the additive-only delivery gate. No live database update was run.
+
+### 2026-06-13 - resilience-test-generation - HARD-08 rate-limit failure behavior
+
+- Agent: Codex worker
+- Trigger: The task changes rate-limit, quota-race, DB concurrency, SQLite busy, unavailable-check, and flood-shed behavior.
+- Action: Opened and followed the skill. Failure matrix covered: limited request, limiter unavailable, disabled limiter, minute rollover, unique-index race matcher, local pre-check shed, DB-authoritative v1 limit from another instance, and quota side-effect prevention.
+- Output artifacts: `ConsumerRewriteRateLimitTests.cs`; `InProcessRateLimitGateTests.cs`; updated `V1RewriteRateLimitTests.cs`; updated `RewriteApiTests.cs` quota isolation.
+- Verification evidence: Focused backend red run first failed on missing `IUserRewriteRateLimiter`; focused implementation run passed 14/14; full backend suite passed 641/641.
+- Limitations: No live provider, Stripe, Azure, Cloudflare, or production database endpoint was called.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-08 backend rate-limit tests
+
+- Agent: Codex worker
+- Trigger: The task adds C#/.NET xUnit tests for ASP.NET Core API routing, EF Core SQLite persistence, DI wiring, and limiter services.
+- Action: Opened and followed the skill; wrote failing tests first, verified the missing-interface red state, then implemented the minimal backend code to pass. Used WebApplicationFactory, EF Core SQLite file-backed databases, xUnit, FluentAssertions, and handwritten fakes.
+- Output artifacts: `ConsumerRewriteRateLimitTests.cs`; `InProcessRateLimitGateTests.cs`; updated `InfrastructureServiceCollectionTests.cs`, `V1RewriteRateLimitTests.cs`, `RewriteApiTests.cs`, and `RewriteHistoryTests.cs`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641. Focused paid-quota regression passed after isolating that test from the new submit limiter.
+- Limitations: NuGet advisory metadata lookup emitted NU1900 warnings while tests exited 0. Local git commit was attempted but blocked by sandbox permissions on worktree git metadata outside the writable root.
+
+### 2026-06-13 - ui-browser-testing - HARD-08 consumer proxy 429 mapping
+
+- Agent: Codex worker
+- Trigger: The task changes browser-visible consumer rewrite error handling in the Next `/api/rewrite` proxy and adds a frontend unit pin.
+- Action: Opened and followed the skill. Chose source-level Vitest coverage because the changed surface is an API route payload/header mapping, not a layout or interactive page change.
+- Output artifacts: `app/api/rewrite/route.ts`; `tests/unit/rewrite-rate-limit-route.test.ts`.
+- Verification evidence: Focused Vitest run passed for `tests/unit/rewrite-rate-limit-route.test.ts`; `npm run typecheck` passed; full `npm run test` passed 71 files and 361 tests.
+- Limitations: No browser screenshot was taken because no page layout, responsive UI, or visual component changed. `npm ci` needed `npm_config_cache=/private/tmp/rimv-npm-cache` because the default cache path was outside the writable sandbox.
+
 ### 2026-06-13 - resilience-test-generation - HARD-07 provider circuit breaker failures
 
 - Agent: Codex worker
