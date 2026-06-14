@@ -5,6 +5,18 @@ namespace ReplyInMyVoice.Functions.Http;
 
 public static class FunctionHttpResults
 {
+    public static IActionResult Unauthorized(string? detail, bool invalidToken) =>
+        new HeaderResult(
+            Problem(
+                "Authentication required",
+                detail,
+                StatusCodes.Status401Unauthorized),
+            invalidToken
+                ? """
+                  Bearer error="invalid_token"
+                  """
+                : "Bearer");
+
     public static IActionResult Problem(
         string title,
         string? detail,
@@ -66,4 +78,13 @@ public static class FunctionHttpResults
             StatusCodes.Status503ServiceUnavailable => "service_unavailable",
             _ => "error",
         };
+
+    private sealed class HeaderResult(IActionResult inner, string wwwAuthenticate) : IActionResult
+    {
+        public Task ExecuteResultAsync(ActionContext context)
+        {
+            context.HttpContext.Response.Headers.WWWAuthenticate = wwwAuthenticate;
+            return inner.ExecuteResultAsync(context);
+        }
+    }
 }
