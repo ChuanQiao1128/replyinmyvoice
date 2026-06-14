@@ -80,6 +80,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<RewriteAttempt>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.HasQueryFilter(x => x.DeletedAt == null);
             entity.HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
             entity.HasIndex(x => x.CreatedAt);
             entity.HasIndex(x => new { x.UserId, x.DeletedAt, x.CreatedAt });

@@ -576,6 +576,53 @@ public sealed class AccountUseCaseTests
         supportRequest.ResolvedAt.Should().NotBeNull();
     }
 
+    [Fact]
+    public async Task DeleteAccountAsync_scrubs_soft_deleted_attempts()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var userId = Guid.NewGuid();
+        var attemptId = Guid.NewGuid();
+        var now = DateTimeOffset.Parse("2026-06-13T00:00:00Z");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.AppUsers.Add(NewUser(
+                userId,
+                "entra-delete-soft-attempt",
+                now,
+                SubscriptionStatus.Active));
+            seedDb.RewriteAttempts.Add(new RewriteAttempt
+            {
+                Id = attemptId,
+                UserId = userId,
+                IdempotencyKey = "idem-delete-soft",
+                RequestHash = "hash-delete-soft",
+                RequestJson = "{\"roughDraftReply\":\"private draft\"}",
+                ResultJson = "{\"rewrittenText\":\"private result\"}",
+                Status = RewriteAttemptStatus.Succeeded,
+                CreatedAt = now.AddDays(-2),
+                CompletedAt = now.AddDays(-2).AddMinutes(1),
+                DeletedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateDeleteAccountHandler(handlerDb, new RecordingCancellationService());
+
+        await handler.HandleAsync(new DeleteAccountCommand("entra-delete-soft-attempt"));
+
+        await using var verifyDb = fixture.CreateContext();
+        var attempt = await verifyDb.RewriteAttempts
+            .IgnoreQueryFilters()
+            .SingleAsync(x => x.Id == attemptId);
+        attempt.RequestJson.Should().Be("{}");
+        attempt.ResultJson.Should().BeNull();
+        attempt.IdempotencyKey.Should().StartWith("erased:");
+        attempt.RequestHash.Should().Be("erased");
+    }
+
     private static GetOrCreateUserHandler CreateGetOrCreateUserHandler(AppDbContext db) =>
         new(new AppUserRepository(db), new UnitOfWork(db));
 

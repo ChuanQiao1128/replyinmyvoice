@@ -17,6 +17,7 @@ public sealed class WebhookDeliveryRepository(AppDbContext db) : IWebhookDeliver
     {
         List<WebhookDelivery> deliveries;
         var query = db.WebhookDeliveries
+            .IgnoreQueryFilters()
             .AsTracking()
             .Include(x => x.ApiKey)
             .Include(x => x.RewriteAttempt)

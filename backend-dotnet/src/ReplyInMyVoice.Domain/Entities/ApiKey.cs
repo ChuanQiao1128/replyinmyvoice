@@ -13,6 +13,10 @@ public sealed class ApiKey
     public bool IsTest { get; set; }
     public int RateLimitPerMinute { get; set; } = 60;
     public int MonthlyQuota { get; set; } = 1000;
+    /// <summary>
+    /// Legacy denormalized counter retained only for additive-only schema stability.
+    /// </summary>
+    [Obsolete("Legacy denormalized counter that is never written. Per-key usage is computed from ApiKeyUsage rows (ApiKeyUsageRepository.CountByApiKeyAsync) and per-minute rate limiting from ApiKeyRateLimitWindow (ApiKeyRateLimiter). Column retained only for additive-only schema stability; do not read or write.")]
     public int CurrentPeriodUsage { get; set; }
     public DateTimeOffset CurrentPeriodStartedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastUsedAt { get; set; }

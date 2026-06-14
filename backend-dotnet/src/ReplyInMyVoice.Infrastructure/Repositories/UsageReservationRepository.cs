@@ -115,6 +115,7 @@ public sealed class UsageReservationRepository(AppDbContext db) : IUsageReservat
         CancellationToken ct = default)
     {
         var query = db.UsageReservations
+            .IgnoreQueryFilters()
             .AsTracking()
             .Include(x => x.RewriteAttempt)
             .Include(x => x.UsagePeriod)

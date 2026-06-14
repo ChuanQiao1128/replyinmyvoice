@@ -33,7 +33,7 @@ const int V1MinimumDraftLength = 10;
 const int V1MaximumDraftWords = 300;
 const int V1MaximumDraftCharacters = 2400;
 const int V1MaximumIdempotencyKeyLength = 120;
-const string V1SandboxAttemptPrefix = "test:";
+const string V1SandboxAttemptPrefix = SandboxAttemptConventions.IdempotencyKeyPrefix;
 const string V1SandboxUsagePeriodKey = "test:sandbox";
 const string V1SandboxResultJson = """
     {
@@ -1311,6 +1311,7 @@ static async Task<V1SandboxAttemptResult> CreateV1SandboxAttemptAsync(
     var sandboxIdempotencyKey = BuildV1SandboxIdempotencyKey(apiKeyId, idempotencyKey);
     var requestHash = ComputeV1Sha256(draft);
     var existingAttempt = await db.RewriteAttempts
+        .IgnoreQueryFilters()
         .AsNoTracking()
         .SingleOrDefaultAsync(
             x => x.UserId == userId && x.IdempotencyKey == sandboxIdempotencyKey,

@@ -16,6 +16,7 @@ public sealed class RewriteAttemptRepository(AppDbContext db) : IRewriteAttemptR
         Guid attemptId,
         CancellationToken ct = default) =>
         await db.RewriteAttempts
+            .IgnoreQueryFilters()
             .AsTracking()
             .SingleOrDefaultAsync(x => x.Id == attemptId, ct);
 
@@ -23,6 +24,7 @@ public sealed class RewriteAttemptRepository(AppDbContext db) : IRewriteAttemptR
         Guid attemptId,
         CancellationToken ct = default) =>
         await db.RewriteAttempts
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == attemptId, ct);
 
@@ -41,6 +43,7 @@ public sealed class RewriteAttemptRepository(AppDbContext db) : IRewriteAttemptR
         string idempotencyKey,
         CancellationToken ct = default) =>
         await db.RewriteAttempts
+            .IgnoreQueryFilters()
             .AsTracking()
             .SingleOrDefaultAsync(
                 x => x.UserId == userId && x.IdempotencyKey == idempotencyKey,
@@ -50,6 +53,7 @@ public sealed class RewriteAttemptRepository(AppDbContext db) : IRewriteAttemptR
         Guid userId,
         CancellationToken ct = default) =>
         await db.RewriteAttempts
+            .IgnoreQueryFilters()
             .AsTracking()
             .Where(x => x.UserId == userId)
             .ToListAsync(ct);

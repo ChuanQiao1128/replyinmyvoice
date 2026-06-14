@@ -1,9 +1,11 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 using AppResultKind = ReplyInMyVoice.Application.Common.ApplicationResultKind;
@@ -62,6 +64,40 @@ public sealed class RetentionServiceTests
             attempt.RequestJson.Should().Contain("raw draft");
             attempt.ResultJson.Should().Contain("raw result");
         }
+    }
+
+    [Fact]
+    public async Task RetentionScrubsSoftDeletedAttempts()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-05T00:00:00Z");
+        var attemptId = Guid.NewGuid();
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteAttempts.Add(Attempt(
+                attemptId,
+                user.Id,
+                "old-soft-deleted",
+                RewriteAttemptStatus.Succeeded,
+                now.AddDays(-31),
+                deletedAt: now.AddDays(-1)));
+            await seedDb.SaveChangesAsync();
+        }
+
+        var retention = new RetentionService(fixture.CreateContext);
+
+        var scrubbed = await retention.ScrubExpiredRawContentAsync(now, cancellationToken: CancellationToken.None);
+
+        scrubbed.Should().Be(1);
+        await using var verifyDb = fixture.CreateContext();
+        var attempt = await verifyDb.RewriteAttempts
+            .IgnoreQueryFilters()
+            .SingleAsync(x => x.Id == attemptId);
+        attempt.RequestJson.Should().BeNull();
+        attempt.ResultJson.Should().BeNull();
+        attempt.DeletedAt.Should().NotBeNull();
     }
 
     [Fact]
@@ -128,6 +164,144 @@ public sealed class RetentionServiceTests
     }
 
     [Fact]
+    public async Task SandboxPurgeDeletesOnlyOldTestKeyAttempts()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-13T00:00:00Z");
+        var testKeyId = Guid.NewGuid();
+        var liveKeyId = Guid.NewGuid();
+        var oldSandboxId = Guid.NewGuid();
+        var oldSoftDeletedSandboxId = Guid.NewGuid();
+        var freshSandboxId = Guid.NewGuid();
+        var oldLiveKeyId = Guid.NewGuid();
+        var oldLiveKeyPrefixedId = Guid.NewGuid();
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.ApiKeys.AddRange(
+                ApiKey(testKeyId, user.Id, isTest: true),
+                ApiKey(liveKeyId, user.Id, isTest: false));
+            seedDb.RewriteAttempts.AddRange(
+                Attempt(
+                    oldSandboxId,
+                    user.Id,
+                    $"{SandboxAttemptConventions.IdempotencyKeyPrefix}old-test",
+                    RewriteAttemptStatus.Succeeded,
+                    now.AddDays(-8),
+                    apiKeyId: testKeyId),
+                Attempt(
+                    oldSoftDeletedSandboxId,
+                    user.Id,
+                    $"{SandboxAttemptConventions.IdempotencyKeyPrefix}old-soft-test",
+                    RewriteAttemptStatus.Succeeded,
+                    now.AddDays(-8),
+                    apiKeyId: testKeyId,
+                    deletedAt: now.AddDays(-7)),
+                Attempt(
+                    freshSandboxId,
+                    user.Id,
+                    $"{SandboxAttemptConventions.IdempotencyKeyPrefix}fresh-test",
+                    RewriteAttemptStatus.Succeeded,
+                    now.AddDays(-2),
+                    apiKeyId: testKeyId),
+                Attempt(
+                    oldLiveKeyId,
+                    user.Id,
+                    "old-live-key",
+                    RewriteAttemptStatus.Succeeded,
+                    now.AddDays(-40),
+                    apiKeyId: liveKeyId),
+                Attempt(
+                    oldLiveKeyPrefixedId,
+                    user.Id,
+                    $"{SandboxAttemptConventions.IdempotencyKeyPrefix}old-live-prefix",
+                    RewriteAttemptStatus.Succeeded,
+                    now.AddDays(-8),
+                    apiKeyId: liveKeyId));
+            await seedDb.SaveChangesAsync();
+        }
+
+        var retention = new RetentionService(fixture.CreateContext);
+
+        var purged = await retention.PurgeExpiredSandboxAttemptsAsync(
+            now,
+            cancellationToken: CancellationToken.None);
+
+        purged.Should().Be(2);
+        await using var verifyDb = fixture.CreateContext();
+        var remaining = await verifyDb.RewriteAttempts
+            .IgnoreQueryFilters()
+            .ToDictionaryAsync(x => x.Id);
+        remaining.Keys.Should().BeEquivalentTo(new[] { freshSandboxId, oldLiveKeyId, oldLiveKeyPrefixedId });
+        remaining[freshSandboxId].ApiKeyId.Should().Be(testKeyId);
+        remaining[oldLiveKeyId].ApiKeyId.Should().Be(liveKeyId);
+        remaining[oldLiveKeyId].RequestJson.Should().Contain("old-live-key raw draft");
+        remaining[oldLiveKeyPrefixedId].ApiKeyId.Should().Be(liveKeyId);
+    }
+
+    [Fact]
+    public async Task SandboxPurgeRejectsNonPositiveRetention()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var retention = new RetentionService(fixture.CreateContext);
+
+        Func<Task> act = () => retention.PurgeExpiredSandboxAttemptsAsync(
+            DateTimeOffset.Parse("2026-06-13T00:00:00Z"),
+            sandboxRetentionDays: 0,
+            cancellationToken: CancellationToken.None);
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task RetentionPurgeFunctionRunsScrubAndSandboxPurge()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.UtcNow;
+        var oldPayloadId = Guid.NewGuid();
+        var oldSandboxId = Guid.NewGuid();
+        var testKeyId = Guid.NewGuid();
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.ApiKeys.Add(ApiKey(testKeyId, user.Id, isTest: true));
+            seedDb.RewriteAttempts.AddRange(
+                Attempt(
+                    oldPayloadId,
+                    user.Id,
+                    "timer-old-payload",
+                    RewriteAttemptStatus.Succeeded,
+                    now.AddDays(-31)),
+                Attempt(
+                    oldSandboxId,
+                    user.Id,
+                    $"{SandboxAttemptConventions.IdempotencyKeyPrefix}timer-old-sandbox",
+                    RewriteAttemptStatus.Succeeded,
+                    now.AddDays(-8),
+                    apiKeyId: testKeyId));
+            await seedDb.SaveChangesAsync();
+        }
+
+        var function = new RetentionPurgeFunction(
+            new RetentionService(fixture.CreateContext),
+            NullLogger<RetentionPurgeFunction>.Instance);
+
+        await function.Run(null!, CancellationToken.None);
+
+        await using var verifyDb = fixture.CreateContext();
+        var payload = await verifyDb.RewriteAttempts.SingleAsync(x => x.Id == oldPayloadId);
+        payload.RequestJson.Should().BeNull();
+        payload.ResultJson.Should().BeNull();
+        (await verifyDb.RewriteAttempts
+            .IgnoreQueryFilters()
+            .AnyAsync(x => x.Id == oldSandboxId))
+            .Should()
+            .BeFalse();
+    }
+
+    [Fact]
     public async Task ConsentPersisted()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -157,12 +331,15 @@ public sealed class RetentionServiceTests
         Guid userId,
         string key,
         RewriteAttemptStatus status,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        Guid? apiKeyId = null,
+        DateTimeOffset? deletedAt = null)
     {
         return new RewriteAttempt
         {
             Id = id,
             UserId = userId,
+            ApiKeyId = apiKeyId,
             IdempotencyKey = key,
             RequestHash = $"{key}-hash",
             RequestJson = $"{{\"roughDraftReply\":\"{key} raw draft\"}}",
@@ -172,9 +349,26 @@ public sealed class RetentionServiceTests
             CompletedAt = status is RewriteAttemptStatus.Succeeded or RewriteAttemptStatus.Failed or RewriteAttemptStatus.Expired
                 ? createdAt.AddMinutes(1)
                 : null,
+            DeletedAt = deletedAt,
             ExpiresAt = createdAt.AddMinutes(15),
         };
     }
+
+    private static ApiKey ApiKey(
+        Guid id,
+        Guid userId,
+        bool isTest) =>
+        new()
+        {
+            Id = id,
+            UserId = userId,
+            KeyHash = $"{id:N}-hash",
+            Last4 = "abcd",
+            Name = isTest ? "Test key" : "Live key",
+            IsTest = isTest,
+            CreatedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+            UpdatedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z"),
+        };
 
     private static CreateRewriteAttemptHandler CreateRewriteHandler(ReplyInMyVoice.Infrastructure.Data.AppDbContext db) =>
         new(
