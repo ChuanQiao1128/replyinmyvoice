@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Infrastructure.Configuration;
 using ReplyInMyVoice.Infrastructure.Data;
 using System.Text.Json.Serialization;
 
@@ -143,15 +144,21 @@ public sealed class HealthFunction
             ?? configuration["SERVICEBUS_QUEUE_NAME"]
             ?? configuration["AZURE_SERVICE_BUS_QUEUE"]
             ?? "rewrite-jobs";
-        var configured = !string.IsNullOrWhiteSpace(connectionString);
+        var managedIdentityConfigured = ManagedIdentityConfiguration.IsEnabled(configuration) &&
+            ManagedIdentityConfiguration.ResolveServiceBusFullyQualifiedNamespace(configuration) is not null;
+        var configured = managedIdentityConfigured || !string.IsNullOrWhiteSpace(connectionString);
         var senderResolved = serviceBusSender is not null;
         var ok = configured && senderResolved;
+        var authMode = managedIdentityConfigured
+            ? "managed_identity"
+            : string.IsNullOrWhiteSpace(connectionString) ? "none" : "connection_string";
 
         return new ServiceBusReadinessCheck(
             ok,
             configured,
             senderResolved,
             queueName,
+            authMode,
             ok ? null : configured ? "sender_unavailable" : "not_configured");
     }
 
@@ -338,6 +345,7 @@ public sealed class HealthFunction
         [property: JsonPropertyName("configured")] bool Configured,
         [property: JsonPropertyName("senderResolved")] bool SenderResolved,
         [property: JsonPropertyName("queueName")] string QueueName,
+        [property: JsonPropertyName("authMode")] string AuthMode,
         [property: JsonPropertyName("error")] string? Error);
 
     public sealed record CountReadinessCheck(

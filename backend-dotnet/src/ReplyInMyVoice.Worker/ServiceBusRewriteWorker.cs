@@ -1,7 +1,9 @@
 using System.Text.Json;
+using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Domain.Contracts;
+using ReplyInMyVoice.Infrastructure.Configuration;
 
 namespace ReplyInMyVoice.Worker;
 
@@ -15,10 +17,13 @@ public sealed class ServiceBusRewriteWorker(
         var connectionString = configuration.GetConnectionString("ServiceBus")
             ?? configuration["SERVICEBUS_CONNECTION_STRING"]
             ?? configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"];
+        var managedIdentityEnabled = ManagedIdentityConfiguration.IsEnabled(configuration);
+        var serviceBusNamespace = ManagedIdentityConfiguration.ResolveServiceBusFullyQualifiedNamespace(configuration);
 
-        if (string.IsNullOrWhiteSpace(connectionString))
+        if (string.IsNullOrWhiteSpace(connectionString) &&
+            (!managedIdentityEnabled || serviceBusNamespace is null))
         {
-            logger.LogWarning("Service Bus connection string is not configured; worker is idle.");
+            logger.LogWarning("Service Bus is not configured (connection string or managed identity); worker is idle.");
             await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
             return;
         }
@@ -28,7 +33,9 @@ public sealed class ServiceBusRewriteWorker(
             ?? configuration["AZURE_SERVICE_BUS_QUEUE"]
             ?? "rewrite-jobs";
 
-        await using var client = new ServiceBusClient(connectionString);
+        await using var client = managedIdentityEnabled && serviceBusNamespace is not null
+            ? new ServiceBusClient(serviceBusNamespace, new DefaultAzureCredential())
+            : new ServiceBusClient(connectionString);
         await using var processor = client.CreateProcessor(queueName, new ServiceBusProcessorOptions
         {
             MaxConcurrentCalls = 4,
