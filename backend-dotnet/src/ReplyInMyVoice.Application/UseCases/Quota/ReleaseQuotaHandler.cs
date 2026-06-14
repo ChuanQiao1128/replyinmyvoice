@@ -45,7 +45,6 @@ public sealed class ReleaseQuotaHandler(
                     attempt.Status = RewriteAttemptStatus.Failed;
                     attempt.ErrorCode = command.ErrorCode;
                     attempt.CompletedAt = command.Now;
-                    attempt.RowVersion = Guid.NewGuid();
                 }
 
                 await unitOfWork.SaveChangesAsync(transactionCt);

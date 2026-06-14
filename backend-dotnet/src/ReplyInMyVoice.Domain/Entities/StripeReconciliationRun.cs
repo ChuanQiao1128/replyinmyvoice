@@ -1,6 +1,8 @@
+using ReplyInMyVoice.Domain.Contracts;
+
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class StripeReconciliationRun
+public sealed class StripeReconciliationRun : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public DateTimeOffset WindowStart { get; set; }

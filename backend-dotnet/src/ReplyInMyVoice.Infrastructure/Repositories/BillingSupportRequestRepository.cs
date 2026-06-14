@@ -48,7 +48,6 @@ public sealed class BillingSupportRequestRepository(AppDbContext db) : IBillingS
         request.Status = BillingSupportRequestStatus.Resolved;
         request.ResolvedAt = now;
         request.UpdatedAt = now;
-        request.RowVersion = Guid.NewGuid();
         return Task.CompletedTask;
     }
 }

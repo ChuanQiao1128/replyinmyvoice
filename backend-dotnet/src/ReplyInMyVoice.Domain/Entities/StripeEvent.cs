@@ -1,8 +1,9 @@
+using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Enums;
 
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class StripeEvent
+public sealed class StripeEvent : IConcurrencyStamped
 {
     public required string EventId { get; set; }
     public required string Type { get; set; }

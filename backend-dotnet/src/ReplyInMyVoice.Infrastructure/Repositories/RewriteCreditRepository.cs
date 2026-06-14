@@ -270,7 +270,6 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
     {
         ct.ThrowIfCancellationRequested();
         credit.ExpiryReminderSentAt = sentAt;
-        credit.RowVersion = Guid.NewGuid();
         return Task.CompletedTask;
     }
 

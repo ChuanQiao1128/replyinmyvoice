@@ -57,7 +57,6 @@ public sealed class ReleaseExpiredReservationsHandler(
                         reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
                         reservation.RewriteAttempt.ErrorCode = reason;
                         reservation.RewriteAttempt.CompletedAt = command.Now;
-                        reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
                         claimedCount++;
                     }
 

@@ -53,7 +53,6 @@ public sealed class FinalizeQuotaSuccessHandler(
                 attempt.Status = RewriteAttemptStatus.Succeeded;
                 attempt.ResultJson = command.ResultJson;
                 attempt.CompletedAt = command.Now;
-                attempt.RowVersion = Guid.NewGuid();
 
                 await unitOfWork.SaveChangesAsync(transactionCt);
                 return true;

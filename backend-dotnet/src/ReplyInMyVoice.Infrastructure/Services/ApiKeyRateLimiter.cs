@@ -119,7 +119,6 @@ public sealed class ApiKeyRateLimiter(Func<AppDbContext> dbContextFactory) : IAp
 
             counter.Count += 1;
             counter.UpdatedAt = now;
-            counter.RowVersion = Guid.NewGuid();
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return ApiKeyRateLimitResult.Allowed(rateLimitPerMinute, counter.Count, resetAt);

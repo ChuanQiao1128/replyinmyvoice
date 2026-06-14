@@ -41,7 +41,6 @@ public sealed class ProcessPaymentGraceRemindersHandler(
                     {
                         user.PaymentGraceReminderSentAt = command.Now;
                         user.UpdatedAt = command.Now;
-                        user.RowVersion = Guid.NewGuid();
                         await outboxMessages.AddAsync(
                             StripeNotificationOutboxMessageFactory.Create(
                                 StripeNotificationOutboxMessageTypes.PaymentGraceReminder,

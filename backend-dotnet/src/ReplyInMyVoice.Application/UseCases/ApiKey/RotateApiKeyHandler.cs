@@ -28,7 +28,6 @@ public sealed class RotateApiKeyHandler(
                 var now = DateTimeOffset.UtcNow;
                 apiKey.RevokedAt = now;
                 apiKey.UpdatedAt = now;
-                apiKey.RowVersion = Guid.NewGuid();
 
                 var replacement = new ApiKeyEntity
                 {

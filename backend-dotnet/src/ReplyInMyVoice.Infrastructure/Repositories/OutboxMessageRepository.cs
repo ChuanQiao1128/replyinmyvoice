@@ -52,7 +52,6 @@ public sealed class OutboxMessageRepository(AppDbContext db) : IOutboxMessageRep
             message.LockedBy = lockedBy;
             message.LockedUntil = now.Add(claimLease);
             message.LastAttemptAt = now;
-            message.RowVersion = Guid.NewGuid();
         }
 
         return messages;
@@ -81,7 +80,6 @@ public sealed class OutboxMessageRepository(AppDbContext db) : IOutboxMessageRep
         message.LockedBy = lockedBy;
         message.LockedUntil = now.Add(claimLease);
         message.LastAttemptAt = now;
-        message.RowVersion = Guid.NewGuid();
 
         return message;
     }
@@ -100,7 +98,6 @@ public sealed class OutboxMessageRepository(AppDbContext db) : IOutboxMessageRep
         message.LastError = null;
         message.LockedBy = null;
         message.LockedUntil = null;
-        message.RowVersion = Guid.NewGuid();
     }
 
     public async Task<DateTimeOffset?> GetOldestIncompleteCreatedAtAsync(CancellationToken ct = default)
@@ -139,7 +136,6 @@ public sealed class OutboxMessageRepository(AppDbContext db) : IOutboxMessageRep
         message.LastError = error.Length > 1000 ? error[..1000] : error;
         message.LockedBy = null;
         message.LockedUntil = null;
-        message.RowVersion = Guid.NewGuid();
 
         if (nextAttemptCount >= message.MaxAttempts)
         {

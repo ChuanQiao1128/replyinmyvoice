@@ -1,6 +1,8 @@
+using ReplyInMyVoice.Domain.Contracts;
+
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class LearningRun
+public sealed class LearningRun : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;

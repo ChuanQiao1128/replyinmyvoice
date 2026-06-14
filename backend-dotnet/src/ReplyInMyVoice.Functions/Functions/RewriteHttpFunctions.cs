@@ -312,7 +312,6 @@ public sealed class RewriteHttpFunctions(
         }
 
         attempt.DeletedAt = DateTimeOffset.UtcNow;
-        attempt.RowVersion = Guid.NewGuid();
         await db.SaveChangesAsync(cancellationToken);
         return new NoContentResult();
     }

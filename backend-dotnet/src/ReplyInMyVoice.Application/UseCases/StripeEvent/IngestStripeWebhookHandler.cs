@@ -51,7 +51,6 @@ public sealed class IngestStripeWebhookHandler(
                     stripeEvent.LockedUntil = null;
                     stripeEvent.PayloadJson = command.RawBody;
                     stripeEvent.ProcessedAt = null;
-                    stripeEvent.RowVersion = Guid.NewGuid();
                     await unitOfWork.SaveChangesAsync(transactionCt);
                     return StripeWebhookIngestResult.AlreadyPending;
                 },
