@@ -120,6 +120,10 @@ public static class ServiceCollectionExtensions
             outboxFastPathEnabled,
             TimeSpan.FromSeconds(outboxFastPathTimeoutSeconds));
         services.AddSingleton(outboxFastPathOptions);
+        services.AddSingleton<IBusinessMetrics>(sp =>
+            sp.GetService<TelemetryClient>() is { } telemetryClient
+                ? new AppInsightsBusinessMetrics(telemetryClient)
+                : NoOpBusinessMetrics.Instance);
         services.AddScoped<ICreditExpiryNotifier, CreditExpiryNotifier>();
         services.AddScoped<ITaxTurnoverNotifier, TaxTurnoverNotifier>();
         services.AddScoped<ITaxTurnoverSettingsProvider, TaxTurnoverSettingsProvider>();
@@ -221,7 +225,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(ReadStripeEventProcessingOptions(configuration));
         services.AddSingleton(ReadProviderCircuitBreakerOptions(configuration));
         services.AddSingleton(ReadStripeReconciliationOptions(configuration));
-        services.TryAddSingleton<IProviderResilienceEvents, NoOpProviderResilienceEvents>();
+        services.TryAddSingleton<IProviderResilienceEvents>(sp =>
+            new BusinessMetricsProviderResilienceEvents(sp.GetRequiredService<IBusinessMetrics>()));
         services.AddSingleton(sp => new ProviderCircuitBreakerRegistry(
             sp.GetRequiredService<ProviderCircuitBreakerOptions>(),
             sp.GetRequiredService<ILoggerFactory>(),

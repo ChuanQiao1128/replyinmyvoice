@@ -25,6 +25,8 @@ public interface IOutboxMessageRepository
         DateTimeOffset now,
         CancellationToken ct = default);
 
+    Task<DateTimeOffset?> GetOldestIncompleteCreatedAtAsync(CancellationToken ct = default);
+
     Task<OutboxMessageFailureInfo> MarkFailedAttemptAsync(
         Guid messageId,
         DateTimeOffset now,

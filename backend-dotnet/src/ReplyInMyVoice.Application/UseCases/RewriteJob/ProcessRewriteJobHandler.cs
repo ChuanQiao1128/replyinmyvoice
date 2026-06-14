@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -31,9 +32,11 @@ public sealed class ProcessRewriteJobHandler(
     IRewriteCreditRepository credits,
     IUnitOfWork unitOfWork,
     IRewriteEngineClient rewriteEngine,
-    IRewriteCostLogger costLogger)
+    IRewriteCostLogger costLogger,
+    IBusinessMetrics? metrics = null)
 {
     private const int ReservationRaceMaxAttempts = 3;
+    private readonly IBusinessMetrics _metrics = metrics ?? NoOpBusinessMetrics.Instance;
 
     public async Task HandleAsync(
         ProcessRewriteJobCommand command,
@@ -57,6 +60,7 @@ public sealed class ProcessRewriteJobHandler(
                 command.AttemptId,
                 mutationCt => ReleaseAsync(command.AttemptId, RewriteEngineErrorCodes.ReservationExpired, now, mutationCt),
                 ct);
+            RecordQuotaReleased(RewriteEngineErrorCodes.ReservationExpired);
             return;
         }
 
@@ -73,6 +77,7 @@ public sealed class ProcessRewriteJobHandler(
                 command.AttemptId,
                 mutationCt => ReleaseAsync(command.AttemptId, RewriteEngineErrorCodes.RequestJsonParseFailed, now, mutationCt),
                 ct);
+            RecordQuotaReleased(RewriteEngineErrorCodes.RequestJsonParseFailed);
             return;
         }
 
@@ -109,6 +114,7 @@ public sealed class ProcessRewriteJobHandler(
                 command.AttemptId,
                 mutationCt => ReleaseAsync(command.AttemptId, timeoutErrorCode, timeoutFinishedAt, mutationCt),
                 ct);
+            RecordQuotaReleased(timeoutErrorCode);
             return;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -129,6 +135,7 @@ public sealed class ProcessRewriteJobHandler(
                 command.AttemptId,
                 mutationCt => ReleaseAsync(command.AttemptId, failureErrorCode, failureFinishedAt, mutationCt),
                 ct);
+            RecordQuotaReleased(failureErrorCode);
             return;
         }
 
@@ -169,6 +176,27 @@ public sealed class ProcessRewriteJobHandler(
             command.AttemptId,
             mutationCt => ReleaseAsync(command.AttemptId, errorCode, rewriteFinishedAt, mutationCt),
             ct);
+        RecordFinalFailureMetrics(errorCode);
+    }
+
+    private void RecordQuotaReleased(string errorCode) =>
+        _metrics.Record(
+            BusinessMetricNames.QuotaReleasedTotal,
+            1,
+            BusinessMetricDimensions.ErrorCode,
+            errorCode);
+
+    private void RecordFinalFailureMetrics(string errorCode)
+    {
+        RecordQuotaReleased(errorCode);
+        if (RewriteQualityFailureCodes.All.Contains(errorCode))
+        {
+            _metrics.Record(
+                BusinessMetricNames.RewriteQualityFailureTotal,
+                1,
+                BusinessMetricDimensions.ErrorCode,
+                errorCode);
+        }
     }
 
     private async Task ExecuteAttemptMutationAsync(

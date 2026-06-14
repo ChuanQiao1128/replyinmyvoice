@@ -6497,3 +6497,92 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/MigrationDisciplineScannerTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`, `backend-dotnet/tools/ReplyInMyVoice.MigrationGuard/ReplyInMyVoice.MigrationGuard.csproj`, and this log entry.
 - Verification evidence: focused `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --configuration Release --filter MigrationDisciplineScannerTests` passed 17/17; `dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed with 0 warnings and 0 errors; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644; no-argument CLI exited 0; the temporary `DropColumn` fixture exited 1 with a `::error file=` annotation, then exited 0 after adding `MIGRATION-RISK-ACCEPTED`.
 - Limitations: A local commit was attempted but blocked because the worktree git index is under `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-791`, outside writable roots. No deploy, push, PR, EF migration, schema change, payment, secret, or production config change was made.
+### 2026-06-13 - system-spec-synthesis - HARD-11 issue #790 observability metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 and `plans/production-hardening/issues/HARD-11-observability-metrics-alerts.md` define a multi-module observability contract across Application handlers, Infrastructure DI, provider resilience, and Azure alert artifacts.
+- Action: Opened and followed the skill as an implementation-spec checklist. Read `AGENTS.md`, `CLAUDE.md`, the HARD-11 brief, and `plans/production-hardening/SPEC.md`; treated the brief as the approved spec and mapped it to Application-owned metric constants, non-throwing Infrastructure emission, post-transaction handler hooks, and operator-run alert artifacts.
+- Output artifacts: `IBusinessMetrics`, `AppInsightsBusinessMetrics`, handler metric hooks, `infra/alerts/create-business-metric-alerts.sh`, `infra/alerts/README.md`, tests, and this log entry.
+- Verification evidence: focused HARD-11 test command first failed on the missing metrics abstraction, then passed 74/74 after implementation; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644; shell acceptance checks for alert syntax, metric-name centralization, workflow references, source wording scan, and file scope passed.
+- Limitations: No separate spec document was written because the issue brief is the authoritative implementation spec for this supervised worker task. No deploy, push, PR, payment action, secret change, migration, or frontend change was made.
+
+### 2026-06-13 - cloud-architecture-cost-review - HARD-11 issue #790 alert pack
+
+- Agent: Codex worker
+- Trigger: Issue #790 ships Azure Monitor alert definitions that may create paid alert resources when an operator runs the script.
+- Action: Opened and followed the skill as a cost/readiness gate. Read `docs/manual-setup.md`, `docs/next-development-brief.md`, `docs/dotnet-azure-full-run-result.md`, `docs/dotnet-azure-blocker-preflight.md`, and `docs/business-qa-and-deploy-result.md`; selected five Application Insights custom-metric query alerts plus one native Service Bus DLQ metric alert; kept the script operator-run only with `AZURE_ALLOW_PAID_RESOURCES=true`.
+- Output artifacts: `infra/alerts/create-business-metric-alerts.sh`, `infra/alerts/README.md`, and this log entry.
+- Verification evidence: `bash -n infra/alerts/create-business-metric-alerts.sh` passed; `grep -c scheduled-query` returned 5; `grep -n AZURE_ALLOW_PAID_RESOURCES` and `grep -n DeadletteredMessages` found the guard and native metric; `grep -rn infra/alerts .github/` produced no output.
+- Limitations: Exact current Azure pricing was not checked because the brief supplied an approximate low monthly estimate and the script was not run. Running the script remains an owner/operator action.
+
+### 2026-06-13 - state-machine-modeling - HARD-11 issue #790 post-state metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 observes rewrite job release paths, outbox processing, webhook processing, and provider circuit transitions without changing their lifecycle semantics.
+- Action: Opened and followed the skill as a state-safety checklist. State list reviewed: outbox `Pending/Processing/Sent/Failed`, Stripe event `Processing/Processed/Failed`, rewrite attempt `Pending/Processing/Succeeded/Failed/Expired`, reservation `Pending/Finalized/Released`, provider circuit `Closed/Open/HalfOpen`. Event list reviewed: outbox claim/send/fail, webhook process/replay/fail, rewrite release/finalize, circuit open/recover. Metrics were placed after existing state mutations or on the existing resilience event.
+- Output artifacts: handler metric hooks in `DispatchDueOutboxHandler`, `ProcessStripeWebhookHandler`, `ProcessRewriteJobHandler`, resilience event metrics, corresponding tests, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full backend suite passed 644/644. New tests assert duplicate webhook replay emits no failure or lag metric, success emits no failure metric, and release metrics follow existing release behavior.
+- Limitations: No lifecycle state, enum, transition rule, persistence schema, or queue processing behavior was changed.
+
+### 2026-06-13 - data-module-review - HARD-11 issue #790 outbox backlog query
+
+- Agent: Codex worker
+- Trigger: Issue #790 adds an outbox repository read for oldest incomplete message age and emits metrics around existing persistence mutations.
+- Action: Opened and followed the skill as a persistence-safety review. Owned data reviewed: `OutboxMessage`, `StripeEvent`, `RewriteAttempt`, `UsageReservation`, `UsagePeriod`, and `RewriteCredit`. Added only a read query over existing outbox `Pending/Processing` rows with the repo's SQLite branch pattern; no migration or destructive data change.
+- Output artifacts: `IOutboxMessageRepository.GetOldestIncompleteCreatedAtAsync`, `OutboxMessageRepository.GetOldestIncompleteCreatedAtAsync`, outbox metric tests, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full backend suite passed 644/644; `git diff --name-only` check found no migration, frontend, package, or public asset file.
+- Limitations: The backlog metric is a gauge over existing rows and can include retry-scheduled rows by design; exact transition accounting for idempotent release remains outside this issue.
+
+### 2026-06-13 - resilience-test-generation - HARD-11 issue #790 resilience metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 tests provider circuit-open metrics, Stripe sync failure/replay behavior, outbox failure/backlog behavior, and rewrite quota release behavior.
+- Action: Opened and followed the skill as a failure-mode test matrix. Covered transient provider 5xx opening the shared circuit, open-circuit fast rejection, successful provider responses, webhook duplicate replay, sync failure after transaction, provider exception release path, quality failure release path, and empty outbox gauge behavior using deterministic local fakes.
+- Output artifacts: `BusinessMetricsTests`, `ProviderHttpResilienceHandlerTests`, `RewriteJobUseCaseTests`, `WebhookOutboxUseCaseTests`, `StripeEventUseCaseTests`, `RecordingBusinessMetrics`, and this log entry.
+- Verification evidence: initial focused test command failed before implementation because `IBusinessMetrics` was missing; after implementation, focused command passed 74/74 and full Release suite passed 644/644.
+- Limitations: No live Stripe, Azure, OpenAI-compatible, Sapling, or Service Bus endpoint was called. The alert script was syntax-checked only and not executed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-11 issue #790 business metrics tests
+
+- Agent: Codex worker
+- Trigger: Issue #790 requires new C# xUnit tests for Application handler metrics, DI resolution, App Insights adapter behavior, and provider resilience behavior.
+- Action: Opened and followed the skill for test-level selection. Added xUnit tests using `DbFixture`, real repositories, deterministic fake providers/handlers, a spy telemetry channel, and a recording metrics double; asserted persisted state where relevant and metric name/dimension/value records for each emission site.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/BusinessMetricsTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/TestDoubles/RecordingBusinessMetrics.cs`, modified Application test files, modified `InfrastructureServiceCollectionTests`, modified `ProviderHttpResilienceHandlerTests`, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644.
+- Limitations: Tests use local fakes and do not export telemetry to Azure. No API/UI/browser verification was needed because no browser-visible or HTTP contract surface changed.
+
+### 2026-06-14 - state-machine-modeling - HARD-11 integration merge resolution
+
+- Agent: Codex
+- Trigger: Merge-in-progress resolution for HARD-11 observability metrics onto an integration branch where Stripe webhook processing was split into ingest, pending-event processing, and payload synchronization.
+- Action: Opened and followed the project skill as a lifecycle placement checklist. Reviewed Stripe event `Pending/Processing/Processed/Failed`, outbox `Pending/Processing/Sent/Failed`, rewrite attempt `Pending/Processing/Succeeded/Failed/Expired`, and usage reservation `Pending/Finalized/Released` transitions. Placed webhook lag metrics on processed pending events and Stripe failure metrics only when events transition to terminal `Failed`; kept duplicate replay and retryable failure behavior unchanged.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/ProcessPendingStripeEventsHandler.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, and this log entry.
+- Verification evidence: A conflict-marker scan over `backend-dotnet/src` and `backend-dotnet/tests` returned no matches. `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0.
+- Limitations: The exact full test command could not execute tests in this sandbox because MSBuild/VSTest local socket startup failed with `SocketException (13): Permission denied`; a serialized `--no-build` retry reached VSTest but aborted on the same socket restriction.
+
+### 2026-06-14 - data-module-review - HARD-11 integration merge resolution
+
+- Agent: Codex
+- Trigger: Merge resolution touched repositories, Stripe event persistence flow, outbox message failure handling, and a test fake for the new outbox backlog read contract.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Kept schema and migrations unchanged, preserved HARD-03 Stripe event storage and retry semantics, retained HARD-06 outbox fast-path claiming, and added the missing `GetOldestIncompleteCreatedAtAsync` member to the reconciliation test fake.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/WebhookOutbox/DispatchDueOutboxHandler.cs`, and this log entry.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0 after adding the fake repository member.
+- Limitations: No database migration, index, entity property, or production data backfill was added. Full test execution was blocked by the sandbox socket restriction described above.
+
+### 2026-06-14 - resilience-test-generation - HARD-11 integration merge resolution
+
+- Agent: Codex
+- Trigger: Merge resolution moved webhook metrics across retry, poison, duplicate replay, outbox failure, provider circuit, and rewrite quota-release paths.
+- Action: Opened and followed the project skill as a failure-mode checklist. Preserved duplicate webhook replay with no metric emission, adapted the Stripe sync-failure metric test to terminal failure by using `MaxAttempts: 1`, kept retryable failures separate from poison failures, and folded outbox failure metrics plus terminal-failure observer calls into the shared dispatch method used by both batch and fast-path dispatch.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/ProcessPendingStripeEventsHandler.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/WebhookOutbox/DispatchDueOutboxHandler.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, and this log entry.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0. The first full test command and the serialized no-build retry both failed before test execution due sandbox-denied local sockets.
+- Limitations: No live Stripe, Azure, OpenAI-compatible, Sapling, or Service Bus endpoint was called. Test runner execution needs an environment that permits local test-runner sockets.
+
+### 2026-06-14 - dotnet-backend-testing - HARD-11 integration merge resolution
+
+- Agent: Codex
+- Trigger: User requested resolving C#/.NET merge conflicts, porting HARD-11 webhook metric tests to the new processor structure, and making Release build/test pass where executable.
+- Action: Opened and followed the project skill for backend test selection. Kept integrated tests, ported HARD-11 Stripe lag/failure/duplicate metric coverage to `StripeWebhookHarness`, wired `RecordingBusinessMetrics` into `ProcessPendingStripeEventsHandler`, and retained existing xUnit/EF Core SQLite test style.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, and this log entry.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0 with one duplicate-using warning in `InfrastructureServiceCollectionTests.cs`.
+- Limitations: `dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release` did not reach test execution in this sandbox. The exact command failed with MSBuild named-pipe/socket `Permission denied`, and `MSBUILDDISABLENODEREUSE=1 dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release --no-build -m:1 /nodeReuse:false` reached VSTest but aborted with the same local socket permission denial.

@@ -2,12 +2,93 @@ using System.Net;
 using System.Net.Http.Headers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Infrastructure.Resilience;
+using ReplyInMyVoice.Tests.TestDoubles;
 
 namespace ReplyInMyVoice.Tests;
 
 public sealed class ProviderHttpResilienceHandlerTests
 {
+    [Fact]
+    public async Task Opens_circuit_and_records_open_metric_once_per_transition()
+    {
+        var now = DateTimeOffset.Parse("2026-06-13T00:00:00Z");
+        var metrics = new RecordingBusinessMetrics();
+        var breaker = CreateBreaker(
+            new ProviderCircuitBreakerOptions(
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(30),
+                1,
+                1.0),
+            () => now,
+            new BusinessMetricsProviderResilienceEvents(metrics));
+        var innerHandler = new CountingHttpHandler(_ =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+        using var invoker = CreateInvoker(new ProviderHttpResilienceHandler(breaker), innerHandler);
+
+        using var response = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://example.test/"), CancellationToken.None);
+
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.ProviderBreakerOpenTotal &&
+            record.Value == 1 &&
+            record.DimensionName == BusinessMetricDimensions.ClientName &&
+            record.DimensionValue == "test-provider");
+    }
+
+    [Fact]
+    public async Task Open_circuit_rejects_requests_without_recording_additional_open_metric()
+    {
+        var now = DateTimeOffset.Parse("2026-06-13T00:00:00Z");
+        var metrics = new RecordingBusinessMetrics();
+        var breaker = CreateBreaker(
+            new ProviderCircuitBreakerOptions(
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(30),
+                1,
+                1.0),
+            () => now,
+            new BusinessMetricsProviderResilienceEvents(metrics));
+        var innerHandler = new CountingHttpHandler(_ =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+        using var invoker = CreateInvoker(new ProviderHttpResilienceHandler(breaker), innerHandler);
+
+        using var response = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://example.test/"), CancellationToken.None);
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        await invoker.Invoking(x => x.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://example.test/"), CancellationToken.None))
+            .Should()
+            .ThrowAsync<ProviderCircuitOpenException>();
+
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.ProviderBreakerOpenTotal);
+    }
+
+    [Fact]
+    public async Task Successful_responses_do_not_record_open_metric()
+    {
+        var now = DateTimeOffset.Parse("2026-06-13T00:00:00Z");
+        var metrics = new RecordingBusinessMetrics();
+        var breaker = CreateBreaker(
+            new ProviderCircuitBreakerOptions(
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(30),
+                2,
+                1.0),
+            () => now,
+            new BusinessMetricsProviderResilienceEvents(metrics));
+        var innerHandler = new CountingHttpHandler(_ =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+        using var invoker = CreateInvoker(new ProviderHttpResilienceHandler(breaker), innerHandler);
+
+        using var first = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://example.test/"), CancellationToken.None);
+        using var second = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://example.test/"), CancellationToken.None);
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        metrics.Records.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task Circuit_state_is_shared_across_handler_instances()
     {
@@ -134,12 +215,13 @@ public sealed class ProviderHttpResilienceHandlerTests
 
     private static ProviderCircuitBreaker CreateBreaker(
         ProviderCircuitBreakerOptions options,
-        Func<DateTimeOffset> clock) =>
+        Func<DateTimeOffset> clock,
+        IProviderResilienceEvents? events = null) =>
         new(
             "test-provider",
             options,
             NullLogger.Instance,
-            new NoOpProviderResilienceEvents(),
+            events ?? new NoOpProviderResilienceEvents(),
             clock);
 
     private static HttpMessageInvoker CreateInvoker(

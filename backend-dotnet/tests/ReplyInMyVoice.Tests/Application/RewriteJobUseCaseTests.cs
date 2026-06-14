@@ -9,6 +9,7 @@ using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Repositories;
+using ReplyInMyVoice.Tests.TestDoubles;
 
 namespace ReplyInMyVoice.Tests.Application;
 
@@ -162,6 +163,91 @@ public sealed class RewriteJobUseCaseTests
         costEntry.ErrorCode.Should().Be("provider_failed");
     }
 
+    [Fact]
+    public async Task ProcessRewriteJobAsync_records_quality_failure_and_quota_release_metrics_when_quality_gate_fails()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.UtcNow;
+        var attemptId = await ReserveAttemptAsync(fixture, user.Id, "job-quality-failure", now);
+        var engine = new FakeRewriteEngineClient(new RewriteEngineResult(
+            ResultJson: null,
+            Success: false,
+            ErrorCode: "naturalness_gate_failed",
+            [Metric(success: false, errorCode: "naturalness_gate_failed")]));
+        var metrics = new RecordingBusinessMetrics();
+
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateHandler(handlerDb, engine, new FakeRewriteCostLogger(), metrics);
+
+        await handler.HandleAsync(new ProcessRewriteJobCommand(attemptId));
+
+        metrics.Records.Should().Contain(record =>
+            record.Name == BusinessMetricNames.RewriteQualityFailureTotal &&
+            record.Value == 1 &&
+            record.DimensionName == BusinessMetricDimensions.ErrorCode &&
+            record.DimensionValue == "naturalness_gate_failed");
+        metrics.Records.Should().Contain(record =>
+            record.Name == BusinessMetricNames.QuotaReleasedTotal &&
+            record.Value == 1 &&
+            record.DimensionName == BusinessMetricDimensions.ErrorCode &&
+            record.DimensionValue == "naturalness_gate_failed");
+
+        await using var verifyDb = fixture.CreateContext();
+        (await verifyDb.UsageReservations.SingleAsync()).Status.Should().Be(UsageReservationStatus.Released);
+        var attempt = await verifyDb.RewriteAttempts.SingleAsync();
+        attempt.Status.Should().Be(RewriteAttemptStatus.Failed);
+        attempt.ErrorCode.Should().Be("naturalness_gate_failed");
+    }
+
+    [Fact]
+    public async Task ProcessRewriteJobAsync_records_quota_release_without_quality_metric_when_provider_throws()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.UtcNow;
+        var attemptId = await ReserveAttemptAsync(fixture, user.Id, "job-provider-throws", now);
+        var engine = new ThrowingRewriteEngineClient(new InvalidOperationException("provider failed"));
+        var metrics = new RecordingBusinessMetrics();
+
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateHandler(handlerDb, engine, new FakeRewriteCostLogger(), metrics);
+
+        await handler.HandleAsync(new ProcessRewriteJobCommand(attemptId));
+
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.QuotaReleasedTotal &&
+            record.Value == 1 &&
+            record.DimensionName == BusinessMetricDimensions.ErrorCode &&
+            record.DimensionValue == RewriteEngineErrorCodes.ProviderFailed);
+        metrics.Records.Should().NotContain(record =>
+            record.Name == BusinessMetricNames.RewriteQualityFailureTotal);
+    }
+
+    [Fact]
+    public async Task ProcessRewriteJobAsync_records_no_failure_metrics_on_success()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.UtcNow;
+        var attemptId = await ReserveAttemptAsync(fixture, user.Id, "job-success-no-failure-metrics", now);
+        var engine = new FakeRewriteEngineClient(new RewriteEngineResult(
+            ValidResultJson,
+            Success: true,
+            ErrorCode: null,
+            [Metric(success: true)]));
+        var metrics = new RecordingBusinessMetrics();
+
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateHandler(handlerDb, engine, new FakeRewriteCostLogger(), metrics);
+
+        await handler.HandleAsync(new ProcessRewriteJobCommand(attemptId));
+
+        metrics.Records.Should().NotContain(record =>
+            record.Name == BusinessMetricNames.QuotaReleasedTotal ||
+            record.Name == BusinessMetricNames.RewriteQualityFailureTotal);
+    }
+
     private static async Task<Guid> ReserveAttemptAsync(
         DbFixture fixture,
         Guid userId,
@@ -205,7 +291,8 @@ public sealed class RewriteJobUseCaseTests
     private static ProcessRewriteJobHandler CreateHandler(
         AppDbContext db,
         IRewriteEngineClient engine,
-        IRewriteCostLogger costLogger) =>
+        IRewriteCostLogger costLogger,
+        IBusinessMetrics? metrics = null) =>
         new(
             new RewriteAttemptRepository(db),
             new UsageReservationRepository(db),
@@ -213,7 +300,8 @@ public sealed class RewriteJobUseCaseTests
             new RewriteCreditRepository(db),
             new UnitOfWork(db),
             engine,
-            costLogger);
+            costLogger,
+            metrics);
 
     private static RewriteEngineCallMetric Metric(
         bool success,

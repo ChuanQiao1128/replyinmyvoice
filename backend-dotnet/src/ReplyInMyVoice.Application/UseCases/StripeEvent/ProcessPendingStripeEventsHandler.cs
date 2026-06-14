@@ -13,10 +13,12 @@ public sealed class ProcessPendingStripeEventsHandler(
     IRewriteCreditRepository credits,
     IUnitOfWork unitOfWork,
     StripeEventProcessingOptions options,
-    ILogger<ProcessPendingStripeEventsHandler> logger)
+    ILogger<ProcessPendingStripeEventsHandler> logger,
+    IBusinessMetrics? metrics = null)
 {
     private const int ClaimRaceMaxAttempts = 5;
     private static readonly TimeSpan ClaimLease = TimeSpan.FromMinutes(2);
+    private readonly IBusinessMetrics _metrics = metrics ?? NoOpBusinessMetrics.Instance;
 
     public async Task<int> HandleAsync(
         ProcessPendingStripeEventsCommand command,
@@ -128,6 +130,7 @@ public sealed class ProcessPendingStripeEventsHandler(
                     }
                 }
 
+                RecordWebhookProcessingLag(payload.EventCreatedAt, command.Now);
                 processed += 1;
             }
             catch (Exception ex)
@@ -139,6 +142,7 @@ public sealed class ProcessPendingStripeEventsHandler(
                     stripeEvent.Type,
                     command.Now,
                     ct);
+                RecordWebhookProcessingLag(payload.EventCreatedAt, command.Now);
                 processed += 1;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -193,6 +197,7 @@ public sealed class ProcessPendingStripeEventsHandler(
 
         if (failure?.Poisoned == true)
         {
+            RecordFailedMetric(failure.EventType ?? eventType);
             LogPoisoned(eventId, failure.EventType ?? eventType, failure.AttemptCount, failure.Error);
         }
     }
@@ -222,9 +227,31 @@ public sealed class ProcessPendingStripeEventsHandler(
 
         if (failure?.Poisoned == true)
         {
+            RecordFailedMetric(failure.EventType ?? eventType);
             LogPoisoned(eventId, failure.EventType ?? eventType, failure.AttemptCount, failure.Error);
         }
     }
+
+    private void RecordWebhookProcessingLag(
+        DateTimeOffset? eventCreatedAt,
+        DateTimeOffset now)
+    {
+        if (eventCreatedAt is null)
+        {
+            return;
+        }
+
+        _metrics.Record(
+            BusinessMetricNames.WebhookProcessingLagSeconds,
+            Math.Max(0, (now - eventCreatedAt.Value).TotalSeconds));
+    }
+
+    private void RecordFailedMetric(string eventType) =>
+        _metrics.Record(
+            BusinessMetricNames.StripeEventFailedTotal,
+            1,
+            BusinessMetricDimensions.EventType,
+            eventType);
 
     private async Task MarkProcessedAfterCheckoutGrantConflictAsync(
         string eventId,

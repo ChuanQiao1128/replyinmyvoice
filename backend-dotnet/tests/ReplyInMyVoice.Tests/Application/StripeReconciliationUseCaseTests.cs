@@ -1053,6 +1053,9 @@ public sealed class StripeReconciliationUseCaseTests
         public Task MarkSentAsync(Guid messageId, DateTimeOffset now, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<DateTimeOffset?> GetOldestIncompleteCreatedAtAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<OutboxMessageFailureInfo> MarkFailedAttemptAsync(
             Guid messageId,
             DateTimeOffset now,
