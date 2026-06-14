@@ -5,6 +5,8 @@ namespace ReplyInMyVoice.Functions.Http;
 
 public static class FunctionHttpResults
 {
+    public const string InternalErrorMessage = "An unexpected server error occurred. Please retry the request.";
+
     public static IActionResult Unauthorized(string? detail, bool invalidToken) =>
         new HeaderResult(
             Problem(
@@ -78,6 +80,14 @@ public static class FunctionHttpResults
             $"Request body must be {limitBytes} bytes or smaller.",
             StatusCodes.Status413PayloadTooLarge,
             "payload_too_large");
+
+    public static IActionResult InternalError(string requestId) =>
+        Problem(
+            "Internal server error",
+            InternalErrorMessage,
+            StatusCodes.Status500InternalServerError,
+            DefaultErrorCode(StatusCodes.Status500InternalServerError),
+            requestId);
 
     public static string DefaultErrorCode(int statusCode) =>
         statusCode switch

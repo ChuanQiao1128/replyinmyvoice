@@ -42,7 +42,20 @@ public sealed class HttpHardeningMiddleware(
         {
             ["CorrelationId"] = correlationId,
         });
-        await next(context);
+        try
+        {
+            await next(context);
+        }
+        catch (Exception ex) when (!http.Response.HasStarted)
+        {
+            logger.LogError(ex, "HTTP function failed with an unhandled exception.");
+            await WriteInternalErrorAsync(http, correlationId, context.CancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "HTTP function failed after the response started.");
+            throw;
+        }
     }
 
     public static string ResolveCorrelationId(HttpRequest request)
@@ -126,6 +139,19 @@ public sealed class HttpHardeningMiddleware(
         });
     }
 
+    public static string BuildInternalErrorJson(string correlationId)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            error = new
+            {
+                code = FunctionHttpResults.DefaultErrorCode(StatusCodes.Status500InternalServerError),
+                message = FunctionHttpResults.InternalErrorMessage,
+                requestId = correlationId,
+            },
+        });
+    }
+
     private static async Task WritePayloadTooLargeAsync(
         HttpContext http,
         long limit,
@@ -134,6 +160,17 @@ public sealed class HttpHardeningMiddleware(
         http.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
         http.Response.ContentType = "application/json";
         await http.Response.WriteAsync(BuildPayloadTooLargeJson(limit), cancellationToken);
+    }
+
+    private static async Task WriteInternalErrorAsync(
+        HttpContext http,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        http.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        http.Response.ContentType = "application/json";
+        http.Response.Headers[CorrelationHeaderName] = correlationId;
+        await http.Response.WriteAsync(BuildInternalErrorJson(correlationId), cancellationToken);
     }
 
     private static bool CanCarryBody(HttpRequest request)
