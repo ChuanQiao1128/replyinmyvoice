@@ -6928,3 +6928,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobFunctionTests.cs`, plus the function signature and host configuration changes required for those tests.
 - Verification evidence: red run failed at compile because the old function exposed only `Run(string, CancellationToken)`; after implementation and one corrected transient-failure setup, focused tests passed 6/6 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 882/882.
 - Limitations: The existing correlation propagation test still uses a direct string overload retained in `RewriteJobFunction` without a trigger attribute, so no extra out-of-scope test file needed to change.
+
+### 2026-06-15 - dotnet-backend-testing - TEST-JWT issue #826 signed bearer-token tests
+
+- Agent: Codex worker
+- Trigger: Issue #826 adds C#/.NET backend tests for the Functions JWT bearer-token validation path.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions tests before production changes, using locally generated RSA keys, `StaticConfigurationManager<OpenIdConnectConfiguration>`, and real `JwtSecurityTokenHandler` validation through `FunctionAuthResolver.ResolveUserAsync`.
+- Output artifacts: optional OIDC configuration-manager seam in `FunctionAuthResolver`, four signed-JWT resolver tests in `FunctionAuthResolverTests`, and this log entry.
+- Verification evidence: red run failed at compile because `ResolveUserAsync` lacked the `configurationManagerOverride` seam; after implementation, focused `FunctionAuthResolverTests` passed 23/23 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 886/886.
+- Limitations: Tests use local in-memory OIDC metadata and do not call a live metadata endpoint, deploy, push, or open a PR. `git commit` was attempted but blocked because git metadata for this worktree is outside the writable sandbox roots.
