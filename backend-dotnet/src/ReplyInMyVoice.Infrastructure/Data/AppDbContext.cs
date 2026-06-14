@@ -205,6 +205,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                     "[AmountConsumed] >= 0 AND [AmountConsumed] <= [AmountGranted]");
             });
             entity.HasIndex(x => new { x.UserId, x.ExpiresAt });
+            entity.HasIndex(x => new { x.ExpiryReminderSentAt, x.ExpiresAt })
+                .HasFilter("[ExpiryReminderSentAt] IS NULL AND [ExpiresAt] IS NOT NULL");
             entity.HasIndex(x => x.StripeEventId).IsUnique().HasFilter("[StripeEventId] IS NOT NULL");
             entity.HasIndex(x => x.StripePaymentIntentId).HasFilter("[StripePaymentIntentId] IS NOT NULL");
             entity.Property(x => x.Source).HasMaxLength(60);
