@@ -81,7 +81,6 @@ public sealed class CreateCheckoutSessionHandler(
         }
 
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
         await unitOfWork.SaveChangesAsync(ct);
     }
 }

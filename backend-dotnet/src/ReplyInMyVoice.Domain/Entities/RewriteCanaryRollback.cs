@@ -1,6 +1,8 @@
+using ReplyInMyVoice.Domain.Contracts;
+
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class RewriteCanaryRollback
+public sealed class RewriteCanaryRollback : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public required string CanaryStrategyVersion { get; set; }

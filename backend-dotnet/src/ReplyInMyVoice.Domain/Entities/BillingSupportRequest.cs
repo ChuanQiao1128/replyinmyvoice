@@ -1,8 +1,9 @@
+using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Enums;
 
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class BillingSupportRequest
+public sealed class BillingSupportRequest : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid UserId { get; set; }

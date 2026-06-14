@@ -61,7 +61,6 @@ public sealed class UpdatePromoCodeHandler(
         }
 
         promoCode.UpdatedAt = command.Now;
-        promoCode.RowVersion = Guid.NewGuid();
         await PromoAdminUseCaseSupport.AddAuditAsync(
             promoAdmin,
             command.AdminExternalAuthUserId,

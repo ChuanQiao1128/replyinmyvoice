@@ -1,6 +1,8 @@
+using ReplyInMyVoice.Domain.Contracts;
+
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class PromoCode
+public sealed class PromoCode : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public required string Code { get; set; }

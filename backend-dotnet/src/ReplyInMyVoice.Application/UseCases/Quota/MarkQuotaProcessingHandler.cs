@@ -23,7 +23,6 @@ public sealed class MarkQuotaProcessingHandler(
                 }
 
                 attempt.Status = RewriteAttemptStatus.Processing;
-                attempt.RowVersion = Guid.NewGuid();
                 await unitOfWork.SaveChangesAsync(transactionCt);
                 return true;
             },

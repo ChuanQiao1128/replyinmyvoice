@@ -20,7 +20,6 @@ public sealed class RevokeApiKeyHandler(
         {
             apiKey.RevokedAt = DateTimeOffset.UtcNow;
             apiKey.UpdatedAt = apiKey.RevokedAt.Value;
-            apiKey.RowVersion = Guid.NewGuid();
             await unitOfWork.SaveChangesAsync(ct);
         }
 

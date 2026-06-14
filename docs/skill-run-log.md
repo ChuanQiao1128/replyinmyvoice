@@ -6766,3 +6766,30 @@ claude-heavy-planning-handoff
 - Output artifacts: timeout configuration tests, `DbMigrationStatusTests`, readiness envelope assertion, `DbMigrationStatus.EvaluateAsync`, and this log entry.
 - Verification evidence: resilience matrix script ran locally; focused timeout/migration/readiness tests and the full Release suite passed as listed above; no live dependency was contacted.
 - Limitations: The tests do not simulate a live Azure SQL long-running command or CI deployment skew. They verify the local configuration and report-only readiness behavior required by the issue.
+
+### 2026-06-15 - data-module-review - DATA-ROWVERSION issue #820 optimistic concurrency token stamping
+
+- Agent: Codex worker
+- Trigger: Issue #820 changes EF Core persistence behavior for all entities that carry the `Guid RowVersion` concurrency token.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Confirmed the change adds no schema mutation or migration, keeps existing concurrency-token mappings, retains entity initializers for added rows, and centralizes modified-row token updates in `AppDbContext.SaveChanges` / `SaveChangesAsync`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/IConcurrencyStamped.cs`, 25 entity marker implementations, `AppDbContext` generic modified-entry stamping, removal of manual source stamps, and this log entry.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; manual-stamp grep guard passed; marker-count guard passed with 25 declarations and 25 implementers; full `dotnet test ReplyInMyVoice.sln -c Release` passed 854/854.
+- Limitations: No migration, production database command, deploy, push, or PR action was run. A local commit attempt was blocked by sandbox permissions on shared git metadata outside the writable roots.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-ROWVERSION issue #820 RowVersion stamping tests
+
+- Agent: Codex worker
+- Trigger: Issue #820 requires new C#/.NET tests proving modified marker entities receive a fresh concurrency token while unmodified entities do not.
+- Action: Opened and followed the project skill for backend test selection. Added SQLite-backed xUnit/FluentAssertions tests before implementation, verified the red run failed because modified users retained the same token, then implemented the marker and `AppDbContext` stamping behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RowVersionStampingTests.cs` and this log entry.
+- Verification evidence: initial focused run failed 2/3 in the intended modified-save assertions; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RowVersionStampingTests` passed 3/3; full `dotnet test ReplyInMyVoice.sln -c Release` passed 854/854.
+- Limitations: Tests use the repo's in-memory SQLite fixture and do not contact SQL Server or external services. No deploy, push, or PR action was run.
+
+### 2026-06-15 - resilience-test-generation - DATA-ROWVERSION issue #820 concurrent writer guard
+
+- Agent: Codex worker
+- Trigger: Issue #820 addresses a race-prone persistence invariant: future modified tracked entities must not rely on hand-written token updates.
+- Action: Opened and followed the project skill as a resilience checklist. Chose the lowest local test level that proves the invariant: EF Core SQLite integration tests over real tracked entities, covering modified async save, unmodified async save, and modified sync save paths without live dependencies.
+- Output artifacts: `RowVersionStampingTests`, centralized `AppDbContext` token stamping, and this log entry.
+- Verification evidence: focused RowVersion tests passed 3/3 after the red run; manual-stamp grep guard passed; full Release suite passed 854/854.
+- Limitations: The test proves token refresh behavior, not a two-writer conflict against SQL Server. No external queue, payment, AI, or writing-signal dependency was contacted.

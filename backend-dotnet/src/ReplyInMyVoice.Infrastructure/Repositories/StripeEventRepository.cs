@@ -85,7 +85,6 @@ public sealed class StripeEventRepository(AppDbContext db) : IStripeEventReposit
             stripeEvent.LockedUntil = now.Add(lease);
             stripeEvent.AttemptCount += 1;
             stripeEvent.LastAttemptAt = now;
-            stripeEvent.RowVersion = Guid.NewGuid();
         }
 
         return events;
@@ -98,7 +97,6 @@ public sealed class StripeEventRepository(AppDbContext db) : IStripeEventReposit
         stripeEvent.LockedUntil = null;
         stripeEvent.LastError = null;
         stripeEvent.PayloadJson = null;
-        stripeEvent.RowVersion = Guid.NewGuid();
     }
 
     public void MarkRetryScheduled(
@@ -112,7 +110,6 @@ public sealed class StripeEventRepository(AppDbContext db) : IStripeEventReposit
         stripeEvent.LockedUntil = nextAttemptAt;
         stripeEvent.LastAttemptAt = now;
         stripeEvent.LastError = error.Length > 1000 ? error[..1000] : error;
-        stripeEvent.RowVersion = Guid.NewGuid();
     }
 
     public void MarkFailed(StripeEvent stripeEvent, string error, DateTimeOffset now)
@@ -122,7 +119,6 @@ public sealed class StripeEventRepository(AppDbContext db) : IStripeEventReposit
         stripeEvent.LockedUntil = null;
         stripeEvent.LastAttemptAt = now;
         stripeEvent.LastError = error.Length > 1000 ? error[..1000] : error;
-        stripeEvent.RowVersion = Guid.NewGuid();
     }
 
     public bool IsDuplicateEventWriteFailure(Exception exception)

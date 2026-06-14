@@ -1,6 +1,8 @@
+using ReplyInMyVoice.Domain.Contracts;
+
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class UserRewriteRateLimitWindow
+public sealed class UserRewriteRateLimitWindow : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid UserId { get; set; }

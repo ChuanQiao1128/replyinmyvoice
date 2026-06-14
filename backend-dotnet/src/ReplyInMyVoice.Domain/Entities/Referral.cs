@@ -1,6 +1,8 @@
+using ReplyInMyVoice.Domain.Contracts;
+
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class Referral
+public sealed class Referral : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ReferrerId { get; set; }

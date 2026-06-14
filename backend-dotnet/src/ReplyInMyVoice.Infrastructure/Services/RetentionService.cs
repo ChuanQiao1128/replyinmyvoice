@@ -42,7 +42,6 @@ public sealed class RetentionService(Func<AppDbContext> dbContextFactory)
         {
             attempt.RequestJson = null!;
             attempt.ResultJson = null;
-            attempt.RowVersion = Guid.NewGuid();
         }
 
         await db.SaveChangesAsync(cancellationToken);

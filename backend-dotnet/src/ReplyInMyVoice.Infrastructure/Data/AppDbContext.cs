@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 
 namespace ReplyInMyVoice.Infrastructure.Data;
@@ -35,6 +36,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         StampConsentForAddedRewriteAttempts();
+        StampConcurrencyTokens();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -43,6 +45,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         CancellationToken cancellationToken = default)
     {
         await StampConsentForAddedRewriteAttemptsAsync(cancellationToken);
+        StampConcurrencyTokens();
         return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
@@ -605,6 +608,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     {
         user.ConsentAcceptedAt = consentAcceptedAt;
         user.UpdatedAt = consentAcceptedAt;
-        user.RowVersion = Guid.NewGuid();
+    }
+
+    private void StampConcurrencyTokens()
+    {
+        foreach (var entry in ChangeTracker.Entries<IConcurrencyStamped>()
+            .Where(x => x.State == EntityState.Modified))
+        {
+            entry.Entity.RowVersion = Guid.NewGuid();
+        }
     }
 }

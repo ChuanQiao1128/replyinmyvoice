@@ -125,7 +125,6 @@ public sealed class UserRewriteRateLimiter(
 
             counter.Count += 1;
             counter.UpdatedAt = now;
-            counter.RowVersion = Guid.NewGuid();
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return ApiKeyRateLimitResult.Allowed(limitPerMinute, counter.Count, resetAt);
