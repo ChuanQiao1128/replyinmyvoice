@@ -6631,3 +6631,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRepositoryRoutingTests.cs`, updated `ApiKeyAuthResolverTests`, `ApiInputHardeningTests`, `RewriteEngineContractTests`, and this log entry.
 - Verification evidence: the first focused routing test run failed before implementation because the new repository methods were missing; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~V1RewriteRepositoryRoutingTests"` passed 2/2, the resolver/rate-limit/rewrite API filter passed 46/46, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 802/802.
 - Limitations: Tests use local SQLite and deterministic in-process fakes only. No frontend, browser, external provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-14 - system-spec-synthesis - STRUCT-02 issue #812 shared V1 validation
+
+- Agent: Codex worker
+- Trigger: Issue #812 converts duplicated V1 public API validation rules, bounds, and error catalog values across the Functions and API hosts into a host-agnostic Application contract.
+- Action: Opened and followed the project skill by reading `AGENTS.md`, `CLAUDE.md`, the issue brief, existing V1 host code, Application rewrite use-case files, and boundary tests, then produced a compact implementation spec before editing. The selected architecture keeps validation and catalog data in `ReplyInMyVoice.Application.UseCases.Rewrite` and leaves each host responsible only for mapping catalog errors to its existing response type.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1ErrorCatalog.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1RewriteValidation.cs`, refactored V1 host call sites, and this log entry.
+- Verification evidence: source scans confirmed the two request-boundary messages now appear in one source file, the host draft-bound constants were removed, focused validation tests passed 9/9, existing V1 boundary tests passed 16/16, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 811/811.
+- Limitations: No API envelope, database schema, payment, deploy, push, or PR action was changed or run.
+
+### 2026-06-14 - dotnet-backend-testing - STRUCT-02 issue #812 validation tests
+
+- Agent: Codex worker
+- Trigger: Issue #812 adds C#/.NET unit coverage for the shared V1 rewrite validation component and requires existing V1 HTTP boundary tests to remain green.
+- Action: Opened and followed the project skill for backend test selection. Added focused xUnit/FluentAssertions tests for empty, whitespace, short, over-character, over-word, and idempotency-key boundary cases, verified the test first failed before the Application types existed, then implemented the shared validation/catalog and reran focused plus boundary suites.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteValidationTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1ErrorCatalog.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1RewriteValidation.cs`, and this log entry.
+- Verification evidence: initial focused test command failed at compile time because `V1ErrorCatalog` was absent; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~V1RewriteValidationTests` passed 9/9, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiInputHardeningTests` passed 16/16, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 811/811.
+- Limitations: Restore emitted existing `NU1900` package vulnerability metadata warnings when the NuGet service index could not be loaded, but restore/build/test completed. No frontend, browser, external provider, payment, deploy, push, or PR action was run.

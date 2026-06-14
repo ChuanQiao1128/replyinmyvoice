@@ -36,10 +36,6 @@ public sealed class V1RewriteHttpFunctions(
     private const string EndpointName = "v1/rewrite";
     private const string ResultEndpointName = "v1/rewrite/{id}";
     private const string UsageEndpointName = "v1/usage";
-    private const int MinimumDraftLength = 10;
-    private const int MaximumDraftWords = 300;
-    private const int MaximumDraftCharacters = 2400;
-    private const int MaximumIdempotencyKeyLength = 120;
     private const string SandboxAttemptPrefix = SandboxAttemptConventions.IdempotencyKeyPrefix;
     private const string SandboxUsagePeriodKey = "test:sandbox";
     private const string SandboxResultJson = """
@@ -74,7 +70,7 @@ public sealed class V1RewriteHttpFunctions(
 
         if (auth.UserId is null)
         {
-            return Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
+            return V1Problem(V1ErrorCatalog.InvalidKey);
         }
 
         var rateLimit = auth.ApiKeyId is null
@@ -87,15 +83,15 @@ public sealed class V1RewriteHttpFunctions(
         if (rateLimit?.IsUnavailable == true)
         {
             return await CompleteAsync(
-                Error("rate_limit_unavailable", "Request limit could not be checked. Please retry later.", StatusCodes.Status503ServiceUnavailable),
-                StatusCodes.Status503ServiceUnavailable);
+                V1Problem(V1ErrorCatalog.RateLimitUnavailable),
+                V1ErrorCatalog.RateLimitUnavailable.StatusCode);
         }
 
         if (rateLimit?.IsLimited == true)
         {
             return await CompleteAsync(
-                Error("rate_limited", "Request limit reached. Please retry later.", StatusCodes.Status429TooManyRequests),
-                StatusCodes.Status429TooManyRequests);
+                V1Problem(V1ErrorCatalog.RateLimited),
+                V1ErrorCatalog.RateLimited.StatusCode);
         }
 
         V1RewriteSubmitRequest? body;
@@ -109,31 +105,27 @@ public sealed class V1RewriteHttpFunctions(
         catch (JsonException)
         {
             return await CompleteAsync(
-                Error("invalid_request", "Request body must be valid JSON.", StatusCodes.Status400BadRequest),
-                StatusCodes.Status400BadRequest);
+                V1Problem(V1ErrorCatalog.InvalidJson),
+                V1ErrorCatalog.InvalidJson.StatusCode);
         }
 
-        var draft = body?.Draft?.Trim();
-        if (string.IsNullOrWhiteSpace(draft) || draft.Length < MinimumDraftLength)
+        var draftValidation = V1RewriteValidation.ValidateDraft(body?.Draft);
+        if (!draftValidation.IsValid)
         {
+            var error = draftValidation.Error!;
             return await CompleteAsync(
-                Error("invalid_request", "A draft of at least 10 characters is required.", StatusCodes.Status400BadRequest),
-                StatusCodes.Status400BadRequest);
+                V1Problem(error),
+                error.StatusCode);
         }
 
-        if (draft.Length > MaximumDraftCharacters || CountWords(draft) > MaximumDraftWords)
-        {
-            return await CompleteAsync(
-                Error("input_too_long", "Draft must be 300 words or fewer and no more than 2400 characters.", StatusCodes.Status400BadRequest),
-                StatusCodes.Status400BadRequest);
-        }
+        var draft = draftValidation.Value!;
 
         var user = await appUsers.GetByIdAsync(auth.UserId.Value, cancellationToken);
         if (user is null)
         {
             return await CompleteAsync(
-                Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized),
-                StatusCodes.Status401Unauthorized);
+                V1Problem(V1ErrorCatalog.InvalidKey),
+                V1ErrorCatalog.InvalidKey.StatusCode);
         }
 
         var idempotencyKey = request.Headers["Idempotency-Key"].ToString();
@@ -141,11 +133,18 @@ public sealed class V1RewriteHttpFunctions(
         {
             idempotencyKey = Guid.NewGuid().ToString("D");
         }
-        else if (idempotencyKey.Length > MaximumIdempotencyKeyLength)
+        else
         {
-            return await CompleteAsync(
-                Error("invalid_request", "Idempotency-Key must be 120 characters or fewer.", StatusCodes.Status400BadRequest),
-                StatusCodes.Status400BadRequest);
+            var idempotencyKeyValidation = V1RewriteValidation.ValidateIdempotencyKey(idempotencyKey);
+            if (!idempotencyKeyValidation.IsValid)
+            {
+                var error = idempotencyKeyValidation.Error!;
+                return await CompleteAsync(
+                    V1Problem(error),
+                    error.StatusCode);
+            }
+
+            idempotencyKey = idempotencyKeyValidation.Value!;
         }
 
         if (auth.IsTest)
@@ -161,8 +160,8 @@ public sealed class V1RewriteHttpFunctions(
             if (sandboxResult.IsConflict)
             {
                 return await CompleteAsync(
-                    Error("idempotency_conflict", "The idempotency key was reused with a different draft.", StatusCodes.Status409Conflict),
-                    StatusCodes.Status409Conflict,
+                    V1Problem(V1ErrorCatalog.IdempotencyConflict),
+                    V1ErrorCatalog.IdempotencyConflict.StatusCode,
                     sandboxResult.AttemptId.ToString());
             }
 
@@ -183,11 +182,8 @@ public sealed class V1RewriteHttpFunctions(
                 cancellationToken))
         {
             return await CompleteAsync(
-                Error(
-                    "api_requires_paid_plan",
-                    "Public API access requires an active paid plan or usable purchased rewrite credit.",
-                    StatusCodes.Status402PaymentRequired),
-                StatusCodes.Status402PaymentRequired);
+                V1Problem(V1ErrorCatalog.ApiRequiresPaidPlan),
+                V1ErrorCatalog.ApiRequiresPaidPlan.StatusCode);
         }
 
         var plan = AccountUsagePlans.GetUsagePlan(user, configuration);
@@ -214,23 +210,23 @@ public sealed class V1RewriteHttpFunctions(
         if (result.Kind == ApplicationResultKind.QuotaExceeded)
         {
             return await CompleteAsync(
-                Error("quota_exhausted", "No rewrite quota remains for the current period.", StatusCodes.Status402PaymentRequired),
-                StatusCodes.Status402PaymentRequired);
+                V1Problem(V1ErrorCatalog.QuotaExhausted),
+                V1ErrorCatalog.QuotaExhausted.StatusCode);
         }
 
         if (result.Kind == ApplicationResultKind.Conflict)
         {
             return await CompleteAsync(
-                Error("idempotency_conflict", "The idempotency key was reused with a different draft.", StatusCodes.Status409Conflict),
-                StatusCodes.Status409Conflict,
+                V1Problem(V1ErrorCatalog.IdempotencyConflict),
+                V1ErrorCatalog.IdempotencyConflict.StatusCode,
                 result.Value?.AttemptId.ToString());
         }
 
         if (result.Value is null)
         {
             return await CompleteAsync(
-                Error("rewrite_failed", "The rewrite request could not be processed.", StatusCodes.Status500InternalServerError),
-                StatusCodes.Status500InternalServerError);
+                V1Problem(V1ErrorCatalog.RewriteFailed),
+                V1ErrorCatalog.RewriteFailed.StatusCode);
         }
 
         return await CompleteAsync(
@@ -243,9 +239,6 @@ public sealed class V1RewriteHttpFunctions(
                 }),
             StatusCodes.Status202Accepted,
             result.Value.AttemptId.ToString());
-
-        IActionResult Error(string code, string message, int statusCode) =>
-            FunctionHttpResults.Problem(message, message, statusCode, code);
 
         async Task<IActionResult> CompleteAsync(
             IActionResult result,
@@ -282,11 +275,7 @@ public sealed class V1RewriteHttpFunctions(
 
         if (auth.UserId is null)
         {
-            return FunctionHttpResults.Problem(
-                "A valid API key is required.",
-                "A valid API key is required.",
-                StatusCodes.Status401Unauthorized,
-                "invalid_key");
+            return V1Problem(V1ErrorCatalog.InvalidKey);
         }
 
         var rateLimit = auth.ApiKeyId is null
@@ -300,12 +289,8 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                FunctionHttpResults.Problem(
-                    "Request limit could not be checked. Please retry later.",
-                    "Request limit could not be checked. Please retry later.",
-                    StatusCodes.Status503ServiceUnavailable,
-                    "rate_limit_unavailable"),
-                StatusCodes.Status503ServiceUnavailable,
+                V1Problem(V1ErrorCatalog.RateLimitUnavailable),
+                V1ErrorCatalog.RateLimitUnavailable.StatusCode,
                 stopwatch,
                 now,
                 cancellationToken,
@@ -318,12 +303,8 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                FunctionHttpResults.Problem(
-                    "Request limit reached. Please retry later.",
-                    "Request limit reached. Please retry later.",
-                    StatusCodes.Status429TooManyRequests,
-                    "rate_limited"),
-                StatusCodes.Status429TooManyRequests,
+                V1Problem(V1ErrorCatalog.RateLimited),
+                V1ErrorCatalog.RateLimited.StatusCode,
                 stopwatch,
                 now,
                 cancellationToken,
@@ -344,12 +325,8 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                FunctionHttpResults.Problem(
-                    "Rewrite result was not found.",
-                    "Rewrite result was not found.",
-                    StatusCodes.Status404NotFound,
-                    "not_found"),
-                StatusCodes.Status404NotFound,
+                V1Problem(V1ErrorCatalog.NotFound),
+                V1ErrorCatalog.NotFound.StatusCode,
                 stopwatch,
                 now,
                 cancellationToken,
@@ -387,11 +364,7 @@ public sealed class V1RewriteHttpFunctions(
 
         if (auth.UserId is null)
         {
-            return FunctionHttpResults.Problem(
-                "A valid API key is required.",
-                "A valid API key is required.",
-                StatusCodes.Status401Unauthorized,
-                "invalid_key");
+            return V1Problem(V1ErrorCatalog.InvalidKey);
         }
 
         var rateLimit = auth.ApiKeyId is null
@@ -405,12 +378,8 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                FunctionHttpResults.Problem(
-                    "Request limit could not be checked. Please retry later.",
-                    "Request limit could not be checked. Please retry later.",
-                    StatusCodes.Status503ServiceUnavailable,
-                    "rate_limit_unavailable"),
-                StatusCodes.Status503ServiceUnavailable,
+                V1Problem(V1ErrorCatalog.RateLimitUnavailable),
+                V1ErrorCatalog.RateLimitUnavailable.StatusCode,
                 stopwatch,
                 now,
                 cancellationToken,
@@ -422,12 +391,8 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                FunctionHttpResults.Problem(
-                    "Request limit reached. Please retry later.",
-                    "Request limit reached. Please retry later.",
-                    StatusCodes.Status429TooManyRequests,
-                    "rate_limited"),
-                StatusCodes.Status429TooManyRequests,
+                V1Problem(V1ErrorCatalog.RateLimited),
+                V1ErrorCatalog.RateLimited.StatusCode,
                 stopwatch,
                 now,
                 cancellationToken,
@@ -461,12 +426,8 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                FunctionHttpResults.Problem(
-                    "A valid API key is required.",
-                    "A valid API key is required.",
-                    StatusCodes.Status401Unauthorized,
-                    "invalid_key"),
-                StatusCodes.Status401Unauthorized,
+                V1Problem(V1ErrorCatalog.InvalidKey),
+                V1ErrorCatalog.InvalidKey.StatusCode,
                 stopwatch,
                 now,
                 cancellationToken,
@@ -526,7 +487,7 @@ public sealed class V1RewriteHttpFunctions(
         }
 
         var code = string.IsNullOrWhiteSpace(attempt.ErrorCode)
-            ? "engine_unavailable"
+            ? V1ErrorCatalog.EngineUnavailableCode
             : attempt.ErrorCode;
         return new OkObjectResult(new
         {
@@ -657,8 +618,11 @@ public sealed class V1RewriteHttpFunctions(
 
     private static string FailureMessage(RewriteAttemptDto attempt) =>
         attempt.Status == RewriteAttemptStatus.Expired.ToString()
-            ? "The rewrite did not finish in time. Please submit a new request."
-            : "The rewrite could not be completed. Please try again.";
+            ? V1ErrorCatalog.RewriteExpiredMessage
+            : V1ErrorCatalog.RewriteCouldNotBeCompletedMessage;
+
+    private static IActionResult V1Problem(V1ErrorCatalog.V1Error error) =>
+        FunctionHttpResults.Problem(error.Message, error.Message, error.StatusCode, error.Code);
 
     private async Task<IActionResult> CompleteWithUsageAsync(
         Guid? apiKeyId,
@@ -739,31 +703,6 @@ public sealed class V1RewriteHttpFunctions(
         catch (Exception)
         {
         }
-    }
-
-    private static int CountWords(string value)
-    {
-        var count = 0;
-        var inWord = false;
-
-        foreach (var character in value)
-        {
-            if (char.IsWhiteSpace(character))
-            {
-                inWord = false;
-                continue;
-            }
-
-            if (inWord)
-            {
-                continue;
-            }
-
-            count += 1;
-            inWord = true;
-        }
-
-        return count;
     }
 
     private sealed class V1RewriteSubmitRequest
