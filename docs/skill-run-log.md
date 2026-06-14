@@ -6793,3 +6793,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `RowVersionStampingTests`, centralized `AppDbContext` token stamping, and this log entry.
 - Verification evidence: focused RowVersion tests passed 3/3 after the red run; manual-stamp grep guard passed; full Release suite passed 854/854.
 - Limitations: The test proves token refresh behavior, not a two-writer conflict against SQL Server. No external queue, payment, AI, or writing-signal dependency was contacted.
+
+### 2026-06-15 - data-module-review - DATA-CHECK issue #821 credit and quota database checks
+
+- Agent: Codex worker
+- Trigger: Issue #821 changes EF Core model metadata and migrations for persisted credit and usage counter invariants.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Confirmed the owned tables are `RewriteCredits` and `UsagePeriods`, copied the existing `PromoCodes` check-constraint pattern, kept the change additive and reversible, and avoided any column, index, service, API, or quota-flow rewrite.
+- Output artifacts: `AppDbContext` check constraints, `AddCreditQuotaCheckConstraints` EF migration plus designer and snapshot, `CreditQuotaSchemaTests`, and this log entry.
+- Verification evidence: the data-risk scan script ran against `AppDbContext` and returned no rows; the exact EF pending-model check completed with no model drift; focused schema tests passed 6/6; full Release suite passed 860/860; scoped restricted-word guard returned no matches.
+- Limitations: No live database or deployment command was run. The pre-merge check for existing production rows remains a supervisor or human gate.
+
+### 2026-06-15 - state-machine-modeling - DATA-CHECK issue #821 quota persistence invariants
+
+- Agent: Codex worker
+- Trigger: Issue #821 hardens quota and credit persistence invariants that protect usage-accounting lifecycle data.
+- Action: Opened and followed the project skill for a minimal lifecycle model. Modeled this as no new state transitions: valid persisted states require nonnegative `UsedCount`, nonnegative `ReservedCount`, nonnegative `AmountConsumed`, and `AmountConsumed <= AmountGranted`; illegal direct writes are rejected by the database.
+- Output artifacts: database check constraints for `UsagePeriods` and `RewriteCredits`, SQLite tests for illegal and valid persisted states, and this log entry.
+- Verification evidence: focused schema tests passed 6/6 after the initial red run showed four invalid writes were accepted; full Release suite passed 860/860.
+- Limitations: This issue intentionally does not add a combined quota-limit constraint or alter reservation/rewrite attempt transition code.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-CHECK issue #821 SQLite schema tests
+
+- Agent: Codex worker
+- Trigger: Issue #821 requires C#/.NET tests proving database-level checks reject invalid `RewriteCredits` and `UsagePeriods` rows while valid rows still save.
+- Action: Opened and followed the project skill for backend test selection. Added EF Core SQLite in-memory xUnit/FluentAssertions schema tests before implementation, verified the red run failed in the four invalid-write assertions, then added the model constraints and migration.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/CreditQuotaSchemaTests.cs` and this log entry.
+- Verification evidence: initial focused run failed 4/6 because invalid writes did not throw; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CreditQuotaSchemaTests` passed 6/6, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 860/860.
+- Limitations: Tests use SQLite `EnsureCreated` and do not apply migrations to SQL Server. EF CLI commands that use the API startup project wait for the default host-factory timeout before falling back, but the exact pending-model check still passed.
