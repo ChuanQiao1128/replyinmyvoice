@@ -31,6 +31,7 @@ jobs:
         run: >
           dotnet test backend-dotnet/ReplyInMyVoice.sln
           --configuration Release --no-build
+          --filter "Category!=SqlServer"
           --collect:"XPlat Code Coverage"
           --settings backend-dotnet/coverlet.runsettings
           --results-directory backend-dotnet/artifacts/coverage
@@ -155,6 +156,10 @@ jobs:
 
             sleep 10
           done
+      - name: Test SQL Server suites
+        run: |
+          SQL_CONNECTION="Server=localhost,1433;Initial Catalog=ReplyInMyVoiceSqlServerTests_${{ github.run_id }};Persist Security Info=False;User ID=sa;Password=${SQLSERVER_SA_PASSWORD};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=True;Connection Timeout=30;"
+          RIMV_SQLSERVER_TEST_CONNECTION="$SQL_CONNECTION" dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter "Category=SqlServer"
 
   deploy:
     needs:

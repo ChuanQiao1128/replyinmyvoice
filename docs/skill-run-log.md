@@ -6955,3 +6955,39 @@ claude-heavy-planning-handoff
 - Output artifacts: updated `ProviderHttpResilienceHandlerTests`, updated `RewriteProviderAdapterTests`, local `FakeTimeProvider`, and this log entry.
 - Verification evidence: initial focused test run failed after test changes, proving the missing seam; after implementation, focused filter passed 14/14 and full Release suite passed 887/887.
 - Limitations: The test fake implements the timer behavior needed by these retry tests, not a full replacement for every possible `TimeProvider` use.
+
+### 2026-06-15 - state-machine-modeling - TEST-SQLSERVER issue #828 SQL Server lifecycle coverage
+
+- Agent: Codex worker
+- Trigger: Issue #828 adds SQL Server tests for quota reservation races, rewrite-attempt idempotency, Stripe event duplicate handling, and row-version concurrency.
+- Action: Opened and followed the project skill as a lifecycle checklist. State list: usage period with one slot remaining or full, rewrite credit available or consumed, rewrite attempt absent or pending, Stripe event absent or recorded, usage period fresh or stale by row version. Event list: concurrent reserve, duplicate idempotency-key insert, duplicate Stripe event insert, first tracked save, stale tracked save, and raw SQL reserve update. Transition table: concurrent reserve moves exactly one request to created and the rest to quota-exceeded; full period plus one credit moves exactly one credit to consumed; duplicate attempt/event inserts are rejected by SQL Server constraints; first tracked save refreshes row version; stale save is rejected; raw reserve update refreshes row version. Invariants: no duplicate attempts per user/key, no duplicate Stripe events per event id, no over-reservation, no over-consuming a one-credit grant, and stale updates cannot overwrite a newer row. Illegal transitions: second reserve cannot create another usage reservation, duplicate attempt/event cannot persist, stale row-version save cannot commit. Persistence implications: tests use migrated SQL Server schema and unique/PK/concurrency predicates instead of SQLite `EnsureCreated`. Test checklist mapped to `SqlServerQuotaConcurrencyTests`, `SqlServerIdempotencyAndWebhookReplayTests`, and `SqlServerRowVersionConcurrencyTests`.
+- Output artifacts: new SQL Server collection fixture and three trait-gated SQL Server test classes, plus this log entry.
+- Verification evidence: `Category!=SqlServer` Release suite passed 887/887 with a temporary writable NuGet cache; SQL Server-filtered command compiled then failed at fixture startup because local Docker is not running; static migration/trait/filter/restricted-substring checks passed.
+- Limitations: No production lifecycle code changed. Local SQL Server execution could not complete without a running Docker daemon or external SQL Server connection string.
+
+### 2026-06-15 - data-module-review - TEST-SQLSERVER issue #828 SQL Server persistence invariants
+
+- Agent: Codex worker
+- Trigger: Issue #828 reviews and tests EF Core SQL Server persistence invariants for unique indexes, primary keys, check-backed counters, migrations, and row-version concurrency.
+- Action: Opened and followed the project skill. Reviewed `AppDbContext`, migrations, repository update methods, entity required fields, SQLite fixtures, and CI SQL Server migration job together. Findings: no production schema or repository edits needed; the missing coverage is provider-level behavior under migrated SQL Server schema. Suggested tests were implemented at EF integration level against SQL Server, with unique users/keys per test to keep a shared collection database isolated.
+- Output artifacts: `SqlServerDbFixture` using `UseSqlServer` and `MigrateAsync`, idempotency and duplicate event constraint tests, quota race tests, row-version concurrency tests, and this log entry.
+- Verification evidence: `grep -RnE "MigrateAsync|UseSqlServer" backend-dotnet/tests/ReplyInMyVoice.Tests/SqlServer/` found the fixture lines; `EnsureCreated` grep returned no rows; trait count and workflow filter checks passed; `Category!=SqlServer` Release suite passed 887/887.
+- Limitations: Local SQL Server container execution failed because Docker is unavailable in this sandbox. No migration was added or modified.
+
+### 2026-06-15 - resilience-test-generation - TEST-SQLSERVER issue #828 race and duplicate-event tests
+
+- Agent: Codex worker
+- Trigger: Issue #828 adds tests for quota races, idempotency, Stripe webhook duplicate handling, and stale row-version recovery behavior.
+- Action: Opened and followed the project skill as a failure matrix. Critical operations: reserve one remaining quota slot, consume one remaining credit, persist rewrite attempts by idempotency key, persist Stripe events by event id, and save concurrent usage-period updates. Boundary list: SQL Server engine, EF Core migrations, raw SQL repository updates, EF unique/PK enforcement, and EF concurrency-token predicates. Matrix rows implemented: concurrent requests, duplicate request key, duplicate event id, partial update by first context, and stale second-context update.
+- Output artifacts: two quota race tests, two duplicate constraint tests, two row-version tests, CI trait-gated SQL Server test step, and this log entry.
+- Verification evidence: SQL Server-filtered test command compiled all six tests and then failed before DB startup due local Docker availability; fast Release suite passed 887/887; static restricted-substring scan over the new SQL Server folder passed.
+- Limitations: No live Stripe, Azure, or production database endpoint was used. Full SQL Server execution remains for CI or a local machine with Docker running.
+
+### 2026-06-15 - dotnet-backend-testing - TEST-SQLSERVER issue #828 SQL Server xUnit suites
+
+- Agent: Codex worker
+- Trigger: Issue #828 adds C#/.NET xUnit coverage for SQL Server-specific EF Core behavior and CI trait gating.
+- Action: Opened and followed the project skill for backend test selection. Added `Testcontainers.MsSql`, one shared xUnit collection fixture, and three trait-gated test classes. The fixture uses a CI-provided connection string when present so the existing GitHub Actions SQL Server service is reused; otherwise it starts `mcr.microsoft.com/mssql/server:2022-latest` locally and runs `MigrateAsync`.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/SqlServer/*`, `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`, `.github/workflows/dotnet-azure.yml`, and this log entry.
+- Verification evidence: `NUGET_PACKAGES=/private/tmp/rimv-nuget-packages dotnet test ReplyInMyVoice.sln -c Release --filter "Category!=SqlServer"` passed 887/887; `NUGET_PACKAGES=/private/tmp/rimv-nuget-packages dotnet test ReplyInMyVoice.sln -c Release --filter "Category=SqlServer" --no-restore` compiled and then failed because Docker is unavailable locally; grep-based acceptance checks passed; `git diff --check` passed.
+- Limitations: The default NuGet global package cache is not writable from this sandbox, so verification used a temporary writable cache populated with symlinks to existing packages plus the downloaded `Testcontainers.MsSql` package. Docker is not running locally, so the container-backed SQL Server tests were not executed to green here.
