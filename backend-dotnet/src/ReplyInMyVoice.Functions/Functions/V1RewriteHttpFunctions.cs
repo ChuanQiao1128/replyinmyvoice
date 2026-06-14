@@ -63,6 +63,7 @@ public sealed class V1RewriteHttpFunctions(
     {
         var stopwatch = Stopwatch.StartNew();
         var now = DateTimeOffset.UtcNow;
+        var envelopeRequestId = ResolveRequestId(request);
         var auth = await authResolver.ResolveAsync(
             request,
             now,
@@ -70,14 +71,14 @@ public sealed class V1RewriteHttpFunctions(
 
         if (auth.UserId is null)
         {
-            return V1Problem(V1ErrorCatalog.InvalidKey);
+            return V1Problem(V1ErrorCatalog.InvalidKey, envelopeRequestId);
         }
 
         ApiKeyRateLimitResult? rateLimit = null;
         if (!ApiKeyScopes.Allows(auth.Scopes, ApiKeyScopes.Rewrite))
         {
             return await CompleteAsync(
-                V1InsufficientScopeProblem(),
+                V1InsufficientScopeProblem(envelopeRequestId),
                 StatusCodes.Status403Forbidden);
         }
 
@@ -91,14 +92,14 @@ public sealed class V1RewriteHttpFunctions(
         if (rateLimit?.IsUnavailable == true)
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.RateLimitUnavailable),
+                V1Problem(V1ErrorCatalog.RateLimitUnavailable, envelopeRequestId),
                 V1ErrorCatalog.RateLimitUnavailable.StatusCode);
         }
 
         if (rateLimit?.IsLimited == true)
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.RateLimited),
+                V1Problem(V1ErrorCatalog.RateLimited, envelopeRequestId),
                 V1ErrorCatalog.RateLimited.StatusCode);
         }
 
@@ -113,7 +114,7 @@ public sealed class V1RewriteHttpFunctions(
         catch (JsonException)
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.InvalidJson),
+                V1Problem(V1ErrorCatalog.InvalidJson, envelopeRequestId),
                 V1ErrorCatalog.InvalidJson.StatusCode);
         }
 
@@ -122,7 +123,7 @@ public sealed class V1RewriteHttpFunctions(
         {
             var error = draftValidation.Error!;
             return await CompleteAsync(
-                V1Problem(error),
+                V1Problem(error, envelopeRequestId),
                 error.StatusCode);
         }
 
@@ -132,7 +133,7 @@ public sealed class V1RewriteHttpFunctions(
         if (user is null)
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.InvalidKey),
+                V1Problem(V1ErrorCatalog.InvalidKey, envelopeRequestId),
                 V1ErrorCatalog.InvalidKey.StatusCode);
         }
 
@@ -148,7 +149,7 @@ public sealed class V1RewriteHttpFunctions(
             {
                 var error = idempotencyKeyValidation.Error!;
                 return await CompleteAsync(
-                    V1Problem(error),
+                    V1Problem(error, envelopeRequestId),
                     error.StatusCode);
             }
 
@@ -168,7 +169,7 @@ public sealed class V1RewriteHttpFunctions(
             if (sandboxResult.IsConflict)
             {
                 return await CompleteAsync(
-                    V1Problem(V1ErrorCatalog.IdempotencyConflict),
+                    V1Problem(V1ErrorCatalog.IdempotencyConflict, envelopeRequestId),
                     V1ErrorCatalog.IdempotencyConflict.StatusCode,
                     sandboxResult.AttemptId.ToString());
             }
@@ -190,7 +191,7 @@ public sealed class V1RewriteHttpFunctions(
                 cancellationToken))
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.ApiRequiresPaidPlan),
+                V1Problem(V1ErrorCatalog.ApiRequiresPaidPlan, envelopeRequestId),
                 V1ErrorCatalog.ApiRequiresPaidPlan.StatusCode);
         }
 
@@ -218,14 +219,14 @@ public sealed class V1RewriteHttpFunctions(
         if (result.Kind == ApplicationResultKind.QuotaExceeded)
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.QuotaExhausted),
+                V1Problem(V1ErrorCatalog.QuotaExhausted, envelopeRequestId),
                 V1ErrorCatalog.QuotaExhausted.StatusCode);
         }
 
         if (result.Kind == ApplicationResultKind.Conflict)
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.IdempotencyConflict),
+                V1Problem(V1ErrorCatalog.IdempotencyConflict, envelopeRequestId),
                 V1ErrorCatalog.IdempotencyConflict.StatusCode,
                 result.Value?.AttemptId.ToString());
         }
@@ -233,7 +234,7 @@ public sealed class V1RewriteHttpFunctions(
         if (result.Value is null)
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.RewriteFailed),
+                V1Problem(V1ErrorCatalog.RewriteFailed, envelopeRequestId),
                 V1ErrorCatalog.RewriteFailed.StatusCode);
         }
 
@@ -276,6 +277,7 @@ public sealed class V1RewriteHttpFunctions(
     {
         var stopwatch = Stopwatch.StartNew();
         var now = DateTimeOffset.UtcNow;
+        var envelopeRequestId = ResolveRequestId(request);
         var auth = await authResolver.ResolveAsync(
             request,
             now,
@@ -283,7 +285,7 @@ public sealed class V1RewriteHttpFunctions(
 
         if (auth.UserId is null)
         {
-            return V1Problem(V1ErrorCatalog.InvalidKey);
+            return V1Problem(V1ErrorCatalog.InvalidKey, envelopeRequestId);
         }
 
         var rateLimit = auth.ApiKeyId is null
@@ -297,7 +299,7 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                V1Problem(V1ErrorCatalog.RateLimitUnavailable),
+                V1Problem(V1ErrorCatalog.RateLimitUnavailable, envelopeRequestId),
                 V1ErrorCatalog.RateLimitUnavailable.StatusCode,
                 stopwatch,
                 now,
@@ -311,7 +313,7 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                V1Problem(V1ErrorCatalog.RateLimited),
+                V1Problem(V1ErrorCatalog.RateLimited, envelopeRequestId),
                 V1ErrorCatalog.RateLimited.StatusCode,
                 stopwatch,
                 now,
@@ -333,7 +335,7 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                V1Problem(V1ErrorCatalog.NotFound),
+                V1Problem(V1ErrorCatalog.NotFound, envelopeRequestId),
                 V1ErrorCatalog.NotFound.StatusCode,
                 stopwatch,
                 now,
@@ -346,7 +348,7 @@ public sealed class V1RewriteHttpFunctions(
 
         return await CompleteWithUsageAsync(
             auth.ApiKeyId,
-            MapRewriteResult(attempt),
+            MapRewriteResult(attempt, envelopeRequestId),
             StatusCodes.Status200OK,
             stopwatch,
             now,
@@ -365,6 +367,7 @@ public sealed class V1RewriteHttpFunctions(
     {
         var stopwatch = Stopwatch.StartNew();
         var now = DateTimeOffset.UtcNow;
+        var envelopeRequestId = ResolveRequestId(request);
         var auth = await authResolver.ResolveAsync(
             request,
             now,
@@ -372,7 +375,7 @@ public sealed class V1RewriteHttpFunctions(
 
         if (auth.UserId is null)
         {
-            return V1Problem(V1ErrorCatalog.InvalidKey);
+            return V1Problem(V1ErrorCatalog.InvalidKey, envelopeRequestId);
         }
 
         var rateLimit = auth.ApiKeyId is null
@@ -386,7 +389,7 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                V1Problem(V1ErrorCatalog.RateLimitUnavailable),
+                V1Problem(V1ErrorCatalog.RateLimitUnavailable, envelopeRequestId),
                 V1ErrorCatalog.RateLimitUnavailable.StatusCode,
                 stopwatch,
                 now,
@@ -399,7 +402,7 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                V1Problem(V1ErrorCatalog.RateLimited),
+                V1Problem(V1ErrorCatalog.RateLimited, envelopeRequestId),
                 V1ErrorCatalog.RateLimited.StatusCode,
                 stopwatch,
                 now,
@@ -434,7 +437,7 @@ public sealed class V1RewriteHttpFunctions(
         {
             return await CompleteWithUsageAsync(
                 auth.ApiKeyId,
-                V1Problem(V1ErrorCatalog.InvalidKey),
+                V1Problem(V1ErrorCatalog.InvalidKey, envelopeRequestId),
                 V1ErrorCatalog.InvalidKey.StatusCode,
                 stopwatch,
                 now,
@@ -466,7 +469,7 @@ public sealed class V1RewriteHttpFunctions(
             rateLimit: rateLimit);
     }
 
-    private static IActionResult MapRewriteResult(RewriteAttemptDto attempt)
+    private static IActionResult MapRewriteResult(RewriteAttemptDto attempt, string requestId)
     {
         if (attempt.Status == RewriteAttemptStatus.Pending.ToString() ||
             attempt.Status == RewriteAttemptStatus.Processing.ToString())
@@ -505,6 +508,7 @@ public sealed class V1RewriteHttpFunctions(
             {
                 code,
                 message = FailureMessage(attempt),
+                requestId,
             },
         });
     }
@@ -629,15 +633,28 @@ public sealed class V1RewriteHttpFunctions(
             ? V1ErrorCatalog.RewriteExpiredMessage
             : V1ErrorCatalog.RewriteCouldNotBeCompletedMessage;
 
-    private static IActionResult V1Problem(V1ErrorCatalog.V1Error error) =>
-        FunctionHttpResults.Problem(error.Message, error.Message, error.StatusCode, error.Code);
+    private static string ResolveRequestId(HttpRequest request)
+    {
+        if (request.HttpContext.Items.TryGetValue("CorrelationId", out var value) &&
+            value is string requestId &&
+            !string.IsNullOrWhiteSpace(requestId))
+        {
+            return requestId;
+        }
 
-    private static IActionResult V1InsufficientScopeProblem() =>
+        return HttpHardeningMiddleware.ResolveCorrelationId(request);
+    }
+
+    private static IActionResult V1Problem(V1ErrorCatalog.V1Error error, string requestId) =>
+        FunctionHttpResults.Problem(error.Message, error.Message, error.StatusCode, error.Code, requestId);
+
+    private static IActionResult V1InsufficientScopeProblem(string requestId) =>
         FunctionHttpResults.Problem(
             "This API key does not have the required scope.",
             "This API key does not have the required scope.",
             StatusCodes.Status403Forbidden,
-            "insufficient_scope");
+            "insufficient_scope",
+            requestId);
 
     private async Task<IActionResult> CompleteWithUsageAsync(
         Guid? apiKeyId,

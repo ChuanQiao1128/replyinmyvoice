@@ -21,10 +21,27 @@ public static class FunctionHttpResults
         string title,
         string? detail,
         int statusCode,
-        string? errorCode = null)
+        string? errorCode = null,
+        string? requestId = null)
     {
         if (!string.IsNullOrWhiteSpace(errorCode))
         {
+            if (!string.IsNullOrWhiteSpace(requestId))
+            {
+                return new ObjectResult(new
+                {
+                    error = new
+                    {
+                        code = errorCode,
+                        message = detail ?? title,
+                        requestId,
+                    },
+                })
+                {
+                    StatusCode = statusCode,
+                };
+            }
+
             return new ObjectResult(new
             {
                 error = new
