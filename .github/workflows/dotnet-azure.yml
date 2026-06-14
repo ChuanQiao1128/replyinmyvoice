@@ -51,9 +51,41 @@ jobs:
           - 1433:1433
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
+      - name: Migration discipline guard (expand/contract)
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          BASE=""
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git fetch origin "${GITHUB_BASE_REF}" --quiet || true
+            BASE="$(git merge-base "origin/${GITHUB_BASE_REF}" HEAD)"
+          elif [ -n "${GITHUB_EVENT_BEFORE}" ] && [ "${GITHUB_EVENT_BEFORE}" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${GITHUB_EVENT_BEFORE}^{commit}" 2>/dev/null; then
+            BASE="${GITHUB_EVENT_BEFORE}"
+          else
+            git fetch origin main --quiet || true
+            BASE="$(git merge-base origin/main HEAD || true)"
+          fi
+
+          if [ -z "$BASE" ]; then
+            echo "Migration discipline guard: no diff base resolved; skipping."
+            exit 0
+          fi
+
+          mapfile -t NEW_MIGRATIONS < <(git diff --name-only --diff-filter=A "$BASE"..HEAD -- backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/ | grep -E '\.cs$' | grep -vE '\.Designer\.cs$' | grep -v 'AppDbContextModelSnapshot\.cs' || true)
+
+          if [ "${#NEW_MIGRATIONS[@]}" -eq 0 ]; then
+            echo "No newly added migrations in this diff."
+            exit 0
+          fi
+
+          dotnet run --project backend-dotnet/tools/ReplyInMyVoice.MigrationGuard/ReplyInMyVoice.MigrationGuard.csproj --configuration Release -- "${NEW_MIGRATIONS[@]}"
       - name: Restore
         run: dotnet restore backend-dotnet/ReplyInMyVoice.sln
       - name: Install EF tool

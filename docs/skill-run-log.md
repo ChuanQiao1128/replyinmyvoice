@@ -6419,3 +6419,20 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureRepositoryTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaConcurrencyTests.cs`, and this log entry.
 - Verification evidence: focused repository/concurrency run passed 12/12; focused quota/rewrite-job run passed 29/29; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 637/637.
 - Limitations: The .NET restore step emitted `NU1900` warnings because package vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, payment flow, frontend path, provider code, deploy, push, or PR change was made.
+### 2026-06-13 - data-module-review - HARD-12 issue #791 migration discipline guard
+
+- Agent: Codex worker
+- Trigger: Issue #791 adds a CI guard for EF Core migration safety and scans checked-in migration files for risky `Up()` operations.
+- Action: Opened and followed the project skill as a migration-safety checklist. Reviewed the migration brief, production-hardening spec, existing migrations, existing migration tests, and the SQL Server workflow before implementing a diff-scoped guard rather than changing schema or runtime persistence code.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.MigrationGuard/MigrationDisciplineScanner.cs`, `backend-dotnet/tools/ReplyInMyVoice.MigrationGuard/Program.cs`, `docs/migration-discipline.md`, `.github/workflows/dotnet-azure.yml`, and this log entry.
+- Verification evidence: focused scanner tests first failed because the new tool namespace/project did not exist, then passed 17/17 after implementation; `dotnet run --project backend-dotnet/tools/ReplyInMyVoice.MigrationGuard --configuration Release -- backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/*.cs` exited 0 over existing migrations; `git diff --name-only -- backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/` and `git status --short backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/` produced no output.
+- Limitations: The guard is intentionally text-based and diff-scoped to newly added migration `.cs` files, matching the issue scope. Raw SQL inside migrations and edits to already-applied migration files remain reviewer responsibilities documented in `docs/migration-discipline.md`.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-12 issue #791 migration guard tests
+
+- Agent: Codex worker
+- Trigger: Issue #791 requires xUnit coverage for the migration scanner, all existing migrations, CLI behavior, and zero regressions in the backend suite.
+- Action: Opened and followed the project skill for test-level selection. Added pure scanner tests with inline C# fixtures, a checked-in migration corpus test, and exercised the console CLI with no arguments, all existing migrations, and a temporary risky migration with and without the accepted-risk marker.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/MigrationDisciplineScannerTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`, `backend-dotnet/tools/ReplyInMyVoice.MigrationGuard/ReplyInMyVoice.MigrationGuard.csproj`, and this log entry.
+- Verification evidence: focused `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --configuration Release --filter MigrationDisciplineScannerTests` passed 17/17; `dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed with 0 warnings and 0 errors; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644; no-argument CLI exited 0; the temporary `DropColumn` fixture exited 1 with a `::error file=` annotation, then exited 0 after adding `MIGRATION-RISK-ACCEPTED`.
+- Limitations: A local commit was attempted but blocked because the worktree git index is under `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-791`, outside writable roots. No deploy, push, PR, EF migration, schema change, payment, secret, or production config change was made.
