@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Infrastructure.Services;
 
 namespace ReplyInMyVoice.Functions.Auth;
@@ -53,7 +54,12 @@ public sealed class ApiKeyAuthResolver(
             apiKeys.DiscardPendingChanges(apiKey);
         }
 
-        return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute, apiKey.IsTest);
+        return new ApiKeyAuthResult(
+            apiKey.UserId,
+            apiKey.Id,
+            apiKey.RateLimitPerMinute,
+            apiKey.IsTest,
+            ApiKeyScopes.Parse(apiKey.Scope));
     }
 
     private static bool HasKnownPrefix(string token) =>
@@ -69,4 +75,9 @@ public sealed class ApiKeyAuthResolver(
     }
 }
 
-public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute, bool IsTest = false);
+public sealed record ApiKeyAuthResult(
+    Guid? UserId,
+    Guid? ApiKeyId,
+    int RateLimitPerMinute,
+    bool IsTest = false,
+    IReadOnlySet<string>? Scopes = null);
