@@ -392,7 +392,8 @@ public static class ServiceCollectionExtensions
         services
             .AddHttpClient(name)
             .AddHttpMessageHandler(sp => new ProviderHttpResilienceHandler(
-                sp.GetRequiredService<ProviderCircuitBreakerRegistry>().GetOrAdd(name)));
+                sp.GetRequiredService<ProviderCircuitBreakerRegistry>().GetOrAdd(name),
+                sp.GetService<TimeProvider>() ?? TimeProvider.System));
 
         return services;
     }

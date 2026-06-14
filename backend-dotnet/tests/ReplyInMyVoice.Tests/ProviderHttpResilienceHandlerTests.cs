@@ -173,7 +173,8 @@ public sealed class ProviderHttpResilienceHandlerTests
     [Fact]
     public async Task Retry_after_header_still_honored_when_circuit_closed()
     {
-        var attemptTimes = new List<DateTimeOffset>();
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-06-13T00:00:00Z"));
+        var firstAttemptObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var attemptCount = 0;
         var breaker = CreateBreaker(
             new ProviderCircuitBreakerOptions(
@@ -181,13 +182,56 @@ public sealed class ProviderHttpResilienceHandlerTests
                 TimeSpan.FromSeconds(30),
                 8,
                 0.5),
-            () => DateTimeOffset.UtcNow);
+            timeProvider.GetUtcNow);
         var innerHandler = new CountingHttpHandler(_ =>
         {
             attemptCount++;
-            attemptTimes.Add(DateTimeOffset.UtcNow);
             if (attemptCount == 1)
             {
+                firstAttemptObserved.SetResult();
+                var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+                response.Headers.RetryAfter = new RetryConditionHeaderValue(timeProvider.GetUtcNow().AddMilliseconds(500));
+                return Task.FromResult(response);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        });
+        using var invoker = CreateInvoker(CreateHandler(breaker, timeProvider), innerHandler);
+
+        var sendTask = invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://example.test/"), CancellationToken.None);
+        await firstAttemptObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        innerHandler.InvocationCount.Should().Be(1);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(499));
+        await Task.Yield();
+        innerHandler.InvocationCount.Should().Be(1);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(200));
+        using var response = await sendTask.WaitAsync(TimeSpan.FromMilliseconds(250));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        innerHandler.InvocationCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Retry_after_delta_waits_until_fake_time_reaches_header_delay()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-06-13T00:00:00Z"));
+        var firstAttemptObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var attemptCount = 0;
+        var breaker = CreateBreaker(
+            new ProviderCircuitBreakerOptions(
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(30),
+                8,
+                0.5),
+            timeProvider.GetUtcNow);
+        var innerHandler = new CountingHttpHandler(_ =>
+        {
+            attemptCount++;
+            if (attemptCount == 1)
+            {
+                firstAttemptObserved.SetResult();
                 var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
                 response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromMilliseconds(500));
                 return Task.FromResult(response);
@@ -195,13 +239,21 @@ public sealed class ProviderHttpResilienceHandlerTests
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
         });
-        using var invoker = CreateInvoker(new ProviderHttpResilienceHandler(breaker), innerHandler);
+        using var invoker = CreateInvoker(CreateHandler(breaker, timeProvider), innerHandler);
 
-        using var response = await invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://example.test/"), CancellationToken.None);
+        var sendTask = invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "https://example.test/"), CancellationToken.None);
+        await firstAttemptObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        innerHandler.InvocationCount.Should().Be(1);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(499));
+        await Task.Yield();
+        innerHandler.InvocationCount.Should().Be(1);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(200));
+        using var response = await sendTask.WaitAsync(TimeSpan.FromMilliseconds(250));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         innerHandler.InvocationCount.Should().Be(2);
-        attemptTimes[1].Should().BeOnOrAfter(attemptTimes[0].AddMilliseconds(500));
     }
 
     private static ProviderCircuitBreakerRegistry CreateRegistry(
@@ -231,6 +283,11 @@ public sealed class ProviderHttpResilienceHandlerTests
         handler.InnerHandler = innerHandler;
         return new HttpMessageInvoker(handler);
     }
+
+    private static ProviderHttpResilienceHandler CreateHandler(
+        ProviderCircuitBreaker breaker,
+        TimeProvider timeProvider) =>
+        new(breaker, timeProvider);
 
     private sealed class CountingHttpHandler : HttpMessageHandler
     {

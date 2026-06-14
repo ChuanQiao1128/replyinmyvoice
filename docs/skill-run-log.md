@@ -6937,3 +6937,21 @@ claude-heavy-planning-handoff
 - Output artifacts: optional OIDC configuration-manager seam in `FunctionAuthResolver`, four signed-JWT resolver tests in `FunctionAuthResolverTests`, and this log entry.
 - Verification evidence: red run failed at compile because `ResolveUserAsync` lacked the `configurationManagerOverride` seam; after implementation, focused `FunctionAuthResolverTests` passed 23/23 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 886/886.
 - Limitations: Tests use local in-memory OIDC metadata and do not call a live metadata endpoint, deploy, push, or open a PR. `git commit` was attempted but blocked because git metadata for this worktree is outside the writable sandbox roots.
+
+### 2026-06-15 - resilience-test-generation - TEST-TIME issue #827 retry clock control
+
+- Agent: Codex worker
+- Trigger: Issue #827 changes and tests provider HTTP retry waits, rate-limit retry headers, transient provider retry behavior, and clock-dependent backoff timing.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operation: retry transient provider responses without depending on wall-clock sleeps in tests. Boundaries: HTTP retry handler, circuit breaker, named `HttpClient` registration, rewrite-model adapter, and test fake time.
+- Output artifacts: `ProviderHttpResilienceHandler` TimeProvider seam, deterministic retry-delay tests, DI optional TimeProvider resolve for named clients, local `FakeTimeProvider`, and this log entry.
+- Verification evidence: red focused run failed with missing handler TimeProvider constructor and adapter timeout; after implementation, focused resilience/adapter filter passed 14/14 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 887/887. Static grep checks for wall-clock assertions, static handler clock calls, TimeProvider seam, and restricted terms passed.
+- Limitations: No live provider, deploy, push, or PR action was run. NuGet advisory metadata warnings appeared because `api.nuget.org` service-index reads failed; no new package dependency was added.
+
+### 2026-06-15 - dotnet-backend-testing - TEST-TIME issue #827 fake-time retry tests
+
+- Agent: Codex worker
+- Trigger: Issue #827 adds and changes C#/.NET xUnit tests for `ProviderHttpResilienceHandler` and the rewrite provider adapter retry path.
+- Action: Opened and followed the project skill for backend test selection. Used xUnit/FluentAssertions with hand-written fakes at the lowest useful level: direct handler tests for retry-delay guarantees and a DI-backed adapter test for the registered named client path.
+- Output artifacts: updated `ProviderHttpResilienceHandlerTests`, updated `RewriteProviderAdapterTests`, local `FakeTimeProvider`, and this log entry.
+- Verification evidence: initial focused test run failed after test changes, proving the missing seam; after implementation, focused filter passed 14/14 and full Release suite passed 887/887.
+- Limitations: The test fake implements the timer behavior needed by these retry tests, not a full replacement for every possible `TimeProvider` use.
