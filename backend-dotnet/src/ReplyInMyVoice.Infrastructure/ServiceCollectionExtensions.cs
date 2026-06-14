@@ -64,18 +64,30 @@ public static class ServiceCollectionExtensions
             .Configure(options => options.ApplyEnvironmentKeyOverrides(configuration))
             .ValidateOnStart();
 
+        // Keep AddDbContext: pooling was evaluated, but the Func<AppDbContext> factory below
+        // creates extra short-lived contexts and scoped repositories expect regular lifetimes.
         services.AddDbContext<AppDbContext>(options =>
         {
             var connectionString = SqlConnectionStringResolver.Resolve(configuration);
 
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
+                var commandTimeoutSeconds = ReadClampedInt(
+                    configuration,
+                    "SQL_COMMAND_TIMEOUT_SEC",
+                    defaultValue: 30,
+                    min: 30,
+                    max: 600);
                 options.UseSqlServer(
                     connectionString,
-                    sqlOptions => sqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 5,
-                        maxRetryDelay: TimeSpan.FromSeconds(10),
-                        errorNumbersToAdd: null));
+                    sqlOptions =>
+                    {
+                        sqlOptions.EnableRetryOnFailure(
+                            maxRetryCount: 5,
+                            maxRetryDelay: TimeSpan.FromSeconds(10),
+                            errorNumbersToAdd: null);
+                        sqlOptions.CommandTimeout(commandTimeoutSeconds);
+                    });
             }
             else
             {

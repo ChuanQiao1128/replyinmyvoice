@@ -596,6 +596,41 @@ public sealed class InfrastructureServiceCollectionTests
     }
 
     [Fact]
+    public void AddReplyInMyVoiceInfrastructure_sets_default_sql_command_timeout()
+    {
+        var timeout = ResolveSqlServerCommandTimeout([]);
+
+        timeout.Should().Be(30);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_uses_configured_sql_command_timeout()
+    {
+        var timeout = ResolveSqlServerCommandTimeout(new Dictionary<string, string?>
+        {
+            ["SQL_COMMAND_TIMEOUT_SEC"] = "120",
+        });
+
+        timeout.Should().Be(120);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_clamps_sql_command_timeout()
+    {
+        var lowTimeout = ResolveSqlServerCommandTimeout(new Dictionary<string, string?>
+        {
+            ["SQL_COMMAND_TIMEOUT_SEC"] = "10",
+        });
+        var highTimeout = ResolveSqlServerCommandTimeout(new Dictionary<string, string?>
+        {
+            ["SQL_COMMAND_TIMEOUT_SEC"] = "9999",
+        });
+
+        lowTimeout.Should().Be(30);
+        highTimeout.Should().Be(600);
+    }
+
+    [Fact]
     public void AddReplyInMyVoiceInfrastructure_webhook_http_client_disables_redirects_and_uses_connect_guard()
     {
         var provider = BuildProvider([]);
@@ -694,6 +729,17 @@ public sealed class InfrastructureServiceCollectionTests
             environmentName,
             requireServiceBusConsumer);
         return services.BuildServiceProvider();
+    }
+
+    private static int? ResolveSqlServerCommandTimeout(Dictionary<string, string?> values)
+    {
+        values["ConnectionStrings:DefaultConnection"] =
+            "Server=localhost;Database=ReplyInMyVoiceTest;User Id=test;Password=test;TrustServerCertificate=True";
+        using var provider = BuildProvider(values);
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>();
+        using var db = new AppDbContext(options);
+        return db.Database.GetCommandTimeout();
     }
 
     private static ServiceCollection BuildServiceCollection(
