@@ -11,6 +11,7 @@ using ReplyInMyVoice.Domain.RewriteEngine;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Resilience;
+using ReplyInMyVoice.Tests.TestDoubles;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -61,15 +62,16 @@ public sealed class RewriteProviderAdapterTests
     [Fact]
     public async Task OpenAiCompatibleRewriteModelClient_retries_429_response_through_registered_named_http_client()
     {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-06-13T00:00:00Z"));
+        var firstAttemptObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var attemptCount = 0;
-        var attemptTimes = new List<DateTimeOffset>();
         var handler = new RecordingHttpHandler(_ =>
         {
             attemptCount++;
-            attemptTimes.Add(DateTimeOffset.UtcNow);
 
             if (attemptCount == 1)
             {
+                firstAttemptObserved.SetResult();
                 var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
                 response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(1));
                 return Task.FromResult(response);
@@ -99,19 +101,28 @@ public sealed class RewriteProviderAdapterTests
             })
             .Build();
 
+        services.AddSingleton<TimeProvider>(timeProvider);
         services.AddReplyInMyVoiceInfrastructure(configuration, "Testing");
         services
             .AddHttpClient(nameof(OpenAiCompatibleRewriteModelClient))
             .ConfigurePrimaryHttpMessageHandler(() => handler);
         using var provider = services.BuildServiceProvider();
 
-        var result = await provider.GetRequiredService<IRewriteModelClient>()
+        var resultTask = provider.GetRequiredService<IRewriteModelClient>()
             .GenerateCandidateAsync(ModelRequest(), CancellationToken.None);
+        await firstAttemptObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        attemptCount.Should().Be(1);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(999));
+        await Task.Yield();
+        attemptCount.Should().Be(1);
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(200));
+        var result = await resultTask.WaitAsync(TimeSpan.FromMilliseconds(250));
 
         result.Success.Should().BeTrue();
         result.CandidateText.Should().Be("Hi Jordan, I can send this today.");
         attemptCount.Should().Be(2);
-        attemptTimes[1].Should().BeOnOrAfter(attemptTimes[0].AddMilliseconds(500));
     }
 
     [Fact]

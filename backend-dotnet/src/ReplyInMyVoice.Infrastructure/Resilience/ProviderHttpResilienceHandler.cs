@@ -2,11 +2,28 @@ using System.Net;
 
 namespace ReplyInMyVoice.Infrastructure.Resilience;
 
-public sealed class ProviderHttpResilienceHandler(ProviderCircuitBreaker circuitBreaker) : DelegatingHandler
+public sealed class ProviderHttpResilienceHandler : DelegatingHandler
 {
     private static readonly TimeSpan BaseRetryDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(5);
     private const int MaxRetryAttempts = 3;
+
+    private readonly ProviderCircuitBreaker circuitBreaker;
+    private readonly TimeProvider timeProvider;
+
+    public ProviderHttpResilienceHandler(ProviderCircuitBreaker circuitBreaker)
+        : this(circuitBreaker, TimeProvider.System)
+    {
+    }
+
+    public ProviderHttpResilienceHandler(ProviderCircuitBreaker circuitBreaker, TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(circuitBreaker);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
+        this.circuitBreaker = circuitBreaker;
+        this.timeProvider = timeProvider;
+    }
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
@@ -40,7 +57,7 @@ public sealed class ProviderHttpResilienceHandler(ProviderCircuitBreaker circuit
 
                 var delay = RetryDelay(attempt, response);
                 response.Dispose();
-                await Task.Delay(delay, cancellationToken);
+                await DelayAsync(delay, cancellationToken);
             }
             catch (Exception exception) when (IsTransientException(exception, cancellationToken))
             {
@@ -50,7 +67,7 @@ public sealed class ProviderHttpResilienceHandler(ProviderCircuitBreaker circuit
                     throw;
                 }
 
-                await Task.Delay(RetryDelay(attempt, response: null), cancellationToken);
+                await DelayAsync(RetryDelay(attempt, response: null), cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -62,7 +79,27 @@ public sealed class ProviderHttpResilienceHandler(ProviderCircuitBreaker circuit
         throw new InvalidOperationException("Provider HTTP retry loop exited unexpectedly.");
     }
 
-    private static TimeSpan RetryDelay(int attempt, HttpResponseMessage? response)
+    private async Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        if (delay <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var timer = timeProvider.CreateTimer(
+            static state => ((TaskCompletionSource<object?>)state!).TrySetResult(null),
+            completion,
+            delay,
+            Timeout.InfiniteTimeSpan);
+        using var cancellationRegistration = cancellationToken.Register(
+            static state => ((TaskCompletionSource<object?>)state!).TrySetCanceled(),
+            completion);
+
+        await completion.Task.ConfigureAwait(false);
+    }
+
+    private TimeSpan RetryDelay(int attempt, HttpResponseMessage? response)
     {
         if (response?.Headers.RetryAfter?.Delta is { } retryAfterDelta &&
             retryAfterDelta > TimeSpan.Zero)
@@ -72,7 +109,7 @@ public sealed class ProviderHttpResilienceHandler(ProviderCircuitBreaker circuit
 
         if (response?.Headers.RetryAfter?.Date is { } retryAfterDate)
         {
-            var retryAfter = retryAfterDate - DateTimeOffset.UtcNow;
+            var retryAfter = retryAfterDate - timeProvider.GetUtcNow();
             if (retryAfter > TimeSpan.Zero)
             {
                 return retryAfter + Jitter();
