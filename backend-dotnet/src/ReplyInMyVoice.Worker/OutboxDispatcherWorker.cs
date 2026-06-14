@@ -1,4 +1,5 @@
 using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
+using ReplyInMyVoice.Infrastructure.Configuration;
 
 namespace ReplyInMyVoice.Worker;
 
@@ -14,10 +15,12 @@ public sealed class OutboxDispatcherWorker(
         var connectionString = configuration.GetConnectionString("ServiceBus")
             ?? configuration["SERVICEBUS_CONNECTION_STRING"]
             ?? configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"];
+        var managedIdentityConfigured = ManagedIdentityConfiguration.IsEnabled(configuration) &&
+            ManagedIdentityConfiguration.ResolveServiceBusFullyQualifiedNamespace(configuration) is not null;
 
-        if (string.IsNullOrWhiteSpace(connectionString))
+        if (string.IsNullOrWhiteSpace(connectionString) && !managedIdentityConfigured)
         {
-            logger.LogWarning("Service Bus connection string is not configured; outbox dispatcher is idle.");
+            logger.LogWarning("Service Bus is not configured (connection string or managed identity); outbox dispatcher is idle.");
             await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
             return;
         }

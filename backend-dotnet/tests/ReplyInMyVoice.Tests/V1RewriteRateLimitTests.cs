@@ -142,6 +142,54 @@ public sealed class V1RewriteRateLimitTests
     }
 
     [Fact]
+    public async Task V1_rewrite_submit_returns_429_when_db_window_was_filled_by_another_instance()
+    {
+        const int rateLimitPerMinute = 2;
+        await using var fixture = await FileBackedApiDbFixture.CreateAsync();
+        var (_, token) = await SeedApiKeyUserAsync(
+            fixture,
+            "clerk_v1_authoritative_db_window",
+            SubscriptionStatus.Active,
+            DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+            rateLimitPerMinute);
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = fixture.CreateContext())
+        {
+            var apiKey = await db.ApiKeys.SingleAsync(x => x.Name == "V1 rate limit key");
+            foreach (var windowStart in new[] { ToMinuteWindowStart(now), ToMinuteWindowStart(now.AddMinutes(1)) })
+            {
+                db.ApiKeyRateLimitWindows.Add(new ApiKeyRateLimitWindow
+                {
+                    ApiKeyId = apiKey.Id,
+                    WindowStart = windowStart,
+                    Count = rateLimitPerMinute,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                });
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        await using var factory = CreateFactory(fixture);
+        var client = CreateClient(factory);
+
+        var response = await PostV1RewriteAsync(
+            client,
+            token,
+            "v1-authoritative-db-window",
+            ValidV1Draft());
+
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        await AssertErrorCodeAsync(response, "rate_limited");
+        GetRequiredHeader(response, "X-RateLimit-Remaining").Should().Be("0");
+        await using var verifyDb = fixture.CreateContext();
+        (await verifyDb.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await verifyDb.UsageReservations.CountAsync()).Should().Be(0);
+        (await verifyDb.OutboxMessages.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public void Migration_adds_api_key_usage_request_id_index()
     {
         var migrationsDirectory = FindMigrationsDirectory();
@@ -273,6 +321,19 @@ public sealed class V1RewriteRateLimitTests
 
     private static string ValidV1Draft() =>
         "Please let the client know the report is still being checked and I will send a clear update soon.";
+
+    private static DateTimeOffset ToMinuteWindowStart(DateTimeOffset now)
+    {
+        var utc = now.ToUniversalTime();
+        return new DateTimeOffset(
+            utc.Year,
+            utc.Month,
+            utc.Day,
+            utc.Hour,
+            utc.Minute,
+            0,
+            TimeSpan.Zero);
+    }
 
     private static string ComputeApiKeyHash(string plaintext, string? pepper)
     {

@@ -1,10 +1,15 @@
-using System.Net;
+using System.Globalization;
+using Azure.Core;
+using Azure.Identity;
 using Azure.Messaging.ServiceBus;
+using Microsoft.ApplicationInsights;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
@@ -19,11 +24,13 @@ using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
+using ReplyInMyVoice.Infrastructure.Configuration;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Repositories;
+using ReplyInMyVoice.Infrastructure.Resilience;
 using ReplyInMyVoice.Infrastructure.Services;
 using AppStripeBillingClient = ReplyInMyVoice.Application.Abstractions.IStripeBillingClient;
 using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
@@ -53,8 +60,7 @@ public static class ServiceCollectionExtensions
 
         services.AddDbContext<AppDbContext>(options =>
         {
-            var connectionString = configuration.GetConnectionString("DefaultConnection")
-                ?? configuration["DATABASE_URL"];
+            var connectionString = SqlConnectionStringResolver.Resolve(configuration);
 
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
@@ -91,6 +97,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBillingSupportRepository, BillingSupportRepository>();
         services.AddScoped<IBillingSupportRequestRepository, BillingSupportRequestRepository>();
         services.AddScoped<IPaymentGrantRepository, PaymentGrantRepository>();
+        services.AddScoped<IStripeReconciliationRunRepository, StripeReconciliationRunRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
         services.AddScoped<IApiKeyUsageRepository, ApiKeyUsageRepository>();
         services.AddScoped<IAdminUserRepository, AdminUserRepository>();
@@ -99,6 +106,24 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
         services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
+        var outboxFastPathEnabled = !bool.TryParse(
+            configuration["OUTBOX_FAST_PATH_ENABLED"],
+            out var parsedOutboxFastPathEnabled) || parsedOutboxFastPathEnabled;
+        var outboxFastPathTimeoutSeconds = int.TryParse(
+            configuration["OUTBOX_FAST_PATH_TIMEOUT_SEC"],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var parsedOutboxFastPathTimeoutSeconds)
+            ? Math.Clamp(parsedOutboxFastPathTimeoutSeconds, 1, 30)
+            : 5;
+        var outboxFastPathOptions = new OutboxFastPathOptions(
+            outboxFastPathEnabled,
+            TimeSpan.FromSeconds(outboxFastPathTimeoutSeconds));
+        services.AddSingleton(outboxFastPathOptions);
+        services.AddSingleton<IBusinessMetrics>(sp =>
+            sp.GetService<TelemetryClient>() is { } telemetryClient
+                ? new AppInsightsBusinessMetrics(telemetryClient)
+                : NoOpBusinessMetrics.Instance);
         services.AddScoped<ICreditExpiryNotifier, CreditExpiryNotifier>();
         services.AddScoped<ITaxTurnoverNotifier, TaxTurnoverNotifier>();
         services.AddScoped<ITaxTurnoverSettingsProvider, TaxTurnoverSettingsProvider>();
@@ -145,6 +170,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetRewriteAttemptHandler>();
         services.AddScoped<DispatchDueWebhooksHandler>();
         services.AddScoped<DispatchDueOutboxHandler>();
+        services.AddScoped<IOutboxFastPathDispatcher>(sp => new OutboxFastPathDispatcher(
+            sp.GetRequiredService<DispatchDueOutboxHandler>(),
+            sp.GetRequiredService<OutboxFastPathOptions>(),
+            sp.GetRequiredService<ILogger<OutboxFastPathDispatcher>>()));
         services.AddScoped<ReconcileStripeHandler>();
         services.AddScoped<GenerateApiKeyHandler>();
         services.AddScoped<ListApiKeysHandler>();
@@ -158,16 +187,50 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SendCreditExpiryRemindersHandler>();
         services.AddScoped<ProcessRewriteJobHandler>();
         services.AddScoped<TryMarkStripeEventProcessedHandler>();
-        services.AddScoped<ProcessStripeWebhookHandler>();
+        services.AddScoped<IngestStripeWebhookHandler>();
+        services.AddScoped<ProcessPendingStripeEventsHandler>();
+        services.AddScoped<StripeEventPayloadSynchronizer>();
         services.AddScoped<ProcessExpiredPaymentGraceHandler>();
         services.AddScoped<ProcessPaymentGraceRemindersHandler>();
-        services.AddScoped<IApiKeyRateLimiter, ApiKeyRateLimiter>();
+        var consumerRewriteLimit = int.TryParse(configuration["CONSUMER_REWRITE_RATE_LIMIT_PER_MINUTE"], out var parsedConsumerLimit)
+            ? parsedConsumerLimit
+            : 6;
+        services.AddScoped<IUserRewriteRateLimiter>(sp => new UserRewriteRateLimiter(
+            sp.GetRequiredService<Func<AppDbContext>>(),
+            consumerRewriteLimit));
+        var precheckEnabled = !string.Equals(configuration["API_RATE_LIMIT_PRECHECK_ENABLED"], "false", StringComparison.OrdinalIgnoreCase);
+        services.AddSingleton<InProcessRateLimitGate>();
+        services.AddScoped<ApiKeyRateLimiter>();
+        services.AddScoped<IApiKeyRateLimiter>(sp => precheckEnabled
+            ? new PreCheckedApiKeyRateLimiter(
+                sp.GetRequiredService<ApiKeyRateLimiter>(),
+                sp.GetRequiredService<InProcessRateLimitGate>())
+            : sp.GetRequiredService<ApiKeyRateLimiter>());
         services.AddScoped<WebhookDeliveryService>();
         services.AddScoped<IWebhookDeliveryEnqueuer>(sp => sp.GetRequiredService<WebhookDeliveryService>());
         services.AddTransient<IOutboxMessageHandler, RewriteJobCreatedOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, PaymentFailedNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, PaymentRecoveredNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, SubscriptionPausedNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, PaymentGraceReminderNotificationOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, StripePaymentActionRequiredOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, StripeCardExpiringOutboxMessageHandler>();
+        services.AddTransient<IOutboxMessageHandler, StripeReconciliationAlertOutboxMessageHandler>();
+        services.AddScoped<IOutboxDispatchObserver>(sp => new OutboxDispatchTelemetryObserver(
+            sp.GetRequiredService<ILogger<OutboxDispatchTelemetryObserver>>(),
+            sp.GetService<TelemetryClient>()));
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
         services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
+        services.AddSingleton(ReadStripeEventProcessingOptions(configuration));
+        services.AddSingleton(ReadProviderCircuitBreakerOptions(configuration));
+        services.AddSingleton(ReadStripeReconciliationOptions(configuration));
+        services.TryAddSingleton<IProviderResilienceEvents>(sp =>
+            new BusinessMetricsProviderResilienceEvents(sp.GetRequiredService<IBusinessMetrics>()));
+        services.AddSingleton(sp => new ProviderCircuitBreakerRegistry(
+            sp.GetRequiredService<ProviderCircuitBreakerOptions>(),
+            sp.GetRequiredService<ILoggerFactory>(),
+            sp.GetRequiredService<IProviderResilienceEvents>()));
         services.AddScoped<ApplicationStripeBillingClient>(sp =>
             new ApplicationStripeBillingClient(
                 configuration,
@@ -183,7 +246,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IStripeEventNotifier, StripeEventNotifier>();
         services.AddScoped<IStripeSubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<LegacyStripePaymentReconciliationClient>(sp => sp.GetRequiredService<StripeBillingService>());
-        services.AddScoped<AppStripePaymentReconciliationClient, StripePaymentReconciliationClient>();
+        services.AddScoped<AppStripePaymentReconciliationClient>(sp => new StripePaymentReconciliationClient(
+            sp.GetRequiredService<AppStripeBillingClient>(),
+            configuration));
         services.AddScoped<LegacyStripeReconciliationAlerter>(sp => new StripeReconciliationNotificationAlerter(
             configuration,
             sp.GetRequiredService<INotificationService>(),
@@ -208,12 +273,23 @@ public static class ServiceCollectionExtensions
             ?? configuration["ServiceBus"]
             ?? configuration["SERVICEBUS_CONNECTION_STRING"]
             ?? configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"];
+        var managedIdentityEnabled = ManagedIdentityConfiguration.IsEnabled(configuration);
+        var serviceBusNamespace = ManagedIdentityConfiguration.ResolveServiceBusFullyQualifiedNamespace(configuration);
         var queueName = configuration["ServiceBus:QueueName"]
             ?? configuration["SERVICEBUS_QUEUE_NAME"]
             ?? configuration["AZURE_SERVICE_BUS_QUEUE"]
             ?? "rewrite-jobs";
 
-        if (!string.IsNullOrWhiteSpace(serviceBusConnection))
+        if (managedIdentityEnabled && serviceBusNamespace is not null)
+        {
+            services.AddSingleton<TokenCredential>(_ => new DefaultAzureCredential());
+            services.AddSingleton(sp => new ServiceBusClient(
+                serviceBusNamespace,
+                sp.GetRequiredService<TokenCredential>()));
+            services.AddSingleton(sp => sp.GetRequiredService<ServiceBusClient>().CreateSender(queueName));
+            services.AddSingleton<IRewriteJobPublisher, AzureServiceBusRewriteJobPublisher>();
+        }
+        else if (!string.IsNullOrWhiteSpace(serviceBusConnection))
         {
             services.AddSingleton(_ => new ServiceBusClient(serviceBusConnection));
             services.AddSingleton(sp => sp.GetRequiredService<ServiceBusClient>().CreateSender(queueName));
@@ -311,13 +387,79 @@ public static class ServiceCollectionExtensions
     {
         services
             .AddHttpClient(name)
-            .AddResilienceHandler();
+            .AddHttpMessageHandler(sp => new ProviderHttpResilienceHandler(
+                sp.GetRequiredService<ProviderCircuitBreakerRegistry>().GetOrAdd(name)));
 
         return services;
     }
 
-    private static IHttpClientBuilder AddResilienceHandler(this IHttpClientBuilder builder) =>
-        builder.AddHttpMessageHandler(() => new ProviderHttpResilienceHandler());
+    private static ProviderCircuitBreakerOptions ReadProviderCircuitBreakerOptions(IConfiguration configuration) =>
+        new(
+            TimeSpan.FromSeconds(ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_SAMPLING_SEC", 30)),
+            TimeSpan.FromSeconds(ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_BREAK_SEC", 30)),
+            ReadPositiveInt(configuration, "PROVIDER_CIRCUIT_MIN_SAMPLES", 8),
+            ReadFailureRatio(configuration, "PROVIDER_CIRCUIT_FAILURE_RATIO", 0.5));
+
+    private static StripeEventProcessingOptions ReadStripeEventProcessingOptions(IConfiguration configuration) =>
+        new(
+            ReadBoundedInt(configuration, "STRIPE_EVENT_MAX_ATTEMPTS", defaultValue: 8, minimum: 1, maximum: 50),
+            ReadBoundedInt(configuration, "STRIPE_WEBHOOK_INLINE_BUDGET_SEC", defaultValue: 8, minimum: 0, maximum: 20));
+    private static StripeReconciliationOptions ReadStripeReconciliationOptions(IConfiguration configuration) =>
+        new(
+            ReadClampedInt(configuration, "RECONCILIATION_AUTO_GRANT_MAX", 10, 0, 100),
+            ReadClampedInt(configuration, "RECONCILIATION_MIN_PAYMENT_AGE_MINUTES", 60, 0, 1440),
+            ReadClampedInt(configuration, "RECONCILIATION_WINDOW_DAYS", 3, 1, 30));
+
+    private static int ReadClampedInt(
+        IConfiguration configuration,
+        string name,
+        int defaultValue,
+        int min,
+        int max) =>
+        int.TryParse(
+            configuration[name],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var parsed)
+            ? Math.Clamp(parsed, min, max)
+            : defaultValue;
+
+    private static int ReadPositiveInt(IConfiguration configuration, string name, int defaultValue) =>
+        int.TryParse(
+            configuration[name],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var parsed) && parsed >= 1
+            ? parsed
+            : defaultValue;
+
+    private static int ReadBoundedInt(
+        IConfiguration configuration,
+        string name,
+        int defaultValue,
+        int minimum,
+        int maximum)
+    {
+        if (!int.TryParse(
+                configuration[name],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var parsed))
+        {
+            return defaultValue;
+        }
+
+        return Math.Clamp(parsed, minimum, maximum);
+    }
+
+    private static double ReadFailureRatio(IConfiguration configuration, string name, double defaultValue) =>
+        double.TryParse(
+            configuration[name],
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var parsed) && parsed > 0 && parsed <= 1
+            ? parsed
+            : defaultValue;
 
     private static INotificationEmailProvider CreateNotificationEmailProvider(
         IConfiguration configuration,
@@ -371,20 +513,30 @@ public static class ServiceCollectionExtensions
         }
 
         var missing = new List<string>();
+        var managedIdentityEnabled = ManagedIdentityConfiguration.IsEnabled(configuration);
+        var hasManagedIdentitySqlSettings = managedIdentityEnabled &&
+            !string.IsNullOrWhiteSpace(configuration["AZURE_SQL_SERVER"]) &&
+            !string.IsNullOrWhiteSpace(configuration["AZURE_SQL_DATABASE"]);
+        var hasManagedIdentityServiceBusSettings = managedIdentityEnabled &&
+            ManagedIdentityConfiguration.ResolveServiceBusFullyQualifiedNamespace(configuration) is not null;
 
         if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("DefaultConnection")) &&
-            string.IsNullOrWhiteSpace(configuration["DATABASE_URL"]))
+            string.IsNullOrWhiteSpace(configuration["DATABASE_URL"]) &&
+            !hasManagedIdentitySqlSettings)
         {
-            missing.Add("ConnectionStrings:DefaultConnection or DATABASE_URL");
+            missing.Add(
+                "ConnectionStrings:DefaultConnection or DATABASE_URL (or USE_MANAGED_IDENTITY=true with AZURE_SQL_SERVER and AZURE_SQL_DATABASE)");
         }
 
         if (requireServiceBusConsumer &&
             string.IsNullOrWhiteSpace(configuration.GetConnectionString("ServiceBus")) &&
             string.IsNullOrWhiteSpace(configuration["ServiceBus"]) &&
             string.IsNullOrWhiteSpace(configuration["SERVICEBUS_CONNECTION_STRING"]) &&
-            string.IsNullOrWhiteSpace(configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"]))
+            string.IsNullOrWhiteSpace(configuration["AZURE_SERVICE_BUS_CONNECTION_STRING"]) &&
+            !hasManagedIdentityServiceBusSettings)
         {
-            missing.Add("ConnectionStrings:ServiceBus or ServiceBus or SERVICEBUS_CONNECTION_STRING or AZURE_SERVICE_BUS_CONNECTION_STRING");
+            missing.Add(
+                "ConnectionStrings:ServiceBus or ServiceBus or SERVICEBUS_CONNECTION_STRING or AZURE_SERVICE_BUS_CONNECTION_STRING or USE_MANAGED_IDENTITY=true with ServiceBus__fullyQualifiedNamespace or SERVICEBUS_FULLY_QUALIFIED_NAMESPACE");
         }
 
         if (string.IsNullOrWhiteSpace(configuration["STRIPE_SECRET_KEY"]))
@@ -451,203 +603,4 @@ public static class ServiceCollectionExtensions
         }
     }
 
-    private sealed class ProviderHttpResilienceHandler : DelegatingHandler
-    {
-        private static readonly TimeSpan BaseRetryDelay = TimeSpan.FromMilliseconds(250);
-        private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(5);
-        private static readonly TimeSpan CircuitSamplingDuration = TimeSpan.FromSeconds(30);
-        private static readonly TimeSpan CircuitBreakDuration = TimeSpan.FromSeconds(30);
-        private const int MaxRetryAttempts = 3;
-        private const int CircuitMinimumThroughput = 8;
-        private const double CircuitFailureRatio = 0.5;
-
-        private readonly object _circuitLock = new();
-        private readonly Queue<CircuitSample> _circuitSamples = new();
-        private DateTimeOffset? _circuitOpenUntil;
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            var snapshot = await BufferedHttpRequestSnapshot.CreateAsync(request, cancellationToken);
-
-            for (var attempt = 0; attempt <= MaxRetryAttempts; attempt++)
-            {
-                ThrowIfCircuitOpen();
-
-                try
-                {
-                    using var attemptRequest = snapshot.CreateRequest();
-                    var response = await base.SendAsync(attemptRequest, cancellationToken);
-                    if (!IsTransientStatusCode(response.StatusCode))
-                    {
-                        RecordCircuitResult(success: true);
-                        return response;
-                    }
-
-                    if (attempt == MaxRetryAttempts)
-                    {
-                        RecordCircuitResult(success: false);
-                        return response;
-                    }
-
-                    var delay = RetryDelay(attempt, response);
-                    response.Dispose();
-                    await Task.Delay(delay, cancellationToken);
-                }
-                catch (Exception exception) when (IsTransientException(exception, cancellationToken))
-                {
-                    if (attempt == MaxRetryAttempts)
-                    {
-                        RecordCircuitResult(success: false);
-                        throw;
-                    }
-
-                    await Task.Delay(RetryDelay(attempt, response: null), cancellationToken);
-                }
-            }
-
-            throw new InvalidOperationException("Provider HTTP retry loop exited unexpectedly.");
-        }
-
-        private void ThrowIfCircuitOpen()
-        {
-            var now = DateTimeOffset.UtcNow;
-            lock (_circuitLock)
-            {
-                if (_circuitOpenUntil is null)
-                {
-                    return;
-                }
-
-                if (now < _circuitOpenUntil.Value)
-                {
-                    throw new HttpRequestException("Provider HTTP circuit is open.");
-                }
-
-                _circuitOpenUntil = null;
-                _circuitSamples.Clear();
-            }
-        }
-
-        private void RecordCircuitResult(bool success)
-        {
-            var now = DateTimeOffset.UtcNow;
-            lock (_circuitLock)
-            {
-                while (_circuitSamples.Count > 0 &&
-                       now - _circuitSamples.Peek().ObservedAt > CircuitSamplingDuration)
-                {
-                    _circuitSamples.Dequeue();
-                }
-
-                _circuitSamples.Enqueue(new CircuitSample(now, success));
-                if (_circuitSamples.Count < CircuitMinimumThroughput)
-                {
-                    return;
-                }
-
-                var failures = _circuitSamples.Count(sample => !sample.Success);
-                if ((double)failures / _circuitSamples.Count >= CircuitFailureRatio)
-                {
-                    _circuitOpenUntil = now + CircuitBreakDuration;
-                }
-            }
-        }
-
-        private static TimeSpan RetryDelay(int attempt, HttpResponseMessage? response)
-        {
-            if (response?.Headers.RetryAfter?.Delta is { } retryAfterDelta &&
-                retryAfterDelta > TimeSpan.Zero)
-            {
-                return retryAfterDelta + Jitter();
-            }
-
-            if (response?.Headers.RetryAfter?.Date is { } retryAfterDate)
-            {
-                var retryAfter = retryAfterDate - DateTimeOffset.UtcNow;
-                if (retryAfter > TimeSpan.Zero)
-                {
-                    return retryAfter + Jitter();
-                }
-            }
-
-            var backoffMs = BaseRetryDelay.TotalMilliseconds * Math.Pow(2, attempt);
-            var backoff = TimeSpan.FromMilliseconds(Math.Min(backoffMs, MaxRetryDelay.TotalMilliseconds));
-            return backoff + Jitter();
-        }
-
-        private static TimeSpan Jitter() =>
-            TimeSpan.FromMilliseconds(Random.Shared.Next(0, 100));
-
-        private static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
-            statusCode == HttpStatusCode.TooManyRequests ||
-            (int)statusCode >= 500;
-
-        private static bool IsTransientException(Exception exception, CancellationToken cancellationToken) =>
-            exception is HttpRequestException ||
-            exception is TimeoutException ||
-            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested;
-    }
-
-    private sealed record CircuitSample(DateTimeOffset ObservedAt, bool Success);
-
-    private sealed record BufferedHttpRequestSnapshot(
-        HttpMethod Method,
-        Uri? RequestUri,
-        Version Version,
-        HttpVersionPolicy VersionPolicy,
-        IReadOnlyList<KeyValuePair<string, IEnumerable<string>>> Headers,
-        byte[]? Content,
-        IReadOnlyList<KeyValuePair<string, IEnumerable<string>>> ContentHeaders)
-    {
-        public static async Task<BufferedHttpRequestSnapshot> CreateAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            byte[]? content = null;
-            var contentHeaders = Array.Empty<KeyValuePair<string, IEnumerable<string>>>();
-            if (request.Content is not null)
-            {
-                content = await request.Content.ReadAsByteArrayAsync(cancellationToken);
-                contentHeaders = request.Content.Headers.ToArray();
-            }
-
-            return new BufferedHttpRequestSnapshot(
-                request.Method,
-                request.RequestUri,
-                request.Version,
-                request.VersionPolicy,
-                request.Headers.ToArray(),
-                content,
-                contentHeaders);
-        }
-
-        public HttpRequestMessage CreateRequest()
-        {
-            var request = new HttpRequestMessage(Method, RequestUri)
-            {
-                Version = Version,
-                VersionPolicy = VersionPolicy,
-            };
-
-            foreach (var header in Headers)
-            {
-                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-
-            if (Content is null)
-            {
-                return request;
-            }
-
-            request.Content = new ByteArrayContent(Content);
-            foreach (var header in ContentHeaders)
-            {
-                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-
-            return request;
-        }
-    }
 }

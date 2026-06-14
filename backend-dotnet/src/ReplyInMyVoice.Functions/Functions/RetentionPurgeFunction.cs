@@ -21,5 +21,14 @@ public sealed class RetentionPurgeFunction(
         {
             logger.LogInformation("Purged payloads from {Count} rewrite attempts.", count);
         }
+
+        var purged = await retention.PurgeExpiredSandboxAttemptsAsync(
+            DateTimeOffset.UtcNow,
+            cancellationToken: cancellationToken);
+
+        if (purged > 0)
+        {
+            logger.LogInformation("Purged {Count} sandbox rewrite attempts.", purged);
+        }
     }
 }

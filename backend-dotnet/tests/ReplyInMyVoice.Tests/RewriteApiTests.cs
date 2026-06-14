@@ -12,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -896,9 +897,78 @@ public sealed class RewriteApiTests : IAsyncLifetime
 
         await using var db = CreateContext();
         var outbox = await db.OutboxMessages.SingleAsync();
-        outbox.Status.Should().Be(OutboxMessageStatus.Pending);
+        outbox.Status.Should().Be(OutboxMessageStatus.Sent);
+        outbox.SentAt.Should().NotBeNull();
+        outbox.LockedBy.Should().BeNull();
         outbox.MessageType.Should().Be("RewriteJobCreated");
         outbox.PayloadJson.Should().Contain(body.AttemptId.ToString());
+
+        var publisher = factory.Services.GetRequiredService<InMemoryRewriteJobPublisher>();
+        publisher.PublishedJobs.Select(x => x.AttemptId).Should().Equal(body.AttemptId);
+    }
+
+    [Fact]
+    public async Task Rewrite_returns_accepted_when_fast_path_publisher_fails()
+    {
+        await SeedPromoCreditAsync("clerk_fast_path_failure", amountGranted: 3);
+        await using var factory = CreateFactory().WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<InMemoryRewriteJobPublisher>();
+                services.RemoveAll<IRewriteJobPublisher>();
+                services.AddSingleton<IRewriteJobPublisher, ThrowingRewriteJobPublisher>();
+            });
+        });
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_fast_path_failure");
+        client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-fast-path-failure");
+
+        var response = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var body = await response.Content.ReadFromJsonAsync<RewriteAttemptResponse>();
+        body.Should().NotBeNull();
+        body!.Status.Should().Be("Pending");
+
+        await using var db = CreateContext();
+        var outbox = await db.OutboxMessages.SingleAsync();
+        outbox.Status.Should().Be(OutboxMessageStatus.Pending);
+        outbox.AttemptCount.Should().Be(1);
+        outbox.LastError.Should().Contain("publisher failed");
+        outbox.NextAttemptAt.Should().BeAfter(outbox.CreatedAt);
+        outbox.LockedBy.Should().BeNull();
+        outbox.LockedUntil.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task V1Rewrite_dispatches_outbox_message_via_fast_path()
+    {
+        var (_, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_fast_path",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await PostV1RewriteAsync(client, token, "v1-fast-path", ValidV1Draft());
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var json = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(json);
+        document.RootElement.EnumerateObject().Select(x => x.Name).Should().Equal("id", "status");
+        var attemptId = document.RootElement.GetProperty("id").GetGuid();
+        document.RootElement.GetProperty("status").GetString().Should().Be("processing");
+
+        await using var db = CreateContext();
+        var outbox = await db.OutboxMessages.SingleAsync();
+        outbox.Status.Should().Be(OutboxMessageStatus.Sent);
+        outbox.SentAt.Should().NotBeNull();
+        outbox.LockedBy.Should().BeNull();
+        outbox.PayloadJson.Should().Contain(attemptId.ToString());
+
+        var publisher = factory.Services.GetRequiredService<InMemoryRewriteJobPublisher>();
+        publisher.PublishedJobs.Select(x => x.AttemptId).Should().Equal(attemptId);
     }
 
     [Fact]
@@ -998,7 +1068,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        await using var factory = CreateFactory();
+        await using var factory = CreateFactory(configureServices: DisableConsumerRewriteRateLimiter);
         var client = CreateClient(factory);
         client.DefaultRequestHeaders.Add("X-External-User-Id", "clerk_paid_quota");
 
@@ -1145,7 +1215,18 @@ public sealed class RewriteApiTests : IAsyncLifetime
         lastProcessed.GetProperty("maxAgeMinutes").GetInt32().Should().Be(60);
     }
 
-    private WebApplicationFactory<Program> CreateFactory(string environment = "Testing")
+    private static void DisableConsumerRewriteRateLimiter(IServiceCollection services)
+    {
+        services.RemoveAll<IUserRewriteRateLimiter>();
+        services.AddScoped<IUserRewriteRateLimiter>(sp =>
+            new UserRewriteRateLimiter(
+                sp.GetRequiredService<Func<AppDbContext>>(),
+                0));
+    }
+
+    private WebApplicationFactory<Program> CreateFactory(
+        string environment = "Testing",
+        Action<IServiceCollection>? configureServices = null)
     {
         return new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
@@ -1162,6 +1243,7 @@ public sealed class RewriteApiTests : IAsyncLifetime
                     services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
                     services.AddSingleton<InMemoryRewriteJobPublisher>();
                     services.AddSingleton<IRewriteJobPublisher>(sp => sp.GetRequiredService<InMemoryRewriteJobPublisher>());
+                    configureServices?.Invoke(services);
                 });
             });
     }
@@ -1482,3 +1564,9 @@ public sealed record V1UsageResponse(
     int Used,
     int Remaining,
     DateTimeOffset? PeriodEnd);
+
+internal sealed class ThrowingRewriteJobPublisher : IRewriteJobPublisher
+{
+    public Task PublishAsync(RewriteJob job, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("publisher failed");
+}

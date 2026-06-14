@@ -1386,6 +1386,9 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("LockedUntil")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTimeOffset?>("ProcessedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -1485,10 +1488,19 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Property<int>("AmountMismatchCount")
                         .HasColumnType("int");
 
+                    b.Property<int>("AutoGrantSkippedCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AutoGrantedCount")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset>("CompletedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("GrantButNoPaymentCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ManualReviewCount")
                         .HasColumnType("int");
 
                     b.Property<int>("PaidButNoGrantCount")
@@ -1509,6 +1521,9 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("StripePaymentCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SubscriptionMismatchCount")
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset>("WindowEnd")
@@ -1626,6 +1641,41 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.HasIndex("UserId", "Status");
 
                     b.ToTable("UsageReservations");
+                });
+
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.UserRewriteRateLimitWindow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("WindowStart")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WindowStart");
+
+                    b.HasIndex("UserId", "WindowStart")
+                        .IsUnique();
+
+                    b.ToTable("UserRewriteRateLimitWindows");
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.WebhookDelivery", b =>
@@ -1905,6 +1955,17 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.Navigation("RewriteCredit");
 
                     b.Navigation("UsagePeriod");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.UserRewriteRateLimitWindow", b =>
+                {
+                    b.HasOne("ReplyInMyVoice.Domain.Entities.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

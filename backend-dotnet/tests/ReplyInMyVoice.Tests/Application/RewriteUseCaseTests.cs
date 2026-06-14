@@ -282,7 +282,8 @@ public sealed class RewriteUseCaseTests
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            new ReplyInMyVoice.Tests.NoopOutboxFastPathDispatcher());
 
     private static RewriteRequest Request(string roughDraftReply) =>
         new(

@@ -6,13 +6,14 @@ namespace ReplyInMyVoice.Application.Common;
 public sealed record StripeWebhookPayloadDto(
     string EventId,
     string Type,
-    StripeWebhookObjectDto Object)
+    StripeWebhookObjectDto Object,
+    DateTimeOffset? EventCreatedAt = null)
 {
     public StripeWebhookPayloadDto(
         string eventId,
         string type,
         string rawBody)
-        : this(eventId, type, ParseObject(rawBody))
+        : this(eventId, type, ParseObject(rawBody), ParseEventCreatedAt(rawBody))
     {
     }
 
@@ -53,7 +54,18 @@ public sealed record StripeWebhookPayloadDto(
             NextPaymentAttempt: GetUnixDateTime(stripeObject, "next_payment_attempt"),
             DueDate: GetUnixDateTime(stripeObject, "due_date"),
             HostedInvoiceUrl: GetString(stripeObject, "hosted_invoice_url"),
-            InvoicePdf: GetString(stripeObject, "invoice_pdf"));
+            InvoicePdf: GetString(stripeObject, "invoice_pdf"),
+            BillingReason: GetString(stripeObject, "billing_reason"),
+            CardBrand: GetString(stripeObject, "brand"),
+            CardLast4: GetString(stripeObject, "last4"),
+            CardExpMonth: GetNullableInt32(stripeObject, "exp_month"),
+            CardExpYear: GetNullableInt32(stripeObject, "exp_year"));
+    }
+
+    private static DateTimeOffset? ParseEventCreatedAt(string rawBody)
+    {
+        using var document = JsonDocument.Parse(rawBody);
+        return GetUnixDateTime(document.RootElement, "created");
     }
 
     private static string? ResolveExternalAuthUserId(JsonElement stripeObject) =>
@@ -164,6 +176,14 @@ public sealed record StripeWebhookPayloadDto(
         var value = GetLong(element, propertyName);
         return value is null
             ? 0
+            : (int)Math.Clamp(value.Value, int.MinValue, int.MaxValue);
+    }
+
+    private static int? GetNullableInt32(JsonElement element, string propertyName)
+    {
+        var value = GetLong(element, propertyName);
+        return value is null
+            ? null
             : (int)Math.Clamp(value.Value, int.MinValue, int.MaxValue);
     }
 
@@ -316,4 +336,9 @@ public sealed record StripeWebhookObjectDto(
     DateTimeOffset? NextPaymentAttempt = null,
     DateTimeOffset? DueDate = null,
     string? HostedInvoiceUrl = null,
-    string? InvoicePdf = null);
+    string? InvoicePdf = null,
+    string? BillingReason = null,
+    string? CardBrand = null,
+    string? CardLast4 = null,
+    int? CardExpMonth = null,
+    int? CardExpYear = null);

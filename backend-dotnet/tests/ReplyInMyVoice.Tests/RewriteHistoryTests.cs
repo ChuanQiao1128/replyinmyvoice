@@ -108,7 +108,9 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
         listBody.Items.Select(x => x.AttemptId).Should().Equal(retained.Id);
 
         await using var verifyDb = CreateContext();
-        var deletedAttempt = await verifyDb.RewriteAttempts.SingleAsync(x => x.Id == deleted.Id);
+        var deletedAttempt = await verifyDb.RewriteAttempts
+            .IgnoreQueryFilters()
+            .SingleAsync(x => x.Id == deleted.Id);
         deletedAttempt.DeletedAt.Should().NotBeNull();
     }
 
@@ -124,7 +126,8 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            unitOfWork);
+            unitOfWork,
+            new NoopOutboxFastPathDispatcher());
         var getOrCreateUserHandler = new GetOrCreateUserHandler(appUserRepository, unitOfWork);
         var findUserHandler = new FindUserHandler(appUserRepository);
         var getRewriteAttemptHandler = new GetRewriteAttemptHandler(rewriteAttemptRepository);
@@ -135,7 +138,8 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
             getOrCreateUserHandler,
             findUserHandler,
             createRewriteAttemptHandler,
-            getRewriteAttemptHandler);
+            getRewriteAttemptHandler,
+            new UserRewriteRateLimiter(() => db, 0));
     }
 
     private async Task<AppUser> SeedUserAsync(string externalAuthUserId)

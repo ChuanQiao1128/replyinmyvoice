@@ -25,6 +25,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyUsage> ApiKeyUsages => Set<ApiKeyUsage>();
     public DbSet<ApiKeyRateLimitWindow> ApiKeyRateLimitWindows => Set<ApiKeyRateLimitWindow>();
+    public DbSet<UserRewriteRateLimitWindow> UserRewriteRateLimitWindows => Set<UserRewriteRateLimitWindow>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
     public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
@@ -79,6 +80,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<RewriteAttempt>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.HasQueryFilter(x => x.DeletedAt == null);
             entity.HasIndex(x => new { x.UserId, x.IdempotencyKey }).IsUnique();
             entity.HasIndex(x => x.CreatedAt);
             entity.HasIndex(x => new { x.UserId, x.DeletedAt, x.CreatedAt });
@@ -135,6 +137,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Type).HasMaxLength(160);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(x => x.LastError).HasMaxLength(1000);
+            entity.Property(x => x.PayloadJson).IsRequired(false);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
             entity.HasIndex(x => new { x.Status, x.LockedUntil });
         });
@@ -407,6 +410,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(x => x.ApiKey)
                 .WithMany(x => x.RateLimitWindows)
                 .HasForeignKey(x => x.ApiKeyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserRewriteRateLimitWindow>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.UserId, x.WindowStart }).IsUnique();
+            entity.HasIndex(x => x.WindowStart);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -1,20 +1,29 @@
 using System.Net.Http;
 using System.Reflection;
+using Azure.Messaging.ServiceBus;
 using FluentAssertions;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
+using ReplyInMyVoice.Application.Common;
+using Microsoft.Data.SqlClient;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.BillingSupport;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
+using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Application.UseCases.StripeReconciliation;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
+using ReplyInMyVoice.Infrastructure.Queueing;
+using ReplyInMyVoice.Infrastructure.Resilience;
 using ReplyInMyVoice.Infrastructure.Services;
 using AppStripePaymentReconciliationClient = ReplyInMyVoice.Application.Abstractions.IStripePaymentReconciliationClient;
 using AppStripeReconciliationAlerter = ReplyInMyVoice.Application.Abstractions.IStripeReconciliationAlerter;
@@ -53,12 +62,14 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IBillingSupportRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IBillingSupportRequestRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IPaymentGrantRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IStripeReconciliationRunRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IAccountUsagePlanProvider>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IUnitOfWork>().Should().NotBeNull();
         scopedProvider.GetRequiredService<AppStripePaymentReconciliationClient>().Should().NotBeNull();
         scopedProvider.GetRequiredService<AppStripeReconciliationAlerter>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteEngineClient>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteCostLogger>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IOutboxFastPathDispatcher>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetOrCreateUserHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<FindUserHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<GetAccountSummaryHandler>().Should().NotBeNull();
@@ -77,6 +88,148 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<GetRewriteAttemptHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ReconcileStripeHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ProcessRewriteJobHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IngestStripeWebhookHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<ProcessPendingStripeEventsHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<StripeEventPayloadSynchronizer>().Should().NotBeNull();
+        provider.GetRequiredService<StripeEventProcessingOptions>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_clamps_outbox_fast_path_timeout()
+    {
+        var defaultProvider = BuildProvider([]);
+        var lowProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OUTBOX_FAST_PATH_TIMEOUT_SEC"] = "0",
+        });
+        var highProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OUTBOX_FAST_PATH_TIMEOUT_SEC"] = "90",
+        });
+        var disabledProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["OUTBOX_FAST_PATH_ENABLED"] = "false",
+        });
+
+        var defaultOptions = defaultProvider.GetRequiredService<OutboxFastPathOptions>();
+        var lowOptions = lowProvider.GetRequiredService<OutboxFastPathOptions>();
+        var highOptions = highProvider.GetRequiredService<OutboxFastPathOptions>();
+        var disabledOptions = disabledProvider.GetRequiredService<OutboxFastPathOptions>();
+
+        defaultOptions.Enabled.Should().BeTrue();
+        defaultOptions.Timeout.Should().Be(TimeSpan.FromSeconds(5));
+        lowOptions.Timeout.Should().Be(TimeSpan.FromSeconds(1));
+        highOptions.Timeout.Should().Be(TimeSpan.FromSeconds(30));
+        disabledOptions.Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_user_rewrite_rate_limiter_with_default_limit()
+    {
+        var provider = BuildProvider([]);
+
+        using var scope = provider.CreateScope();
+        var limiter = scope.ServiceProvider.GetRequiredService<IUserRewriteRateLimiter>();
+
+        limiter.Should().BeOfType<UserRewriteRateLimiter>();
+        limiter.Enabled.Should().BeTrue();
+        limiter.LimitPerMinute.Should().Be(6);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_wraps_api_key_rate_limiter_with_in_process_precheck_by_default()
+    {
+        var defaultProvider = BuildProvider([]);
+        var disabledProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["API_RATE_LIMIT_PRECHECK_ENABLED"] = "false",
+        });
+
+        using var defaultScope = defaultProvider.CreateScope();
+        using var disabledScope = disabledProvider.CreateScope();
+
+        defaultScope.ServiceProvider.GetRequiredService<IApiKeyRateLimiter>()
+            .Should()
+            .BeOfType<PreCheckedApiKeyRateLimiter>();
+        disabledScope.ServiceProvider.GetRequiredService<IApiKeyRateLimiter>()
+            .Should()
+            .BeOfType<ApiKeyRateLimiter>();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_resolves_noop_business_metrics_without_telemetry_client()
+    {
+        var provider = BuildProvider([]);
+
+        provider.GetRequiredService<IBusinessMetrics>()
+            .Should()
+            .BeSameAs(NoOpBusinessMetrics.Instance);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_resolves_app_insights_business_metrics_when_telemetry_client_registered()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection([])
+            .Build();
+        var services = new ServiceCollection();
+        using var telemetryConfiguration = new TelemetryConfiguration
+        {
+            ConnectionString = "InstrumentationKey=00000000-0000-0000-0000-000000000000",
+        };
+        services.AddSingleton(new TelemetryClient(telemetryConfiguration));
+        services.AddReplyInMyVoiceInfrastructure(configuration, "Testing");
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IBusinessMetrics>()
+            .Should()
+            .BeOfType<AppInsightsBusinessMetrics>();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_outbox_handlers_and_dispatch_observer()
+    {
+        var provider = BuildProvider([]);
+
+        using var scope = provider.CreateScope();
+        var scopedProvider = scope.ServiceProvider;
+        var handlers = scopedProvider.GetServices<IOutboxMessageHandler>().ToList();
+
+        handlers.Select(x => x.MessageType).Should().BeEquivalentTo(
+        [
+            "RewriteJobCreated",
+            StripeNotificationOutboxMessageTypes.PaymentFailed,
+            StripeNotificationOutboxMessageTypes.PaymentRecovered,
+            StripeNotificationOutboxMessageTypes.SubscriptionPaused,
+            StripeNotificationOutboxMessageTypes.PaymentGraceReminder,
+            StripeNotificationOutboxMessageTypes.PaymentActionRequired,
+            StripeNotificationOutboxMessageTypes.CardExpiring,
+            "StripeReconciliationAlertRequested",
+        ]);
+        handlers.Select(x => x.MessageType).Should().OnlyHaveUniqueItems();
+        scopedProvider.GetRequiredService<IOutboxDispatchObserver>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_reconciliation_option_defaults_and_clamps()
+    {
+        var defaultProvider = BuildProvider([]);
+        var clampedProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["RECONCILIATION_AUTO_GRANT_MAX"] = "999",
+            ["RECONCILIATION_MIN_PAYMENT_AGE_MINUTES"] = "-1",
+            ["RECONCILIATION_WINDOW_DAYS"] = "100",
+        });
+
+        var defaults = defaultProvider.GetRequiredService<StripeReconciliationOptions>();
+        defaults.AutoGrantMaxPerRun.Should().Be(10);
+        defaults.MinPaymentAgeMinutes.Should().Be(60);
+        defaults.WindowDays.Should().Be(3);
+
+        var clamped = clampedProvider.GetRequiredService<StripeReconciliationOptions>();
+        clamped.AutoGrantMaxPerRun.Should().Be(100);
+        clamped.MinPaymentAgeMinutes.Should().Be(0);
+        clamped.WindowDays.Should().Be(30);
     }
 
     [Fact]
@@ -142,6 +295,198 @@ public sealed class InfrastructureServiceCollectionTests
         exception.Message.Should().NotContain("DATABASE_URL");
         exception.Message.Should().NotContain("STRIPE_SECRET_KEY");
         exception.Message.Should().NotContain("SAPLING_API_KEY");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_uses_managed_identity_service_bus_client_when_flag_and_namespace_are_set()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["ServiceBus:fullyQualifiedNamespace"] = "rimv-test.servicebus.windows.net",
+        });
+
+        provider.GetRequiredService<IRewriteJobPublisher>()
+            .Should()
+            .BeOfType<AzureServiceBusRewriteJobPublisher>();
+        provider.GetRequiredService<ServiceBusClient>()
+            .FullyQualifiedNamespace
+            .Should()
+            .Be("rimv-test.servicebus.windows.net");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_prefers_managed_identity_service_bus_over_connection_string_when_flag_is_on()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["ServiceBus:fullyQualifiedNamespace"] = "rimv-test.servicebus.windows.net",
+            ["ConnectionStrings:ServiceBus"] = "Endpoint=sb://other.servicebus.windows.net/;SharedAccessKeyName=x;SharedAccessKey=y",
+        });
+
+        provider.GetRequiredService<IRewriteJobPublisher>()
+            .Should()
+            .BeOfType<AzureServiceBusRewriteJobPublisher>();
+        provider.GetRequiredService<ServiceBusClient>()
+            .FullyQualifiedNamespace
+            .Should()
+            .Be("rimv-test.servicebus.windows.net");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("false")]
+    public void AddReplyInMyVoiceInfrastructure_keeps_connection_string_service_bus_when_managed_identity_flag_is_off(
+        string? flagValue)
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:ServiceBus"] = "Endpoint=sb://other.servicebus.windows.net/;SharedAccessKeyName=x;SharedAccessKey=y",
+        };
+        if (flagValue is not null)
+        {
+            values["USE_MANAGED_IDENTITY"] = flagValue;
+        }
+
+        var provider = BuildProvider(values);
+
+        provider.GetRequiredService<IRewriteJobPublisher>()
+            .Should()
+            .BeOfType<AzureServiceBusRewriteJobPublisher>();
+        provider.GetRequiredService<ServiceBusClient>()
+            .FullyQualifiedNamespace
+            .Should()
+            .Be("other.servicebus.windows.net");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_falls_back_to_connection_string_when_managed_identity_namespace_is_missing()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["ConnectionStrings:ServiceBus"] = "Endpoint=sb://other.servicebus.windows.net/;SharedAccessKeyName=x;SharedAccessKey=y",
+        });
+
+        provider.GetRequiredService<ServiceBusClient>()
+            .FullyQualifiedNamespace
+            .Should()
+            .Be("other.servicebus.windows.net");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_rewrites_sql_connection_for_managed_identity()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["ConnectionStrings:DefaultConnection"] =
+                "Server=localhost;Database=ReplyInMyVoiceTest;User Id=test-user;Password=test-password;TrustServerCertificate=True",
+        });
+
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>();
+        using var db = new AppDbContext(options);
+        var connectionString = db.Database.GetConnectionString();
+        var builder = new SqlConnectionStringBuilder(connectionString);
+
+        builder.Authentication.Should().Be(SqlAuthenticationMethod.ActiveDirectoryDefault);
+        connectionString.Should().Contain("Authentication=ActiveDirectoryDefault");
+        connectionString.Should().NotContain("Password");
+        connectionString.Should().NotContain("User ID");
+        db.Database.CreateExecutionStrategy().GetType().Name.Should().Be("SqlServerRetryingExecutionStrategy");
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_builds_sql_connection_from_azure_sql_settings_when_managed_identity_is_on()
+    {
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "true",
+            ["AZURE_SQL_SERVER"] = "rimv-sql.database.windows.net",
+            ["AZURE_SQL_DATABASE"] = "rimv-db",
+        });
+
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>();
+        using var db = new AppDbContext(options);
+        var connectionString = db.Database.GetConnectionString();
+        var builder = new SqlConnectionStringBuilder(connectionString);
+
+        db.Database.IsSqlServer().Should().BeTrue();
+        builder.DataSource.Should().Be("rimv-sql.database.windows.net");
+        builder.InitialCatalog.Should().Be("rimv-db");
+        builder.Authentication.Should().Be(SqlAuthenticationMethod.ActiveDirectoryDefault);
+        builder.Encrypt.ToString().Should().Be("True");
+        builder.ConnectTimeout.Should().Be(30);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_leaves_sql_connection_unchanged_when_managed_identity_flag_is_off()
+    {
+        const string configuredConnectionString =
+            "Server=localhost;Database=ReplyInMyVoiceTest;User Id=test;Password=test;TrustServerCertificate=True";
+        var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["USE_MANAGED_IDENTITY"] = "false",
+            ["ConnectionStrings:DefaultConnection"] = configuredConnectionString,
+        });
+
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>();
+        using var db = new AppDbContext(options);
+
+        db.Database.GetConnectionString().Should().Be(configuredConnectionString);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_accepts_managed_identity_service_bus_for_required_consumer_validation()
+    {
+        var values = CompleteProductionConfiguration();
+        values["USE_MANAGED_IDENTITY"] = "true";
+        values["ServiceBus:fullyQualifiedNamespace"] = "rimv-test.servicebus.windows.net";
+
+        var act = () => BuildProvider(
+            values,
+            environmentName: "Production",
+            requireServiceBusConsumer: true);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_accepts_managed_identity_sql_settings_in_production_validation()
+    {
+        var values = CompleteProductionConfiguration();
+        values.Remove("DATABASE_URL");
+        values["USE_MANAGED_IDENTITY"] = "true";
+        values["AZURE_SQL_SERVER"] = "rimv-sql.database.windows.net";
+        values["AZURE_SQL_DATABASE"] = "rimv-db";
+
+        var act = () => BuildProvider(values, environmentName: "Production");
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_reports_managed_identity_setting_names_when_service_bus_is_unconfigured()
+    {
+        var values = CompleteProductionConfiguration();
+        values["USE_MANAGED_IDENTITY"] = "true";
+
+        var act = () => BuildProvider(
+            values,
+            environmentName: "Production",
+            requireServiceBusConsumer: true);
+
+        var exception = act.Should().Throw<InvalidOperationException>().Which;
+        exception.Message.Should().Contain("SERVICEBUS_CONNECTION_STRING");
+        exception.Message.Should().Contain("SERVICEBUS_FULLY_QUALIFIED_NAMESPACE");
+        exception.Message.Should().Contain("ServiceBus__fullyQualifiedNamespace");
+        exception.Message.Should().NotContain("stripe-test-key");
+        exception.Message.Should().NotContain("deepseek-test-key");
+        exception.Message.Should().NotContain("sapling-test-key");
     }
 
     [Theory]
@@ -263,6 +608,62 @@ public sealed class InfrastructureServiceCollectionTests
         socketsHandler!.AllowAutoRedirect.Should().BeFalse();
         socketsHandler.ConnectCallback.Should().NotBeNull();
         socketsHandler.ConnectTimeout.Should().BeLessThanOrEqualTo(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_registers_singleton_circuit_breaker_registry_with_default_options()
+    {
+        var provider = BuildProvider([]);
+
+        var firstRegistry = provider.GetRequiredService<ProviderCircuitBreakerRegistry>();
+        var secondRegistry = provider.GetRequiredService<ProviderCircuitBreakerRegistry>();
+        var options = provider.GetRequiredService<ProviderCircuitBreakerOptions>();
+
+        firstRegistry.Should().BeSameAs(secondRegistry);
+        options.SamplingDuration.Should().Be(TimeSpan.FromSeconds(30));
+        options.BreakDuration.Should().Be(TimeSpan.FromSeconds(30));
+        options.MinimumThroughput.Should().Be(8);
+        options.FailureRatio.Should().Be(0.5);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_binds_circuit_breaker_options_from_environment_and_clamps_invalid_values()
+    {
+        var validProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["PROVIDER_CIRCUIT_SAMPLING_SEC"] = "10",
+            ["PROVIDER_CIRCUIT_BREAK_SEC"] = "60",
+            ["PROVIDER_CIRCUIT_MIN_SAMPLES"] = "4",
+            ["PROVIDER_CIRCUIT_FAILURE_RATIO"] = "0.25",
+        });
+        var invalidProvider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["PROVIDER_CIRCUIT_MIN_SAMPLES"] = "0",
+            ["PROVIDER_CIRCUIT_FAILURE_RATIO"] = "2.0",
+        });
+
+        var validOptions = validProvider.GetRequiredService<ProviderCircuitBreakerOptions>();
+        var invalidOptions = invalidProvider.GetRequiredService<ProviderCircuitBreakerOptions>();
+
+        validOptions.SamplingDuration.Should().Be(TimeSpan.FromSeconds(10));
+        validOptions.BreakDuration.Should().Be(TimeSpan.FromSeconds(60));
+        validOptions.MinimumThroughput.Should().Be(4);
+        validOptions.FailureRatio.Should().Be(0.25);
+        invalidOptions.MinimumThroughput.Should().Be(8);
+        invalidOptions.FailureRatio.Should().Be(0.5);
+    }
+
+    [Fact]
+    public void AddReplyInMyVoiceInfrastructure_attaches_resilience_handler_to_provider_clients()
+    {
+        var provider = BuildProvider([]);
+        var handlerFactory = provider.GetRequiredService<IHttpMessageHandlerFactory>();
+
+        using var modelHandler = handlerFactory.CreateHandler(nameof(OpenAiCompatibleRewriteModelClient));
+        using var signalHandler = handlerFactory.CreateHandler(nameof(SaplingWritingSignalClient));
+
+        FindHandler<ProviderHttpResilienceHandler>(modelHandler).Should().NotBeNull();
+        FindHandler<ProviderHttpResilienceHandler>(signalHandler).Should().NotBeNull();
     }
 
     [Fact]

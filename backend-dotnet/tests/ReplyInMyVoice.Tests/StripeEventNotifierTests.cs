@@ -65,7 +65,60 @@ public sealed class StripeEventNotifierTests
             .Equal("customer@example.com", "customer@example.com");
     }
 
-    private static AppUser CreateUser(string email) =>
+    [Fact]
+    public async Task EnqueuePaymentActionRequiredNotificationAsync_prefers_hosted_invoice_url_and_falls_back_to_billing_portal()
+    {
+        var notifications = new RecordingNotificationService();
+        var billing = new RecordingStripeBillingService("https://billing.test/portal");
+        var notifier = new StripeEventNotifier(notifications, billing);
+        var user = CreateUser("action-required@example.com");
+
+        await notifier.EnqueuePaymentActionRequiredNotificationAsync(
+            user,
+            "https://billing.test/in_action_required");
+        await notifier.EnqueuePaymentActionRequiredNotificationAsync(user, " ");
+        await notifier.EnqueuePaymentActionRequiredNotificationAsync(CreateUser(null), "https://billing.test/skipped");
+
+        notifications.Messages.Should().HaveCount(2);
+        notifications.Messages.Select(x => x.TemplateName)
+            .Should()
+            .Equal("payment-action-required", "payment-action-required");
+        notifications.Messages[0].Model.Should().BeOfType<PaymentActionRequiredNotificationModel>()
+            .Which.PaymentUrl.Should().Be("https://billing.test/in_action_required");
+        notifications.Messages[1].Model.Should().BeOfType<PaymentActionRequiredNotificationModel>()
+            .Which.PaymentUrl.Should().Be("https://billing.test/portal");
+        billing.PortalRequests.Should().Equal(user.ExternalAuthUserId);
+    }
+
+    [Fact]
+    public async Task EnqueueCardExpiringNotificationAsync_renders_card_summary_and_skips_without_email()
+    {
+        var notifications = new RecordingNotificationService();
+        var billing = new RecordingStripeBillingService("https://billing.test/portal");
+        var notifier = new StripeEventNotifier(notifications, billing);
+        var user = CreateUser("card-expiring@example.com");
+
+        await notifier.EnqueueCardExpiringNotificationAsync(user, "visa", "4242", 4, 2027);
+        await notifier.EnqueueCardExpiringNotificationAsync(CreateUser(null), "mastercard", "1111", 5, 2027);
+
+        notifications.Messages.Should().ContainSingle();
+        var message = notifications.Messages[0];
+        message.TemplateName.Should().Be("card-expiring");
+        message.Recipient.Email.Should().Be("card-expiring@example.com");
+        var model = message.Model.Should().BeOfType<CardExpiringNotificationModel>().Subject;
+        model.BillingPortalUrl.Should().Be("https://billing.test/portal");
+        model.Brand.Should().Be("visa");
+        model.Last4.Should().Be("4242");
+        model.ExpMonth.Should().Be(4);
+        model.ExpYear.Should().Be(2027);
+        var rendered = NotificationTemplates.CardExpiring.Render(model);
+        rendered.Subject.Should().Be("Your card on file expires soon");
+        rendered.PlainTextBody.Should().Contain("Visa card ending in 4242");
+        rendered.PlainTextBody.Should().Contain("04/2027");
+        billing.PortalRequests.Should().Equal(user.ExternalAuthUserId);
+    }
+
+    private static AppUser CreateUser(string? email) =>
         new()
         {
             Id = Guid.NewGuid(),

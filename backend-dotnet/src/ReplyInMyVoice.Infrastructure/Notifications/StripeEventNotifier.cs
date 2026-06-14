@@ -83,6 +83,54 @@ public sealed class StripeEventNotifier(
             ct);
     }
 
+    public async Task EnqueuePaymentActionRequiredNotificationAsync(
+        AppUser user,
+        string? hostedInvoiceUrl,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(user.Email))
+        {
+            return;
+        }
+
+        var paymentUrl = string.IsNullOrWhiteSpace(hostedInvoiceUrl)
+            ? await ResolveBillingPortalUrlAsync(user.ExternalAuthUserId, ct)
+            : hostedInvoiceUrl.Trim();
+        await notificationService.SendAsync(
+            NotificationTemplates.PaymentActionRequired,
+            CreateRecipient(user),
+            new PaymentActionRequiredNotificationModel("there", SupportEmail, paymentUrl),
+            ct);
+    }
+
+    public async Task EnqueueCardExpiringNotificationAsync(
+        AppUser user,
+        string? brand,
+        string? last4,
+        int? expMonth,
+        int? expYear,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(user.Email))
+        {
+            return;
+        }
+
+        var billingPortalUrl = await ResolveBillingPortalUrlAsync(user.ExternalAuthUserId, ct);
+        await notificationService.SendAsync(
+            NotificationTemplates.CardExpiring,
+            CreateRecipient(user),
+            new CardExpiringNotificationModel(
+                "there",
+                SupportEmail,
+                billingPortalUrl,
+                brand,
+                last4,
+                expMonth,
+                expYear),
+            ct);
+    }
+
     private async Task<string> ResolveBillingPortalUrlAsync(
         string externalAuthUserId,
         CancellationToken ct)

@@ -367,6 +367,7 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
         }
 
         var attempts = await db.RewriteAttempts
+            .IgnoreQueryFilters()
             .AsTracking()
             .Where(x => x.UserId == user.Id)
             .ToListAsync(ct);

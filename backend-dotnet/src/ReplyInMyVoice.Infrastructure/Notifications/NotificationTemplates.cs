@@ -31,6 +31,65 @@ public static class NotificationTemplates
                 """);
         });
 
+    public static readonly NotificationTemplate<PaymentActionRequiredNotificationModel> PaymentActionRequired = new(
+        "payment-action-required",
+        model =>
+        {
+            var name = SafeName(model.CustomerName);
+            var supportEmail = SafeEmail(model.SupportEmail);
+            var paymentUrl = SafeUrl(model.PaymentUrl);
+
+            return new RenderedNotification(
+                "Action needed to complete your payment",
+                $"""
+                Hi {name},
+
+                Your bank asked you to confirm the latest Reply In My Voice payment.
+
+                Please complete the payment here: {paymentUrl}
+
+                If you have questions, contact {supportEmail}.
+                """,
+                $"""
+                <p>Hi {Html(name)},</p>
+                <p>Your bank asked you to confirm the latest Reply In My Voice payment.</p>
+                <p>Please complete the payment here: <a href="{HtmlAttribute(paymentUrl)}">complete payment</a>.</p>
+                <p>If you have questions, contact <a href="mailto:{HtmlAttribute(supportEmail)}">{Html(supportEmail)}</a>.</p>
+                """);
+        });
+
+    public static readonly NotificationTemplate<CardExpiringNotificationModel> CardExpiring = new(
+        "card-expiring",
+        model =>
+        {
+            var name = SafeName(model.CustomerName);
+            var supportEmail = SafeEmail(model.SupportEmail);
+            var billingPortalUrl = SafeUrl(model.BillingPortalUrl);
+            var cardSummary = FormatCardSummary(model.Brand, model.Last4);
+            var expiry = FormatCardExpiry(model.ExpMonth, model.ExpYear);
+            var expirySentence = expiry is null
+                ? $"{cardSummary} expires soon."
+                : $"{cardSummary} expires {expiry}.";
+
+            return new RenderedNotification(
+                "Your card on file expires soon",
+                $"""
+                Hi {name},
+
+                {expirySentence}
+
+                Please update it in billing settings: {billingPortalUrl}
+
+                If you have questions, contact {supportEmail}.
+                """,
+                $"""
+                <p>Hi {Html(name)},</p>
+                <p>{Html(expirySentence)}</p>
+                <p>Please update it in <a href="{HtmlAttribute(billingPortalUrl)}">billing settings</a>.</p>
+                <p>If you have questions, contact <a href="mailto:{HtmlAttribute(supportEmail)}">{Html(supportEmail)}</a>.</p>
+                """);
+        });
+
     public static readonly NotificationTemplate<PaymentGraceReminderNotificationModel> PaymentGraceReminder = new(
         "payment-grace-reminder",
         model =>
@@ -243,6 +302,33 @@ public static class NotificationTemplates
     private static string SafeUrl(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "https://replyinmyvoice.com/app" : value.Trim();
 
+    private static string FormatCardSummary(string? brand, string? last4)
+    {
+        var safeBrand = string.IsNullOrWhiteSpace(brand)
+            ? null
+            : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(brand.Trim().ToLowerInvariant());
+        var safeLast4 = string.IsNullOrWhiteSpace(last4) ? null : last4.Trim();
+
+        return (safeBrand, safeLast4) switch
+        {
+            ({ Length: > 0 }, { Length: > 0 }) => $"Your {safeBrand} card ending in {safeLast4}",
+            ({ Length: > 0 }, _) => $"Your {safeBrand} card",
+            (_, { Length: > 0 }) => $"Your card ending in {safeLast4}",
+            _ => "Your card",
+        };
+    }
+
+    private static string? FormatCardExpiry(int? expMonth, int? expYear)
+    {
+        if (expMonth is null || expYear is null)
+        {
+            return null;
+        }
+
+        var boundedMonth = Math.Clamp(expMonth.Value, 1, 12);
+        return $"{boundedMonth:00}/{expYear.Value}";
+    }
+
     private static string FormatNzd(long minorUnits) =>
         $"NZ${(minorUnits / 100m).ToString("0.00", CultureInfo.InvariantCulture)}";
 
@@ -257,6 +343,20 @@ public sealed record FailedPaymentNotificationModel(
     string CustomerName,
     string SupportEmail,
     string BillingPortalUrl);
+
+public sealed record PaymentActionRequiredNotificationModel(
+    string CustomerName,
+    string SupportEmail,
+    string PaymentUrl);
+
+public sealed record CardExpiringNotificationModel(
+    string CustomerName,
+    string SupportEmail,
+    string BillingPortalUrl,
+    string? Brand,
+    string? Last4,
+    int? ExpMonth,
+    int? ExpYear);
 
 public sealed record PaymentGraceReminderNotificationModel(
     string CustomerName,

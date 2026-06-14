@@ -19,4 +19,17 @@ public interface IStripeEventNotifier
     Task EnqueuePaymentRecoveredNotificationAsync(
         AppUser user,
         CancellationToken ct = default);
+
+    Task EnqueuePaymentActionRequiredNotificationAsync(
+        AppUser user,
+        string? hostedInvoiceUrl,
+        CancellationToken ct = default);
+
+    Task EnqueueCardExpiringNotificationAsync(
+        AppUser user,
+        string? brand,
+        string? last4,
+        int? expMonth,
+        int? expYear,
+        CancellationToken ct = default);
 }

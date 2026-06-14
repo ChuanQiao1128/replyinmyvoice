@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Billing;
 using ReplyInMyVoice.Application.UseCases.Promo;
@@ -24,7 +25,6 @@ using ApplicationResultKind = ReplyInMyVoice.Application.Common.ApplicationResul
 using ApplicationPromoRedeemResultKind = ReplyInMyVoice.Application.Common.PromoRedeemResultKind;
 using PromoRedeemResultDto = ReplyInMyVoice.Application.Common.PromoRedeemResultDto;
 using RewriteAttemptDto = ReplyInMyVoice.Application.Common.RewriteAttemptDto;
-using StripeWebhookPayloadDto = ReplyInMyVoice.Application.Common.StripeWebhookPayloadDto;
 
 const string V1RewriteEndpointName = "v1/rewrite";
 const string V1RewriteResultEndpointName = "v1/rewrite/{id}";
@@ -33,7 +33,7 @@ const int V1MinimumDraftLength = 10;
 const int V1MaximumDraftWords = 300;
 const int V1MaximumDraftCharacters = 2400;
 const int V1MaximumIdempotencyKeyLength = 120;
-const string V1SandboxAttemptPrefix = "test:";
+const string V1SandboxAttemptPrefix = SandboxAttemptConventions.IdempotencyKeyPrefix;
 const string V1SandboxUsagePeriodKey = "test:sandbox";
 const string V1SandboxResultJson = """
     {
@@ -145,6 +145,7 @@ app.MapPost("/api/rewrite", async (
     [FromBody] RewriteRequest request,
     GetOrCreateUserHandler getOrCreateUserHandler,
     CreateRewriteAttemptHandler createRewriteAttemptHandler,
+    IUserRewriteRateLimiter userRateLimiter,
     CancellationToken cancellationToken) =>
 {
     var externalUserId = ResolveExternalUserId(httpRequest, app.Environment, builder.Configuration);
@@ -179,6 +180,35 @@ app.MapPost("/api/rewrite", async (
             externalUserId,
             ResolveRequestEmail(httpRequest, app.Environment, builder.Configuration)),
         cancellationToken);
+    var now = DateTimeOffset.UtcNow;
+    if (userRateLimiter.Enabled)
+    {
+        var rateLimit = await userRateLimiter.CheckAndIncrementAsync(
+            user.Id,
+            now,
+            cancellationToken);
+        if (rateLimit.IsUnavailable)
+        {
+            return V1Error(
+                "rate_limit_unavailable",
+                "Rewrite limit could not be checked. Please retry shortly.",
+                StatusCodes.Status503ServiceUnavailable);
+        }
+
+        SetV1RateLimitHeaders(
+            httpRequest.HttpContext.Response,
+            rateLimit,
+            rateLimit.IsLimited,
+            now);
+        if (rateLimit.IsLimited)
+        {
+            return V1Error(
+                "rate_limited",
+                "Rewrite rate limit reached. Please wait a moment and retry.",
+                StatusCodes.Status429TooManyRequests);
+        }
+    }
+
     var plan = AccountUsagePlans.GetUsagePlan(user, builder.Configuration);
 
     var result = await createRewriteAttemptHandler.HandleAsync(
@@ -188,7 +218,7 @@ app.MapPost("/api/rewrite", async (
             request,
             plan.PeriodKey,
             plan.QuotaLimit,
-            DateTimeOffset.UtcNow),
+            now),
         cancellationToken);
 
     if (result.Kind == ApplicationResultKind.QuotaExceeded)
@@ -919,7 +949,10 @@ app.MapPost("/api/stripe/portal", async (
 app.MapPost("/api/stripe/webhook", async (
     HttpRequest request,
     IConfiguration configuration,
-    ProcessStripeWebhookHandler processStripeWebhookHandler,
+    IngestStripeWebhookHandler ingestStripeWebhookHandler,
+    ProcessPendingStripeEventsHandler processPendingStripeEventsHandler,
+    StripeEventProcessingOptions stripeEventProcessingOptions,
+    ILoggerFactory loggerFactory,
     CancellationToken cancellationToken) =>
 {
     using var reader = new StreamReader(request.Body);
@@ -979,11 +1012,52 @@ app.MapPost("/api/stripe/webhook", async (
             statusCode: StatusCodes.Status400BadRequest);
     }
 
-    var processed = await processStripeWebhookHandler.HandleAsync(
-        new ProcessStripeWebhookCommand(
-            new StripeWebhookPayloadDto(eventId, eventType, rawBody),
-            DateTimeOffset.UtcNow),
+    var now = DateTimeOffset.UtcNow;
+    var ingestResult = await ingestStripeWebhookHandler.HandleAsync(
+        new IngestStripeWebhookCommand(
+            eventId,
+            eventType,
+            rawBody,
+            now),
         cancellationToken);
+
+    var processed = false;
+    if (ingestResult != StripeWebhookIngestResult.AlreadyProcessed &&
+        stripeEventProcessingOptions.InlineBudgetSeconds > 0)
+    {
+        using var inlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        inlineCts.CancelAfter(TimeSpan.FromSeconds(stripeEventProcessingOptions.InlineBudgetSeconds));
+        try
+        {
+            processed = await processPendingStripeEventsHandler.HandleAsync(
+                new ProcessPendingStripeEventsCommand(
+                    now,
+                    BatchSize: 1,
+                    eventId),
+                inlineCts.Token) > 0;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            loggerFactory
+                .CreateLogger("StripeWebhook")
+                .LogWarning(
+                    "{PaymentObservabilityEvent} Stripe webhook inline processing deferred for event {EventId} of type {EventType}.",
+                    "webhook_inline_deferred",
+                    eventId,
+                    eventType);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            loggerFactory
+                .CreateLogger("StripeWebhook")
+                .LogWarning(
+                    ex,
+                    "{PaymentObservabilityEvent} Stripe webhook inline processing deferred for event {EventId} of type {EventType}.",
+                    "webhook_inline_deferred",
+                    eventId,
+                    eventType);
+        }
+    }
 
     return Results.Ok(new { received = true, processed });
 });
@@ -1237,6 +1311,7 @@ static async Task<V1SandboxAttemptResult> CreateV1SandboxAttemptAsync(
     var sandboxIdempotencyKey = BuildV1SandboxIdempotencyKey(apiKeyId, idempotencyKey);
     var requestHash = ComputeV1Sha256(draft);
     var existingAttempt = await db.RewriteAttempts
+        .IgnoreQueryFilters()
         .AsNoTracking()
         .SingleOrDefaultAsync(
             x => x.UserId == userId && x.IdempotencyKey == sandboxIdempotencyKey,

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -22,7 +23,8 @@ public sealed class RewriteHttpFunctions(
     GetOrCreateUserHandler getOrCreateUserHandler,
     FindUserHandler findUserHandler,
     CreateRewriteAttemptHandler createRewriteAttemptHandler,
-    GetRewriteAttemptHandler getRewriteAttemptHandler)
+    GetRewriteAttemptHandler getRewriteAttemptHandler,
+    IUserRewriteRateLimiter userRateLimiter)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -89,6 +91,37 @@ public sealed class RewriteHttpFunctions(
         var user = await getOrCreateUserHandler.HandleAsync(
             new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
             cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        if (userRateLimiter.Enabled)
+        {
+            var rateLimit = await userRateLimiter.CheckAndIncrementAsync(
+                user.Id,
+                now,
+                cancellationToken);
+            if (rateLimit.IsUnavailable)
+            {
+                return FunctionHttpResults.Problem(
+                    "Rate limit check unavailable",
+                    "Rewrite limit could not be checked. Please retry shortly.",
+                    StatusCodes.Status503ServiceUnavailable,
+                    "rate_limit_unavailable");
+            }
+
+            SetRateLimitHeaders(
+                request.HttpContext.Response,
+                rateLimit,
+                rateLimit.IsLimited,
+                now);
+            if (rateLimit.IsLimited)
+            {
+                return FunctionHttpResults.Problem(
+                    "Too many requests",
+                    "Rewrite rate limit reached. Please wait a moment and retry.",
+                    StatusCodes.Status429TooManyRequests,
+                    "rate_limited");
+            }
+        }
+
         var plan = AccountUsagePlans.GetUsagePlan(user, configuration);
         var result = await createRewriteAttemptHandler.HandleAsync(
             new CreateRewriteAttemptCommand(
@@ -97,7 +130,7 @@ public sealed class RewriteHttpFunctions(
                 body,
                 plan.PeriodKey,
                 plan.QuotaLimit,
-                DateTimeOffset.UtcNow),
+                now),
             cancellationToken);
 
         return ToCreateRewriteAttemptHttpResult(result);
@@ -320,6 +353,22 @@ public sealed class RewriteHttpFunctions(
         }
 
         return null;
+    }
+
+    private static void SetRateLimitHeaders(
+        HttpResponse response,
+        ApiKeyRateLimitResult rateLimit,
+        bool includeRetryAfter,
+        DateTimeOffset now)
+    {
+        response.Headers["X-RateLimit-Limit"] = rateLimit.Limit.ToString(CultureInfo.InvariantCulture);
+        response.Headers["X-RateLimit-Remaining"] = rateLimit.Remaining.ToString(CultureInfo.InvariantCulture);
+        response.Headers["X-RateLimit-Reset"] = rateLimit.ResetAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+
+        if (includeRetryAfter)
+        {
+            response.Headers.RetryAfter = rateLimit.RetryAfterSeconds(now).ToString(CultureInfo.InvariantCulture);
+        }
     }
 
     private static int ParsePositiveInt(string? value, int fallback)

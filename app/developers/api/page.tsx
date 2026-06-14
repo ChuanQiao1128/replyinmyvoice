@@ -60,6 +60,11 @@ const errorRows = [
     cause: "The same Idempotency-Key was reused with a different request body.",
   },
   {
+    status: "413",
+    code: "payload_too_large",
+    cause: "Request body exceeded the 64 KB transport limit.",
+  },
+  {
     status: "429",
     code: "rate_limited",
     cause: "The key has reached its 60 requests per minute limit.",

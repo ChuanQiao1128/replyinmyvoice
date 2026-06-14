@@ -171,7 +171,8 @@ public sealed class AdminSuspensionTests
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            new NoopOutboxFastPathDispatcher());
 
     private static SetUserSuspensionHandler CreateSuspensionHandler(ReplyInMyVoice.Infrastructure.Data.AppDbContext db) =>
         new(new AdminUserRepository(db), new UnitOfWork(db));

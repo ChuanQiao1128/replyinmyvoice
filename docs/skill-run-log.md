@@ -45,6 +45,237 @@ claude-heavy-planning-handoff
 
 ## Entries
 
+### 2026-06-13 - cloud-architecture-cost-review - HARD-08 edge rate-limit artifact
+
+- Agent: Codex worker
+- Trigger: GitHub issue #787 adds a Cloudflare WAF rate-rule artifact and production-hardening behavior around the rewrite surface.
+- Action: Opened and followed the skill as a pre-implementation cost/architecture gate. Selected option: config-only Cloudflare edge rate rule plus existing Azure Functions/.NET and EF Core layers. Rejected options: live Cloudflare apply, CI workflow apply, new always-on services, or paid infrastructure changes.
+- Output artifacts: `infra/cloudflare/waf-rate-limit.json`; `infra/cloudflare/waf-rate-limit.md`; readiness checklist read through `README.md`, `docs/manual-setup.md`, `docs/dotnet-azure-blocker-preflight.md`, and `docs/business-qa-and-deploy-result.md`.
+- Verification evidence: WAF JSON parsed with Node; `.github/` grep for `waf-rate-limit` returned no matches; no deploy command, DNS change, domain change, or payment setting change was run.
+- Limitations: Exact provider pricing was not checked because no paid resource was created or resized. The Cloudflare rule remains an unapplied owner-reviewed artifact.
+
+### 2026-06-13 - system-spec-synthesis - HARD-08 layered rate limiting
+
+- Agent: Codex worker
+- Trigger: GitHub issue #787 and `plans/production-hardening/issues/HARD-08-layered-rate-limiting.md` define API behavior, data model, DI, frontend proxy, and infra artifact changes.
+- Action: Opened and followed the skill. Used `AGENTS.md`, `CLAUDE.md`, the HARD-08 issue body, the HARD-08 brief, and `plans/production-hardening/SPEC.md` as source inputs; treated the issue brief as the approved implementation-ready spec for this unattended worker run.
+- Output artifacts: Consumer per-user DB limiter, v1 pre-check decorator, EF migration, Cloudflare WAF artifact, Next proxy 429 mapping, and focused backend/frontend tests.
+- Verification evidence: Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641; `npm run typecheck` passed; `npm run test` passed 361/361; static acceptance greps passed.
+- Limitations: No separate design document was written because the supervisor-provided issue brief was authoritative and the unattended worker instructions said not to stop for approval.
+
+### 2026-06-13 - state-machine-modeling - HARD-08 rate-limit windows
+
+- Agent: Codex worker
+- Trigger: The task changes request lifecycle behavior before quota reservation and adds current-minute persisted/user and per-process/API-key windows.
+- Action: Opened and followed the skill. State list: consumer limiter disabled, allowed, limited, unavailable; v1 pre-check under local threshold or shed; DB window allowed, limited, or unavailable. Events: request arrival, minute window change, DB row insert, DB row increment, unique-index race, SQLite busy, pre-check count above limit, and limiter unavailable. Invariants: consumer check occurs before quota reservation; limited/unavailable consumer requests create no attempt, reservation, or outbox row; v1 DB row stays authoritative when the local gate is cold; new minute creates a new window row.
+- Output artifacts: `UserRewriteRateLimiter.cs`; `InProcessRateLimitGate.cs`; `PreCheckedApiKeyRateLimiter.cs`; `ConsumerRewriteRateLimitTests.cs`; `InProcessRateLimitGateTests.cs`; updated `V1RewriteRateLimitTests.cs`.
+- Verification evidence: Tests cover allowed/limited/unavailable/disabled consumer states, minute reset, pre-check shed, non-positive v1 limit delegation, and DB-authoritative v1 cold-gate behavior; full backend suite passed 641/641.
+- Limitations: Window retention/purge is unchanged and intentionally out of HARD-08 scope.
+
+### 2026-06-13 - data-module-review - HARD-08 user rewrite rate-limit persistence
+
+- Agent: Codex worker
+- Trigger: The task adds an EF Core entity, DbSet, model configuration, additive migration, unique index, and concurrency behavior.
+- Action: Opened and followed the skill; reviewed the existing `ApiKeyRateLimitWindow`/`ApiKeyRateLimiter` pattern, `AppDbContext`, migrations, and EF SQLite test harnesses before implementing the user-window mirror.
+- Output artifacts: `UserRewriteRateLimitWindow.cs`; `AppDbContext.cs` configuration; `20260613040838_AddUserRewriteRateLimitWindows.cs`; `AppDbContextModelSnapshot.cs`; `UserRewriteRateLimiter.cs`.
+- Verification evidence: Static migration check found exactly one `*_AddUserRewriteRateLimitWindows.cs`, with `CreateTable`/`CreateIndex` and no `DropTable`, `DropColumn`, or `AlterColumn`; index-name grep found hits in both the migration and limiter; full backend suite passed 641/641.
+- Limitations: The migration `Down` method is intentionally empty to satisfy the additive-only delivery gate. No live database update was run.
+
+### 2026-06-13 - resilience-test-generation - HARD-08 rate-limit failure behavior
+
+- Agent: Codex worker
+- Trigger: The task changes rate-limit, quota-race, DB concurrency, SQLite busy, unavailable-check, and flood-shed behavior.
+- Action: Opened and followed the skill. Failure matrix covered: limited request, limiter unavailable, disabled limiter, minute rollover, unique-index race matcher, local pre-check shed, DB-authoritative v1 limit from another instance, and quota side-effect prevention.
+- Output artifacts: `ConsumerRewriteRateLimitTests.cs`; `InProcessRateLimitGateTests.cs`; updated `V1RewriteRateLimitTests.cs`; updated `RewriteApiTests.cs` quota isolation.
+- Verification evidence: Focused backend red run first failed on missing `IUserRewriteRateLimiter`; focused implementation run passed 14/14; full backend suite passed 641/641.
+- Limitations: No live provider, Stripe, Azure, Cloudflare, or production database endpoint was called.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-08 backend rate-limit tests
+
+- Agent: Codex worker
+- Trigger: The task adds C#/.NET xUnit tests for ASP.NET Core API routing, EF Core SQLite persistence, DI wiring, and limiter services.
+- Action: Opened and followed the skill; wrote failing tests first, verified the missing-interface red state, then implemented the minimal backend code to pass. Used WebApplicationFactory, EF Core SQLite file-backed databases, xUnit, FluentAssertions, and handwritten fakes.
+- Output artifacts: `ConsumerRewriteRateLimitTests.cs`; `InProcessRateLimitGateTests.cs`; updated `InfrastructureServiceCollectionTests.cs`, `V1RewriteRateLimitTests.cs`, `RewriteApiTests.cs`, and `RewriteHistoryTests.cs`.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641. Focused paid-quota regression passed after isolating that test from the new submit limiter.
+- Limitations: NuGet advisory metadata lookup emitted NU1900 warnings while tests exited 0. Local git commit was attempted but blocked by sandbox permissions on worktree git metadata outside the writable root.
+
+### 2026-06-13 - ui-browser-testing - HARD-08 consumer proxy 429 mapping
+
+- Agent: Codex worker
+- Trigger: The task changes browser-visible consumer rewrite error handling in the Next `/api/rewrite` proxy and adds a frontend unit pin.
+- Action: Opened and followed the skill. Chose source-level Vitest coverage because the changed surface is an API route payload/header mapping, not a layout or interactive page change.
+- Output artifacts: `app/api/rewrite/route.ts`; `tests/unit/rewrite-rate-limit-route.test.ts`.
+- Verification evidence: Focused Vitest run passed for `tests/unit/rewrite-rate-limit-route.test.ts`; `npm run typecheck` passed; full `npm run test` passed 71 files and 361 tests.
+- Limitations: No browser screenshot was taken because no page layout, responsive UI, or visual component changed. `npm ci` needed `npm_config_cache=/private/tmp/rimv-npm-cache` because the default cache path was outside the writable sandbox.
+### 2026-06-13 - cloud-architecture-cost-review - HARD-10 managed identity rollout
+
+- Agent: Codex worker
+- Trigger: GitHub issue #789 changes Azure SQL and Service Bus authentication posture for the Azure Functions backend without executing infrastructure.
+- Action: Opened and followed the skill; reviewed `docs/manual-setup.md`, `docs/next-development-brief.md`, `docs/dotnet-azure-full-run-result.md`, `plans/production-hardening/SPEC.md`, and the HARD-10 issue brief. Recommended option: keep the existing Azure Functions plus Azure SQL plus Service Bus architecture and add reversible, flag-gated Managed Identity wiring at DI/configuration plus an operator runbook. Rejected options: new hosting resources, always-on compute, schema changes, and live infrastructure execution.
+- Output artifacts: `docs/managed-identity-rollout.md`; managed-identity DI/configuration changes under `backend-dotnet/src/ReplyInMyVoice.Infrastructure`; readiness and worker consistency updates.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release` exited 0; `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 654/654; scope checks found no frontend path, migration, or engine/provider file changes; `Azure.Identity` appears only in `ReplyInMyVoice.Infrastructure.csproj`.
+- Limitations: No Azure CLI command, deployment, live role assignment, DNS change, Stripe action, or secret inspection was performed. NuGet advisory metadata lookup emitted NU1900 warnings while build/test commands exited 0.
+
+### 2026-06-13 - system-spec-synthesis - HARD-10 implementation checkpointing
+
+- Agent: Codex worker
+- Trigger: GitHub issue #789 and `plans/production-hardening/issues/HARD-10-managed-identity-sql-servicebus.md` provide architecture and rollout requirements that needed conversion into executable implementation checkpoints.
+- Action: Opened and followed the skill; treated `AGENTS.md`, `CLAUDE.md`, the production-hardening master spec, and the HARD-10 issue brief as source inputs. Implementation checkpoints covered flag parsing, Service Bus namespace precedence, SQL connection-string resolution, runtime validation alternatives, readiness JSON, worker consistency, runbook content, and backend verification.
+- Output artifacts: `ManagedIdentityConfiguration.cs`, `SqlConnectionStringResolver.cs`, Infrastructure DI updates, HealthFunction readiness updates, Worker updates, managed-identity xUnit coverage, and `docs/managed-identity-rollout.md`.
+- Verification evidence: Focused red run failed on the missing managed-identity configuration type; focused final run passed 45/45; full backend suite passed 654/654.
+- Limitations: Did not create a separate design document because the unattended worker instruction identified the issue body and HARD-10 brief as authoritative scope and directed implementation without waiting for approval.
+
+### 2026-06-13 - data-module-review - HARD-10 SQL connection configuration
+
+- Agent: Codex worker
+- Trigger: The issue changes EF Core SQL connection-string resolution and production validation alternatives, without changing schema.
+- Action: Opened and followed the skill; ran `scan_data_risks.py --limit 80`, reviewed the EF registration and validation paths, and checked that the change is limited to connection construction with no tables, migrations, counters, transactions, or persistence invariants modified.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/SqlConnectionStringResolver.cs`; SQL-focused tests in `InfrastructureServiceCollectionTests.cs` and `SqlConnectionStringResolverTests.cs`.
+- Verification evidence: Data risk scan completed and reported existing broad quota/idempotency signals outside this scoped change; scope checks found no files under `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations`; SQL tests assert credential stripping, parsed `SqlAuthenticationMethod.ActiveDirectoryDefault`, malformed-input non-echo, passthrough, and build-from-settings behavior; full backend suite passed 654/654.
+- Limitations: No EF model, migration, production database, data backfill, or live SQL login was changed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-10 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: The issue adds and changes C#/.NET xUnit coverage for Infrastructure DI, SQL connection resolution, Service Bus client selection, Function readiness JSON, and Worker compilation.
+- Action: Opened and followed the skill; wrote the managed-identity tests before production changes, captured the expected red compile state, then implemented the minimal helpers and DI updates to satisfy the tests. Used xUnit, FluentAssertions, SQLite-backed AppDbContext readiness tests, and offline Azure SDK client construction.
+- Output artifacts: `InfrastructureServiceCollectionTests.cs`; `ManagedIdentityConfigurationTests.cs`; `SqlConnectionStringResolverTests.cs`; `HealthFunctionReadinessTests.cs`; related backend source changes.
+- Verification evidence: Initial focused command failed on missing `ReplyInMyVoice.Infrastructure.Configuration.ManagedIdentityConfiguration`; final focused command passed 45/45; `dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release` exited 0; `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 654/654.
+- Limitations: No frontend tests were run because no frontend files changed. Local `git add`/commit was blocked by sandbox permissions on worktree git metadata outside the writable root. No deploy, push, PR, live Azure call, payment action, or secret inspection was performed.
+### 2026-06-13 - data-module-review - HARD-13 data hygiene
+
+- Agent: Codex worker
+- Trigger: GitHub issue #792 changes EF Core model configuration, repositories, usage counters, idempotency lookups, retention hard-delete behavior, and persistence invariants.
+- Action: Opened and followed the skill; reviewed `ApiKey`, `RewriteAttempt`, `UsageReservation`, `WebhookDelivery`, `AppDbContext`, repository readers, retention service, sandbox writers, and existing SQLite-backed tests. Findings: no migration was needed; the legacy API-key counter stays mapped but is marked obsolete; user reads inherit the soft-delete filter while audited system recovery and erasure paths use explicit filter escape hatches.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Entities/ApiKey.cs`; `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/SandboxAttemptConventions.cs`; `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/AppDbContext.cs`; repository and retention service updates; `ApiKeyCounterContractTests.cs`; `RewriteAttemptQueryFilterTests.cs`; retention, quota, webhook, account, admin, and history test updates.
+- Verification evidence: Focused backend selection passed 49/49; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641; `CurrentPeriodUsage` source grep outside `Entities/ApiKey.cs` and migrations returned no output; migrations diff was empty.
+- Limitations: No migration, frontend file, deploy, push, PR, live provider call, payment action, secret inspection, or production branch action was performed. Local commit was attempted but blocked by sandbox permissions on git worktree metadata outside the writable root.
+
+### 2026-06-13 - state-machine-modeling - HARD-13 rewrite attempt visibility and recovery
+
+- Agent: Codex worker
+- Trigger: GitHub issue #792 changes persisted rewrite attempt visibility, quota reservation expiry recovery, webhook delivery handling, erasure, and retention workflows.
+- Action: Opened and followed the skill. State list: rewrite attempts remain `Pending`, `Processing`, `Succeeded`, `Failed`, or `Expired`; `DeletedAt` is a visibility marker, not a lifecycle status. Event list: user soft delete, system idempotency replay, expired reservation cleanup, terminal webhook enqueue and claim, cost logging, account/admin erasure, retention scrub, and sandbox TTL purge. Transition table: user-facing list/detail paths hide soft-deleted rows; system recovery paths read them; expired pending or processing attempts transition to `Expired`; erasure scrubs request/result payloads; sandbox purge hard-deletes only old test-key rows without reservation or webhook dependencies. Invariants: no-charge quota release still runs, idempotency uniqueness is respected, terminal webhooks still dispatch, and privacy scrub covers soft-deleted rows.
+- Output artifacts: `AppDbContext` query filter; `IgnoreQueryFilters()` at audited system paths; `QuotaUseCaseTests.ExpiredReservationForSoftDeletedAttemptStillReleased`; `WebhookOutboxUseCaseTests.DispatchDueWebhooksAsync_delivers_when_attempt_is_soft_deleted`; account/admin erasure tests; retention tests.
+- Verification evidence: Focused backend selection passed 49/49; full backend suite passed 641/641; the only source `HasQueryFilter` hit was `RewriteAttempt.DeletedAt == null`.
+- Limitations: Existing reservation expiry semantics were preserved: expired reservations keep the existing `Expired` status while quota is released via counters and `ReleasedAt`. No new enum, state table, API status, migration, queue, or deployment behavior was added.
+
+### 2026-06-13 - resilience-test-generation - HARD-13 idempotency and recovery coverage
+
+- Agent: Codex worker
+- Trigger: GitHub issue #792 adds tests for idempotency replay, expired quota reservation recovery, webhook dispatch recovery, erasure recovery, and retention cleanup under soft-delete.
+- Action: Opened and followed the skill. Critical operations: replay idempotency keys despite soft-delete, release expired quota reservations without charging, claim webhooks with attempt navigation intact, scrub soft-deleted payloads, and purge old sandbox attempts safely. Dependency boundaries: EF Core SQLite database, repository query filters, unit-of-work transaction paths, webhook sender fake, timer function wrapper, and retention service.
+- Output artifacts: New `RewriteAttemptQueryFilterTests.cs`; new `ApiKeyCounterContractTests.cs`; updated `QuotaUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `RetentionServiceTests.cs`, `AccountUseCaseTests.cs`, and `AdminDeleteUserTests.cs`.
+- Verification evidence: Red run first failed on missing sandbox convention and purge API before implementation. Final focused run passed 49/49; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641; source-only guarded-term scans returned no output.
+- Limitations: No live Stripe, OpenAI-compatible provider, writing-signal provider, Azure, Cloudflare, production database, deploy, push, PR, payment action, or secret inspection was performed. Package advisory metadata lookup emitted NU1900 warnings while tests exited 0.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-13 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #792 adds and changes C#/.NET xUnit tests for EF Core query filters, repositories, quota cleanup, webhooks, erasure, retention, and function timer wiring.
+- Action: Opened and followed the skill; wrote failing tests before production changes, used EF Core SQLite integration tests and deterministic handwritten fakes, then implemented the smallest additive-only backend change set.
+- Output artifacts: `ApiKeyCounterContractTests.cs`; `RewriteAttemptQueryFilterTests.cs`; updates to `RetentionServiceTests.cs`, `QuotaUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `AccountUseCaseTests.cs`, `AdminDeleteUserTests.cs`, and `RewriteHistoryTests.cs`.
+- Verification evidence: Initial focused run failed at compile time on missing `SandboxAttemptConventions` and `PurgeExpiredSandboxAttemptsAsync`. Final focused command passed 49/49. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641. `git diff --check` passed.
+- Limitations: No frontend tests were run because no frontend files changed and no browser-visible behavior changed. Local commit was attempted but blocked by sandbox permissions on worktree git metadata outside the writable root. No deploy, push, PR, production branch action, live provider call, payment action, or secret inspection was performed.
+### 2026-06-13 - system-spec-synthesis - HARD-14 HTTP hardening contract
+
+- Agent: Codex worker
+- Trigger: GitHub issue #793 changes HTTP transport contracts, public v1 OpenAPI responses, error-envelope behavior, and frontend security-header configuration.
+- Action: Opened and followed the skill; used `AGENTS.md`, `CLAUDE.md`, `plans/production-hardening/SPEC.md`, and `plans/production-hardening/issues/HARD-14-http-hardening.md` as source inputs, with the issue brief as the implementation-ready spec.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Http/HttpHardeningMiddleware.cs`; `FunctionHttpResults.cs`; `Program.cs`; `next.config.ts`; `lib/v1-response-headers.ts`; `public/openapi.json`; targeted backend and vitest tests.
+- Verification evidence: Focused backend tests passed 18/18; focused frontend tests passed 22/22; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 645/645; full `npm run test` passed 364/364; `npm run typecheck` passed.
+- Limitations: No schema, migration, rewrite engine, quota, billing, deployment, live provider call, payment action, push, PR, production branch action, or secret inspection was performed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-14 Functions HTTP tests
+
+- Agent: Codex worker
+- Trigger: GitHub issue #793 adds C#/.NET middleware and result-helper behavior requiring xUnit coverage for request caps, correlation IDs, and error-envelope parity.
+- Action: Opened and followed the skill; wrote failing tests first, confirmed the red state on missing `HttpHardeningMiddleware` and `PayloadTooLarge`, then implemented the smallest Functions HTTP changes to satisfy the issue scope.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpHardeningMiddlewareTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/FunctionHttpResultsTests.cs`; `backend-dotnet/src/ReplyInMyVoice.Functions/Http/HttpHardeningMiddleware.cs`; `FunctionHttpResults.cs`; `Program.cs`.
+- Verification evidence: Initial focused run failed at compile time on missing hardening types/helpers. Final focused command passed 18/18. Full backend suite passed 645/645 with `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release`.
+- Limitations: The static middleware core is unit-tested; the existing `WebApplicationFactory` route path did not execute Functions worker middleware directly, so no host-level middleware assertion was kept. NuGet advisory metadata emitted NU1900 warnings while test commands exited 0. Local git commit was attempted but blocked by sandbox permissions on git metadata outside the writable worktree.
+
+### 2026-06-13 - ui-browser-testing - HARD-14 frontend headers and API docs pins
+
+- Agent: Codex worker
+- Trigger: GitHub issue #793 changes browser-visible developer API documentation plus Next response-header configuration and v1 proxy header forwarding.
+- Action: Opened and followed the skill; used focused vitest source/route coverage for the security headers, OpenAPI 413 response references, developer error-code row, and v1 proxy correlation-header forwarding.
+- Output artifacts: `next.config.ts`; `lib/v1-response-headers.ts`; `app/developers/api/page.tsx`; `public/openapi.json`; `tests/unit/security-headers.test.ts`; updated `openapi-spec`, `public-rewrite-api-route`, and `developers-page` tests.
+- Verification evidence: Focused frontend command passed 22/22. Full `npm run test` passed 364/364. `npm run typecheck` passed. Header and guarded-term grep checks returned the expected no-output results where applicable.
+- Limitations: No Playwright or screenshot verification was run because the frontend change is static docs/config/proxy behavior covered by unit and source-level tests. `npm ci` required a writable `/private/tmp` cache because the default supervisor npm cache contained root-owned entries; install completed afterward. No deploy, push, PR, payment action, provider call, production branch action, or secret inspection was performed.
+
+### 2026-06-13 - resilience-test-generation - HARD-07 provider circuit breaker failures
+
+- Agent: Codex worker
+- Trigger: GitHub issue #786 changes provider retry, timeout, circuit-open fast-fail, and recovery behavior for OpenAI-compatible model and Sapling writing-signal HTTP clients.
+- Action: Opened and followed the skill. Critical operation: named provider HTTP send through the resilience handler. Dependency boundaries: HttpClientFactory named clients, provider HTTP transport, caller cancellation token, model client, writing-signal client, and no-charge provider failure path. Failure matrix covered: transient 429 retry, transient 5xx terminal sampling, caller-token cancellation, shared cross-chain open state, half-open probe success and failure, and open-circuit client mapping.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Resilience/*`; `ProviderCircuitBreakerTests.cs`; `ProviderHttpResilienceHandlerTests.cs`; updated `InfrastructureServiceCollectionTests.cs` and `RewriteProviderAdapterTests.cs`.
+- Verification evidence: Focused red run failed on missing resilience types; focused final run passed 18/18; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 627/627; changed-file and frontend guarded-term scans returned no output.
+- Limitations: No live OpenAI, Sapling, Azure, database production endpoint, deploy, push, PR, payment action, or secret inspection was performed. NuGet advisory metadata lookup emitted NU1900 warnings while the test command exited 0.
+
+### 2026-06-13 - state-machine-modeling - HARD-07 circuit lifecycle
+
+- Agent: Codex worker
+- Trigger: GitHub issue #786 changes a multi-step circuit lifecycle with explicit Closed, Open, and HalfOpen transitions.
+- Action: Opened and followed the skill. State list: `Closed`, `Open`, `HalfOpen`. Event list: terminal success, terminal failure, break duration elapsed, probe success, probe failure, concurrent acquire while open or probing, and stale probe expiry. Transition table: `Closed` records terminal samples and opens when throughput and ratio thresholds are met; `Open` rejects until break expiry then moves to `HalfOpen`; `HalfOpen` allows one probe, closes on success, reopens on failure, and rejects concurrent acquires until probe expiry. Invariants: one breaker per provider name per process, no network touch while open, one half-open probe at a time, probe success clears samples, and probe failure opens for another break duration.
+- Output artifacts: `ProviderCircuitBreaker.cs`, `ProviderCircuitBreakerRegistry.cs`, `ProviderCircuitBreakerTests.cs`, `ProviderHttpResilienceHandlerTests.cs`.
+- Verification evidence: Unit tests cover below-minimum throughput, failure ratio opening, sample-window eviction, single-probe half-open behavior, probe success/failure transitions, stale probe expiry, and transition event emission; full backend suite passed 627/627.
+- Limitations: State is intentionally process-local and not persisted or distributed; no EF model, migration, AppDbContext, production telemetry implementation, or cloud runtime was changed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-07 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: GitHub issue #786 adds C#/.NET xUnit coverage for Infrastructure DI, HttpClientFactory handler wiring, provider HTTP resilience, and adapter error mapping.
+- Action: Opened and followed the skill; wrote failing tests first, verified the missing-type red state, then implemented the smallest Infrastructure-only change to satisfy the issue. Used xUnit, FluentAssertions, HttpMessageInvoker, IHttpMessageHandlerFactory, and deterministic handwritten HttpMessageHandler fakes.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ProviderCircuitBreakerTests.cs`; `backend-dotnet/tests/ReplyInMyVoice.Tests/ProviderHttpResilienceHandlerTests.cs`; updated `InfrastructureServiceCollectionTests.cs`; updated `RewriteProviderAdapterTests.cs`.
+- Verification evidence: Initial focused command failed at compile time on missing `ReplyInMyVoice.Infrastructure.Resilience` types. Final focused command passed 18/18. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 627/627.
+- Limitations: No frontend tests were run because no frontend files changed. Local git commit was attempted but blocked by sandbox permissions on worktree git metadata outside the writable root. No deploy, push, PR, live provider call, secret inspection, or production branch action was performed.
+
+### 2026-06-13 - system-spec-synthesis - HARD-02 outbox notification implementation
+
+- Agent: Codex worker
+- Trigger: GitHub issue #781 changes multi-module Application, Infrastructure, DI, and test behavior for Stripe webhook and payment-grace notification delivery.
+- Action: Opened and followed the skill; used `AGENTS.md`, `CLAUDE.md`, the HARD-02 issue brief, and `plans/production-hardening/SPEC.md` as source inputs, with the issue brief as the implementation-ready spec.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/StripeNotificationOutbox.cs`; `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IOutboxDispatchObserver.cs`; Infrastructure outbox handler and observer files; updated HARD-02 brief verification regex.
+- Verification evidence: Focused red-green run first failed on missing observer/contract types, then passed 10/10; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 610/610.
+- Limitations: No new architecture, schema, deployment, secret, frontend, provider, or live payment behavior was introduced beyond the issue scope.
+
+### 2026-06-13 - state-machine-modeling - HARD-02 outbox and webhook lifecycle
+
+- Agent: Codex worker
+- Trigger: The task changes webhook, subscription grace, and outbox dispatch lifecycles with persisted statuses and terminal failure behavior.
+- Action: Opened and followed the skill. State list: Stripe event `Processed` or `Failed`; subscription/payment grace active, recovered, or paused; outbox `Pending`, `Processing`, `Sent`, or `Failed`. Event list: payment failed, payment recovered, subscription terminal update, grace reminder due, grace expired, outbox dispatch success, retryable dispatch failure, and terminal dispatch failure. Transition table: successful state-change transactions write pending notification rows; failed webhook sync writes no notification row; dispatch success marks sent; non-terminal failure reschedules pending with backoff; max-attempt failure marks failed and notifies the observer. Invariants: no notification row without committed state change, duplicate webhook events do not duplicate rows, cancellation remains post-commit, and terminal outbox failure becomes visible after the row is saved as failed.
+- Output artifacts: Updated `ProcessStripeWebhookHandler.cs`, `ProcessPaymentGraceRemindersHandler.cs`, `ProcessExpiredPaymentGraceHandler.cs`, `DispatchDueOutboxHandler.cs`, and related tests.
+- Verification evidence: Added/updated xUnit coverage for outbox row creation, duplicate replay, no-row-on-sync-failure, retry backoff, and terminal observer invocation; full backend suite passed 610/610.
+- Limitations: No new state enum, migration, admin requeue surface, live timer execution, or live email/provider call was added.
+
+### 2026-06-13 - data-module-review - HARD-02 outbox persistence invariants
+
+- Agent: Codex worker
+- Trigger: The task changes EF-backed outbox persistence, transaction boundaries, repository usage, and idempotent webhook side effects.
+- Action: Opened and followed the skill; reviewed `OutboxMessage`, `IOutboxMessageRepository`, `OutboxMessageRepository`, Stripe event handlers, existing EF SQLite tests, and DI registrations. Findings: no migration was needed because the existing outbox table already supports the required message type, payload, retry, and status fields. Suggested tests were implemented for atomic state change plus outbox row creation, no row on failed sync, missing-user dispatch no-op success, and terminal failure visibility.
+- Output artifacts: `StripeNotificationOutbox.cs`; Application handler updates; Infrastructure outbox handlers; `StripeEventUseCaseTests.cs`; `StripeNotificationOutboxHandlerTests.cs`; `WebhookOutboxUseCaseTests.cs`.
+- Verification evidence: `git diff --name-only -- backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations app components lib public` returned no files; no Providers or Domain rewrite-engine files were changed; full backend suite passed 610/610.
+- Limitations: Did not add indexes, columns, tables, migrations, schema constraints, production data access, or destructive data changes.
+
+### 2026-06-13 - resilience-test-generation - HARD-02 notification retry and failure visibility
+
+- Agent: Codex worker
+- Trigger: The task changes retry, backoff, terminal failure, Stripe webhook replay, and failure recovery behavior for notification dispatch.
+- Action: Opened and followed the skill. Critical operations: write durable notification outbox rows with state changes, dispatch notification rows through existing outbox retry policy, and surface terminal dispatch failure. Dependency boundaries: EF Core SQLite test database, Stripe webhook payload parsing, outbox repository, user repository, existing notifier abstraction, and optional telemetry observer. Failure matrix covered: duplicate webhook replay, webhook sync failure, missing user at dispatch time, notifier exception with retry/backoff, and max-attempt terminal failure.
+- Output artifacts: New and updated tests in `StripeEventUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `StripeWebhookApiTests.cs`, and `StripeNotificationOutboxHandlerTests.cs`.
+- Verification evidence: Focused red-green run passed 10/10 after implementation; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 610/610; app/public guarded term scan and diff-scoped added-backend source scan returned no output.
+- Limitations: No live Stripe, email, App Insights, Azure timer, external queue, deployment, or real payment action was exercised; NuGet advisory metadata lookup emitted NU1900 warnings while tests still exited 0.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-02 backend acceptance gates
+
+- Agent: Codex worker
+- Trigger: The task adds and changes C#/.NET xUnit tests for Stripe webhook handling, outbox dispatch, Infrastructure DI, and function-level webhook persistence.
+- Action: Opened and followed the skill; wrote failing tests first, used EF Core SQLite integration tests and deterministic handwritten fakes, then implemented the smallest Application and Infrastructure changes to satisfy the issue acceptance.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeNotificationOutboxHandlerTests.cs`; updated `StripeEventUseCaseTests.cs`, `WebhookOutboxUseCaseTests.cs`, `StripeWebhookApiTests.cs`, and `InfrastructureServiceCollectionTests.cs`.
+- Verification evidence: Initial focused run failed with missing `IOutboxDispatchObserver`; final focused run passed 10/10; full backend suite passed 610/610; acceptance greps for removed inline notification machinery and centralized message type literals passed by output inspection.
+- Limitations: No frontend tests were run because no frontend files changed. No deploy, push, PR, live provider call, secret inspection, or production branch action was performed.
+
 ### 2026-06-12 - ui-browser-testing - DEV09 legal copy batch
 
 - Agent: Codex worker
@@ -6010,3 +6241,348 @@ claude-heavy-planning-handoff
 - Output artifacts: `app/developers/page.tsx`, `tests/unit/developers-page.test.ts`, and this log entry.
 - Verification evidence: exact focused `npx vitest run tests/unit/developers-page.test.ts` initially failed before tests started with `SecItemCopyMatching failed -50`; with `NODE_USE_SYSTEM_CA` cleared, the same focused command passed 5/5. `grep -c "Production output" app/developers/page.tsx || true` returned `0`; `grep -ci "Why integrate" app/developers/page.tsx` returned `1`; hub forbidden endpoint/status string scan produced no output; restricted wording scan over `app components public lib` produced no output; exact `npm run typecheck` passed; exact `npm run test` failed before tests started with the same keychain error, then `NODE_USE_SYSTEM_CA= npm run test` passed 69 files and 358 tests; exact `npm run build` failed before building with the same keychain error, then `NODE_USE_SYSTEM_CA= npm run build` passed.
 - Limitations: Browser verification was attempted but blocked because `next start` could not bind to `127.0.0.1:3137` or `0.0.0.0:3137` in the sandbox (`listen EPERM`), so no desktop/mobile screenshot was captured. The successful build still emitted pre-existing hook dependency warnings in `components/auth/google-oauth-card.tsx`. No other page/component, sample-case file, backend endpoint, API route, schema, payment, secret, deploy, push, or PR changes were made.
+
+### 2026-06-13 - system-spec-synthesis - HARD-01 issue #780 engine contract
+
+- Agent: Codex worker
+- Trigger: Issue #780 freezes the rewrite-engine boundary and required an implementation-ready contract document plus swap recipe across backend job, v1 API, webhook, cost logger, and Next proxy consumers.
+- Action: Opened and followed the project skill as a contract-planning checklist. Read `AGENTS.md`, `CLAUDE.md`, the HARD-01 issue brief, and production-hardening master spec; converted the brief corrections into an open `ErrorCode` contract, a recommended `EngineEmittable` set, required/optional `ResultJson` shape, `ProviderCalls` rule, and swap-recipe documentation.
+- Output artifacts: `docs/rewrite-engine-contract.md`, `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteEngineClient.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, and this log entry.
+- Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600; `npm run test` passed 70 files and 360 tests; `npm run typecheck` passed.
+- Limitations: Local commit was attempted but blocked because the git worktree index is under `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-780`, outside writable roots. No deploy, push, PR, migration, payment, secret, live config, or engine-internal logic change was made.
+
+### 2026-06-13 - resilience-test-generation - HARD-01 issue #780 failure-code contract
+
+- Agent: Codex worker
+- Trigger: Issue #780 pins provider timeout/failure, malformed success JSON, missing naturalness metadata, webhook body fallback, and no-row cost logging behavior around the rewrite job boundary.
+- Action: Opened and followed the project skill as a failure-mode test checklist. Covered timeout, unexpected provider exception, malformed success payload, quota release, v1 fallback, webhook fallback, and missing `ProviderCalls` cost-log behavior using deterministic local fakes and SQLite-backed repositories.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `tests/unit/rewrite-engine-contract.test.ts`, and this log entry.
+- Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600; `npm run test` passed 70 files and 360 tests.
+- Limitations: This issue documents current model-code pass-throughs and pins surrounding behavior only; it intentionally does not change current rewrite-engine internals, provider retry policy, writing-signal metric capture, or client-facing recovery copy.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-01 issue #780 contract tests
+
+- Agent: Codex worker
+- Trigger: Issue #780 required new C# xUnit contract tests for `ProcessRewriteJobHandler`, v1 API result mapping, webhook body mapping, cost logging, and the provider adapter.
+- Action: Opened and followed the project skill for test-level selection. Added a single backend contract suite using existing `DbFixture`, real repositories, deterministic fakes, and copied v1 function-construction patterns; asserted persisted quota/reservation/attempt state rather than only return values.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineContractTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/RewriteEngineErrorCodes.cs`, provider declaration move files, and this log entry.
+- Verification evidence: focused `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter RewriteEngineContractTests --no-restore` passed 15/15; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 600/600.
+- Limitations: The .NET restore step emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, schema change, external provider call, deploy, push, PR, or production config change was made.
+
+### 2026-06-13 - cloud-architecture-cost-review - HARD-03 issue #782 webhook background processing
+
+- Agent: Codex worker
+- Trigger: Issue #782 adds timer-driven Stripe event processing on Azure Functions and changes webhook retry ownership.
+- Action: Opened and followed the project fallback skill as an architecture/cost gate. Confirmed the required option stays on the existing Azure Functions app with a 15-second timer trigger and no new paid resource type; rejected adding an always-on worker or new queue as outside scope and higher fixed-cost risk.
+- Output artifacts: implementation stayed within existing Functions/API/Application/Infrastructure projects; no cloud provisioning artifact was added.
+- Verification evidence: read `plans/production-hardening/SPEC.md`, `plans/production-hardening/issues/HARD-03-webhook-ingest-then-process.md`, and the skill; Docker daemon check showed the local SQL Server container gate could not run because Docker was not running.
+- Limitations: No exact cloud pricing lookup was needed because no new service or tier was selected. No deploy, Azure resource creation, DNS, live payment, secret, or production config change was made.
+
+### 2026-06-13 - system-spec-synthesis - HARD-03 issue #782 implementation contract
+
+- Agent: Codex worker
+- Trigger: Issue #782 and the HARD-03 brief convert webhook behavior into an ingest row, processor job, retry lifecycle, and additive migration contract.
+- Action: Opened and followed the skill as an implementation-spec checklist after reading `AGENTS.md`, `CLAUDE.md`, production-hardening master spec, and the HARD-03 brief. Converted the brief into scoped components: ingest command/handler, processor command/handler, payload synchronizer, timer function, HTTP inline fast path, options record, repository claim primitive, additive migration, and backend tests.
+- Output artifacts: `IngestStripeWebhookHandler`, `ProcessPendingStripeEventsHandler`, `StripeEventPayloadSynchronizer`, `StripeEventProcessorTimerFunction`, `StripeEventProcessingOptions`, updated webhook routes, migration files, and test updates.
+- Verification evidence: focused Stripe/DI suite passed 62/62; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 638/638; one-migration SQL script generation produced only `ALTER TABLE [StripeEvents] ADD [PayloadJson] nvarchar(max) NULL` plus migration-history bookkeeping.
+- Limitations: The local SQL Server container gate could not run because Docker daemon was unavailable. The first EF migration attempt via the API startup timed out after five minutes and wrote a duplicate migration; the duplicate timestamp was deleted, and the retained migration was generated through the Infrastructure design-time factory and inspected.
+
+### 2026-06-13 - state-machine-modeling - HARD-03 issue #782 Stripe event lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #782 changes the persisted Stripe event lifecycle from synchronous Processing/Processed/Failed to durable Pending, leased Processing, Processed, and terminal Failed.
+- Action: Opened and followed the skill before implementation. Modeled states, events, transitions, invariants, illegal transitions, persistence implications, and tests: invalid signatures create no row; new valid delivery creates Pending with payload; due Pending or expired Processing lease claims to Processing and increments attempts; success reaches Processed and scrubs payload; transient sync failure returns to Pending with backoff; max attempts or missing payload reaches terminal Failed; processed redelivery is ignored; active Processing lease is not claimed; fresh delivery re-arms Pending/Failed by clearing backoff.
+- Output artifacts: `StripeEventStatus.Pending`, `StripeEvent.PayloadJson`, repository `ClaimDueAsync`/`MarkRetryScheduled`, ingest/processor handlers, timer function, updated API/Functions webhook flow, and lifecycle tests in `StripeEventProcessingUseCaseTests`.
+- Verification evidence: focused lifecycle/API tests passed 62/62; full backend suite passed 638/638; duplicate processed webhook test still returns `processed:false` and one event row.
+- Limitations: Strict per-customer ordering remains out of scope per HARD-03; processing uses CreatedAt order and existing idempotency/state sync backstops.
+
+### 2026-06-13 - data-module-review - HARD-03 issue #782 StripeEvents persistence
+
+- Agent: Codex worker
+- Trigger: Issue #782 changes EF Core entity shape, migration, repository transactions, idempotency rows, and retry persistence.
+- Action: Opened and followed the skill for data invariants. Reviewed `StripeEvent`, `AppDbContext`, migrations, `StripeEventRepository`, `RewriteCreditRepository`, unit-of-work retry behavior, outbox claim pattern, and SQLite test fixtures. Kept the migration additive, preserved the `StripeEvents.EventId` key, reused `(Status, LockedUntil)`, added SQLite in-memory date filtering for claims, refreshed locally tracked StripeEvent rows before state decisions, and kept checkout credit uniqueness as the idempotency backstop.
+- Output artifacts: nullable `PayloadJson`, one-operation migration `20260613030348_AddStripeEventPayloadJson`, updated snapshot, repository claim/retry methods, and tests for idempotent ingest, stale lease reclaim, unique credit conflict, and payload scrubbing.
+- Verification evidence: migration file scan returned only `AddColumn`; one-migration SQL script showed `ALTER TABLE [StripeEvents] ADD [PayloadJson] nvarchar(max) NULL`; focused tests passed 62/62; full backend suite passed 638/638.
+- Limitations: Docker daemon was unavailable, so the SQL Server container migration apply gate could not be run locally. No retention purge for old terminal Failed payloads was added because HARD-03 lists it as adjacent work.
+
+### 2026-06-13 - resilience-test-generation - HARD-03 issue #782 webhook retry behavior
+
+- Agent: Codex worker
+- Trigger: Issue #782 changes Stripe webhook replay, inline processing failure handling, retry backoff, stale lease recovery, poisoned terminal failure, malformed/missing payload handling, and duplicate events.
+- Action: Opened and followed the skill as a failure-matrix checklist. Added tests at the lowest useful level: SQLite-backed use-case tests for ingest, retry, stale lease, payload missing, batch ordering, and checkout unique conflict; Functions API tests for signature rejection side effects, inline failure 200/Pending, inline disabled deferral, and duplicate processed response.
+- Output artifacts: `StripeEventProcessingUseCaseTests`, updates to `StripeEventUseCaseTests`, `StripeWebhookApiTests`, processor failure handling, and structured poison/deferred logs.
+- Verification evidence: TDD red phase first failed on missing new handler/options types; focused Stripe/DI suite later passed 62/62; full backend suite passed 638/638; restricted source-wording scan over changed non-deleted files produced no output.
+- Limitations: No live Stripe, Azure, email, or production database endpoint was called. Docker SQL Server gate could not run because the daemon was unavailable.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-03 issue #782 backend tests
+
+- Agent: Codex worker
+- Trigger: Issue #782 requires C# xUnit/EF SQLite/Webhook tests and full backend suite verification for the Stripe webhook ingest-then-process split.
+- Action: Opened and followed the project skill for test-level selection. Wrote failing tests before production code, using real repositories, `DbFixture`, SQLite triggers for write failure, and Functions-host request helpers. Updated legacy Stripe use-case tests to round-trip through raw JSON ingest and process-single-event helper, including both orphan replay intermediate Pending assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventProcessingUseCaseTests.cs`, updates to `StripeEventUseCaseTests.cs`, `StripeWebhookApiTests.cs`, `InfrastructureServiceCollectionTests.cs`, and this log entry.
+- Verification evidence: first focused run failed on missing new types; focused Stripe/DI command passed 62/62 after implementation; `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 638/638.
+- Limitations: Restore/build/test emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but all builds and tests completed. No frontend files changed, so npm gates were not run.
+### 2026-06-13 - state-machine-modeling - HARD-04 issue #783 Stripe lifecycle events
+
+- Agent: Codex worker
+- Trigger: Issue #783 changes subscription, grace-window, Stripe webhook inbox, and outbox notification lifecycle behavior for `invoice.payment_action_required`, `customer.deleted`, and `customer.source.expiring`.
+- Action: Opened and followed the project skill before editing. Modeled the affected states as `Active` / `Trialing` / `PastDue` / `Inactive`, with duplicate event IDs treated as no-op replay, renewal action-required events moving to `PastDue` without restarting existing grace timestamps, initial subscription-create action-required events notifying without grace mutation, customer deletion as terminal unlink to `Inactive`, and card expiry as notification-only for recurring statuses.
+- Output artifacts: `ProcessStripeWebhookHandler` transition branches, `StripeEventUseCaseTests` lifecycle tests, and this log entry.
+- Verification evidence: initial focused use-case tests failed against current behavior, then focused backend coverage passed 79/79; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 645/645.
+- Limitations: No live Stripe endpoint configuration was changed; enabling the new event types remains an owner/ops step outside this worker issue.
+
+### 2026-06-13 - data-module-review - HARD-04 issue #783 Stripe persistence invariants
+
+- Agent: Codex worker
+- Trigger: Issue #783 mutates EF-backed `AppUser`, `StripeInvoice`, `OutboxMessage`, `StripeEvent`, and `AdminAuditLog` rows without a schema migration.
+- Action: Opened and followed the project skill as a persistence checklist. Kept all writes inside the existing `ProcessStripeWebhookHandler` unit-of-work transaction, reused the Stripe event inbox as the idempotency boundary, reused the existing outbox table and dispatcher, added no EF model or migration changes, and asserted persisted final state rather than only handler return values.
+- Output artifacts: DTO parsing additions, webhook processor persistence changes, outbox payload factory additions, admin audit write for customer deletion, and data-state assertions in `StripeEventUseCaseTests`.
+- Verification evidence: migration diff check produced no changed files under `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/`; `.github/workflows/dotnet-azure.yml` diff check produced no output; full backend Release suite passed 645/645.
+- Limitations: The two new Stripe notification handlers were added to the repo's existing consolidated Stripe outbox handler file instead of creating separate handler files, because HARD-02 had already centralized these handlers there.
+
+### 2026-06-13 - resilience-test-generation - HARD-04 issue #783 webhook replay and outbox recovery
+
+- Agent: Codex worker
+- Trigger: Issue #783 requires duplicate webhook replay protection, failed orphan-event replay, and outbox dispatcher retry behavior for new Stripe notification messages.
+- Action: Opened and followed the project skill as a failure-mode checklist. Added tests for duplicate event no-op, unknown user failure followed by successful replay, second distinct `customer.deleted` after unlink, skipped card-expiry notification for inactive users, explicit-ignore events with no side effects, dispatcher success for both new message types, missing-user outbox completion, and invalid-payload retry with `AttemptCount` / `LastError`.
+- Output artifacts: `StripeEventUseCaseTests`, `StripeNotificationOutboxHandlerTests`, `StripeWebhookApiTests`, and this log entry.
+- Verification evidence: focused backend command first failed on missing behavior, then passed 79/79; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 645/645.
+- Limitations: Tests use local SQLite-backed repositories and hand-written fakes only; no live Stripe, email provider, Azure, or external service was called.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-04 issue #783 backend acceptance tests
+
+- Agent: Codex worker
+- Trigger: Issue #783 adds C#/.NET webhook, notifier, outbox dispatcher, signed HTTP webhook, and DI-registration test coverage.
+- Action: Opened and followed the project skill for test-level selection. Added xUnit coverage using existing `DbFixture`, real repositories, `ProcessStripeWebhookHandler`, `StripeWebhookFunction`, `DispatchDueOutboxHandler`, and deterministic notification/billing fakes; updated pinned infrastructure registration expectations.
+- Output artifacts: `StripeEventUseCaseTests`, `StripeNotificationOutboxHandlerTests`, `StripeEventNotifierTests`, `StripeWebhookApiTests`, `InfrastructureServiceCollectionTests`, and this log entry.
+- Verification evidence: targeted Release test command passed 79/79; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 645/645; `git diff --check` produced no output; restricted wording scans produced no output.
+- Limitations: Restore emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. A local commit was attempted and blocked because the git worktree index is under `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-783`, outside writable roots. No deploy, push, PR, migration, payment secret, or live billing action was performed.
+### 2026-06-13 - system-spec-synthesis - HARD-05 issue #784 reconciliation closed loop
+
+- Agent: Codex worker
+- Trigger: Issue #784 and `plans/production-hardening/issues/HARD-05-reconciliation-close-the-loop.md` required converting the reconciliation brief into implementation checkpoints across application, infrastructure, persistence, timer, webhook, and tests.
+- Action: Opened and followed the project skill as an implementation-spec checklist. Read `AGENTS.md`, `CLAUDE.md`, the HARD-05 brief, and the production-hardening master spec; mapped the work to backend-only closed-loop reconciliation, outbox alert delivery, configurable lookback, subscription report pass, and additive EF migration checkpoints.
+- Output artifacts: application DTO/options/repository contracts, `ReconcileStripeHandler`, Stripe client/repositories/services, timer and webhook updates, EF migration, backend tests, and this log entry.
+- Verification evidence: focused reconciliation/webhook/DI test run passed 16/16; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 639/639; `npm run test` passed 70 files and 360 tests; migration and source scans produced no matches.
+- Limitations: Local commit was attempted but blocked because the git worktree index is outside writable roots. No deploy, push, PR, frontend source, engine-boundary source, payment secret, live price, or production config change was made.
+
+### 2026-06-13 - state-machine-modeling - HARD-05 issue #784 reconciliation states
+
+- Agent: Codex worker
+- Trigger: Issue #784 changes paid-payment grant recovery, subscription status comparison, run persistence, and outbox message lifecycle behavior.
+- Action: Opened and followed the project skill to make transitions explicit before implementation. Modeled paid-but-ungranted PaymentIntent rows as either auto-granted with audit evidence, skipped idempotently, or manual-review; modeled reverse payment discrepancies and subscription mismatches as report-only; modeled run persistence plus alert outbox enqueue as a final transaction.
+- Output artifacts: `ReconcileStripeHandler` state flow, report DTO counters/lists, `StripeReconciliationRun` counters, outbox alert handler, and reconciliation use-case tests.
+- Verification evidence: focused reconciliation tests covered clean run, auto-grant, cap overflow, idempotent skip, manual-review reasons, recent-payment deferral, report-only reverse discrepancy, subscription mismatch directions, run/outbox transaction recording, and grant-write continuation; full backend suite passed 639/639.
+- Limitations: The SQL Server migration container gate was not run locally; the additive migration source scan produced no destructive-operation matches.
+
+### 2026-06-13 - data-module-review - HARD-05 issue #784 reconciliation persistence
+
+- Agent: Codex worker
+- Trigger: Issue #784 changes EF entities, migration, repositories, idempotency checks, audit log writes, and outbox/run persistence.
+- Action: Opened and followed the project skill for persistence invariants. Reviewed existing `RewriteCredit` Stripe indexes, `StripeReconciliationRun`, `OutboxMessage`, `AdminAuditLog`, unit-of-work, and repository patterns; added only four integer run columns and used existing purchase-credit lookup methods for idempotency.
+- Output artifacts: `StripeReconciliationRun` additive columns, `IStripeReconciliationRunRepository`, `StripeReconciliationRunRepository`, `PaymentGrantRepository.ListSubscriptionUsersForReconciliationAsync`, EF migration and snapshot updates, and persistence-focused tests.
+- Verification evidence: migration grep for destructive operations produced no output; full backend suite passed 639/639; source scan produced no output; webhook SQLite test proves a later checkout event does not add a second purchase credit for the same payment intent.
+- Limitations: The generated migration `Down` method is intentionally empty to satisfy the issue's file-level additive-only grep. No live database migration was executed.
+
+### 2026-06-13 - resilience-test-generation - HARD-05 issue #784 reconciliation recovery
+
+- Agent: Codex worker
+- Trigger: Issue #784 adds idempotent reconciliation auto-grants, outbox alert dispatch, webhook replay protection, and continuation after a single grant write failure.
+- Action: Opened and followed the project skill as a failure-mode checklist. Added deterministic fakes and SQLite coverage for duplicate event/payment-intent protection, cap overflow, recent-payment retry deferral, missing/invalid checkout session cases, malformed outbox payload propagation, and per-grant failure continuation.
+- Output artifacts: expanded `StripeReconciliationUseCaseTests`, new `StripeReconciliationAlertOutboxHandlerTests`, and new `StripeWebhookApiTests` replay guard test.
+- Verification evidence: focused reconciliation/webhook/DI run passed 16/16; full backend suite passed 639/639; outbox handler test proves malformed payload exceptions propagate so the dispatcher can retry.
+- Limitations: No live Stripe, email provider, queue, or cloud endpoint was called; all provider behavior was local fake or SQLite-backed test coverage.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-05 issue #784 reconciliation tests
+
+- Agent: Codex worker
+- Trigger: Issue #784 required C# xUnit coverage for reconciliation use-case behavior, outbox alert handling, webhook replay, DI registration, option defaults/clamps, and EF migration safety.
+- Action: Opened and followed the project skill for test-level selection. Added application-level fake tests for reconciliation logic, SQLite-backed webhook API coverage for the replay guard, infrastructure DI pins, and outbox handler tests using the existing xUnit/FluentAssertions style.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationAlertOutboxHandlerTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/StripeWebhookApiTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`, and this log entry.
+- Verification evidence: initial focused test run failed on missing production types; after implementation, the focused run passed 16/16. Full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 639/639. `npm run test` passed 70 files and 360 tests after `npm ci --cache /private/tmp/npm-cache-issue-784`.
+- Limitations: NuGet restore emitted `NU1900` metadata warnings; npm emitted a Node 24 warning against the repo's Node 22 engine and reported existing audit findings. The first `npm run test` failed because dependencies were absent, and the first `npm ci` failed because npm attempted to use an unwritable cache; rerunning with a temp cache succeeded.
+### 2026-06-13 - system-spec-synthesis - HARD-06 issue #785 outbox fast path
+
+- Agent: Codex worker
+- Trigger: Issue #785 required converting the HARD-06 brief into implementation-ready API/job/data contracts across the rewrite attempt handler, outbox repository, dispatcher, DI, and tests.
+- Action: Opened and followed the project skill as a scope and contract checklist. Read `AGENTS.md`, `CLAUDE.md`, `plans/production-hardening/SPEC.md`, and `plans/production-hardening/issues/HARD-06-outbox-fastpath-dispatch.md`; kept the hook post-commit in `CreateRewriteAttemptHandler`, preserved the external consumer and v1 HTTP contracts, and avoided provider, rewrite-engine, frontend, package, deployment, and migration paths.
+- Output artifacts: `IOutboxFastPathDispatcher`, `DispatchOutboxMessageCommand`, `OutboxFastPathDispatcher`, `ClaimByIdAsync`, `TryDispatchOneAsync`, updated DI registration, updated API and outbox tests, and this log entry.
+- Verification evidence: focused fast-path/API/DI test command passed 15/15; broader backend-focused command passed 73/73; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641.
+- Limitations: The spec was not written as a separate markdown artifact because the issue brief was already the authoritative implementation spec and scope required code/test changes only.
+
+### 2026-06-13 - state-machine-modeling - HARD-06 issue #785 outbox lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #785 changes the outbox message lifecycle by adding a single-message fast-path claim and dispatch route.
+- Action: Opened and followed the project skill to model allowed states and transitions before implementation. Treated `Pending` and expired-lock `Processing` as claimable, `Sent` and future-due rows as non-claimable, active timer locks as non-claimable, successful dispatch as `Sent`, and failed dispatch as `Pending` with backoff or terminal `Failed` through the existing timer discipline.
+- Output artifacts: `OutboxMessageRepository.ClaimByIdAsync`, `DispatchDueOutboxHandler.TryDispatchOneAsync`, `OutboxFastPathDispatchTests`, updated `RewriteApiTests`, and this log entry.
+- Verification evidence: `OutboxFastPathDispatchTests` covered pending-to-sent, active-lock skip, already-sent skip, future-due skip, failure backoff, unknown message type failure, and timer-after-fast-path no redispatch; full Release suite passed 641/641.
+- Limitations: No schema or enum changes were made; this only adds a new claim path over the existing persisted outbox states.
+
+### 2026-06-13 - data-module-review - HARD-06 issue #785 outbox repository
+
+- Agent: Codex worker
+- Trigger: Issue #785 adds a repository primitive and changes persisted outbox row mutation behavior after rewrite-attempt creation.
+- Action: Opened and followed the project skill as a persistence correctness checklist. Read the outbox entity, repository, unit-of-work transaction retry behavior, dispatch handler, and SQLite-backed tests together; implemented `ClaimByIdAsync` as a tracked primary-key lookup with in-memory due/lock/status checks and the same lock, timestamp, and row-version mutation as `ClaimDueAsync`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IOutboxMessageRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/OutboxMessageRepository.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/OutboxFastPathDispatchTests.cs`, and this log entry.
+- Verification evidence: `git diff --check` produced no output; forbidden path check produced no output for provider, rewrite-engine, frontend, package, or migration paths; full Release suite passed 641/641.
+- Limitations: A local commit was attempted but blocked because the git worktree index is outside writable roots. No database migration, destructive data change, secret, deploy, push, or PR action was made.
+
+### 2026-06-13 - resilience-test-generation - HARD-06 issue #785 fast-path failure handling
+
+- Agent: Codex worker
+- Trigger: Issue #785 requires best-effort post-commit dispatch where queue publish, claim, and table failures must not fail the API caller and must preserve timer retry behavior.
+- Action: Opened and followed the project skill as a failure-mode checklist. Added deterministic local tests for publisher failure, unknown outbox message type, active timer lock, already-sent row, future-due retry row, disabled fast path, table-drop claim exception, and timer no-redispatch after fast-path success.
+- Output artifacts: `OutboxFastPathDispatchTests`, new API failure-path test in `RewriteApiTests`, `OutboxFastPathDispatcher`, and this log entry.
+- Verification evidence: focused fast-path/API/DI test command passed 15/15; broader backend-focused command passed 73/73; full Release suite passed 641/641.
+- Limitations: The live p50 latency improvement cannot be measured locally; the implementation emits the required success log line and preserves `SentAt` for post-deploy measurement.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-06 issue #785 xUnit coverage
+
+- Agent: Codex worker
+- Trigger: Issue #785 adds and updates C# xUnit, WebApplicationFactory, DI, repository, and outbox worker/service tests.
+- Action: Opened and followed the project skill for test-level selection. Wrote failing tests before production changes, verified the red stage failed on the missing fast-path API, then implemented production code and updated all direct `CreateRewriteAttemptHandler` test constructions, including the additional `RewriteEngineContractTests` construction present in this branch.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/OutboxFastPathDispatchTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`, `InfrastructureServiceCollectionTests`, five listed helper updates plus the extra contract-test helper update, and this log entry.
+- Verification evidence: red command `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter OutboxFastPathDispatchTests` failed on missing fast-path types; focused implementation command passed 15/15; broader backend-focused command passed 73/73; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641.
+- Limitations: Restore/test emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. Local commit was blocked by the sandboxed git metadata location.
+### 2026-06-13 - state-machine-modeling - HARD-09 issue #788 quota reservation lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #788 changes quota reservation, finalization, release, and expiry status transitions.
+- Action: Opened and followed the project skill as a lifecycle checklist. Modeled `UsageReservation` as `Pending` claimable state with terminal `Finalized`, `Released`, and `Expired` outcomes; kept `RewriteAttempt` terminal states from being overwritten by late finalize/release paths; implemented conditional `Pending`-only status transitions before counter mutation.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Quota/FinalizeQuotaSuccessHandler.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Quota/ReleaseQuotaHandler.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Quota/ReleaseExpiredReservationsHandler.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/RewriteJob/ProcessRewriteJobHandler.cs`, and this log entry.
+- Verification evidence: focused quota/rewrite-job run passed 29/29; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 637/637.
+- Limitations: `MarkProcessingAsync` remains on its existing guarded attempt-row flow because HARD-09 scoped only counter-bearing reservation transitions.
+
+### 2026-06-13 - data-module-review - HARD-09 issue #788 atomic quota counters
+
+- Agent: Codex worker
+- Trigger: Issue #788 changes EF repository methods, usage counters, credit counters, transactions, and persistence invariants.
+- Action: Opened and followed the project skill as a data correctness checklist. Added raw conditional SQL methods for period slot reserve, quota-limit refresh, reserved-slot finalize/release, credit consume/release, and reservation `Pending` claims; preserved unique-index retry behavior and avoided EF tracked counter mutation in the changed paths.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUsagePeriodRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteCreditRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUsageReservationRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/UsagePeriodRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/RewriteCreditRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/UsageReservationRepository.cs`, and this log entry.
+- Verification evidence: repository/concurrency focused run passed 12/12; acceptance greps found the conditional period and credit guards exactly once in their repositories; `git diff --check` produced no output; full backend test run passed 637/637.
+- Limitations: To keep the pinned `QuotaUseCaseTests.cs` file unchanged, expiry cleanup keeps its existing public constructor and uses a scoped reservation-repository raw counter release helper after the status claim.
+
+### 2026-06-13 - resilience-test-generation - HARD-09 issue #788 quota race tests
+
+- Agent: Codex worker
+- Trigger: Issue #788 requires tests for parallel quota reservation, credit contention, and finalize-vs-expiry races.
+- Action: Opened and followed the project skill as a race/failure matrix. Added file-backed SQLite WAL concurrency tests with one context per parallel reserve and final persisted-state assertions for the period slot, credit slot, and finalize/expiry race invariants.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaConcurrencyTests.cs`, repository raw-SQL tests in `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureRepositoryTests.cs`, and this log entry.
+- Verification evidence: focused repository/concurrency run first failed on missing HARD-09 APIs, then passed 12/12 after implementation; focused quota/rewrite-job run passed 29/29; full backend test run passed 637/637.
+- Limitations: The race tests prove behavior on SQLite with WAL and timeout settings matching existing local concurrency tests; SQL Server semantics are covered by the raw conditional-update shape rather than a SQL Server integration run in this worker.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-09 issue #788 quota integration tests
+
+- Agent: Codex worker
+- Trigger: Issue #788 adds C# xUnit/EF Core SQLite tests for quota repository updates and concurrent use-case behavior.
+- Action: Opened and followed the project skill for test-level selection. Added repository integration tests for the new raw SQL methods and a use-case concurrency suite using real repositories, real `UnitOfWork`, file-backed SQLite, and final database-state assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureRepositoryTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaConcurrencyTests.cs`, and this log entry.
+- Verification evidence: focused repository/concurrency run passed 12/12; focused quota/rewrite-job run passed 29/29; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 637/637.
+- Limitations: The .NET restore step emitted `NU1900` warnings because package vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, payment flow, frontend path, provider code, deploy, push, or PR change was made.
+### 2026-06-13 - data-module-review - HARD-12 issue #791 migration discipline guard
+
+- Agent: Codex worker
+- Trigger: Issue #791 adds a CI guard for EF Core migration safety and scans checked-in migration files for risky `Up()` operations.
+- Action: Opened and followed the project skill as a migration-safety checklist. Reviewed the migration brief, production-hardening spec, existing migrations, existing migration tests, and the SQL Server workflow before implementing a diff-scoped guard rather than changing schema or runtime persistence code.
+- Output artifacts: `backend-dotnet/tools/ReplyInMyVoice.MigrationGuard/MigrationDisciplineScanner.cs`, `backend-dotnet/tools/ReplyInMyVoice.MigrationGuard/Program.cs`, `docs/migration-discipline.md`, `.github/workflows/dotnet-azure.yml`, and this log entry.
+- Verification evidence: focused scanner tests first failed because the new tool namespace/project did not exist, then passed 17/17 after implementation; `dotnet run --project backend-dotnet/tools/ReplyInMyVoice.MigrationGuard --configuration Release -- backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/*.cs` exited 0 over existing migrations; `git diff --name-only -- backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/` and `git status --short backend-dotnet/src/ReplyInMyVoice.Infrastructure/Migrations/` produced no output.
+- Limitations: The guard is intentionally text-based and diff-scoped to newly added migration `.cs` files, matching the issue scope. Raw SQL inside migrations and edits to already-applied migration files remain reviewer responsibilities documented in `docs/migration-discipline.md`.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-12 issue #791 migration guard tests
+
+- Agent: Codex worker
+- Trigger: Issue #791 requires xUnit coverage for the migration scanner, all existing migrations, CLI behavior, and zero regressions in the backend suite.
+- Action: Opened and followed the project skill for test-level selection. Added pure scanner tests with inline C# fixtures, a checked-in migration corpus test, and exercised the console CLI with no arguments, all existing migrations, and a temporary risky migration with and without the accepted-risk marker.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/MigrationDisciplineScannerTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`, `backend-dotnet/tools/ReplyInMyVoice.MigrationGuard/ReplyInMyVoice.MigrationGuard.csproj`, and this log entry.
+- Verification evidence: focused `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --configuration Release --filter MigrationDisciplineScannerTests` passed 17/17; `dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed with 0 warnings and 0 errors; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644; no-argument CLI exited 0; the temporary `DropColumn` fixture exited 1 with a `::error file=` annotation, then exited 0 after adding `MIGRATION-RISK-ACCEPTED`.
+- Limitations: A local commit was attempted but blocked because the worktree git index is under `/Users/qc/Desktop/CloudFlare/.git/worktrees/issue-791`, outside writable roots. No deploy, push, PR, EF migration, schema change, payment, secret, or production config change was made.
+### 2026-06-13 - system-spec-synthesis - HARD-11 issue #790 observability metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 and `plans/production-hardening/issues/HARD-11-observability-metrics-alerts.md` define a multi-module observability contract across Application handlers, Infrastructure DI, provider resilience, and Azure alert artifacts.
+- Action: Opened and followed the skill as an implementation-spec checklist. Read `AGENTS.md`, `CLAUDE.md`, the HARD-11 brief, and `plans/production-hardening/SPEC.md`; treated the brief as the approved spec and mapped it to Application-owned metric constants, non-throwing Infrastructure emission, post-transaction handler hooks, and operator-run alert artifacts.
+- Output artifacts: `IBusinessMetrics`, `AppInsightsBusinessMetrics`, handler metric hooks, `infra/alerts/create-business-metric-alerts.sh`, `infra/alerts/README.md`, tests, and this log entry.
+- Verification evidence: focused HARD-11 test command first failed on the missing metrics abstraction, then passed 74/74 after implementation; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644; shell acceptance checks for alert syntax, metric-name centralization, workflow references, source wording scan, and file scope passed.
+- Limitations: No separate spec document was written because the issue brief is the authoritative implementation spec for this supervised worker task. No deploy, push, PR, payment action, secret change, migration, or frontend change was made.
+
+### 2026-06-13 - cloud-architecture-cost-review - HARD-11 issue #790 alert pack
+
+- Agent: Codex worker
+- Trigger: Issue #790 ships Azure Monitor alert definitions that may create paid alert resources when an operator runs the script.
+- Action: Opened and followed the skill as a cost/readiness gate. Read `docs/manual-setup.md`, `docs/next-development-brief.md`, `docs/dotnet-azure-full-run-result.md`, `docs/dotnet-azure-blocker-preflight.md`, and `docs/business-qa-and-deploy-result.md`; selected five Application Insights custom-metric query alerts plus one native Service Bus DLQ metric alert; kept the script operator-run only with `AZURE_ALLOW_PAID_RESOURCES=true`.
+- Output artifacts: `infra/alerts/create-business-metric-alerts.sh`, `infra/alerts/README.md`, and this log entry.
+- Verification evidence: `bash -n infra/alerts/create-business-metric-alerts.sh` passed; `grep -c scheduled-query` returned 5; `grep -n AZURE_ALLOW_PAID_RESOURCES` and `grep -n DeadletteredMessages` found the guard and native metric; `grep -rn infra/alerts .github/` produced no output.
+- Limitations: Exact current Azure pricing was not checked because the brief supplied an approximate low monthly estimate and the script was not run. Running the script remains an owner/operator action.
+
+### 2026-06-13 - state-machine-modeling - HARD-11 issue #790 post-state metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 observes rewrite job release paths, outbox processing, webhook processing, and provider circuit transitions without changing their lifecycle semantics.
+- Action: Opened and followed the skill as a state-safety checklist. State list reviewed: outbox `Pending/Processing/Sent/Failed`, Stripe event `Processing/Processed/Failed`, rewrite attempt `Pending/Processing/Succeeded/Failed/Expired`, reservation `Pending/Finalized/Released`, provider circuit `Closed/Open/HalfOpen`. Event list reviewed: outbox claim/send/fail, webhook process/replay/fail, rewrite release/finalize, circuit open/recover. Metrics were placed after existing state mutations or on the existing resilience event.
+- Output artifacts: handler metric hooks in `DispatchDueOutboxHandler`, `ProcessStripeWebhookHandler`, `ProcessRewriteJobHandler`, resilience event metrics, corresponding tests, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full backend suite passed 644/644. New tests assert duplicate webhook replay emits no failure or lag metric, success emits no failure metric, and release metrics follow existing release behavior.
+- Limitations: No lifecycle state, enum, transition rule, persistence schema, or queue processing behavior was changed.
+
+### 2026-06-13 - data-module-review - HARD-11 issue #790 outbox backlog query
+
+- Agent: Codex worker
+- Trigger: Issue #790 adds an outbox repository read for oldest incomplete message age and emits metrics around existing persistence mutations.
+- Action: Opened and followed the skill as a persistence-safety review. Owned data reviewed: `OutboxMessage`, `StripeEvent`, `RewriteAttempt`, `UsageReservation`, `UsagePeriod`, and `RewriteCredit`. Added only a read query over existing outbox `Pending/Processing` rows with the repo's SQLite branch pattern; no migration or destructive data change.
+- Output artifacts: `IOutboxMessageRepository.GetOldestIncompleteCreatedAtAsync`, `OutboxMessageRepository.GetOldestIncompleteCreatedAtAsync`, outbox metric tests, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full backend suite passed 644/644; `git diff --name-only` check found no migration, frontend, package, or public asset file.
+- Limitations: The backlog metric is a gauge over existing rows and can include retry-scheduled rows by design; exact transition accounting for idempotent release remains outside this issue.
+
+### 2026-06-13 - resilience-test-generation - HARD-11 issue #790 resilience metrics
+
+- Agent: Codex worker
+- Trigger: Issue #790 tests provider circuit-open metrics, Stripe sync failure/replay behavior, outbox failure/backlog behavior, and rewrite quota release behavior.
+- Action: Opened and followed the skill as a failure-mode test matrix. Covered transient provider 5xx opening the shared circuit, open-circuit fast rejection, successful provider responses, webhook duplicate replay, sync failure after transaction, provider exception release path, quality failure release path, and empty outbox gauge behavior using deterministic local fakes.
+- Output artifacts: `BusinessMetricsTests`, `ProviderHttpResilienceHandlerTests`, `RewriteJobUseCaseTests`, `WebhookOutboxUseCaseTests`, `StripeEventUseCaseTests`, `RecordingBusinessMetrics`, and this log entry.
+- Verification evidence: initial focused test command failed before implementation because `IBusinessMetrics` was missing; after implementation, focused command passed 74/74 and full Release suite passed 644/644.
+- Limitations: No live Stripe, Azure, OpenAI-compatible, Sapling, or Service Bus endpoint was called. The alert script was syntax-checked only and not executed.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-11 issue #790 business metrics tests
+
+- Agent: Codex worker
+- Trigger: Issue #790 requires new C# xUnit tests for Application handler metrics, DI resolution, App Insights adapter behavior, and provider resilience behavior.
+- Action: Opened and followed the skill for test-level selection. Added xUnit tests using `DbFixture`, real repositories, deterministic fake providers/handlers, a spy telemetry channel, and a recording metrics double; asserted persisted state where relevant and metric name/dimension/value records for each emission site.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/BusinessMetricsTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/TestDoubles/RecordingBusinessMetrics.cs`, modified Application test files, modified `InfrastructureServiceCollectionTests`, modified `ProviderHttpResilienceHandlerTests`, and this log entry.
+- Verification evidence: focused HARD-11 command passed 74/74; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 644/644.
+- Limitations: Tests use local fakes and do not export telemetry to Azure. No API/UI/browser verification was needed because no browser-visible or HTTP contract surface changed.
+
+### 2026-06-14 - state-machine-modeling - HARD-11 integration merge resolution
+
+- Agent: Codex
+- Trigger: Merge-in-progress resolution for HARD-11 observability metrics onto an integration branch where Stripe webhook processing was split into ingest, pending-event processing, and payload synchronization.
+- Action: Opened and followed the project skill as a lifecycle placement checklist. Reviewed Stripe event `Pending/Processing/Processed/Failed`, outbox `Pending/Processing/Sent/Failed`, rewrite attempt `Pending/Processing/Succeeded/Failed/Expired`, and usage reservation `Pending/Finalized/Released` transitions. Placed webhook lag metrics on processed pending events and Stripe failure metrics only when events transition to terminal `Failed`; kept duplicate replay and retryable failure behavior unchanged.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/ProcessPendingStripeEventsHandler.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, and this log entry.
+- Verification evidence: A conflict-marker scan over `backend-dotnet/src` and `backend-dotnet/tests` returned no matches. `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0.
+- Limitations: The exact full test command could not execute tests in this sandbox because MSBuild/VSTest local socket startup failed with `SocketException (13): Permission denied`; a serialized `--no-build` retry reached VSTest but aborted on the same socket restriction.
+
+### 2026-06-14 - data-module-review - HARD-11 integration merge resolution
+
+- Agent: Codex
+- Trigger: Merge resolution touched repositories, Stripe event persistence flow, outbox message failure handling, and a test fake for the new outbox backlog read contract.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Kept schema and migrations unchanged, preserved HARD-03 Stripe event storage and retry semantics, retained HARD-06 outbox fast-path claiming, and added the missing `GetOldestIncompleteCreatedAtAsync` member to the reconciliation test fake.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/WebhookOutbox/DispatchDueOutboxHandler.cs`, and this log entry.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0 after adding the fake repository member.
+- Limitations: No database migration, index, entity property, or production data backfill was added. Full test execution was blocked by the sandbox socket restriction described above.
+
+### 2026-06-14 - resilience-test-generation - HARD-11 integration merge resolution
+
+- Agent: Codex
+- Trigger: Merge resolution moved webhook metrics across retry, poison, duplicate replay, outbox failure, provider circuit, and rewrite quota-release paths.
+- Action: Opened and followed the project skill as a failure-mode checklist. Preserved duplicate webhook replay with no metric emission, adapted the Stripe sync-failure metric test to terminal failure by using `MaxAttempts: 1`, kept retryable failures separate from poison failures, and folded outbox failure metrics plus terminal-failure observer calls into the shared dispatch method used by both batch and fast-path dispatch.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/StripeEvent/ProcessPendingStripeEventsHandler.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/WebhookOutbox/DispatchDueOutboxHandler.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, and this log entry.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0. The first full test command and the serialized no-build retry both failed before test execution due sandbox-denied local sockets.
+- Limitations: No live Stripe, Azure, OpenAI-compatible, Sapling, or Service Bus endpoint was called. Test runner execution needs an environment that permits local test-runner sockets.
+
+### 2026-06-14 - dotnet-backend-testing - HARD-11 integration merge resolution
+
+- Agent: Codex
+- Trigger: User requested resolving C#/.NET merge conflicts, porting HARD-11 webhook metric tests to the new processor structure, and making Release build/test pass where executable.
+- Action: Opened and followed the project skill for backend test selection. Kept integrated tests, ported HARD-11 Stripe lag/failure/duplicate metric coverage to `StripeWebhookHarness`, wired `RecordingBusinessMetrics` into `ProcessPendingStripeEventsHandler`, and retained existing xUnit/EF Core SQLite test style.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, and this log entry.
+- Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0 with one duplicate-using warning in `InfrastructureServiceCollectionTests.cs`.
+- Limitations: `dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release` did not reach test execution in this sandbox. The exact command failed with MSBuild named-pipe/socket `Permission denied`, and `MSBUILDDISABLENODEREUSE=1 dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release --no-build -m:1 /nodeReuse:false` reached VSTest but aborted with the same local socket permission denial.

@@ -66,6 +66,54 @@ public sealed class AdminDeleteUserTests
     }
 
     [Fact]
+    public async Task DeleteUserAsyncScrubsSoftDeletedAttempts()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-06-03T02:00:00Z");
+        var user = await fixture.CreateUserAsync();
+        var attemptId = Guid.NewGuid();
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteAttempts.Add(new RewriteAttempt
+            {
+                Id = attemptId,
+                UserId = user.Id,
+                IdempotencyKey = "admin-soft-delete",
+                RequestHash = "admin-soft-hash",
+                RequestJson = "{\"roughDraftReply\":\"admin private draft\"}",
+                ResultJson = "{\"rewrittenText\":\"admin private result\"}",
+                Status = RewriteAttemptStatus.Succeeded,
+                CreatedAt = now.AddDays(-2),
+                CompletedAt = now.AddDays(-2).AddMinutes(1),
+                DeletedAt = now.AddDays(-1),
+                ExpiresAt = now.AddDays(1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateDeleteHandler(handlerDb);
+
+        var result = await handler.HandleAsync(
+            new DeleteAdminUserCommand(
+                "admin-owner-oid",
+                "owner@example.com",
+                user.Id,
+                now),
+            CancellationToken.None);
+
+        result.Kind.Should().Be(AdminDeleteUserResultKind.Success);
+        await using var verifyDb = fixture.CreateContext();
+        var attempt = await verifyDb.RewriteAttempts
+            .IgnoreQueryFilters()
+            .SingleAsync(x => x.Id == attemptId);
+        attempt.RequestJson.Should().Be("{}");
+        attempt.ResultJson.Should().BeNull();
+        attempt.IdempotencyKey.Should().StartWith("erased:");
+        attempt.RequestHash.Should().Be("erased");
+    }
+
+    [Fact]
     public async Task DeleteUserAsyncReturnsNotFoundForMissingUser()
     {
         await using var fixture = await DbFixture.CreateAsync();

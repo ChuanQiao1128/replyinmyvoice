@@ -8,6 +8,7 @@ using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Repositories;
+using ReplyInMyVoice.Tests.TestDoubles;
 
 namespace ReplyInMyVoice.Tests.Application;
 
@@ -59,6 +60,52 @@ public sealed class WebhookOutboxUseCaseTests
         delivery.LastError.Should().BeNull();
         delivery.LockedBy.Should().BeNull();
         delivery.LockedUntil.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DispatchDueWebhooksAsync_delivers_when_attempt_is_soft_deleted()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var signingValue = new string('e', 64);
+        var now = DateTimeOffset.Parse("2026-06-06T02:00:00Z");
+        var attemptId = await SeedWebhookDeliveryAsync(
+            fixture,
+            user.Id,
+            signingValue,
+            RewriteAttemptStatus.Succeeded,
+            "{\"rewrittenText\":\"Hi Sam, the report is ready.\",\"naturalness\":{\"draftAiLikePercent\":78,\"rewriteAiLikePercent\":24},\"changeSummary\":[],\"riskNotes\":[]}",
+            deletedAt: now.AddMinutes(-1));
+
+        await using (var claimDb = fixture.CreateContext())
+        {
+            var claimed = await new WebhookDeliveryRepository(claimDb).ClaimDueAsync(
+                now,
+                "claim-check",
+                batchSize: 10,
+                claimLease: TimeSpan.FromSeconds(45),
+                CancellationToken.None);
+
+            claimed.Should().ContainSingle();
+            claimed[0].RewriteAttempt.Should().NotBeNull();
+            claimed[0].RewriteAttempt!.Id.Should().Be(attemptId);
+        }
+
+        var sender = new RecordingWebhookDeliverySender(new WebhookSendResult(200));
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateWebhookHandler(handlerDb, sender);
+
+        var dispatched = await handler.HandleAsync(
+            new DispatchDueWebhooksCommand(now, "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        dispatched.Should().Be(1);
+        sender.Requests.Should().ContainSingle().Subject.EventId.Should().Be(attemptId);
+        await using var verifyDb = fixture.CreateContext();
+        var delivery = await verifyDb.WebhookDeliveries.SingleAsync();
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Delivered);
+        delivery.AttemptCount.Should().Be(1);
+        delivery.DeliveredAt.Should().Be(now);
     }
 
     [Fact]
@@ -241,8 +288,9 @@ public sealed class WebhookOutboxUseCaseTests
         var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
         await SeedOutboxAsync(fixture, Guid.NewGuid(), now);
         var outboxHandler = new RecordingOutboxMessageHandler("RewriteJobCreated", fail: true);
+        var observer = new RecordingOutboxDispatchObserver();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateOutboxHandler(handlerDb, outboxHandler);
+        var handler = CreateOutboxHandler(handlerDb, observer, outboxHandler);
 
         var dispatched = await handler.HandleAsync(
             new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
@@ -258,6 +306,7 @@ public sealed class WebhookOutboxUseCaseTests
         outbox.LockedBy.Should().BeNull();
         outbox.LockedUntil.Should().BeNull();
         outbox.SentAt.Should().BeNull();
+        observer.Failures.Should().BeEmpty();
     }
 
     [Fact]
@@ -272,8 +321,9 @@ public sealed class WebhookOutboxUseCaseTests
             attemptCount: 9,
             maxAttempts: 10);
         var outboxHandler = new RecordingOutboxMessageHandler("RewriteJobCreated", fail: true);
+        var observer = new RecordingOutboxDispatchObserver();
         await using var handlerDb = fixture.CreateContext();
-        var handler = CreateOutboxHandler(handlerDb, outboxHandler);
+        var handler = CreateOutboxHandler(handlerDb, observer, outboxHandler);
 
         var dispatched = await handler.HandleAsync(
             new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
@@ -287,6 +337,10 @@ public sealed class WebhookOutboxUseCaseTests
         outbox.LastError.Should().Contain("handler failed");
         outbox.LockedBy.Should().BeNull();
         outbox.LockedUntil.Should().BeNull();
+        var failure = observer.Failures.Should().ContainSingle().Subject;
+        failure.MessageId.Should().Be(outbox.Id);
+        failure.MessageType.Should().Be("RewriteJobCreated");
+        failure.Error.Should().Contain("handler failed");
     }
 
     [Fact]
@@ -325,6 +379,74 @@ public sealed class WebhookOutboxUseCaseTests
         (await firstDispatch).Should().Be(1);
     }
 
+    [Fact]
+    public async Task DispatchDueOutboxAsync_records_backlog_age_of_oldest_unsent_message()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        await SeedOutboxAsync(
+            fixture,
+            Guid.NewGuid(),
+            now.AddSeconds(-120),
+            messageType: "UnknownMessageType");
+        var metrics = new RecordingBusinessMetrics();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateOutboxHandler(handlerDb, metrics: metrics);
+
+        await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now, "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        metrics.Records.Should().Contain(record =>
+            record.Name == BusinessMetricNames.OutboxBacklogAgeSeconds &&
+            record.Value >= 120);
+    }
+
+    [Fact]
+    public async Task DispatchDueOutboxAsync_records_zero_backlog_age_when_outbox_is_empty()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        var metrics = new RecordingBusinessMetrics();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateOutboxHandler(handlerDb, metrics: metrics);
+
+        await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now, "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.OutboxBacklogAgeSeconds &&
+            record.Value == 0 &&
+            record.DimensionName == null &&
+            record.DimensionValue == null);
+    }
+
+    [Fact]
+    public async Task DispatchDueOutboxAsync_records_failed_metric_with_message_type_dimension()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        await SeedOutboxAsync(
+            fixture,
+            Guid.NewGuid(),
+            now,
+            messageType: "UnknownMessageType");
+        var metrics = new RecordingBusinessMetrics();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateOutboxHandler(handlerDb, metrics: metrics);
+
+        await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        metrics.Records.Should().ContainSingle(record =>
+            record.Name == BusinessMetricNames.OutboxFailedTotal &&
+            record.Value == 1 &&
+            record.DimensionName == BusinessMetricDimensions.MessageType &&
+            record.DimensionValue == "UnknownMessageType");
+    }
+
     private static DispatchDueWebhooksHandler CreateWebhookHandler(
         ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
         IWebhookDeliverySender sender) =>
@@ -336,10 +458,31 @@ public sealed class WebhookOutboxUseCaseTests
     private static DispatchDueOutboxHandler CreateOutboxHandler(
         ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
         params IOutboxMessageHandler[] handlers) =>
+        CreateOutboxHandler(db, new RecordingOutboxDispatchObserver(), null, handlers);
+
+    private static DispatchDueOutboxHandler CreateOutboxHandler(
+        ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
+        IOutboxDispatchObserver observer,
+        params IOutboxMessageHandler[] handlers) =>
+        CreateOutboxHandler(db, observer, null, handlers);
+
+    private static DispatchDueOutboxHandler CreateOutboxHandler(
+        ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
+        IBusinessMetrics metrics,
+        params IOutboxMessageHandler[] handlers) =>
+        CreateOutboxHandler(db, new RecordingOutboxDispatchObserver(), metrics, handlers);
+
+    private static DispatchDueOutboxHandler CreateOutboxHandler(
+        ReplyInMyVoice.Infrastructure.Data.AppDbContext db,
+        IOutboxDispatchObserver observer,
+        IBusinessMetrics? metrics,
+        params IOutboxMessageHandler[] handlers) =>
         new(
             new OutboxMessageRepository(db),
             handlers,
-            new UnitOfWork(db));
+            observer,
+            new UnitOfWork(db),
+            metrics);
 
     private static async Task<Guid> SeedWebhookDeliveryAsync(
         DbFixture fixture,
@@ -350,7 +493,8 @@ public sealed class WebhookOutboxUseCaseTests
         string? errorCode = null,
         int attemptCount = 0,
         int maxAttempts = 5,
-        bool includeWebhookSecret = true)
+        bool includeWebhookSecret = true,
+        DateTimeOffset? deletedAt = null)
     {
         await using var db = fixture.CreateContext();
         var apiKey = new ApiKey
@@ -375,6 +519,7 @@ public sealed class WebhookOutboxUseCaseTests
             ErrorCode = errorCode,
             CreatedAt = DateTimeOffset.Parse("2026-06-06T01:58:00Z"),
             CompletedAt = DateTimeOffset.Parse("2026-06-06T01:59:00Z"),
+            DeletedAt = deletedAt,
             ExpiresAt = DateTimeOffset.Parse("2026-06-06T02:08:00Z"),
         };
         var delivery = new WebhookDelivery
@@ -400,12 +545,13 @@ public sealed class WebhookOutboxUseCaseTests
         Guid attemptId,
         DateTimeOffset now,
         int attemptCount = 0,
-        int maxAttempts = 10)
+        int maxAttempts = 10,
+        string messageType = "RewriteJobCreated")
     {
         await using var db = fixture.CreateContext();
         db.OutboxMessages.Add(new OutboxMessage
         {
-            MessageType = "RewriteJobCreated",
+            MessageType = messageType,
             PayloadJson = $$"""{"attemptId":"{{attemptId}}"}""",
             Status = OutboxMessageStatus.Pending,
             CreatedAt = now,
@@ -521,5 +667,23 @@ internal sealed class BlockingOutboxMessageHandler(string messageType) : Recordi
             _firstHandleStarted.TrySetResult();
             await _releaseFirstHandle.Task.WaitAsync(ct);
         }
+    }
+}
+
+internal sealed record OutboxDispatchFailure(Guid MessageId, string MessageType, string Error);
+
+internal sealed class RecordingOutboxDispatchObserver : IOutboxDispatchObserver
+{
+    private readonly List<OutboxDispatchFailure> _failures = [];
+
+    public IReadOnlyList<OutboxDispatchFailure> Failures => _failures;
+
+    public Task OnTerminalFailureAsync(
+        OutboxMessage message,
+        string error,
+        CancellationToken ct = default)
+    {
+        _failures.Add(new OutboxDispatchFailure(message.Id, message.MessageType, error));
+        return Task.CompletedTask;
     }
 }

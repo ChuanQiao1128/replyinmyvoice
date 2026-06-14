@@ -8,4 +8,11 @@ public interface IStripePaymentReconciliationClient
         DateTimeOffset windowStart,
         DateTimeOffset windowEnd,
         CancellationToken ct = default);
+
+    Task<StripeCheckoutSessionSnapshotDto?> FindCheckoutSessionForPaymentIntentAsync(
+        string paymentIntentId,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<StripeSubscriptionSnapshotDto>> ListSubscriptionsAsync(
+        CancellationToken ct = default);
 }

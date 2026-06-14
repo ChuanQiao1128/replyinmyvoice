@@ -5,4 +5,5 @@ public enum StripeEventStatus
     Processing = 0,
     Processed = 1,
     Failed = 2,
+    Pending = 3,
 }

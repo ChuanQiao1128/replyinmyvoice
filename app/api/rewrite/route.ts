@@ -4,6 +4,7 @@ import { getAzureApiBaseUrl } from "../../../lib/azure-api";
 import { getCurrentAccessToken } from "../../../lib/entra-auth";
 import { jsonError, requireSameOrigin } from "../../../lib/http";
 import { normalizeRewriteResponse } from "../../../lib/rewrite-response";
+import { copyV1ResponseHeaders } from "../../../lib/v1-response-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -187,6 +188,18 @@ export async function POST(request: Request) {
     body,
     cache: "no-store",
   });
+
+  if (response.status === 429) {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    copyV1ResponseHeaders(response.headers, headers);
+    return new NextResponse(
+      JSON.stringify({
+        code: "rate_limited",
+        error: "You're sending rewrites too quickly. Please wait a moment and try again.",
+      }),
+      { status: 429, headers },
+    );
+  }
 
   if (response.status === 202) {
     const payload = await parseAttemptResponse(response);

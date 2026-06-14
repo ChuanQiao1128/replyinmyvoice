@@ -30,12 +30,53 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
             .Where(x => x.UserId == userId)
             .ToListAsync(ct);
 
-        return userCredits
-            .Where(x => (x.ExpiresAt == null || x.ExpiresAt > now) && x.AmountGranted - x.AmountConsumed > 0)
-            .OrderBy(x => x.ExpiresAt.HasValue ? 0 : 1)
-            .ThenBy(x => x.ExpiresAt ?? DateTimeOffset.MaxValue)
-            .ThenBy(x => x.GrantedAt)
-            .FirstOrDefault();
+        return UsableForReservation(userCredits, now).FirstOrDefault();
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListUsableForReservationIdsAsync(
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var userCredits = await db.RewriteCredits
+            .AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .ToListAsync(ct);
+
+        return UsableForReservation(userCredits, now)
+            .Select(x => x.Id)
+            .ToList();
+    }
+
+    public async Task<int> TryConsumeForReservationAsync(
+        Guid creditId,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        return await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE RewriteCredits
+            SET AmountConsumed = AmountConsumed + 1,
+                RowVersion = {rowVersion}
+            WHERE Id = {creditId}
+              AND AmountConsumed < AmountGranted
+            """,
+            ct);
+    }
+
+    public async Task<int> ReleaseConsumedAsync(
+        Guid creditId,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        return await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE RewriteCredits
+            SET AmountConsumed = CASE WHEN AmountConsumed > 0 THEN AmountConsumed - 1 ELSE 0 END,
+                RowVersion = {rowVersion}
+            WHERE Id = {creditId}
+            """,
+            ct);
     }
 
     public async Task<IReadOnlyList<RewriteCredit>> ListByUserIdAsync(
@@ -254,6 +295,15 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
                 x.Source == "PURCHASE" ||
                 x.Source == "Purchase" ||
                 x.Source == "purchase");
+
+    private static IEnumerable<RewriteCredit> UsableForReservation(
+        IEnumerable<RewriteCredit> credits,
+        DateTimeOffset now) =>
+        credits
+            .Where(x => (x.ExpiresAt == null || x.ExpiresAt > now) && x.AmountGranted - x.AmountConsumed > 0)
+            .OrderBy(x => x.ExpiresAt.HasValue ? 0 : 1)
+            .ThenBy(x => x.ExpiresAt ?? DateTimeOffset.MaxValue)
+            .ThenBy(x => x.GrantedAt);
 
     private static AdminAccountingRevenueRowDto ToAccountingRevenueRow(AccountingRevenueCreditRow row) =>
         new(
