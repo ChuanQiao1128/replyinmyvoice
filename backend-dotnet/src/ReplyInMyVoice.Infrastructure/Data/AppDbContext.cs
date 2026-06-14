@@ -71,6 +71,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<UsagePeriod>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.ToTable(x =>
+            {
+                x.HasCheckConstraint(
+                    "CK_UsagePeriods_Counts_NonNegative",
+                    "[UsedCount] >= 0 AND [ReservedCount] >= 0");
+            });
             entity.HasIndex(x => new { x.UserId, x.PeriodKey }).IsUnique();
             entity.Property(x => x.PeriodKey).HasMaxLength(220);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
@@ -192,6 +198,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<RewriteCredit>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.ToTable(x =>
+            {
+                x.HasCheckConstraint(
+                    "CK_RewriteCredits_Consumed_Range",
+                    "[AmountConsumed] >= 0 AND [AmountConsumed] <= [AmountGranted]");
+            });
             entity.HasIndex(x => new { x.UserId, x.ExpiresAt });
             entity.HasIndex(x => x.StripeEventId).IsUnique().HasFilter("[StripeEventId] IS NOT NULL");
             entity.HasIndex(x => x.StripePaymentIntentId).HasFilter("[StripePaymentIntentId] IS NOT NULL");
