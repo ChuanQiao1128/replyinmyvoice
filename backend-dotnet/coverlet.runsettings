@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Code-coverage settings for the XPlat Code Coverage collector.
+  Excludes auto-generated EF Core migration snapshots and designer files so the
+  reported number reflects hand-written, testable code rather than generated noise.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <!-- Exclude generated EF migrations + snapshot from the denominator -->
+          <Exclude>[*]ReplyInMyVoice.Infrastructure.Migrations.*</Exclude>
+          <ExcludeByFile>**/Migrations/*.cs,**/Migrations/**/*.cs,**/*.Designer.cs</ExcludeByFile>
+          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+          <SkipAutoProps>true</SkipAutoProps>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
