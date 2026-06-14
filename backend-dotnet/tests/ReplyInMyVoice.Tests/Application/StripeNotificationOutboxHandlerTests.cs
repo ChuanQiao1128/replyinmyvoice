@@ -18,6 +18,8 @@ public sealed class StripeNotificationOutboxHandlerTests
         { StripeNotificationOutboxMessageTypes.PaymentRecovered, "payment-recovered" },
         { StripeNotificationOutboxMessageTypes.SubscriptionPaused, "subscription-paused" },
         { StripeNotificationOutboxMessageTypes.PaymentGraceReminder, "payment-grace-reminder" },
+        { StripeNotificationOutboxMessageTypes.PaymentActionRequired, "payment-action-required" },
+        { StripeNotificationOutboxMessageTypes.CardExpiring, "card-expiring" },
     };
 
     [Theory]
@@ -73,6 +75,146 @@ public sealed class StripeNotificationOutboxHandlerTests
         var outbox = await verifyDb.OutboxMessages.SingleAsync(x => x.Id == messageId);
         outbox.Status.Should().Be(OutboxMessageStatus.Sent);
         outbox.LastError.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PaymentActionRequiredOutboxHandler_sends_notification_with_hosted_invoice_url()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T01:06:00Z");
+        var message = StripeNotificationOutboxMessageFactory.CreatePaymentActionRequired(
+            user.Id,
+            "in_action_required",
+            "https://billing.test/in_action_required",
+            now,
+            "evt_action_required");
+        var notifier = new RecordingStripeEventNotifier();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = new StripePaymentActionRequiredOutboxMessageHandler(
+            new AppUserRepository(handlerDb),
+            notifier);
+
+        await handler.HandleAsync(message);
+
+        notifier.PaymentActionRequiredMessages.Should().Equal(
+            (user.Id, "https://billing.test/in_action_required"));
+    }
+
+    [Fact]
+    public async Task PaymentActionRequiredOutboxHandler_missing_user_completes_without_send()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T01:07:00Z");
+        var message = StripeNotificationOutboxMessageFactory.CreatePaymentActionRequired(
+            Guid.NewGuid(),
+            "in_missing_user",
+            "https://billing.test/in_missing_user",
+            now,
+            "evt_missing_user");
+        var notifier = new RecordingStripeEventNotifier();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = new StripePaymentActionRequiredOutboxMessageHandler(
+            new AppUserRepository(handlerDb),
+            notifier);
+
+        await handler.HandleAsync(message);
+
+        notifier.Messages.Should().BeEmpty();
+        notifier.PaymentActionRequiredMessages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CardExpiringOutboxHandler_sends_card_expiry_notification()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T01:08:00Z");
+        var message = StripeNotificationOutboxMessageFactory.CreateCardExpiring(
+            user.Id,
+            "visa",
+            "4242",
+            4,
+            2027,
+            now,
+            "evt_card_expiring");
+        var notifier = new RecordingStripeEventNotifier();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = new StripeCardExpiringOutboxMessageHandler(
+            new AppUserRepository(handlerDb),
+            notifier);
+
+        await handler.HandleAsync(message);
+
+        notifier.CardExpiringMessages.Should().Equal((user.Id, "visa", "4242", 4, 2027));
+    }
+
+    [Fact]
+    public async Task DispatchDueOutboxHandler_routes_new_stripe_message_types_and_marks_sent()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T01:09:00Z");
+        Guid actionMessageId;
+        Guid cardMessageId;
+        Guid invalidMessageId;
+        await using (var db = fixture.CreateContext())
+        {
+            var actionMessage = StripeNotificationOutboxMessageFactory.CreatePaymentActionRequired(
+                user.Id,
+                "in_dispatch_action",
+                "https://billing.test/in_dispatch_action",
+                now,
+                "evt_dispatch_action");
+            var cardMessage = StripeNotificationOutboxMessageFactory.CreateCardExpiring(
+                user.Id,
+                "visa",
+                "4242",
+                4,
+                2027,
+                now,
+                "evt_dispatch_card");
+            var invalidMessage = new OutboxMessage
+            {
+                MessageType = StripeNotificationOutboxMessageTypes.PaymentActionRequired,
+                PayloadJson = """{"userId":""}""",
+                Status = OutboxMessageStatus.Pending,
+                CreatedAt = now,
+                NextAttemptAt = now,
+                MaxAttempts = 10,
+                CorrelationId = "evt_dispatch_invalid",
+            };
+            db.OutboxMessages.AddRange(actionMessage, cardMessage, invalidMessage);
+            await db.SaveChangesAsync();
+            actionMessageId = actionMessage.Id;
+            cardMessageId = cardMessage.Id;
+            invalidMessageId = invalidMessage.Id;
+        }
+
+        var notifier = new RecordingStripeEventNotifier();
+        var observer = new RecordingOutboxDispatchObserver();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateDispatchHandler(handlerDb, notifier, observer);
+
+        var dispatched = await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        dispatched.Should().Be(3);
+        notifier.PaymentActionRequiredMessages.Should().Equal(
+            (user.Id, "https://billing.test/in_dispatch_action"));
+        notifier.CardExpiringMessages.Should().Equal((user.Id, "visa", "4242", 4, 2027));
+        observer.Failures.Should().BeEmpty();
+
+        await using var verifyDb = fixture.CreateContext();
+        var storedActionMessage = await verifyDb.OutboxMessages.SingleAsync(x => x.Id == actionMessageId);
+        var storedCardMessage = await verifyDb.OutboxMessages.SingleAsync(x => x.Id == cardMessageId);
+        var storedInvalidMessage = await verifyDb.OutboxMessages.SingleAsync(x => x.Id == invalidMessageId);
+        storedActionMessage.Status.Should().Be(OutboxMessageStatus.Sent);
+        storedCardMessage.Status.Should().Be(OutboxMessageStatus.Sent);
+        storedInvalidMessage.Status.Should().Be(OutboxMessageStatus.Pending);
+        storedInvalidMessage.AttemptCount.Should().Be(1);
+        storedInvalidMessage.LastError.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -151,6 +293,8 @@ public sealed class StripeNotificationOutboxHandlerTests
                 new PaymentRecoveredNotificationOutboxMessageHandler(appUsers, notifier),
                 new SubscriptionPausedNotificationOutboxMessageHandler(appUsers, notifier),
                 new PaymentGraceReminderNotificationOutboxMessageHandler(appUsers, notifier),
+                new StripePaymentActionRequiredOutboxMessageHandler(appUsers, notifier),
+                new StripeCardExpiringOutboxMessageHandler(appUsers, notifier),
             ],
             observer,
             new UnitOfWork(db));
@@ -180,6 +324,8 @@ public sealed class StripeNotificationOutboxHandlerTests
     private sealed class RecordingStripeEventNotifier : IStripeEventNotifier
     {
         public List<(string Kind, Guid UserId)> Messages { get; } = [];
+        public List<(Guid UserId, string? HostedInvoiceUrl)> PaymentActionRequiredMessages { get; } = [];
+        public List<(Guid UserId, string? Brand, string? Last4, int? ExpMonth, int? ExpYear)> CardExpiringMessages { get; } = [];
 
         public Task EnqueueFailedPaymentNotificationAsync(AppUser user, CancellationToken ct = default)
         {
@@ -204,6 +350,29 @@ public sealed class StripeNotificationOutboxHandlerTests
             Messages.Add(("payment-recovered", user.Id));
             return Task.CompletedTask;
         }
+
+        public Task EnqueuePaymentActionRequiredNotificationAsync(
+            AppUser user,
+            string? hostedInvoiceUrl,
+            CancellationToken ct = default)
+        {
+            Messages.Add(("payment-action-required", user.Id));
+            PaymentActionRequiredMessages.Add((user.Id, hostedInvoiceUrl));
+            return Task.CompletedTask;
+        }
+
+        public Task EnqueueCardExpiringNotificationAsync(
+            AppUser user,
+            string? brand,
+            string? last4,
+            int? expMonth,
+            int? expYear,
+            CancellationToken ct = default)
+        {
+            Messages.Add(("card-expiring", user.Id));
+            CardExpiringMessages.Add((user.Id, brand, last4, expMonth, expYear));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class ThrowingStripeEventNotifier : IStripeEventNotifier
@@ -220,6 +389,21 @@ public sealed class StripeNotificationOutboxHandlerTests
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
         public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, CancellationToken ct = default) =>
+            Task.FromException(new InvalidOperationException(ErrorMessage));
+
+        public Task EnqueuePaymentActionRequiredNotificationAsync(
+            AppUser user,
+            string? hostedInvoiceUrl,
+            CancellationToken ct = default) =>
+            Task.FromException(new InvalidOperationException(ErrorMessage));
+
+        public Task EnqueueCardExpiringNotificationAsync(
+            AppUser user,
+            string? brand,
+            string? last4,
+            int? expMonth,
+            int? expYear,
+            CancellationToken ct = default) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
     }
 }
