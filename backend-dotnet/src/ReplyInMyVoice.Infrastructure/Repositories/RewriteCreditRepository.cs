@@ -263,14 +263,23 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
             .ToListAsync(ct);
     }
 
-    public Task MarkExpiryReminderSentAsync(
-        RewriteCredit credit,
+    public async Task<bool> TryClaimExpiryReminderAsync(
+        Guid creditId,
         DateTimeOffset sentAt,
         CancellationToken ct = default)
     {
-        ct.ThrowIfCancellationRequested();
-        credit.ExpiryReminderSentAt = sentAt;
-        return Task.CompletedTask;
+        var rowVersion = Guid.NewGuid();
+        var rows = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE RewriteCredits
+            SET ExpiryReminderSentAt = {sentAt},
+                RowVersion = {rowVersion}
+            WHERE Id = {creditId}
+              AND ExpiryReminderSentAt IS NULL
+            """,
+            ct);
+
+        return rows == 1;
     }
 
     public bool IsStripeEventIdWriteFailure(Exception exception)

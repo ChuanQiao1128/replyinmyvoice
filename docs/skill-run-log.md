@@ -6820,3 +6820,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/CreditQuotaSchemaTests.cs` and this log entry.
 - Verification evidence: initial focused run failed 4/6 because invalid writes did not throw; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CreditQuotaSchemaTests` passed 6/6, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 860/860.
 - Limitations: Tests use SQLite `EnsureCreated` and do not apply migrations to SQL Server. EF CLI commands that use the API startup project wait for the default host-factory timeout before falling back, but the exact pending-model check still passed.
+
+### 2026-06-15 - data-module-review - DATA-EXPIRY issue #822 credit reminder claim
+
+- Agent: Codex worker
+- Trigger: Issue #822 changes EF Core repository writes, `RewriteCredits` reminder persistence, and an additive index migration.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Identified `RewriteCredits` as the owned table, replaced the tracked in-memory reminder mark with a conditional SQL claim that stamps `RowVersion`, preserved existing skip conditions, and verified the migration adds only the reminder scan index.
+- Output artifacts: `IRewriteCreditRepository.TryClaimExpiryReminderAsync`, `RewriteCreditRepository.TryClaimExpiryReminderAsync`, handler claim-before-send flow, `AddCreditExpiryReminderClaimIndex` migration plus snapshot, and this log entry.
+- Verification evidence: focused credit-expiry tests passed 2/2; full `dotnet test ReplyInMyVoice.sln -c Release` passed 861/861; migration body contains only `CreateIndex` in `Up` and `DropIndex` in `Down`; exact EF migration list command exited 0 and included `20260614135259_AddCreditExpiryReminderClaimIndex`.
+- Limitations: No live database migration, deploy, push, or PR action was run. The EF migration-list command still waits for the Functions startup fallback and reports local SQL Server connectivity as unavailable before listing migrations.
+
+### 2026-06-15 - state-machine-modeling - DATA-EXPIRY issue #822 reminder lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #822 changes a multi-step reminder lifecycle from list/send/mark to list/claim/send.
+- Action: Opened and followed the project skill for a minimal lifecycle model. States: not eligible, eligible-unclaimed, claimed. Events: timer scan, skip due missing email/null expiry/no remaining balance, claim attempt, duplicate claim attempt, notifier success, notifier failure. Allowed transition: eligible-unclaimed plus winning claim moves to claimed before send. Rejected transition: duplicate claim returns false and sends nothing. Invariants: rows with `ExpiryReminderSentAt` set cannot be claimed again; `RowVersion` changes on claim; sent count increments only after claim and notifier success.
+- Output artifacts: claim-before-send handler flow, conditional repository update, double-run regression test, and this log entry.
+- Verification evidence: initial overlap test failed on the old flow with a concurrency exception after the second handler sent; after implementation, focused credit-expiry tests passed 2/2 and full Release suite passed 861/861.
+- Limitations: The chosen state model intentionally accepts the at-most-once tradeoff where notifier failure after a winning claim leaves the row claimed.
+
+### 2026-06-15 - resilience-test-generation - DATA-EXPIRY issue #822 overlapping timer runs
+
+- Agent: Codex worker
+- Trigger: Issue #822 tests duplicate timer execution and concurrent access to the same expiry-reminder candidate.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operation: send at most one reminder for one eligible credit under overlapping handler runs. Boundaries: SQLite-backed EF repository and fake notifier. Matrix covered duplicate run, concurrent claim, and partial success after claim before send; the last case follows the issue's at-most-once tradeoff.
+- Output artifacts: coordinated fake notifier that invokes a second handler while the first is in the send path, atomic claim repository method, and this log entry.
+- Verification evidence: the red run failed before implementation in the new overlap test; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CreditExpiryUseCaseTests` passed 2/2 and full Release suite passed 861/861.
+- Limitations: The test uses deterministic local SQLite contexts and a fake notifier; no Azure Functions scale-out, real email provider, or production database was contacted.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-EXPIRY issue #822 credit expiry tests
+
+- Agent: Codex worker
+- Trigger: Issue #822 adds C#/.NET backend tests for credit expiry reminder persistence and overlapping handler runs.
+- Action: Opened and followed the project skill for test selection. Added an EF Core SQLite integration-style xUnit/FluentAssertions test before production changes, using two contexts over the shared fixture connection and a deterministic fake notifier to prove one reminder and one total sent count.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/CreditExpiryUseCaseTests.cs`, updated repository fake in `StripeReconciliationUseCaseTests`, and this log entry.
+- Verification evidence: first red run failed at compile due test helper shape and was corrected; second red run failed in the intended overlap path; after implementation, focused credit-expiry tests passed 2/2 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 861/861.
+- Limitations: Tests do not send real notifications and do not apply the SQL Server migration to a live database.
