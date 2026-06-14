@@ -910,7 +910,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         outbox.PayloadJson.Should().Contain(body.AttemptId.ToString());
 
         var publisher = factory.Services.GetRequiredService<InMemoryRewriteJobPublisher>();
-        publisher.PublishedJobs.Select(x => x.AttemptId).Should().Equal(body.AttemptId);
+        var job = publisher.PublishedJobs.Should().ContainSingle().Subject;
+        job.AttemptId.Should().Be(body.AttemptId);
+        job.CorrelationId.Should().Be(body.AttemptId.ToString());
     }
 
     [Fact]
@@ -974,7 +976,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         outbox.PayloadJson.Should().Contain(attemptId.ToString());
 
         var publisher = factory.Services.GetRequiredService<InMemoryRewriteJobPublisher>();
-        publisher.PublishedJobs.Select(x => x.AttemptId).Should().Equal(attemptId);
+        var job = publisher.PublishedJobs.Should().ContainSingle().Subject;
+        job.AttemptId.Should().Be(attemptId);
+        job.CorrelationId.Should().Be(attemptId.ToString());
     }
 
     [Fact]

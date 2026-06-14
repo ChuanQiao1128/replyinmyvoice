@@ -213,7 +213,8 @@ public sealed class V1RewriteHttpFunctions(
                 plan.PeriodKey,
                 plan.QuotaLimit,
                 now,
-                auth.ApiKeyId),
+                auth.ApiKeyId,
+                ResolveCommandCorrelationId(request)),
             cancellationToken);
 
         if (result.Kind == ApplicationResultKind.QuotaExceeded)
@@ -643,6 +644,18 @@ public sealed class V1RewriteHttpFunctions(
         }
 
         return HttpHardeningMiddleware.ResolveCorrelationId(request);
+    }
+
+    private static string? ResolveCommandCorrelationId(HttpRequest request)
+    {
+        if (request.HttpContext.Items.TryGetValue("CorrelationId", out var value) &&
+            value is string correlationId &&
+            !string.IsNullOrWhiteSpace(correlationId))
+        {
+            return correlationId;
+        }
+
+        return null;
     }
 
     private static IActionResult V1Problem(V1ErrorCatalog.V1Error error, string requestId) =>

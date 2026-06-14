@@ -6694,3 +6694,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpHardeningMiddlewareTests.cs`, middleware 500-envelope handling, and this log entry.
 - Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~HttpHardeningMiddlewareTests` passed 14/14; full `dotnet test ReplyInMyVoice.sln -c Release` passed 834/834; catch-location check confirmed the non-HTTP early return remains outside any try/catch.
 - Limitations: Tests use in-process fake `FunctionContext` objects and do not contact Azure Service Bus or timer infrastructure. No queue message was sent, no provider call was made, and no deploy, push, or PR action was run.
+
+### 2026-06-15 - system-spec-synthesis - OBS-CORR issue #817 rewrite job correlation contract
+
+- Agent: Codex worker
+- Trigger: Issue #817 changes the rewrite job message contract and the HTTP-to-outbox-to-queue correlation flow.
+- Action: Opened and followed the project skill by reading `AGENTS.md`, `CLAUDE.md`, the issue brief, and the existing rewrite job/outbox/consumer code. Produced a compact implementation spec in-session: keep the queue body as the source of truth, add optional `CorrelationId` and `Traceparent` fields to `RewriteJob`, pass the V1 Functions ingress id into `CreateRewriteAttemptCommand`, prefer it in the outbox row, publish it through the in-memory and Azure Service Bus publishers, and restore it in consumer logging scope.
+- Output artifacts: updated `RewriteJob`, `CreateRewriteAttemptCommand`, `CreateRewriteAttemptHandler`, `V1RewriteHttpFunctions`, outbox publisher/handler, Service Bus consumers, `CorrelationIdPropagationTests`, and this log entry.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CorrelationIdPropagationTests` passed 3/3; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteApiTests` passed 34/34; full `dotnet test ReplyInMyVoice.sln -c Release` passed 837/837 on rerun.
+- Limitations: No schema migration, binding signature change, external Service Bus send, deploy, push, or PR action was run. The first full suite run hit a transient SQLite concurrency failure in an existing V1 rate-limit test; that exact test passed on rerun before the full suite passed.
+
+### 2026-06-15 - state-machine-modeling - OBS-CORR issue #817 rewrite job handoff lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #817 changes queue job handoff behavior across HTTP ingress, outbox dispatch, publish, and consumer processing.
+- Action: Opened and followed the project skill as a lifecycle checklist. Modeled states as HTTP request accepted, outbox message pending/sent, queue message published, consumer processing, and attempt terminal status owned by `ProcessRewriteJobHandler`. Modeled events as request submit, outbox fast-path/timer dispatch, queue delivery, consumer handle success/failure, and invalid message rejection. Kept persisted status transitions unchanged and limited side effects to correlation metadata propagation and log/activity scope restoration.
+- Output artifacts: no separate state table document; lifecycle constraints were applied directly to the implementation and regression tests.
+- Verification evidence: focused correlation tests passed 3/3, existing rewrite API tests passed 34/34, and full Release suite passed 837/837 on rerun.
+- Limitations: This issue did not add or rename persisted job states, terminal statuses, retry policy, or redelivery behavior. No migration, deploy, push, or PR action was run.
+
+### 2026-06-15 - data-module-review - OBS-CORR issue #817 outbox correlation persistence
+
+- Agent: Codex worker
+- Trigger: Issue #817 changes how `OutboxMessage.CorrelationId` is populated and consumed for rewrite job dispatch.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Confirmed the `OutboxMessage.CorrelationId` column already exists and no EF migration is required. Kept idempotency, quota reservation, attempt creation, and outbox status mutation logic unchanged; changed only the value selected for the existing correlation column.
+- Output artifacts: `CreateRewriteAttemptHandler` now prefers command correlation id with attempt-id fallback, `RewriteJobCreatedOutboxMessageHandler` republishes the stored value into the job body, and correlation regression tests cover the persisted outbox value.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CorrelationIdPropagationTests` passed 3/3; full `dotnet test ReplyInMyVoice.sln -c Release` passed 837/837 on rerun; source/test restricted-word scan excluding build outputs returned no matches.
+- Limitations: No schema/index change, EF migration, production database command, deploy, push, or PR action was run.
+
+### 2026-06-15 - dotnet-backend-testing - OBS-CORR issue #817 correlation propagation tests
+
+- Agent: Codex worker
+- Trigger: Issue #817 requires new C#/.NET xUnit coverage for correlation propagation through the rewrite async boundary and existing rewrite API round-trip behavior.
+- Action: Opened and followed the project skill for backend test selection. Added focused xUnit/FluentAssertions coverage for outbox handler to in-memory publisher propagation, V1 Functions ingress to persisted outbox and published job propagation, and consumer logger scope restoration. Extended existing rewrite API round-trip assertions to observe the default attempt-id correlation fallback.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/CorrelationIdPropagationTests.cs`, updated `RewriteApiTests`, and this log entry.
+- Verification evidence: Initial focused test run failed at compile time because `RewriteJob.CorrelationId` and the two-argument constructor did not exist; after implementation, the focused correlation tests passed 3/3, `RewriteApiTests` passed 34/34, the exact previously failed V1 rate-limit test passed on rerun, and full Release suite passed 837/837 on rerun.
+- Limitations: Tests use SQLite, in-memory publisher, direct Functions invocation, and deterministic fakes. No live queue, external provider, payment action, deploy, push, or PR action was run.
