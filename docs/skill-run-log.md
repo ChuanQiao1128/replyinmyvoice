@@ -6856,3 +6856,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/CreditExpiryUseCaseTests.cs`, updated repository fake in `StripeReconciliationUseCaseTests`, and this log entry.
 - Verification evidence: first red run failed at compile due test helper shape and was corrected; second red run failed in the intended overlap path; after implementation, focused credit-expiry tests passed 2/2 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 861/861.
 - Limitations: Tests do not send real notifications and do not apply the SQL Server migration to a live database.
+
+### 2026-06-15 - data-module-review - DATA-EXC issue #823 database exception classifier
+
+- Agent: Codex worker
+- Trigger: Issue #823 changes EF Core transaction and rate-limit database exception handling across shared infrastructure services.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Identified the owned mutation paths as `UnitOfWork`, API-key rate-limit windows, and user rewrite rate-limit windows; kept schema, migrations, indexes, public unit-of-work signatures, and transaction isolation unchanged; centralized provider exception classification behind an Application abstraction and Infrastructure implementation.
+- Output artifacts: `IDbExceptionClassifier`, `DbExceptionClassifier`, updated `UnitOfWork`, updated rate limiters, focused classifier tests, and this log entry.
+- Verification evidence: data-risk scan script ran over `backend-dotnet` and reported broad existing quota/idempotency signals only; focused classifier tests passed 12/12; full Release suite passed 873/873.
+- Limitations: No live SQL Server, migration, deploy, push, or PR action was run. SQL Server behavior is tested through the required reflective `Number` seam instead of constructing provider exceptions directly.
+
+### 2026-06-15 - resilience-test-generation - DATA-EXC issue #823 retryable race signals
+
+- Agent: Codex worker
+- Trigger: Issue #823 changes retry decisions for failed transactions and rate-limit writes, including concurrency races and SQLite busy fallback behavior.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operation: retry only database races while rejecting non-race provider numbers. Boundaries: EF Core exception types, SQLite provider exceptions, and SQL Server-style `Number` provider signals. Generated the resilience matrix and selected deterministic unit tests as the lowest sufficient proof.
+- Output artifacts: `DbExceptionClassifierTests`, shared classifier helper, and this log entry.
+- Verification evidence: initial focused test run failed at compile because the classifier was absent; after implementation, focused classifier tests passed 12/12, the UnitOfWork fragile-match grep returned no rows, and full Release suite passed 873/873.
+- Limitations: Tests do not exercise live SQL Server locking or deadlock reproduction; they prove classifier behavior through local exception objects and nested exception chains.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-EXC issue #823 classifier unit tests
+
+- Agent: Codex worker
+- Trigger: Issue #823 requires C#/.NET tests covering SQL Server provider numbers, SQLite busy signals, EF Core concurrency exceptions, nested exceptions, and negative cases.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions unit tests before production changes, using a private exception fake with a public `Number` property so the provider-number path is testable without a live database.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/DbExceptionClassifierTests.cs` and this log entry.
+- Verification evidence: red run failed at compile due missing classifier; green run passed 12/12; `dotnet test ReplyInMyVoice.sln -c Release` passed 873/873; restricted-word guard over changed tracked files returned no rows, and the exact source/test guard returned no rows after ignored build output was removed.
+- Limitations: The test suite intentionally avoids Testcontainers and live SQL Server per issue scope. Build emitted existing NuGet advisory-source warnings when package metadata could not be fetched.

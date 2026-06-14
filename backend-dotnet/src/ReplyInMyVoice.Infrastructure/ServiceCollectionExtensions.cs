@@ -121,6 +121,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAdminUserRepository, AdminUserRepository>();
         services.AddScoped<IAdminStatsRepository, AdminStatsRepository>();
         services.AddScoped<IAccountUsagePlanProvider>(_ => new AccountUsagePlanProvider(configuration));
+        services.AddSingleton<IDbExceptionClassifier, DbExceptionClassifier>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
         services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
