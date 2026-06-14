@@ -21,11 +21,13 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ApplicationResultKind = ReplyInMyVoice.Application.Common.ApplicationResultKind;
 using ApplicationPromoRedeemResultKind = ReplyInMyVoice.Application.Common.PromoRedeemResultKind;
 using PromoRedeemResultDto = ReplyInMyVoice.Application.Common.PromoRedeemResultDto;
 using RewriteAttemptDto = ReplyInMyVoice.Application.Common.RewriteAttemptDto;
 
+const string CorrelationHeaderName = "X-Correlation-Id";
 const string V1RewriteEndpointName = "v1/rewrite";
 const string V1RewriteResultEndpointName = "v1/rewrite/{id}";
 const string V1UsageEndpointName = "v1/usage";
@@ -251,11 +253,12 @@ app.MapPost("/api/v1/rewrite", async (
 {
     var stopwatch = Stopwatch.StartNew();
     var now = DateTimeOffset.UtcNow;
+    var envelopeRequestId = ResolveV1RequestId(httpRequest);
     var bearerToken = ResolveBearerToken(httpRequest);
     var auth = await ResolveApiKeyAuthAsync(db, bearerToken, now, cancellationToken);
     if (auth.UserId is null)
     {
-        return V1CatalogError(V1ErrorCatalog.InvalidKey);
+        return V1CatalogError(V1ErrorCatalog.InvalidKey, envelopeRequestId);
     }
 
     ApiKeyRateLimitResult? rateLimit = null;
@@ -267,7 +270,8 @@ app.MapPost("/api/v1/rewrite", async (
             V1Error(
                 "insufficient_scope",
                 "This API key does not have the required scope.",
-                StatusCodes.Status403Forbidden),
+                StatusCodes.Status403Forbidden,
+                envelopeRequestId),
             StatusCodes.Status403Forbidden,
             stopwatch,
             now,
@@ -287,7 +291,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.RateLimitUnavailable),
+            V1CatalogError(V1ErrorCatalog.RateLimitUnavailable, envelopeRequestId),
             V1ErrorCatalog.RateLimitUnavailable.StatusCode,
             stopwatch,
             now,
@@ -300,7 +304,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.RateLimited),
+            V1CatalogError(V1ErrorCatalog.RateLimited, envelopeRequestId),
             V1ErrorCatalog.RateLimited.StatusCode,
             stopwatch,
             now,
@@ -319,7 +323,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.InvalidJson),
+            V1CatalogError(V1ErrorCatalog.InvalidJson, envelopeRequestId),
             V1ErrorCatalog.InvalidJson.StatusCode,
             stopwatch,
             now,
@@ -335,7 +339,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(error),
+            V1CatalogError(error, envelopeRequestId),
             error.StatusCode,
             stopwatch,
             now,
@@ -355,7 +359,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.InvalidKey),
+            V1CatalogError(V1ErrorCatalog.InvalidKey, envelopeRequestId),
             V1ErrorCatalog.InvalidKey.StatusCode,
             stopwatch,
             now,
@@ -378,7 +382,7 @@ app.MapPost("/api/v1/rewrite", async (
             return await CompleteV1Async(
                 db,
                 auth.ApiKeyId,
-                V1CatalogError(error),
+                V1CatalogError(error, envelopeRequestId),
                 error.StatusCode,
                 stopwatch,
                 now,
@@ -406,7 +410,7 @@ app.MapPost("/api/v1/rewrite", async (
             return await CompleteV1Async(
                 db,
                 auth.ApiKeyId,
-                V1CatalogError(V1ErrorCatalog.IdempotencyConflict),
+                V1CatalogError(V1ErrorCatalog.IdempotencyConflict, envelopeRequestId),
                 V1ErrorCatalog.IdempotencyConflict.StatusCode,
                 stopwatch,
                 now,
@@ -438,7 +442,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.ApiRequiresPaidPlan),
+            V1CatalogError(V1ErrorCatalog.ApiRequiresPaidPlan, envelopeRequestId),
             V1ErrorCatalog.ApiRequiresPaidPlan.StatusCode,
             stopwatch,
             now,
@@ -464,7 +468,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.QuotaExhausted),
+            V1CatalogError(V1ErrorCatalog.QuotaExhausted, envelopeRequestId),
             V1ErrorCatalog.QuotaExhausted.StatusCode,
             stopwatch,
             now,
@@ -478,7 +482,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.IdempotencyConflict),
+            V1CatalogError(V1ErrorCatalog.IdempotencyConflict, envelopeRequestId),
             V1ErrorCatalog.IdempotencyConflict.StatusCode,
             stopwatch,
             now,
@@ -493,7 +497,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.RewriteFailed),
+            V1CatalogError(V1ErrorCatalog.RewriteFailed, envelopeRequestId),
             V1ErrorCatalog.RewriteFailed.StatusCode,
             stopwatch,
             now,
@@ -527,11 +531,12 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
 {
     var stopwatch = Stopwatch.StartNew();
     var now = DateTimeOffset.UtcNow;
+    var envelopeRequestId = ResolveV1RequestId(httpRequest);
     var bearerToken = ResolveBearerToken(httpRequest);
     var auth = await ResolveApiKeyAuthAsync(db, bearerToken, now, cancellationToken);
     if (auth.UserId is null)
     {
-        return V1CatalogError(V1ErrorCatalog.InvalidKey);
+        return V1CatalogError(V1ErrorCatalog.InvalidKey, envelopeRequestId);
     }
 
     var rateLimit = auth.ApiKeyId is null
@@ -546,7 +551,7 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.RateLimitUnavailable),
+            V1CatalogError(V1ErrorCatalog.RateLimitUnavailable, envelopeRequestId),
             V1ErrorCatalog.RateLimitUnavailable.StatusCode,
             stopwatch,
             now,
@@ -561,7 +566,7 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.RateLimited),
+            V1CatalogError(V1ErrorCatalog.RateLimited, envelopeRequestId),
             V1ErrorCatalog.RateLimited.StatusCode,
             stopwatch,
             now,
@@ -584,7 +589,7 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.NotFound),
+            V1CatalogError(V1ErrorCatalog.NotFound, envelopeRequestId),
             V1ErrorCatalog.NotFound.StatusCode,
             stopwatch,
             now,
@@ -598,7 +603,7 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
     return await CompleteV1Async(
         db,
         auth.ApiKeyId,
-        MapV1RewriteResult(attempt),
+        MapV1RewriteResult(attempt, envelopeRequestId),
         StatusCodes.Status200OK,
         stopwatch,
         now,
@@ -618,11 +623,12 @@ app.MapGet("/api/v1/usage", async (
 {
     var stopwatch = Stopwatch.StartNew();
     var now = DateTimeOffset.UtcNow;
+    var envelopeRequestId = ResolveV1RequestId(httpRequest);
     var bearerToken = ResolveBearerToken(httpRequest);
     var auth = await ResolveApiKeyAuthAsync(db, bearerToken, now, cancellationToken);
     if (auth.UserId is null)
     {
-        return V1CatalogError(V1ErrorCatalog.InvalidKey);
+        return V1CatalogError(V1ErrorCatalog.InvalidKey, envelopeRequestId);
     }
 
     var rateLimit = auth.ApiKeyId is null
@@ -637,7 +643,7 @@ app.MapGet("/api/v1/usage", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.RateLimitUnavailable),
+            V1CatalogError(V1ErrorCatalog.RateLimitUnavailable, envelopeRequestId),
             V1ErrorCatalog.RateLimitUnavailable.StatusCode,
             stopwatch,
             now,
@@ -651,7 +657,7 @@ app.MapGet("/api/v1/usage", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.RateLimited),
+            V1CatalogError(V1ErrorCatalog.RateLimited, envelopeRequestId),
             V1ErrorCatalog.RateLimited.StatusCode,
             stopwatch,
             now,
@@ -691,7 +697,7 @@ app.MapGet("/api/v1/usage", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.InvalidKey),
+            V1CatalogError(V1ErrorCatalog.InvalidKey, envelopeRequestId),
             V1ErrorCatalog.InvalidKey.StatusCode,
             stopwatch,
             now,
@@ -1306,11 +1312,11 @@ static async Task TryWriteV1ApiKeyUsageAsync(
     }
 }
 
-static IResult V1CatalogError(V1ErrorCatalog.V1Error error) =>
-    V1Error(error.Code, error.Message, error.StatusCode);
+static IResult V1CatalogError(V1ErrorCatalog.V1Error error, string? requestId = null) =>
+    V1Error(error.Code, error.Message, error.StatusCode, requestId);
 
-static IResult V1Error(string code, string message, int statusCode) =>
-    Results.Json(new V1ErrorResponse(new V1Error(code, message)), statusCode: statusCode);
+static IResult V1Error(string code, string message, int statusCode, string? requestId = null) =>
+    Results.Json(new V1ErrorResponse(new V1Error(code, message, requestId)), statusCode: statusCode);
 
 static async Task<V1SandboxAttemptResult> CreateV1SandboxAttemptAsync(
     AppDbContext db,
@@ -1373,7 +1379,7 @@ static string ComputeV1Sha256(string value)
     return Convert.ToHexString(hash).ToLowerInvariant();
 }
 
-static IResult MapV1RewriteResult(RewriteAttemptDto attempt)
+static IResult MapV1RewriteResult(RewriteAttemptDto attempt, string? requestId = null)
 {
     if (attempt.Status == RewriteAttemptStatus.Pending.ToString() ||
         attempt.Status == RewriteAttemptStatus.Processing.ToString())
@@ -1397,7 +1403,7 @@ static IResult MapV1RewriteResult(RewriteAttemptDto attempt)
     return Results.Ok(new V1RewriteFailedResponse(
         attempt.AttemptId,
         "failed",
-        new V1Error(code, V1FailureMessage(attempt))));
+        new V1Error(code, V1FailureMessage(attempt), requestId)));
 }
 
 static bool TryReadV1SucceededResult(
@@ -1455,6 +1461,30 @@ static string V1FailureMessage(RewriteAttemptDto attempt) =>
     attempt.Status == RewriteAttemptStatus.Expired.ToString()
         ? V1ErrorCatalog.RewriteExpiredMessage
         : V1ErrorCatalog.RewriteCouldNotBeCompletedMessage;
+
+static string ResolveV1RequestId(HttpRequest request)
+{
+    if (request.HttpContext.Items.TryGetValue("CorrelationId", out var itemValue) &&
+        itemValue is string itemRequestId &&
+        !string.IsNullOrWhiteSpace(itemRequestId))
+    {
+        request.HttpContext.Response.Headers[CorrelationHeaderName] = itemRequestId;
+        return itemRequestId;
+    }
+
+    var raw = request.Headers[CorrelationHeaderName].ToString();
+    var requestId = raw.Length is >= 1 and <= 64 && raw.All(IsCorrelationIdChar)
+        ? raw
+        : Guid.NewGuid().ToString("D");
+
+    request.HttpContext.Items["CorrelationId"] = requestId;
+    request.HttpContext.Response.Headers[CorrelationHeaderName] = requestId;
+    return requestId;
+}
+
+static bool IsCorrelationIdChar(char value) =>
+    char.IsLetterOrDigit(value) ||
+    value is '-' or '_' or '.';
 
 static string? ResolveBearerToken(HttpRequest request)
 {
@@ -1716,7 +1746,11 @@ public sealed record V1UsageResponse(
 
 public sealed record V1ErrorResponse(V1Error Error);
 
-public sealed record V1Error(string Code, string Message);
+public sealed record V1Error(
+    string Code,
+    string Message,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? RequestId = null);
 
 public sealed record ApiKeyAuthResult(
     Guid? UserId,

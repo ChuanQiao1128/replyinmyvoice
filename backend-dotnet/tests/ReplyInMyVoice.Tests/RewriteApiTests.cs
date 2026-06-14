@@ -561,7 +561,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         {
             failedJson.RootElement.GetProperty("id").GetGuid().Should().Be(failed.Id);
             failedJson.RootElement.GetProperty("status").GetString().Should().Be("failed");
-            failedJson.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_timeout");
+            var error = failedJson.RootElement.GetProperty("error");
+            error.GetProperty("code").GetString().Should().Be("provider_timeout");
+            error.GetProperty("requestId").GetString().Should().Be(GetRequiredHeader(failedResponse, "X-Correlation-Id"));
         }
     }
 
@@ -599,7 +601,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         using var json = await ReadJsonAsync(result);
         json.RootElement.GetProperty("id").GetGuid().Should().Be(body.Id);
         json.RootElement.GetProperty("status").GetString().Should().Be("failed");
-        json.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("reservation_expired");
+        var error = json.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be("reservation_expired");
+        error.GetProperty("requestId").GetString().Should().Be(GetRequiredHeader(result, "X-Correlation-Id"));
     }
 
     [Fact]
@@ -637,7 +641,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         using var json = await ReadJsonAsync(result);
         json.RootElement.GetProperty("id").GetGuid().Should().Be(body.Id);
         json.RootElement.GetProperty("status").GetString().Should().Be("failed");
-        json.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_failed");
+        var error = json.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be("provider_failed");
+        error.GetProperty("requestId").GetString().Should().Be(GetRequiredHeader(result, "X-Correlation-Id"));
     }
 
     [Fact]
@@ -1493,12 +1499,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
     {
         var json = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(json);
-        document.RootElement
-            .GetProperty("error")
-            .GetProperty("code")
-            .GetString()
-            .Should()
-            .Be(expectedCode);
+        var error = document.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be(expectedCode);
+        error.GetProperty("requestId").GetString().Should().Be(GetRequiredHeader(response, "X-Correlation-Id"));
     }
 
     private static string GetRequiredHeader(HttpResponseMessage response, string name)

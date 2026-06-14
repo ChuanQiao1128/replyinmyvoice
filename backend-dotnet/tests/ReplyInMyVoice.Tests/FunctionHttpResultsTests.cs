@@ -23,11 +23,35 @@ public sealed class FunctionHttpResultsTests
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value));
         json.RootElement.EnumerateObject().Select(x => x.Name).Should().Equal("error");
         var error = json.RootElement.GetProperty("error");
+        error.EnumerateObject().Select(x => x.Name).Should().Equal("code", "message");
         error.GetProperty("code").GetString().Should().Be("invalid_request");
         error.GetProperty("message").GetString().Should().Be("Draft must be at least 10 characters.");
         json.RootElement.TryGetProperty("title", out _).Should().BeFalse();
         json.RootElement.TryGetProperty("status", out _).Should().BeFalse();
         json.RootElement.TryGetProperty("detail", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Problem_WithErrorCodeAndRequestId_EmitsFrozenCodedEnvelopeWithRequestId()
+    {
+        var result = FunctionHttpResults.Problem(
+                "Invalid request",
+                "Draft must be at least 10 characters.",
+                400,
+                "invalid_request",
+                "corr_123")
+            .Should()
+            .BeOfType<ObjectResult>()
+            .Subject;
+
+        result.StatusCode.Should().Be(400);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value));
+        json.RootElement.EnumerateObject().Select(x => x.Name).Should().Equal("error");
+        var error = json.RootElement.GetProperty("error");
+        error.EnumerateObject().Select(x => x.Name).Should().Equal("code", "message", "requestId");
+        error.GetProperty("code").GetString().Should().Be("invalid_request");
+        error.GetProperty("message").GetString().Should().Be("Draft must be at least 10 characters.");
+        error.GetProperty("requestId").GetString().Should().Be("corr_123");
     }
 
     [Theory]
