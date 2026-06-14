@@ -28,7 +28,42 @@ jobs:
       - name: Build
         run: dotnet build backend-dotnet/ReplyInMyVoice.sln --configuration Release --no-restore
       - name: Test
-        run: dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --no-build
+        run: >
+          dotnet test backend-dotnet/ReplyInMyVoice.sln
+          --configuration Release --no-build
+          --collect:"XPlat Code Coverage"
+          --settings backend-dotnet/coverlet.runsettings
+          --results-directory backend-dotnet/artifacts/coverage
+      - name: Coverage summary
+        if: always()
+        run: |
+          report=$(find backend-dotnet/artifacts/coverage -name coverage.cobertura.xml 2>/dev/null | head -1)
+          if [ -z "$report" ]; then
+            echo "No coverage report produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          line=$(grep -o 'line-rate="[0-9.]*"' "$report" | head -1 | grep -o '[0-9.]*')
+          branch=$(grep -o 'branch-rate="[0-9.]*"' "$report" | head -1 | grep -o '[0-9.]*')
+          linepct=$(awk "BEGIN{printf \"%.1f\", ${line:-0}*100}")
+          branchpct=$(awk "BEGIN{printf \"%.1f\", ${branch:-0}*100}")
+          {
+            echo "## Backend code coverage"
+            echo ""
+            echo "| Metric | Coverage |"
+            echo "|---|---|"
+            echo "| Line | ${linepct}% |"
+            echo "| Branch | ${branchpct}% |"
+            echo ""
+            echo "_Generated EF migrations excluded (backend-dotnet/coverlet.runsettings). Informational, non-blocking._"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Line coverage: ${linepct}% | Branch coverage: ${branchpct}%"
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend-dotnet/artifacts/coverage/**/coverage.cobertura.xml
+          if-no-files-found: warn
       - name: Publish API
         run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj --configuration Release --output backend-dotnet/artifacts/api
       - name: Publish Worker
