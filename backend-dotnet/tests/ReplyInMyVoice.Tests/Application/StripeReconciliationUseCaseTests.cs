@@ -896,6 +896,18 @@ public sealed class StripeReconciliationUseCaseTests
             DateTimeOffset sentAt,
             CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Guid>> ListUsableForReservationIdsAsync(
+            Guid userId,
+            DateTimeOffset now,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<int> TryConsumeForReservationAsync(Guid creditId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<int> ReleaseConsumedAsync(Guid creditId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeAppUserRepository : IAppUserRepository
@@ -1026,6 +1038,14 @@ public sealed class StripeReconciliationUseCaseTests
             DateTimeOffset now,
             string lockedBy,
             int batchSize,
+            TimeSpan claimLease,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<OutboxMessage?> ClaimByIdAsync(
+            Guid messageId,
+            DateTimeOffset now,
+            string lockedBy,
             TimeSpan claimLease,
             CancellationToken ct = default) =>
             throw new NotSupportedException();

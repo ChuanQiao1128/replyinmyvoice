@@ -22,7 +22,7 @@ public sealed class ReleaseExpiredReservationsHandler(
         {
             ct.ThrowIfCancellationRequested();
 
-            var batchCount = await unitOfWork.ExecuteInTransactionAsync(
+            var batchResult = await unitOfWork.ExecuteInTransactionAsync(
                 async transactionCt =>
                 {
                     var expiredReservations = await reservations.ListExpiredPendingBatchAsync(
@@ -30,49 +30,50 @@ public sealed class ReleaseExpiredReservationsHandler(
                         command.BatchSize,
                         transactionCt);
 
+                    var claimedCount = 0;
                     foreach (var reservation in expiredReservations)
                     {
                         var reason = reservation.RewriteAttempt!.Status is RewriteAttemptStatus.Processing
                             ? "processing_timed_out"
                             : "reservation_expired";
 
-                        reservation.Status = UsageReservationStatus.Expired;
-                        reservation.ReleasedAt = command.Now;
-                        reservation.RowVersion = Guid.NewGuid();
+                        var claimed = await reservations.TryTransitionFromPendingAsync(
+                            reservation.Id,
+                            UsageReservationStatus.Expired,
+                            command.Now,
+                            transactionCt) == 1;
+                        if (!claimed)
+                        {
+                            continue;
+                        }
 
-                        if (reservation.RewriteCredit is not null)
-                        {
-                            reservation.RewriteCredit.AmountConsumed = Math.Max(
-                                0,
-                                reservation.RewriteCredit.AmountConsumed - 1);
-                            reservation.RewriteCredit.RowVersion = Guid.NewGuid();
-                        }
-                        else
-                        {
-                            reservation.UsagePeriod!.ReservedCount = Math.Max(
-                                0,
-                                reservation.UsagePeriod.ReservedCount - 1);
-                            reservation.UsagePeriod.UpdatedAt = command.Now;
-                            reservation.UsagePeriod.RowVersion = Guid.NewGuid();
-                        }
+                        await reservations.ReleaseClaimedCounterAsync(
+                            reservation.Id,
+                            reservation.UsagePeriodId,
+                            reservation.RewriteCreditId,
+                            command.Now,
+                            transactionCt);
 
                         reservation.RewriteAttempt.Status = RewriteAttemptStatus.Expired;
                         reservation.RewriteAttempt.ErrorCode = reason;
                         reservation.RewriteAttempt.CompletedAt = command.Now;
                         reservation.RewriteAttempt.RowVersion = Guid.NewGuid();
+                        claimedCount++;
                     }
 
                     await unitOfWork.SaveChangesAsync(transactionCt);
-                    return expiredReservations.Count;
+                    return new BatchReleaseResult(claimedCount, expiredReservations.Count);
                 },
-                IsolationLevel.Serializable,
+                IsolationLevel.ReadCommitted,
                 ct);
 
-            releasedCount += batchCount;
-            if (batchCount < command.BatchSize)
+            releasedCount += batchResult.ClaimedCount;
+            if (batchResult.ListedCount < command.BatchSize)
             {
                 return releasedCount;
             }
         }
     }
+
+    private sealed record BatchReleaseResult(int ClaimedCount, int ListedCount);
 }

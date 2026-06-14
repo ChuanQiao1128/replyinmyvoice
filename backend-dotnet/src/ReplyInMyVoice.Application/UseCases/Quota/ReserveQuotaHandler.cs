@@ -24,12 +24,15 @@ public sealed class ReserveQuotaHandler(
 
     public async Task<ReserveQuotaResult> HandleAsync(
         ReserveQuotaCommand command,
-        CancellationToken ct = default) =>
-        await unitOfWork.ExecuteInTransactionAsync(
+        CancellationToken ct = default)
+    {
+        // Admission is decided inside conditional UPDATE statements under row locks; unique-index races are retried by UnitOfWork.
+        return await unitOfWork.ExecuteInTransactionAsync(
             transactionCt => ReserveCoreAsync(command, transactionCt),
-            IsolationLevel.Serializable,
+            IsolationLevel.ReadCommitted,
             ReservationRaceMaxAttempts,
             ct);
+    }
 
     private async Task<ReserveQuotaResult> ReserveCoreAsync(
         ReserveQuotaCommand command,
@@ -59,58 +62,79 @@ public sealed class ReserveQuotaHandler(
             command.UserId,
             command.PeriodKey,
             ct);
-        var usedCount = period?.UsedCount ?? 0;
-        var reservedCount = period?.ReservedCount ?? 0;
-        if (usedCount + reservedCount >= command.QuotaLimit)
+        var wonPeriodSlot = period is null
+            ? command.QuotaLimit > 0
+            : await usagePeriods.TryReserveSlotAsync(
+                period.Id,
+                command.QuotaLimit,
+                command.Now,
+                ct) == 1;
+
+        Guid? consumedCreditId = null;
+        if (!wonPeriodSlot)
         {
-            var credit = await credits.GetUsableForReservationAsync(
+            var creditIds = await credits.ListUsableForReservationIdsAsync(
                 command.UserId,
                 command.Now,
                 ct);
-            if (credit is null)
+
+            foreach (var creditId in creditIds)
+            {
+                if (await credits.TryConsumeForReservationAsync(creditId, ct) == 1)
+                {
+                    consumedCreditId = creditId;
+                    break;
+                }
+            }
+
+            if (consumedCreditId is null)
             {
                 return ReserveQuotaResult.QuotaExceeded();
             }
-
-            period = await PrepareUsagePeriodAsync(period, command, ct);
-            var creditAttempt = CreatePendingAttempt(command);
-            credit.AmountConsumed += 1;
-            credit.RowVersion = Guid.NewGuid();
-
-            await attempts.AddAsync(creditAttempt, ct);
-            await reservations.AddAsync(new UsageReservation
-            {
-                UserId = command.UserId,
-                UsagePeriod = period,
-                RewriteAttempt = creditAttempt,
-                RewriteCredit = credit,
-                Status = UsageReservationStatus.Pending,
-                CreatedAt = command.Now,
-                ExpiresAt = command.Now.Add(command.ReservationTtl),
-            }, ct);
-            await outboxMessages.AddAsync(CreateRewriteJobOutboxMessage(creditAttempt.Id, command.Now), ct);
-            await unitOfWork.SaveChangesAsync(ct);
-
-            return new ReserveQuotaResult(
-                ReserveQuotaResultKind.Created,
-                creditAttempt.Id,
-                creditAttempt.Status);
         }
 
-        period = await PrepareUsagePeriodAsync(period, command, ct);
+        UsagePeriod? newPeriod = null;
+        Guid? existingPeriodId = period?.Id;
+        if (period is null)
+        {
+            newPeriod = new UsagePeriod
+            {
+                UserId = command.UserId,
+                PeriodKey = command.PeriodKey,
+                QuotaLimit = command.QuotaLimit,
+                ReservedCount = wonPeriodSlot ? 1 : 0,
+                CreatedAt = command.Now,
+                UpdatedAt = command.Now,
+            };
+            await usagePeriods.AddAsync(newPeriod, ct);
+        }
+        else if (!wonPeriodSlot)
+        {
+            await usagePeriods.RefreshQuotaLimitAsync(period.Id, command.QuotaLimit, command.Now, ct);
+        }
+
         var attempt = CreatePendingAttempt(command);
-        period.ReservedCount += 1;
-        period.RowVersion = Guid.NewGuid();
         await attempts.AddAsync(attempt, ct);
-        await reservations.AddAsync(new UsageReservation
+
+        var reservation = new UsageReservation
         {
             UserId = command.UserId,
-            UsagePeriod = period,
             RewriteAttempt = attempt,
+            RewriteCreditId = consumedCreditId,
             Status = UsageReservationStatus.Pending,
             CreatedAt = command.Now,
             ExpiresAt = command.Now.Add(command.ReservationTtl),
-        }, ct);
+        };
+        if (newPeriod is not null)
+        {
+            reservation.UsagePeriod = newPeriod;
+        }
+        else
+        {
+            reservation.UsagePeriodId = existingPeriodId!.Value;
+        }
+
+        await reservations.AddAsync(reservation, ct);
         await outboxMessages.AddAsync(CreateRewriteJobOutboxMessage(attempt.Id, command.Now), ct);
         await unitOfWork.SaveChangesAsync(ct);
 
@@ -118,31 +142,6 @@ public sealed class ReserveQuotaHandler(
             ReserveQuotaResultKind.Created,
             attempt.Id,
             attempt.Status);
-    }
-
-    private async Task<UsagePeriod> PrepareUsagePeriodAsync(
-        UsagePeriod? period,
-        ReserveQuotaCommand command,
-        CancellationToken ct)
-    {
-        if (period is null)
-        {
-            period = new UsagePeriod
-            {
-                UserId = command.UserId,
-                PeriodKey = command.PeriodKey,
-                QuotaLimit = command.QuotaLimit,
-                CreatedAt = command.Now,
-                UpdatedAt = command.Now,
-            };
-            await usagePeriods.AddAsync(period, ct);
-            return period;
-        }
-
-        period.QuotaLimit = command.QuotaLimit;
-        period.UpdatedAt = command.Now;
-        period.RowVersion = Guid.NewGuid();
-        return period;
     }
 
     private static RewriteAttempt CreatePendingAttempt(ReserveQuotaCommand command) =>

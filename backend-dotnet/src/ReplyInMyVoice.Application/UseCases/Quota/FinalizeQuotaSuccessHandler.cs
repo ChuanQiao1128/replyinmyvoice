@@ -11,6 +11,8 @@ public sealed class FinalizeQuotaSuccessHandler(
     IUsagePeriodRepository usagePeriods,
     IUnitOfWork unitOfWork)
 {
+    private const int ReservationRaceMaxAttempts = 3;
+
     public async Task HandleAsync(
         FinalizeQuotaSuccessCommand command,
         CancellationToken ct = default)
@@ -20,11 +22,6 @@ public sealed class FinalizeQuotaSuccessHandler(
             {
                 var attempt = await RequireAttemptAsync(command.AttemptId, transactionCt);
                 var reservation = await RequireReservationAsync(command.AttemptId, transactionCt);
-                UsagePeriod? period = null;
-                if (reservation.RewriteCreditId is null)
-                {
-                    period = await RequireUsagePeriodAsync(reservation.UsagePeriodId, transactionCt);
-                }
 
                 if (attempt.Status == RewriteAttemptStatus.Succeeded &&
                     reservation.Status == UsageReservationStatus.Finalized)
@@ -38,18 +35,20 @@ public sealed class FinalizeQuotaSuccessHandler(
                     return false;
                 }
 
-                if (reservation.RewriteCreditId is null)
+                var claimed = await reservations.TryTransitionFromPendingAsync(
+                    reservation.Id,
+                    UsageReservationStatus.Finalized,
+                    command.Now,
+                    transactionCt) == 1;
+                if (!claimed)
                 {
-                    var usagePeriod = period!;
-                    usagePeriod.ReservedCount = Math.Max(0, usagePeriod.ReservedCount - 1);
-                    usagePeriod.UsedCount += 1;
-                    usagePeriod.UpdatedAt = command.Now;
-                    usagePeriod.RowVersion = Guid.NewGuid();
+                    return false;
                 }
 
-                reservation.Status = UsageReservationStatus.Finalized;
-                reservation.FinalizedAt = command.Now;
-                reservation.RowVersion = Guid.NewGuid();
+                if (reservation.RewriteCreditId is null)
+                {
+                    await usagePeriods.FinalizeReservedSlotAsync(reservation.UsagePeriodId, command.Now, transactionCt);
+                }
 
                 attempt.Status = RewriteAttemptStatus.Succeeded;
                 attempt.ResultJson = command.ResultJson;
@@ -59,7 +58,8 @@ public sealed class FinalizeQuotaSuccessHandler(
                 await unitOfWork.SaveChangesAsync(transactionCt);
                 return true;
             },
-            IsolationLevel.Serializable,
+            IsolationLevel.ReadCommitted,
+            ReservationRaceMaxAttempts,
             ct);
     }
 
@@ -70,8 +70,4 @@ public sealed class FinalizeQuotaSuccessHandler(
     private async Task<UsageReservation> RequireReservationAsync(Guid attemptId, CancellationToken ct) =>
         await reservations.GetByAttemptIdAsync(attemptId, ct) ??
         throw new InvalidOperationException($"Usage reservation for attempt '{attemptId}' was not found.");
-
-    private async Task<UsagePeriod> RequireUsagePeriodAsync(Guid usagePeriodId, CancellationToken ct) =>
-        await usagePeriods.GetByIdAsync(usagePeriodId, ct) ??
-        throw new InvalidOperationException($"Usage period '{usagePeriodId}' was not found.");
 }

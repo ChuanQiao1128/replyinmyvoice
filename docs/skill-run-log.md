@@ -6349,3 +6349,38 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/OutboxFastPathDispatchTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`, `InfrastructureServiceCollectionTests`, five listed helper updates plus the extra contract-test helper update, and this log entry.
 - Verification evidence: red command `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter OutboxFastPathDispatchTests` failed on missing fast-path types; focused implementation command passed 15/15; broader backend-focused command passed 73/73; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 641/641.
 - Limitations: Restore/test emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. Local commit was blocked by the sandboxed git metadata location.
+### 2026-06-13 - state-machine-modeling - HARD-09 issue #788 quota reservation lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #788 changes quota reservation, finalization, release, and expiry status transitions.
+- Action: Opened and followed the project skill as a lifecycle checklist. Modeled `UsageReservation` as `Pending` claimable state with terminal `Finalized`, `Released`, and `Expired` outcomes; kept `RewriteAttempt` terminal states from being overwritten by late finalize/release paths; implemented conditional `Pending`-only status transitions before counter mutation.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Quota/FinalizeQuotaSuccessHandler.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Quota/ReleaseQuotaHandler.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Quota/ReleaseExpiredReservationsHandler.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/RewriteJob/ProcessRewriteJobHandler.cs`, and this log entry.
+- Verification evidence: focused quota/rewrite-job run passed 29/29; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 637/637.
+- Limitations: `MarkProcessingAsync` remains on its existing guarded attempt-row flow because HARD-09 scoped only counter-bearing reservation transitions.
+
+### 2026-06-13 - data-module-review - HARD-09 issue #788 atomic quota counters
+
+- Agent: Codex worker
+- Trigger: Issue #788 changes EF repository methods, usage counters, credit counters, transactions, and persistence invariants.
+- Action: Opened and followed the project skill as a data correctness checklist. Added raw conditional SQL methods for period slot reserve, quota-limit refresh, reserved-slot finalize/release, credit consume/release, and reservation `Pending` claims; preserved unique-index retry behavior and avoided EF tracked counter mutation in the changed paths.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUsagePeriodRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IRewriteCreditRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IUsageReservationRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/UsagePeriodRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/RewriteCreditRepository.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Repositories/UsageReservationRepository.cs`, and this log entry.
+- Verification evidence: repository/concurrency focused run passed 12/12; acceptance greps found the conditional period and credit guards exactly once in their repositories; `git diff --check` produced no output; full backend test run passed 637/637.
+- Limitations: To keep the pinned `QuotaUseCaseTests.cs` file unchanged, expiry cleanup keeps its existing public constructor and uses a scoped reservation-repository raw counter release helper after the status claim.
+
+### 2026-06-13 - resilience-test-generation - HARD-09 issue #788 quota race tests
+
+- Agent: Codex worker
+- Trigger: Issue #788 requires tests for parallel quota reservation, credit contention, and finalize-vs-expiry races.
+- Action: Opened and followed the project skill as a race/failure matrix. Added file-backed SQLite WAL concurrency tests with one context per parallel reserve and final persisted-state assertions for the period slot, credit slot, and finalize/expiry race invariants.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaConcurrencyTests.cs`, repository raw-SQL tests in `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureRepositoryTests.cs`, and this log entry.
+- Verification evidence: focused repository/concurrency run first failed on missing HARD-09 APIs, then passed 12/12 after implementation; focused quota/rewrite-job run passed 29/29; full backend test run passed 637/637.
+- Limitations: The race tests prove behavior on SQLite with WAL and timeout settings matching existing local concurrency tests; SQL Server semantics are covered by the raw conditional-update shape rather than a SQL Server integration run in this worker.
+
+### 2026-06-13 - dotnet-backend-testing - HARD-09 issue #788 quota integration tests
+
+- Agent: Codex worker
+- Trigger: Issue #788 adds C# xUnit/EF Core SQLite tests for quota repository updates and concurrent use-case behavior.
+- Action: Opened and followed the project skill for test-level selection. Added repository integration tests for the new raw SQL methods and a use-case concurrency suite using real repositories, real `UnitOfWork`, file-backed SQLite, and final database-state assertions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureRepositoryTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaConcurrencyTests.cs`, and this log entry.
+- Verification evidence: focused repository/concurrency run passed 12/12; focused quota/rewrite-job run passed 29/29; full `dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release` passed 637/637.
+- Limitations: The .NET restore step emitted `NU1900` warnings because package vulnerability metadata could not be loaded, but restore/build/test completed. No EF migration, payment flow, frontend path, provider code, deploy, push, or PR change was made.

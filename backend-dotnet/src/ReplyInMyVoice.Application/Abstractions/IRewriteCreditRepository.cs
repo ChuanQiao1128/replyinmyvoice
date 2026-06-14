@@ -14,6 +14,19 @@ public interface IRewriteCreditRepository
         DateTimeOffset now,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<Guid>> ListUsableForReservationIdsAsync(
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken ct = default);
+
+    Task<int> TryConsumeForReservationAsync(
+        Guid creditId,
+        CancellationToken ct = default);
+
+    Task<int> ReleaseConsumedAsync(
+        Guid creditId,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<RewriteCredit>> ListByUserIdAsync(
         Guid userId,
         CancellationToken ct = default);

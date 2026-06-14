@@ -210,6 +210,339 @@ public sealed class InfrastructureRepositoryTests : IAsyncLifetime
         credit!.Id.Should().Be(expected.Id);
     }
 
+    [Fact]
+    public async Task TryReserveSlotAsync_increments_and_refreshes_quota_limit_when_capacity_remains()
+    {
+        await using var seedDb = CreateContext();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var updatedAt = now.AddMinutes(5);
+        var user = CreateUser("period-reserve-user", "period-reserve@example.com", now);
+        var period = new UsagePeriod
+        {
+            User = user,
+            PeriodKey = "free:lifetime",
+            QuotaLimit = 2,
+            UsedCount = 1,
+            ReservedCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        seedDb.UsagePeriods.Add(period);
+        await seedDb.SaveChangesAsync();
+        var originalRowVersion = period.RowVersion;
+
+        await using (var updateDb = CreateContext())
+        {
+            var repository = new UsagePeriodRepository(updateDb);
+
+            var affected = await repository.TryReserveSlotAsync(period.Id, quotaLimit: 3, updatedAt);
+
+            affected.Should().Be(1);
+        }
+
+        await using var verifyDb = CreateContext();
+        var updated = await verifyDb.UsagePeriods.SingleAsync(x => x.Id == period.Id);
+        updated.ReservedCount.Should().Be(1);
+        updated.UsedCount.Should().Be(1);
+        updated.QuotaLimit.Should().Be(3);
+        updated.UpdatedAt.Should().Be(updatedAt);
+        updated.RowVersion.Should().NotBe(originalRowVersion);
+    }
+
+    [Fact]
+    public async Task TryReserveSlotAsync_returns_zero_and_writes_nothing_when_used_plus_reserved_reaches_limit()
+    {
+        await using var seedDb = CreateContext();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var user = CreateUser("period-full-user", "period-full@example.com", now);
+        var period = new UsagePeriod
+        {
+            User = user,
+            PeriodKey = "free:lifetime",
+            QuotaLimit = 3,
+            UsedCount = 2,
+            ReservedCount = 1,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        seedDb.UsagePeriods.Add(period);
+        await seedDb.SaveChangesAsync();
+        var originalRowVersion = period.RowVersion;
+
+        await using (var updateDb = CreateContext())
+        {
+            var repository = new UsagePeriodRepository(updateDb);
+
+            var affected = await repository.TryReserveSlotAsync(period.Id, quotaLimit: 3, now.AddMinutes(5));
+
+            affected.Should().Be(0);
+        }
+
+        await using var verifyDb = CreateContext();
+        var unchanged = await verifyDb.UsagePeriods.SingleAsync(x => x.Id == period.Id);
+        unchanged.QuotaLimit.Should().Be(3);
+        unchanged.UsedCount.Should().Be(2);
+        unchanged.ReservedCount.Should().Be(1);
+        unchanged.UpdatedAt.Should().Be(now);
+        unchanged.RowVersion.Should().Be(originalRowVersion);
+    }
+
+    [Fact]
+    public async Task TryConsumeForReservationAsync_stops_exactly_at_amount_granted()
+    {
+        await using var seedDb = CreateContext();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var user = CreateUser("credit-consume-user", "credit-consume@example.com", now);
+        var credit = new RewriteCredit
+        {
+            User = user,
+            Source = "PROMO",
+            AmountGranted = 2,
+            AmountConsumed = 0,
+            GrantedAt = now,
+            ExpiresAt = now.AddDays(1),
+        };
+        seedDb.RewriteCredits.Add(credit);
+        await seedDb.SaveChangesAsync();
+        var originalRowVersion = credit.RowVersion;
+
+        await using (var updateDb = CreateContext())
+        {
+            var repository = new RewriteCreditRepository(updateDb);
+
+            (await repository.TryConsumeForReservationAsync(credit.Id)).Should().Be(1);
+            (await repository.TryConsumeForReservationAsync(credit.Id)).Should().Be(1);
+            (await repository.TryConsumeForReservationAsync(credit.Id)).Should().Be(0);
+        }
+
+        await using var verifyDb = CreateContext();
+        var updated = await verifyDb.RewriteCredits.SingleAsync(x => x.Id == credit.Id);
+        updated.AmountConsumed.Should().Be(2);
+        updated.RowVersion.Should().NotBe(originalRowVersion);
+    }
+
+    [Fact]
+    public async Task ReleaseConsumedAsync_and_ReleaseReservedSlotAsync_floor_at_zero()
+    {
+        await using var seedDb = CreateContext();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var user = CreateUser("release-floor-user", "release-floor@example.com", now);
+        var period = new UsagePeriod
+        {
+            User = user,
+            PeriodKey = "free:lifetime",
+            QuotaLimit = 3,
+            UsedCount = 0,
+            ReservedCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var credit = new RewriteCredit
+        {
+            User = user,
+            Source = "PROMO",
+            AmountGranted = 1,
+            AmountConsumed = 0,
+            GrantedAt = now,
+            ExpiresAt = now.AddDays(1),
+        };
+        seedDb.AddRange(period, credit);
+        await seedDb.SaveChangesAsync();
+
+        await using (var updateDb = CreateContext())
+        {
+            var periods = new UsagePeriodRepository(updateDb);
+            var credits = new RewriteCreditRepository(updateDb);
+
+            (await periods.ReleaseReservedSlotAsync(period.Id, now.AddMinutes(1))).Should().Be(1);
+            (await credits.ReleaseConsumedAsync(credit.Id)).Should().Be(1);
+        }
+
+        await using var verifyDb = CreateContext();
+        (await verifyDb.UsagePeriods.SingleAsync(x => x.Id == period.Id)).ReservedCount.Should().Be(0);
+        (await verifyDb.RewriteCredits.SingleAsync(x => x.Id == credit.Id)).AmountConsumed.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FinalizeReservedSlotAsync_moves_reserved_to_used()
+    {
+        await using var seedDb = CreateContext();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var finalizedAt = now.AddMinutes(3);
+        var user = CreateUser("period-finalize-user", "period-finalize@example.com", now);
+        var period = new UsagePeriod
+        {
+            User = user,
+            PeriodKey = "free:lifetime",
+            QuotaLimit = 3,
+            UsedCount = 2,
+            ReservedCount = 1,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        seedDb.UsagePeriods.Add(period);
+        await seedDb.SaveChangesAsync();
+        var originalRowVersion = period.RowVersion;
+
+        await using (var updateDb = CreateContext())
+        {
+            var repository = new UsagePeriodRepository(updateDb);
+
+            var affected = await repository.FinalizeReservedSlotAsync(period.Id, finalizedAt);
+
+            affected.Should().Be(1);
+        }
+
+        await using var verifyDb = CreateContext();
+        var updated = await verifyDb.UsagePeriods.SingleAsync(x => x.Id == period.Id);
+        updated.ReservedCount.Should().Be(0);
+        updated.UsedCount.Should().Be(3);
+        updated.UpdatedAt.Should().Be(finalizedAt);
+        updated.RowVersion.Should().NotBe(originalRowVersion);
+    }
+
+    [Fact]
+    public async Task TryTransitionFromPendingAsync_allows_exactly_one_transition_and_stamps_correct_timestamp()
+    {
+        await using var seedDb = CreateContext();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var user = CreateUser("reservation-transition-user", "reservation-transition@example.com", now);
+        var period = new UsagePeriod
+        {
+            User = user,
+            PeriodKey = "free:lifetime",
+            QuotaLimit = 5,
+            ReservedCount = 3,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var finalized = CreateReservation(user, period, "transition-finalized", now);
+        var released = CreateReservation(user, period, "transition-released", now);
+        var expired = CreateReservation(user, period, "transition-expired", now);
+        seedDb.AddRange(period, finalized, released, expired);
+        await seedDb.SaveChangesAsync();
+
+        await using (var updateDb = CreateContext())
+        {
+            var repository = new UsageReservationRepository(updateDb);
+
+            (await repository.TryTransitionFromPendingAsync(finalized.Id, UsageReservationStatus.Finalized, now.AddMinutes(1)))
+                .Should()
+                .Be(1);
+            (await repository.TryTransitionFromPendingAsync(finalized.Id, UsageReservationStatus.Released, now.AddMinutes(2)))
+                .Should()
+                .Be(0);
+            (await repository.TryTransitionFromPendingAsync(released.Id, UsageReservationStatus.Released, now.AddMinutes(3)))
+                .Should()
+                .Be(1);
+            (await repository.TryTransitionFromPendingAsync(expired.Id, UsageReservationStatus.Expired, now.AddMinutes(4)))
+                .Should()
+                .Be(1);
+            await FluentActions
+                .Invoking(() => repository.TryTransitionFromPendingAsync(expired.Id, UsageReservationStatus.Pending, now.AddMinutes(5)))
+                .Should()
+                .ThrowAsync<ArgumentOutOfRangeException>();
+        }
+
+        await using var verifyDb = CreateContext();
+        var finalizedRow = await verifyDb.UsageReservations.SingleAsync(x => x.Id == finalized.Id);
+        finalizedRow.Status.Should().Be(UsageReservationStatus.Finalized);
+        finalizedRow.FinalizedAt.Should().Be(now.AddMinutes(1));
+        finalizedRow.ReleasedAt.Should().BeNull();
+
+        var releasedRow = await verifyDb.UsageReservations.SingleAsync(x => x.Id == released.Id);
+        releasedRow.Status.Should().Be(UsageReservationStatus.Released);
+        releasedRow.FinalizedAt.Should().BeNull();
+        releasedRow.ReleasedAt.Should().Be(now.AddMinutes(3));
+
+        var expiredRow = await verifyDb.UsageReservations.SingleAsync(x => x.Id == expired.Id);
+        expiredRow.Status.Should().Be(UsageReservationStatus.Expired);
+        expiredRow.FinalizedAt.Should().BeNull();
+        expiredRow.ReleasedAt.Should().Be(now.AddMinutes(4));
+    }
+
+    [Fact]
+    public async Task ListUsableForReservationIdsAsync_orders_expiring_usable_credits_first()
+    {
+        await using var db = CreateContext();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        var user = CreateUser("credit-list-user", "credit-list@example.com", now);
+        var otherUser = CreateUser("credit-list-other-user", "credit-list-other@example.com", now);
+        db.AppUsers.AddRange(user, otherUser);
+        await db.SaveChangesAsync();
+
+        var first = CreateCredit(user, now.AddDays(-1), now.AddHours(2));
+        var second = CreateCredit(user, now.AddDays(-3), now.AddDays(1));
+        var third = CreateCredit(user, now.AddDays(-5), null);
+        db.RewriteCredits.AddRange(
+            CreateCredit(user, now.AddDays(-6), now.AddHours(-1)),
+            CreateCredit(user, now.AddDays(-7), now.AddHours(1), amountConsumed: 1),
+            CreateCredit(otherUser, now.AddDays(-8), now.AddMinutes(30)),
+            third,
+            second,
+            first);
+        await db.SaveChangesAsync();
+
+        var repository = new RewriteCreditRepository(db);
+
+        var ids = await repository.ListUsableForReservationIdsAsync(user.Id, now);
+
+        ids.Should().Equal(first.Id, second.Id, third.Id);
+    }
+
+    private static AppUser CreateUser(string externalAuthUserId, string email, DateTimeOffset now) =>
+        new()
+        {
+            ExternalAuthUserId = externalAuthUserId,
+            Email = email,
+            SubscriptionStatus = SubscriptionStatus.Inactive,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+    private static RewriteCredit CreateCredit(
+        AppUser user,
+        DateTimeOffset grantedAt,
+        DateTimeOffset? expiresAt,
+        int amountConsumed = 0) =>
+        new()
+        {
+            User = user,
+            Source = "PROMO",
+            AmountGranted = 1,
+            AmountConsumed = amountConsumed,
+            GrantedAt = grantedAt,
+            ExpiresAt = expiresAt,
+        };
+
+    private static UsageReservation CreateReservation(
+        AppUser user,
+        UsagePeriod period,
+        string idempotencyKey,
+        DateTimeOffset now)
+    {
+        var attempt = new RewriteAttempt
+        {
+            User = user,
+            IdempotencyKey = idempotencyKey,
+            RequestHash = $"hash-{idempotencyKey}",
+            RequestJson = "{\"roughDraftReply\":\"Thanks for the update.\",\"tone\":\"warm\"}",
+            Status = RewriteAttemptStatus.Pending,
+            CreatedAt = now,
+            ExpiresAt = now.AddMinutes(10),
+        };
+
+        return new UsageReservation
+        {
+            User = user,
+            UsagePeriod = period,
+            RewriteAttempt = attempt,
+            Status = UsageReservationStatus.Pending,
+            CreatedAt = now,
+            ExpiresAt = now.AddMinutes(10),
+        };
+    }
+
     private AppDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
