@@ -1,10 +1,14 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Functions;
@@ -14,6 +18,11 @@ namespace ReplyInMyVoice.Tests;
 
 public sealed class FunctionAuthResolverTests
 {
+    private const string TestJwtIssuer =
+        "https://replyinmyvoicecustomers.ciamlogin.com/614ea821-6ef3-43e2-8613-d4b13fae115d/v2.0";
+    private const string TestJwtAudience = "api://1ecb5f62-22b8-4e5a-8139-b2c4f15c3f32";
+    private const string TestJwtScope = $"{TestJwtAudience}/access_as_user";
+
     [Fact]
     public async Task ResolveUserAsync_reads_email_from_entra_emails_claim()
     {
@@ -242,6 +251,85 @@ public sealed class FunctionAuthResolverTests
             .Be(AuthFailureReason.Expired);
     }
 
+    [Fact]
+    public async Task ResolveUserAsync_accepts_valid_signed_token()
+    {
+        using var keySet = JwtTestKeySet.Create();
+        var token = CreateSignedJwt(
+            keySet.PrivateSigningKey,
+            externalAuthUserId: "entra-object-from-jwt");
+        var request = CreateBearerRequest(token);
+        var configurationManager = CreateStaticConfigurationManager(keySet.PublicValidationKey);
+
+        var user = await FunctionAuthResolver.ResolveUserAsync(
+            request,
+            BuildJwtValidationConfiguration(),
+            configurationManagerOverride: configurationManager);
+
+        user.Should().NotBeNull();
+        user!.ExternalAuthUserId.Should().Be("entra-object-from-jwt");
+    }
+
+    [Fact]
+    public async Task ResolveUserAsync_rejects_token_signed_with_wrong_key()
+    {
+        var keyId = Guid.NewGuid().ToString("N");
+        using var tokenKeySet = JwtTestKeySet.Create(keyId);
+        using var publishedKeySet = JwtTestKeySet.Create(keyId);
+        var token = CreateSignedJwt(
+            tokenKeySet.PrivateSigningKey,
+            externalAuthUserId: "entra-object-from-jwt");
+        var request = CreateBearerRequest(token);
+        var configurationManager = CreateStaticConfigurationManager(publishedKeySet.PublicValidationKey);
+
+        var user = await FunctionAuthResolver.ResolveUserAsync(
+            request,
+            BuildJwtValidationConfiguration(),
+            configurationManagerOverride: configurationManager);
+
+        user.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveUserAsync_rejects_token_with_wrong_audience()
+    {
+        using var keySet = JwtTestKeySet.Create();
+        var token = CreateSignedJwt(
+            keySet.PrivateSigningKey,
+            audience: "api://wrong-audience",
+            externalAuthUserId: "entra-object-from-jwt");
+        var request = CreateBearerRequest(token);
+        var configurationManager = CreateStaticConfigurationManager(keySet.PublicValidationKey);
+
+        var user = await FunctionAuthResolver.ResolveUserAsync(
+            request,
+            BuildJwtValidationConfiguration(),
+            configurationManagerOverride: configurationManager);
+
+        user.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveUserAsync_rejects_expired_token()
+    {
+        using var keySet = JwtTestKeySet.Create();
+        var now = DateTime.UtcNow;
+        var token = CreateSignedJwt(
+            keySet.PrivateSigningKey,
+            notBefore: now.AddMinutes(-20),
+            expires: now.AddMinutes(-10),
+            externalAuthUserId: "entra-object-from-jwt");
+        var request = CreateBearerRequest(token);
+        var configurationManager = CreateStaticConfigurationManager(keySet.PublicValidationKey);
+
+        var user = await FunctionAuthResolver.ResolveUserAsync(
+            request,
+            BuildJwtValidationConfiguration(),
+            configurationManagerOverride: configurationManager);
+
+        user.Should().BeNull();
+    }
+
     [Theory]
     [InlineData(true, "Bearer error=\"invalid_token\"")]
     [InlineData(false, "Bearer")]
@@ -293,6 +381,13 @@ public sealed class FunctionAuthResolverTests
         return context.Request;
     }
 
+    private static HttpRequest CreateBearerRequest(string token)
+    {
+        var request = CreateRequest();
+        request.Headers.Authorization = $"Bearer {token}";
+        return request;
+    }
+
     private static async Task<DefaultHttpContext> ExecuteResultAsync(IActionResult result)
     {
         var context = new DefaultHttpContext
@@ -317,6 +412,91 @@ public sealed class FunctionAuthResolverTests
         new ConfigurationBuilder()
             .AddInMemoryCollection(values ?? new Dictionary<string, string?>())
             .Build();
+
+    private static IConfiguration BuildJwtValidationConfiguration() =>
+        BuildConfiguration(new Dictionary<string, string?>
+        {
+            ["ENTRA_AUTHORITY"] = TestJwtIssuer,
+            ["ENTRA_API_AUDIENCE"] = TestJwtAudience,
+            ["ENTRA_API_SCOPE"] = TestJwtScope,
+        });
+
+    private static IConfigurationManager<OpenIdConnectConfiguration> CreateStaticConfigurationManager(
+        SecurityKey signingKey)
+    {
+        var configuration = new OpenIdConnectConfiguration
+        {
+            Issuer = TestJwtIssuer,
+        };
+        configuration.SigningKeys.Add(signingKey);
+
+        return new StaticConfigurationManager<OpenIdConnectConfiguration>(configuration);
+    }
+
+    private static string CreateSignedJwt(
+        SecurityKey signingKey,
+        string issuer = TestJwtIssuer,
+        string audience = TestJwtAudience,
+        string externalAuthUserId = "entra-object-from-jwt",
+        DateTime? notBefore = null,
+        DateTime? expires = null)
+    {
+        var now = DateTime.UtcNow;
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(
+            [
+                new Claim("oid", externalAuthUserId),
+                new Claim("scp", "access_as_user"),
+            ]),
+            Issuer = issuer,
+            Audience = audience,
+            NotBefore = notBefore ?? now.AddMinutes(-1),
+            Expires = expires ?? now.AddMinutes(10),
+            SigningCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.RsaSha256),
+        };
+
+        return new JwtSecurityTokenHandler().CreateEncodedJwt(descriptor);
+    }
+
+    private sealed class JwtTestKeySet : IDisposable
+    {
+        private readonly RSA privateRsa;
+        private readonly RSA publicRsa;
+
+        private JwtTestKeySet(RSA privateRsa, RSA publicRsa, string keyId)
+        {
+            this.privateRsa = privateRsa;
+            this.publicRsa = publicRsa;
+            PrivateSigningKey = new RsaSecurityKey(this.privateRsa)
+            {
+                KeyId = keyId,
+            };
+            PublicValidationKey = new RsaSecurityKey(this.publicRsa)
+            {
+                KeyId = keyId,
+            };
+        }
+
+        public RsaSecurityKey PrivateSigningKey { get; }
+
+        public RsaSecurityKey PublicValidationKey { get; }
+
+        public static JwtTestKeySet Create(string? keyId = null)
+        {
+            var privateRsa = RSA.Create(2048);
+            var publicRsa = RSA.Create();
+            publicRsa.ImportParameters(privateRsa.ExportParameters(includePrivateParameters: false));
+
+            return new JwtTestKeySet(privateRsa, publicRsa, keyId ?? Guid.NewGuid().ToString("N"));
+        }
+
+        public void Dispose()
+        {
+            privateRsa.Dispose();
+            publicRsa.Dispose();
+        }
+    }
 
     private sealed class CapturingLogger<T> : ILogger<T>
     {

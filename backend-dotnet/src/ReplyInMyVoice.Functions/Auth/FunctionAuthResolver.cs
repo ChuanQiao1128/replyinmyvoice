@@ -17,13 +17,19 @@ public static class FunctionAuthResolver
     public static async Task<FunctionAuthUser?> ResolveUserAsync(
         HttpRequest request,
         IConfiguration configuration,
-        CancellationToken cancellationToken = default) =>
-        (await ResolveUserResultAsync(request, configuration, cancellationToken)).User;
+        CancellationToken cancellationToken = default,
+        IConfigurationManager<OpenIdConnectConfiguration>? configurationManagerOverride = null) =>
+        (await ResolveUserResultAsync(
+            request,
+            configuration,
+            cancellationToken,
+            configurationManagerOverride)).User;
 
     public static async Task<FunctionAuthResult> ResolveUserResultAsync(
         HttpRequest request,
         IConfiguration configuration,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IConfigurationManager<OpenIdConnectConfiguration>? configurationManagerOverride = null)
     {
         var headerUserId = ResolveHeaderExternalUserId(request, configuration);
         if (!string.IsNullOrWhiteSpace(headerUserId))
@@ -50,7 +56,11 @@ public static class FunctionAuthResolver
             return new FunctionAuthResult(null, AuthFailureReason.NoToken);
         }
 
-        var validationResult = await ValidateBearerTokenAsync(bearerToken, configuration, cancellationToken);
+        var validationResult = await ValidateBearerTokenAsync(
+            bearerToken,
+            configuration,
+            cancellationToken,
+            configurationManagerOverride);
         if (validationResult.Principal is null)
         {
             return new FunctionAuthResult(null, validationResult.Reason);
@@ -135,7 +145,8 @@ public static class FunctionAuthResolver
     private static async Task<(ClaimsPrincipal? Principal, AuthFailureReason Reason)> ValidateBearerTokenAsync(
         string token,
         IConfiguration configuration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IConfigurationManager<OpenIdConnectConfiguration>? configurationManagerOverride)
     {
         var authority = ResolveAuthority(configuration);
         var audiences = ResolveAudiences(configuration);
@@ -145,7 +156,7 @@ public static class FunctionAuthResolver
         }
 
         var metadataAddress = $"{authority.TrimEnd('/')}/.well-known/openid-configuration";
-        var manager = ConfigurationManagers.GetOrAdd(
+        var manager = configurationManagerOverride ?? ConfigurationManagers.GetOrAdd(
             metadataAddress,
             key => new ConfigurationManager<OpenIdConnectConfiguration>(
                 key,
