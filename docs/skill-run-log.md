@@ -6739,3 +6739,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Configuration/RewriteEngineOptions.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Configuration/RewriteEngineOptionsValidator.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Configuration/KeyVaultConfigurationExtensions.cs`, DI/startup wiring, `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineOptionsTests.cs`, and this log entry.
 - Verification evidence: initial focused test run failed at compile time because `RewriteEngineOptions` and `KeyVaultConfigurationExtensions` were missing; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteEngineOptionsTests` passed 8/8, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~InfrastructureServiceCollectionTests` passed 35/35, scoped wiring and restricted-word greps passed, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 845/845.
 - Limitations: Key Vault remains an opt-in guarded no-op until the Azure configuration secrets package is intentionally added in a restore-safe change. Restore emitted existing `NU1900` package vulnerability metadata warnings when the NuGet vulnerability index was unavailable, but restore/build/test completed. A local commit was attempted but blocked by sandbox permissions on the shared git metadata directory. No deploy, push, or PR action was run.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-DBOPTS issue #819 DbContext option and readiness tests
+
+- Agent: Codex worker
+- Trigger: Issue #819 adds C#/.NET tests for SQL Server command timeout configuration, EF migration status reporting, and the Functions readiness envelope.
+- Action: Opened and followed the project skill for backend test selection. Added focused xUnit/FluentAssertions tests before implementation for default/configured/clamped SQL command timeout values, SQLite migration status none/pending/error cases, and readiness JSON `checks.migrations` success for an `EnsureCreated` context.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/DbMigrationStatusTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/HealthFunctionReadinessTests.cs`, DbContext option wiring, migration status helper, readiness check wiring, and this log entry.
+- Verification evidence: initial focused migration-status test run failed at compile time because `DbMigrationStatus` was missing; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~DbMigrationStatusTests` passed 3/3, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~InfrastructureServiceCollectionTests` passed 38/38, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~HealthFunctionReadinessTests` passed 2/2, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 851/851.
+- Limitations: Tests use local EF options inspection and SQLite in-memory contexts; no Azure SQL connection, EF migration application, external provider call, deploy, push, or PR action was run. A local commit was attempted but blocked by sandbox permissions on the shared git metadata directory.
+
+### 2026-06-15 - data-module-review - DATA-DBOPTS issue #819 migration status and DbContext registration
+
+- Agent: Codex worker
+- Trigger: Issue #819 changes EF Core DbContext registration and adds a migration-status read path used by readiness.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Confirmed the change adds no schema mutation, migration file, table/index change, quota counter mutation, or transaction path; kept `AddDbContext` semantics and documented why pooling is not used with the existing context factory.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/DbMigrationStatus.cs`, readiness migration reporting, focused migration-status tests, and this log entry.
+- Verification evidence: `agent-skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src/ReplyInMyVoice.Infrastructure --limit 20` ran and surfaced existing broad persistence signals only; focused and full backend tests passed as listed above; exact source/test restricted-word scan printed no matches after removing ignored build outputs.
+- Limitations: This issue intentionally does not apply migrations or contact a production database. The readiness migration check reports status by default and only contributes to top-level readiness when the explicit config flag is enabled.
+
+### 2026-06-15 - resilience-test-generation - DATA-DBOPTS issue #819 timeout and migration-readiness behavior
+
+- Agent: Codex worker
+- Trigger: Issue #819 changes database command timeout configuration and readiness behavior for migration drift/error reporting.
+- Action: Opened and followed the project skill as a failure-mode checklist. Generated the resilience matrix for `DbContext timeout and migration readiness`, then covered the critical local invariants: SQL Server command timeout is bounded and configurable, migration-status errors are captured without throwing, and readiness reports migration status without failing closed by default.
+- Output artifacts: timeout configuration tests, `DbMigrationStatusTests`, readiness envelope assertion, `DbMigrationStatus.EvaluateAsync`, and this log entry.
+- Verification evidence: resilience matrix script ran locally; focused timeout/migration/readiness tests and the full Release suite passed as listed above; no live dependency was contacted.
+- Limitations: The tests do not simulate a live Azure SQL long-running command or CI deployment skew. They verify the local configuration and report-only readiness behavior required by the issue.

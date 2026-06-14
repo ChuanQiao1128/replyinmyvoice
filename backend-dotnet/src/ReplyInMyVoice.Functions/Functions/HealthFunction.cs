@@ -76,8 +76,12 @@ public sealed class HealthFunction
         var stuckReservationsThreshold = ReadNonNegativeInt(
             "Health:StuckReservationsThreshold",
             DefaultStuckReservationsThreshold);
+        var failOnPendingMigrations = ReadBoolean("Health:FailOnPendingMigrations", fallback: false);
 
         var database = await CheckDatabaseAsync(cancellationToken);
+        var migrations = database.Ok
+            ? await CheckMigrationsAsync(cancellationToken)
+            : MigrationReadinessCheck.Unavailable("database_unavailable");
         var serviceBus = CheckServiceBus();
         var failedStripeEvents = database.Ok
             ? await CheckFailedStripeEventsAsync(failedStripeEventsThreshold, cancellationToken)
@@ -96,12 +100,14 @@ public sealed class HealthFunction
 
         var checks = new ReadinessChecks(
             database,
+            migrations,
             serviceBus,
             failedStripeEvents,
             lastProcessedStripeEvent,
             outboxBacklog,
             stuckReservations);
         var ok = checks.Database.Ok &&
+            (!failOnPendingMigrations || checks.Migrations.Ok) &&
             checks.ServiceBus.Ok &&
             checks.FailedStripeEvents.Ok &&
             checks.LastProcessedStripeEvent.Ok &&
@@ -160,6 +166,17 @@ public sealed class HealthFunction
             queueName,
             authMode,
             ok ? null : configured ? "sender_unavailable" : "not_configured");
+    }
+
+    private async Task<MigrationReadinessCheck> CheckMigrationsAsync(CancellationToken cancellationToken)
+    {
+        var status = await DbMigrationStatus.EvaluateAsync(db, cancellationToken);
+        var pending = status.PendingMigrations.ToArray();
+        return new MigrationReadinessCheck(
+            status.Error is null && !status.HasPendingMigrations,
+            pending.Length,
+            pending.Length == 0 ? null : pending,
+            status.Error);
     }
 
     private async Task<CountReadinessCheck> CheckFailedStripeEventsAsync(
@@ -320,6 +337,14 @@ public sealed class HealthFunction
             : fallback;
     }
 
+    private bool ReadBoolean(string key, bool fallback)
+    {
+        var value = configuration[key] ?? configuration[key.Replace(':', '_')];
+        return bool.TryParse(value, out var parsed)
+            ? parsed
+            : fallback;
+    }
+
     public sealed record ReadinessResponse(
         [property: JsonPropertyName("ok")] bool Ok,
         [property: JsonPropertyName("status")] string Status,
@@ -328,6 +353,7 @@ public sealed class HealthFunction
 
     public sealed record ReadinessChecks(
         [property: JsonPropertyName("database")] DatabaseReadinessCheck Database,
+        [property: JsonPropertyName("migrations")] MigrationReadinessCheck Migrations,
         [property: JsonPropertyName("serviceBus")] ServiceBusReadinessCheck ServiceBus,
         [property: JsonPropertyName("failedStripeEvents")] CountReadinessCheck FailedStripeEvents,
         [property: JsonPropertyName("lastProcessedStripeEvent")]
@@ -339,6 +365,16 @@ public sealed class HealthFunction
         [property: JsonPropertyName("ok")] bool Ok,
         [property: JsonPropertyName("canConnect")] bool CanConnect,
         [property: JsonPropertyName("error")] string? Error);
+
+    public sealed record MigrationReadinessCheck(
+        [property: JsonPropertyName("ok")] bool Ok,
+        [property: JsonPropertyName("pendingCount")] int PendingCount,
+        [property: JsonPropertyName("pending")] string[]? Pending,
+        [property: JsonPropertyName("error")] string? Error)
+    {
+        public static MigrationReadinessCheck Unavailable(string error) =>
+            new(false, 0, null, error);
+    }
 
     public sealed record ServiceBusReadinessCheck(
         [property: JsonPropertyName("ok")] bool Ok,
