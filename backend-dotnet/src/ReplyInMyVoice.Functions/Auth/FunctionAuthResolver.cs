@@ -17,12 +17,20 @@ public static class FunctionAuthResolver
     public static async Task<FunctionAuthUser?> ResolveUserAsync(
         HttpRequest request,
         IConfiguration configuration,
+        CancellationToken cancellationToken = default) =>
+        (await ResolveUserResultAsync(request, configuration, cancellationToken)).User;
+
+    public static async Task<FunctionAuthResult> ResolveUserResultAsync(
+        HttpRequest request,
+        IConfiguration configuration,
         CancellationToken cancellationToken = default)
     {
         var headerUserId = ResolveHeaderExternalUserId(request, configuration);
         if (!string.IsNullOrWhiteSpace(headerUserId))
         {
-            return new FunctionAuthUser(headerUserId, ResolveHeaderEmail(request));
+            return new FunctionAuthResult(
+                new FunctionAuthUser(headerUserId, ResolveHeaderEmail(request)),
+                AuthFailureReason.None);
         }
 
         if (request.HttpContext.User.Identity?.IsAuthenticated == true)
@@ -30,26 +38,30 @@ public static class FunctionAuthResolver
             var principalUserId = ResolveUserIdFromClaims(request.HttpContext.User);
             if (!string.IsNullOrWhiteSpace(principalUserId))
             {
-                return new FunctionAuthUser(principalUserId, ResolveEmail(request.HttpContext.User));
+                return new FunctionAuthResult(
+                    new FunctionAuthUser(principalUserId, ResolveEmail(request.HttpContext.User)),
+                    AuthFailureReason.None);
             }
         }
 
         var bearerToken = ResolveBearerToken(request);
         if (string.IsNullOrWhiteSpace(bearerToken))
         {
-            return null;
+            return new FunctionAuthResult(null, AuthFailureReason.NoToken);
         }
 
-        var principal = await ValidateBearerTokenAsync(bearerToken, configuration, cancellationToken);
-        if (principal is null)
+        var validationResult = await ValidateBearerTokenAsync(bearerToken, configuration, cancellationToken);
+        if (validationResult.Principal is null)
         {
-            return null;
+            return new FunctionAuthResult(null, validationResult.Reason);
         }
 
-        var externalUserId = ResolveUserIdFromClaims(principal);
+        var externalUserId = ResolveUserIdFromClaims(validationResult.Principal);
         return string.IsNullOrWhiteSpace(externalUserId)
-            ? null
-            : new FunctionAuthUser(externalUserId, ResolveEmail(principal));
+            ? new FunctionAuthResult(null, AuthFailureReason.Invalid)
+            : new FunctionAuthResult(
+                new FunctionAuthUser(externalUserId, ResolveEmail(validationResult.Principal)),
+                AuthFailureReason.None);
     }
 
     public static string? ResolveExternalUserId(HttpRequest request, IConfiguration configuration)
@@ -115,7 +127,12 @@ public static class FunctionAuthResolver
         return null;
     }
 
-    private static async Task<ClaimsPrincipal?> ValidateBearerTokenAsync(
+    public static AuthFailureReason ClassifyTokenFailure(Exception exception) =>
+        exception is SecurityTokenExpiredException
+            ? AuthFailureReason.Expired
+            : AuthFailureReason.Invalid;
+
+    private static async Task<(ClaimsPrincipal? Principal, AuthFailureReason Reason)> ValidateBearerTokenAsync(
         string token,
         IConfiguration configuration,
         CancellationToken cancellationToken)
@@ -124,7 +141,7 @@ public static class FunctionAuthResolver
         var audiences = ResolveAudiences(configuration);
         if (string.IsNullOrWhiteSpace(authority) || audiences.Count == 0)
         {
-            return null;
+            return (null, AuthFailureReason.Invalid);
         }
 
         var metadataAddress = $"{authority.TrimEnd('/')}/.well-known/openid-configuration";
@@ -141,7 +158,7 @@ public static class FunctionAuthResolver
         }
         catch
         {
-            return null;
+            return (null, AuthFailureReason.Invalid);
         }
 
         var tokenValidationParameters = new TokenValidationParameters
@@ -163,11 +180,13 @@ public static class FunctionAuthResolver
                 tokenValidationParameters,
                 out _);
 
-            return HasRequiredScopeOrRole(principal, configuration) ? principal : null;
+            return HasRequiredScopeOrRole(principal, configuration)
+                ? (principal, AuthFailureReason.None)
+                : (null, AuthFailureReason.Invalid);
         }
-        catch
+        catch (Exception exception)
         {
-            return null;
+            return (null, ClassifyTokenFailure(exception));
         }
     }
 
@@ -297,4 +316,14 @@ public static class FunctionAuthResolver
     }
 }
 
+public enum AuthFailureReason
+{
+    None = 0,
+    NoToken = 1,
+    Expired = 2,
+    Invalid = 3,
+}
+
 public sealed record FunctionAuthUser(string ExternalAuthUserId, string? Email);
+
+public sealed record FunctionAuthResult(FunctionAuthUser? User, AuthFailureReason Reason);

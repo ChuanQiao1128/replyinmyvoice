@@ -1,8 +1,14 @@
 using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using ReplyInMyVoice.Functions.Auth;
+using ReplyInMyVoice.Functions.Functions;
+using ReplyInMyVoice.Functions.Http;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -202,6 +208,80 @@ public sealed class FunctionAuthResolverTests
         user.Email.Should().Be("local@example.com");
     }
 
+    [Fact]
+    public async Task ResolveUserResultAsync_returns_no_token_when_bearer_header_is_missing()
+    {
+        var result = await FunctionAuthResolver.ResolveUserResultAsync(
+            CreateRequest(),
+            BuildConfiguration());
+
+        result.User.Should().BeNull();
+        result.Reason.Should().Be(AuthFailureReason.NoToken);
+    }
+
+    [Fact]
+    public async Task ResolveUserResultAsync_returns_invalid_when_bearer_validation_cannot_run()
+    {
+        var request = CreateRequest();
+        request.Headers.Authorization = "Bearer malformed-token";
+
+        var result = await FunctionAuthResolver.ResolveUserResultAsync(
+            request,
+            BuildConfiguration());
+
+        result.User.Should().BeNull();
+        result.Reason.Should().Be(AuthFailureReason.Invalid);
+    }
+
+    [Fact]
+    public void ClassifyTokenFailure_maps_security_token_expiry_to_expired()
+    {
+        FunctionAuthResolver
+            .ClassifyTokenFailure(new SecurityTokenExpiredException("expired"))
+            .Should()
+            .Be(AuthFailureReason.Expired);
+    }
+
+    [Theory]
+    [InlineData(true, "Bearer error=\"invalid_token\"")]
+    [InlineData(false, "Bearer")]
+    public async Task Unauthorized_sets_www_authenticate_header(bool invalidToken, string expectedHeader)
+    {
+        var context = await ExecuteResultAsync(FunctionHttpResults.Unauthorized(
+            "Authentication required",
+            invalidToken));
+
+        context.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        context.Response.Headers.WWWAuthenticate.ToString().Should().Be(expectedHeader);
+    }
+
+    [Fact]
+    public async Task Rewrite_unauthorized_logs_auth_subtype_without_token_or_email()
+    {
+        var request = CreateRequest();
+        request.Headers.Authorization = "Bearer sample-token-value";
+        request.Headers["X-User-Email"] = "person@example.com";
+        var logger = new CapturingLogger<RewriteHttpFunctions>();
+        var functions = new RewriteHttpFunctions(
+            BuildConfiguration(),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            logger);
+
+        var result = await functions.CreateRewriteAttempt(request, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        logger.Messages.Should().ContainSingle(message =>
+            message.Contains("auth.unauthorized subtype=Invalid", StringComparison.Ordinal));
+        logger.Messages.Should().OnlyContain(message =>
+            !message.Contains("sample-token-value", StringComparison.Ordinal) &&
+            !message.Contains("person@example.com", StringComparison.Ordinal));
+    }
+
     private static HttpRequest CreateRequest(ClaimsPrincipal? user = null)
     {
         var context = new DefaultHttpContext();
@@ -213,9 +293,58 @@ public sealed class FunctionAuthResolverTests
         return context.Request;
     }
 
+    private static async Task<DefaultHttpContext> ExecuteResultAsync(IActionResult result)
+    {
+        var context = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection()
+                .AddLogging()
+                .AddMvcCore()
+                .Services
+                .BuildServiceProvider(),
+        };
+
+        await result.ExecuteResultAsync(new ActionContext
+        {
+            HttpContext = context,
+        });
+
+        return context;
+    }
+
     private static IConfiguration BuildConfiguration(
         Dictionary<string, string?>? values = null) =>
         new ConfigurationBuilder()
             .AddInMemoryCollection(values ?? new Dictionary<string, string?>())
             .Build();
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state)
+            where TState : notnull =>
+            NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Messages.Add(formatter(state, exception));
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
+    }
 }
