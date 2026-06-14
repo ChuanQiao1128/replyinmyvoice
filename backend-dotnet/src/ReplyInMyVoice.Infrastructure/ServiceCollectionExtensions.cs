@@ -104,6 +104,20 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
         services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
+        var outboxFastPathEnabled = !bool.TryParse(
+            configuration["OUTBOX_FAST_PATH_ENABLED"],
+            out var parsedOutboxFastPathEnabled) || parsedOutboxFastPathEnabled;
+        var outboxFastPathTimeoutSeconds = int.TryParse(
+            configuration["OUTBOX_FAST_PATH_TIMEOUT_SEC"],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var parsedOutboxFastPathTimeoutSeconds)
+            ? Math.Clamp(parsedOutboxFastPathTimeoutSeconds, 1, 30)
+            : 5;
+        var outboxFastPathOptions = new OutboxFastPathOptions(
+            outboxFastPathEnabled,
+            TimeSpan.FromSeconds(outboxFastPathTimeoutSeconds));
+        services.AddSingleton(outboxFastPathOptions);
         services.AddScoped<ICreditExpiryNotifier, CreditExpiryNotifier>();
         services.AddScoped<ITaxTurnoverNotifier, TaxTurnoverNotifier>();
         services.AddScoped<ITaxTurnoverSettingsProvider, TaxTurnoverSettingsProvider>();
@@ -150,6 +164,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetRewriteAttemptHandler>();
         services.AddScoped<DispatchDueWebhooksHandler>();
         services.AddScoped<DispatchDueOutboxHandler>();
+        services.AddScoped<IOutboxFastPathDispatcher>(sp => new OutboxFastPathDispatcher(
+            sp.GetRequiredService<DispatchDueOutboxHandler>(),
+            sp.GetRequiredService<OutboxFastPathOptions>(),
+            sp.GetRequiredService<ILogger<OutboxFastPathDispatcher>>()));
         services.AddScoped<ReconcileStripeHandler>();
         services.AddScoped<GenerateApiKeyHandler>();
         services.AddScoped<ListApiKeysHandler>();

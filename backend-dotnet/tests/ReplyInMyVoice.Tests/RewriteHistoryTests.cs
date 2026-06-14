@@ -124,7 +124,8 @@ public sealed class RewriteHistoryTests : IAsyncLifetime
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            unitOfWork);
+            unitOfWork,
+            new NoopOutboxFastPathDispatcher());
         var getOrCreateUserHandler = new GetOrCreateUserHandler(appUserRepository, unitOfWork);
         var findUserHandler = new FindUserHandler(appUserRepository);
         var getRewriteAttemptHandler = new GetRewriteAttemptHandler(rewriteAttemptRepository);

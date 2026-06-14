@@ -17,7 +17,8 @@ public sealed class CreateRewriteAttemptHandler(
     IUsageReservationRepository reservations,
     IRewriteCreditRepository credits,
     IOutboxMessageRepository outboxMessages,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    IOutboxFastPathDispatcher outboxFastPath)
 {
     private const int ReservationRaceMaxAttempts = 3;
 
@@ -30,26 +31,39 @@ public sealed class CreateRewriteAttemptHandler(
 
     public async Task<ApplicationResult<RewriteAttemptDto>> HandleAsync(
         CreateRewriteAttemptCommand command,
-        CancellationToken ct = default) =>
-        await unitOfWork.ExecuteInTransactionAsync(
+        CancellationToken ct = default)
+    {
+        var outcome = await unitOfWork.ExecuteInTransactionAsync(
             transactionCt => HandleCoreAsync(command, transactionCt),
             IsolationLevel.Serializable,
             ReservationRaceMaxAttempts,
             ct);
 
-    private async Task<ApplicationResult<RewriteAttemptDto>> HandleCoreAsync(
+        if (outcome.OutboxMessageId is { } outboxMessageId)
+        {
+            await outboxFastPath.TryDispatchAsync(outboxMessageId, ct);
+        }
+
+        return outcome.Result;
+    }
+
+    private async Task<CreateAttemptOutcome> HandleCoreAsync(
         CreateRewriteAttemptCommand command,
         CancellationToken ct)
     {
         var user = await appUsers.GetByIdAsync(command.UserId, ct);
         if (user is null)
         {
-            return ApplicationResult<RewriteAttemptDto>.NotFound();
+            return new CreateAttemptOutcome(
+                ApplicationResult<RewriteAttemptDto>.NotFound(),
+                OutboxMessageId: null);
         }
 
         if (user.SuspendedAt is not null)
         {
-            return ApplicationResult<RewriteAttemptDto>.QuotaExceeded("user_suspended");
+            return new CreateAttemptOutcome(
+                ApplicationResult<RewriteAttemptDto>.QuotaExceeded("user_suspended"),
+                OutboxMessageId: null);
         }
 
         var requestHash = ComputeRequestHash(command.Request);
@@ -61,12 +75,16 @@ public sealed class CreateRewriteAttemptHandler(
         {
             if (!string.Equals(existingAttempt.RequestHash, requestHash, StringComparison.Ordinal))
             {
-                return ApplicationResult<RewriteAttemptDto>.Conflict(
-                    RewriteAttemptDto.FromAttempt(existingAttempt));
+                return new CreateAttemptOutcome(
+                    ApplicationResult<RewriteAttemptDto>.Conflict(
+                        RewriteAttemptDto.FromAttempt(existingAttempt)),
+                    OutboxMessageId: null);
             }
 
-            return ApplicationResult<RewriteAttemptDto>.Existing(
-                RewriteAttemptDto.FromAttempt(existingAttempt));
+            return new CreateAttemptOutcome(
+                ApplicationResult<RewriteAttemptDto>.Existing(
+                    RewriteAttemptDto.FromAttempt(existingAttempt)),
+                OutboxMessageId: null);
         }
 
         var period = await usagePeriods.GetByUserIdAndPeriodKeyAsync(
@@ -85,7 +103,9 @@ public sealed class CreateRewriteAttemptHandler(
                 ct);
             if (credit is null)
             {
-                return ApplicationResult<RewriteAttemptDto>.QuotaExceeded();
+                return new CreateAttemptOutcome(
+                    ApplicationResult<RewriteAttemptDto>.QuotaExceeded(),
+                    OutboxMessageId: null);
             }
 
             period = await PrepareUsagePeriodAsync(period, command, ct);
@@ -103,9 +123,12 @@ public sealed class CreateRewriteAttemptHandler(
                 CreatedAt = command.Now,
                 ExpiresAt = command.Now.Add(ReservationTtl),
             }, ct);
-            await outboxMessages.AddAsync(CreateRewriteJobOutboxMessage(attempt.Id, command.Now), ct);
+            var outboxMessage = CreateRewriteJobOutboxMessage(attempt.Id, command.Now);
+            await outboxMessages.AddAsync(outboxMessage, ct);
             await unitOfWork.SaveChangesAsync(ct);
-            return ApplicationResult<RewriteAttemptDto>.Created(RewriteAttemptDto.FromAttempt(attempt));
+            return new CreateAttemptOutcome(
+                ApplicationResult<RewriteAttemptDto>.Created(RewriteAttemptDto.FromAttempt(attempt)),
+                outboxMessage.Id);
         }
 
         period = await PrepareUsagePeriodAsync(period, command, ct);
@@ -121,9 +144,12 @@ public sealed class CreateRewriteAttemptHandler(
             CreatedAt = command.Now,
             ExpiresAt = command.Now.Add(ReservationTtl),
         }, ct);
-        await outboxMessages.AddAsync(CreateRewriteJobOutboxMessage(attempt.Id, command.Now), ct);
+        var periodOutboxMessage = CreateRewriteJobOutboxMessage(attempt.Id, command.Now);
+        await outboxMessages.AddAsync(periodOutboxMessage, ct);
         await unitOfWork.SaveChangesAsync(ct);
-        return ApplicationResult<RewriteAttemptDto>.Created(RewriteAttemptDto.FromAttempt(attempt));
+        return new CreateAttemptOutcome(
+            ApplicationResult<RewriteAttemptDto>.Created(RewriteAttemptDto.FromAttempt(attempt)),
+            periodOutboxMessage.Id);
     }
 
     private async Task<UsagePeriod> PrepareUsagePeriodAsync(
@@ -189,4 +215,8 @@ public sealed class CreateRewriteAttemptHandler(
         };
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);
+
+    private sealed record CreateAttemptOutcome(
+        ApplicationResult<RewriteAttemptDto> Result,
+        Guid? OutboxMessageId);
 }

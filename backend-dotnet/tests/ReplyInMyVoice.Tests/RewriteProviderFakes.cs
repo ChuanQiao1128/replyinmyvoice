@@ -1,4 +1,5 @@
 using ReplyInMyVoice.Domain.Contracts;
+using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Infrastructure.Providers;
 
 namespace ReplyInMyVoice.Tests;
@@ -17,4 +18,10 @@ internal sealed class FakeRewriteProvider(RewriteProviderResult result) : IRewri
         SeenRequest = request;
         return Task.FromResult(result);
     }
+}
+
+internal sealed class NoopOutboxFastPathDispatcher : IOutboxFastPathDispatcher
+{
+    public Task TryDispatchAsync(Guid outboxMessageId, CancellationToken ct = default) =>
+        Task.CompletedTask;
 }
