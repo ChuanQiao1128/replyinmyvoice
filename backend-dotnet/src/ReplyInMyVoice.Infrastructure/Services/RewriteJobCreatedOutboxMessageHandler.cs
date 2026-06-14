@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Domain.Contracts;
@@ -26,7 +27,9 @@ public sealed class RewriteJobCreatedOutboxMessageHandler(IRewriteJobPublisher j
             throw new JsonException("Outbox payload did not contain a valid attempt id.");
         }
 
-        await jobPublisher.PublishAsync(new RewriteJob(payload.AttemptId), ct);
+        await jobPublisher.PublishAsync(
+            new RewriteJob(payload.AttemptId, message.CorrelationId, Activity.Current?.Id),
+            ct);
     }
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);

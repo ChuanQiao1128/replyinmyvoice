@@ -9,4 +9,5 @@ public sealed record CreateRewriteAttemptCommand(
     string PeriodKey,
     int QuotaLimit,
     DateTimeOffset Now,
-    Guid? ApiKeyId = null);
+    Guid? ApiKeyId = null,
+    string? CorrelationId = null);

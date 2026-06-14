@@ -168,7 +168,7 @@ public sealed class CreateRewriteAttemptHandler(
         }
 
         await reservations.AddAsync(reservation, ct);
-        var outboxMessage = CreateRewriteJobOutboxMessage(attempt.Id, command.Now);
+        var outboxMessage = CreateRewriteJobOutboxMessage(attempt.Id, command.Now, command.CorrelationId);
         await outboxMessages.AddAsync(outboxMessage, ct);
         await unitOfWork.SaveChangesAsync(ct);
         return new CreateAttemptOutcome(
@@ -200,7 +200,8 @@ public sealed class CreateRewriteAttemptHandler(
 
     private static OutboxMessage CreateRewriteJobOutboxMessage(
         Guid attemptId,
-        DateTimeOffset now) =>
+        DateTimeOffset now,
+        string? correlationId) =>
         new()
         {
             MessageType = "RewriteJobCreated",
@@ -210,7 +211,9 @@ public sealed class CreateRewriteAttemptHandler(
             NextAttemptAt = now,
             AttemptCount = 0,
             MaxAttempts = 10,
-            CorrelationId = attemptId.ToString(),
+            CorrelationId = string.IsNullOrWhiteSpace(correlationId)
+                ? attemptId.ToString()
+                : correlationId,
         };
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);
