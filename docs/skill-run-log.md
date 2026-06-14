@@ -6586,3 +6586,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, and this log entry.
 - Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0 with one duplicate-using warning in `InfrastructureServiceCollectionTests.cs`.
 - Limitations: `dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release` did not reach test execution in this sandbox. The exact command failed with MSBuild named-pipe/socket `Permission denied`, and `MSBUILDDISABLENODEREUSE=1 dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release --no-build -m:1 /nodeReuse:false` reached VSTest but aborted with the same local socket permission denial.
+
+### 2026-06-14 - cloud-architecture-cost-review - STRUCT-01 issue #810 migration startup consolidation
+
+- Agent: Codex worker
+- Trigger: Issue #810 edits the Azure Functions deployment workflow and live database migration startup project.
+- Action: Opened and followed the project source skill as a narrow cost/readiness gate after reading `README.md`, `docs/manual-setup.md`, `docs/dotnet-azure-blocker-preflight.md`, and `docs/business-qa-and-deploy-result.md`. Selected the cheapest option: keep the existing Azure Functions + Azure SQL deployment shape and change only the EF startup project used by CI/deploy migrations. Rejected adding App Service, duplicate deploy artifacts, or any new paid infrastructure.
+- Output artifacts: `.github/workflows/dotnet-azure.yml` and this log entry.
+- Verification evidence: The workflow now publishes only Worker and Functions artifacts, and both SQL Server CI and deploy migration commands reference `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj` as the startup project.
+- Limitations: Exact provider pricing was not checked because this change does not create, resize, deploy, or keep paid resources running. No Azure, Cloudflare, payment, or production deploy command was run.
+
+### 2026-06-14 - data-module-review - STRUCT-01 issue #810 migration startup consolidation
+
+- Agent: Codex worker
+- Trigger: Issue #810 changes the project used to run EF Core database migrations in the production deploy workflow.
+- Action: Opened and followed the project skill as a migration-safety review. Reviewed the existing `AppDbContextDesignTimeFactory`, SQL Server migration gate, deploy migration step, and relevant docs. Confirmed the factory already uses `UseSqlServer` and no schema, migration file, entity, index, or runtime data access behavior needed to change.
+- Output artifacts: `.github/workflows/dotnet-azure.yml`, `backend-dotnet/tests/ReplyInMyVoice.Tests/MigrationStartupProjectTests.cs`, and this log entry.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet --limit 20` exited 0 as a review aid; focused migration-startup test passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 800/800.
+- Limitations: The scan reported existing broad persistence signals unrelated to this patch. No SQL Server integration run or EF migration was added in this worker task.
+
+### 2026-06-14 - dotnet-backend-testing - STRUCT-01 issue #810 migration startup test
+
+- Agent: Codex worker
+- Trigger: Issue #810 requires new C#/.NET test coverage pinning the migration design-time factory provider.
+- Action: Opened and followed the project skill for backend test selection. Added a focused xUnit/FluentAssertions test that creates `AppDbContext` through `AppDbContextDesignTimeFactory` and asserts the EF provider is `Microsoft.EntityFrameworkCore.SqlServer`.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/MigrationStartupProjectTests.cs` and this log entry.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~MigrationStartupProjectTests` passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 800/800.
+- Limitations: Restore emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No frontend, browser, provider, payment, deploy, push, or PR action was run.

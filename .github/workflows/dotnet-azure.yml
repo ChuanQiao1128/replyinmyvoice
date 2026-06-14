@@ -64,8 +64,6 @@ jobs:
           name: backend-coverage
           path: backend-dotnet/artifacts/coverage/**/coverage.cobertura.xml
           if-no-files-found: warn
-      - name: Publish API
-        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj --configuration Release --output backend-dotnet/artifacts/api
       - name: Publish Worker
         run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Worker/ReplyInMyVoice.Worker.csproj --configuration Release --output backend-dotnet/artifacts/worker
       - name: Publish Functions
@@ -194,7 +192,7 @@ jobs:
           SQL_CONNECTION="Server=tcp:${AZURE_SQL_SERVER_NAME}.database.windows.net,1433;Initial Catalog=${AZURE_SQL_DATABASE_NAME};Persist Security Info=False;User ID=${SQL_ADMIN_USER};Password=${SQL_ADMIN_PASSWORD};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
           ConnectionStrings__DefaultConnection="$SQL_CONNECTION" dotnet ef database update \
             --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
-            --startup-project backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj \
+            --startup-project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
             --context AppDbContext
       - name: Deploy to Azure Functions
         env:
