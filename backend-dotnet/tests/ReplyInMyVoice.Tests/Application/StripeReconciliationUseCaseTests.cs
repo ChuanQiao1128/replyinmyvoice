@@ -897,6 +897,12 @@ public sealed class StripeReconciliationUseCaseTests
             CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<bool> ReleaseExpiryReminderClaimAsync(
+            Guid creditId,
+            DateTimeOffset claimedSentAt,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<Guid>> ListUsableForReservationIdsAsync(
             Guid userId,
             DateTimeOffset now,

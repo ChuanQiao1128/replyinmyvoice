@@ -71,5 +71,10 @@ public interface IRewriteCreditRepository
         DateTimeOffset sentAt,
         CancellationToken ct = default);
 
+    Task<bool> ReleaseExpiryReminderClaimAsync(
+        Guid creditId,
+        DateTimeOffset claimedSentAt,
+        CancellationToken ct = default);
+
     bool IsStripeEventIdWriteFailure(Exception exception);
 }

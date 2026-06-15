@@ -282,6 +282,25 @@ public sealed class RewriteCreditRepository(AppDbContext db) : IRewriteCreditRep
         return rows == 1;
     }
 
+    public async Task<bool> ReleaseExpiryReminderClaimAsync(
+        Guid creditId,
+        DateTimeOffset claimedSentAt,
+        CancellationToken ct = default)
+    {
+        var rowVersion = Guid.NewGuid();
+        var rows = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE RewriteCredits
+            SET ExpiryReminderSentAt = NULL,
+                RowVersion = {rowVersion}
+            WHERE Id = {creditId}
+              AND ExpiryReminderSentAt = {claimedSentAt}
+            """,
+            ct);
+
+        return rows == 1;
+    }
+
     public bool IsStripeEventIdWriteFailure(Exception exception)
     {
         var message = exception.ToString();
