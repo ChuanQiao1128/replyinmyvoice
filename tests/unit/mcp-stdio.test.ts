@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createServer } from "../../packages/mcp-server/src";
+import { createServer } from "@replyinmyvoiceashuman/mcp-server";
 
 const apiKey = "rmv_test_stdio_key";
 const baseUrl = "https://api.example.test";

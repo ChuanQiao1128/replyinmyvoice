@@ -11,6 +11,11 @@ export default defineConfig({
   cacheDir: ".vite-cache",
   resolve: {
     alias: {
+      "@replyinmyvoiceashuman/mcp-server": resolve(
+        root,
+        "packages/mcp-server/src/index.ts",
+      ),
+      "replyinmyvoice-api": resolve(root, "packages/sdk/src/index.ts"),
       "@": resolve(root),
     },
   },
