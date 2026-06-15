@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createClient, RimvApiError, type UsageResponse } from "../../packages/sdk/src/index";
+import { createClient, RimvApiError, type UsageResponse } from "replyinmyvoice-api";
 
 const apiKey = "rmv_live_unit_test_key";
 const baseUrl = "https://api.example.test";

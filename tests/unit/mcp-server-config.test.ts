@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MISSING_API_KEY_MESSAGE,
   readServerConfig,
-} from "../../packages/mcp-server/src/config";
+} from "@replyinmyvoiceashuman/mcp-server";
 
 describe("MCP server configuration", () => {
   it("throws a clear setup error when the API key env var is missing", () => {

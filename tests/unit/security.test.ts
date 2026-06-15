@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isAllowedOrigin } from "../../lib/security";
+import { isAllowedOrigin } from "@/lib/security";
 
 describe("isAllowedOrigin", () => {
   it("allows the configured app origin", () => {

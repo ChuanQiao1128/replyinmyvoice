@@ -3,17 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "engines": {
     "node": ">=22 <23"
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "cf:build": "node scripts/clean-open-next.mjs && opennextjs-cloudflare build",
+    "build:packages": "npm run build -w @replyinmyvoiceashuman/mcp-server && npm run build -w replyinmyvoice-api",
+    "build": "npm run build:packages && next build",
+    "cf:build": "npm run build:packages && node scripts/clean-open-next.mjs && opennextjs-cloudflare build",
     "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy -- --keep-vars",
     "smoke:promo-preview": "tsx scripts/promo-preview-smoke.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run build:packages && tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
