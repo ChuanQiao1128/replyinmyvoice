@@ -61,6 +61,29 @@ export function getServerConfig(server: Server): McpServerConfig {
   return config;
 }
 
+export {
+  buildIdempotencyKey,
+  HttpRewriteBackend,
+  RewriteBackendError,
+  type RewriteBackend,
+  type RewriteRequest,
+} from "./backend/RewriteBackend.js";
+export {
+  DEFAULT_BASE_URL,
+  MISSING_API_KEY_MESSAGE,
+  readServerConfig,
+  type ConfigEnv,
+  type McpServerConfig,
+} from "./config.js";
+export {
+  callTool,
+  listTools,
+  type CallToolContext,
+  type ToolDefinition,
+  type ToolOutput,
+} from "./tools/index.js";
+export { MCP_SERVER_VERSION } from "./version.js";
+
 export async function runStdio(env: ConfigEnv = process.env): Promise<void> {
   const server = createServer({ env });
   const transport = new StdioServerTransport();

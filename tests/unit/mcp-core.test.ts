@@ -4,8 +4,9 @@ import {
   HttpRewriteBackend,
   type RewriteBackend,
   type RewriteRequest,
-} from "../../packages/mcp-server/src/backend/RewriteBackend";
-import { callTool, listTools } from "../../packages/mcp-server/src/tools";
+  callTool,
+  listTools,
+} from "@replyinmyvoiceashuman/mcp-server";
 
 const apiKey = "rmv_live_unit_test_key";
 const baseUrl = "https://api.example.test";

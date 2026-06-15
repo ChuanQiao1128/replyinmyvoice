@@ -8,14 +8,12 @@ import { NextResponse } from "next/server";
 
 import {
   HttpRewriteBackend,
-  type RewriteBackend,
-} from "../../../packages/mcp-server/src/backend/RewriteBackend";
-import {
+  MCP_SERVER_VERSION,
   callTool,
   listTools,
+  type RewriteBackend,
   type ToolOutput,
-} from "../../../packages/mcp-server/src/tools";
-import { MCP_SERVER_VERSION } from "../../../packages/mcp-server/src/version";
+} from "@replyinmyvoiceashuman/mcp-server";
 import { isAllowedOrigin } from "../../../lib/security";
 
 export const dynamic = "force-dynamic";
