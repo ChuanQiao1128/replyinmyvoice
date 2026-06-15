@@ -54,6 +54,7 @@ public sealed class SendCreditExpiryRemindersHandler(
                 ct);
             if (!sent)
             {
+                await credits.ReleaseExpiryReminderClaimAsync(credit.Id, command.Now, ct);
                 continue;
             }
 

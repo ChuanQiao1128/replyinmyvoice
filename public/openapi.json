@@ -697,6 +697,9 @@
               },
               "message": {
                 "type": "string"
+              },
+              "requestId": {
+                "type": "string"
               }
             }
           }
@@ -781,6 +784,9 @@
                 "type": "string"
               },
               "message": {
+                "type": "string"
+              },
+              "requestId": {
                 "type": "string"
               }
             }

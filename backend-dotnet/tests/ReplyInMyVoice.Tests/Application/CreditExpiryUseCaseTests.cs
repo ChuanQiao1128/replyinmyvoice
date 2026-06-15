@@ -126,6 +126,51 @@ public sealed class CreditExpiryUseCaseTests
         credit.ExpiryReminderSentAt.Should().Be(now);
     }
 
+    [Fact]
+    public async Task SendCreditExpiryRemindersAsync_releases_claim_when_notification_send_fails()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-01T00:00:00Z");
+        var command = new SendCreditExpiryRemindersCommand(now, TimeSpan.FromDays(7));
+
+        Guid creditId;
+        await using (var seedDb = fixture.CreateContext())
+        {
+            var seededCredit = CreateCredit(user.Id, now.AddDays(3), amountGranted: 10, amountConsumed: 4);
+            seedDb.RewriteCredits.Add(seededCredit);
+            await seedDb.SaveChangesAsync();
+            creditId = seededCredit.Id;
+        }
+
+        var notifier = new FakeCreditExpiryNotifier(sendResult: false);
+        await using (var handlerDb = fixture.CreateContext())
+        {
+            var handler = CreateHandler(handlerDb, notifier);
+
+            var sentCount = await handler.HandleAsync(command);
+
+            sentCount.Should().Be(0);
+        }
+
+        await using (var verifyDb = fixture.CreateContext())
+        {
+            var credit = await verifyDb.RewriteCredits.SingleAsync(x => x.Id == creditId);
+            credit.ExpiryReminderSentAt.Should().BeNull();
+        }
+
+        await using (var retryDb = fixture.CreateContext())
+        {
+            var retryHandler = CreateHandler(retryDb, notifier);
+
+            var retrySentCount = await retryHandler.HandleAsync(command);
+
+            retrySentCount.Should().Be(0);
+        }
+
+        notifier.Requests.Should().HaveCount(2);
+    }
+
     private static SendCreditExpiryRemindersHandler CreateHandler(
         AppDbContext db,
         ICreditExpiryNotifier notifier) =>
@@ -148,7 +193,7 @@ public sealed class CreditExpiryUseCaseTests
             ExpiresAt = expiresAt
         };
 
-    private sealed class FakeCreditExpiryNotifier : ICreditExpiryNotifier
+    private sealed class FakeCreditExpiryNotifier(bool sendResult = true) : ICreditExpiryNotifier
     {
         public List<CreditExpiryNotificationRequest> Requests { get; } = [];
 
@@ -157,7 +202,7 @@ public sealed class CreditExpiryUseCaseTests
             CancellationToken ct = default)
         {
             Requests.Add(request);
-            return Task.FromResult(true);
+            return Task.FromResult(sendResult);
         }
     }
 

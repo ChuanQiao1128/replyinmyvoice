@@ -6991,3 +6991,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/SqlServer/*`, `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`, `.github/workflows/dotnet-azure.yml`, and this log entry.
 - Verification evidence: `NUGET_PACKAGES=/private/tmp/rimv-nuget-packages dotnet test ReplyInMyVoice.sln -c Release --filter "Category!=SqlServer"` passed 887/887; `NUGET_PACKAGES=/private/tmp/rimv-nuget-packages dotnet test ReplyInMyVoice.sln -c Release --filter "Category=SqlServer" --no-restore` compiled and then failed because Docker is unavailable locally; grep-based acceptance checks passed; `git diff --check` passed.
 - Limitations: The default NuGet global package cache is not writable from this sandbox, so verification used a temporary writable cache populated with symlinks to existing packages plus the downloaded `Testcontainers.MsSql` package. Docker is not running locally, so the container-backed SQL Server tests were not executed to green here.
+
+### 2026-06-15 - state-machine-modeling - credit expiry reminder claim release
+
+- Agent: Codex
+- Trigger: Credit expiry reminder lifecycle change for claimed, sent, and failed notification states.
+- Action: Opened and followed the skill as a lifecycle checklist. State list: unclaimed reminder candidate (`ExpiryReminderSentAt = null`), claimed pending send (`ExpiryReminderSentAt = command.Now`), sent reminder (same persisted stamp after notifier success), and released retryable candidate (`ExpiryReminderSentAt = null` after notifier failure). Events: candidate selection, atomic claim, send success, send failure, overlapping worker claim attempt. Invariants: only one worker may send a claimed reminder, a failed send must not permanently remove a candidate, and a release may clear only the exact claim timestamp created by that handler run.
+- Output artifacts: guarded `ReleaseExpiryReminderClaimAsync` repository method, handler failure-branch release call, regression test, and this log entry.
+- Verification evidence: focused red test failed with `ExpiryReminderSentAt` still set to `2026-06-01 +0h`; after implementation, focused credit-expiry tests passed 3/3.
+- Limitations: No schema, migration, deployed scheduler, or live email provider behavior changed.
+
+### 2026-06-15 - data-module-review - credit expiry reminder claim persistence
+
+- Agent: Codex
+- Trigger: Repository abstraction and EF Core raw SQL persistence change for `RewriteCredits.ExpiryReminderSentAt`.
+- Action: Opened and followed the skill for persistence invariants. Reviewed candidate query, atomic claim update, row-version update, handler mutation order, EF SQLite tests, and fake repository implementations. Added a compensating raw SQL release guarded by `Id` and the exact claimed timestamp, preserving the existing claim-before-send concurrency pattern.
+- Output artifacts: `IRewriteCreditRepository.ReleaseExpiryReminderClaimAsync`, `RewriteCreditRepository.ReleaseExpiryReminderClaimAsync`, fake repository interface update, and this log entry.
+- Verification evidence: `jq empty public/openapi.json` passed; focused credit-expiry tests passed 3/3 after implementation. Full build/test gates are run later in this turn.
+- Limitations: The release result is intentionally best-effort in the handler; no new audit table, retry counter, or migration was added.
+
+### 2026-06-15 - resilience-test-generation - credit expiry notifier send failure
+
+- Agent: Codex
+- Trigger: Regression fix for transient notification provider failure after a committed credit-expiry reminder claim.
+- Action: Opened and followed the skill as a failure-mode checklist. Critical operation: send one paid-credit expiry reminder after an atomic claim. Boundaries: database claim, email notifier, handler retryability. Failure matrix covered partial success after persistence plus provider send failure; the chosen lowest-level test uses EF SQLite with a deterministic notifier fake returning `false`.
+- Output artifacts: `SendCreditExpiryRemindersAsync_releases_claim_when_notification_send_fails`, configurable fake notifier result, and this log entry.
+- Verification evidence: red focused test failed on persisted stamp remaining set; green focused test passed 1/1, and all credit-expiry use-case tests passed 3/3.
+- Limitations: No live notification provider, throttling response, network timeout, or scheduler invocation was exercised.
+
+### 2026-06-15 - dotnet-backend-testing - credit expiry reminder regression test
+
+- Agent: Codex
+- Trigger: C#/.NET backend regression test required for `SendCreditExpiryRemindersHandler` provider-failure behavior.
+- Action: Opened and followed the project skill. Wrote the failing xUnit/FluentAssertions EF SQLite test before production edits, extended the existing hand-written notifier fake to return success or failure, then added the minimal repository/handler change to make the test pass.
+- Output artifacts: updated `CreditExpiryUseCaseTests`, repository interface/implementation changes, fake repository interface update, and this log entry.
+- Verification evidence: initial focused test run failed 0/1 with the old behavior; after implementation, focused failure-path test passed 1/1 and `CreditExpiryUseCaseTests` passed 3/3. Full Debug build/test gates are run later in this turn.
+- Limitations: SQL Server-specific tests remain excluded by the requested acceptance command; no new migration was run or modified.
