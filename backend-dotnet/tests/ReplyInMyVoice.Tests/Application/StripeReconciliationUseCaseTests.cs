@@ -891,9 +891,15 @@ public sealed class StripeReconciliationUseCaseTests
             CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task MarkExpiryReminderSentAsync(
-            RewriteCredit credit,
+        public Task<bool> TryClaimExpiryReminderAsync(
+            Guid creditId,
             DateTimeOffset sentAt,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> ReleaseExpiryReminderClaimAsync(
+            Guid creditId,
+            DateTimeOffset claimedSentAt,
             CancellationToken ct = default) =>
             throw new NotSupportedException();
 

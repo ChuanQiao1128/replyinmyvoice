@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
@@ -17,6 +18,7 @@ using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Providers;
@@ -486,7 +488,8 @@ public sealed class RewriteEngineContractTests
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NullLogger<ReserveQuotaHandler>.Instance);
 
     private static ProcessRewriteJobHandler CreateProcessHandler(
         AppDbContext db,
@@ -522,12 +525,18 @@ public sealed class RewriteEngineContractTests
         var outboxMessages = new OutboxMessageRepository(db);
         var promoRedemptions = new PromoCodeRedemptionRepository(db);
         var promoCodes = new PromoCodeRepository(db);
+        var apiKeys = new ApiKeyRepository(db);
+        var apiKeyUsages = new ApiKeyUsageRepository(db);
         var usagePlans = new AccountUsagePlanProvider(configuration);
         var unitOfWork = new UnitOfWork(db);
 
         return new V1RewriteHttpFunctions(
             configuration,
-            db,
+            new ApiKeyAuthResolver(apiKeys, unitOfWork),
+            appUsers,
+            rewriteAttempts,
+            apiKeyUsages,
+            unitOfWork,
             new ApiKeyRateLimiter(createContext),
             new HasPaidApiEntitlementHandler(appUsers, credits),
             new CreateRewriteAttemptHandler(

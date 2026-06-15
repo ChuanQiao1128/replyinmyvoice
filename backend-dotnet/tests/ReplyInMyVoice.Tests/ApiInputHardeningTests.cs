@@ -12,6 +12,7 @@ using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Repositories;
@@ -23,6 +24,7 @@ namespace ReplyInMyVoice.Tests;
 public sealed class ApiInputHardeningTests
 {
     private const string TestApiKeyPepper = "api-input-hardening-test-pepper";
+    private const string TestCorrelationId = "api-input-hardening-correlation-id";
 
     public static TheoryData<string, string?, HttpStatusCode, string> InvalidRewriteInputCases => new()
     {
@@ -65,7 +67,7 @@ public sealed class ApiInputHardeningTests
             CreateV1Request(token, bodyJson, idempotencyKey),
             CancellationToken.None);
 
-        AssertContractError(result, expectedStatus, expectedCode);
+        AssertContractError(result, expectedStatus, expectedCode, TestCorrelationId);
     }
 
     [Fact]
@@ -122,7 +124,7 @@ public sealed class ApiInputHardeningTests
             CreateV1Request(token: null, JsonSerializer.Serialize(new { draft = ValidV1Draft() })),
             CancellationToken.None);
 
-        AssertContractError(result, HttpStatusCode.Unauthorized, "invalid_key");
+        AssertContractError(result, HttpStatusCode.Unauthorized, "invalid_key", TestCorrelationId);
     }
 
     [Fact]
@@ -142,7 +144,7 @@ public sealed class ApiInputHardeningTests
             CreateV1Request(token, JsonSerializer.Serialize(new { draft = ValidV1Draft() }), "paid-plan-required"),
             CancellationToken.None);
 
-        AssertContractError(result, HttpStatusCode.PaymentRequired, "api_requires_paid_plan");
+        AssertContractError(result, HttpStatusCode.PaymentRequired, "api_requires_paid_plan", TestCorrelationId);
     }
 
     [Fact]
@@ -167,7 +169,7 @@ public sealed class ApiInputHardeningTests
             CreateV1Request(token, JsonSerializer.Serialize(new { draft = AlternateValidV1Draft() }), "same-key"),
             CancellationToken.None);
 
-        AssertContractError(second, HttpStatusCode.Conflict, "idempotency_conflict");
+        AssertContractError(second, HttpStatusCode.Conflict, "idempotency_conflict", TestCorrelationId);
     }
 
     [Fact]
@@ -193,7 +195,7 @@ public sealed class ApiInputHardeningTests
             CreateV1Request(token, JsonSerializer.Serialize(new { draft = AlternateValidV1Draft() }), "second-limited-call"),
             CancellationToken.None);
 
-        AssertContractError(second, HttpStatusCode.TooManyRequests, "rate_limited");
+        AssertContractError(second, HttpStatusCode.TooManyRequests, "rate_limited", TestCorrelationId);
     }
 
     private static V1RewriteHttpFunctions CreateV1Functions(
@@ -209,12 +211,18 @@ public sealed class ApiInputHardeningTests
         var outboxMessages = new OutboxMessageRepository(db);
         var promoRedemptions = new PromoCodeRedemptionRepository(db);
         var promoCodes = new PromoCodeRepository(db);
+        var apiKeys = new ApiKeyRepository(db);
+        var apiKeyUsages = new ApiKeyUsageRepository(db);
         var usagePlans = new AccountUsagePlanProvider(configuration);
         var unitOfWork = new UnitOfWork(db);
 
         return new V1RewriteHttpFunctions(
             configuration,
-            db,
+            new ApiKeyAuthResolver(apiKeys, unitOfWork),
+            appUsers,
+            rewriteAttempts,
+            apiKeyUsages,
+            unitOfWork,
             new ApiKeyRateLimiter(createContext),
             new HasPaidApiEntitlementHandler(appUsers, credits),
             new CreateRewriteAttemptHandler(
@@ -311,6 +319,7 @@ public sealed class ApiInputHardeningTests
         string? idempotencyKey = null)
     {
         var context = new DefaultHttpContext();
+        context.Items["CorrelationId"] = TestCorrelationId;
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(bodyJson));
         context.Request.ContentType = "application/json";
         if (!string.IsNullOrWhiteSpace(token))
@@ -338,7 +347,8 @@ public sealed class ApiInputHardeningTests
     private static void AssertContractError(
         IActionResult result,
         HttpStatusCode expectedStatus,
-        string expectedCode)
+        string expectedCode,
+        string? expectedRequestId = null)
     {
         var objectResult = result.Should().BeAssignableTo<ObjectResult>().Subject;
         objectResult.StatusCode.Should().Be((int)expectedStatus);
@@ -350,6 +360,10 @@ public sealed class ApiInputHardeningTests
         var error = document.RootElement.GetProperty("error");
         error.GetProperty("code").GetString().Should().Be(expectedCode);
         error.GetProperty("message").GetString().Should().NotBeNullOrWhiteSpace();
+        if (expectedRequestId is not null)
+        {
+            error.GetProperty("requestId").GetString().Should().Be(expectedRequestId);
+        }
     }
 
     private static IConfiguration BuildConfiguration() =>

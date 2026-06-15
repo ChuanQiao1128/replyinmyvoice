@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Infrastructure.Data;
@@ -83,23 +82,10 @@ public sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
     }
 
     private static bool IsRetryableTransactionRace(Exception exception) =>
-        exception is DbUpdateConcurrencyException ||
-        exception is SqliteException { SqliteErrorCode: 5 or 6 } ||
-        exception.ToString().Contains("database is locked", StringComparison.OrdinalIgnoreCase) ||
-        exception.ToString().Contains("database table is locked", StringComparison.OrdinalIgnoreCase) ||
-        (exception is DbUpdateException dbUpdateException && IsRetryableDbUpdateRaceException(dbUpdateException));
+        exception is DbUpdateException dbUpdateException
+            ? IsRetryableDbUpdateRaceException(dbUpdateException)
+            : DbExceptionClassifier.IsRetryableConcurrencyRaceException(exception);
 
-    private static bool IsRetryableDbUpdateRaceException(DbUpdateException exception)
-    {
-        var message = exception.ToString();
-        return message.Contains("IX_UsagePeriods_UserId_PeriodKey", StringComparison.OrdinalIgnoreCase) ||
-            (message.Contains("UsagePeriods.UserId", StringComparison.OrdinalIgnoreCase) &&
-                message.Contains("UsagePeriods.PeriodKey", StringComparison.OrdinalIgnoreCase)) ||
-            message.Contains("IX_RewriteAttempts_UserId_IdempotencyKey", StringComparison.OrdinalIgnoreCase) ||
-            (message.Contains("RewriteAttempts.UserId", StringComparison.OrdinalIgnoreCase) &&
-                message.Contains("RewriteAttempts.IdempotencyKey", StringComparison.OrdinalIgnoreCase)) ||
-            message.Contains("serialization", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("deadlock", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("3960", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool IsRetryableDbUpdateRaceException(DbUpdateException exception) =>
+        DbExceptionClassifier.IsRetryableConcurrencyRaceException(exception);
 }

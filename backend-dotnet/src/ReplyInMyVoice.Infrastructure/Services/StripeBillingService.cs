@@ -213,7 +213,6 @@ public sealed class StripeBillingService(
         if (changed)
         {
             user.UpdatedAt = now;
-            user.RowVersion = Guid.NewGuid();
             await db.SaveChangesAsync(cancellationToken);
         }
     }

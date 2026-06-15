@@ -92,7 +92,6 @@ public sealed class StripeEventPayloadSynchronizer(
         user.StripeCustomerId = customerId ?? user.StripeCustomerId;
         user.StripeSubscriptionId = Normalize(stripeObject.SubscriptionId) ?? user.StripeSubscriptionId;
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
 
         var paymentIntentId = Normalize(stripeObject.PaymentIntentId);
         if (IsPaidPaymentSession(stripeObject) &&
@@ -160,7 +159,6 @@ public sealed class StripeEventPayloadSynchronizer(
         user.PaymentGraceEndsAt = ResolvePaymentGraceEndsAt(stripeObject, user.CurrentPeriodEnd, now);
         user.PaymentGraceReminderSentAt = null;
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
         await outboxMessages.AddAsync(
             StripeNotificationOutboxMessageFactory.Create(
                 StripeNotificationOutboxMessageTypes.PaymentFailed,
@@ -213,7 +211,6 @@ public sealed class StripeEventPayloadSynchronizer(
         }
 
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
         await outboxMessages.AddAsync(
             StripeNotificationOutboxMessageFactory.CreatePaymentActionRequired(
                 user.Id,
@@ -269,7 +266,6 @@ public sealed class StripeEventPayloadSynchronizer(
 
         ClearPaymentGrace(user);
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
         if (recoveredToActive)
         {
             await outboxMessages.AddAsync(
@@ -331,7 +327,6 @@ public sealed class StripeEventPayloadSynchronizer(
         user.SubscriptionStatus = SubscriptionStatus.Inactive;
         ClearPaymentGrace(user);
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
 
         await adminUsers.AddAuditLogAsync(new AdminAuditLog
         {
@@ -417,7 +412,6 @@ public sealed class StripeEventPayloadSynchronizer(
         user.SubscriptionStatus = status;
         user.CurrentPeriodEnd = stripeObject.CurrentPeriodEnd;
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
 
         if (status == SubscriptionStatus.PastDue)
         {
@@ -497,7 +491,6 @@ public sealed class StripeEventPayloadSynchronizer(
         invoice.HostedInvoiceUrl = Normalize(stripeObject.HostedInvoiceUrl);
         invoice.InvoicePdf = Normalize(stripeObject.InvoicePdf);
         invoice.UpdatedAt = now;
-        invoice.RowVersion = Guid.NewGuid();
         return null;
     }
 
@@ -519,8 +512,6 @@ public sealed class StripeEventPayloadSynchronizer(
 
         foreach (var credit in matchingCredits)
         {
-            var previousGranted = credit.AmountGranted;
-            var previousOriginalGranted = credit.OriginalAmountGranted;
             credit.OriginalAmountGranted ??= credit.AmountGranted;
 
             if (IsFullRefund(stripeObject))
@@ -530,12 +521,6 @@ public sealed class StripeEventPayloadSynchronizer(
             else if (ResolveRemainingGrantedAfterRefund(stripeObject, credit) is { } targetGranted)
             {
                 credit.AmountGranted = targetGranted;
-            }
-
-            if (credit.AmountGranted != previousGranted ||
-                credit.OriginalAmountGranted != previousOriginalGranted)
-            {
-                credit.RowVersion = Guid.NewGuid();
             }
         }
 
@@ -561,7 +546,6 @@ public sealed class StripeEventPayloadSynchronizer(
             }
 
             credit.AmountGranted = credit.AmountConsumed;
-            credit.RowVersion = Guid.NewGuid();
         }
 
         return null;

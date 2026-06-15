@@ -1,15 +1,62 @@
+using System.Collections;
+using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Functions.Http;
 
 namespace ReplyInMyVoice.Tests;
 
 public sealed class HttpHardeningMiddlewareTests
 {
+    [Fact]
+    public async Task Invoke_HttpTriggerException_ReturnsInternalErrorEnvelopeWithCorrelationId()
+    {
+        const string correlationId = "req-http-failure";
+        const string exceptionMessage = "sensitive storage failure details";
+        var http = CreateHttpContext();
+        http.Request.Headers[HttpHardeningMiddleware.CorrelationHeaderName] = correlationId;
+        var context = new TestFunctionContext("SubmitRewrite", http);
+        var middleware = CreateMiddleware();
+
+        var act = () => middleware.Invoke(
+            context,
+            _ => throw new InvalidOperationException(exceptionMessage));
+
+        await act.Should().NotThrowAsync();
+
+        http.Response.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
+        http.Response.ContentType.Should().Be("application/json");
+        http.Response.Headers[HttpHardeningMiddleware.CorrelationHeaderName].ToString().Should().Be(correlationId);
+
+        using var body = ReadResponseJson(http);
+        var error = body.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be("internal_error");
+        error.GetProperty("message").GetString().Should().NotBeNullOrWhiteSpace();
+        error.GetProperty("requestId").GetString().Should().Be(correlationId);
+        body.RootElement.ToString().Should().NotContain(exceptionMessage);
+    }
+
+    [Fact]
+    public async Task Invoke_NonHttpTriggerException_Propagates()
+    {
+        var failure = new InvalidOperationException("queue payload was invalid");
+        var context = new TestFunctionContext("ProcessRewriteJob");
+        var middleware = CreateMiddleware();
+
+        var act = () => middleware.Invoke(
+            context,
+            _ => throw failure);
+
+        var thrown = await act.Should().ThrowAsync<InvalidOperationException>();
+        thrown.Which.Should().BeSameAs(failure);
+    }
+
     [Fact]
     public async Task OversizedContentLength_Returns413WithPayloadTooLargeEnvelope()
     {
@@ -170,6 +217,28 @@ public sealed class HttpHardeningMiddlewareTests
             .Be(middlewareJson.RootElement.GetProperty("error").GetProperty("message").GetString());
     }
 
+    [Fact]
+    public void InternalErrorJson_MatchesFunctionHttpResultsCodedEnvelope()
+    {
+        const string correlationId = "req-internal-error";
+        using var middlewareJson = JsonDocument.Parse(HttpHardeningMiddleware.BuildInternalErrorJson(correlationId));
+        var result = FunctionHttpResults.InternalError(correlationId)
+            .Should()
+            .BeOfType<ObjectResult>()
+            .Subject;
+        using var resultJson = JsonDocument.Parse(JsonSerializer.Serialize(result.Value));
+
+        middlewareJson.RootElement.EnumerateObject().Select(x => x.Name).Should().Equal("error");
+        resultJson.RootElement.EnumerateObject().Select(x => x.Name).Should().Equal("error");
+
+        var middlewareError = middlewareJson.RootElement.GetProperty("error");
+        var resultError = resultJson.RootElement.GetProperty("error");
+        resultError.GetProperty("code").GetString().Should().Be(middlewareError.GetProperty("code").GetString());
+        resultError.GetProperty("message").GetString().Should().Be(middlewareError.GetProperty("message").GetString());
+        resultError.GetProperty("requestId").GetString().Should().Be(correlationId);
+        middlewareError.GetProperty("requestId").GetString().Should().Be(correlationId);
+    }
+
     private static DefaultHttpContext CreateHttpContext(byte[]? body = null)
     {
         var http = new DefaultHttpContext();
@@ -189,5 +258,79 @@ public sealed class HttpHardeningMiddlewareTests
         using var copy = new MemoryStream();
         await http.Request.Body.CopyToAsync(copy);
         return copy.ToArray();
+    }
+
+    private static HttpHardeningMiddleware CreateMiddleware() =>
+        new(new ConfigurationBuilder().Build(), NullLogger<HttpHardeningMiddleware>.Instance);
+
+    private sealed class TestFunctionContext : FunctionContext
+    {
+        private const string HttpContextKey = "HttpRequestContext";
+        private readonly TestFunctionDefinition _definition;
+        private readonly TestInvocationFeatures _features = new();
+
+        public TestFunctionContext(string functionName, HttpContext? http = null)
+        {
+            _definition = new TestFunctionDefinition(functionName);
+            if (http is not null)
+            {
+                Items[HttpContextKey] = http;
+            }
+        }
+
+        public override string InvocationId { get; } = Guid.NewGuid().ToString("D");
+        public override string FunctionId { get; } = Guid.NewGuid().ToString("D");
+        public override TraceContext TraceContext => null!;
+        public override BindingContext BindingContext => null!;
+        public override RetryContext RetryContext => null!;
+        public override IServiceProvider InstanceServices { get; set; } = EmptyServiceProvider.Instance;
+        public override FunctionDefinition FunctionDefinition => _definition;
+        public override IDictionary<object, object> Items { get; set; } = new Dictionary<object, object>();
+        public override IInvocationFeatures Features => _features;
+    }
+
+    private sealed class TestFunctionDefinition(string name) : FunctionDefinition
+    {
+        public override ImmutableArray<FunctionParameter> Parameters { get; } = [];
+        public override string PathToAssembly { get; } = string.Empty;
+        public override string EntryPoint { get; } = string.Empty;
+        public override string Id { get; } = Guid.NewGuid().ToString("D");
+        public override string Name { get; } = name;
+        public override IImmutableDictionary<string, BindingMetadata> InputBindings { get; } =
+            ImmutableDictionary<string, BindingMetadata>.Empty;
+        public override IImmutableDictionary<string, BindingMetadata> OutputBindings { get; } =
+            ImmutableDictionary<string, BindingMetadata>.Empty;
+    }
+
+    private sealed class TestInvocationFeatures : IInvocationFeatures
+    {
+        private readonly Dictionary<Type, object> _features = [];
+
+        public void Set<T>(T instance)
+        {
+            if (instance is null)
+            {
+                _features.Remove(typeof(T));
+                return;
+            }
+
+            _features[typeof(T)] = instance;
+        }
+
+        public T? Get<T>() =>
+            _features.TryGetValue(typeof(T), out var feature)
+                ? (T)feature
+                : default;
+
+        public IEnumerator<KeyValuePair<Type, object>> GetEnumerator() => _features.GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class EmptyServiceProvider : IServiceProvider
+    {
+        public static EmptyServiceProvider Instance { get; } = new();
+
+        public object? GetService(Type serviceType) => null;
     }
 }

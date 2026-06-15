@@ -257,7 +257,6 @@ public sealed class ProcessRewriteJobHandler(
                 }
 
                 attempt.Status = RewriteAttemptStatus.Processing;
-                attempt.RowVersion = Guid.NewGuid();
                 await unitOfWork.SaveChangesAsync(transactionCt);
                 return true;
             },
@@ -306,7 +305,6 @@ public sealed class ProcessRewriteJobHandler(
                 attempt.Status = RewriteAttemptStatus.Succeeded;
                 attempt.ResultJson = resultJson;
                 attempt.CompletedAt = now;
-                attempt.RowVersion = Guid.NewGuid();
 
                 await unitOfWork.SaveChangesAsync(transactionCt);
                 return true;
@@ -349,7 +347,6 @@ public sealed class ProcessRewriteJobHandler(
                     attempt.Status = RewriteAttemptStatus.Failed;
                     attempt.ErrorCode = errorCode;
                     attempt.CompletedAt = now;
-                    attempt.RowVersion = Guid.NewGuid();
                 }
 
                 await unitOfWork.SaveChangesAsync(transactionCt);

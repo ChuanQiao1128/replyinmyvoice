@@ -40,7 +40,6 @@ public sealed class ProcessExpiredPaymentGraceHandler(
                         user.SubscriptionStatus = SubscriptionStatus.Inactive;
                         ClearPaymentGrace(user);
                         user.UpdatedAt = command.Now;
-                        user.RowVersion = Guid.NewGuid();
                         await outboxMessages.AddAsync(
                             StripeNotificationOutboxMessageFactory.Create(
                                 StripeNotificationOutboxMessageTypes.SubscriptionPaused,

@@ -28,7 +28,6 @@ public sealed class SetApiKeyWebhookHandler(
         apiKey.WebhookUrl = normalizedUrl;
         apiKey.WebhookSecret = webhookSecret;
         apiKey.UpdatedAt = DateTimeOffset.UtcNow;
-        apiKey.RowVersion = Guid.NewGuid();
         await unitOfWork.SaveChangesAsync(ct);
 
         return new ApiKeyWebhookResultDto(apiKey.Id, normalizedUrl, webhookSecret);

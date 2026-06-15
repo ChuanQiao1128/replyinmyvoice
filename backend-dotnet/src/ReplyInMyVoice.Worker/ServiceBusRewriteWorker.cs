@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
@@ -92,6 +93,12 @@ public sealed class ServiceBusRewriteWorker(
 
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<ProcessRewriteJobHandler>();
+        using var activity = StartConsumerActivity(job);
+        using var logScope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["CorrelationId"] = job.CorrelationId,
+            ["AttemptId"] = job.AttemptId,
+        });
 
         try
         {
@@ -108,5 +115,20 @@ public sealed class ServiceBusRewriteWorker(
             logger.LogError(ex, "Rewrite job failed for attempt {AttemptId}", job.AttemptId);
             throw;
         }
+    }
+
+    private static Activity? StartConsumerActivity(RewriteJob job)
+    {
+        if (string.IsNullOrWhiteSpace(job.Traceparent) ||
+            !ActivityContext.TryParse(job.Traceparent, null, out _))
+        {
+            return null;
+        }
+
+        var activity = new Activity("ProcessRewriteJob");
+        activity.SetParentId(job.Traceparent);
+        activity.SetTag("correlation_id", job.CorrelationId);
+        activity.SetTag("attempt_id", job.AttemptId);
+        return activity.Start();
     }
 }

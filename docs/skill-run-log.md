@@ -6586,3 +6586,444 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, and this log entry.
 - Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0 with one duplicate-using warning in `InfrastructureServiceCollectionTests.cs`.
 - Limitations: `dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release` did not reach test execution in this sandbox. The exact command failed with MSBuild named-pipe/socket `Permission denied`, and `MSBUILDDISABLENODEREUSE=1 dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release --no-build -m:1 /nodeReuse:false` reached VSTest but aborted with the same local socket permission denial.
+
+### 2026-06-14 - cloud-architecture-cost-review - STRUCT-01 issue #810 migration startup consolidation
+
+- Agent: Codex worker
+- Trigger: Issue #810 edits the Azure Functions deployment workflow and live database migration startup project.
+- Action: Opened and followed the project source skill as a narrow cost/readiness gate after reading `README.md`, `docs/manual-setup.md`, `docs/dotnet-azure-blocker-preflight.md`, and `docs/business-qa-and-deploy-result.md`. Selected the cheapest option: keep the existing Azure Functions + Azure SQL deployment shape and change only the EF startup project used by CI/deploy migrations. Rejected adding App Service, duplicate deploy artifacts, or any new paid infrastructure.
+- Output artifacts: `.github/workflows/dotnet-azure.yml` and this log entry.
+- Verification evidence: The workflow now publishes only Worker and Functions artifacts, and both SQL Server CI and deploy migration commands reference `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj` as the startup project.
+- Limitations: Exact provider pricing was not checked because this change does not create, resize, deploy, or keep paid resources running. No Azure, Cloudflare, payment, or production deploy command was run.
+
+### 2026-06-14 - data-module-review - STRUCT-01 issue #810 migration startup consolidation
+
+- Agent: Codex worker
+- Trigger: Issue #810 changes the project used to run EF Core database migrations in the production deploy workflow.
+- Action: Opened and followed the project skill as a migration-safety review. Reviewed the existing `AppDbContextDesignTimeFactory`, SQL Server migration gate, deploy migration step, and relevant docs. Confirmed the factory already uses `UseSqlServer` and no schema, migration file, entity, index, or runtime data access behavior needed to change.
+- Output artifacts: `.github/workflows/dotnet-azure.yml`, `backend-dotnet/tests/ReplyInMyVoice.Tests/MigrationStartupProjectTests.cs`, and this log entry.
+- Verification evidence: `python3 /Users/qc/.codex/skills/data-module-review/scripts/scan_data_risks.py backend-dotnet --limit 20` exited 0 as a review aid; focused migration-startup test passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 800/800.
+- Limitations: The scan reported existing broad persistence signals unrelated to this patch. No SQL Server integration run or EF migration was added in this worker task.
+
+### 2026-06-14 - dotnet-backend-testing - STRUCT-01 issue #810 migration startup test
+
+- Agent: Codex worker
+- Trigger: Issue #810 requires new C#/.NET test coverage pinning the migration design-time factory provider.
+- Action: Opened and followed the project skill for backend test selection. Added a focused xUnit/FluentAssertions test that creates `AppDbContext` through `AppDbContextDesignTimeFactory` and asserts the EF provider is `Microsoft.EntityFrameworkCore.SqlServer`.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/MigrationStartupProjectTests.cs` and this log entry.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~MigrationStartupProjectTests` passed 1/1; full `dotnet test ReplyInMyVoice.sln -c Release` passed 800/800.
+- Limitations: Restore emitted `NU1900` warnings because NuGet vulnerability metadata could not be loaded, but restore/build/test completed. No frontend, browser, provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-14 - data-module-review - STRUCT-03 issue #811 repository routing
+
+- Agent: Codex worker
+- Trigger: Issue #811 changes EF-backed repository ports, API key timestamp persistence, API usage writes, V1 sandbox rewrite attempt idempotency, and removes direct `AppDbContext` access from the V1 Functions handler and API key resolver.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Reviewed the owned entities (`ApiKey`, `ApiKeyUsage`, `RewriteAttempt`, `AppUser`), repository staging conventions, unit-of-work commit boundary, existing unique idempotency index, and the sandbox `IgnoreQueryFilters` repository path. Added an API key repository cleanup hook so a failed best-effort timestamp write does not leave a pending EF change in the request scope.
+- Output artifacts: updated API key/API usage repository ports and implementations, refactored `ApiKeyAuthResolver`, refactored `V1RewriteHttpFunctions`, new `V1RewriteRepositoryRoutingTests`, updated constructor tests, and this log entry.
+- Verification evidence: `python3 agent-skills/data-module-review/scripts/scan_data_risks.py backend-dotnet --limit 80` ran as a review aid; focused repository-routing tests passed 2/2; behavior-preservation filter passed 46/46; full `dotnet test ReplyInMyVoice.sln -c Release` passed 802/802; direct `AppDbContext` and `DDD-64` greps were clean.
+- Limitations: No EF migration, schema change, new index, SQL Server live run, Azure command, payment action, push, or PR action was run. The broad scan reported existing persistence signals unrelated to this patch.
+
+### 2026-06-14 - dotnet-backend-testing - STRUCT-03 issue #811 V1 repository routing tests
+
+- Agent: Codex worker
+- Trigger: Issue #811 requires new C#/.NET coverage proving V1 live and sandbox submit paths persist through repository ports while existing resolver, V1 rate-limit, and rewrite API behavior remains unchanged.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions tests with a file-backed SQLite fixture and recording repository wrappers around real repositories, then updated existing resolver and direct-constructor tests for the new resolver service and repository dependencies.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRepositoryRoutingTests.cs`, updated `ApiKeyAuthResolverTests`, `ApiInputHardeningTests`, `RewriteEngineContractTests`, and this log entry.
+- Verification evidence: the first focused routing test run failed before implementation because the new repository methods were missing; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~V1RewriteRepositoryRoutingTests"` passed 2/2, the resolver/rate-limit/rewrite API filter passed 46/46, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 802/802.
+- Limitations: Tests use local SQLite and deterministic in-process fakes only. No frontend, browser, external provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-14 - system-spec-synthesis - STRUCT-02 issue #812 shared V1 validation
+
+- Agent: Codex worker
+- Trigger: Issue #812 converts duplicated V1 public API validation rules, bounds, and error catalog values across the Functions and API hosts into a host-agnostic Application contract.
+- Action: Opened and followed the project skill by reading `AGENTS.md`, `CLAUDE.md`, the issue brief, existing V1 host code, Application rewrite use-case files, and boundary tests, then produced a compact implementation spec before editing. The selected architecture keeps validation and catalog data in `ReplyInMyVoice.Application.UseCases.Rewrite` and leaves each host responsible only for mapping catalog errors to its existing response type.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1ErrorCatalog.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1RewriteValidation.cs`, refactored V1 host call sites, and this log entry.
+- Verification evidence: source scans confirmed the two request-boundary messages now appear in one source file, the host draft-bound constants were removed, focused validation tests passed 9/9, existing V1 boundary tests passed 16/16, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 811/811.
+- Limitations: No API envelope, database schema, payment, deploy, push, or PR action was changed or run.
+
+### 2026-06-14 - dotnet-backend-testing - STRUCT-02 issue #812 validation tests
+
+- Agent: Codex worker
+- Trigger: Issue #812 adds C#/.NET unit coverage for the shared V1 rewrite validation component and requires existing V1 HTTP boundary tests to remain green.
+- Action: Opened and followed the project skill for backend test selection. Added focused xUnit/FluentAssertions tests for empty, whitespace, short, over-character, over-word, and idempotency-key boundary cases, verified the test first failed before the Application types existed, then implemented the shared validation/catalog and reran focused plus boundary suites.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteValidationTests.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1ErrorCatalog.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/UseCases/Rewrite/V1RewriteValidation.cs`, and this log entry.
+- Verification evidence: initial focused test command failed at compile time because `V1ErrorCatalog` was absent; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~V1RewriteValidationTests` passed 9/9, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiInputHardeningTests` passed 16/16, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 811/811.
+- Limitations: Restore emitted existing `NU1900` package vulnerability metadata warnings when the NuGet service index could not be loaded, but restore/build/test completed. No frontend, browser, external provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-14 - data-module-review - API-SCOPE issue #813 API key scope enforcement
+
+- Agent: Codex worker
+- Trigger: Issue #813 reads the persisted `ApiKey.Scope` JSON value and changes how V1 API requests are authorized from that stored data.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Kept the `ApiKey.Scope` entity default and database schema unchanged, treated null/blank/empty/invalid scope JSON as default-full at parse time, and made only non-empty parsed arrays restrict the V1 rewrite submit path.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Application/Common/ApiKeyScopes.cs`, updated V1 API key auth carriers, focused resolver/API tests, and this log entry.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiKeyAuthResolverTests` passed 15/15; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~V1RewriteRateLimitTests` passed 10/10; full `dotnet test ReplyInMyVoice.sln -c Release` passed 824/824.
+- Limitations: No EF migration, schema change, key generation surface change, payment action, deploy, push, or PR action was run.
+
+### 2026-06-14 - dotnet-backend-testing - API-SCOPE issue #813 resolver and V1 tests
+
+- Agent: Codex worker
+- Trigger: Issue #813 requires C#/.NET resolver tests and V1 HTTP tests for API key scope parsing, default-full behavior, and restricted rewrite submit denial.
+- Action: Opened and followed the project skill for backend test selection. Added resolver tests for default, restricted rewrite, restricted non-rewrite, and blank/invalid parsing; added WebApplicationFactory V1 tests proving restricted live keys return 403 before rewrite attempt/reservation/outbox rows and default-full scopes still submit and read usage.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiKeyAuthResolverTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/V1RewriteRateLimitTests.cs`, V1 host scope guards, and this log entry.
+- Verification evidence: initial focused test run failed before implementation because `ApiKeyScopes` and `ApiKeyAuthResult.Scopes` were missing; after implementation, the resolver filter passed 15/15, the V1 rate-limit filter passed 10/10, and full Release suite passed 824/824.
+- Limitations: The V1 WebApplicationFactory acceptance tests exercise the ASP.NET API host, so the same guard was mirrored there in addition to the Functions host. No frontend, browser, external provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-15 - dotnet-backend-testing - API-ENVELOPE issue #815 V1 request id envelope tests
+
+- Agent: Codex worker
+- Trigger: Issue #815 changes C#/.NET V1 API error response tests and requires focused xUnit coverage for the coded error envelope.
+- Action: Opened and followed the project skill for backend test selection. Used focused unit and API tests to pin the optional coded-envelope `requestId`, direct Functions V1 error responses, and WebApplicationFactory V1 body/header correlation behavior. Verified the first focused test failed before implementation because the new `FunctionHttpResults.Problem` argument did not exist.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Http/FunctionHttpResults.cs`, `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/V1RewriteHttpFunctions.cs`, `backend-dotnet/src/ReplyInMyVoice.Api/Program.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/FunctionHttpResultsTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/ApiInputHardeningTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteApiTests.cs`, and this log entry.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~FunctionHttpResultsTests` passed 8/8; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~ApiInputHardeningTests` passed 16/16; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteApiTests` passed 34/34; full `dotnet test ReplyInMyVoice.sln -c Release` passed 831/831; restricted-word grep on changed implementation/test files returned no matches.
+- Limitations: `RewriteApiTests` exercise the ASP.NET API host, so the same V1 envelope request-id plumbing was mirrored in `ReplyInMyVoice.Api/Program.cs` in addition to the Functions host named in the issue brief. Restore emitted existing `NU1900` package vulnerability metadata warnings when NuGet vulnerability metadata was unavailable, but restore/build/test completed. No frontend, browser, external provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-15 - dotnet-backend-testing - OBS-EXMW issue #816 HTTP middleware exception tests
+
+- Agent: Codex worker
+- Trigger: Issue #816 requires C#/.NET middleware tests for uncaught HTTP-trigger exceptions and non-HTTP exception propagation.
+- Action: Opened and followed the project skill for backend test selection. Added focused xUnit/FluentAssertions coverage for `HttpHardeningMiddleware.Invoke` with a real ASP.NET `HttpContext` carried through `FunctionContext.Items`, plus an envelope parity test against `FunctionHttpResults.InternalError`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Http/HttpHardeningMiddleware.cs`, `backend-dotnet/src/ReplyInMyVoice.Functions/Http/FunctionHttpResults.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpHardeningMiddlewareTests.cs`, and this log entry.
+- Verification evidence: Initial focused middleware test run failed at compile time because `BuildInternalErrorJson` and `FunctionHttpResults.InternalError` were absent; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~HttpHardeningMiddlewareTests` passed 14/14, full `dotnet test ReplyInMyVoice.sln -c Release` passed 834/834, scoped restricted-word grep returned no matches, and the middleware catch grep showed catches only after the HTTP branch.
+- Limitations: Restore emitted existing `NU1900` package vulnerability metadata warnings when the NuGet vulnerability index was unavailable, but restore/build/test completed. A local commit was attempted but blocked by sandbox permissions on the shared git metadata directory. No frontend, external provider, payment, deploy, push, or PR action was run.
+
+### 2026-06-15 - resilience-test-generation - OBS-EXMW issue #816 redelivery preservation
+
+- Agent: Codex worker
+- Trigger: Issue #816 tests Service Bus/timer redelivery preservation by requiring non-HTTP middleware exceptions to propagate unchanged while HTTP-trigger exceptions receive a coded response.
+- Action: Opened and followed the project skill as a resilience checklist. Identified the cloud runtime boundary as the critical dependency and added deterministic local tests proving the HTTP path catches and converts failures while the non-HTTP path leaves the original exception untouched.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/HttpHardeningMiddlewareTests.cs`, middleware 500-envelope handling, and this log entry.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~HttpHardeningMiddlewareTests` passed 14/14; full `dotnet test ReplyInMyVoice.sln -c Release` passed 834/834; catch-location check confirmed the non-HTTP early return remains outside any try/catch.
+- Limitations: Tests use in-process fake `FunctionContext` objects and do not contact Azure Service Bus or timer infrastructure. No queue message was sent, no provider call was made, and no deploy, push, or PR action was run.
+
+### 2026-06-15 - system-spec-synthesis - OBS-CORR issue #817 rewrite job correlation contract
+
+- Agent: Codex worker
+- Trigger: Issue #817 changes the rewrite job message contract and the HTTP-to-outbox-to-queue correlation flow.
+- Action: Opened and followed the project skill by reading `AGENTS.md`, `CLAUDE.md`, the issue brief, and the existing rewrite job/outbox/consumer code. Produced a compact implementation spec in-session: keep the queue body as the source of truth, add optional `CorrelationId` and `Traceparent` fields to `RewriteJob`, pass the V1 Functions ingress id into `CreateRewriteAttemptCommand`, prefer it in the outbox row, publish it through the in-memory and Azure Service Bus publishers, and restore it in consumer logging scope.
+- Output artifacts: updated `RewriteJob`, `CreateRewriteAttemptCommand`, `CreateRewriteAttemptHandler`, `V1RewriteHttpFunctions`, outbox publisher/handler, Service Bus consumers, `CorrelationIdPropagationTests`, and this log entry.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CorrelationIdPropagationTests` passed 3/3; `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteApiTests` passed 34/34; full `dotnet test ReplyInMyVoice.sln -c Release` passed 837/837 on rerun.
+- Limitations: No schema migration, binding signature change, external Service Bus send, deploy, push, or PR action was run. The first full suite run hit a transient SQLite concurrency failure in an existing V1 rate-limit test; that exact test passed on rerun before the full suite passed.
+
+### 2026-06-15 - state-machine-modeling - OBS-CORR issue #817 rewrite job handoff lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #817 changes queue job handoff behavior across HTTP ingress, outbox dispatch, publish, and consumer processing.
+- Action: Opened and followed the project skill as a lifecycle checklist. Modeled states as HTTP request accepted, outbox message pending/sent, queue message published, consumer processing, and attempt terminal status owned by `ProcessRewriteJobHandler`. Modeled events as request submit, outbox fast-path/timer dispatch, queue delivery, consumer handle success/failure, and invalid message rejection. Kept persisted status transitions unchanged and limited side effects to correlation metadata propagation and log/activity scope restoration.
+- Output artifacts: no separate state table document; lifecycle constraints were applied directly to the implementation and regression tests.
+- Verification evidence: focused correlation tests passed 3/3, existing rewrite API tests passed 34/34, and full Release suite passed 837/837 on rerun.
+- Limitations: This issue did not add or rename persisted job states, terminal statuses, retry policy, or redelivery behavior. No migration, deploy, push, or PR action was run.
+
+### 2026-06-15 - data-module-review - OBS-CORR issue #817 outbox correlation persistence
+
+- Agent: Codex worker
+- Trigger: Issue #817 changes how `OutboxMessage.CorrelationId` is populated and consumed for rewrite job dispatch.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Confirmed the `OutboxMessage.CorrelationId` column already exists and no EF migration is required. Kept idempotency, quota reservation, attempt creation, and outbox status mutation logic unchanged; changed only the value selected for the existing correlation column.
+- Output artifacts: `CreateRewriteAttemptHandler` now prefers command correlation id with attempt-id fallback, `RewriteJobCreatedOutboxMessageHandler` republishes the stored value into the job body, and correlation regression tests cover the persisted outbox value.
+- Verification evidence: `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CorrelationIdPropagationTests` passed 3/3; full `dotnet test ReplyInMyVoice.sln -c Release` passed 837/837 on rerun; source/test restricted-word scan excluding build outputs returned no matches.
+- Limitations: No schema/index change, EF migration, production database command, deploy, push, or PR action was run.
+
+### 2026-06-15 - dotnet-backend-testing - OBS-CORR issue #817 correlation propagation tests
+
+- Agent: Codex worker
+- Trigger: Issue #817 requires new C#/.NET xUnit coverage for correlation propagation through the rewrite async boundary and existing rewrite API round-trip behavior.
+- Action: Opened and followed the project skill for backend test selection. Added focused xUnit/FluentAssertions coverage for outbox handler to in-memory publisher propagation, V1 Functions ingress to persisted outbox and published job propagation, and consumer logger scope restoration. Extended existing rewrite API round-trip assertions to observe the default attempt-id correlation fallback.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/CorrelationIdPropagationTests.cs`, updated `RewriteApiTests`, and this log entry.
+- Verification evidence: Initial focused test run failed at compile time because `RewriteJob.CorrelationId` and the two-argument constructor did not exist; after implementation, the focused correlation tests passed 3/3, `RewriteApiTests` passed 34/34, the exact previously failed V1 rate-limit test passed on rerun, and full Release suite passed 837/837 on rerun.
+- Limitations: Tests use SQLite, in-memory publisher, direct Functions invocation, and deterministic fakes. No live queue, external provider, payment action, deploy, push, or PR action was run.
+
+### 2026-06-15 - dotnet-backend-testing - OBS-OPTIONS issue #818 validated rewrite options tests
+
+- Agent: Codex worker
+- Trigger: Issue #818 adds C#/.NET options validation and focused xUnit coverage for rewrite-engine configuration and guarded Key Vault configuration attachment.
+- Action: Opened and followed the project skill for backend test selection. Added focused `RewriteEngineOptionsTests` before implementation, verified the red run failed on missing options/KeyVault types, then implemented typed rewrite-engine options, production-only validation, and the guarded Key Vault configuration extension.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Configuration/RewriteEngineOptions.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Configuration/RewriteEngineOptionsValidator.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Configuration/KeyVaultConfigurationExtensions.cs`, DI/startup wiring, `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteEngineOptionsTests.cs`, and this log entry.
+- Verification evidence: initial focused test run failed at compile time because `RewriteEngineOptions` and `KeyVaultConfigurationExtensions` were missing; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteEngineOptionsTests` passed 8/8, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~InfrastructureServiceCollectionTests` passed 35/35, scoped wiring and restricted-word greps passed, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 845/845.
+- Limitations: Key Vault remains an opt-in guarded no-op until the Azure configuration secrets package is intentionally added in a restore-safe change. Restore emitted existing `NU1900` package vulnerability metadata warnings when the NuGet vulnerability index was unavailable, but restore/build/test completed. A local commit was attempted but blocked by sandbox permissions on the shared git metadata directory. No deploy, push, or PR action was run.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-DBOPTS issue #819 DbContext option and readiness tests
+
+- Agent: Codex worker
+- Trigger: Issue #819 adds C#/.NET tests for SQL Server command timeout configuration, EF migration status reporting, and the Functions readiness envelope.
+- Action: Opened and followed the project skill for backend test selection. Added focused xUnit/FluentAssertions tests before implementation for default/configured/clamped SQL command timeout values, SQLite migration status none/pending/error cases, and readiness JSON `checks.migrations` success for an `EnsureCreated` context.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/InfrastructureServiceCollectionTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/DbMigrationStatusTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/HealthFunctionReadinessTests.cs`, DbContext option wiring, migration status helper, readiness check wiring, and this log entry.
+- Verification evidence: initial focused migration-status test run failed at compile time because `DbMigrationStatus` was missing; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~DbMigrationStatusTests` passed 3/3, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~InfrastructureServiceCollectionTests` passed 38/38, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~HealthFunctionReadinessTests` passed 2/2, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 851/851.
+- Limitations: Tests use local EF options inspection and SQLite in-memory contexts; no Azure SQL connection, EF migration application, external provider call, deploy, push, or PR action was run. A local commit was attempted but blocked by sandbox permissions on the shared git metadata directory.
+
+### 2026-06-15 - data-module-review - DATA-DBOPTS issue #819 migration status and DbContext registration
+
+- Agent: Codex worker
+- Trigger: Issue #819 changes EF Core DbContext registration and adds a migration-status read path used by readiness.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Confirmed the change adds no schema mutation, migration file, table/index change, quota counter mutation, or transaction path; kept `AddDbContext` semantics and documented why pooling is not used with the existing context factory.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Infrastructure/ServiceCollectionExtensions.cs`, `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Data/DbMigrationStatus.cs`, readiness migration reporting, focused migration-status tests, and this log entry.
+- Verification evidence: `agent-skills/data-module-review/scripts/scan_data_risks.py backend-dotnet/src/ReplyInMyVoice.Infrastructure --limit 20` ran and surfaced existing broad persistence signals only; focused and full backend tests passed as listed above; exact source/test restricted-word scan printed no matches after removing ignored build outputs.
+- Limitations: This issue intentionally does not apply migrations or contact a production database. The readiness migration check reports status by default and only contributes to top-level readiness when the explicit config flag is enabled.
+
+### 2026-06-15 - resilience-test-generation - DATA-DBOPTS issue #819 timeout and migration-readiness behavior
+
+- Agent: Codex worker
+- Trigger: Issue #819 changes database command timeout configuration and readiness behavior for migration drift/error reporting.
+- Action: Opened and followed the project skill as a failure-mode checklist. Generated the resilience matrix for `DbContext timeout and migration readiness`, then covered the critical local invariants: SQL Server command timeout is bounded and configurable, migration-status errors are captured without throwing, and readiness reports migration status without failing closed by default.
+- Output artifacts: timeout configuration tests, `DbMigrationStatusTests`, readiness envelope assertion, `DbMigrationStatus.EvaluateAsync`, and this log entry.
+- Verification evidence: resilience matrix script ran locally; focused timeout/migration/readiness tests and the full Release suite passed as listed above; no live dependency was contacted.
+- Limitations: The tests do not simulate a live Azure SQL long-running command or CI deployment skew. They verify the local configuration and report-only readiness behavior required by the issue.
+
+### 2026-06-15 - data-module-review - DATA-ROWVERSION issue #820 optimistic concurrency token stamping
+
+- Agent: Codex worker
+- Trigger: Issue #820 changes EF Core persistence behavior for all entities that carry the `Guid RowVersion` concurrency token.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Confirmed the change adds no schema mutation or migration, keeps existing concurrency-token mappings, retains entity initializers for added rows, and centralizes modified-row token updates in `AppDbContext.SaveChanges` / `SaveChangesAsync`.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Domain/Contracts/IConcurrencyStamped.cs`, 25 entity marker implementations, `AppDbContext` generic modified-entry stamping, removal of manual source stamps, and this log entry.
+- Verification evidence: `dotnet build ReplyInMyVoice.sln -c Release` passed; manual-stamp grep guard passed; marker-count guard passed with 25 declarations and 25 implementers; full `dotnet test ReplyInMyVoice.sln -c Release` passed 854/854.
+- Limitations: No migration, production database command, deploy, push, or PR action was run. A local commit attempt was blocked by sandbox permissions on shared git metadata outside the writable roots.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-ROWVERSION issue #820 RowVersion stamping tests
+
+- Agent: Codex worker
+- Trigger: Issue #820 requires new C#/.NET tests proving modified marker entities receive a fresh concurrency token while unmodified entities do not.
+- Action: Opened and followed the project skill for backend test selection. Added SQLite-backed xUnit/FluentAssertions tests before implementation, verified the red run failed because modified users retained the same token, then implemented the marker and `AppDbContext` stamping behavior.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RowVersionStampingTests.cs` and this log entry.
+- Verification evidence: initial focused run failed 2/3 in the intended modified-save assertions; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RowVersionStampingTests` passed 3/3; full `dotnet test ReplyInMyVoice.sln -c Release` passed 854/854.
+- Limitations: Tests use the repo's in-memory SQLite fixture and do not contact SQL Server or external services. No deploy, push, or PR action was run.
+
+### 2026-06-15 - resilience-test-generation - DATA-ROWVERSION issue #820 concurrent writer guard
+
+- Agent: Codex worker
+- Trigger: Issue #820 addresses a race-prone persistence invariant: future modified tracked entities must not rely on hand-written token updates.
+- Action: Opened and followed the project skill as a resilience checklist. Chose the lowest local test level that proves the invariant: EF Core SQLite integration tests over real tracked entities, covering modified async save, unmodified async save, and modified sync save paths without live dependencies.
+- Output artifacts: `RowVersionStampingTests`, centralized `AppDbContext` token stamping, and this log entry.
+- Verification evidence: focused RowVersion tests passed 3/3 after the red run; manual-stamp grep guard passed; full Release suite passed 854/854.
+- Limitations: The test proves token refresh behavior, not a two-writer conflict against SQL Server. No external queue, payment, AI, or writing-signal dependency was contacted.
+
+### 2026-06-15 - data-module-review - DATA-CHECK issue #821 credit and quota database checks
+
+- Agent: Codex worker
+- Trigger: Issue #821 changes EF Core model metadata and migrations for persisted credit and usage counter invariants.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Confirmed the owned tables are `RewriteCredits` and `UsagePeriods`, copied the existing `PromoCodes` check-constraint pattern, kept the change additive and reversible, and avoided any column, index, service, API, or quota-flow rewrite.
+- Output artifacts: `AppDbContext` check constraints, `AddCreditQuotaCheckConstraints` EF migration plus designer and snapshot, `CreditQuotaSchemaTests`, and this log entry.
+- Verification evidence: the data-risk scan script ran against `AppDbContext` and returned no rows; the exact EF pending-model check completed with no model drift; focused schema tests passed 6/6; full Release suite passed 860/860; scoped restricted-word guard returned no matches.
+- Limitations: No live database or deployment command was run. The pre-merge check for existing production rows remains a supervisor or human gate.
+
+### 2026-06-15 - state-machine-modeling - DATA-CHECK issue #821 quota persistence invariants
+
+- Agent: Codex worker
+- Trigger: Issue #821 hardens quota and credit persistence invariants that protect usage-accounting lifecycle data.
+- Action: Opened and followed the project skill for a minimal lifecycle model. Modeled this as no new state transitions: valid persisted states require nonnegative `UsedCount`, nonnegative `ReservedCount`, nonnegative `AmountConsumed`, and `AmountConsumed <= AmountGranted`; illegal direct writes are rejected by the database.
+- Output artifacts: database check constraints for `UsagePeriods` and `RewriteCredits`, SQLite tests for illegal and valid persisted states, and this log entry.
+- Verification evidence: focused schema tests passed 6/6 after the initial red run showed four invalid writes were accepted; full Release suite passed 860/860.
+- Limitations: This issue intentionally does not add a combined quota-limit constraint or alter reservation/rewrite attempt transition code.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-CHECK issue #821 SQLite schema tests
+
+- Agent: Codex worker
+- Trigger: Issue #821 requires C#/.NET tests proving database-level checks reject invalid `RewriteCredits` and `UsagePeriods` rows while valid rows still save.
+- Action: Opened and followed the project skill for backend test selection. Added EF Core SQLite in-memory xUnit/FluentAssertions schema tests before implementation, verified the red run failed in the four invalid-write assertions, then added the model constraints and migration.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/CreditQuotaSchemaTests.cs` and this log entry.
+- Verification evidence: initial focused run failed 4/6 because invalid writes did not throw; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CreditQuotaSchemaTests` passed 6/6, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 860/860.
+- Limitations: Tests use SQLite `EnsureCreated` and do not apply migrations to SQL Server. EF CLI commands that use the API startup project wait for the default host-factory timeout before falling back, but the exact pending-model check still passed.
+
+### 2026-06-15 - data-module-review - DATA-EXPIRY issue #822 credit reminder claim
+
+- Agent: Codex worker
+- Trigger: Issue #822 changes EF Core repository writes, `RewriteCredits` reminder persistence, and an additive index migration.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Identified `RewriteCredits` as the owned table, replaced the tracked in-memory reminder mark with a conditional SQL claim that stamps `RowVersion`, preserved existing skip conditions, and verified the migration adds only the reminder scan index.
+- Output artifacts: `IRewriteCreditRepository.TryClaimExpiryReminderAsync`, `RewriteCreditRepository.TryClaimExpiryReminderAsync`, handler claim-before-send flow, `AddCreditExpiryReminderClaimIndex` migration plus snapshot, and this log entry.
+- Verification evidence: focused credit-expiry tests passed 2/2; full `dotnet test ReplyInMyVoice.sln -c Release` passed 861/861; migration body contains only `CreateIndex` in `Up` and `DropIndex` in `Down`; exact EF migration list command exited 0 and included `20260614135259_AddCreditExpiryReminderClaimIndex`.
+- Limitations: No live database migration, deploy, push, or PR action was run. The EF migration-list command still waits for the Functions startup fallback and reports local SQL Server connectivity as unavailable before listing migrations.
+
+### 2026-06-15 - state-machine-modeling - DATA-EXPIRY issue #822 reminder lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #822 changes a multi-step reminder lifecycle from list/send/mark to list/claim/send.
+- Action: Opened and followed the project skill for a minimal lifecycle model. States: not eligible, eligible-unclaimed, claimed. Events: timer scan, skip due missing email/null expiry/no remaining balance, claim attempt, duplicate claim attempt, notifier success, notifier failure. Allowed transition: eligible-unclaimed plus winning claim moves to claimed before send. Rejected transition: duplicate claim returns false and sends nothing. Invariants: rows with `ExpiryReminderSentAt` set cannot be claimed again; `RowVersion` changes on claim; sent count increments only after claim and notifier success.
+- Output artifacts: claim-before-send handler flow, conditional repository update, double-run regression test, and this log entry.
+- Verification evidence: initial overlap test failed on the old flow with a concurrency exception after the second handler sent; after implementation, focused credit-expiry tests passed 2/2 and full Release suite passed 861/861.
+- Limitations: The chosen state model intentionally accepts the at-most-once tradeoff where notifier failure after a winning claim leaves the row claimed.
+
+### 2026-06-15 - resilience-test-generation - DATA-EXPIRY issue #822 overlapping timer runs
+
+- Agent: Codex worker
+- Trigger: Issue #822 tests duplicate timer execution and concurrent access to the same expiry-reminder candidate.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operation: send at most one reminder for one eligible credit under overlapping handler runs. Boundaries: SQLite-backed EF repository and fake notifier. Matrix covered duplicate run, concurrent claim, and partial success after claim before send; the last case follows the issue's at-most-once tradeoff.
+- Output artifacts: coordinated fake notifier that invokes a second handler while the first is in the send path, atomic claim repository method, and this log entry.
+- Verification evidence: the red run failed before implementation in the new overlap test; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~CreditExpiryUseCaseTests` passed 2/2 and full Release suite passed 861/861.
+- Limitations: The test uses deterministic local SQLite contexts and a fake notifier; no Azure Functions scale-out, real email provider, or production database was contacted.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-EXPIRY issue #822 credit expiry tests
+
+- Agent: Codex worker
+- Trigger: Issue #822 adds C#/.NET backend tests for credit expiry reminder persistence and overlapping handler runs.
+- Action: Opened and followed the project skill for test selection. Added an EF Core SQLite integration-style xUnit/FluentAssertions test before production changes, using two contexts over the shared fixture connection and a deterministic fake notifier to prove one reminder and one total sent count.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/CreditExpiryUseCaseTests.cs`, updated repository fake in `StripeReconciliationUseCaseTests`, and this log entry.
+- Verification evidence: first red run failed at compile due test helper shape and was corrected; second red run failed in the intended overlap path; after implementation, focused credit-expiry tests passed 2/2 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 861/861.
+- Limitations: Tests do not send real notifications and do not apply the SQL Server migration to a live database.
+
+### 2026-06-15 - data-module-review - DATA-EXC issue #823 database exception classifier
+
+- Agent: Codex worker
+- Trigger: Issue #823 changes EF Core transaction and rate-limit database exception handling across shared infrastructure services.
+- Action: Opened and followed the project skill as a persistence-safety checklist. Identified the owned mutation paths as `UnitOfWork`, API-key rate-limit windows, and user rewrite rate-limit windows; kept schema, migrations, indexes, public unit-of-work signatures, and transaction isolation unchanged; centralized provider exception classification behind an Application abstraction and Infrastructure implementation.
+- Output artifacts: `IDbExceptionClassifier`, `DbExceptionClassifier`, updated `UnitOfWork`, updated rate limiters, focused classifier tests, and this log entry.
+- Verification evidence: data-risk scan script ran over `backend-dotnet` and reported broad existing quota/idempotency signals only; focused classifier tests passed 12/12; full Release suite passed 873/873.
+- Limitations: No live SQL Server, migration, deploy, push, or PR action was run. SQL Server behavior is tested through the required reflective `Number` seam instead of constructing provider exceptions directly.
+
+### 2026-06-15 - resilience-test-generation - DATA-EXC issue #823 retryable race signals
+
+- Agent: Codex worker
+- Trigger: Issue #823 changes retry decisions for failed transactions and rate-limit writes, including concurrency races and SQLite busy fallback behavior.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operation: retry only database races while rejecting non-race provider numbers. Boundaries: EF Core exception types, SQLite provider exceptions, and SQL Server-style `Number` provider signals. Generated the resilience matrix and selected deterministic unit tests as the lowest sufficient proof.
+- Output artifacts: `DbExceptionClassifierTests`, shared classifier helper, and this log entry.
+- Verification evidence: initial focused test run failed at compile because the classifier was absent; after implementation, focused classifier tests passed 12/12, the UnitOfWork fragile-match grep returned no rows, and full Release suite passed 873/873.
+- Limitations: Tests do not exercise live SQL Server locking or deadlock reproduction; they prove classifier behavior through local exception objects and nested exception chains.
+
+### 2026-06-15 - dotnet-backend-testing - DATA-EXC issue #823 classifier unit tests
+
+- Agent: Codex worker
+- Trigger: Issue #823 requires C#/.NET tests covering SQL Server provider numbers, SQLite busy signals, EF Core concurrency exceptions, nested exceptions, and negative cases.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions unit tests before production changes, using a private exception fake with a public `Number` property so the provider-number path is testable without a live database.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/DbExceptionClassifierTests.cs` and this log entry.
+- Verification evidence: red run failed at compile due missing classifier; green run passed 12/12; `dotnet test ReplyInMyVoice.sln -c Release` passed 873/873; restricted-word guard over changed tracked files returned no rows, and the exact source/test guard returned no rows after ignored build output was removed.
+- Limitations: The test suite intentionally avoids Testcontainers and live SQL Server per issue scope. Build emitted existing NuGet advisory-source warnings when package metadata could not be fetched.
+
+### 2026-06-15 - state-machine-modeling - OBS-LOG issue #824 quota lifecycle observability
+
+- Agent: Codex worker
+- Trigger: Issue #824 instruments existing quota reservation and webhook ingest lifecycle outcomes with structured logs.
+- Action: Opened and followed the project skill as a lifecycle checklist. Modeled no state changes: reservation attempts still move through existing Pending, Processing, Finalized, Released, and Expired outcomes, while duplicate, exhausted, and ineligible events remain rejected or no-op outcomes. Added logs around terminal outcomes without altering transition predicates, counters, or persistence.
+- Output artifacts: typed logger injection and structured terminal logs in the five quota handlers plus webhook ingest handler, and this log entry.
+- Verification evidence: focused quota tests passed 13/13; focused Stripe event tests passed 35/35; full Release suite passed 876/876. Payload and restricted-term grep guards returned no rows.
+- Limitations: This issue intentionally does not add correlation-id plumbing, schema changes, retry behavior changes, or deployment readiness work.
+
+### 2026-06-15 - dotnet-backend-testing - OBS-LOG issue #824 logging assertions
+
+- Agent: Codex worker
+- Trigger: Issue #824 adds C#/.NET backend logging assertions for quota lifecycle handlers.
+- Action: Opened and followed the project skill for test selection. Added in-class xUnit/FluentAssertions tests with a hand-written recording `ILogger<T>` before implementation, verified the red run failed at the expected handler constructor arity errors, then added typed loggers and updated direct test helper construction sites to use `NullLogger<T>.Instance`.
+- Output artifacts: new logging assertions in `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/QuotaUseCaseTests.cs`, updated constructor call sites, and this log entry.
+- Verification evidence: initial quota filter failed at compile before implementation; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~QuotaUseCaseTests"` passed 13/13, `dotnet test ReplyInMyVoice.sln -c Release --filter "FullyQualifiedName~StripeEventUseCaseTests"` passed 35/35, and full `dotnet test ReplyInMyVoice.sln -c Release` passed 876/876.
+- Limitations: Build emitted existing NuGet advisory-source warnings when package metadata could not be fetched. The logger-count acceptance pipeline found all six files; with default macOS `wc` it exits nonzero because `wc -l` pads the count before `grep -qx 6`, while the same pipeline passes when GNU coreutils `wc` is exported on `PATH`.
+
+### 2026-06-15 - resilience-test-generation - API-DLQ issue #825 Service Bus settlement
+
+- Agent: Codex worker
+- Trigger: Issue #825 changes Azure Service Bus poison-message and redelivery behavior in the deployed Functions consumer.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operation: process one rewrite job queue message without wasting retries on unprocessable payloads. Boundaries: Azure Functions Service Bus binding, message settlement actions, JSON deserialization, SQLite-backed handler dependencies, and local fakes. Matrix covered malformed payload, JSON null payload, empty attempt id, missing attempt, unexpected handler exception, and success.
+- Output artifacts: explicit `DeadLetterMessageAsync` calls for `invalid_json`, `invalid_job`, and `attempt_not_found`; explicit `CompleteMessageAsync` on success; focused `RewriteJobFunctionTests`.
+- Verification evidence: initial focused run failed against the old two-argument `Run` contract; after implementation, `dotnet test ReplyInMyVoice.sln -c Release --filter FullyQualifiedName~RewriteJobFunctionTests` passed 6/6 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 882/882.
+- Limitations: Tests use `ServiceBusModelFactory` messages and a recording `ServiceBusMessageActions` fake; no live Service Bus queue, Azure Functions host, deploy, push, or PR action was run.
+
+### 2026-06-15 - state-machine-modeling - API-DLQ issue #825 queue message lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #825 changes queue job lifecycle handling for invalid, missing-attempt, transient-failure, and success paths.
+- Action: Opened and followed the project skill for a minimal lifecycle model. States: received, completed, dead-lettered, and abandoned-for-redelivery. Events: malformed payload, JSON null payload, empty attempt id, missing attempt, handler success, and unexpected handler exception. Allowed transitions: unprocessable payloads and missing attempts move from received to dead-lettered with stable reason codes; success moves to completed; unexpected handler exceptions are rethrown so the runtime can redeliver.
+- Output artifacts: `RewriteJobFunction` settlement branches, `host.json` Service Bus settings, and focused state-transition tests in `RewriteJobFunctionTests`.
+- Verification evidence: focused function tests passed 6/6; `grep -n "DeadLetterMessageAsync" src/ReplyInMyVoice.Functions/Functions/RewriteJobFunction.cs` showed four production dead-letter call sites plus the test-overload no-op override; full Release suite passed 882/882.
+- Limitations: No persisted job-status model or database schema changed. The state model is limited to message settlement at the deployed Functions consumer boundary.
+
+### 2026-06-15 - dotnet-backend-testing - API-DLQ issue #825 function tests
+
+- Agent: Codex worker
+- Trigger: Issue #825 adds C#/.NET unit coverage for the deployed `RewriteJobFunction` Service Bus consumer.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions tests before production changes using `ServiceBusModelFactory`, a hand-written `ServiceBusMessageActions` recorder, the existing `DbFixture`, real repositories for handler paths, and deterministic fakes for the rewrite engine and unexpected repository failure.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/RewriteJobFunctionTests.cs`, plus the function signature and host configuration changes required for those tests.
+- Verification evidence: red run failed at compile because the old function exposed only `Run(string, CancellationToken)`; after implementation and one corrected transient-failure setup, focused tests passed 6/6 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 882/882.
+- Limitations: The existing correlation propagation test still uses a direct string overload retained in `RewriteJobFunction` without a trigger attribute, so no extra out-of-scope test file needed to change.
+
+### 2026-06-15 - dotnet-backend-testing - TEST-JWT issue #826 signed bearer-token tests
+
+- Agent: Codex worker
+- Trigger: Issue #826 adds C#/.NET backend tests for the Functions JWT bearer-token validation path.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions tests before production changes, using locally generated RSA keys, `StaticConfigurationManager<OpenIdConnectConfiguration>`, and real `JwtSecurityTokenHandler` validation through `FunctionAuthResolver.ResolveUserAsync`.
+- Output artifacts: optional OIDC configuration-manager seam in `FunctionAuthResolver`, four signed-JWT resolver tests in `FunctionAuthResolverTests`, and this log entry.
+- Verification evidence: red run failed at compile because `ResolveUserAsync` lacked the `configurationManagerOverride` seam; after implementation, focused `FunctionAuthResolverTests` passed 23/23 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 886/886.
+- Limitations: Tests use local in-memory OIDC metadata and do not call a live metadata endpoint, deploy, push, or open a PR. `git commit` was attempted but blocked because git metadata for this worktree is outside the writable sandbox roots.
+
+### 2026-06-15 - resilience-test-generation - TEST-TIME issue #827 retry clock control
+
+- Agent: Codex worker
+- Trigger: Issue #827 changes and tests provider HTTP retry waits, rate-limit retry headers, transient provider retry behavior, and clock-dependent backoff timing.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operation: retry transient provider responses without depending on wall-clock sleeps in tests. Boundaries: HTTP retry handler, circuit breaker, named `HttpClient` registration, rewrite-model adapter, and test fake time.
+- Output artifacts: `ProviderHttpResilienceHandler` TimeProvider seam, deterministic retry-delay tests, DI optional TimeProvider resolve for named clients, local `FakeTimeProvider`, and this log entry.
+- Verification evidence: red focused run failed with missing handler TimeProvider constructor and adapter timeout; after implementation, focused resilience/adapter filter passed 14/14 and full `dotnet test ReplyInMyVoice.sln -c Release` passed 887/887. Static grep checks for wall-clock assertions, static handler clock calls, TimeProvider seam, and restricted terms passed.
+- Limitations: No live provider, deploy, push, or PR action was run. NuGet advisory metadata warnings appeared because `api.nuget.org` service-index reads failed; no new package dependency was added.
+
+### 2026-06-15 - dotnet-backend-testing - TEST-TIME issue #827 fake-time retry tests
+
+- Agent: Codex worker
+- Trigger: Issue #827 adds and changes C#/.NET xUnit tests for `ProviderHttpResilienceHandler` and the rewrite provider adapter retry path.
+- Action: Opened and followed the project skill for backend test selection. Used xUnit/FluentAssertions with hand-written fakes at the lowest useful level: direct handler tests for retry-delay guarantees and a DI-backed adapter test for the registered named client path.
+- Output artifacts: updated `ProviderHttpResilienceHandlerTests`, updated `RewriteProviderAdapterTests`, local `FakeTimeProvider`, and this log entry.
+- Verification evidence: initial focused test run failed after test changes, proving the missing seam; after implementation, focused filter passed 14/14 and full Release suite passed 887/887.
+- Limitations: The test fake implements the timer behavior needed by these retry tests, not a full replacement for every possible `TimeProvider` use.
+
+### 2026-06-15 - state-machine-modeling - TEST-SQLSERVER issue #828 SQL Server lifecycle coverage
+
+- Agent: Codex worker
+- Trigger: Issue #828 adds SQL Server tests for quota reservation races, rewrite-attempt idempotency, Stripe event duplicate handling, and row-version concurrency.
+- Action: Opened and followed the project skill as a lifecycle checklist. State list: usage period with one slot remaining or full, rewrite credit available or consumed, rewrite attempt absent or pending, Stripe event absent or recorded, usage period fresh or stale by row version. Event list: concurrent reserve, duplicate idempotency-key insert, duplicate Stripe event insert, first tracked save, stale tracked save, and raw SQL reserve update. Transition table: concurrent reserve moves exactly one request to created and the rest to quota-exceeded; full period plus one credit moves exactly one credit to consumed; duplicate attempt/event inserts are rejected by SQL Server constraints; first tracked save refreshes row version; stale save is rejected; raw reserve update refreshes row version. Invariants: no duplicate attempts per user/key, no duplicate Stripe events per event id, no over-reservation, no over-consuming a one-credit grant, and stale updates cannot overwrite a newer row. Illegal transitions: second reserve cannot create another usage reservation, duplicate attempt/event cannot persist, stale row-version save cannot commit. Persistence implications: tests use migrated SQL Server schema and unique/PK/concurrency predicates instead of SQLite `EnsureCreated`. Test checklist mapped to `SqlServerQuotaConcurrencyTests`, `SqlServerIdempotencyAndWebhookReplayTests`, and `SqlServerRowVersionConcurrencyTests`.
+- Output artifacts: new SQL Server collection fixture and three trait-gated SQL Server test classes, plus this log entry.
+- Verification evidence: `Category!=SqlServer` Release suite passed 887/887 with a temporary writable NuGet cache; SQL Server-filtered command compiled then failed at fixture startup because local Docker is not running; static migration/trait/filter/restricted-substring checks passed.
+- Limitations: No production lifecycle code changed. Local SQL Server execution could not complete without a running Docker daemon or external SQL Server connection string.
+
+### 2026-06-15 - data-module-review - TEST-SQLSERVER issue #828 SQL Server persistence invariants
+
+- Agent: Codex worker
+- Trigger: Issue #828 reviews and tests EF Core SQL Server persistence invariants for unique indexes, primary keys, check-backed counters, migrations, and row-version concurrency.
+- Action: Opened and followed the project skill. Reviewed `AppDbContext`, migrations, repository update methods, entity required fields, SQLite fixtures, and CI SQL Server migration job together. Findings: no production schema or repository edits needed; the missing coverage is provider-level behavior under migrated SQL Server schema. Suggested tests were implemented at EF integration level against SQL Server, with unique users/keys per test to keep a shared collection database isolated.
+- Output artifacts: `SqlServerDbFixture` using `UseSqlServer` and `MigrateAsync`, idempotency and duplicate event constraint tests, quota race tests, row-version concurrency tests, and this log entry.
+- Verification evidence: `grep -RnE "MigrateAsync|UseSqlServer" backend-dotnet/tests/ReplyInMyVoice.Tests/SqlServer/` found the fixture lines; `EnsureCreated` grep returned no rows; trait count and workflow filter checks passed; `Category!=SqlServer` Release suite passed 887/887.
+- Limitations: Local SQL Server container execution failed because Docker is unavailable in this sandbox. No migration was added or modified.
+
+### 2026-06-15 - resilience-test-generation - TEST-SQLSERVER issue #828 race and duplicate-event tests
+
+- Agent: Codex worker
+- Trigger: Issue #828 adds tests for quota races, idempotency, Stripe webhook duplicate handling, and stale row-version recovery behavior.
+- Action: Opened and followed the project skill as a failure matrix. Critical operations: reserve one remaining quota slot, consume one remaining credit, persist rewrite attempts by idempotency key, persist Stripe events by event id, and save concurrent usage-period updates. Boundary list: SQL Server engine, EF Core migrations, raw SQL repository updates, EF unique/PK enforcement, and EF concurrency-token predicates. Matrix rows implemented: concurrent requests, duplicate request key, duplicate event id, partial update by first context, and stale second-context update.
+- Output artifacts: two quota race tests, two duplicate constraint tests, two row-version tests, CI trait-gated SQL Server test step, and this log entry.
+- Verification evidence: SQL Server-filtered test command compiled all six tests and then failed before DB startup due local Docker availability; fast Release suite passed 887/887; static restricted-substring scan over the new SQL Server folder passed.
+- Limitations: No live Stripe, Azure, or production database endpoint was used. Full SQL Server execution remains for CI or a local machine with Docker running.
+
+### 2026-06-15 - dotnet-backend-testing - TEST-SQLSERVER issue #828 SQL Server xUnit suites
+
+- Agent: Codex worker
+- Trigger: Issue #828 adds C#/.NET xUnit coverage for SQL Server-specific EF Core behavior and CI trait gating.
+- Action: Opened and followed the project skill for backend test selection. Added `Testcontainers.MsSql`, one shared xUnit collection fixture, and three trait-gated test classes. The fixture uses a CI-provided connection string when present so the existing GitHub Actions SQL Server service is reused; otherwise it starts `mcr.microsoft.com/mssql/server:2022-latest` locally and runs `MigrateAsync`.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/SqlServer/*`, `backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj`, `.github/workflows/dotnet-azure.yml`, and this log entry.
+- Verification evidence: `NUGET_PACKAGES=/private/tmp/rimv-nuget-packages dotnet test ReplyInMyVoice.sln -c Release --filter "Category!=SqlServer"` passed 887/887; `NUGET_PACKAGES=/private/tmp/rimv-nuget-packages dotnet test ReplyInMyVoice.sln -c Release --filter "Category=SqlServer" --no-restore` compiled and then failed because Docker is unavailable locally; grep-based acceptance checks passed; `git diff --check` passed.
+- Limitations: The default NuGet global package cache is not writable from this sandbox, so verification used a temporary writable cache populated with symlinks to existing packages plus the downloaded `Testcontainers.MsSql` package. Docker is not running locally, so the container-backed SQL Server tests were not executed to green here.
+
+### 2026-06-15 - state-machine-modeling - credit expiry reminder claim release
+
+- Agent: Codex
+- Trigger: Credit expiry reminder lifecycle change for claimed, sent, and failed notification states.
+- Action: Opened and followed the skill as a lifecycle checklist. State list: unclaimed reminder candidate (`ExpiryReminderSentAt = null`), claimed pending send (`ExpiryReminderSentAt = command.Now`), sent reminder (same persisted stamp after notifier success), and released retryable candidate (`ExpiryReminderSentAt = null` after notifier failure). Events: candidate selection, atomic claim, send success, send failure, overlapping worker claim attempt. Invariants: only one worker may send a claimed reminder, a failed send must not permanently remove a candidate, and a release may clear only the exact claim timestamp created by that handler run.
+- Output artifacts: guarded `ReleaseExpiryReminderClaimAsync` repository method, handler failure-branch release call, regression test, and this log entry.
+- Verification evidence: focused red test failed with `ExpiryReminderSentAt` still set to `2026-06-01 +0h`; after implementation, focused credit-expiry tests passed 3/3.
+- Limitations: No schema, migration, deployed scheduler, or live email provider behavior changed.
+
+### 2026-06-15 - data-module-review - credit expiry reminder claim persistence
+
+- Agent: Codex
+- Trigger: Repository abstraction and EF Core raw SQL persistence change for `RewriteCredits.ExpiryReminderSentAt`.
+- Action: Opened and followed the skill for persistence invariants. Reviewed candidate query, atomic claim update, row-version update, handler mutation order, EF SQLite tests, and fake repository implementations. Added a compensating raw SQL release guarded by `Id` and the exact claimed timestamp, preserving the existing claim-before-send concurrency pattern.
+- Output artifacts: `IRewriteCreditRepository.ReleaseExpiryReminderClaimAsync`, `RewriteCreditRepository.ReleaseExpiryReminderClaimAsync`, fake repository interface update, and this log entry.
+- Verification evidence: `jq empty public/openapi.json` passed; focused credit-expiry tests passed 3/3 after implementation. Full build/test gates are run later in this turn.
+- Limitations: The release result is intentionally best-effort in the handler; no new audit table, retry counter, or migration was added.
+
+### 2026-06-15 - resilience-test-generation - credit expiry notifier send failure
+
+- Agent: Codex
+- Trigger: Regression fix for transient notification provider failure after a committed credit-expiry reminder claim.
+- Action: Opened and followed the skill as a failure-mode checklist. Critical operation: send one paid-credit expiry reminder after an atomic claim. Boundaries: database claim, email notifier, handler retryability. Failure matrix covered partial success after persistence plus provider send failure; the chosen lowest-level test uses EF SQLite with a deterministic notifier fake returning `false`.
+- Output artifacts: `SendCreditExpiryRemindersAsync_releases_claim_when_notification_send_fails`, configurable fake notifier result, and this log entry.
+- Verification evidence: red focused test failed on persisted stamp remaining set; green focused test passed 1/1, and all credit-expiry use-case tests passed 3/3.
+- Limitations: No live notification provider, throttling response, network timeout, or scheduler invocation was exercised.
+
+### 2026-06-15 - dotnet-backend-testing - credit expiry reminder regression test
+
+- Agent: Codex
+- Trigger: C#/.NET backend regression test required for `SendCreditExpiryRemindersHandler` provider-failure behavior.
+- Action: Opened and followed the project skill. Wrote the failing xUnit/FluentAssertions EF SQLite test before production edits, extended the existing hand-written notifier fake to return success or failure, then added the minimal repository/handler change to make the test pass.
+- Output artifacts: updated `CreditExpiryUseCaseTests`, repository interface/implementation changes, fake repository interface update, and this log entry.
+- Verification evidence: initial focused test run failed 0/1 with the old behavior; after implementation, focused failure-path test passed 1/1 and `CreditExpiryUseCaseTests` passed 3/3. Full Debug build/test gates are run later in this turn.
+- Limitations: SQL Server-specific tests remain excluded by the requested acceptance command; no new migration was run or modified.

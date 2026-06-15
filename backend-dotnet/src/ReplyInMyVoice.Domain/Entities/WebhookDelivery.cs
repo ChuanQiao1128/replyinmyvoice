@@ -1,8 +1,9 @@
+using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Enums;
 
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class WebhookDelivery
+public sealed class WebhookDelivery : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ApiKeyId { get; set; }

@@ -53,7 +53,6 @@ public sealed class DeleteAccountHandler(
             user.SubscriptionStatus = SubscriptionStatus.Canceled;
             user.CurrentPeriodEnd = null;
             user.UpdatedAt = now;
-            user.RowVersion = Guid.NewGuid();
 
             foreach (var attempt in userAttempts)
             {
@@ -70,7 +69,6 @@ public sealed class DeleteAccountHandler(
                     attempt.CompletedAt = now;
                 }
 
-                attempt.RowVersion = Guid.NewGuid();
             }
 
             foreach (var period in userUsagePeriods)
@@ -82,7 +80,6 @@ public sealed class DeleteAccountHandler(
                 period.PeriodStart = null;
                 period.PeriodEnd = null;
                 period.UpdatedAt = now;
-                period.RowVersion = Guid.NewGuid();
             }
 
             foreach (var reservation in userReservations)
@@ -91,7 +88,6 @@ public sealed class DeleteAccountHandler(
                 reservation.FinalizedAt = null;
                 reservation.ReleasedAt = now;
                 reservation.ExpiresAt = now;
-                reservation.RowVersion = Guid.NewGuid();
             }
 
             foreach (var credit in userCredits)
@@ -101,13 +97,11 @@ public sealed class DeleteAccountHandler(
                 credit.OriginalAmountGranted = null;
                 credit.AmountConsumed = 0;
                 credit.ExpiresAt = now;
-                credit.RowVersion = Guid.NewGuid();
             }
 
             foreach (var redemption in userPromoRedemptions)
             {
                 redemption.RedeemIpHash = null;
-                redemption.RowVersion = Guid.NewGuid();
             }
 
             foreach (var billingSupportRequest in userBillingSupportRequests)
@@ -117,7 +111,6 @@ public sealed class DeleteAccountHandler(
                 billingSupportRequest.Status = BillingSupportRequestStatus.Resolved;
                 billingSupportRequest.ResolvedAt ??= now;
                 billingSupportRequest.UpdatedAt = now;
-                billingSupportRequest.RowVersion = Guid.NewGuid();
             }
 
             await unitOfWork.SaveChangesAsync(transactionCt);

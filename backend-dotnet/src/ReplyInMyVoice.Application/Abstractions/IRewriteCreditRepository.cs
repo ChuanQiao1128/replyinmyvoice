@@ -66,9 +66,14 @@ public interface IRewriteCreditRepository
         int batchSize,
         CancellationToken ct = default);
 
-    Task MarkExpiryReminderSentAsync(
-        RewriteCredit credit,
+    Task<bool> TryClaimExpiryReminderAsync(
+        Guid creditId,
         DateTimeOffset sentAt,
+        CancellationToken ct = default);
+
+    Task<bool> ReleaseExpiryReminderClaimAsync(
+        Guid creditId,
+        DateTimeOffset claimedSentAt,
         CancellationToken ct = default);
 
     bool IsStripeEventIdWriteFailure(Exception exception);

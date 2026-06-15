@@ -21,7 +21,6 @@ public sealed class ClearApiKeyWebhookHandler(
             apiKey.WebhookUrl = null;
             apiKey.WebhookSecret = null;
             apiKey.UpdatedAt = DateTimeOffset.UtcNow;
-            apiKey.RowVersion = Guid.NewGuid();
             await unitOfWork.SaveChangesAsync(ct);
         }
 

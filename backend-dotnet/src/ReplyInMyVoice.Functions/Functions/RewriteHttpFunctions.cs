@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
@@ -24,7 +25,8 @@ public sealed class RewriteHttpFunctions(
     FindUserHandler findUserHandler,
     CreateRewriteAttemptHandler createRewriteAttemptHandler,
     GetRewriteAttemptHandler getRewriteAttemptHandler,
-    IUserRewriteRateLimiter userRateLimiter)
+    IUserRewriteRateLimiter userRateLimiter,
+    ILogger<RewriteHttpFunctions>? logger = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -37,13 +39,10 @@ public sealed class RewriteHttpFunctions(
         HttpRequest request,
         CancellationToken cancellationToken)
     {
-        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
-        if (authUser is null)
+        var authResult = await FunctionAuthResolver.ResolveUserResultAsync(request, configuration, cancellationToken);
+        if (authResult.User is not { } authUser)
         {
-            return FunctionHttpResults.Problem(
-                "Authentication required",
-                "A valid authenticated user is required.",
-                StatusCodes.Status401Unauthorized);
+            return Unauthorized(authResult.Reason, "A valid authenticated user is required.");
         }
 
         var idempotencyKey = request.Headers["X-Idempotency-Key"].ToString();
@@ -143,13 +142,10 @@ public sealed class RewriteHttpFunctions(
         Guid attemptId,
         CancellationToken cancellationToken)
     {
-        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
-        if (authUser is null)
+        var authResult = await FunctionAuthResolver.ResolveUserResultAsync(request, configuration, cancellationToken);
+        if (authResult.User is not { } authUser)
         {
-            return FunctionHttpResults.Problem(
-                "Authentication required",
-                null,
-                StatusCodes.Status401Unauthorized);
+            return Unauthorized(authResult.Reason, null);
         }
 
         var user = await findUserHandler.HandleAsync(
@@ -177,13 +173,10 @@ public sealed class RewriteHttpFunctions(
     {
         var page = ParsePositiveInt(request.Query["page"].ToString(), 1);
         var pageSize = Math.Min(ParsePositiveInt(request.Query["pageSize"].ToString(), 20), 50);
-        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
-        if (authUser is null)
+        var authResult = await FunctionAuthResolver.ResolveUserResultAsync(request, configuration, cancellationToken);
+        if (authResult.User is not { } authUser)
         {
-            return FunctionHttpResults.Problem(
-                "Authentication required",
-                null,
-                StatusCodes.Status401Unauthorized);
+            return Unauthorized(authResult.Reason, null);
         }
 
         var user = await findUserHandler.HandleAsync(
@@ -253,13 +246,10 @@ public sealed class RewriteHttpFunctions(
         Guid attemptId,
         CancellationToken cancellationToken)
     {
-        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
-        if (authUser is null)
+        var authResult = await FunctionAuthResolver.ResolveUserResultAsync(request, configuration, cancellationToken);
+        if (authResult.User is not { } authUser)
         {
-            return FunctionHttpResults.Problem(
-                "Authentication required",
-                null,
-                StatusCodes.Status401Unauthorized);
+            return Unauthorized(authResult.Reason, null);
         }
 
         var user = await findUserHandler.HandleAsync(
@@ -296,13 +286,10 @@ public sealed class RewriteHttpFunctions(
         Guid attemptId,
         CancellationToken cancellationToken)
     {
-        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
-        if (authUser is null)
+        var authResult = await FunctionAuthResolver.ResolveUserResultAsync(request, configuration, cancellationToken);
+        if (authResult.User is not { } authUser)
         {
-            return FunctionHttpResults.Problem(
-                "Authentication required",
-                null,
-                StatusCodes.Status401Unauthorized);
+            return Unauthorized(authResult.Reason, null);
         }
 
         var user = await findUserHandler.HandleAsync(
@@ -325,7 +312,6 @@ public sealed class RewriteHttpFunctions(
         }
 
         attempt.DeletedAt = DateTimeOffset.UtcNow;
-        attempt.RowVersion = Guid.NewGuid();
         await db.SaveChangesAsync(cancellationToken);
         return new NoContentResult();
     }
@@ -353,6 +339,14 @@ public sealed class RewriteHttpFunctions(
         }
 
         return null;
+    }
+
+    private IActionResult Unauthorized(AuthFailureReason reason, string? detail)
+    {
+        logger?.LogInformation("auth.unauthorized subtype={Reason}", reason);
+        return FunctionHttpResults.Unauthorized(
+            detail,
+            invalidToken: reason != AuthFailureReason.NoToken);
     }
 
     private static void SetRateLimitHeaders(

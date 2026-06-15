@@ -14,6 +14,16 @@ public sealed class AzureServiceBusRewriteJobPublisher(ServiceBusSender sender) 
             ContentType = "application/json",
             Subject = "rewrite-attempt",
         };
+        if (!string.IsNullOrWhiteSpace(job.CorrelationId))
+        {
+            message.CorrelationId = job.CorrelationId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(job.Traceparent))
+        {
+            message.ApplicationProperties["traceparent"] = job.Traceparent;
+        }
+
         await sender.SendMessageAsync(message, cancellationToken);
     }
 }

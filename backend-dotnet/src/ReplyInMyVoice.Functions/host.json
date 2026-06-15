@@ -3,7 +3,9 @@
     "extensions": {
         "serviceBus": {
             "maxAutoLockRenewalDuration": "00:10:00",
-            "maxConcurrentCalls": 4
+            "maxConcurrentCalls": 4,
+            "maxDeliveryCount": 5,
+            "autoCompleteMessages": false
         }
     },
     "logging": {

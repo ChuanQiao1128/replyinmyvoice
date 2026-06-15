@@ -1,6 +1,8 @@
+using ReplyInMyVoice.Domain.Contracts;
+
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class LearningFinding
+public sealed class LearningFinding : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid RunId { get; set; }

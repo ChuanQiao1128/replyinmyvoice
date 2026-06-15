@@ -31,6 +31,7 @@ jobs:
         run: >
           dotnet test backend-dotnet/ReplyInMyVoice.sln
           --configuration Release --no-build
+          --filter "Category!=SqlServer"
           --collect:"XPlat Code Coverage"
           --settings backend-dotnet/coverlet.runsettings
           --results-directory backend-dotnet/artifacts/coverage
@@ -64,8 +65,6 @@ jobs:
           name: backend-coverage
           path: backend-dotnet/artifacts/coverage/**/coverage.cobertura.xml
           if-no-files-found: warn
-      - name: Publish API
-        run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj --configuration Release --output backend-dotnet/artifacts/api
       - name: Publish Worker
         run: dotnet publish backend-dotnet/src/ReplyInMyVoice.Worker/ReplyInMyVoice.Worker.csproj --configuration Release --output backend-dotnet/artifacts/worker
       - name: Publish Functions
@@ -157,6 +156,10 @@ jobs:
 
             sleep 10
           done
+      - name: Test SQL Server suites
+        run: |
+          SQL_CONNECTION="Server=localhost,1433;Initial Catalog=ReplyInMyVoiceSqlServerTests_${{ github.run_id }};Persist Security Info=False;User ID=sa;Password=${SQLSERVER_SA_PASSWORD};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=True;Connection Timeout=30;"
+          RIMV_SQLSERVER_TEST_CONNECTION="$SQL_CONNECTION" dotnet test backend-dotnet/ReplyInMyVoice.sln --configuration Release --filter "Category=SqlServer"
 
   deploy:
     needs:
@@ -194,7 +197,7 @@ jobs:
           SQL_CONNECTION="Server=tcp:${AZURE_SQL_SERVER_NAME}.database.windows.net,1433;Initial Catalog=${AZURE_SQL_DATABASE_NAME};Persist Security Info=False;User ID=${SQL_ADMIN_USER};Password=${SQL_ADMIN_PASSWORD};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
           ConnectionStrings__DefaultConnection="$SQL_CONNECTION" dotnet ef database update \
             --project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
-            --startup-project backend-dotnet/src/ReplyInMyVoice.Api/ReplyInMyVoice.Api.csproj \
+            --startup-project backend-dotnet/src/ReplyInMyVoice.Infrastructure/ReplyInMyVoice.Infrastructure.csproj \
             --context AppDbContext
       - name: Deploy to Azure Functions
         env:

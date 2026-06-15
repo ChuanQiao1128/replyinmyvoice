@@ -5,14 +5,45 @@ namespace ReplyInMyVoice.Functions.Http;
 
 public static class FunctionHttpResults
 {
+    public const string InternalErrorMessage = "An unexpected server error occurred. Please retry the request.";
+
+    public static IActionResult Unauthorized(string? detail, bool invalidToken) =>
+        new HeaderResult(
+            Problem(
+                "Authentication required",
+                detail,
+                StatusCodes.Status401Unauthorized),
+            invalidToken
+                ? """
+                  Bearer error="invalid_token"
+                  """
+                : "Bearer");
+
     public static IActionResult Problem(
         string title,
         string? detail,
         int statusCode,
-        string? errorCode = null)
+        string? errorCode = null,
+        string? requestId = null)
     {
         if (!string.IsNullOrWhiteSpace(errorCode))
         {
+            if (!string.IsNullOrWhiteSpace(requestId))
+            {
+                return new ObjectResult(new
+                {
+                    error = new
+                    {
+                        code = errorCode,
+                        message = detail ?? title,
+                        requestId,
+                    },
+                })
+                {
+                    StatusCode = statusCode,
+                };
+            }
+
             return new ObjectResult(new
             {
                 error = new
@@ -50,6 +81,14 @@ public static class FunctionHttpResults
             StatusCodes.Status413PayloadTooLarge,
             "payload_too_large");
 
+    public static IActionResult InternalError(string requestId) =>
+        Problem(
+            "Internal server error",
+            InternalErrorMessage,
+            StatusCodes.Status500InternalServerError,
+            DefaultErrorCode(StatusCodes.Status500InternalServerError),
+            requestId);
+
     public static string DefaultErrorCode(int statusCode) =>
         statusCode switch
         {
@@ -66,4 +105,13 @@ public static class FunctionHttpResults
             StatusCodes.Status503ServiceUnavailable => "service_unavailable",
             _ => "error",
         };
+
+    private sealed class HeaderResult(IActionResult inner, string wwwAuthenticate) : IActionResult
+    {
+        public Task ExecuteResultAsync(ActionContext context)
+        {
+            context.HttpContext.Response.Headers.WWWAuthenticate = wwwAuthenticate;
+            return inner.ExecuteResultAsync(context);
+        }
+    }
 }

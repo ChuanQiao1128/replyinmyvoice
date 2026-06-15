@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Quota;
@@ -561,7 +562,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         {
             failedJson.RootElement.GetProperty("id").GetGuid().Should().Be(failed.Id);
             failedJson.RootElement.GetProperty("status").GetString().Should().Be("failed");
-            failedJson.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_timeout");
+            var error = failedJson.RootElement.GetProperty("error");
+            error.GetProperty("code").GetString().Should().Be("provider_timeout");
+            error.GetProperty("requestId").GetString().Should().Be(GetRequiredHeader(failedResponse, "X-Correlation-Id"));
         }
     }
 
@@ -599,7 +602,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         using var json = await ReadJsonAsync(result);
         json.RootElement.GetProperty("id").GetGuid().Should().Be(body.Id);
         json.RootElement.GetProperty("status").GetString().Should().Be("failed");
-        json.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("reservation_expired");
+        var error = json.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be("reservation_expired");
+        error.GetProperty("requestId").GetString().Should().Be(GetRequiredHeader(result, "X-Correlation-Id"));
     }
 
     [Fact]
@@ -637,7 +642,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         using var json = await ReadJsonAsync(result);
         json.RootElement.GetProperty("id").GetGuid().Should().Be(body.Id);
         json.RootElement.GetProperty("status").GetString().Should().Be("failed");
-        json.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("provider_failed");
+        var error = json.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be("provider_failed");
+        error.GetProperty("requestId").GetString().Should().Be(GetRequiredHeader(result, "X-Correlation-Id"));
     }
 
     [Fact]
@@ -904,7 +911,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         outbox.PayloadJson.Should().Contain(body.AttemptId.ToString());
 
         var publisher = factory.Services.GetRequiredService<InMemoryRewriteJobPublisher>();
-        publisher.PublishedJobs.Select(x => x.AttemptId).Should().Equal(body.AttemptId);
+        var job = publisher.PublishedJobs.Should().ContainSingle().Subject;
+        job.AttemptId.Should().Be(body.AttemptId);
+        job.CorrelationId.Should().Be(body.AttemptId.ToString());
     }
 
     [Fact]
@@ -968,7 +977,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
         outbox.PayloadJson.Should().Contain(attemptId.ToString());
 
         var publisher = factory.Services.GetRequiredService<InMemoryRewriteJobPublisher>();
-        publisher.PublishedJobs.Select(x => x.AttemptId).Should().Equal(attemptId);
+        var job = publisher.PublishedJobs.Should().ContainSingle().Subject;
+        job.AttemptId.Should().Be(attemptId);
+        job.CorrelationId.Should().Be(attemptId.ToString());
     }
 
     [Fact]
@@ -1269,14 +1280,18 @@ public sealed class RewriteApiTests : IAsyncLifetime
             new RewriteCostLogger(() => CreateContext()));
 
     private static ReleaseExpiredReservationsHandler CreateExpiredHandler(AppDbContext db) =>
-        new(new UsageReservationRepository(db), new UnitOfWork(db));
+        new(
+            new UsageReservationRepository(db),
+            new UnitOfWork(db),
+            NullLogger<ReleaseExpiredReservationsHandler>.Instance);
 
     private static FinalizeQuotaSuccessHandler CreateFinalizeHandler(AppDbContext db) =>
         new(
             new RewriteAttemptRepository(db),
             new UsageReservationRepository(db),
             new UsagePeriodRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NullLogger<FinalizeQuotaSuccessHandler>.Instance);
 
     private static HttpClient CreateClient(WebApplicationFactory<Program> factory) =>
         factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -1493,12 +1508,9 @@ public sealed class RewriteApiTests : IAsyncLifetime
     {
         var json = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(json);
-        document.RootElement
-            .GetProperty("error")
-            .GetProperty("code")
-            .GetString()
-            .Should()
-            .Be(expectedCode);
+        var error = document.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be(expectedCode);
+        error.GetProperty("requestId").GetString().Should().Be(GetRequiredHeader(response, "X-Correlation-Id"));
     }
 
     private static string GetRequiredHeader(HttpResponseMessage response, string name)

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
@@ -44,8 +45,6 @@ namespace ReplyInMyVoice.Infrastructure;
 
 public static class ServiceCollectionExtensions
 {
-    private const int DefaultTotalRewriteBudgetSeconds = 180;
-
     public static IServiceCollection AddReplyInMyVoiceInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -57,19 +56,38 @@ public static class ServiceCollectionExtensions
             requireServiceBusConsumer);
 
         services.AddLogging();
+        var runtimeEnvironmentName = ResolveRuntimeEnvironmentName(configuration, environmentName);
+        services.AddSingleton<IValidateOptions<RewriteEngineOptions>>(_ =>
+            new RewriteEngineOptionsValidator(configuration, runtimeEnvironmentName));
+        services.AddOptions<RewriteEngineOptions>()
+            .Bind(configuration.GetSection(RewriteEngineOptions.SectionName))
+            .Configure(options => options.ApplyEnvironmentKeyOverrides(configuration))
+            .ValidateOnStart();
 
+        // Keep AddDbContext: pooling was evaluated, but the Func<AppDbContext> factory below
+        // creates extra short-lived contexts and scoped repositories expect regular lifetimes.
         services.AddDbContext<AppDbContext>(options =>
         {
             var connectionString = SqlConnectionStringResolver.Resolve(configuration);
 
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
+                var commandTimeoutSeconds = ReadClampedInt(
+                    configuration,
+                    "SQL_COMMAND_TIMEOUT_SEC",
+                    defaultValue: 30,
+                    min: 30,
+                    max: 600);
                 options.UseSqlServer(
                     connectionString,
-                    sqlOptions => sqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 5,
-                        maxRetryDelay: TimeSpan.FromSeconds(10),
-                        errorNumbersToAdd: null));
+                    sqlOptions =>
+                    {
+                        sqlOptions.EnableRetryOnFailure(
+                            maxRetryCount: 5,
+                            maxRetryDelay: TimeSpan.FromSeconds(10),
+                            errorNumbersToAdd: null);
+                        sqlOptions.CommandTimeout(commandTimeoutSeconds);
+                    });
             }
             else
             {
@@ -103,6 +121,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAdminUserRepository, AdminUserRepository>();
         services.AddScoped<IAdminStatsRepository, AdminStatsRepository>();
         services.AddScoped<IAccountUsagePlanProvider>(_ => new AccountUsagePlanProvider(configuration));
+        services.AddSingleton<IDbExceptionClassifier, DbExceptionClassifier>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IRewriteEngineClient, RewriteProviderEngineClient>();
         services.AddScoped<IRewriteCostLogger, RewriteCostLogger>();
@@ -301,39 +320,24 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IRewriteJobPublisher>(sp => sp.GetRequiredService<InMemoryRewriteJobPublisher>());
         }
 
-        var openAiBaseUrl = configuration["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1";
+        var rewriteOptions = RewriteEngineOptions.FromConfiguration(configuration);
+        var openAiBaseUrl = rewriteOptions.ModelBaseUrl;
         var modelApiKey = ResolveOpenAiCompatibleApiKey(configuration, openAiBaseUrl);
         var saplingApiKey = configuration["SAPLING_API_KEY"];
-        var model = configuration["OPENAI_MODEL_MID_WRITER"]
-            ?? configuration["OPENAI_MODEL"]
-            ?? "gpt-4o-mini";
-        var openAiTimeoutSeconds = int.TryParse(configuration["OPENAI_TIMEOUT_SEC"], out var parsedOpenAiTimeout)
-            ? parsedOpenAiTimeout
-            : 60;
-        var signalTimeoutSeconds = int.TryParse(configuration["WRITING_SIGNAL_TIMEOUT_SEC"], out var parsedSignalTimeout)
-            ? parsedSignalTimeout
-            : 10;
+        var model = rewriteOptions.Model;
+        var openAiTimeoutSeconds = rewriteOptions.ModelTimeoutSeconds;
+        var signalTimeoutSeconds = rewriteOptions.SignalTimeoutSeconds;
 
         // Adaptive refinement loop: refine until a send-ready candidate reaches the AI-signal
         // target, then return it (or the lowest-scoring one once the attempt budget is spent —
         // soft target, never fail-closed). Validated 2026-05-26: target 20 / max 10 loops drove
         // all 100 eval cases under 25 with zero fact loss, ~1.7 model calls/case. Both tunable
         // via app settings without a redeploy.
-        var aiSignalTarget = int.TryParse(configuration["AI_SIGNAL_TARGET"], out var parsedTarget)
-            ? parsedTarget
-            : 20;
-        var rewriteMaxAttempts = int.TryParse(configuration["REWRITE_MAX_ATTEMPTS"], out var parsedMaxAttempts)
-            ? parsedMaxAttempts
-            : 10;
+        var aiSignalTarget = rewriteOptions.AiSignalTarget;
+        var rewriteMaxAttempts = rewriteOptions.MaxAttempts;
         // Production wall-clock cap for the whole rewrite (all loops combined). An explicit
         // TOTAL_REWRITE_BUDGET_SEC=0 still leaves it unlimited for controlled non-production runs.
-        var totalRewriteBudgetSeconds = DefaultTotalRewriteBudgetSeconds;
-        if (configuration["TOTAL_REWRITE_BUDGET_SEC"] is { } configuredBudget &&
-            int.TryParse(configuredBudget, out var parsedBudget) &&
-            parsedBudget >= 0)
-        {
-            totalRewriteBudgetSeconds = parsedBudget;
-        }
+        var totalRewriteBudgetSeconds = rewriteOptions.TotalBudgetSeconds;
 
         if (string.IsNullOrWhiteSpace(modelApiKey) && string.IsNullOrWhiteSpace(saplingApiKey))
         {
@@ -388,7 +392,8 @@ public static class ServiceCollectionExtensions
         services
             .AddHttpClient(name)
             .AddHttpMessageHandler(sp => new ProviderHttpResilienceHandler(
-                sp.GetRequiredService<ProviderCircuitBreakerRegistry>().GetOrAdd(name)));
+                sp.GetRequiredService<ProviderCircuitBreakerRegistry>().GetOrAdd(name),
+                sp.GetService<TimeProvider>() ?? TimeProvider.System));
 
         return services;
     }

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Domain.Entities;
@@ -184,7 +185,8 @@ public sealed class ApiBurstRateLimitTests
             new UsageReservationRepository(db),
             new RewriteCreditRepository(db),
             new OutboxMessageRepository(db),
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NullLogger<ReserveQuotaHandler>.Instance);
 
     private static async Task<(AppUser User, ApiKey ApiKey)> SeedUserAndApiKeyAsync(
         FileBackedApiBurstDbFixture fixture,

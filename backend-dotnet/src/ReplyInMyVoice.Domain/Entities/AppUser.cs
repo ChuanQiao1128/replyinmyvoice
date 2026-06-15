@@ -1,8 +1,9 @@
+using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Enums;
 
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class AppUser
+public sealed class AppUser : IConcurrencyStamped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public required string ExternalAuthUserId { get; set; }

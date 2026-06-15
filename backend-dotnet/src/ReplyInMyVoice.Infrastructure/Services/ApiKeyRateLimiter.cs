@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Repositories;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
@@ -119,7 +120,6 @@ public sealed class ApiKeyRateLimiter(Func<AppDbContext> dbContextFactory) : IAp
 
             counter.Count += 1;
             counter.UpdatedAt = now;
-            counter.RowVersion = Guid.NewGuid();
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return ApiKeyRateLimitResult.Allowed(rateLimitPerMinute, counter.Count, resetAt);
@@ -145,16 +145,14 @@ public sealed class ApiKeyRateLimiter(Func<AppDbContext> dbContextFactory) : IAp
     private static bool IsRateLimitRaceException(DbUpdateException exception)
     {
         var message = exception.ToString();
-        return IsSqliteBusy(exception) ||
+        return DbExceptionClassifier.IsRetryableConcurrencyRaceException(exception) ||
             message.Contains("IX_ApiKeyRateLimitWindows_ApiKeyId_WindowStart", StringComparison.OrdinalIgnoreCase) ||
             (message.Contains("ApiKeyRateLimitWindows.ApiKeyId", StringComparison.OrdinalIgnoreCase) &&
                 message.Contains("ApiKeyRateLimitWindows.WindowStart", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsSqliteBusy(Exception exception) =>
-        exception is SqliteException { SqliteErrorCode: 5 or 6 } ||
-        exception.ToString().Contains("database is locked", StringComparison.OrdinalIgnoreCase) ||
-        exception.ToString().Contains("database table is locked", StringComparison.OrdinalIgnoreCase);
+        DbExceptionClassifier.IsRetryableConcurrencyRaceException(exception);
 }
 
 public sealed record ApiKeyRateLimitResult(

@@ -1,4 +1,5 @@
 using System.Data;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
@@ -7,15 +8,19 @@ namespace ReplyInMyVoice.Application.UseCases.StripeEvent;
 
 public sealed class IngestStripeWebhookHandler(
     IStripeEventRepository stripeEvents,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ILogger<IngestStripeWebhookHandler> logger)
 {
+    private const string StripeWebhookIngestedEvent = "stripe_webhook_ingested";
+
     public async Task<StripeWebhookIngestResult> HandleAsync(
         IngestStripeWebhookCommand command,
         CancellationToken ct = default)
     {
+        StripeWebhookIngestResult result;
         try
         {
-            return await unitOfWork.ExecuteInTransactionAsync(
+            result = await unitOfWork.ExecuteInTransactionAsync(
                 async transactionCt =>
                 {
                     var stripeEvent = await stripeEvents.GetByEventIdAsync(command.EventId, transactionCt);
@@ -51,7 +56,6 @@ public sealed class IngestStripeWebhookHandler(
                     stripeEvent.LockedUntil = null;
                     stripeEvent.PayloadJson = command.RawBody;
                     stripeEvent.ProcessedAt = null;
-                    stripeEvent.RowVersion = Guid.NewGuid();
                     await unitOfWork.SaveChangesAsync(transactionCt);
                     return StripeWebhookIngestResult.AlreadyPending;
                 },
@@ -60,7 +64,28 @@ public sealed class IngestStripeWebhookHandler(
         }
         catch (Exception ex) when (stripeEvents.IsDuplicateEventWriteFailure(ex))
         {
-            return StripeWebhookIngestResult.AlreadyPending;
+            result = StripeWebhookIngestResult.AlreadyPending;
         }
+
+        if (result == StripeWebhookIngestResult.Accepted)
+        {
+            logger.LogInformation(
+                "{PaymentObservabilityEvent} Stripe webhook ingest result {Result} for event {EventId} of type {EventType}.",
+                StripeWebhookIngestedEvent,
+                result,
+                command.EventId,
+                command.Type);
+        }
+        else
+        {
+            logger.LogWarning(
+                "{PaymentObservabilityEvent} Stripe webhook ingest result {Result} for event {EventId} of type {EventType}.",
+                StripeWebhookIngestedEvent,
+                result,
+                command.EventId,
+                command.Type);
+        }
+
+        return result;
     }
 }

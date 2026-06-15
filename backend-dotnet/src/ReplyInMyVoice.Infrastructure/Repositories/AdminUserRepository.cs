@@ -310,7 +310,6 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
 
         user.SuspendedAt = suspendedAt;
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
 
         return new AdminSuspensionMutationDto(user.Id, suspended, suspendedAt);
     }
@@ -397,7 +396,6 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
         user.SubscriptionStatus = SubscriptionStatus.Canceled;
         user.CurrentPeriodEnd = null;
         user.UpdatedAt = now;
-        user.RowVersion = Guid.NewGuid();
 
         foreach (var attempt in attempts)
         {
@@ -414,7 +412,6 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
                 attempt.CompletedAt = now;
             }
 
-            attempt.RowVersion = Guid.NewGuid();
         }
 
         foreach (var period in usagePeriods)
@@ -426,7 +423,6 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
             period.PeriodStart = null;
             period.PeriodEnd = null;
             period.UpdatedAt = now;
-            period.RowVersion = Guid.NewGuid();
         }
 
         foreach (var reservation in reservations)
@@ -435,7 +431,6 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
             reservation.FinalizedAt = null;
             reservation.ReleasedAt = now;
             reservation.ExpiresAt = now;
-            reservation.RowVersion = Guid.NewGuid();
         }
 
         foreach (var credit in credits)
@@ -445,13 +440,11 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
             credit.OriginalAmountGranted = null;
             credit.AmountConsumed = 0;
             credit.ExpiresAt = now;
-            credit.RowVersion = Guid.NewGuid();
         }
 
         foreach (var redemption in promoRedemptions)
         {
             redemption.RedeemIpHash = null;
-            redemption.RowVersion = Guid.NewGuid();
         }
 
         foreach (var billingSupportRequest in billingSupportRequests)
@@ -461,7 +454,6 @@ public sealed class AdminUserRepository(AppDbContext db) : IAdminUserRepository
             billingSupportRequest.Status = BillingSupportRequestStatus.Resolved;
             billingSupportRequest.ResolvedAt ??= now;
             billingSupportRequest.UpdatedAt = now;
-            billingSupportRequest.RowVersion = Guid.NewGuid();
         }
 
         return true;

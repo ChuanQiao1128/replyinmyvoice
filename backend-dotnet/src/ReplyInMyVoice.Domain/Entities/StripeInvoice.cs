@@ -1,6 +1,8 @@
+using ReplyInMyVoice.Domain.Contracts;
+
 namespace ReplyInMyVoice.Domain.Entities;
 
-public sealed class StripeInvoice
+public sealed class StripeInvoice : IConcurrencyStamped
 {
     public required string Id { get; set; }
     public Guid UserId { get; set; }

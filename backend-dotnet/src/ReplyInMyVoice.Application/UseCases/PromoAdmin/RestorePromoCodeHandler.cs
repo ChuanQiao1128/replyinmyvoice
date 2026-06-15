@@ -22,7 +22,6 @@ public sealed class RestorePromoCodeHandler(
         {
             promoCode.ArchivedAt = null;
             promoCode.UpdatedAt = command.Now;
-            promoCode.RowVersion = Guid.NewGuid();
             changedFields.Add("archivedAt");
         }
 

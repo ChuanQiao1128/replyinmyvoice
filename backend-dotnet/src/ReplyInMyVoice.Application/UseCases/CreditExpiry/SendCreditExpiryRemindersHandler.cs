@@ -4,8 +4,7 @@ namespace ReplyInMyVoice.Application.UseCases.CreditExpiry;
 
 public sealed class SendCreditExpiryRemindersHandler(
     IRewriteCreditRepository credits,
-    ICreditExpiryNotifier notifier,
-    IUnitOfWork unitOfWork)
+    ICreditExpiryNotifier notifier)
 {
     private const int BatchSize = 100;
 
@@ -41,6 +40,12 @@ public sealed class SendCreditExpiryRemindersHandler(
                 continue;
             }
 
+            var claimed = await credits.TryClaimExpiryReminderAsync(credit.Id, command.Now, ct);
+            if (!claimed)
+            {
+                continue;
+            }
+
             var sent = await notifier.TrySendCreditExpiringAsync(
                 new CreditExpiryNotificationRequest(
                     recipientEmail,
@@ -49,11 +54,10 @@ public sealed class SendCreditExpiryRemindersHandler(
                 ct);
             if (!sent)
             {
+                await credits.ReleaseExpiryReminderClaimAsync(credit.Id, command.Now, ct);
                 continue;
             }
 
-            await credits.MarkExpiryReminderSentAsync(credit, command.Now, ct);
-            await unitOfWork.SaveChangesAsync(ct);
             sentCount++;
         }
 

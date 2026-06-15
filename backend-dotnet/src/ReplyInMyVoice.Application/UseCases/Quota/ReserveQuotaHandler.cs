@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Entities;
@@ -13,9 +14,14 @@ public sealed class ReserveQuotaHandler(
     IUsageReservationRepository reservations,
     IRewriteCreditRepository credits,
     IOutboxMessageRepository outboxMessages,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ILogger<ReserveQuotaHandler> logger)
 {
     private const int ReservationRaceMaxAttempts = 3;
+    private const string QuotaReservedEvent = "quota_reserved";
+    private const string QuotaReserveExistingEvent = "quota_reserve_existing";
+    private const string QuotaReserveConflictEvent = "quota_reserve_conflict";
+    private const string QuotaExhaustedEvent = "quota_exhausted";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -27,11 +33,14 @@ public sealed class ReserveQuotaHandler(
         CancellationToken ct = default)
     {
         // Admission is decided inside conditional UPDATE statements under row locks; unique-index races are retried by UnitOfWork.
-        return await unitOfWork.ExecuteInTransactionAsync(
+        var result = await unitOfWork.ExecuteInTransactionAsync(
             transactionCt => ReserveCoreAsync(command, transactionCt),
             IsolationLevel.ReadCommitted,
             ReservationRaceMaxAttempts,
             ct);
+
+        LogResult(command, result);
+        return result;
     }
 
     private async Task<ReserveQuotaResult> ReserveCoreAsync(
@@ -171,6 +180,49 @@ public sealed class ReserveQuotaHandler(
             MaxAttempts = 10,
             CorrelationId = attemptId.ToString(),
         };
+
+    private void LogResult(ReserveQuotaCommand command, ReserveQuotaResult result)
+    {
+        switch (result.Kind)
+        {
+            case ReserveQuotaResultKind.Created:
+                logger.LogInformation(
+                    "{QuotaLifecycleEvent} Reserved quota for user {UserId}, attempt {AttemptId}, status {AttemptStatus}, result {ResultKind}.",
+                    QuotaReservedEvent,
+                    command.UserId,
+                    result.AttemptId,
+                    result.Status,
+                    result.Kind);
+                break;
+            case ReserveQuotaResultKind.Existing:
+                logger.LogInformation(
+                    "{QuotaLifecycleEvent} Reused existing quota reservation for user {UserId}, attempt {AttemptId}, status {AttemptStatus}, result {ResultKind}.",
+                    QuotaReserveExistingEvent,
+                    command.UserId,
+                    result.AttemptId,
+                    result.Status,
+                    result.Kind);
+                break;
+            case ReserveQuotaResultKind.Conflict:
+                logger.LogWarning(
+                    "{QuotaLifecycleEvent} Quota reservation conflict for user {UserId}, attempt {AttemptId}, status {AttemptStatus}, result {ResultKind}, error {ErrorCode}.",
+                    QuotaReserveConflictEvent,
+                    command.UserId,
+                    result.AttemptId,
+                    result.Status,
+                    result.Kind,
+                    result.ErrorCode);
+                break;
+            case ReserveQuotaResultKind.QuotaExceeded:
+                logger.LogWarning(
+                    "{QuotaLifecycleEvent} Quota exhausted for user {UserId}, result {ResultKind}, error {ErrorCode}.",
+                    QuotaExhaustedEvent,
+                    command.UserId,
+                    result.Kind,
+                    result.ErrorCode);
+                break;
+        }
+    }
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);
 }

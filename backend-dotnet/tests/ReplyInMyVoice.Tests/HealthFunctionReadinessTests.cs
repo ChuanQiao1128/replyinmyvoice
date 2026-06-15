@@ -42,11 +42,16 @@ public sealed class HealthFunctionReadinessTests
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(okResult.Value);
         using var document = JsonDocument.Parse(json);
-        var serviceBus = document.RootElement.GetProperty("checks").GetProperty("serviceBus");
+        document.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
+        var checks = document.RootElement.GetProperty("checks");
+        var serviceBus = checks.GetProperty("serviceBus");
         serviceBus.GetProperty("ok").GetBoolean().Should().BeTrue();
         serviceBus.GetProperty("configured").GetBoolean().Should().BeTrue();
         serviceBus.GetProperty("senderResolved").GetBoolean().Should().BeTrue();
         serviceBus.GetProperty("authMode").GetString().Should().Be("managed_identity");
+        var migrations = checks.GetProperty("migrations");
+        migrations.GetProperty("ok").GetBoolean().Should().BeTrue();
+        migrations.GetProperty("pendingCount").GetInt32().Should().Be(0);
     }
 
     [Fact]

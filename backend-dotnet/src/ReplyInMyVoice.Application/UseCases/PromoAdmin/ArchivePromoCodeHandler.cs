@@ -33,7 +33,6 @@ public sealed class ArchivePromoCodeHandler(
         if (changedFields.Count > 0)
         {
             promoCode.UpdatedAt = command.Now;
-            promoCode.RowVersion = Guid.NewGuid();
         }
 
         await PromoAdminUseCaseSupport.AddAuditAsync(

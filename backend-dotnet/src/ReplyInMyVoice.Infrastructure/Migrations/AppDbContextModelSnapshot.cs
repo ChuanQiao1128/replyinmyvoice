@@ -1119,9 +1119,15 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.HasIndex("StripePaymentIntentId")
                         .HasFilter("[StripePaymentIntentId] IS NOT NULL");
 
+                    b.HasIndex("ExpiryReminderSentAt", "ExpiresAt")
+                        .HasFilter("[ExpiryReminderSentAt] IS NULL AND [ExpiresAt] IS NOT NULL");
+
                     b.HasIndex("UserId", "ExpiresAt");
 
-                    b.ToTable("RewriteCredits");
+                    b.ToTable("RewriteCredits", t =>
+                        {
+                            t.HasCheckConstraint("CK_RewriteCredits_Consumed_Range", "[AmountConsumed] >= 0 AND [AmountConsumed] <= [AmountGranted]");
+                        });
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.RewriteLearningSample", b =>
@@ -1585,7 +1591,10 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.HasIndex("UserId", "PeriodKey")
                         .IsUnique();
 
-                    b.ToTable("UsagePeriods");
+                    b.ToTable("UsagePeriods", t =>
+                        {
+                            t.HasCheckConstraint("CK_UsagePeriods_Counts_NonNegative", "[UsedCount] >= 0 AND [ReservedCount] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.UsageReservation", b =>

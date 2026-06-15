@@ -48,7 +48,6 @@ public sealed class WebhookDeliveryRepository(AppDbContext db) : IWebhookDeliver
             delivery.LockedBy = lockedBy;
             delivery.LockedUntil = now.Add(claimLease);
             delivery.LastAttemptAt = now;
-            delivery.RowVersion = Guid.NewGuid();
         }
 
         return deliveries;
@@ -69,7 +68,6 @@ public sealed class WebhookDeliveryRepository(AppDbContext db) : IWebhookDeliver
         delivery.LastError = null;
         delivery.LockedBy = null;
         delivery.LockedUntil = null;
-        delivery.RowVersion = Guid.NewGuid();
     }
 
     public async Task<WebhookDeliveryFailureInfo> MarkFailedAttemptAsync(
@@ -87,7 +85,6 @@ public sealed class WebhookDeliveryRepository(AppDbContext db) : IWebhookDeliver
         delivery.LastError = error.Length > 1000 ? error[..1000] : error;
         delivery.LockedBy = null;
         delivery.LockedUntil = null;
-        delivery.RowVersion = Guid.NewGuid();
 
         if (nextAttemptCount >= delivery.MaxAttempts)
         {

@@ -22,7 +22,6 @@ public sealed class SetPromoCodeActiveHandler(
         {
             promoCode.IsActive = command.IsActive;
             promoCode.UpdatedAt = command.Now;
-            promoCode.RowVersion = Guid.NewGuid();
             changedFields.Add("isActive");
         }
 

@@ -24,7 +24,6 @@ internal static class AccountUseCaseSupport
             {
                 user.Email = normalizedEmail;
                 user.UpdatedAt = DateTimeOffset.UtcNow;
-                user.RowVersion = Guid.NewGuid();
                 await unitOfWork.SaveChangesAsync(ct);
             }
 

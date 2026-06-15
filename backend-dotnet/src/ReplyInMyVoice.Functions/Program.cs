@@ -3,8 +3,10 @@ using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using ReplyInMyVoice.Infrastructure;
+using ReplyInMyVoice.Infrastructure.Configuration;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
@@ -16,6 +18,7 @@ builder.Configuration.AddJsonFile(
     Path.Combine(AppContext.BaseDirectory, "version.generated.json"),
     optional: true,
     reloadOnChange: false);
+builder.Configuration.AddReplyInMyVoiceKeyVault(builder.Configuration);
 
 builder.ConfigureFunctionsWebApplication();
 builder.UseMiddleware<HttpHardeningMiddleware>();
@@ -28,5 +31,6 @@ builder.Services.AddReplyInMyVoiceInfrastructure(
     builder.Configuration,
     builder.Environment.EnvironmentName,
     requireServiceBusConsumer: true);
+builder.Services.AddScoped<ApiKeyAuthResolver>();
 
 builder.Build().Run();

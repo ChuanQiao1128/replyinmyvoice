@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
 
 namespace ReplyInMyVoice.Infrastructure.Data;
@@ -35,6 +36,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         StampConsentForAddedRewriteAttempts();
+        StampConcurrencyTokens();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -43,6 +45,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         CancellationToken cancellationToken = default)
     {
         await StampConsentForAddedRewriteAttemptsAsync(cancellationToken);
+        StampConcurrencyTokens();
         return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
@@ -68,6 +71,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<UsagePeriod>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.ToTable(x =>
+            {
+                x.HasCheckConstraint(
+                    "CK_UsagePeriods_Counts_NonNegative",
+                    "[UsedCount] >= 0 AND [ReservedCount] >= 0");
+            });
             entity.HasIndex(x => new { x.UserId, x.PeriodKey }).IsUnique();
             entity.Property(x => x.PeriodKey).HasMaxLength(220);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
@@ -189,7 +198,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<RewriteCredit>(entity =>
         {
             entity.HasKey(x => x.Id);
+            entity.ToTable(x =>
+            {
+                x.HasCheckConstraint(
+                    "CK_RewriteCredits_Consumed_Range",
+                    "[AmountConsumed] >= 0 AND [AmountConsumed] <= [AmountGranted]");
+            });
             entity.HasIndex(x => new { x.UserId, x.ExpiresAt });
+            entity.HasIndex(x => new { x.ExpiryReminderSentAt, x.ExpiresAt })
+                .HasFilter("[ExpiryReminderSentAt] IS NULL AND [ExpiresAt] IS NOT NULL");
             entity.HasIndex(x => x.StripeEventId).IsUnique().HasFilter("[StripeEventId] IS NOT NULL");
             entity.HasIndex(x => x.StripePaymentIntentId).HasFilter("[StripePaymentIntentId] IS NOT NULL");
             entity.Property(x => x.Source).HasMaxLength(60);
@@ -605,6 +622,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     {
         user.ConsentAcceptedAt = consentAcceptedAt;
         user.UpdatedAt = consentAcceptedAt;
-        user.RowVersion = Guid.NewGuid();
+    }
+
+    private void StampConcurrencyTokens()
+    {
+        foreach (var entry in ChangeTracker.Entries<IConcurrencyStamped>()
+            .Where(x => x.State == EntityState.Modified))
+        {
+            entry.Entity.RowVersion = Guid.NewGuid();
+        }
     }
 }
