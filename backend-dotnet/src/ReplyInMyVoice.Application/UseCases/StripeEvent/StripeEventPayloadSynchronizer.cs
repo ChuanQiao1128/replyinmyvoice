@@ -679,7 +679,15 @@ public sealed class StripeEventPayloadSynchronizer(
         }
 
         var boundedRefundedAmount = Math.Min(amountRefunded.Value, amount.Value);
-        var refundedCredits = (int)Math.Ceiling((decimal)originalGranted.Value * boundedRefundedAmount / amount.Value);
+        // Claw back credits proportional to the refunded fraction, rounded to the NEAREST whole credit
+        // (ties away from zero). Previously Math.Ceiling always rounded the clawback up, so e.g. a 33%
+        // refund of a 10-credit pack revoked 4 credits (customer kept 6) instead of the fair 3 (kept 7).
+        // Note: amount_refunded is Stripe's CUMULATIVE total for the charge and `remaining` is recomputed
+        // from the preserved OriginalAmountGranted, so repeated/partial charge.refunded events converge to
+        // the same absolute result (idempotent, no compounding) — hence no per-refund-object dedup is needed.
+        var refundedCredits = (int)Math.Round(
+            (decimal)originalGranted.Value * boundedRefundedAmount / amount.Value,
+            MidpointRounding.AwayFromZero);
         return Math.Max(credit.AmountConsumed, originalGranted.Value - refundedCredits);
     }
 
