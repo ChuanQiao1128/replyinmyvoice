@@ -297,6 +297,7 @@ app.MapPost("/api/v1/rewrite", async (
     {
         return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
     }
+    await RehashApiKeyIfNeededAsync(db, bearerToken, auth, cancellationToken);
 
     var rateLimit = auth.ApiKeyId is null
         ? null
@@ -566,6 +567,7 @@ app.MapGet("/api/v1/rewrite/{id:guid}", async (
     {
         return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
     }
+    await RehashApiKeyIfNeededAsync(db, bearerToken, auth, cancellationToken);
 
     var rateLimit = auth.ApiKeyId is null
         ? null
@@ -657,6 +659,7 @@ app.MapGet("/api/v1/usage", async (
     {
         return V1Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
     }
+    await RehashApiKeyIfNeededAsync(db, bearerToken, auth, cancellationToken);
 
     var rateLimit = auth.ApiKeyId is null
         ? null
@@ -1205,9 +1208,16 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
         return new ApiKeyAuthResult(null, null, 0);
     }
 
-    var keyHash = ApiKeyHashing.ComputeHash(bearerToken);
-    var apiKey = await db.ApiKeys
-        .SingleOrDefaultAsync(x => x.KeyHash == keyHash, cancellationToken);
+    var hashAttempts = BuildApiKeyHashAttempts(bearerToken);
+    var attemptedHashes = hashAttempts
+        .Select(x => x.Hash)
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+    var apiKeys = await db.ApiKeys
+        .Where(x => attemptedHashes.Contains(x.KeyHash))
+        .ToListAsync(cancellationToken);
+    var match = FindApiKeyMatch(apiKeys, hashAttempts);
+    var apiKey = match?.ApiKey;
 
     if (apiKey is null ||
         apiKey.RevokedAt is not null ||
@@ -1217,6 +1227,13 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
     }
 
     apiKey.LastUsedAt = now;
+    apiKey.UpdatedAt = now;
+    apiKey.RowVersion = Guid.NewGuid();
+    if (match!.NeedsRehash)
+    {
+        apiKey.RehashPending = true;
+    }
+
     try
     {
         await db.SaveChangesAsync(cancellationToken);
@@ -1226,7 +1243,105 @@ static async Task<ApiKeyAuthResult> ResolveApiKeyAuthAsync(
         db.Entry(apiKey).State = EntityState.Unchanged;
     }
 
-    return new ApiKeyAuthResult(apiKey.UserId, apiKey.Id, apiKey.RateLimitPerMinute, apiKey.IsTest);
+    return new ApiKeyAuthResult(
+        apiKey.UserId,
+        apiKey.Id,
+        apiKey.RateLimitPerMinute,
+        apiKey.IsTest,
+        match.NeedsRehash);
+}
+
+static async Task<bool> RehashApiKeyIfNeededAsync(
+    AppDbContext db,
+    string? bearerToken,
+    ApiKeyAuthResult auth,
+    CancellationToken cancellationToken)
+{
+    if (!auth.NeedsRehash ||
+        auth.ApiKeyId is null ||
+        string.IsNullOrWhiteSpace(bearerToken) ||
+        !HasKnownApiKeyPrefix(bearerToken))
+    {
+        return false;
+    }
+
+    var currentVersion = ApiKeyPepperVersions.GetCurrentPepperVersion();
+    var apiKey = await db.ApiKeys
+        .AsTracking()
+        .SingleOrDefaultAsync(
+            x => x.Id == auth.ApiKeyId.Value && x.RehashPending,
+            cancellationToken);
+    if (apiKey is null || apiKey.PepperVersion >= currentVersion)
+    {
+        return false;
+    }
+
+    apiKey.KeyHash = ApiKeyHashing.ComputeHashWithVersion(bearerToken, currentVersion);
+    apiKey.PepperVersion = currentVersion;
+    apiKey.RehashPending = false;
+    apiKey.UpdatedAt = DateTimeOffset.UtcNow;
+    apiKey.RowVersion = Guid.NewGuid();
+
+    try
+    {
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+    catch (DbUpdateException)
+    {
+        db.Entry(apiKey).State = EntityState.Unchanged;
+        return false;
+    }
+}
+
+static IReadOnlyList<ApiKeyHashAttempt> BuildApiKeyHashAttempts(string token)
+{
+    var currentVersion = ApiKeyPepperVersions.GetCurrentPepperVersion();
+    var attempts = new List<ApiKeyHashAttempt>
+    {
+        new(
+            currentVersion,
+            ApiKeyHashing.ComputeHashWithVersion(token, currentVersion),
+            NeedsRehash: false),
+    };
+
+    var previousVersion = currentVersion - 1;
+    if (previousVersion >= ApiKeyPepperVersions.LegacyVersion &&
+        ApiKeyPepperVersions.HasPepperForVersion(previousVersion))
+    {
+        attempts.Add(new(
+            previousVersion,
+            ApiKeyHashing.ComputeHashWithVersion(token, previousVersion),
+            NeedsRehash: true));
+    }
+
+    return attempts;
+}
+
+static ApiKeyMatch? FindApiKeyMatch(
+    IReadOnlyCollection<ApiKey> apiKeys,
+    IReadOnlyList<ApiKeyHashAttempt> hashAttempts)
+{
+    foreach (var attempt in hashAttempts)
+    {
+        foreach (var apiKey in apiKeys)
+        {
+            if (FixedTimeEquals(apiKey.KeyHash, attempt.Hash))
+            {
+                return new ApiKeyMatch(apiKey, attempt.NeedsRehash);
+            }
+        }
+    }
+
+    return null;
+}
+
+static bool FixedTimeEquals(string storedHash, string computedHash)
+{
+    var storedBytes = Encoding.UTF8.GetBytes(storedHash);
+    var computedBytes = Encoding.UTF8.GetBytes(computedHash);
+    return storedBytes.Length == computedBytes.Length &&
+        CryptographicOperations.FixedTimeEquals(storedBytes, computedBytes);
 }
 
 static bool HasKnownApiKeyPrefix(string token) =>
@@ -1768,7 +1883,16 @@ public sealed record V1ErrorResponse(V1Error Error);
 
 public sealed record V1Error(string Code, string Message);
 
-public sealed record ApiKeyAuthResult(Guid? UserId, Guid? ApiKeyId, int RateLimitPerMinute, bool IsTest = false);
+public sealed record ApiKeyAuthResult(
+    Guid? UserId,
+    Guid? ApiKeyId,
+    int RateLimitPerMinute,
+    bool IsTest = false,
+    bool NeedsRehash = false);
+
+public sealed record ApiKeyHashAttempt(int Version, string Hash, bool NeedsRehash);
+
+public sealed record ApiKeyMatch(ApiKey ApiKey, bool NeedsRehash);
 
 public sealed record V1SandboxAttemptResult(Guid AttemptId, bool IsConflict);
 

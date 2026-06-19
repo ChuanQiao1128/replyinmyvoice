@@ -6883,3 +6883,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminDeadLetterAndRequeueTests.cs`, updated admin function factory, route metadata tests, DI tests, and this log entry.
 - Verification evidence: Red test failed before the entity existed; after implementation, `AdminDeadLetterAndRequeueTests` passed 7/7, route and DI tests passed 36/36, all issue acceptance filters passed, and full backend test project passed 851/851.
 - Limitations: No browser/UI tests applied because this issue has no frontend surface; no live Functions host, deployment, push, PR, production database, payment provider, or secret-backed service was used.
+
+### 2026-06-19 - state-machine-modeling - P1-09 issue #866 API key pepper rotation
+
+- Agent: Codex worker
+- Trigger: Issue #866 changes API key validation from a single pepper state to current-version validation, previous-version validation, pending rehash, and completed rehash states.
+- Action: Opened and followed the skill as a lifecycle checklist. Modeled new keys born on the current pepper version, existing v1 keys continuing to validate, old-version successful auth setting `RehashPending`, and the lazy post-auth rehash transition that updates the hash to the current version and clears the flag.
+- Output artifacts: `ApiKeyPepperVersions`, dual-validation resolver changes, post-auth lazy rehash helper, focused rotation tests, and this log entry.
+- Verification evidence: Rotation tests passed for current-version success, previous-version success, no-match null results, pending rehash with unchanged hash, and lazy rehash completion; full backend test project passed 864/864.
+- Limitations: No scheduled background worker, deployment, push, PR, production database, or secret-backed service was used.
+
+### 2026-06-19 - data-module-review - P1-09 issue #866 API key pepper persistence
+
+- Agent: Codex worker
+- Trigger: Issue #866 adds `ApiKeys.PepperVersion`, `ApiKeys.RehashPending`, EF configuration, migration, and persistence mutations during API key auth and lazy rehash.
+- Action: Opened and followed the skill as a persistence-safety review. Reviewed the API key entity, EF model configuration, migration, model snapshot, generation and rotation handlers, resolver mutations, row-version updates, and migration verification path.
+- Output artifacts: EF migration `20260619071430_AddApiKeyPepperRotation`, model snapshot updates, `ApiKey` entity fields, resolver rehash update path, generation/rotation version assignment, and this log entry.
+- Verification evidence: EF migration script generation succeeded; migration guard passed; a disposable SQLite database with the prior schema applied the new migration and showed `PepperVersion` default `1`, `RehashPending` default `0`, and the rehash index; full backend test project passed 864/864.
+- Limitations: Direct local SQL Server apply was unavailable in this worker; SQLite verification applied only the new migration over a pre-marked prior schema because older SQL Server migrations do not replay from scratch on SQLite.
+
+### 2026-06-19 - dotnet-backend-testing - P1-09 issue #866 API key pepper rotation tests
+
+- Agent: Codex worker
+- Trigger: Issue #866 requires C#/.NET tests for versioned hashing, dual validation, lazy rehash, migration shape, and backward-compatible API key auth.
+- Action: Opened and followed the project skill for test-level selection. Started with a focused red run before production changes, then added deterministic hashing tests, resolver rotation tests, integration tests, migration tests, and existing auth resolver regression coverage.
+- Output artifacts: `ApiKeyHashingPepperRotationTests`, `ApiKeyAuthResolverRotationTests`, `ApiKeyCredentialDualValidationTests`, `ApiKeyPepperRotationIntegrationTests`, `ApiKeyPepperRotationMigrationTests`, `PepperEnvironmentScope`, and this log entry.
+- Verification evidence: Focused acceptance filters for hashing, resolver rotation, credential parity, integration behavior, and existing resolver tests passed; aggregate `FullyQualifiedName~ApiKeyPepperRotation` passed 13/13; full backend test project passed 864/864; solution build passed with 0 warnings when only package-feed warning `NU1900` was suppressed.
+- Limitations: Tests use local fakes and SQLite/in-memory EF paths; no live Functions host, deployment, push, PR, production database, or secret-backed service was used.

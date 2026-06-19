@@ -7,6 +7,18 @@ public sealed class AppDbContextDesignTimeFactory : IDesignTimeDbContextFactory<
 {
     public AppDbContext CreateDbContext(string[] args)
     {
+        var provider = Environment.GetEnvironmentVariable("RIMV_EF_PROVIDER");
+        if (string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase))
+        {
+            var sqliteConnectionString = Environment.GetEnvironmentVariable("RIMV_EF_SQLITE_CONNECTION") ??
+                "Data Source=replyinmyvoice-design-time.db";
+            var sqliteOptions = new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite(sqliteConnectionString)
+                .Options;
+
+            return new AppDbContext(sqliteOptions);
+        }
+
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection") ??
             Environment.GetEnvironmentVariable("ConnectionStrings:DefaultConnection") ??
             Environment.GetEnvironmentVariable("DATABASE_URL") ??

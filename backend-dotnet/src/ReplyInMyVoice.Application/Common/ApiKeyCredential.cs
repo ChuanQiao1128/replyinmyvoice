@@ -27,12 +27,18 @@ public static class ApiKeyCredential
 
     public static string ComputeHash(string plaintext)
     {
+        return ComputeHashWithVersion(plaintext, ApiKeyPepperVersions.LegacyVersion);
+    }
+
+    public static string ComputeHashWithVersion(string plaintext, int version)
+    {
         ArgumentNullException.ThrowIfNull(plaintext);
 
-        var pepper = Environment.GetEnvironmentVariable("API_KEY_PEPPER");
+        var pepper = GetPepperForVersion(version);
         if (string.IsNullOrWhiteSpace(pepper) && IsProductionRuntimeEnvironment())
         {
-            throw new InvalidOperationException("API key hashing requires API_KEY_PEPPER in Production.");
+            throw new InvalidOperationException(
+                $"API key hashing requires {PepperSettingName(version)} in Production.");
         }
 
         if (string.IsNullOrWhiteSpace(pepper) &&
@@ -47,6 +53,14 @@ public static class ApiKeyCredential
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
+
+    private static string? GetPepperForVersion(int version) =>
+        ApiKeyPepperVersions.GetPepperForVersion(version);
+
+    private static string PepperSettingName(int version) =>
+        version == ApiKeyPepperVersions.LegacyVersion
+            ? "API_KEY_PEPPER"
+            : ApiKeyPepperVersions.BuildVersionedPepperName(version);
 
     public static string GeneratePlaintext(bool isTest)
     {

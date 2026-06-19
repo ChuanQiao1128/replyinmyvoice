@@ -74,6 +74,7 @@ public sealed class V1RewriteHttpFunctions(
         {
             return Error("invalid_key", "A valid API key is required.", StatusCodes.Status401Unauthorized);
         }
+        await ApiKeyAuthResolver.RehashIfNeededAsync(request, db, auth, cancellationToken);
 
         var rateLimit = auth.ApiKeyId is null
             ? null
@@ -294,6 +295,7 @@ public sealed class V1RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized,
                 "invalid_key");
         }
+        await ApiKeyAuthResolver.RehashIfNeededAsync(request, db, auth, cancellationToken);
 
         var rateLimit = auth.ApiKeyId is null
             ? null
@@ -400,6 +402,7 @@ public sealed class V1RewriteHttpFunctions(
                 StatusCodes.Status401Unauthorized,
                 "invalid_key");
         }
+        await ApiKeyAuthResolver.RehashIfNeededAsync(request, db, auth, cancellationToken);
 
         var rateLimit = auth.ApiKeyId is null
             ? null

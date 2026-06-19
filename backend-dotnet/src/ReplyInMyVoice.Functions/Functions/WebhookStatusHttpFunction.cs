@@ -36,6 +36,7 @@ public sealed class WebhookStatusHttpFunction(
                 StatusCodes.Status401Unauthorized,
                 "invalid_key");
         }
+        await ApiKeyAuthResolver.RehashIfNeededAsync(request, db, auth, cancellationToken);
 
         var metrics = await webhookDeliveries.GetFailureMetricsAsync(
             auth.ApiKeyId.Value,
