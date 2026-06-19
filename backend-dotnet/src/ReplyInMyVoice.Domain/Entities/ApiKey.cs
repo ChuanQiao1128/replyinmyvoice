@@ -9,7 +9,6 @@ public sealed class ApiKey
     public string? Last4 { get; set; }
     public required string Name { get; set; }
     public string PlanTier { get; set; } = "free";
-    public string Scope { get; set; } = "[]";
     public bool IsTest { get; set; }
     public int RateLimitPerMinute { get; set; } = 60;
     public int MonthlyQuota { get; set; } = 1000;

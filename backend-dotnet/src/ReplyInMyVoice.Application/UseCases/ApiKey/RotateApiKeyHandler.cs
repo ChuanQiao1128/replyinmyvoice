@@ -38,7 +38,6 @@ public sealed class RotateApiKeyHandler(
                     Last4 = plaintext[^4..],
                     IsTest = apiKey.IsTest,
                     PlanTier = apiKey.PlanTier,
-                    Scope = apiKey.Scope,
                     RateLimitPerMinute = apiKey.RateLimitPerMinute,
                     MonthlyQuota = apiKey.MonthlyQuota,
                     WebhookUrl = apiKey.WebhookUrl,
