@@ -6649,3 +6649,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/OutboxDispatcherWorkerGracefulShutdownTests.cs`, aliased Worker project reference, and this log entry.
 - Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~OutboxDispatcherWorkerGracefulShutdownTests` passed 3/3; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ExpiredReservationCleanupWorkerGracefulShutdownTests` passed 1/1; full `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 812/812.
 - Limitations: Tests use local fakes and SQLite; no deploy, PR, push, live queue, production secret, or payment path was touched.
+
+### 2026-06-19 - state-machine-modeling - P1-02 issue #858 cleanup timer failure path
+
+- Agent: Codex worker
+- Trigger: Issue #858 changes the expired-reservation cleanup timer behavior around usage reservations that can remain `Pending` when cleanup execution fails.
+- Action: Opened and followed the project skill as a lifecycle checklist. Confirmed the persisted transition model stays in `ReleaseExpiredReservationsHandler`; the timer change only catches non-cancellation execution failures and records an operational metric so `Pending` reservations are not left silent.
+- Output artifacts: `backend-dotnet/src/ReplyInMyVoice.Functions/Functions/ExpiredReservationCleanupTimerFunction.cs`, `backend-dotnet/src/ReplyInMyVoice.Application/Abstractions/IBusinessMetrics.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/ExpiredReservationCleanupTimerFunctionTests.cs`, and this log entry.
+- Verification evidence: focused timer tests passed 3/3; existing cleanup service tests passed 2/2; full backend test project passed 815/815.
+- Limitations: No reservation schema, status enum, batch-release transaction, TTL calculation, worker schedule, payment provider, or deployment path was changed.
+
+### 2026-06-19 - resilience-test-generation - P1-02 issue #858 timer cleanup failure metric
+
+- Agent: Codex worker
+- Trigger: Issue #858 adds failure handling and alert instrumentation for timeout or transient cleanup failures.
+- Action: Opened and followed the project skill as a failure-mode checklist. Added deterministic local tests for timeout failure being caught/logged/recorded, cancellation still propagating, and empty cleanup success emitting no failure metric.
+- Output artifacts: `ExpiredReservationCleanupTimerFunctionTests`, `BusinessMetricNames.StuckReservationsCleanupFailedTotal`, `BusinessMetricDimensions.Reason`, timer catch/log/metric code, and this log entry.
+- Verification evidence: initial focused timer test run failed before implementation because metric constants and metrics injection were missing; after implementation, timer tests passed 3/3 and full backend test project passed 815/815.
+- Limitations: Metrics were asserted through a recording fake; no Azure Application Insights export, production database, live queue, deploy command, payment provider, or secret path was exercised.
+
+### 2026-06-19 - dotnet-backend-testing - P1-02 issue #858 timer function tests
+
+- Agent: Codex worker
+- Trigger: Issue #858 requires new C# xUnit tests for `ExpiredReservationCleanupTimerFunction` error handling and business metric emission.
+- Action: Opened and followed the project skill for test-level selection. Added function-level xUnit tests with hand-written repository fakes, the existing recording logger, and `RecordingBusinessMetrics`; kept persistence-heavy release behavior covered by the existing cleanup service tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ExpiredReservationCleanupTimerFunctionTests.cs` and this log entry.
+- Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ExpiredReservationCleanupTimerFunctionTests` passed 3/3; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ExpiredReservationCleanupServiceTests` passed 2/2; `dotnet build backend-dotnet/` passed with 0 errors; full backend test project passed 815/815.
+- Limitations: Tests use local fakes and do not call live Azure, Stripe, Service Bus, production database, deployment, or secret-backed services.

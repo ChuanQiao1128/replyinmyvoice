@@ -46,6 +46,9 @@ public static class BusinessMetricNames
 
     /// <summary>Dimension: client_name.</summary>
     public const string ProviderBreakerOpenTotal = "provider_breaker_open_total";
+
+    /// <summary>Dimension: reason (exception type or error category).</summary>
+    public const string StuckReservationsCleanupFailedTotal = "stuck_reservations_cleanup_failed_total";
 }
 
 public static class BusinessMetricDimensions
@@ -54,4 +57,5 @@ public static class BusinessMetricDimensions
     public const string EventType = "event_type";
     public const string ErrorCode = "error_code";
     public const string ClientName = "client_name";
+    public const string Reason = "reason";
 }
