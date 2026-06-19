@@ -64,6 +64,46 @@ public sealed class RewriteJobUseCaseTests
     }
 
     [Fact]
+    public async Task ProcessRewriteJobAsync_is_idempotent_when_the_same_job_is_delivered_twice()
+    {
+        // P0-1: pins the property that makes duplicate Service Bus / outbox delivery safe — a second
+        // dispatch of an already-finalized attempt must be a no-op: the engine is NOT called again (no
+        // duplicate processing cost) and quota/cost are not double-counted. A fresh worker scope (new
+        // DbContext) processes the redelivery, mirroring production.
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.UtcNow;
+        var attemptId = await ReserveAttemptAsync(fixture, user.Id, "job-duplicate", now);
+        var engine = new FakeRewriteEngineClient(new RewriteEngineResult(
+            ValidResultJson,
+            Success: true,
+            ErrorCode: null,
+            [Metric(success: true)]));
+        var costLogger = new FakeRewriteCostLogger();
+
+        await using (var firstDb = fixture.CreateContext())
+        {
+            await CreateHandler(firstDb, engine, costLogger)
+                .HandleAsync(new ProcessRewriteJobCommand(attemptId));
+        }
+
+        await using (var secondDb = fixture.CreateContext())
+        {
+            await CreateHandler(secondDb, engine, costLogger)
+                .HandleAsync(new ProcessRewriteJobCommand(attemptId));
+        }
+
+        engine.CallCount.Should().Be(1);
+
+        await using var verifyDb = fixture.CreateContext();
+        var period = await verifyDb.UsagePeriods.SingleAsync();
+        period.UsedCount.Should().Be(1);
+        period.ReservedCount.Should().Be(0);
+        (await verifyDb.RewriteAttempts.SingleAsync()).Status.Should().Be(RewriteAttemptStatus.Succeeded);
+        costLogger.Entries.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task ProcessRewriteJobAsync_releases_quota_when_engine_returns_failure()
     {
         await using var fixture = await DbFixture.CreateAsync();
