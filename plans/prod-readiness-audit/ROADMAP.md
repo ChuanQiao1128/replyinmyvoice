@@ -19,9 +19,17 @@ subscription goes `past_due`, but the public B2B API (`HasPaidApiEntitlementHand
 Is that web-vs-API divergence intended (API stricter), or should both honor the same grace policy? This is
 a product decision, not an auto-fixable bug.
 
-**Genuine residual hardening promoted out of "P0":** (a) idempotent notification send (Resend
-`Idempotency-Key` keyed on the outbox message) so a crash-redispatch can't double-email; (b) enable Service
-Bus duplicate detection on the rewrite-jobs queue (infra). Both now live under P1.
+**Genuine residual hardening promoted out of "P0":**
+- (a) ✅ **DONE** (`e301edc`) — idempotent notification send: the outbox message id is threaded down the
+  notification chain as a Resend `Idempotency-Key`, so a crash-redispatch can't double-email. Each link is
+  test-pinned.
+- (b) enable Service Bus duplicate detection on the rewrite-jobs queue (infra; belt-and-suspenders since the
+  consumer is already idempotent). Still P1.
+- (c) **NEW follow-up** (surfaced by adversarial review of (a)) — notification sends are not retried when
+  Resend returns a *transient* error: `ResendNotificationEmailProvider` returns `Skipped` (not throw), so the
+  outbox marks the message Sent and the email is lost rather than retried. This is pre-existing and separate
+  from the dedup fix, but (a) is the prerequisite that makes adding retry-on-transient-error duplicate-safe.
+  Scope carefully: retry only transient (5xx/429), not permanent (4xx/invalid recipient). P1.
 
 ## P0 (original audit framing — superseded by the table above)
 
