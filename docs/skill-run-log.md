@@ -7081,3 +7081,12 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/BackgroundServiceStopAsyncTests.cs`, Worker project test reference alias, `InternalsVisibleTo` for Worker test seams, and worker shutdown changes.
 - Verification evidence: focused acceptance filters passed 1/1 for each worker, full new test-file filter passed 3/3, `git diff --check` passed, changed-file restricted-substring scan passed, and `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName!~SqlServer` passed 900/900.
 - Limitations: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 900 tests and failed the 6 existing SQL Server Testcontainers tests because `docker info` cannot connect to the Docker daemon locally.
+
+### 2026-06-19 - dotnet-backend-testing - P1-05 issue #881 OpenAPI v1 error contract
+
+- Agent: Codex worker
+- Trigger: Issue #881 requires a C#/.NET xUnit contract test for `V1ErrorCatalog` coverage in `public/openapi.json`.
+- Action: Opened and followed the project skill. Added a focused xUnit/FluentAssertions contract test that reflects catalog code constants and `V1Error` fields, parses `public/openapi.json`, resolves local response `$ref` entries, and reports missing status/code pairs. Updated only the public OpenAPI contract examples and shared response definitions.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1ErrorContractTests.cs` and updated `public/openapi.json` v1 error examples for paid-plan, missing rewrite, rewrite failure, rate-limit service outage, and payload-too-large coverage.
+- Verification evidence: the focused contract test failed before the spec update with missing code/status pairs, then `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~V1ErrorContractTests` passed 2/2; `jq empty public/openapi.json`, `git diff --check`, and restricted-substring scans passed. `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName!~SqlServer` passed 902/902.
+- Limitations: The issue-specified filter with `V1ErrorContractTests::*` exits 0 but selects no xUnit tests under VSTest contains semantics; the concrete `V1ErrorContractTests` filter selected and passed both new tests. The full unfiltered project test is locally blocked by the existing SQL Server Testcontainers tests because Docker is not running.
