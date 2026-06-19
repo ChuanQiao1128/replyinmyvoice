@@ -19,7 +19,8 @@ public sealed class ApiKeyHttpFunctions(
     RotateApiKeyHandler rotateApiKeyHandler,
     RevokeApiKeyHandler revokeApiKeyHandler,
     SetApiKeyWebhookHandler setApiKeyWebhookHandler,
-    ClearApiKeyWebhookHandler clearApiKeyWebhookHandler)
+    ClearApiKeyWebhookHandler clearApiKeyWebhookHandler,
+    GetWebhookDeliveryStatusHandler getWebhookDeliveryStatusHandler)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -229,6 +230,34 @@ public sealed class ApiKeyHttpFunctions(
         return cleared ? new NoContentResult() : new NotFoundResult();
     }
 
+    [Function("GetWebhookDeliveryStatus")]
+    public async Task<IActionResult> GetWebhookDeliveryStatus(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "keys/{id:guid}/webhook/deliveries")]
+        HttpRequest request,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var authUser = await FunctionAuthResolver.ResolveUserAsync(request, configuration, cancellationToken);
+        if (authUser is null)
+        {
+            return AuthenticationRequired();
+        }
+
+        var user = await getOrCreateUserHandler.HandleAsync(
+            new GetOrCreateUserCommand(authUser.ExternalAuthUserId, authUser.Email),
+            cancellationToken);
+        var result = await getWebhookDeliveryStatusHandler.HandleAsync(
+            new GetWebhookDeliveryStatusQuery(
+                user.Id,
+                id,
+                ParseWebhookDeliveryLimit(request)),
+            cancellationToken);
+
+        return result is null
+            ? new NotFoundResult()
+            : new OkObjectResult(result.Deliveries.Select(ToResponse).ToArray());
+    }
+
     private static async Task<ApiKeyCreateRequest?> ReadCreateRequestAsync(
         HttpRequest request,
         CancellationToken cancellationToken)
@@ -271,6 +300,22 @@ public sealed class ApiKeyHttpFunctions(
 
     private static ApiUsageCount ToResponse(ReplyInMyVoice.Application.Common.ApiUsageCountDto count) =>
         new(count.Calls, count.Succeeded, count.Failed);
+
+    private static ApiKeyWebhookDeliveryStatusResponse ToResponse(
+        ReplyInMyVoice.Application.Abstractions.WebhookDeliveryStatusDto delivery) =>
+        new(
+            delivery.Id,
+            delivery.Status.ToString(),
+            delivery.AttemptCount,
+            delivery.MaxAttempts,
+            delivery.LastError,
+            delivery.NextAttemptAt,
+            delivery.CreatedAt);
+
+    private static int ParseWebhookDeliveryLimit(HttpRequest request) =>
+        int.TryParse(request.Query["limit"].ToString(), out var limit)
+            ? Math.Clamp(limit, 1, 50)
+            : 10;
 }
 
 public sealed record ApiKeyCreateRequest(string? Name, bool Test = false);
@@ -299,3 +344,12 @@ public sealed record ApiKeyWebhookResponse(
     Guid Id,
     string WebhookUrl,
     string WebhookSecret);
+
+public sealed record ApiKeyWebhookDeliveryStatusResponse(
+    Guid Id,
+    string Status,
+    int AttemptCount,
+    int MaxAttempts,
+    string? LastError,
+    DateTimeOffset NextAttemptAt,
+    DateTimeOffset CreatedAt);

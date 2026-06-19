@@ -42,6 +42,7 @@ public sealed class AdminRouteMetadataTests
             "console/users/{userId}/credits",
             "console/users/{userId}/suspension",
             "console/users/{userId}/refund",
+            "console/webhooks/{id:guid}/retry",
         ]);
     }
 }

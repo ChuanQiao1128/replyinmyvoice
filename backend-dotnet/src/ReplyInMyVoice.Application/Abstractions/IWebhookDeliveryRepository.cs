@@ -22,6 +22,16 @@ public interface IWebhookDeliveryRepository
         DateTimeOffset now,
         string error,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<WebhookDeliveryStatusDto>> GetWebhookDeliveryStatusAsync(
+        Guid apiKeyId,
+        int limit,
+        CancellationToken ct = default);
+
+    Task<WebhookDeliveryRetryResult> RetryFailedDeliveryAsync(
+        Guid deliveryId,
+        DateTimeOffset now,
+        CancellationToken ct = default);
 }
 
 public sealed record WebhookDeliveryFailureInfo(
@@ -29,3 +39,24 @@ public sealed record WebhookDeliveryFailureInfo(
     int MaxAttempts,
     WebhookDeliveryStatus Status,
     DateTimeOffset NextAttemptAt);
+
+public sealed record WebhookDeliveryStatusDto(
+    Guid Id,
+    WebhookDeliveryStatus Status,
+    int AttemptCount,
+    int MaxAttempts,
+    string? LastError,
+    DateTimeOffset NextAttemptAt,
+    DateTimeOffset CreatedAt);
+
+public sealed record WebhookDeliveryRetryResult(
+    WebhookDeliveryRetryResultKind Kind,
+    Guid? DeliveryId = null,
+    DateTimeOffset? NextAttemptAt = null);
+
+public enum WebhookDeliveryRetryResultKind
+{
+    Success = 0,
+    NotFound = 1,
+    InvalidState = 2,
+}

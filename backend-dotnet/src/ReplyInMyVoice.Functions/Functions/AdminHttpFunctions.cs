@@ -40,6 +40,7 @@ public sealed class AdminHttpFunctions
     private readonly SetPromoCodeActiveHandler _setPromoCodeActiveHandler;
     private readonly ArchivePromoCodeHandler _archivePromoCodeHandler;
     private readonly RestorePromoCodeHandler _restorePromoCodeHandler;
+    private readonly AdminRetryWebhookDeliveryHandler _adminRetryWebhookDeliveryHandler;
 
     public AdminHttpFunctions(
         IConfiguration configuration,
@@ -59,7 +60,8 @@ public sealed class AdminHttpFunctions
         UpdatePromoCodeHandler updatePromoCodeHandler,
         SetPromoCodeActiveHandler setPromoCodeActiveHandler,
         ArchivePromoCodeHandler archivePromoCodeHandler,
-        RestorePromoCodeHandler restorePromoCodeHandler)
+        RestorePromoCodeHandler restorePromoCodeHandler,
+        AdminRetryWebhookDeliveryHandler adminRetryWebhookDeliveryHandler)
     {
         _adminAccess = new AdminAccess(configuration);
         _getAdminUsersHandler = getAdminUsersHandler;
@@ -79,6 +81,7 @@ public sealed class AdminHttpFunctions
         _setPromoCodeActiveHandler = setPromoCodeActiveHandler;
         _archivePromoCodeHandler = archivePromoCodeHandler;
         _restorePromoCodeHandler = restorePromoCodeHandler;
+        _adminRetryWebhookDeliveryHandler = adminRetryWebhookDeliveryHandler;
     }
 
     [Function("AdminPing")]
@@ -736,6 +739,37 @@ public sealed class AdminHttpFunctions
         };
     }
 
+    [Function("AdminRetryWebhookDelivery")]
+    public async Task<IActionResult> AdminRetryWebhookDelivery(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/webhooks/{id:guid}/retry")]
+        HttpRequest request,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        var result = await _adminRetryWebhookDeliveryHandler.HandleAsync(
+            new AdminRetryWebhookDeliveryCommand(id, DateTimeOffset.UtcNow),
+            cancellationToken);
+
+        return result.Kind switch
+        {
+            AdminRetryWebhookDeliveryResultKind.Success => new OkObjectResult(
+                new AdminRetryWebhookDeliveryResponse(
+                    result.DeliveryId!.Value,
+                    "Pending",
+                    result.NextAttemptAt!.Value)),
+            _ => FunctionHttpResults.Problem(
+                "Webhook delivery not found",
+                result.Detail ?? "No failed webhook delivery exists for the requested id.",
+                StatusCodes.Status404NotFound),
+        };
+    }
+
     private async Task<IActionResult?> RequireAdminResultAsync(
         HttpRequest request,
         CancellationToken cancellationToken)
@@ -1328,3 +1362,8 @@ public sealed record AdminRefundResponse(
     string? Currency,
     string? RefundId,
     bool AlreadyRefunded);
+
+public sealed record AdminRetryWebhookDeliveryResponse(
+    Guid Id,
+    string Status,
+    DateTimeOffset NextAttemptAt);

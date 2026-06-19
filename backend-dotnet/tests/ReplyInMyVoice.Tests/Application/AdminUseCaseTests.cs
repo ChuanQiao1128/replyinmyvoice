@@ -621,6 +621,67 @@ public sealed class AdminUseCaseTests
         (await verifyDb.AdminAuditLogs.CountAsync()).Should().Be(0);
     }
 
+    [Fact]
+    public async Task AdminRetryWebhookDeliveryAsync_transitions_failed_to_pending()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var seeded = await SeedWebhookDeliveryAsync(
+            fixture,
+            user.Id,
+            WebhookDeliveryStatus.Failed,
+            attemptCount: 5,
+            maxAttempts: 5,
+            nextAttemptAt: Now.AddHours(1),
+            lastError: "HTTP 500");
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateAdminRetryWebhookDeliveryHandler(handlerDb);
+
+        var result = await handler.HandleAsync(
+            new AdminRetryWebhookDeliveryCommand(seeded.DeliveryId, Now),
+            CancellationToken.None);
+
+        result.Kind.Should().Be(AdminRetryWebhookDeliveryResultKind.Success);
+        result.DeliveryId.Should().Be(seeded.DeliveryId);
+        result.NextAttemptAt.Should().Be(Now);
+        await using var verifyDb = fixture.CreateContext();
+        var delivery = await verifyDb.WebhookDeliveries.SingleAsync(x => x.Id == seeded.DeliveryId);
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Pending);
+        delivery.AttemptCount.Should().Be(5);
+        delivery.MaxAttempts.Should().Be(5);
+        delivery.NextAttemptAt.Should().Be(Now);
+        delivery.LastError.Should().Be("HTTP 500");
+        delivery.RowVersion.Should().NotBe(seeded.RowVersion);
+    }
+
+    [Fact]
+    public async Task AdminRetryWebhookDeliveryAsync_rejects_non_failed()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var seeded = await SeedWebhookDeliveryAsync(
+            fixture,
+            user.Id,
+            WebhookDeliveryStatus.Delivered,
+            attemptCount: 1,
+            maxAttempts: 5,
+            nextAttemptAt: Now,
+            lastError: null);
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateAdminRetryWebhookDeliveryHandler(handlerDb);
+
+        var result = await handler.HandleAsync(
+            new AdminRetryWebhookDeliveryCommand(seeded.DeliveryId, Now.AddMinutes(5)),
+            CancellationToken.None);
+
+        result.Kind.Should().Be(AdminRetryWebhookDeliveryResultKind.InvalidState);
+        await using var verifyDb = fixture.CreateContext();
+        var delivery = await verifyDb.WebhookDeliveries.SingleAsync(x => x.Id == seeded.DeliveryId);
+        delivery.Status.Should().Be(WebhookDeliveryStatus.Delivered);
+        delivery.NextAttemptAt.Should().Be(Now);
+        delivery.RowVersion.Should().Be(seeded.RowVersion);
+    }
+
     private static GetAdminUsersHandler CreateUsersHandler(AppDbContext db) =>
         new(new AdminUserRepository(db));
 
@@ -652,6 +713,9 @@ public sealed class AdminUseCaseTests
         AppDbContext db,
         IStripeRefundClient refundClient) =>
         new(new AdminUserRepository(db), new RewriteCreditRepository(db), refundClient, new UnitOfWork(db));
+
+    private static AdminRetryWebhookDeliveryHandler CreateAdminRetryWebhookDeliveryHandler(AppDbContext db) =>
+        new(new WebhookDeliveryRepository(db), new UnitOfWork(db));
 
     private static async Task<AppUser> SeedUserAsync(
         DbFixture fixture,
@@ -785,6 +849,60 @@ public sealed class AdminUseCaseTests
         db.BillingSupportRequests.Add(request);
         await db.SaveChangesAsync();
         return request.Id;
+    }
+
+    private static async Task<(Guid DeliveryId, Guid RowVersion)> SeedWebhookDeliveryAsync(
+        DbFixture fixture,
+        Guid userId,
+        WebhookDeliveryStatus status,
+        int attemptCount,
+        int maxAttempts,
+        DateTimeOffset nextAttemptAt,
+        string? lastError)
+    {
+        await using var db = fixture.CreateContext();
+        var apiKey = new ApiKey
+        {
+            UserId = userId,
+            Name = "Webhook retry key",
+            KeyHash = $"hash-{Guid.NewGuid():N}",
+            Last4 = "9876",
+            WebhookUrl = "https://93.184.216.34/rewrite",
+            WebhookSecret = new string('a', 64),
+            CreatedAt = Now.AddMinutes(-10),
+            UpdatedAt = Now.AddMinutes(-10),
+        };
+        var attempt = new RewriteAttempt
+        {
+            UserId = userId,
+            ApiKey = apiKey,
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            RequestHash = Guid.NewGuid().ToString("N"),
+            RequestJson = "{\"roughDraftReply\":\"Thanks for your message.\",\"tone\":\"warm\"}",
+            Status = RewriteAttemptStatus.Succeeded,
+            ResultJson = "{\"rewrittenText\":\"Thanks for your message.\",\"naturalness\":{\"draftAiLikePercent\":75,\"rewriteAiLikePercent\":20}}",
+            CreatedAt = Now.AddMinutes(-9),
+            CompletedAt = Now.AddMinutes(-8),
+            ExpiresAt = Now.AddMinutes(1),
+        };
+        var delivery = new WebhookDelivery
+        {
+            ApiKey = apiKey,
+            RewriteAttempt = attempt,
+            Url = apiKey.WebhookUrl,
+            Status = status,
+            AttemptCount = attemptCount,
+            MaxAttempts = maxAttempts,
+            LastError = lastError,
+            CreatedAt = Now.AddMinutes(-7),
+            NextAttemptAt = nextAttemptAt,
+        };
+
+        db.ApiKeys.Add(apiKey);
+        db.RewriteAttempts.Add(attempt);
+        db.WebhookDeliveries.Add(delivery);
+        await db.SaveChangesAsync();
+        return (delivery.Id, delivery.RowVersion);
     }
 
     private sealed class StaticTaxTurnoverSettingsProvider : ITaxTurnoverSettingsProvider

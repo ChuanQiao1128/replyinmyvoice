@@ -165,6 +165,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ExportAccountingRevenueHandler>();
         services.AddScoped<SetUserSuspensionHandler>();
         services.AddScoped<IssueRefundHandler>();
+        services.AddScoped<AdminRetryWebhookDeliveryHandler>();
         services.AddScoped<CreateCheckoutSessionHandler>();
         services.AddScoped<CreatePortalSessionHandler>();
         services.AddScoped<CancelSubscriptionHandler>();
@@ -200,6 +201,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RevokeApiKeyHandler>();
         services.AddScoped<SetApiKeyWebhookHandler>();
         services.AddScoped<ClearApiKeyWebhookHandler>();
+        services.AddScoped<GetWebhookDeliveryStatusHandler>();
         services.AddScoped<GetApiUsageSummaryHandler>();
         services.AddScoped<GetApiUsageSeriesHandler>();
         services.AddScoped<GetApiUsageRecentHandler>();
