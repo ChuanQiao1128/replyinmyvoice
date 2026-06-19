@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Configuration;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Providers;
 using System.Text.Json.Serialization;
 
 namespace ReplyInMyVoice.Functions.Functions;
@@ -22,15 +23,18 @@ public sealed class HealthFunction
     private readonly AppDbContext db;
     private readonly IConfiguration configuration;
     private readonly ServiceBusSender? serviceBusSender;
+    private readonly IStripeAuthenticationProbe? stripeAuthenticationProbe;
 
     public HealthFunction(
         AppDbContext db,
         IConfiguration configuration,
-        ServiceBusSender? serviceBusSender = null)
+        ServiceBusSender? serviceBusSender = null,
+        IStripeAuthenticationProbe? stripeAuthenticationProbe = null)
     {
         this.db = db;
         this.configuration = configuration;
         this.serviceBusSender = serviceBusSender;
+        this.stripeAuthenticationProbe = stripeAuthenticationProbe;
     }
 
     [Function("Health")]
@@ -77,12 +81,14 @@ public sealed class HealthFunction
             "Health:StuckReservationsThreshold",
             DefaultStuckReservationsThreshold);
         var failOnPendingMigrations = ReadBoolean("Health:FailOnPendingMigrations", fallback: false);
+        var skipStripeProbe = ReadBoolean("Health:SkipStripeProbe", fallback: false);
 
         var database = await CheckDatabaseAsync(cancellationToken);
         var migrations = database.Ok
             ? await CheckMigrationsAsync(cancellationToken)
             : MigrationReadinessCheck.Unavailable("database_unavailable");
         var serviceBus = CheckServiceBus();
+        var stripeAuthentication = await CheckStripeAuthenticationAsync(skipStripeProbe, cancellationToken);
         var failedStripeEvents = database.Ok
             ? await CheckFailedStripeEventsAsync(failedStripeEventsThreshold, cancellationToken)
             : CountReadinessCheck.Unavailable("database_unavailable", failedStripeEventsThreshold);
@@ -102,6 +108,7 @@ public sealed class HealthFunction
             database,
             migrations,
             serviceBus,
+            stripeAuthentication,
             failedStripeEvents,
             lastProcessedStripeEvent,
             outboxBacklog,
@@ -109,6 +116,7 @@ public sealed class HealthFunction
         var ok = checks.Database.Ok &&
             (!failOnPendingMigrations || checks.Migrations.Ok) &&
             checks.ServiceBus.Ok &&
+            checks.StripeAuthentication.Ok &&
             checks.FailedStripeEvents.Ok &&
             checks.LastProcessedStripeEvent.Ok &&
             checks.OutboxBacklog.Ok &&
@@ -166,6 +174,31 @@ public sealed class HealthFunction
             queueName,
             authMode,
             ok ? null : configured ? "sender_unavailable" : "not_configured");
+    }
+
+    private async Task<StripeAuthenticationReadinessCheck> CheckStripeAuthenticationAsync(
+        bool skipStripeProbe,
+        CancellationToken cancellationToken)
+    {
+        if (skipStripeProbe)
+        {
+            return new StripeAuthenticationReadinessCheck(true, "probe_disabled", null);
+        }
+
+        if (stripeAuthenticationProbe is null)
+        {
+            return new StripeAuthenticationReadinessCheck(false, "secret_key", "stripe_probe_unavailable");
+        }
+
+        try
+        {
+            await stripeAuthenticationProbe.ValidateAuthenticationAsync(cancellationToken);
+            return new StripeAuthenticationReadinessCheck(true, "secret_key", null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new StripeAuthenticationReadinessCheck(false, "secret_key", "stripe_auth_failed");
+        }
     }
 
     private async Task<MigrationReadinessCheck> CheckMigrationsAsync(CancellationToken cancellationToken)
@@ -355,6 +388,8 @@ public sealed class HealthFunction
         [property: JsonPropertyName("database")] DatabaseReadinessCheck Database,
         [property: JsonPropertyName("migrations")] MigrationReadinessCheck Migrations,
         [property: JsonPropertyName("serviceBus")] ServiceBusReadinessCheck ServiceBus,
+        [property: JsonPropertyName("stripeAuthentication")]
+        StripeAuthenticationReadinessCheck StripeAuthentication,
         [property: JsonPropertyName("failedStripeEvents")] CountReadinessCheck FailedStripeEvents,
         [property: JsonPropertyName("lastProcessedStripeEvent")]
         LastProcessedStripeEventReadinessCheck LastProcessedStripeEvent,
@@ -381,6 +416,11 @@ public sealed class HealthFunction
         [property: JsonPropertyName("configured")] bool Configured,
         [property: JsonPropertyName("senderResolved")] bool SenderResolved,
         [property: JsonPropertyName("queueName")] string QueueName,
+        [property: JsonPropertyName("authMode")] string AuthMode,
+        [property: JsonPropertyName("error")] string? Error);
+
+    public sealed record StripeAuthenticationReadinessCheck(
+        [property: JsonPropertyName("ok")] bool Ok,
         [property: JsonPropertyName("authMode")] string AuthMode,
         [property: JsonPropertyName("error")] string? Error);
 

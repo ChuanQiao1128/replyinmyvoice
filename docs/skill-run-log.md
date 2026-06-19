@@ -7090,3 +7090,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/V1ErrorContractTests.cs` and updated `public/openapi.json` v1 error examples for paid-plan, missing rewrite, rewrite failure, rate-limit service outage, and payload-too-large coverage.
 - Verification evidence: the focused contract test failed before the spec update with missing code/status pairs, then `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~V1ErrorContractTests` passed 2/2; `jq empty public/openapi.json`, `git diff --check`, and restricted-substring scans passed. `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName!~SqlServer` passed 902/902.
 - Limitations: The issue-specified filter with `V1ErrorContractTests::*` exits 0 but selects no xUnit tests under VSTest contains semantics; the concrete `V1ErrorContractTests` filter selected and passed both new tests. The full unfiltered project test is locally blocked by the existing SQL Server Testcontainers tests because Docker is not running.
+
+### 2026-06-19 - dotnet-backend-testing - P1-10 issue #882 Stripe readiness probe
+
+- Agent: Codex worker
+- Trigger: Issue #882 requires C#/.NET readiness tests for post-startup Stripe secret authentication validation.
+- Action: Opened and followed the project skill. Added xUnit/FluentAssertions coverage for successful Stripe authentication probing, authentication failure reporting, and the `Health:SkipStripeProbe` gate. Used deterministic hand-written fakes so tests make no real Stripe API calls.
+- Output artifacts: `IStripeAuthenticationProbe`, `ApplicationStripeBillingClient.ValidateAuthenticationAsync`, a read-only `CustomerService.ListAsync` probe with `Limit = 1`, `stripeAuthentication` readiness response field, and focused `HealthFunctionReadinessTests`.
+- Verification evidence: initial focused readiness run failed on the missing probe contract; after implementation, `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~HealthFunctionReadinessTests` passed 5/5, `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~StripeBillingServiceTests` passed 2/2, and `dotnet build backend-dotnet` passed.
+- Limitations: No real Stripe call, live key, payment action, deploy, push, or PR was performed. Full unfiltered `dotnet test` passed 904 tests but failed the 6 existing SQL Server Testcontainers tests because Docker daemon is unavailable locally; one unrelated worker shutdown timing test failed in the full run and passed when rerun by itself.
+
+### 2026-06-19 - cloud-readiness checklist - P1-10 issue #882 health probe
+
+- Agent: Codex worker
+- Trigger: Issue #882 changes the Azure Functions readiness surface for production remediation signals.
+- Action: Followed the project deployment-readiness checklist using `README.md`, `backend-dotnet/README.md`, `docs/manual-setup.md`, `docs/dotnet-azure-blocker-preflight.md`, and `docs/business-qa-and-deploy-result.md`. Confirmed this change stays inside the existing Azure Functions health endpoint, adds no infrastructure, changes no startup validation, and performs no deploy or live payment action.
+- Output artifacts: Checklist review only; no architecture/cost document was needed because no hosting model, paid infrastructure, CI/CD target, database, queue, or provider budget changed.
+- Verification evidence: `dotnet build backend-dotnet` passed; focused readiness and Stripe billing service tests passed; banned-term scans over app guard paths and changed backend files returned no matches.
+- Limitations: This was not a dedicated `cloud-readiness-review` skill because no such skill exists in the repo yet. No remote smoke, Azure portal check, production secret inspection, or deploy was performed.
