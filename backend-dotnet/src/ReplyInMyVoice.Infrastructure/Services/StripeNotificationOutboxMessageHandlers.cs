@@ -35,12 +35,15 @@ internal abstract class StripeNotificationOutboxMessageHandlerBase(
             return;
         }
 
-        await NotifyAsync(user, payload, ct);
+        // The outbox message id is stable across at-least-once redeliveries of this row, so it is the
+        // idempotency key the email provider uses to de-duplicate a crash-induced re-send.
+        await NotifyAsync(user, payload, message.Id.ToString(), ct);
     }
 
     protected abstract Task NotifyAsync(
         AppUser user,
         StripeNotificationOutboxPayload payload,
+        string idempotencyKey,
         CancellationToken ct);
 }
 
@@ -54,8 +57,9 @@ internal sealed class PaymentFailedNotificationOutboxMessageHandler(
     protected override Task NotifyAsync(
         AppUser user,
         StripeNotificationOutboxPayload payload,
+        string idempotencyKey,
         CancellationToken ct) =>
-        Notifier.EnqueueFailedPaymentNotificationAsync(user, ct);
+        Notifier.EnqueueFailedPaymentNotificationAsync(user, idempotencyKey, ct);
 }
 
 internal sealed class PaymentRecoveredNotificationOutboxMessageHandler(
@@ -68,8 +72,9 @@ internal sealed class PaymentRecoveredNotificationOutboxMessageHandler(
     protected override Task NotifyAsync(
         AppUser user,
         StripeNotificationOutboxPayload payload,
+        string idempotencyKey,
         CancellationToken ct) =>
-        Notifier.EnqueuePaymentRecoveredNotificationAsync(user, ct);
+        Notifier.EnqueuePaymentRecoveredNotificationAsync(user, idempotencyKey, ct);
 }
 
 internal sealed class SubscriptionPausedNotificationOutboxMessageHandler(
@@ -82,8 +87,9 @@ internal sealed class SubscriptionPausedNotificationOutboxMessageHandler(
     protected override Task NotifyAsync(
         AppUser user,
         StripeNotificationOutboxPayload payload,
+        string idempotencyKey,
         CancellationToken ct) =>
-        Notifier.EnqueueSubscriptionPausedNotificationAsync(user, ct);
+        Notifier.EnqueueSubscriptionPausedNotificationAsync(user, idempotencyKey, ct);
 }
 
 internal sealed class PaymentGraceReminderNotificationOutboxMessageHandler(
@@ -96,8 +102,9 @@ internal sealed class PaymentGraceReminderNotificationOutboxMessageHandler(
     protected override Task NotifyAsync(
         AppUser user,
         StripeNotificationOutboxPayload payload,
+        string idempotencyKey,
         CancellationToken ct) =>
-        Notifier.EnqueuePaymentGraceReminderNotificationAsync(user, ct);
+        Notifier.EnqueuePaymentGraceReminderNotificationAsync(user, idempotencyKey, ct);
 }
 
 internal sealed class StripePaymentActionRequiredOutboxMessageHandler(
@@ -110,8 +117,9 @@ internal sealed class StripePaymentActionRequiredOutboxMessageHandler(
     protected override Task NotifyAsync(
         AppUser user,
         StripeNotificationOutboxPayload payload,
+        string idempotencyKey,
         CancellationToken ct) =>
-        Notifier.EnqueuePaymentActionRequiredNotificationAsync(user, payload.HostedInvoiceUrl, ct);
+        Notifier.EnqueuePaymentActionRequiredNotificationAsync(user, payload.HostedInvoiceUrl, idempotencyKey, ct);
 }
 
 internal sealed class StripeCardExpiringOutboxMessageHandler(
@@ -124,6 +132,7 @@ internal sealed class StripeCardExpiringOutboxMessageHandler(
     protected override Task NotifyAsync(
         AppUser user,
         StripeNotificationOutboxPayload payload,
+        string idempotencyKey,
         CancellationToken ct) =>
         Notifier.EnqueueCardExpiringNotificationAsync(
             user,
@@ -131,5 +140,6 @@ internal sealed class StripeCardExpiringOutboxMessageHandler(
             payload.Last4,
             payload.ExpMonth,
             payload.ExpYear,
+            idempotencyKey,
             ct);
 }

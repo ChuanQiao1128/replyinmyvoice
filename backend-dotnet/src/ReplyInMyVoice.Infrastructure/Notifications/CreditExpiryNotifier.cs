@@ -24,7 +24,7 @@ public sealed class CreditExpiryNotifier(
                 SupportEmail: ResolveSupportEmail(),
                 CreditsExpiring: request.CreditsExpiring,
                 ExpiresOnUtc: request.ExpiresOnUtc.ToUniversalTime()),
-            ct);
+            cancellationToken: ct);
 
         return result.Sent;
     }

@@ -33,7 +33,7 @@ public sealed class TaxTurnoverNotifier(
                 WarningFraction: request.WarningFraction,
                 WindowEndUtc: request.WindowEnd,
                 SupportEmail: configuration["NOTIFICATIONS_REPLY_TO_EMAIL"]),
-            ct);
+            cancellationToken: ct);
 
         return new TaxTurnoverNotificationResultDto(
             Attempted: true,

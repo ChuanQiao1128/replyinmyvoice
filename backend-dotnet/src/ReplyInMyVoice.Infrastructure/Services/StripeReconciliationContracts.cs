@@ -45,7 +45,7 @@ public sealed class StripeReconciliationNotificationAlerter(
                 report.PaidButNoGrantCount,
                 report.GrantButNoPaymentCount,
                 report.AmountMismatchCount),
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     private static string? ResolveRecipientEmail(IConfiguration configuration)

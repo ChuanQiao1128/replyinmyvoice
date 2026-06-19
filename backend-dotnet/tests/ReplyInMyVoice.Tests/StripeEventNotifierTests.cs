@@ -27,6 +27,21 @@ public sealed class StripeEventNotifierTests
     }
 
     [Fact]
+    public async Task EnqueueFailedPaymentNotification_forwards_idempotency_key_to_notification_service()
+    {
+        var notifications = new RecordingNotificationService();
+        var notifier = new StripeEventNotifier(
+            notifications,
+            new RecordingStripeBillingService("https://billing.test/portal"));
+        var user = CreateUser("customer@example.com");
+
+        await notifier.EnqueueFailedPaymentNotificationAsync(user, "outbox-key-123");
+
+        notifications.Messages.Should().ContainSingle();
+        notifications.Messages[0].IdempotencyKey.Should().Be("outbox-key-123");
+    }
+
+    [Fact]
     public async Task PaymentGraceReminderNotification_uses_grace_end_and_billing_portal_url()
     {
         var notifications = new RecordingNotificationService();
@@ -137,9 +152,10 @@ public sealed class StripeEventNotifierTests
             NotificationTemplate<TModel> template,
             NotificationRecipient recipient,
             TModel model,
+            string? idempotencyKey = null,
             CancellationToken cancellationToken = default)
         {
-            Messages.Add(new RecordedNotification(template.Name, recipient, model!));
+            Messages.Add(new RecordedNotification(template.Name, recipient, model!, idempotencyKey));
             return Task.FromResult(NotificationSendResult.Delivered("recording"));
         }
     }
@@ -147,7 +163,8 @@ public sealed class StripeEventNotifierTests
     private sealed record RecordedNotification(
         string TemplateName,
         NotificationRecipient Recipient,
-        object Model);
+        object Model,
+        string? IdempotencyKey = null);
 
     private sealed class RecordingStripeBillingService(string portalUrl) : IStripeBillingService
     {

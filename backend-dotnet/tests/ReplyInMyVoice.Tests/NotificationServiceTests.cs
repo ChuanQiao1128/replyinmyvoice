@@ -23,13 +23,33 @@ public sealed class NotificationServiceTests
                 CustomerName: "Aroha",
                 SupportEmail: "info@timeawake.co.nz",
                 BillingPortalUrl: "https://replyinmyvoice.com/app"),
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         result.Sent.Should().BeTrue();
         provider.SentMessages.Should().ContainSingle();
         provider.SentMessages[0].TemplateName.Should().Be("failed-payment");
         provider.SentMessages[0].Recipient.Should().Be(recipient);
         provider.SentMessages[0].Subject.Should().ContainEquivalentOf("payment");
+    }
+
+    [Fact]
+    public async Task SendAsync_threads_idempotency_key_onto_the_email()
+    {
+        var provider = new RecordingNotificationEmailProvider();
+        var service = new NotificationService(provider, NullLogger<NotificationService>.Instance);
+
+        await service.SendAsync(
+            NotificationTemplates.FailedPayment,
+            new NotificationRecipient("customer@example.com", "Customer"),
+            new FailedPaymentNotificationModel(
+                CustomerName: "Aroha",
+                SupportEmail: "info@timeawake.co.nz",
+                BillingPortalUrl: "https://replyinmyvoice.com/app"),
+            idempotencyKey: "outbox-abc",
+            CancellationToken.None);
+
+        provider.SentMessages.Should().ContainSingle();
+        provider.SentMessages[0].IdempotencyKey.Should().Be("outbox-abc");
     }
 
     [Fact]
@@ -45,7 +65,7 @@ public sealed class NotificationServiceTests
                 CustomerName: "Customer",
                 SupportEmail: "info@timeawake.co.nz",
                 RequestReference: "refund-123"),
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         var result = await act.Should().NotThrowAsync();
         result.Which.Sent.Should().BeFalse();

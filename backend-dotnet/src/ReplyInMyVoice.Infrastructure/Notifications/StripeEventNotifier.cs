@@ -14,6 +14,7 @@ public sealed class StripeEventNotifier(
 
     public async Task EnqueueFailedPaymentNotificationAsync(
         AppUser user,
+        string? idempotencyKey = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
@@ -26,11 +27,13 @@ public sealed class StripeEventNotifier(
             NotificationTemplates.FailedPayment,
             CreateRecipient(user),
             new FailedPaymentNotificationModel("there", SupportEmail, billingPortalUrl),
+            idempotencyKey,
             ct);
     }
 
     public async Task EnqueueSubscriptionPausedNotificationAsync(
         AppUser user,
+        string? idempotencyKey = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
@@ -42,11 +45,13 @@ public sealed class StripeEventNotifier(
             NotificationTemplates.SubscriptionPaused,
             CreateRecipient(user),
             new SubscriptionPausedNotificationModel("there", SupportEmail),
+            idempotencyKey,
             ct);
     }
 
     public async Task EnqueuePaymentGraceReminderNotificationAsync(
         AppUser user,
+        string? idempotencyKey = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(user.Email) ||
@@ -64,11 +69,13 @@ public sealed class StripeEventNotifier(
                 SupportEmail,
                 billingPortalUrl,
                 user.PaymentGraceEndsAt.Value),
+            idempotencyKey,
             ct);
     }
 
     public async Task EnqueuePaymentRecoveredNotificationAsync(
         AppUser user,
+        string? idempotencyKey = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
@@ -80,12 +87,14 @@ public sealed class StripeEventNotifier(
             NotificationTemplates.PaymentRecovered,
             CreateRecipient(user),
             new PaymentRecoveredNotificationModel("there", SupportEmail),
+            idempotencyKey,
             ct);
     }
 
     public async Task EnqueuePaymentActionRequiredNotificationAsync(
         AppUser user,
         string? hostedInvoiceUrl,
+        string? idempotencyKey = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
@@ -100,6 +109,7 @@ public sealed class StripeEventNotifier(
             NotificationTemplates.PaymentActionRequired,
             CreateRecipient(user),
             new PaymentActionRequiredNotificationModel("there", SupportEmail, paymentUrl),
+            idempotencyKey,
             ct);
     }
 
@@ -109,6 +119,7 @@ public sealed class StripeEventNotifier(
         string? last4,
         int? expMonth,
         int? expYear,
+        string? idempotencyKey = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
@@ -128,6 +139,7 @@ public sealed class StripeEventNotifier(
                 last4,
                 expMonth,
                 expYear),
+            idempotencyKey,
             ct);
     }
 

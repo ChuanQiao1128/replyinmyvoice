@@ -26,6 +26,15 @@ public sealed class ResendNotificationEmailProvider(
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         request.Headers.UserAgent.ParseAdd("replyinmyvoice-notifications/1.0");
 
+        // Idempotency-Key (stable per logical notification, e.g. the outbox message id) lets Resend
+        // de-duplicate a re-send caused by an at-least-once outbox redelivery — so a worker crash
+        // between a successful send and MarkSent cannot double-email the customer. Resend honours the
+        // key for 24h, which always covers a lease-expiry redispatch.
+        if (!string.IsNullOrWhiteSpace(email.IdempotencyKey))
+        {
+            request.Headers.TryAddWithoutValidation("Idempotency-Key", email.IdempotencyKey);
+        }
+
         var payload = new ResendEmailRequest(
             fromEmail,
             [email.Recipient.Email],

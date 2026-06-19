@@ -216,7 +216,7 @@ public sealed class AccountHttpFunctions(
                 CustomerName: email ?? "there",
                 SupportEmail: SupportEmail,
                 RequestReference: $"request {requestId:N}"[..20]),
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     private static async Task<BillingSupportCreateRequest?> ReadBillingSupportCreateRequestAsync(

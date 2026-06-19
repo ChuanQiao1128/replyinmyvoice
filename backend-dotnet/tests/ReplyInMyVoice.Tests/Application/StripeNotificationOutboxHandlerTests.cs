@@ -42,6 +42,9 @@ public sealed class StripeNotificationOutboxHandlerTests
 
         dispatched.Should().Be(1);
         notifier.Messages.Should().Equal((expectedKind, user.Id));
+        // P0-1: the handler threads the stable outbox message id as the notification idempotency key,
+        // so an at-least-once redelivery de-duplicates at the email provider instead of double-emailing.
+        notifier.IdempotencyKeys.Should().Equal(messageId.ToString());
         await using var verifyDb = fixture.CreateContext();
         var outbox = await verifyDb.OutboxMessages.SingleAsync(x => x.Id == messageId);
         outbox.Status.Should().Be(OutboxMessageStatus.Sent);
@@ -326,38 +329,45 @@ public sealed class StripeNotificationOutboxHandlerTests
         public List<(string Kind, Guid UserId)> Messages { get; } = [];
         public List<(Guid UserId, string? HostedInvoiceUrl)> PaymentActionRequiredMessages { get; } = [];
         public List<(Guid UserId, string? Brand, string? Last4, int? ExpMonth, int? ExpYear)> CardExpiringMessages { get; } = [];
+        public List<string?> IdempotencyKeys { get; } = [];
 
-        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, CancellationToken ct = default)
+        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, string? idempotencyKey = null, CancellationToken ct = default)
         {
             Messages.Add(("failed-payment", user.Id));
+            IdempotencyKeys.Add(idempotencyKey);
             return Task.CompletedTask;
         }
 
-        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, CancellationToken ct = default)
+        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, string? idempotencyKey = null, CancellationToken ct = default)
         {
             Messages.Add(("subscription-paused", user.Id));
+            IdempotencyKeys.Add(idempotencyKey);
             return Task.CompletedTask;
         }
 
-        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, CancellationToken ct = default)
+        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, string? idempotencyKey = null, CancellationToken ct = default)
         {
             Messages.Add(("payment-grace-reminder", user.Id));
+            IdempotencyKeys.Add(idempotencyKey);
             return Task.CompletedTask;
         }
 
-        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, CancellationToken ct = default)
+        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, string? idempotencyKey = null, CancellationToken ct = default)
         {
             Messages.Add(("payment-recovered", user.Id));
+            IdempotencyKeys.Add(idempotencyKey);
             return Task.CompletedTask;
         }
 
         public Task EnqueuePaymentActionRequiredNotificationAsync(
             AppUser user,
             string? hostedInvoiceUrl,
+            string? idempotencyKey = null,
             CancellationToken ct = default)
         {
             Messages.Add(("payment-action-required", user.Id));
             PaymentActionRequiredMessages.Add((user.Id, hostedInvoiceUrl));
+            IdempotencyKeys.Add(idempotencyKey);
             return Task.CompletedTask;
         }
 
@@ -367,10 +377,12 @@ public sealed class StripeNotificationOutboxHandlerTests
             string? last4,
             int? expMonth,
             int? expYear,
+            string? idempotencyKey = null,
             CancellationToken ct = default)
         {
             Messages.Add(("card-expiring", user.Id));
             CardExpiringMessages.Add((user.Id, brand, last4, expMonth, expYear));
+            IdempotencyKeys.Add(idempotencyKey);
             return Task.CompletedTask;
         }
     }
@@ -379,21 +391,22 @@ public sealed class StripeNotificationOutboxHandlerTests
     {
         public const string ErrorMessage = "notification send failed";
 
-        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, CancellationToken ct = default) =>
+        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, string? idempotencyKey = null, CancellationToken ct = default) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
-        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, CancellationToken ct = default) =>
+        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, string? idempotencyKey = null, CancellationToken ct = default) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
-        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, CancellationToken ct = default) =>
+        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, string? idempotencyKey = null, CancellationToken ct = default) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
-        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, CancellationToken ct = default) =>
+        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, string? idempotencyKey = null, CancellationToken ct = default) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
         public Task EnqueuePaymentActionRequiredNotificationAsync(
             AppUser user,
             string? hostedInvoiceUrl,
+            string? idempotencyKey = null,
             CancellationToken ct = default) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
@@ -403,6 +416,7 @@ public sealed class StripeNotificationOutboxHandlerTests
             string? last4,
             int? expMonth,
             int? expYear,
+            string? idempotencyKey = null,
             CancellationToken ct = default) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
     }

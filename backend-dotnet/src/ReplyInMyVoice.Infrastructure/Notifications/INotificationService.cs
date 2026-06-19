@@ -6,6 +6,7 @@ public interface INotificationService
         NotificationTemplate<TModel> template,
         NotificationRecipient recipient,
         TModel model,
+        string? idempotencyKey = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -25,7 +26,8 @@ public sealed record NotificationEmail(
     NotificationRecipient Recipient,
     string Subject,
     string PlainTextBody,
-    string HtmlBody);
+    string HtmlBody,
+    string? IdempotencyKey = null);
 
 public sealed record NotificationSendResult(
     bool Sent,

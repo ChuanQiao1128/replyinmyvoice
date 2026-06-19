@@ -10,6 +10,7 @@ public sealed class NotificationService(
         NotificationTemplate<TModel> template,
         NotificationRecipient recipient,
         TModel model,
+        string? idempotencyKey = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(recipient.Email))
@@ -26,7 +27,8 @@ public sealed class NotificationService(
             recipient,
             rendered.Subject,
             rendered.PlainTextBody,
-            rendered.HtmlBody);
+            rendered.HtmlBody,
+            string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey);
 
         return emailProvider.SendAsync(email, cancellationToken);
     }
