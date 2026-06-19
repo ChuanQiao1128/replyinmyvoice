@@ -6,7 +6,7 @@ namespace ReplyInMyVoice.Tests;
 public sealed class MigrationDisciplineScannerTests
 {
     [Fact]
-    public void Scan_AllCheckedInMigrations_HaveNoDestructiveFindings()
+    public void Scan_AllCheckedInMigrations_HaveNoDestructiveViolations()
     {
         var migrationsDirectory = FindBackendRoot()
             .GetDirectories("src", SearchOption.TopDirectoryOnly)
@@ -30,7 +30,7 @@ public sealed class MigrationDisciplineScannerTests
         {
             var result = MigrationDisciplineScanner.ScanFile(file.FullName, File.ReadAllText(file.FullName));
 
-            result.Findings.Should().BeEmpty(file.Name);
+            result.IsViolation.Should().BeFalse(file.Name);
         }
     }
 

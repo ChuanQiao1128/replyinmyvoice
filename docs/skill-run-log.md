@@ -6820,3 +6820,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ResendNotificationEmailProviderTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeNotificationOutboxHandlerTests.cs`, and this log entry.
 - Verification evidence: Initial focused red run failed before implementation because `RetryableNotificationException` did not exist; after implementation, all focused acceptance filters passed and full backend test project passed 844/844.
 - Limitations: No browser/UI tests applied because this issue has no frontend surface; no live Resend, live payment provider, deployment, push, PR, or secret-backed service was used.
+
+### 2026-06-19 - data-module-review - P1-04 issue #864 API key persistence cleanup
+
+- Agent: Codex worker
+- Trigger: Issue #864 removes an EF Core entity property and drops the stored `ApiKeys.Scope` column.
+- Action: Opened and followed the skill as a persistence-safety checklist. Reviewed the API key entity, EF migrations, model snapshot, repository/handler references, rotation behavior, DTOs, and function surface before changing the schema.
+- Output artifacts: `20260619062017_RemoveApiKeyScopeColumn` EF migration with accepted-risk marker, updated `AppDbContextModelSnapshot`, removed `ApiKey.Scope`, removed the rotation copy, and this log entry.
+- Verification evidence: `dotnet ef migrations add RemoveApiKeyScopeColumn` generated the migration; `dotnet ef migrations script --idempotent` generated `/tmp/rimv-864-remove-apikey-scope.sql`; `dotnet ef migrations list` included `20260619062017_RemoveApiKeyScopeColumn`; migration guard accepted the marked column removal; static greps found no API-key scope references in handler/service/auth code.
+- Limitations: No live Azure SQL or local SQL Server apply was run because this worker has no SQL Server listener on `localhost:1433` and Docker is not running; verification used EF compile/script generation and the migration guard.
+
+### 2026-06-19 - dotnet-backend-testing - P1-04 issue #864 API key tests
+
+- Agent: Codex worker
+- Trigger: Issue #864 requires C#/.NET tests proving `ApiKey.Scope` is gone and rotation still works.
+- Action: Opened and followed the project skill for test-level selection. Added a failing reflection assertion to the existing API key lifecycle test before production changes, then extended rotation assertions to prove the remaining plan, quota, rate-limit, webhook, and test-key fields still copy.
+- Output artifacts: Updated `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/ApiKeyUseCaseTests.cs`, updated migration scanner repository-wide test contract for marked contract migrations, and this log entry.
+- Verification evidence: Red run failed because `ApiKey.GetProperty("Scope")` still existed; after implementation, `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ApiKeyUseCaseTests` passed 2/2, `dotnet test ... --filter FullyQualifiedName~MigrationDisciplineScannerTests` passed 17/17, and `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 844/844.
+- Limitations: No browser/UI tests applied because this issue has no frontend surface; no deployment, push, PR, production database, payment provider, or secret-backed service was used.

@@ -21,6 +21,8 @@ public sealed class ApiKeyUseCaseTests
     [Fact]
     public async Task ApiKey_handlers_generate_list_rotate_revoke_and_update_webhooks()
     {
+        typeof(ApiKey).GetProperty("Scope").Should().BeNull();
+
         Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
         await using var fixture = await DbFixture.CreateAsync();
         var owner = await fixture.CreateUserAsync();
@@ -113,6 +115,17 @@ public sealed class ApiKeyUseCaseTests
             stored.RowVersion.Should().NotBe(webhookRowVersion);
         }
 
+        await using (var copyFieldsDb = fixture.CreateContext())
+        {
+            var stored = await copyFieldsDb.ApiKeys.SingleAsync(x => x.Id == keyId);
+            stored.PlanTier = "business";
+            stored.RateLimitPerMinute = 123;
+            stored.MonthlyQuota = 4567;
+            stored.WebhookUrl = "https://93.184.216.34/rotated";
+            stored.WebhookSecret = "rotation-webhook-secret";
+            await copyFieldsDb.SaveChangesAsync();
+        }
+
         await using (var rotateDb = fixture.CreateContext())
         {
             var nonOwnerRotate = await CreateRotateHandler(rotateDb).HandleAsync(
@@ -140,6 +153,12 @@ public sealed class ApiKeyUseCaseTests
             newKey.RevokedAt.Should().BeNull();
             newKey.KeyHash.Should().Be(ApiKeyCredential.ComputeHash(rotated.Plaintext));
             newKey.Last4.Should().Be(rotated.Plaintext[^4..]);
+            newKey.PlanTier.Should().Be("business");
+            newKey.RateLimitPerMinute.Should().Be(123);
+            newKey.MonthlyQuota.Should().Be(4567);
+            newKey.WebhookUrl.Should().Be("https://93.184.216.34/rotated");
+            newKey.WebhookSecret.Should().Be("rotation-webhook-secret");
+            newKey.IsTest.Should().BeTrue();
         }
 
         await using (var revokeDb = fixture.CreateContext())
