@@ -14,11 +14,14 @@ public sealed class GenerateApiKeyHandler(
     {
         var plaintext = ApiKeyCredential.GeneratePlaintext(command.IsTest);
         var now = DateTimeOffset.UtcNow;
+        var pepperVersion = ApiKeyCredential.CurrentPepperVersion;
         var apiKey = new ApiKeyEntity
         {
             UserId = command.UserId,
             Name = command.Name,
-            KeyHash = ApiKeyCredential.ComputeHash(plaintext),
+            KeyHash = ApiKeyCredential.ComputeHashWithVersion(plaintext, pepperVersion),
+            PepperVersion = pepperVersion,
+            RehashPending = false,
             Last4 = plaintext[^4..],
             IsTest = command.IsTest,
             CreatedAt = now,

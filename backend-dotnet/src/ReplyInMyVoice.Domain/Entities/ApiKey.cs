@@ -8,6 +8,8 @@ public sealed class ApiKey : IConcurrencyStamped
     public Guid UserId { get; set; }
     public AppUser? User { get; set; }
     public required string KeyHash { get; set; }
+    public int? PepperVersion { get; set; }
+    public bool RehashPending { get; set; }
     public string? Last4 { get; set; }
     public required string Name { get; set; }
     public string PlanTier { get; set; } = "free";

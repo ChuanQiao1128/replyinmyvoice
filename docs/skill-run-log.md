@@ -7225,3 +7225,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `DeadLetterMessageRepositoryTests`, `ListDeadLettersHandlerTests`, `RequeueDeadLetterHandlerTests`, `AdminDeadLetterHttpFunctionsTests`, and updated outbox/Stripe processing tests.
 - Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter 'FullyQualifiedName~DeadLetter'` passed 18/18; corrected outbox and Stripe regression filter passed 25/25; `--filter 'FullyQualifiedName!~SqlServer'` passed 931/931.
 - Limitations: The exact issue-provided VSTest filter using `or` was invalid in this runner and executed no tests; the full unfiltered suite still fails only on existing SQL Server Testcontainers setup because Docker is unavailable locally.
+
+### 2026-06-19 - system-spec-synthesis - P1-09 issue #886 API key pepper rotation contract
+
+- Agent: Codex worker
+- Trigger: Issue #886 changes API key data fields, auth validation flow, and worker maintenance behavior across Application, Infrastructure, Functions, and Worker projects.
+- Action: Opened and followed the skill as a bounded implementation-contract checklist using the issue body, repo brief, and existing API key code. Source facts: current single-pepper hash helpers, single hash lookup resolver, EF `ApiKey` entity, generated key use cases, worker hosted-service pattern, and xUnit SQLite tests.
+- Output artifacts: versioned pepper env contract (`API_KEY_PEPPER_VERSION`, `API_KEY_PREVIOUS_PEPPER`, `API_KEY_PREVIOUS_PEPPER_VERSION`), dual-validate resolver behavior, EF migration, maintenance handler, worker registration, and focused `P1_09` tests.
+- Verification evidence: `dotnet test tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter 'FullyQualifiedName~P1_09'` passed 5/5.
+- Limitations: No separate spec document was created because the unattended issue and repo brief already provided machine-checkable acceptance.
+
+### 2026-06-19 - state-machine-modeling - P1-09 issue #886 API key pepper lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #886 adds a persisted `PepperVersion` plus `RehashPending` lifecycle around key validation and maintenance.
+- Action: Opened and followed the skill as a lifecycle checklist. States: unversioned current-compatible key, current-version key, previous-version key, current-version pending cleanup, revoked/expired key. Events: new key generation, key rotation, current-hash auth success, previous-hash auth success, maintenance cleanup, revoke/expire.
+- Output artifacts: current-hash fast path, previous-hash fallback, opportunistic rehash while plaintext is available, pending cleanup flag, and maintenance handler that clears current-version pending rows.
+- Verification evidence: focused `P1_09` tests cover previous-version validation, unversioned compatibility, cleanup flow, generation defaults, and fixed-time hash comparison.
+- Limitations: A background process cannot compute a new hash from only a stored one-way hash without storing plaintext; the implementation rehashes during previous-version authentication when plaintext is present and leaves the worker to clear the pending flag.
+
+### 2026-06-19 - data-module-review - P1-09 issue #886 API key persistence
+
+- Agent: Codex worker
+- Trigger: Issue #886 changes the EF `ApiKey` entity, migration, repository contract, and pending-key query.
+- Action: Opened and followed the skill for migration safety and invariants. Reviewed `ApiKey`, `AppDbContext`, `ApiKeyRepository`, generated migration artifacts, and repository wrappers. Ran the bundled data-risk scan against `backend-dotnet/src`.
+- Output artifacts: nullable `PepperVersion`, default-false `RehashPending`, `IX_ApiKeys_RehashPending_PepperVersion`, generated migration `20260619115951_AddApiKeyPepperRotation`, snapshot update, and provider-safe pending query ordering by `Id`.
+- Verification evidence: data-risk scan completed and reported broad existing signals; focused and non-SQL backend tests passed after fixing the SQLite `DateTimeOffset` ordering issue.
+- Limitations: SQL Server container tests could not run in this sandbox because Docker is unavailable.
+
+### 2026-06-19 - resilience-test-generation - P1-09 issue #886 key rotation recovery
+
+- Agent: Codex worker
+- Trigger: Issue #886 changes recovery behavior for valid keys after pepper rotation and requires compatibility when old rows have no version.
+- Action: Opened and followed the skill as a failure matrix. Critical operation: authenticating a request while current and previous pepper settings may differ. Boundaries: database lookup, previous-version fallback, revoked/expired rejection, missing previous pepper config, and maintenance cleanup.
+- Output artifacts: tests for previous-version success and pending marker, null-version compatibility, maintenance cleanup, generated-key defaults, and fixed-time hash comparison.
+- Verification evidence: `P1_09` filter passed 5/5; existing `ApiKeyAuthResolverTests` passed 15/15; non-SQL backend suite passed 936/936.
+- Limitations: No live secrets, external services, deploys, pushes, or production config changes were used.
+
+### 2026-06-19 - dotnet-backend-testing - P1-09 issue #886 API key tests
+
+- Agent: Codex worker
+- Trigger: Issue #886 requires C#/.NET tests for resolver fallback, backward compatibility, generated key defaults, maintenance cleanup, and fixed-time comparison.
+- Action: Opened and followed the project skill. Added focused xUnit/FluentAssertions tests using the repo's SQLite fixture and existing repository/unit-of-work fakes.
+- Output artifacts: `P1_09_ApiKeyPepperRotationTests`, generated migration, repository wrapper update, and worker/handler wiring tests through the full project build.
+- Verification evidence: focused filter passed 5/5; `ApiKeyAuthResolverTests` passed 15/15; unfiltered backend suite built and ran 942 tests with only the 6 existing SQL Server Testcontainers tests failing due unavailable Docker; rerun excluding SQL Server passed 936/936.
+- Limitations: NuGet vulnerability metadata warnings appeared because `api.nuget.org` could not be reached, but restore/build/test used available packages.

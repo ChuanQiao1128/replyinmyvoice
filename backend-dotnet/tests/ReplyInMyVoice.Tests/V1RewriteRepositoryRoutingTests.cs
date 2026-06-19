@@ -285,6 +285,9 @@ public sealed class V1RewriteRepositoryRoutingTests
         public Task<ApiKey?> GetByIdForUserAsync(Guid userId, Guid keyId, CancellationToken ct = default) =>
             inner.GetByIdForUserAsync(userId, keyId, ct);
 
+        public Task<IReadOnlyList<ApiKey>> ListRehashPendingAsync(int batchSize, CancellationToken ct = default) =>
+            inner.ListRehashPendingAsync(batchSize, ct);
+
         public Task<IReadOnlyList<ApiKey>> ListByUserIdAsync(Guid userId, CancellationToken ct = default) =>
             inner.ListByUserIdAsync(userId, ct);
 
