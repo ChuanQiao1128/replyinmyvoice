@@ -201,6 +201,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ReconcileStripeHandler>();
         services.AddScoped<GenerateApiKeyHandler>();
         services.AddScoped<ListApiKeysHandler>();
+        services.AddScoped<RehashPendingApiKeysHandler>();
         services.AddScoped<RotateApiKeyHandler>();
         services.AddScoped<RevokeApiKeyHandler>();
         services.AddScoped<SetApiKeyWebhookHandler>();
