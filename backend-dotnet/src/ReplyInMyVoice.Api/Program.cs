@@ -221,6 +221,14 @@ app.MapPost("/api/rewrite", async (
 
     if (result.Kind == ApplicationResultKind.QuotaExceeded)
     {
+        if (!string.IsNullOrWhiteSpace(result.ErrorCode))
+        {
+            return V1Error(
+                result.ErrorCode,
+                V1ErrorCatalog.QuotaExhaustedMessage,
+                StatusCodes.Status402PaymentRequired);
+        }
+
         return Results.Problem(
             title: "Rewrite quota exhausted",
             detail: V1ErrorCatalog.QuotaExhaustedMessage,
@@ -468,7 +476,7 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1CatalogError(V1ErrorCatalog.QuotaExhausted, envelopeRequestId),
+            V1CatalogError(V1ErrorCatalog.QuotaExhausted, envelopeRequestId, result.ErrorCode),
             V1ErrorCatalog.QuotaExhausted.StatusCode,
             stopwatch,
             now,
@@ -1312,8 +1320,15 @@ static async Task TryWriteV1ApiKeyUsageAsync(
     }
 }
 
-static IResult V1CatalogError(V1ErrorCatalog.V1Error error, string? requestId = null) =>
-    V1Error(error.Code, error.Message, error.StatusCode, requestId);
+static IResult V1CatalogError(
+    V1ErrorCatalog.V1Error error,
+    string? requestId = null,
+    string? errorCode = null) =>
+    V1Error(
+        string.IsNullOrWhiteSpace(errorCode) ? error.Code : errorCode,
+        error.Message,
+        error.StatusCode,
+        requestId);
 
 static IResult V1Error(string code, string message, int statusCode, string? requestId = null) =>
     Results.Json(new V1ErrorResponse(new V1Error(code, message, requestId)), statusCode: statusCode);

@@ -7027,3 +7027,30 @@ claude-heavy-planning-handoff
 - Output artifacts: updated `CreditExpiryUseCaseTests`, repository interface/implementation changes, fake repository interface update, and this log entry.
 - Verification evidence: initial focused test run failed 0/1 with the old behavior; after implementation, focused failure-path test passed 1/1 and `CreditExpiryUseCaseTests` passed 3/3. Full Debug build/test gates are run later in this turn.
 - Limitations: SQL Server-specific tests remain excluded by the requested acceptance command; no new migration was run or modified.
+
+### 2026-06-19 - state-machine-modeling - P1-01 issue #879 expired-credit quota boundary
+
+- Agent: Codex worker
+- Trigger: Issue #879 changes quota-boundary behavior when period quota is unavailable and only expired rewrite-credit balance remains.
+- Action: Opened and followed the skill as a lifecycle checklist. State list: period slot available, period quota exhausted, usable credit available, expired credit with remaining balance, and no quota source. Events: create rewrite attempt, reserve period slot, consume usable credit, detect expired remaining balance, return quota result. Invariants: expired credits are not consumed, usable credit selection remains first, period quota skips expired-credit detection, and 402 status is preserved.
+- Output artifacts: `credits_expired` rewrite error code, handler expired-credit detection after usable-credit consumption fails, and focused handler/API tests.
+- Verification evidence: red handler run failed because `ErrorCode` was null; after implementation, `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter 'FullyQualifiedName~ExpiredCreditsTests'` passed 4/4 and the HTTP focused filter passed 3/3.
+- Limitations: No credit lifecycle schema, expiry reminder flow, payment provider flow, or credit extension behavior changed.
+
+### 2026-06-19 - data-module-review - P1-01 issue #879 credit persistence invariant
+
+- Agent: Codex worker
+- Trigger: Issue #879 reads `RewriteCredits` to distinguish expired remaining balance from generic quota exhaustion.
+- Action: Opened and followed the skill for persistence invariants. Reviewed `RewriteCredit`, `IRewriteCreditRepository`, `RewriteCreditRepository`, `CreateRewriteAttemptHandler`, and existing EF SQLite tests. Chose the existing `ListByUserIdAsync` read path instead of adding a migration or repository write method.
+- Output artifacts: read-only expired-credit balance check using `ExpiresAt <= now` and `AmountGranted - AmountConsumed > 0`; tests assert no attempt, reservation, outbox message, or credit consumption is created for the expired-only path.
+- Verification evidence: focused handler tests passed 4/4; focused API tests passed 3/3; `git diff --check` passed; changed-file restricted-substring scan returned no rows.
+- Limitations: The full test project still cannot run SQL Server Testcontainers locally because Docker is not running; the non-SQL Server suite passed 897/897.
+
+### 2026-06-19 - dotnet-backend-testing - P1-01 issue #879 handler and API tests
+
+- Agent: Codex worker
+- Trigger: Issue #879 requires C#/.NET handler and integration tests for expired-credit error-code propagation on `/api/rewrite` and `/api/v1/rewrite`.
+- Action: Opened and followed the project skill for backend test selection. Added xUnit/FluentAssertions EF SQLite handler coverage and WebApplicationFactory API coverage, with deterministic seeded users, quota periods, API keys, and credits.
+- Output artifacts: `CreateRewriteAttemptHandlerExpiredCreditsTests.cs`, new `RewriteApiTests` scenarios for web 402, v1 live 402, and v1 test-key 202, plus endpoint mapping changes in Functions and the ASP.NET host.
+- Verification evidence: red API run failed with `quota_exhausted` on v1 and missing `error` envelope on web; after implementation, focused API tests passed 3/3, `RewriteEngineContractTests` passed 15/15, and `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter 'FullyQualifiedName!~SqlServer'` passed 897/897.
+- Limitations: The exact issue filter `FullyQualifiedName~CreateRewriteAttemptHandler.*ExpiredCredits` exits 0 but selects no tests under VSTest contains semantics; the concrete `ExpiredCreditsTests` filter selected and passed the new handler tests.

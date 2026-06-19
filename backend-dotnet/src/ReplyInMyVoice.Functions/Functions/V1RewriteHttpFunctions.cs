@@ -220,7 +220,7 @@ public sealed class V1RewriteHttpFunctions(
         if (result.Kind == ApplicationResultKind.QuotaExceeded)
         {
             return await CompleteAsync(
-                V1Problem(V1ErrorCatalog.QuotaExhausted, envelopeRequestId),
+                V1Problem(V1ErrorCatalog.QuotaExhausted, envelopeRequestId, result.ErrorCode),
                 V1ErrorCatalog.QuotaExhausted.StatusCode);
         }
 
@@ -658,8 +658,16 @@ public sealed class V1RewriteHttpFunctions(
         return null;
     }
 
-    private static IActionResult V1Problem(V1ErrorCatalog.V1Error error, string requestId) =>
-        FunctionHttpResults.Problem(error.Message, error.Message, error.StatusCode, error.Code, requestId);
+    private static IActionResult V1Problem(
+        V1ErrorCatalog.V1Error error,
+        string requestId,
+        string? errorCode = null) =>
+        FunctionHttpResults.Problem(
+            error.Message,
+            error.Message,
+            error.StatusCode,
+            string.IsNullOrWhiteSpace(errorCode) ? error.Code : errorCode,
+            requestId);
 
     private static IActionResult V1InsufficientScopeProblem(string requestId) =>
         FunctionHttpResults.Problem(

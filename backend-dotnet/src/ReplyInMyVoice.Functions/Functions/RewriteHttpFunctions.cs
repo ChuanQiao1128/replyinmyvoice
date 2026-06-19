@@ -381,7 +381,8 @@ public sealed class RewriteHttpFunctions(
             ApplicationResultKind.QuotaExceeded => FunctionHttpResults.Problem(
                 "Rewrite quota exhausted",
                 "No rewrite quota remains for the current period.",
-                StatusCodes.Status402PaymentRequired),
+                StatusCodes.Status402PaymentRequired,
+                result.ErrorCode),
             ApplicationResultKind.Conflict => FunctionHttpResults.Problem(
                 "Idempotency key conflict",
                 "The same idempotency key was reused with a different rewrite request.",

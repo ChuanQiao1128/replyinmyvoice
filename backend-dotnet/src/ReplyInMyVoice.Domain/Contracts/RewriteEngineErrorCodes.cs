@@ -45,6 +45,9 @@ public static class RewriteEngineErrorCodes
     /// <summary>Recommended terminal quality failure emitted by rewrite-engine implementations.</summary>
     public const string RewriteQualityFailed = "rewrite_quality_failed";
 
+    /// <summary>Quota-boundary code for users whose remaining rewrite credits have expired.</summary>
+    public const string CreditsExpired = "credits_expired";
+
     /// <summary>Consumer fallback for missing or unknown engine failure details.</summary>
     public const string EngineUnavailableFallback = "engine_unavailable";
 
