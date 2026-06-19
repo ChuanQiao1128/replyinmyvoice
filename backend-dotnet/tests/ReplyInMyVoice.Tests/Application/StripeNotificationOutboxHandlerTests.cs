@@ -1,10 +1,12 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.StripeEvent;
 using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Domain.Entities;
 using ReplyInMyVoice.Domain.Enums;
+using ReplyInMyVoice.Infrastructure.Notifications;
 using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
 
@@ -251,6 +253,40 @@ public sealed class StripeNotificationOutboxHandlerTests
     }
 
     [Fact]
+    public async Task Dispatch_retries_after_transient_email_failure()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T01:11:00Z");
+        var dispatchNow = now.AddSeconds(1);
+        var messageId = await SeedNotificationOutboxAsync(
+            fixture,
+            StripeNotificationOutboxMessageTypes.PaymentFailed,
+            user.Id,
+            now);
+        var emailProvider = new RetryableFailureNotificationEmailProvider();
+        var notifier = new StripeEventNotifier(
+            new NotificationService(emailProvider, NullLogger<NotificationService>.Instance));
+        var observer = new RecordingOutboxDispatchObserver();
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateDispatchHandler(handlerDb, notifier, observer);
+
+        var dispatched = await handler.HandleAsync(
+            new DispatchDueOutboxCommand(dispatchNow, "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        dispatched.Should().Be(1);
+        observer.Failures.Should().BeEmpty();
+        emailProvider.Attempts.Should().Be(1);
+        await using var verifyDb = fixture.CreateContext();
+        var outbox = await verifyDb.OutboxMessages.SingleAsync(x => x.Id == messageId);
+        outbox.Status.Should().Be(OutboxMessageStatus.Pending);
+        outbox.AttemptCount.Should().Be(1);
+        outbox.NextAttemptAt.Should().BeAfter(dispatchNow);
+        outbox.LastError.Should().Contain(RetryableFailureNotificationEmailProvider.ErrorMessage);
+    }
+
+    [Fact]
     public async Task Dispatch_marks_failed_and_reports_terminal_failure_at_max_attempts()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -384,6 +420,23 @@ public sealed class StripeNotificationOutboxHandlerTests
             CardExpiringMessages.Add((user.Id, brand, last4, expMonth, expYear));
             IdempotencyKeys.Add(idempotencyKey);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RetryableFailureNotificationEmailProvider : INotificationEmailProvider
+    {
+        public const string ErrorMessage = "resend send is temporarily unavailable";
+
+        public int Attempts { get; private set; }
+
+        public Task<NotificationSendResult> SendAsync(
+            NotificationEmail email,
+            CancellationToken cancellationToken = default)
+        {
+            Attempts++;
+            return Attempts == 1
+                ? Task.FromException<NotificationSendResult>(new RetryableNotificationException(ErrorMessage))
+                : Task.FromResult(NotificationSendResult.Delivered("resend", "em_123"));
         }
     }
 
