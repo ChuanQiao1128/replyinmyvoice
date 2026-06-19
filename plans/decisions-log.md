@@ -6,6 +6,7 @@ Each overnight Claude trigger appends here.
 
 ---
 
+2026-06-19T05:19:48Z | P1-10-860 | decision | Implemented the Stripe readiness auth probe with Stripe.net `BalanceService.GetAsync` because installed Stripe.net 48.5.0 exposes current-account balance retrieval without an account id, while `AccountService.GetAsync` requires an account id; the selected call is read-only and validates the configured secret on each `/health/ready` request.
 2026-06-09T09:41:38Z | CLEAN-12-669 | decision | Relocated live webhook sender contract and HTTP implementation into `backend-dotnet/src/ReplyInMyVoice.Infrastructure/Services/HttpWebhookDeliverySender.cs` before removing the obsolete dispatcher registration and test surface.
 2026-06-02T08:04:40Z | PROMO-01-427 | decision | Reused no-cookie WebApplicationFactory client option in Account/Stripe API tests to avoid sandbox CookieContainer domain lookup failure; matches existing RewriteApiTests pattern.
 2026-05-21T11:13:33Z | M0-001..M0-005 | done | Marked already-done per handoff (commit bff864b)

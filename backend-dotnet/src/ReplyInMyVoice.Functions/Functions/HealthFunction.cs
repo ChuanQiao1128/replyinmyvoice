@@ -7,6 +7,9 @@ using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Configuration;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Services;
+using Stripe;
+using System.Net;
 using System.Text.Json.Serialization;
 
 namespace ReplyInMyVoice.Functions.Functions;
@@ -22,15 +25,18 @@ public sealed class HealthFunction
     private readonly AppDbContext db;
     private readonly IConfiguration configuration;
     private readonly ServiceBusSender? serviceBusSender;
+    private readonly IStripeAuthProbe stripeAuthProbe;
 
     public HealthFunction(
         AppDbContext db,
         IConfiguration configuration,
-        ServiceBusSender? serviceBusSender = null)
+        ServiceBusSender? serviceBusSender = null,
+        IStripeAuthProbe? stripeAuthProbe = null)
     {
         this.db = db;
         this.configuration = configuration;
         this.serviceBusSender = serviceBusSender;
+        this.stripeAuthProbe = stripeAuthProbe ?? new StripeBillingClient();
     }
 
     [Function("Health")]
@@ -79,6 +85,7 @@ public sealed class HealthFunction
 
         var database = await CheckDatabaseAsync(cancellationToken);
         var serviceBus = CheckServiceBus();
+        var stripeAuth = await CheckStripeAuthAsync(cancellationToken);
         var failedStripeEvents = database.Ok
             ? await CheckFailedStripeEventsAsync(failedStripeEventsThreshold, cancellationToken)
             : CountReadinessCheck.Unavailable("database_unavailable", failedStripeEventsThreshold);
@@ -97,12 +104,14 @@ public sealed class HealthFunction
         var checks = new ReadinessChecks(
             database,
             serviceBus,
+            stripeAuth,
             failedStripeEvents,
             lastProcessedStripeEvent,
             outboxBacklog,
             stuckReservations);
         var ok = checks.Database.Ok &&
             checks.ServiceBus.Ok &&
+            checks.StripeAuth.Ok &&
             checks.FailedStripeEvents.Ok &&
             checks.LastProcessedStripeEvent.Ok &&
             checks.OutboxBacklog.Ok &&
@@ -160,6 +169,39 @@ public sealed class HealthFunction
             queueName,
             authMode,
             ok ? null : configured ? "sender_unavailable" : "not_configured");
+    }
+
+    private async Task<StripeAuthReadinessCheck> CheckStripeAuthAsync(CancellationToken cancellationToken)
+    {
+        const string authMode = "secret_key";
+
+        try
+        {
+            StripeBillingService.EnsureStripeApiVersionPinned();
+            var stripeClient = new StripeClient(GetRequiredConfiguration("STRIPE_SECRET_KEY"));
+            var authenticated = await stripeAuthProbe.VerifyAuthenticatedAsync(stripeClient, cancellationToken);
+            return new StripeAuthReadinessCheck(
+                authenticated,
+                authMode,
+                authenticated ? null : "invalid_request");
+        }
+        catch (StripeException ex) when (
+            ex.HttpStatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return new StripeAuthReadinessCheck(false, authMode, "auth_failed");
+        }
+        catch (StripeException ex) when (ex.HttpStatusCode == HttpStatusCode.BadRequest)
+        {
+            return new StripeAuthReadinessCheck(false, authMode, "invalid_request");
+        }
+        catch (StripeException)
+        {
+            return new StripeAuthReadinessCheck(false, authMode, "provider_error");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new StripeAuthReadinessCheck(false, authMode, ex.GetType().Name);
+        }
     }
 
     private async Task<CountReadinessCheck> CheckFailedStripeEventsAsync(
@@ -320,6 +362,9 @@ public sealed class HealthFunction
             : fallback;
     }
 
+    private string GetRequiredConfiguration(string key) =>
+        configuration[key] ?? throw new InvalidOperationException($"{key}_missing");
+
     public sealed record ReadinessResponse(
         [property: JsonPropertyName("ok")] bool Ok,
         [property: JsonPropertyName("status")] string Status,
@@ -329,6 +374,7 @@ public sealed class HealthFunction
     public sealed record ReadinessChecks(
         [property: JsonPropertyName("database")] DatabaseReadinessCheck Database,
         [property: JsonPropertyName("serviceBus")] ServiceBusReadinessCheck ServiceBus,
+        [property: JsonPropertyName("stripeAuth")] StripeAuthReadinessCheck StripeAuth,
         [property: JsonPropertyName("failedStripeEvents")] CountReadinessCheck FailedStripeEvents,
         [property: JsonPropertyName("lastProcessedStripeEvent")]
         LastProcessedStripeEventReadinessCheck LastProcessedStripeEvent,
@@ -345,6 +391,11 @@ public sealed class HealthFunction
         [property: JsonPropertyName("configured")] bool Configured,
         [property: JsonPropertyName("senderResolved")] bool SenderResolved,
         [property: JsonPropertyName("queueName")] string QueueName,
+        [property: JsonPropertyName("authMode")] string AuthMode,
+        [property: JsonPropertyName("error")] string? Error);
+
+    public sealed record StripeAuthReadinessCheck(
+        [property: JsonPropertyName("ok")] bool Ok,
         [property: JsonPropertyName("authMode")] string AuthMode,
         [property: JsonPropertyName("error")] string? Error);
 
