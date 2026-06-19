@@ -6,24 +6,29 @@ public interface IStripeEventNotifier
 {
     Task EnqueueFailedPaymentNotificationAsync(
         AppUser user,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null);
 
     Task EnqueueSubscriptionPausedNotificationAsync(
         AppUser user,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null);
 
     Task EnqueuePaymentGraceReminderNotificationAsync(
         AppUser user,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null);
 
     Task EnqueuePaymentRecoveredNotificationAsync(
         AppUser user,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null);
 
     Task EnqueuePaymentActionRequiredNotificationAsync(
         AppUser user,
         string? hostedInvoiceUrl,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null);
 
     Task EnqueueCardExpiringNotificationAsync(
         AppUser user,
@@ -31,5 +36,6 @@ public interface IStripeEventNotifier
         string? last4,
         int? expMonth,
         int? expYear,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null);
 }

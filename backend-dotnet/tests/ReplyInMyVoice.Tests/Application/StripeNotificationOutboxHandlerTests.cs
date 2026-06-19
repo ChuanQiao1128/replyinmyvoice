@@ -327,25 +327,37 @@ public sealed class StripeNotificationOutboxHandlerTests
         public List<(Guid UserId, string? HostedInvoiceUrl)> PaymentActionRequiredMessages { get; } = [];
         public List<(Guid UserId, string? Brand, string? Last4, int? ExpMonth, int? ExpYear)> CardExpiringMessages { get; } = [];
 
-        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, CancellationToken ct = default)
+        public Task EnqueueFailedPaymentNotificationAsync(
+            AppUser user,
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null)
         {
             Messages.Add(("failed-payment", user.Id));
             return Task.CompletedTask;
         }
 
-        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, CancellationToken ct = default)
+        public Task EnqueueSubscriptionPausedNotificationAsync(
+            AppUser user,
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null)
         {
             Messages.Add(("subscription-paused", user.Id));
             return Task.CompletedTask;
         }
 
-        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, CancellationToken ct = default)
+        public Task EnqueuePaymentGraceReminderNotificationAsync(
+            AppUser user,
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null)
         {
             Messages.Add(("payment-grace-reminder", user.Id));
             return Task.CompletedTask;
         }
 
-        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, CancellationToken ct = default)
+        public Task EnqueuePaymentRecoveredNotificationAsync(
+            AppUser user,
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null)
         {
             Messages.Add(("payment-recovered", user.Id));
             return Task.CompletedTask;
@@ -354,7 +366,8 @@ public sealed class StripeNotificationOutboxHandlerTests
         public Task EnqueuePaymentActionRequiredNotificationAsync(
             AppUser user,
             string? hostedInvoiceUrl,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null)
         {
             Messages.Add(("payment-action-required", user.Id));
             PaymentActionRequiredMessages.Add((user.Id, hostedInvoiceUrl));
@@ -367,7 +380,8 @@ public sealed class StripeNotificationOutboxHandlerTests
             string? last4,
             int? expMonth,
             int? expYear,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null)
         {
             Messages.Add(("card-expiring", user.Id));
             CardExpiringMessages.Add((user.Id, brand, last4, expMonth, expYear));
@@ -379,22 +393,35 @@ public sealed class StripeNotificationOutboxHandlerTests
     {
         public const string ErrorMessage = "notification send failed";
 
-        public Task EnqueueFailedPaymentNotificationAsync(AppUser user, CancellationToken ct = default) =>
+        public Task EnqueueFailedPaymentNotificationAsync(
+            AppUser user,
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
-        public Task EnqueueSubscriptionPausedNotificationAsync(AppUser user, CancellationToken ct = default) =>
+        public Task EnqueueSubscriptionPausedNotificationAsync(
+            AppUser user,
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
-        public Task EnqueuePaymentGraceReminderNotificationAsync(AppUser user, CancellationToken ct = default) =>
+        public Task EnqueuePaymentGraceReminderNotificationAsync(
+            AppUser user,
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
-        public Task EnqueuePaymentRecoveredNotificationAsync(AppUser user, CancellationToken ct = default) =>
+        public Task EnqueuePaymentRecoveredNotificationAsync(
+            AppUser user,
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
         public Task EnqueuePaymentActionRequiredNotificationAsync(
             AppUser user,
             string? hostedInvoiceUrl,
-            CancellationToken ct = default) =>
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
 
         public Task EnqueueCardExpiringNotificationAsync(
@@ -403,7 +430,8 @@ public sealed class StripeNotificationOutboxHandlerTests
             string? last4,
             int? expMonth,
             int? expYear,
-            CancellationToken ct = default) =>
+            CancellationToken ct = default,
+            Guid? outboxMessageId = null) =>
             Task.FromException(new InvalidOperationException(ErrorMessage));
     }
 }

@@ -14,7 +14,8 @@ public sealed class StripeEventNotifier(
 
     public async Task EnqueueFailedPaymentNotificationAsync(
         AppUser user,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
         {
@@ -26,12 +27,14 @@ public sealed class StripeEventNotifier(
             NotificationTemplates.FailedPayment,
             CreateRecipient(user),
             new FailedPaymentNotificationModel("there", SupportEmail, billingPortalUrl),
-            ct);
+            ct,
+            outboxMessageId);
     }
 
     public async Task EnqueueSubscriptionPausedNotificationAsync(
         AppUser user,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
         {
@@ -42,12 +45,14 @@ public sealed class StripeEventNotifier(
             NotificationTemplates.SubscriptionPaused,
             CreateRecipient(user),
             new SubscriptionPausedNotificationModel("there", SupportEmail),
-            ct);
+            ct,
+            outboxMessageId);
     }
 
     public async Task EnqueuePaymentGraceReminderNotificationAsync(
         AppUser user,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null)
     {
         if (string.IsNullOrWhiteSpace(user.Email) ||
             user.PaymentGraceEndsAt is null)
@@ -64,12 +69,14 @@ public sealed class StripeEventNotifier(
                 SupportEmail,
                 billingPortalUrl,
                 user.PaymentGraceEndsAt.Value),
-            ct);
+            ct,
+            outboxMessageId);
     }
 
     public async Task EnqueuePaymentRecoveredNotificationAsync(
         AppUser user,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
         {
@@ -80,13 +87,15 @@ public sealed class StripeEventNotifier(
             NotificationTemplates.PaymentRecovered,
             CreateRecipient(user),
             new PaymentRecoveredNotificationModel("there", SupportEmail),
-            ct);
+            ct,
+            outboxMessageId);
     }
 
     public async Task EnqueuePaymentActionRequiredNotificationAsync(
         AppUser user,
         string? hostedInvoiceUrl,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
         {
@@ -100,7 +109,8 @@ public sealed class StripeEventNotifier(
             NotificationTemplates.PaymentActionRequired,
             CreateRecipient(user),
             new PaymentActionRequiredNotificationModel("there", SupportEmail, paymentUrl),
-            ct);
+            ct,
+            outboxMessageId);
     }
 
     public async Task EnqueueCardExpiringNotificationAsync(
@@ -109,7 +119,8 @@ public sealed class StripeEventNotifier(
         string? last4,
         int? expMonth,
         int? expYear,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? outboxMessageId = null)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
         {
@@ -128,7 +139,8 @@ public sealed class StripeEventNotifier(
                 last4,
                 expMonth,
                 expYear),
-            ct);
+            ct,
+            outboxMessageId);
     }
 
     private async Task<string> ResolveBillingPortalUrlAsync(

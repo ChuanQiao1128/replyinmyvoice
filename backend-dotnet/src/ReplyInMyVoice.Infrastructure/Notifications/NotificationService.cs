@@ -10,7 +10,8 @@ public sealed class NotificationService(
         NotificationTemplate<TModel> template,
         NotificationRecipient recipient,
         TModel model,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? outboxMessageId = null)
     {
         if (string.IsNullOrWhiteSpace(recipient.Email))
         {
@@ -26,7 +27,8 @@ public sealed class NotificationService(
             recipient,
             rendered.Subject,
             rendered.PlainTextBody,
-            rendered.HtmlBody);
+            rendered.HtmlBody,
+            outboxMessageId);
 
         return emailProvider.SendAsync(email, cancellationToken);
     }
