@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\ReplyInMyVoice.Infrastructure\ReplyInMyVoice.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\ReplyInMyVoice.Api\ReplyInMyVoice.Api.csproj" />
     <ProjectReference Include="..\..\src\ReplyInMyVoice.Functions\ReplyInMyVoice.Functions.csproj" />
+    <ProjectReference Include="..\..\src\ReplyInMyVoice.Worker\ReplyInMyVoice.Worker.csproj" Aliases="WorkerProject" />
     <ProjectReference Include="..\..\tools\ReplyInMyVoice.Eval\ReplyInMyVoice.Eval.csproj" />
     <ProjectReference Include="..\..\tools\ReplyInMyVoice.MigrationGuard\ReplyInMyVoice.MigrationGuard.csproj" />
   </ItemGroup>

@@ -7054,3 +7054,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `CreateRewriteAttemptHandlerExpiredCreditsTests.cs`, new `RewriteApiTests` scenarios for web 402, v1 live 402, and v1 test-key 202, plus endpoint mapping changes in Functions and the ASP.NET host.
 - Verification evidence: red API run failed with `quota_exhausted` on v1 and missing `error` envelope on web; after implementation, focused API tests passed 3/3, `RewriteEngineContractTests` passed 15/15, and `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter 'FullyQualifiedName!~SqlServer'` passed 897/897.
 - Limitations: The exact issue filter `FullyQualifiedName~CreateRewriteAttemptHandler.*ExpiredCredits` exits 0 but selects no tests under VSTest contains semantics; the concrete `ExpiredCreditsTests` filter selected and passed the new handler tests.
+
+### 2026-06-19 - resilience-test-generation - P1-03 issue #880 worker graceful drain
+
+- Agent: Codex worker
+- Trigger: Issue #880 changes shutdown timeout and recovery behavior for timer workers and Azure Service Bus rewrite processing.
+- Action: Opened and followed the project skill as a failure-mode checklist. Critical operations: outbox dispatch iteration, expired reservation cleanup iteration, and Service Bus processor stop. Boundary list: `BackgroundService.StopAsync`, worker cancellation token, handler completion, Service Bus processor stop, and local deterministic fakes.
+- Output artifacts: graceful-drain `StopAsync` overrides in `OutboxDispatcherWorker`, `ExpiredReservationCleanupWorker`, and `ServiceBusRewriteWorker`; `BackgroundServiceStopAsyncTests`.
+- Verification evidence: red focused run failed on missing processor seam; after implementation, all three issue acceptance filters passed and `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~BackgroundServiceStopAsyncTests` passed 3/3.
+- Limitations: No live Azure Service Bus, production database, deploy, push, PR, payment action, or secret inspection was performed. Full unfiltered test project is locally blocked by Docker daemon availability for existing SQL Server Testcontainers tests.
+
+### 2026-06-19 - state-machine-modeling - P1-03 issue #880 worker shutdown lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #880 changes queue and background-worker lifecycle behavior during process stop.
+- Action: Opened and followed the skill as a lifecycle checklist. State list: idle, waiting for timer tick, iteration in flight, graceful stop requested, drained, stop timed out, and Service Bus processor active/stopping/stopped. Events: timer tick, handler task start, host stop request, in-flight completion, 60-second timeout, base worker cancellation, and processor stop completion. Invariants: no new timer iteration starts after graceful stop is requested, the active iteration can complete before worker token cancellation, and Service Bus stop uses a fresh bounded token.
+- Output artifacts: in-flight task tracking, stop-request guards, bounded drain logging, internal Service Bus processor wrapper, and focused worker tests.
+- Verification evidence: `OutboxDispatcherWorker_StopAsync_completes_in_flight_iteration`, `ExpiredReservationCleanupWorker_StopAsync_completes_in_flight_iteration`, and `ServiceBusRewriteWorker_StopAsync_stops_processor` each passed through the issue-specified filters.
+- Limitations: No persisted job state, quota schema, webhook schema, or migration was changed.
+
+### 2026-06-19 - dotnet-backend-testing - P1-03 issue #880 worker StopAsync tests
+
+- Agent: Codex worker
+- Trigger: Issue #880 requires new C#/.NET xUnit coverage for three `BackgroundService.StopAsync` contracts.
+- Action: Opened and followed the project skill. Wrote failing xUnit tests first with cancellation-aware handwritten fakes, confirmed the red compile state on the missing processor seam, then implemented the minimal worker changes to pass.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/BackgroundServiceStopAsyncTests.cs`, Worker project test reference alias, `InternalsVisibleTo` for Worker test seams, and worker shutdown changes.
+- Verification evidence: focused acceptance filters passed 1/1 for each worker, full new test-file filter passed 3/3, `git diff --check` passed, changed-file restricted-substring scan passed, and `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName!~SqlServer` passed 900/900.
+- Limitations: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 900 tests and failed the 6 existing SQL Server Testcontainers tests because `docker info` cannot connect to the Docker daemon locally.
