@@ -120,6 +120,14 @@ public sealed class CreateRewriteAttemptHandler(
 
             if (consumedCreditId is null)
             {
+                var userCredits = await credits.ListByUserIdAsync(command.UserId, ct);
+                if (OnlyRemainingCreditsAreExpired(userCredits, command.Now))
+                {
+                    return new CreateAttemptOutcome(
+                        ApplicationResult<RewriteAttemptDto>.QuotaExceeded(RewriteEngineErrorCodes.CreditsExpired),
+                        OutboxMessageId: null);
+                }
+
                 return new CreateAttemptOutcome(
                     ApplicationResult<RewriteAttemptDto>.QuotaExceeded(),
                     OutboxMessageId: null);
@@ -196,6 +204,18 @@ public sealed class CreateRewriteAttemptHandler(
         var json = JsonSerializer.Serialize(request);
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(json));
         return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static bool OnlyRemainingCreditsAreExpired(
+        IEnumerable<RewriteCredit> userCredits,
+        DateTimeOffset now)
+    {
+        var remainingCredits = userCredits
+            .Where(x => x.AmountGranted - x.AmountConsumed > 0)
+            .ToList();
+
+        return remainingCredits.Count > 0 &&
+            remainingCredits.All(x => x.ExpiresAt is not null && x.ExpiresAt <= now);
     }
 
     private static OutboxMessage CreateRewriteJobOutboxMessage(

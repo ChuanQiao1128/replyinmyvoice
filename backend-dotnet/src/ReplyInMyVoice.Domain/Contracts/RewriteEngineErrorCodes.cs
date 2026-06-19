@@ -24,6 +24,9 @@ public static class RewriteEngineErrorCodes
     /// <summary>Expired in-progress reservation failure used by reservation cleanup.</summary>
     public const string ProcessingTimedOut = "processing_timed_out";
 
+    /// <summary>Quota failure used when remaining rewrite credits are expired.</summary>
+    public const string CreditsExpired = "credits_expired";
+
     /// <summary>Quality-gate failure consumed by Next proxies as not charged.</summary>
     public const string QualitySignalUnavailable = "quality_signal_unavailable";
 

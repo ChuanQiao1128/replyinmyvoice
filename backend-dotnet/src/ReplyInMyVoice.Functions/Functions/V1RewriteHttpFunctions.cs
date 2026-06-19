@@ -216,7 +216,10 @@ public sealed class V1RewriteHttpFunctions(
         if (result.Kind == ApplicationResultKind.QuotaExceeded)
         {
             return await CompleteAsync(
-                Error("quota_exhausted", "No rewrite quota remains for the current period.", StatusCodes.Status402PaymentRequired),
+                Error(
+                    result.ErrorCode ?? "quota_exhausted",
+                    "No rewrite quota remains for the current period.",
+                    StatusCodes.Status402PaymentRequired),
                 StatusCodes.Status402PaymentRequired);
         }
 
