@@ -27,6 +27,9 @@ internal static class AdminHttpFunctionsTestFactory
         var billingSupportRequests = new BillingSupportRequestRepository(db);
         var credits = new RewriteCreditRepository(db);
         var promoAdmin = new PromoAdminRepository(db);
+        var deadLetters = new DeadLetterRepository(db);
+        var outboxMessages = new OutboxMessageRepository(db);
+        var stripeEvents = new StripeEventRepository(db);
         var unitOfWork = new UnitOfWork(db);
         AppStripeRefundClient? applicationRefundClient = refundClient is null
             ? null
@@ -47,6 +50,9 @@ internal static class AdminHttpFunctionsTestFactory
             new SetUserSuspensionHandler(adminUsers, unitOfWork),
             new IssueRefundHandler(adminUsers, credits, applicationRefundClient, unitOfWork),
             new RetryWebhookDeliveryHandler(new WebhookDeliveryRepository(db), unitOfWork),
+            new RequeueFailedOutboxMessageHandler(outboxMessages, deadLetters, unitOfWork),
+            new RequeueFailedStripeEventHandler(stripeEvents, deadLetters, unitOfWork),
+            deadLetters,
             new CreatePromoCodeHandler(promoAdmin, unitOfWork),
             new ListPromoCodesHandler(promoAdmin),
             new GetPromoCodeDetailHandler(promoAdmin),

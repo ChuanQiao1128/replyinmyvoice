@@ -13,6 +13,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<StripeInvoice> StripeInvoices => Set<StripeInvoice>();
     public DbSet<StripeReconciliationRun> StripeReconciliationRuns => Set<StripeReconciliationRun>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<DeadLetterMessage> DeadLetterMessages => Set<DeadLetterMessage>();
     public DbSet<RewriteCredit> RewriteCredits => Set<RewriteCredit>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<LearningRun> LearningRuns => Set<LearningRun>();
@@ -179,6 +180,28 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.CorrelationId).HasMaxLength(160);
             entity.Property(x => x.LastError).HasMaxLength(1000);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
+        });
+
+        modelBuilder.Entity<DeadLetterMessage>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.EntityType, x.CreatedAt }).IsDescending(false, true);
+            entity.HasIndex(x => x.OutboxMessageId);
+            entity.HasIndex(x => x.StripeEventId);
+            entity.HasIndex(x => new { x.EntityType, x.EntityId }).IsUnique();
+            entity.Property(x => x.EntityType).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.EntityId).HasMaxLength(160);
+            entity.Property(x => x.StripeEventId).HasMaxLength(160);
+            entity.Property(x => x.FailureReason).HasMaxLength(1000);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+            entity.HasOne(x => x.OutboxMessage)
+                .WithMany()
+                .HasForeignKey(x => x.OutboxMessageId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.StripeEvent)
+                .WithMany()
+                .HasForeignKey(x => x.StripeEventId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ----- Reconciled Postgres-only models (Workstream E schema landing) -----

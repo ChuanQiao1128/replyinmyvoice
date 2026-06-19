@@ -1034,6 +1034,9 @@ public sealed class StripeReconciliationUseCaseTests
             return Task.CompletedTask;
         }
 
+        public Task<OutboxMessage?> GetByIdAsync(Guid messageId, CancellationToken ct = default) =>
+            Task.FromResult(Messages.SingleOrDefault(x => x.Id == messageId));
+
         public Task<IReadOnlyList<OutboxMessage>> ClaimDueAsync(
             DateTimeOffset now,
             string lockedBy,

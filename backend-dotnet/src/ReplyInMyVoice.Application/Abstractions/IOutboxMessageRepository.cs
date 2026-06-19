@@ -6,6 +6,10 @@ public interface IOutboxMessageRepository
 {
     Task AddAsync(OutboxMessage message, CancellationToken ct = default);
 
+    Task<OutboxMessage?> GetByIdAsync(
+        Guid messageId,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<OutboxMessage>> ClaimDueAsync(
         DateTimeOffset now,
         string lockedBy,

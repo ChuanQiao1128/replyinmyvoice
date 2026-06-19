@@ -13,6 +13,15 @@ public sealed class OutboxMessageRepository(AppDbContext db) : IOutboxMessageRep
         await db.OutboxMessages.AddAsync(message, ct);
     }
 
+    public async Task<OutboxMessage?> GetByIdAsync(
+        Guid messageId,
+        CancellationToken ct = default)
+    {
+        return await db.OutboxMessages
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == messageId, ct);
+    }
+
     public async Task<IReadOnlyList<OutboxMessage>> ClaimDueAsync(
         DateTimeOffset now,
         string lockedBy,
