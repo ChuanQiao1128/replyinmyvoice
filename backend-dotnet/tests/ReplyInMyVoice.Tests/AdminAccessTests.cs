@@ -57,6 +57,24 @@ public sealed class AdminAccessTests
         okResult.Value.Should().BeEquivalentTo(new { ok = true });
     }
 
+    [Fact]
+    public async Task AdminRetryWebhookDeliveryAsync_requires_admin()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var function = AdminHttpFunctionsTestFactory.Create(
+            BuildConfiguration("admin-owner-oid, owner@example.com"),
+            fixture.CreateContext);
+        var request = CreateRequest("regular-user-oid", "regular@example.com");
+
+        var result = await function.AdminRetryWebhookDelivery(
+            request,
+            Guid.NewGuid(),
+            CancellationToken.None);
+
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
     private static HttpRequest CreateRequest(string oid, string email)
     {
         var context = new DefaultHttpContext

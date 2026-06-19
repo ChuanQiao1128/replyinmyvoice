@@ -52,7 +52,8 @@ internal static class AdminHttpFunctionsTestFactory
             new UpdatePromoCodeHandler(promoAdmin, unitOfWork),
             new SetPromoCodeActiveHandler(promoAdmin, unitOfWork),
             new ArchivePromoCodeHandler(promoAdmin, unitOfWork),
-            new RestorePromoCodeHandler(promoAdmin, unitOfWork));
+            new RestorePromoCodeHandler(promoAdmin, unitOfWork),
+            new AdminRetryWebhookDeliveryHandler(new WebhookDeliveryRepository(db), unitOfWork));
     }
 
     private sealed class LegacyStripeRefundClientAdapter(LegacyStripeRefundClient refundClient) : AppStripeRefundClient

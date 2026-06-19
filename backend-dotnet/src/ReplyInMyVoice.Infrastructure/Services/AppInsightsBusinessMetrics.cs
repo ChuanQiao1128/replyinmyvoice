@@ -26,4 +26,23 @@ public sealed class AppInsightsBusinessMetrics(TelemetryClient telemetryClient) 
         {
         }
     }
+
+    public void Record(
+        string metricName,
+        double value,
+        string firstDimensionName,
+        string firstDimensionValue,
+        string secondDimensionName,
+        string secondDimensionValue)
+    {
+        try
+        {
+            telemetryClient
+                .GetMetric(metricName, firstDimensionName, secondDimensionName)
+                .TrackValue(value, firstDimensionValue, secondDimensionValue);
+        }
+        catch
+        {
+        }
+    }
 }

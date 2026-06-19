@@ -510,7 +510,8 @@ public sealed class RewriteEngineContractTests
         new(
             new WebhookDeliveryRepository(db),
             sender,
-            new UnitOfWork(db));
+            new UnitOfWork(db),
+            NoOpBusinessMetrics.Instance);
 
     private static V1RewriteHttpFunctions CreateV1Functions(
         AppDbContext db,

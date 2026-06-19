@@ -103,4 +103,72 @@ public sealed class WebhookDeliveryRepository(AppDbContext db) : IWebhookDeliver
             delivery.Status,
             delivery.NextAttemptAt);
     }
+
+    public async Task<IReadOnlyList<WebhookDeliveryStatusDto>> GetWebhookDeliveryStatusAsync(
+        Guid apiKeyId,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var take = Math.Clamp(limit, 1, 50);
+        var query = db.WebhookDeliveries
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.ApiKeyId == apiKeyId)
+            .Where(x => db.RewriteAttempts.Any(attempt =>
+                attempt.Id == x.RewriteAttemptId &&
+                attempt.DeletedAt == null));
+
+        var projected = query.Select(x => new WebhookDeliveryStatusDto(
+                x.Id,
+                x.Status,
+                x.AttemptCount,
+                x.MaxAttempts,
+                x.LastError,
+                x.NextAttemptAt,
+                x.CreatedAt));
+
+        if (db.Database.IsSqlite())
+        {
+            var rows = await projected.ToListAsync(ct);
+            return rows
+                .OrderByDescending(x => x.CreatedAt)
+                .Take(take)
+                .ToList();
+        }
+
+        return await projected
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    public async Task<WebhookDeliveryRetryResult> RetryFailedDeliveryAsync(
+        Guid deliveryId,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var delivery = await db.WebhookDeliveries
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == deliveryId, ct);
+
+        if (delivery is null)
+        {
+            return new WebhookDeliveryRetryResult(WebhookDeliveryRetryResultKind.NotFound);
+        }
+
+        if (delivery.Status != WebhookDeliveryStatus.Failed)
+        {
+            return new WebhookDeliveryRetryResult(WebhookDeliveryRetryResultKind.InvalidState, delivery.Id);
+        }
+
+        delivery.Status = WebhookDeliveryStatus.Pending;
+        delivery.NextAttemptAt = now;
+        delivery.LockedBy = null;
+        delivery.LockedUntil = null;
+
+        return new WebhookDeliveryRetryResult(
+            WebhookDeliveryRetryResultKind.Success,
+            delivery.Id,
+            delivery.NextAttemptAt);
+    }
 }

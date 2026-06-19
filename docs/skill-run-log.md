@@ -7144,3 +7144,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `ResendNotificationEmailProviderTests.cs`, optional outbox ID parameters on notification contracts, updated Stripe notification fakes for interface compatibility, and Resend status-code/network classification tests.
 - Verification evidence: focused Resend filter passed 4/4; `StripeNotificationOutboxHandlerTests` passed 13/13; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName!~ReplyInMyVoice.Tests.SqlServer` passed 908/908 on rerun after one unrelated worker timing test passed by itself.
 - Limitations: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 908 tests but failed the 6 existing SQL Server Testcontainers tests because Docker is unavailable locally. NuGet vulnerability metadata warnings appeared because `api.nuget.org` could not be reached, but restore/build/test execution continued from available assets.
+
+### 2026-06-19 - state-machine-modeling - P1-08 issue #884 webhook delivery retry lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #884 changes webhook delivery status transitions and admin retry behavior.
+- Action: Opened and followed the skill as a lifecycle checklist. State list: `Pending`, `InProgress`, `Delivered`, `Failed`. Events: claim due delivery, successful send, retryable send failure, terminal max-attempt failure, and admin retry. Transition table: `Pending -> InProgress` on claim; `InProgress -> Delivered` on successful send; `InProgress -> Pending` on retryable failure below max attempts; `InProgress -> Failed` on terminal max-attempt failure; `Failed -> Pending` on admin retry. Illegal transitions: admin retry from `Pending`, `InProgress`, or `Delivered`; resetting `AttemptCount`; and exposing signing values in read responses.
+- Output artifacts: terminal failure metrics, owner-scoped status query, and admin retry handler preserving attempt count and last error.
+- Verification evidence: focused filters for terminal metrics, status query, and admin retry passed; non-SQLServer backend suite passed 916/916.
+- Limitations: Full unfiltered test project is locally blocked by existing SQL Server Testcontainers tests because Docker is unavailable.
+
+### 2026-06-19 - data-module-review - P1-08 issue #884 webhook delivery persistence
+
+- Agent: Codex worker
+- Trigger: Issue #884 changes EF repository methods for webhook delivery history and failed-row retry.
+- Action: Opened and followed the skill for persistence invariants. Reviewed `WebhookDelivery`, `WebhookDeliveryStatus`, `WebhookDeliveryRepository`, `ApiKeyRepository`, `AppDbContext` concurrency stamping, and related tests. Chose projection DTOs for status reads and reused existing row-version stamping for retry writes.
+- Output artifacts: `GetWebhookDeliveryStatusAsync` excludes rows tied to soft-deleted rewrite attempts, clamps limits, and projects safe fields only; `RetryFailedDeliveryAsync` only updates failed rows to pending and clears lease fields.
+- Verification evidence: status-query focused test passed; admin retry focused tests passed; restricted term scan over the changed use-case and repository paths returned no matches.
+- Limitations: No schema migration was needed; SQL Server row-version concurrency contract remains covered by existing Testcontainers tests when Docker is available.
+
+### 2026-06-19 - resilience-test-generation - P1-08 issue #884 webhook failure operations
+
+- Agent: Codex worker
+- Trigger: Issue #884 changes webhook retry observability and admin retry for terminal delivery failures.
+- Action: Opened and followed the skill as a failure matrix. Critical operation: outbound webhook delivery after provider 5xx or missing delivery data. Boundaries: HTTP 5xx, terminal max-attempt failure, owner-scoped status query, non-failed admin retry request, and non-admin retry request.
+- Output artifacts: tests for terminal metrics, delivery status ownership, failed-to-pending retry, non-failed retry rejection, and admin access rejection.
+- Verification evidence: required focused filters passed; additional behavior filter passed 5/5; non-SQLServer backend suite passed 916/916.
+- Limitations: No live webhook endpoint, production secret, external alert channel, deploy, push, or PR was used.
+
+### 2026-06-19 - dotnet-backend-testing - P1-08 issue #884 webhook delivery ops tests
+
+- Agent: Codex worker
+- Trigger: Issue #884 requires C#/.NET tests for webhook metrics, customer status query, admin retry, and function authorization.
+- Action: Opened and followed the project skill. Added failing xUnit/FluentAssertions tests first; confirmed the red compile state for missing handlers/contracts, then implemented repository, use-case, metrics, and function changes.
+- Output artifacts: new use cases under `UseCases/Admin` and `UseCases/ApiKey`, repository contract extensions, metrics test double extension, function route tests, and updated DI registrations.
+- Verification evidence: required focused filters passed; extra behavior filters passed 5/5; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName!~ReplyInMyVoice.Tests.SqlServer` passed 916/916.
+- Limitations: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 916 tests and failed the 6 existing SQL Server Testcontainers tests because Docker is unavailable locally. NuGet vulnerability metadata warnings appeared because `api.nuget.org` could not be reached, but build and tests used available restored assets.
