@@ -20,6 +20,10 @@ public interface IOutboxMessageRepository
         TimeSpan claimLease,
         CancellationToken ct = default);
 
+    Task<OutboxMessage?> GetByIdAsync(
+        Guid messageId,
+        CancellationToken ct = default);
+
     Task MarkSentAsync(
         Guid messageId,
         DateTimeOffset now,

@@ -31,6 +31,9 @@ public sealed class AdminHttpFunctions
     private readonly GetBillingSupportQueueHandler _getBillingSupportQueueHandler;
     private readonly ResolveBillingSupportRequestHandler _resolveBillingSupportRequestHandler;
     private readonly ExportAccountingRevenueHandler _exportAccountingRevenueHandler;
+    private readonly ListDeadLettersHandler _listDeadLettersHandler;
+    private readonly GetDeadLetterDetailHandler _getDeadLetterDetailHandler;
+    private readonly RequeueDeadLetterHandler _requeueDeadLetterHandler;
     private readonly SetUserSuspensionHandler _setUserSuspensionHandler;
     private readonly IssueRefundHandler _issueRefundHandler;
     private readonly CreatePromoCodeHandler _createPromoCodeHandler;
@@ -52,6 +55,9 @@ public sealed class AdminHttpFunctions
         GetBillingSupportQueueHandler getBillingSupportQueueHandler,
         ResolveBillingSupportRequestHandler resolveBillingSupportRequestHandler,
         ExportAccountingRevenueHandler exportAccountingRevenueHandler,
+        ListDeadLettersHandler listDeadLettersHandler,
+        GetDeadLetterDetailHandler getDeadLetterDetailHandler,
+        RequeueDeadLetterHandler requeueDeadLetterHandler,
         SetUserSuspensionHandler setUserSuspensionHandler,
         IssueRefundHandler issueRefundHandler,
         CreatePromoCodeHandler createPromoCodeHandler,
@@ -72,6 +78,9 @@ public sealed class AdminHttpFunctions
         _getBillingSupportQueueHandler = getBillingSupportQueueHandler;
         _resolveBillingSupportRequestHandler = resolveBillingSupportRequestHandler;
         _exportAccountingRevenueHandler = exportAccountingRevenueHandler;
+        _listDeadLettersHandler = listDeadLettersHandler;
+        _getDeadLetterDetailHandler = getDeadLetterDetailHandler;
+        _requeueDeadLetterHandler = requeueDeadLetterHandler;
         _setUserSuspensionHandler = setUserSuspensionHandler;
         _issueRefundHandler = issueRefundHandler;
         _createPromoCodeHandler = createPromoCodeHandler;
@@ -330,6 +339,131 @@ public sealed class AdminHttpFunctions
             cancellationToken);
 
         return new EmptyResult();
+    }
+
+    [Function("AdminDeadLettersList")]
+    public async Task<IActionResult> ListDeadLetters(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/dead-letters")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (!TryParseSourceTypeQuery(request, out var sourceType))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid dead letter source type",
+                "The sourceType query must be OutboxMessage or StripeEvent when provided.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var page = ParsePositiveInt(request.Query, "page", DefaultPage, int.MaxValue);
+        var pageSize = ParsePositiveInt(request.Query, "pageSize", DefaultPageSize, MaxPageSize);
+        var response = await _listDeadLettersHandler.HandleAsync(
+            new ListDeadLettersQuery(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                page,
+                pageSize,
+                sourceType,
+                DateTimeOffset.UtcNow),
+            cancellationToken);
+
+        return new OkObjectResult(response);
+    }
+
+    [Function("AdminDeadLetterDetail")]
+    public async Task<IActionResult> GetDeadLetterDetail(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/dead-letters/{id}")]
+        HttpRequest request,
+        string id,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (!Guid.TryParse(id, out var parsedId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid dead letter id",
+                "The dead letter detail route requires a valid id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var response = await _getDeadLetterDetailHandler.HandleAsync(
+            new GetDeadLetterDetailQuery(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedId,
+                DateTimeOffset.UtcNow),
+            cancellationToken);
+        if (response is null)
+        {
+            return FunctionHttpResults.Problem(
+                "Dead letter not found",
+                "No dead letter exists for the requested id.",
+                StatusCodes.Status404NotFound);
+        }
+
+        return new OkObjectResult(response);
+    }
+
+    [Function("AdminDeadLetterRequeue")]
+    public async Task<IActionResult> RequeueDeadLetter(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/dead-letters/{id}/requeue")]
+        HttpRequest request,
+        string id,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (!Guid.TryParse(id, out var parsedId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid dead letter id",
+                "The dead letter requeue route requires a valid id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _requeueDeadLetterHandler.HandleAsync(
+            new RequeueDeadLetterCommand(
+                admin.ExternalAuthUserId,
+                admin.Email,
+                parsedId,
+                DateTimeOffset.UtcNow),
+            cancellationToken);
+
+        return result.Kind switch
+        {
+            AppCommon.AdminDeadLetterRequeueResultKind.Success => new OkObjectResult(result.Response!),
+            AppCommon.AdminDeadLetterRequeueResultKind.NotFound => FunctionHttpResults.Problem(
+                "Dead letter not found",
+                result.Detail,
+                StatusCodes.Status404NotFound),
+            AppCommon.AdminDeadLetterRequeueResultKind.OriginalNotFound => FunctionHttpResults.Problem(
+                "Dead letter source not found",
+                result.Detail,
+                StatusCodes.Status409Conflict),
+            AppCommon.AdminDeadLetterRequeueResultKind.InvalidSource => FunctionHttpResults.Problem(
+                "Invalid dead letter source",
+                result.Detail,
+                StatusCodes.Status400BadRequest),
+            _ => FunctionHttpResults.Problem(
+                "Dead letter already requeued",
+                result.Detail,
+                StatusCodes.Status409Conflict),
+        };
     }
 
     [Function("AdminPromoCodesCreate")]
@@ -1124,6 +1258,19 @@ public sealed class AdminHttpFunctions
                 DateTimeStyles.AssumeUniversal |
                 DateTimeStyles.AdjustToUniversal,
                 out value);
+    }
+
+    private static bool TryParseSourceTypeQuery(
+        HttpRequest request,
+        out string? sourceType)
+    {
+        sourceType = null;
+        if (!request.Query.TryGetValue("sourceType", out var values))
+        {
+            return true;
+        }
+
+        return AppCommon.DeadLetterSourceTypes.TryNormalize(values.ToString(), out sourceType);
     }
 
     private static async Task<AdminRefundRequest?> ReadRefundRequestAsync(

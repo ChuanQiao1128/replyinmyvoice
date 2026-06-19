@@ -1,19 +1,44 @@
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Domain.Entities;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class OutboxDispatchTelemetryObserver(
+    IDeadLetterMessageRepository deadLetters,
     ILogger<OutboxDispatchTelemetryObserver> logger,
     TelemetryClient? telemetryClient = null) : IOutboxDispatchObserver
 {
-    public Task OnTerminalFailureAsync(
+    public async Task OnTerminalFailureAsync(
         OutboxMessage message,
         string error,
         CancellationToken ct = default)
     {
+        try
+        {
+            await deadLetters.AddAsync(
+                DeadLetterMessageSupport.FromOutboxMessage(
+                    message,
+                    error,
+                    message.LastAttemptAt ?? DateTimeOffset.UtcNow),
+                ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            try
+            {
+                logger.LogWarning(
+                    ex,
+                    "Could not persist terminal outbox dead-letter record for message {MessageId}.",
+                    message.Id);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         try
         {
             logger.LogError(
@@ -54,7 +79,5 @@ public sealed class OutboxDispatchTelemetryObserver(
             {
             }
         }
-
-        return Task.CompletedTask;
     }
 }

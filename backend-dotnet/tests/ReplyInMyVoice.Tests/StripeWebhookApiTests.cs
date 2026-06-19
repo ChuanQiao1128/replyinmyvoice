@@ -563,6 +563,7 @@ public sealed class StripeWebhookApiTests : IAsyncLifetime
                 new AdminUserRepository(db),
                 new UnitOfWork(db)),
             new RewriteCreditRepository(db),
+            new DeadLetterMessageRepository(db),
             new UnitOfWork(db),
             options,
             NullLogger<ProcessPendingStripeEventsHandler>.Instance);

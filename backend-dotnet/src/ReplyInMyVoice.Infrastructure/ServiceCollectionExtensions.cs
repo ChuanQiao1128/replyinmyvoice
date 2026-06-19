@@ -106,6 +106,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUsageReservationRepository, UsageReservationRepository>();
         services.AddScoped<IRewriteCreditRepository, RewriteCreditRepository>();
         services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
+        services.AddScoped<IDeadLetterMessageRepository, DeadLetterMessageRepository>();
         services.AddScoped<IWebhookDeliveryRepository, WebhookDeliveryRepository>();
         services.AddScoped<IPromoCodeRepository, PromoCodeRepository>();
         services.AddScoped<IPromoCodeRedemptionRepository, PromoCodeRedemptionRepository>();
@@ -163,6 +164,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetBillingSupportQueueHandler>();
         services.AddScoped<ResolveBillingSupportRequestHandler>();
         services.AddScoped<ExportAccountingRevenueHandler>();
+        services.AddScoped<ListDeadLettersHandler>();
+        services.AddScoped<GetDeadLetterDetailHandler>();
+        services.AddScoped<RequeueDeadLetterHandler>();
         services.AddScoped<SetUserSuspensionHandler>();
         services.AddScoped<IssueRefundHandler>();
         services.AddScoped<AdminRetryWebhookDeliveryHandler>();
@@ -238,6 +242,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IOutboxMessageHandler, StripeCardExpiringOutboxMessageHandler>();
         services.AddTransient<IOutboxMessageHandler, StripeReconciliationAlertOutboxMessageHandler>();
         services.AddScoped<IOutboxDispatchObserver>(sp => new OutboxDispatchTelemetryObserver(
+            sp.GetRequiredService<IDeadLetterMessageRepository>(),
             sp.GetRequiredService<ILogger<OutboxDispatchTelemetryObserver>>(),
             sp.GetService<TelemetryClient>()));
         services.AddScoped<ExpiredReservationCleanupService>();

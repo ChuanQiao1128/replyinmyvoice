@@ -223,6 +223,12 @@ public sealed class StripeEventProcessingUseCaseTests
             stored.LockedUntil.Should().BeNull();
             stored.LastError.Should().Contain("No matching user");
             stored.PayloadJson.Should().Be(rawBody);
+            var deadLetter = await verifyThirdDb.DeadLetterMessages.SingleAsync();
+            deadLetter.SourceType.Should().Be("StripeEvent");
+            deadLetter.SourceId.Should().Be("evt_processor_retry");
+            deadLetter.FailureReason.Should().Contain("No matching user");
+            deadLetter.SourceData.Should().Contain("evt_processor_retry");
+            deadLetter.SourceData.Should().Contain("No matching user");
         }
 
         await using (var fourthDb = fixture.CreateContext())
@@ -375,6 +381,11 @@ public sealed class StripeEventProcessingUseCaseTests
         stored.Status.Should().Be(StripeEventStatus.Failed);
         stored.LockedUntil.Should().BeNull();
         stored.LastError.Should().Be("payload_missing");
+        var deadLetter = await verifyDb.DeadLetterMessages.SingleAsync();
+        deadLetter.SourceType.Should().Be("StripeEvent");
+        deadLetter.SourceId.Should().Be("evt_processor_missing_payload");
+        deadLetter.FailureReason.Should().Be("payload_missing");
+        deadLetter.SourceData.Should().Contain("payload_missing");
     }
 
     [Fact]
@@ -455,6 +466,7 @@ public sealed class StripeEventProcessingUseCaseTests
                 new AdminUserRepository(db),
                 new UnitOfWork(db)),
             new RewriteCreditRepository(db),
+            new DeadLetterMessageRepository(db),
             new UnitOfWork(db),
             new StripeEventProcessingOptions(maxAttempts, InlineBudgetSeconds: 8),
             NullLogger<ProcessPendingStripeEventsHandler>.Instance);

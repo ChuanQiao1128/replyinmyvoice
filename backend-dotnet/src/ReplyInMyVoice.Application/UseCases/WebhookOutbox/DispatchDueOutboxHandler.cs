@@ -104,16 +104,17 @@ public sealed class DispatchDueOutboxHandler(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var failure = await outboxMessages.MarkFailedAttemptAsync(message.Id, now, ex.Message, ct);
+            if (failure.Status == ReplyInMyVoice.Domain.Enums.OutboxMessageStatus.Failed)
+            {
+                await dispatchObserver.OnTerminalFailureAsync(message, ex.Message, ct);
+            }
+
             await unitOfWork.SaveChangesAsync(ct);
             _metrics.Record(
                 BusinessMetricNames.OutboxFailedTotal,
                 1,
                 BusinessMetricDimensions.MessageType,
                 message.MessageType);
-            if (failure.Status == ReplyInMyVoice.Domain.Enums.OutboxMessageStatus.Failed)
-            {
-                await dispatchObserver.OnTerminalFailureAsync(message, ex.Message, ct);
-            }
 
             return false;
         }

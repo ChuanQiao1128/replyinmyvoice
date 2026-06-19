@@ -7180,3 +7180,48 @@ claude-heavy-planning-handoff
 - Output artifacts: new use cases under `UseCases/Admin` and `UseCases/ApiKey`, repository contract extensions, metrics test double extension, function route tests, and updated DI registrations.
 - Verification evidence: required focused filters passed; extra behavior filters passed 5/5; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName!~ReplyInMyVoice.Tests.SqlServer` passed 916/916.
 - Limitations: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 916 tests and failed the 6 existing SQL Server Testcontainers tests because Docker is unavailable locally. NuGet vulnerability metadata warnings appeared because `api.nuget.org` could not be reached, but build and tests used available restored assets.
+
+### 2026-06-19 - system-spec-synthesis - P1-07 issue #885 dead-letter recovery scope
+
+- Agent: Codex worker
+- Trigger: Issue #885 adds database dead-letter storage, admin read APIs, and manual requeue for terminal outbox and Stripe event failures.
+- Action: Opened and followed the skill as a scope-to-contract checklist using the issue, repo brief, AGENTS rules, and existing admin/auth/audit patterns. Defined the implementation boundary as database capture on terminal failure, paged admin reads, idempotent requeue, and no Service Bus job changes.
+- Output artifacts: `DeadLetterMessage` persistence model, admin list/detail/requeue use cases, HTTP functions, DI wiring, EF migration, and focused tests.
+- Verification evidence: focused dead-letter tests passed 18/18; corrected outbox and Stripe processing regression filter passed 25/25; non-SQLServer backend suite passed 931/931.
+- Limitations: No separate spec document was created because the unattended wave issue and repo brief were already implementation-ready and bounded.
+
+### 2026-06-19 - state-machine-modeling - P1-07 issue #885 dead-letter and requeue lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #885 changes terminal failure and manual recovery transitions for outbox messages and Stripe events.
+- Action: Opened and followed the skill as a lifecycle checklist. Modeled `DeadLetterMessage` as unrequeued to requeued, `OutboxMessage` as `Failed -> Pending` on admin requeue, and `StripeEvent` as `Failed -> Pending` while preserving event identity for existing idempotency checks.
+- Output artifacts: `RequeueDeadLetterHandler`, repository reset methods, admin audit metadata, and tests for both source types plus repeated requeue behavior.
+- Verification evidence: `FullyQualifiedName~DeadLetter` passed 18/18; corrected outbox and Stripe processing regression filter passed 25/25.
+- Limitations: No automatic retry scheduling or job dead-letter lifecycle was changed.
+
+### 2026-06-19 - data-module-review - P1-07 issue #885 dead-letter persistence
+
+- Agent: Codex worker
+- Trigger: Issue #885 adds an EF entity, migration, repository, unique source constraint, row-version concurrency, and reset writes for recovery.
+- Action: Opened and followed the skill for persistence invariants. Reviewed existing entity mappings, repository transaction patterns, audit logging, outbox failure updates, Stripe event failure updates, and migration conventions.
+- Output artifacts: `DeadLetterMessage` entity, `DeadLetterMessages` table migration, repository implementation, `AppDbContext` mapping, and reset methods for original records.
+- Verification evidence: repository tests validate schema-relevant behavior and duplicate add handling; focused dead-letter tests passed 18/18; non-SQLServer backend suite passed 931/931.
+- Limitations: The full unfiltered suite is locally blocked by existing SQL Server Testcontainers tests because Docker is unavailable; no live database migration was run.
+
+### 2026-06-19 - resilience-test-generation - P1-07 issue #885 terminal failure recovery
+
+- Agent: Codex worker
+- Trigger: Issue #885 touches retry exhaustion, terminal failure capture, admin recovery, idempotency, and Stripe event replay safety.
+- Action: Opened and followed the skill as a failure matrix. Covered outbox terminal failure, Stripe max-attempt failure, poison Stripe payload failure, duplicate dead-letter add, repeated requeue, source-type filtering, not-found detail, and admin authorization failure.
+- Output artifacts: new repository, use-case, function, outbox dispatcher, and Stripe processing tests for database dead-letter capture and manual recovery.
+- Verification evidence: focused dead-letter tests passed 18/18; corrected outbox and Stripe processing regression filter passed 25/25.
+- Limitations: No provider calls, payment actions, deployment, or external queue operations were performed.
+
+### 2026-06-19 - dotnet-backend-testing - P1-07 issue #885 dead-letter tests
+
+- Agent: Codex worker
+- Trigger: Issue #885 requires xUnit coverage for repository behavior, admin handlers, HTTP authorization, terminal outbox capture, terminal Stripe capture, and idempotent requeue.
+- Action: Opened and followed the project skill. Added focused xUnit/FluentAssertions coverage with SQLite-backed EF contexts and deterministic fakes, then ran focused and broader backend gates.
+- Output artifacts: `DeadLetterMessageRepositoryTests`, `ListDeadLettersHandlerTests`, `RequeueDeadLetterHandlerTests`, `AdminDeadLetterHttpFunctionsTests`, and updated outbox/Stripe processing tests.
+- Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter 'FullyQualifiedName~DeadLetter'` passed 18/18; corrected outbox and Stripe regression filter passed 25/25; `--filter 'FullyQualifiedName!~SqlServer'` passed 931/931.
+- Limitations: The exact issue-provided VSTest filter using `or` was invalid in this runner and executed no tests; the full unfiltered suite still fails only on existing SQL Server Testcontainers setup because Docker is unavailable locally.
