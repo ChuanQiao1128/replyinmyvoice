@@ -6,7 +6,8 @@ public interface INotificationService
         NotificationTemplate<TModel> template,
         NotificationRecipient recipient,
         TModel model,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        Guid? outboxMessageId = null);
 }
 
 public interface INotificationEmailProvider
@@ -25,7 +26,8 @@ public sealed record NotificationEmail(
     NotificationRecipient Recipient,
     string Subject,
     string PlainTextBody,
-    string HtmlBody);
+    string HtmlBody,
+    Guid? OutboxMessageId = null);
 
 public sealed record NotificationSendResult(
     bool Sent,

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -24,6 +25,9 @@ public sealed class ResendNotificationEmailProvider(
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        request.Headers.TryAddWithoutValidation(
+            "Idempotency-Key",
+            email.OutboxMessageId?.ToString("D") ?? Guid.NewGuid().ToString("D"));
         request.Headers.UserAgent.ParseAdd("replyinmyvoice-notifications/1.0");
 
         var payload = new ResendEmailRequest(
@@ -43,13 +47,25 @@ public sealed class ResendNotificationEmailProvider(
         try
         {
             using var response = await httpClient.SendAsync(request, cancellationToken);
+            if (IsTransientStatusCode(response.StatusCode))
+            {
+                logger.LogWarning(
+                    "Notification template {TemplateName} was not accepted by Resend and will be retried. StatusCode={StatusCode}.",
+                    email.TemplateName,
+                    (int)response.StatusCode);
+                throw new HttpRequestException(
+                    $"Resend notification send failed with retryable status code {(int)response.StatusCode}.",
+                    null,
+                    response.StatusCode);
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning(
-                    "Notification template {TemplateName} was not accepted by Resend. StatusCode={StatusCode}.",
+                    "Notification template {TemplateName} was permanently rejected by Resend. StatusCode={StatusCode}.",
                     email.TemplateName,
                     (int)response.StatusCode);
-                return NotificationSendResult.Skipped("resend", "provider_error");
+                return NotificationSendResult.Skipped("resend", "provider_permanent_error");
             }
 
             var operationId = await ReadOperationIdAsync(response, cancellationToken);
@@ -63,11 +79,14 @@ public sealed class ResendNotificationEmailProvider(
         {
             logger.LogWarning(
                 exception,
-                "Notification template {TemplateName} could not be sent through Resend.",
+                "Notification template {TemplateName} could not be sent through Resend and will be retried.",
                 email.TemplateName);
-            return NotificationSendResult.Skipped("resend", "provider_unavailable");
+            throw;
         }
     }
+
+    private static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
+        statusCode == HttpStatusCode.TooManyRequests || (int)statusCode >= 500;
 
     private static async Task<string?> ReadOperationIdAsync(
         HttpResponseMessage response,

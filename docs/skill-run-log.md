@@ -7108,3 +7108,39 @@ claude-heavy-planning-handoff
 - Output artifacts: Checklist review only; no architecture/cost document was needed because no hosting model, paid infrastructure, CI/CD target, database, queue, or provider budget changed.
 - Verification evidence: `dotnet build backend-dotnet` passed; focused readiness and Stripe billing service tests passed; banned-term scans over app guard paths and changed backend files returned no matches.
 - Limitations: This was not a dedicated `cloud-readiness-review` skill because no such skill exists in the repo yet. No remote smoke, Azure portal check, production secret inspection, or deploy was performed.
+
+### 2026-06-19 - resilience-test-generation - P1-11 issue #883 Resend notification retry behavior
+
+- Agent: Codex worker
+- Trigger: Issue #883 changes provider failure handling, timeout behavior, outbox retry scheduling, and Resend idempotency keys for Stripe notification emails.
+- Action: Opened and followed the skill as a failure matrix. Critical operation: Stripe notification outbox dispatch through Resend. Boundaries: HTTP 2xx, HTTP 5xx, HTTP 429, HTTP 4xx, `HttpRequestException`, `TaskCanceledException`, outbox persistence, and duplicate redelivery of the same message.
+- Output artifacts: Resend transient failures now throw to the existing outbox retry path, permanent request rejections return `Skipped`, and each Resend request includes a stable `Idempotency-Key` when an outbox message ID is present.
+- Verification evidence: Red focused run failed on missing `NotificationEmail` outbox ID support; after implementation, `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~Resend` passed 4/4.
+- Limitations: No live Resend, Stripe, Azure, deploy, push, PR, or real payment action was performed; tests use deterministic local HTTP fakes.
+
+### 2026-06-19 - state-machine-modeling - P1-11 issue #883 notification outbox lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #883 changes how Resend outcomes drive notification outbox transitions.
+- Action: Opened and followed the skill as a lifecycle checklist. State list: `Pending`, `Processing`, `Sent`, `Failed`. Events: claim due message, provider delivery, permanent provider rejection, retryable provider failure, max attempts reached, and redelivery after scheduled delay. Transition table: `Pending -> Processing` on claim; `Processing -> Sent` when the handler completes after delivery or permanent rejection; `Processing -> Pending` when retryable failure is below max attempts; `Processing -> Failed` when retryable failure reaches max attempts. Illegal transitions: retry scheduling after permanent rejection, duplicate `Sent` email without a stable key, and terminal failure before max attempts.
+- Output artifacts: outbox message ID is threaded into Stripe notification email sends; retryable Resend outcomes preserve the existing `MarkFailedAttemptAsync` backoff transition; permanent 4xx outcomes complete without scheduling retry.
+- Verification evidence: Focused Resend tests passed 4/4, existing `StripeNotificationOutboxHandlerTests` passed 13/13, and non-SQLServer backend tests passed 908/908 on rerun.
+- Limitations: No outbox schema, max attempt count, backoff formula, webhook event subscription, or dispatch observer behavior changed.
+
+### 2026-06-19 - data-module-review - P1-11 issue #883 outbox persistence invariants
+
+- Agent: Codex worker
+- Trigger: Issue #883 relies on the persisted `OutboxMessage.Id`, `Status`, `AttemptCount`, `NextAttemptAt`, and sent/error fields to prevent duplicate notification sends and lost retryable failures.
+- Action: Opened and followed the skill for persistence invariants. Reviewed `OutboxMessage`, `OutboxMessageStatus`, `OutboxMessageRepository`, `DispatchDueOutboxHandler`, Stripe notification outbox handlers, and existing EF SQLite tests. Chose to reuse the stable primary key as the Resend idempotency source instead of adding a migration.
+- Output artifacts: no schema changes; `OutboxMessage.Id` now flows into `NotificationEmail.OutboxMessageId`, and tests assert retryable failure leaves the row `Pending` with incremented attempt count while permanent rejection leaves the row `Sent` with no retry scheduled.
+- Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~Resend` passed; `git diff --check` passed; restricted-substring scan over app guard paths returned no rows.
+- Limitations: Full unfiltered test project remains locally blocked by existing SQL Server Testcontainers tests because Docker is unavailable; no production database or migration was touched.
+
+### 2026-06-19 - dotnet-backend-testing - P1-11 issue #883 Resend and outbox tests
+
+- Agent: Codex worker
+- Trigger: Issue #883 requires C#/.NET xUnit coverage for Resend transient failure, permanent rejection, idempotency header stability, and Stripe notification outbox retry behavior.
+- Action: Opened and followed the project skill. Wrote failing xUnit/FluentAssertions tests first using in-memory SQLite and a hand-written `HttpMessageHandler`; confirmed the red compile failure on missing outbox ID support before implementing production code.
+- Output artifacts: `ResendNotificationEmailProviderTests.cs`, optional outbox ID parameters on notification contracts, updated Stripe notification fakes for interface compatibility, and Resend status-code/network classification tests.
+- Verification evidence: focused Resend filter passed 4/4; `StripeNotificationOutboxHandlerTests` passed 13/13; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName!~ReplyInMyVoice.Tests.SqlServer` passed 908/908 on rerun after one unrelated worker timing test passed by itself.
+- Limitations: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 908 tests but failed the 6 existing SQL Server Testcontainers tests because Docker is unavailable locally. NuGet vulnerability metadata warnings appeared because `api.nuget.org` could not be reached, but restore/build/test execution continued from available assets.

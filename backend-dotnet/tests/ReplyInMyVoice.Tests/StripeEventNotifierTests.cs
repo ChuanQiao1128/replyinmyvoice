@@ -137,7 +137,8 @@ public sealed class StripeEventNotifierTests
             NotificationTemplate<TModel> template,
             NotificationRecipient recipient,
             TModel model,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            Guid? outboxMessageId = null)
         {
             Messages.Add(new RecordedNotification(template.Name, recipient, model!));
             return Task.FromResult(NotificationSendResult.Delivered("recording"));
