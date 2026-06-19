@@ -154,14 +154,6 @@
                   "$ref": "#/components/schemas/Error"
                 },
                 "examples": {
-                  "apiRequiresPaidPlan": {
-                    "value": {
-                      "error": {
-                        "code": "api_requires_paid_plan",
-                        "message": "Public API access requires an active paid plan or usable purchased rewrite credit."
-                      }
-                    }
-                  },
                   "quotaExhausted": {
                     "value": {
                       "error": {
@@ -241,12 +233,6 @@
                 }
               }
             }
-          },
-          "500": {
-            "$ref": "#/components/responses/RewriteFailed"
-          },
-          "503": {
-            "$ref": "#/components/responses/RateLimitUnavailable"
           }
         }
       }
@@ -347,16 +333,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
-                },
-                "examples": {
-                  "notFound": {
-                    "value": {
-                      "error": {
-                        "code": "not_found",
-                        "message": "Rewrite result was not found."
-                      }
-                    }
-                  }
                 }
               }
             }
@@ -387,12 +363,6 @@
                 }
               }
             }
-          },
-          "500": {
-            "$ref": "#/components/responses/RewriteFailed"
-          },
-          "503": {
-            "$ref": "#/components/responses/RateLimitUnavailable"
           }
         }
       }
@@ -471,16 +441,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
-                },
-                "examples": {
-                  "apiRequiresPaidPlan": {
-                    "value": {
-                      "error": {
-                        "code": "api_requires_paid_plan",
-                        "message": "Public API access requires an active paid plan or usable purchased rewrite credit."
-                      }
-                    }
-                  }
                 }
               }
             }
@@ -511,12 +471,6 @@
                 }
               }
             }
-          },
-          "500": {
-            "$ref": "#/components/responses/RewriteFailed"
-          },
-          "503": {
-            "$ref": "#/components/responses/RateLimitUnavailable"
           }
         }
       }
@@ -596,46 +550,6 @@
       }
     },
     "responses": {
-      "RewriteFailed": {
-        "description": "The rewrite request could not be processed.",
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/Error"
-            },
-            "examples": {
-              "rewriteFailed": {
-                "value": {
-                  "error": {
-                    "code": "rewrite_failed",
-                    "message": "The rewrite request could not be processed."
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "RateLimitUnavailable": {
-        "description": "Request limit could not be checked.",
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/Error"
-            },
-            "examples": {
-              "rateLimitUnavailable": {
-                "value": {
-                  "error": {
-                    "code": "rate_limit_unavailable",
-                    "message": "Request limit could not be checked. Please retry later."
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
       "PayloadTooLarge": {
         "description": "Request body exceeded the transport size limit.",
         "content": {
