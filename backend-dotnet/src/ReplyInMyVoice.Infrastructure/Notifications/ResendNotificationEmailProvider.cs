@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -54,6 +55,16 @@ public sealed class ResendNotificationEmailProvider(
             using var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                if (IsTransientStatusCode(response.StatusCode))
+                {
+                    logger.LogWarning(
+                        "Notification template {TemplateName} received a retryable Resend status. StatusCode={StatusCode}.",
+                        email.TemplateName,
+                        (int)response.StatusCode);
+                    throw new RetryableNotificationException(
+                        $"Resend returned retryable status code {(int)response.StatusCode} ({response.StatusCode}).");
+                }
+
                 logger.LogWarning(
                     "Notification template {TemplateName} was not accepted by Resend. StatusCode={StatusCode}.",
                     email.TemplateName,
@@ -68,14 +79,29 @@ public sealed class ResendNotificationEmailProvider(
         {
             throw;
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        catch (TaskCanceledException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Notification template {TemplateName} timed out while sending through Resend.",
+                email.TemplateName);
+            throw new RetryableNotificationException("Resend notification request timed out.", exception);
+        }
+        catch (HttpRequestException exception)
         {
             logger.LogWarning(
                 exception,
                 "Notification template {TemplateName} could not be sent through Resend.",
                 email.TemplateName);
-            return NotificationSendResult.Skipped("resend", "provider_unavailable");
+            throw new RetryableNotificationException("Resend notification request failed.", exception);
         }
+    }
+
+    private static bool IsTransientStatusCode(HttpStatusCode statusCode)
+    {
+        var statusCodeNumber = (int)statusCode;
+        return statusCode == HttpStatusCode.TooManyRequests ||
+               statusCodeNumber is >= 500 and <= 599;
     }
 
     private static async Task<string?> ReadOperationIdAsync(

@@ -6784,3 +6784,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `WebhookDeliveryFailureMetricsTests`, `WebhookStatusHttpFunctionTests`, `AdminRetryWebhookDeliveryTests`, `DispatchDueWebhooksHandlerMetricsTests`, updated `AdminRouteMetadataTests`, and this log entry.
 - Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore --filter "WebhookDeliveryFailureMetricsTests|WebhookStatusHttpFunctionTests|AdminRetryWebhookDeliveryTests|DispatchDueWebhooksHandlerMetricsTests"` passed 5/5; `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore --filter "WebhookOutboxUseCaseTests|HttpWebhookDeliverySenderTests"` passed 14/14; build passed with 0 warnings after audit-clean restore; full backend suite passed 833/833.
 - Limitations: No browser/UI tests applied because this issue has no frontend surface; no live Azure Functions host, production secret, payment provider, external webhook receiver, push, PR, or deployment was used.
+
+### 2026-06-19 - resilience-test-generation - P1-11 issue #863 notification retry
+
+- Agent: Codex worker
+- Trigger: Issue #863 changes retry behavior for Resend notification sends, including 5xx, 429, timeout, cancellation, and permanent 4xx paths.
+- Action: Opened and followed the skill as a failure-boundary checklist. Added local fake-HTTP tests for transient status codes, rate limiting, permanent client errors, network timeout, and cancellation; added an outbox dispatch test proving retryable email failure does not mark the row sent.
+- Output artifacts: `ResendNotificationEmailProviderTests`, `StripeNotificationOutboxHandlerTests.Dispatch_retries_after_transient_email_failure`, `RetryableNotificationException`, Resend status-code classification, and this log entry.
+- Verification evidence: Focused acceptance filters passed for the new Resend tests, existing outbox backoff test, new transient email outbox test, and full backend test project passed 844/844.
+- Limitations: Tests use local fakes and EF Core SQLite; no live Resend, Stripe, Azure Functions host, production database, deployment, push, PR, or secret-backed service was exercised.
+
+### 2026-06-19 - state-machine-modeling - P1-11 issue #863 notification outbox lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #863 changes the outbox lifecycle outcome for notification provider failures from non-throwing skip to retryable exception handling.
+- Action: Opened and followed the skill as a lifecycle checklist. State list: `Pending`, `Processing`, `Sent`, `Failed`. Events: claim due message, provider success, provider permanent skip, provider retryable failure, cancellation, max-attempt exhaustion. Transition table kept existing dispatcher transitions unchanged: success or permanent skip reaches `Sent`; retryable provider exception returns `Processing -> Pending` with attempt count and backoff until max attempts; cancellation rethrows.
+- Output artifacts: Resend retryable exception path, unchanged dispatcher catch behavior, and `Dispatch_retries_after_transient_email_failure`.
+- Verification evidence: `Dispatch_retries_with_backoff_when_notifier_throws` and `Dispatch_retries_after_transient_email_failure` both passed; full backend test project passed 844/844.
+- Limitations: No new status enum, schema, migration, lease duration, max-attempt policy, Service Bus behavior, billing logic, or payment state transition was changed.
+
+### 2026-06-19 - data-module-review - P1-11 issue #863 outbox persistence invariant
+
+- Agent: Codex worker
+- Trigger: Issue #863 depends on persisted outbox retry invariants: retryable notification failure must increment attempts, set `NextAttemptAt`, capture `LastError`, and avoid `Sent`.
+- Action: Opened and followed the skill as a persistence-safety review. Read `OutboxMessageRepository`, `DispatchDueOutboxHandler`, `StripeNotificationOutboxMessageHandlers`, and the SQLite-backed outbox tests. Kept repository and schema code unchanged because existing `MarkFailedAttemptAsync` already implements bounded exponential backoff when the provider throws.
+- Output artifacts: `StripeNotificationOutboxHandlerTests.Dispatch_retries_after_transient_email_failure` and this log entry.
+- Verification evidence: The new test asserted `Status == Pending`, `AttemptCount == 1`, `NextAttemptAt > dispatchNow`, and `LastError` contains the retryable exception message; full backend test project passed 844/844.
+- Limitations: No migration, index, transaction strategy, production database query plan, or live provider side effect was exercised.
+
+### 2026-06-19 - dotnet-backend-testing - P1-11 issue #863 notification retry tests
+
+- Agent: Codex worker
+- Trigger: Issue #863 requires new C# xUnit tests for Resend provider status-code handling and outbox retry behavior.
+- Action: Opened and followed the project skill for test-level selection. Wrote provider unit tests with a hand-written `HttpMessageHandler` fake and an EF Core SQLite-backed outbox handler test using the real notification service path with a retryable fake email provider.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/ResendNotificationEmailProviderTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeNotificationOutboxHandlerTests.cs`, and this log entry.
+- Verification evidence: Initial focused red run failed before implementation because `RetryableNotificationException` did not exist; after implementation, all focused acceptance filters passed and full backend test project passed 844/844.
+- Limitations: No browser/UI tests applied because this issue has no frontend surface; no live Resend, live payment provider, deployment, push, PR, or secret-backed service was used.
