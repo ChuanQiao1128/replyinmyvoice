@@ -106,6 +106,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUsageReservationRepository, UsageReservationRepository>();
         services.AddScoped<IRewriteCreditRepository, RewriteCreditRepository>();
         services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
+        services.AddScoped<IDeadLetterMessageRepository, DeadLetterMessageRepository>();
         services.AddScoped<IWebhookDeliveryRepository, WebhookDeliveryRepository>();
         services.AddScoped<IPromoCodeRepository, PromoCodeRepository>();
         services.AddScoped<IPromoCodeRedemptionRepository, PromoCodeRedemptionRepository>();
@@ -163,8 +164,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GetBillingSupportQueueHandler>();
         services.AddScoped<ResolveBillingSupportRequestHandler>();
         services.AddScoped<ExportAccountingRevenueHandler>();
+        services.AddScoped<ListDeadLettersHandler>();
+        services.AddScoped<GetDeadLetterDetailHandler>();
+        services.AddScoped<RequeueDeadLetterHandler>();
         services.AddScoped<SetUserSuspensionHandler>();
         services.AddScoped<IssueRefundHandler>();
+        services.AddScoped<AdminRetryWebhookDeliveryHandler>();
         services.AddScoped<CreateCheckoutSessionHandler>();
         services.AddScoped<CreatePortalSessionHandler>();
         services.AddScoped<CancelSubscriptionHandler>();
@@ -196,10 +201,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ReconcileStripeHandler>();
         services.AddScoped<GenerateApiKeyHandler>();
         services.AddScoped<ListApiKeysHandler>();
+        services.AddScoped<RehashPendingApiKeysHandler>();
         services.AddScoped<RotateApiKeyHandler>();
         services.AddScoped<RevokeApiKeyHandler>();
         services.AddScoped<SetApiKeyWebhookHandler>();
         services.AddScoped<ClearApiKeyWebhookHandler>();
+        services.AddScoped<GetWebhookDeliveryStatusHandler>();
         services.AddScoped<GetApiUsageSummaryHandler>();
         services.AddScoped<GetApiUsageSeriesHandler>();
         services.AddScoped<GetApiUsageRecentHandler>();
@@ -236,6 +243,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IOutboxMessageHandler, StripeCardExpiringOutboxMessageHandler>();
         services.AddTransient<IOutboxMessageHandler, StripeReconciliationAlertOutboxMessageHandler>();
         services.AddScoped<IOutboxDispatchObserver>(sp => new OutboxDispatchTelemetryObserver(
+            sp.GetRequiredService<IDeadLetterMessageRepository>(),
             sp.GetRequiredService<ILogger<OutboxDispatchTelemetryObserver>>(),
             sp.GetService<TelemetryClient>()));
         services.AddScoped<ExpiredReservationCleanupService>();
@@ -256,6 +264,7 @@ public static class ServiceCollectionExtensions
                 sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<AppStripeBillingClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
         services.AddScoped<AppStripeRefundClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
+        services.AddScoped<IStripeAuthenticationProbe>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
         services.AddScoped(sp => new StripeBillingService(
             sp.GetRequiredService<Func<AppDbContext>>(),
             configuration,

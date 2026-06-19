@@ -1578,6 +1578,92 @@ public sealed class StripeEventUseCaseTests
     }
 
     [Fact]
+    public async Task ProcessWebhookEventAsync_partial_refund_rounds_clawback_to_nearest_credit_and_is_cumulative()
+    {
+        // P0-3: a 33% refund of a 10-credit pack must claw back round(3.3)=3 credits, leaving 7 — not 4
+        // (Math.Ceiling, which left 6). A second, larger CUMULATIVE refund must recompute the absolute
+        // remaining from the original grant (idempotent, no compounding).
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:30:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 10,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-1),
+                StripePaymentIntentId = "pi_partial_refund_rounding",
+                StripeSku = "quick_pack",
+                StripeAmountTotal = 1000,
+                StripeCurrency = "nzd",
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateWebhookHandler(handlerDb);
+
+        var firstRefund = await HandleWebhookAsync(
+            handler,
+            "evt_partial_refund_33",
+            "charge.refunded",
+            """
+            {
+              "id": "evt_partial_refund_33",
+              "type": "charge.refunded",
+              "data": {
+                "object": {
+                  "id": "ch_partial_refund",
+                  "payment_intent": "pi_partial_refund_rounding",
+                  "amount": 1000,
+                  "amount_refunded": 330,
+                  "refunded": false
+                }
+              }
+            }
+            """,
+            now);
+        firstRefund.Should().BeTrue();
+
+        await using (var afterFirstDb = fixture.CreateContext())
+        {
+            var afterFirst = await afterFirstDb.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_partial_refund_rounding");
+            afterFirst.AmountGranted.Should().Be(7); // round(3.3)=3 revoked; Math.Ceiling would have left 6
+            afterFirst.OriginalAmountGranted.Should().Be(10);
+        }
+
+        var secondRefund = await HandleWebhookAsync(
+            handler,
+            "evt_partial_refund_66",
+            "charge.refunded",
+            """
+            {
+              "id": "evt_partial_refund_66",
+              "type": "charge.refunded",
+              "data": {
+                "object": {
+                  "id": "ch_partial_refund",
+                  "payment_intent": "pi_partial_refund_rounding",
+                  "amount": 1000,
+                  "amount_refunded": 660,
+                  "refunded": false
+                }
+              }
+            }
+            """,
+            now.AddSeconds(1));
+        secondRefund.Should().BeTrue();
+
+        await using var verifyDb = fixture.CreateContext();
+        var afterSecond = await verifyDb.RewriteCredits.SingleAsync(x => x.StripePaymentIntentId == "pi_partial_refund_rounding");
+        afterSecond.AmountGranted.Should().Be(3); // recomputed from original 10 and cumulative 66% (round 6.6=7), not compounded
+        afterSecond.OriginalAmountGranted.Should().Be(10);
+    }
+
+    [Fact]
     public async Task ProcessExpiredPaymentGraceAsync_drains_expired_users_in_batches()
     {
         await using var fixture = await DbFixture.CreateAsync();
@@ -1852,6 +1938,7 @@ public sealed class StripeEventUseCaseTests
                     new AdminUserRepository(db),
                     new UnitOfWork(db)),
                 new RewriteCreditRepository(db),
+                new DeadLetterMessageRepository(db),
                 new UnitOfWork(db),
                 new StripeEventProcessingOptions(MaxAttempts: maxAttempts, InlineBudgetSeconds: 8),
                 NullLogger<ProcessPendingStripeEventsHandler>.Instance,

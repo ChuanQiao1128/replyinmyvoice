@@ -13,7 +13,8 @@ namespace ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 public sealed class DispatchDueWebhooksHandler(
     IWebhookDeliveryRepository webhookDeliveries,
     IWebhookDeliverySender sender,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    IBusinessMetrics metrics)
 {
     private const int ClaimRaceMaxAttempts = 5;
     private static readonly TimeSpan ClaimLease = TimeSpan.FromSeconds(45);
@@ -56,16 +57,16 @@ public sealed class DispatchDueWebhooksHandler(
                 }
                 else
                 {
-                    await MarkFailedAttemptAsync(delivery.Id, command.Now, $"HTTP {result.StatusCode}", ct);
+                    await MarkFailedAttemptAsync(delivery, command.Now, $"HTTP {result.StatusCode}", ct);
                 }
             }
             catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
             {
-                await MarkFailedAttemptAsync(delivery.Id, command.Now, ex.Message, ct);
+                await MarkFailedAttemptAsync(delivery, command.Now, ex.Message, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                await MarkFailedAttemptAsync(delivery.Id, command.Now, ex.Message, ct);
+                await MarkFailedAttemptAsync(delivery, command.Now, ex.Message, ct);
             }
         }
 
@@ -73,13 +74,30 @@ public sealed class DispatchDueWebhooksHandler(
     }
 
     private async Task MarkFailedAttemptAsync(
-        Guid deliveryId,
+        WebhookDelivery delivery,
         DateTimeOffset now,
         string error,
         CancellationToken ct)
     {
-        await webhookDeliveries.MarkFailedAttemptAsync(deliveryId, now, error, ct);
+        var failure = await webhookDeliveries.MarkFailedAttemptAsync(delivery.Id, now, error, ct);
         await unitOfWork.SaveChangesAsync(ct);
+        if (failure.Status == WebhookDeliveryStatus.Failed &&
+            failure.AttemptCount >= failure.MaxAttempts)
+        {
+            var apiKeyId = delivery.ApiKeyId.ToString("D");
+            metrics.Record(
+                BusinessMetricNames.WebhookFailurePerApiKeyTotal,
+                1,
+                BusinessMetricDimensions.ApiKeyId,
+                apiKeyId);
+            metrics.Record(
+                BusinessMetricNames.WebhookDeliveryConsecutiveFailureTotal,
+                1,
+                BusinessMetricDimensions.ApiKeyId,
+                apiKeyId,
+                BusinessMetricDimensions.TerminalReason,
+                "max_attempts_exceeded");
+        }
     }
 
     private static WebhookSendRequest BuildRequest(WebhookDelivery delivery, DateTimeOffset now)

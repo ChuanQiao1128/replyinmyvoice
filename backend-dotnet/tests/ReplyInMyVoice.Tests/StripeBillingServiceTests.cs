@@ -120,6 +120,11 @@ public sealed class StripeBillingServiceTests
                 request.Amount,
                 request.Currency,
                 "succeeded"));
+
+        public Task ValidateAuthenticationAsync(
+            IStripeClient stripeClient,
+            CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     [Fact]

@@ -13,10 +13,27 @@ public sealed class RecordingBusinessMetrics : IBusinessMetrics
 
     public void Record(string metricName, double value, string dimensionName, string dimensionValue) =>
         _records.Add(new BusinessMetricRecord(metricName, value, dimensionName, dimensionValue));
+
+    public void Record(
+        string metricName,
+        double value,
+        string firstDimensionName,
+        string firstDimensionValue,
+        string secondDimensionName,
+        string secondDimensionValue) =>
+        _records.Add(new BusinessMetricRecord(
+            metricName,
+            value,
+            firstDimensionName,
+            firstDimensionValue,
+            secondDimensionName,
+            secondDimensionValue));
 }
 
 public sealed record BusinessMetricRecord(
     string Name,
     double Value,
     string? DimensionName,
-    string? DimensionValue);
+    string? DimensionValue,
+    string? SecondDimensionName = null,
+    string? SecondDimensionValue = null);

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.ApiKey;
 using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Repositories;
 using ReplyInMyVoice.Infrastructure.Services;
@@ -237,6 +238,96 @@ public sealed class ApiKeyUseCaseTests
         commands.CommandTexts.Should().Contain(commandText => HasApiUsageCreatedAtLowerBound(commandText));
     }
 
+    [Fact]
+    public async Task GetWebhookDeliveryStatusAsync_returns_recent_deliveries()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-12T10:00:00Z");
+        var apiKeyId = await SeedApiKeyAsync(fixture, owner.Id, "Webhook status key", "1234", now);
+        var hiddenDeliveryId = await SeedWebhookDeliveryAsync(
+            fixture,
+            owner.Id,
+            apiKeyId,
+            now.AddMinutes(20),
+            WebhookDeliveryStatus.Failed,
+            attemptCount: 5,
+            maxAttempts: 5,
+            lastError: "soft-deleted attempt",
+            nextAttemptAt: now.AddMinutes(20),
+            deletedAttemptAt: now.AddMinutes(21));
+
+        var expectedIds = new List<Guid>();
+        for (var index = 0; index < 12; index++)
+        {
+            var createdAt = now.AddMinutes(index);
+            var deliveryId = await SeedWebhookDeliveryAsync(
+                fixture,
+                owner.Id,
+                apiKeyId,
+                createdAt,
+                index % 3 == 0 ? WebhookDeliveryStatus.Failed : WebhookDeliveryStatus.Pending,
+                attemptCount: index,
+                maxAttempts: 5,
+                lastError: index % 3 == 0 ? $"HTTP {500 + index}" : null,
+                nextAttemptAt: createdAt.AddMinutes(5));
+            expectedIds.Add(deliveryId);
+        }
+
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateWebhookStatusHandler(handlerDb);
+
+        var result = await handler.HandleAsync(
+            new GetWebhookDeliveryStatusQuery(owner.Id, apiKeyId, Limit: 10),
+            CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.Deliveries.Select(x => x.Id).Should().Equal(expectedIds
+            .AsEnumerable()
+            .Reverse()
+            .Take(10));
+        result.Deliveries.Should().HaveCount(10);
+        result.Deliveries.Select(x => x.CreatedAt).Should().BeInDescendingOrder();
+        result.Deliveries.Should().NotContain(x => x.Id == hiddenDeliveryId);
+        var newest = result.Deliveries[0];
+        newest.Status.Should().Be(WebhookDeliveryStatus.Pending);
+        newest.AttemptCount.Should().Be(11);
+        newest.MaxAttempts.Should().Be(5);
+        newest.LastError.Should().BeNull();
+        newest.NextAttemptAt.Should().Be(now.AddMinutes(16));
+        newest.CreatedAt.Should().Be(now.AddMinutes(11));
+        result.Summary.Total.Should().Be(10);
+        result.Summary.Failed.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task GetWebhookDeliveryStatusAsync_returns_404_for_unowned_key()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await fixture.CreateUserAsync();
+        var other = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-12T10:00:00Z");
+        var apiKeyId = await SeedApiKeyAsync(fixture, owner.Id, "Webhook status key", "1234", now);
+        await SeedWebhookDeliveryAsync(
+            fixture,
+            owner.Id,
+            apiKeyId,
+            now,
+            WebhookDeliveryStatus.Pending,
+            attemptCount: 0,
+            maxAttempts: 5,
+            lastError: null,
+            nextAttemptAt: now);
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateWebhookStatusHandler(handlerDb);
+
+        var result = await handler.HandleAsync(
+            new GetWebhookDeliveryStatusQuery(other.Id, apiKeyId, Limit: 10),
+            CancellationToken.None);
+
+        result.Should().BeNull();
+    }
+
     private static GenerateApiKeyHandler CreateGenerateHandler(AppDbContext db) =>
         new(new ApiKeyRepository(db), new UnitOfWork(db));
 
@@ -268,6 +359,9 @@ public sealed class ApiKeyUseCaseTests
 
     private static GetApiUsageRecentHandler CreateUsageRecentHandler(AppDbContext db) =>
         new(new ApiKeyUsageRepository(db));
+
+    private static GetWebhookDeliveryStatusHandler CreateWebhookStatusHandler(AppDbContext db) =>
+        new(new ApiKeyRepository(db), new WebhookDeliveryRepository(db));
 
     private static IConfiguration TestConfiguration() =>
         new ConfigurationBuilder()
@@ -307,6 +401,65 @@ public sealed class ApiKeyUseCaseTests
         };
         db.ApiKeys.Add(key);
         return key;
+    }
+
+    private static async Task<Guid> SeedApiKeyAsync(
+        DbFixture fixture,
+        Guid userId,
+        string name,
+        string last4,
+        DateTimeOffset now)
+    {
+        await using var db = fixture.CreateContext();
+        var apiKey = AddKey(db, userId, name, last4, now);
+        await db.SaveChangesAsync();
+        return apiKey.Id;
+    }
+
+    private static async Task<Guid> SeedWebhookDeliveryAsync(
+        DbFixture fixture,
+        Guid userId,
+        Guid apiKeyId,
+        DateTimeOffset createdAt,
+        WebhookDeliveryStatus status,
+        int attemptCount,
+        int maxAttempts,
+        string? lastError,
+        DateTimeOffset nextAttemptAt,
+        DateTimeOffset? deletedAttemptAt = null)
+    {
+        await using var db = fixture.CreateContext();
+        var attempt = new RewriteAttempt
+        {
+            UserId = userId,
+            ApiKeyId = apiKeyId,
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            RequestHash = Guid.NewGuid().ToString("N"),
+            RequestJson = "{\"roughDraftReply\":\"Thanks for your message.\",\"tone\":\"warm\"}",
+            Status = RewriteAttemptStatus.Succeeded,
+            ResultJson = "{\"rewrittenText\":\"Thanks for your message.\",\"naturalness\":{\"draftAiLikePercent\":75,\"rewriteAiLikePercent\":20}}",
+            CreatedAt = createdAt.AddMinutes(-1),
+            CompletedAt = createdAt,
+            ExpiresAt = createdAt.AddMinutes(10),
+            DeletedAt = deletedAttemptAt,
+        };
+        var delivery = new WebhookDelivery
+        {
+            ApiKeyId = apiKeyId,
+            RewriteAttempt = attempt,
+            Url = "https://93.184.216.34/rewrite",
+            Status = status,
+            AttemptCount = attemptCount,
+            MaxAttempts = maxAttempts,
+            LastError = lastError,
+            CreatedAt = createdAt,
+            NextAttemptAt = nextAttemptAt,
+        };
+
+        db.RewriteAttempts.Add(attempt);
+        db.WebhookDeliveries.Add(delivery);
+        await db.SaveChangesAsync();
+        return delivery.Id;
     }
 
     private static ApiKeyUsage Usage(

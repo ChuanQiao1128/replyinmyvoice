@@ -19,6 +19,16 @@ public sealed class ApiKeyRepository(AppDbContext db) : IApiKeyRepository
             .AsTracking()
             .SingleOrDefaultAsync(x => x.KeyHash == keyHash, ct);
 
+    public async Task<IReadOnlyList<ApiKey>> ListRehashPendingAsync(
+        int batchSize,
+        CancellationToken ct = default) =>
+        await db.ApiKeys
+            .AsTracking()
+            .Where(x => x.RehashPending)
+            .OrderBy(x => x.Id)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<ApiKey?> GetByIdForUserAsync(
         Guid userId,
         Guid keyId,

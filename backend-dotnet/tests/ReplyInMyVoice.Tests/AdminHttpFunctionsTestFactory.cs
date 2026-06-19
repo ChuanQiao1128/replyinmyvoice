@@ -27,6 +27,9 @@ internal static class AdminHttpFunctionsTestFactory
         var billingSupportRequests = new BillingSupportRequestRepository(db);
         var credits = new RewriteCreditRepository(db);
         var promoAdmin = new PromoAdminRepository(db);
+        var deadLetters = new DeadLetterMessageRepository(db);
+        var outboxMessages = new OutboxMessageRepository(db);
+        var stripeEvents = new StripeEventRepository(db);
         var unitOfWork = new UnitOfWork(db);
         AppStripeRefundClient? applicationRefundClient = refundClient is null
             ? null
@@ -44,6 +47,9 @@ internal static class AdminHttpFunctionsTestFactory
             new GetBillingSupportQueueHandler(billingSupportRequests),
             new ResolveBillingSupportRequestHandler(billingSupportRequests, adminUsers, unitOfWork),
             new ExportAccountingRevenueHandler(credits),
+            new ListDeadLettersHandler(deadLetters, adminUsers, unitOfWork),
+            new GetDeadLetterDetailHandler(deadLetters, adminUsers, unitOfWork),
+            new RequeueDeadLetterHandler(deadLetters, outboxMessages, stripeEvents, adminUsers, unitOfWork),
             new SetUserSuspensionHandler(adminUsers, unitOfWork),
             new IssueRefundHandler(adminUsers, credits, applicationRefundClient, unitOfWork),
             new CreatePromoCodeHandler(promoAdmin, unitOfWork),
@@ -52,7 +58,8 @@ internal static class AdminHttpFunctionsTestFactory
             new UpdatePromoCodeHandler(promoAdmin, unitOfWork),
             new SetPromoCodeActiveHandler(promoAdmin, unitOfWork),
             new ArchivePromoCodeHandler(promoAdmin, unitOfWork),
-            new RestorePromoCodeHandler(promoAdmin, unitOfWork));
+            new RestorePromoCodeHandler(promoAdmin, unitOfWork),
+            new AdminRetryWebhookDeliveryHandler(new WebhookDeliveryRepository(db), unitOfWork));
     }
 
     private sealed class LegacyStripeRefundClientAdapter(LegacyStripeRefundClient refundClient) : AppStripeRefundClient

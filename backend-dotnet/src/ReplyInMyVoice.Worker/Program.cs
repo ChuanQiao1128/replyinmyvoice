@@ -12,6 +12,7 @@ builder.Services.AddReplyInMyVoiceInfrastructure(
     requireServiceBusConsumer: inProcessRewriteWorkerEnabled);
 builder.Services.AddHostedService<OutboxDispatcherWorker>();
 builder.Services.AddHostedService<ExpiredReservationCleanupWorker>();
+builder.Services.AddHostedService<ApiKeyPepperRehashWorker>();
 
 if (inProcessRewriteWorkerEnabled)
 {

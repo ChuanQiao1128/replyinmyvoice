@@ -14,6 +14,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<StripeInvoice> StripeInvoices => Set<StripeInvoice>();
     public DbSet<StripeReconciliationRun> StripeReconciliationRuns => Set<StripeReconciliationRun>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<DeadLetterMessage> DeadLetterMessages => Set<DeadLetterMessage>();
     public DbSet<RewriteCredit> RewriteCredits => Set<RewriteCredit>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<LearningRun> LearningRuns => Set<LearningRun>();
@@ -187,6 +188,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.LockedBy).HasMaxLength(160);
             entity.Property(x => x.CorrelationId).HasMaxLength(160);
             entity.Property(x => x.LastError).HasMaxLength(1000);
+            entity.Property(x => x.RowVersion).IsConcurrencyToken();
+        });
+
+        modelBuilder.Entity<DeadLetterMessage>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.SourceType, x.CreatedAt });
+            entity.HasIndex(x => new { x.SourceType, x.RequeuedAt })
+                .HasFilter("[RequeuedAt] IS NULL");
+            entity.Property(x => x.SourceType).HasMaxLength(40);
+            entity.Property(x => x.SourceId).HasMaxLength(160);
+            entity.Property(x => x.SourceData).IsRequired();
+            entity.Property(x => x.FailureReason).HasMaxLength(1000);
             entity.Property(x => x.RowVersion).IsConcurrencyToken();
         });
 
@@ -387,7 +401,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.KeyHash).IsUnique();
             entity.HasIndex(x => new { x.UserId, x.CreatedAt });
             entity.HasIndex(x => x.PlanTier);
+            entity.HasIndex(x => new { x.RehashPending, x.PepperVersion });
             entity.Property(x => x.KeyHash).HasMaxLength(200);
+            entity.Property(x => x.PepperVersion).IsRequired(false);
+            entity.Property(x => x.RehashPending).HasDefaultValue(false);
             entity.Property(x => x.Last4).HasMaxLength(4).IsRequired(false);
             entity.Property(x => x.IsTest).HasDefaultValue(false);
             entity.Property(x => x.Name).HasMaxLength(200);

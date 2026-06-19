@@ -8,6 +8,8 @@ public interface IApiKeyRepository
 
     Task<ApiKey?> GetByKeyHashAsync(string keyHash, CancellationToken ct = default);
 
+    Task<IReadOnlyList<ApiKey>> ListRehashPendingAsync(int batchSize, CancellationToken ct = default);
+
     Task<ApiKey?> GetByIdForUserAsync(Guid userId, Guid keyId, CancellationToken ct = default);
 
     Task<IReadOnlyList<ApiKey>> ListByUserIdAsync(Guid userId, CancellationToken ct = default);

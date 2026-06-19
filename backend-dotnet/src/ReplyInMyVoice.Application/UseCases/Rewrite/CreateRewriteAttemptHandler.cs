@@ -120,8 +120,15 @@ public sealed class CreateRewriteAttemptHandler(
 
             if (consumedCreditId is null)
             {
+                var userCredits = await credits.ListByUserIdAsync(command.UserId, ct);
+                var hasExpiredCreditBalance = userCredits.Any(x =>
+                    x.ExpiresAt is not null &&
+                    x.ExpiresAt <= command.Now &&
+                    x.AmountGranted - x.AmountConsumed > 0);
+
                 return new CreateAttemptOutcome(
-                    ApplicationResult<RewriteAttemptDto>.QuotaExceeded(),
+                    ApplicationResult<RewriteAttemptDto>.QuotaExceeded(
+                        hasExpiredCreditBalance ? RewriteEngineErrorCodes.CreditsExpired : null),
                     OutboxMessageId: null);
             }
         }

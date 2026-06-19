@@ -30,6 +30,9 @@ public sealed class AdminRouteMetadataTests
             "console/billing-support-requests",
             "console/billing-support-requests/{requestId}/resolve",
             "console/accounting/revenue.csv",
+            "console/dead-letters",
+            "console/dead-letters/{id}",
+            "console/dead-letters/{id}/requeue",
             "console/promo-codes",
             "console/promo-codes",
             "console/promo-codes/{promoCodeId}",
@@ -42,6 +45,7 @@ public sealed class AdminRouteMetadataTests
             "console/users/{userId}/credits",
             "console/users/{userId}/suspension",
             "console/users/{userId}/refund",
+            "console/webhooks/{id:guid}/retry",
         ]);
     }
 }

@@ -290,6 +290,45 @@ public sealed class ApiKeyHttpFunctionsTests
         stored.WebhookSecret.Should().BeNull();
     }
 
+    [Fact]
+    public async Task GetWebhookDeliveryStatus_returns_owner_deliveries_and_not_found_for_other_user()
+    {
+        Environment.SetEnvironmentVariable("API_KEY_PEPPER", TestPepper);
+        await using var fixture = await DbFixture.CreateAsync();
+        var owner = await SeedUserAsync(fixture, "entra-key-webhook-status-owner");
+        await SeedUserAsync(fixture, "entra-key-webhook-status-other");
+        var generated = await GenerateApiKeyAsync(
+            fixture,
+            owner.Id,
+            "Server key");
+        var now = DateTimeOffset.Parse("2026-06-12T10:00:00Z");
+        var deliveryId = await SeedWebhookDeliveryAsync(fixture, owner.Id, generated.Id, now);
+        var functions = CreateFunctions(fixture.CreateContext);
+
+        var ownerResult = await functions.GetWebhookDeliveryStatus(
+            CreateRequest("entra-key-webhook-status-owner", "owner@example.com"),
+            generated.Id,
+            CancellationToken.None);
+        var otherResult = await functions.GetWebhookDeliveryStatus(
+            CreateRequest("entra-key-webhook-status-other", "other@example.com"),
+            generated.Id,
+            CancellationToken.None);
+
+        var ok = ownerResult.Should().BeOfType<OkObjectResult>().Subject;
+        var deliveries = ok.Value.Should()
+            .BeAssignableTo<IReadOnlyList<ApiKeyWebhookDeliveryStatusResponse>>()
+            .Subject;
+        var item = deliveries.Should().ContainSingle().Subject;
+        item.Id.Should().Be(deliveryId);
+        item.Status.Should().Be("Pending");
+        item.AttemptCount.Should().Be(2);
+        item.MaxAttempts.Should().Be(5);
+        item.LastError.Should().Be("HTTP 500");
+        item.NextAttemptAt.Should().Be(now.AddMinutes(5));
+        item.CreatedAt.Should().Be(now);
+        otherResult.Should().BeOfType<NotFoundResult>();
+    }
+
     private static ApiKeyHttpFunctions CreateFunctions(Func<AppDbContext> createContext)
     {
         var db = createContext();
@@ -305,7 +344,8 @@ public sealed class ApiKeyHttpFunctionsTests
             new RotateApiKeyHandler(apiKeys, unitOfWork),
             new RevokeApiKeyHandler(apiKeys, unitOfWork),
             new SetApiKeyWebhookHandler(apiKeys, unitOfWork),
-            new ClearApiKeyWebhookHandler(apiKeys, unitOfWork));
+            new ClearApiKeyWebhookHandler(apiKeys, unitOfWork),
+            new GetWebhookDeliveryStatusHandler(apiKeys, new WebhookDeliveryRepository(db)));
     }
 
     private static HttpRequest CreateRequest(
@@ -355,6 +395,45 @@ public sealed class ApiKeyHttpFunctionsTests
             .HandleAsync(new GenerateApiKeyCommand(userId, name));
 
         return (generated.Id, generated.Plaintext);
+    }
+
+    private static async Task<Guid> SeedWebhookDeliveryAsync(
+        DbFixture fixture,
+        Guid userId,
+        Guid apiKeyId,
+        DateTimeOffset now)
+    {
+        await using var db = fixture.CreateContext();
+        var attempt = new RewriteAttempt
+        {
+            UserId = userId,
+            ApiKeyId = apiKeyId,
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            RequestHash = Guid.NewGuid().ToString("N"),
+            RequestJson = "{\"roughDraftReply\":\"Thanks for your message.\",\"tone\":\"warm\"}",
+            Status = RewriteAttemptStatus.Succeeded,
+            ResultJson = "{\"rewrittenText\":\"Thanks for your message.\",\"naturalness\":{\"draftAiLikePercent\":75,\"rewriteAiLikePercent\":20}}",
+            CreatedAt = now.AddMinutes(-1),
+            CompletedAt = now,
+            ExpiresAt = now.AddMinutes(10),
+        };
+        var delivery = new WebhookDelivery
+        {
+            ApiKeyId = apiKeyId,
+            RewriteAttempt = attempt,
+            Url = "https://93.184.216.34/rewrite",
+            Status = WebhookDeliveryStatus.Pending,
+            AttemptCount = 2,
+            MaxAttempts = 5,
+            LastError = "HTTP 500",
+            CreatedAt = now,
+            NextAttemptAt = now.AddMinutes(5),
+        };
+
+        db.RewriteAttempts.Add(attempt);
+        db.WebhookDeliveries.Add(delivery);
+        await db.SaveChangesAsync();
+        return delivery.Id;
     }
 
     private static IConfiguration BuildConfiguration() =>

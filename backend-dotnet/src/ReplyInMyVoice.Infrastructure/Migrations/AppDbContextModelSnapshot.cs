@@ -106,6 +106,9 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("PepperVersion")
+                        .HasColumnType("int");
+
                     b.Property<string>("PlanTier")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -113,6 +116,11 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
 
                     b.Property<int>("RateLimitPerMinute")
                         .HasColumnType("int");
+
+                    b.Property<bool>("RehashPending")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("datetimeoffset");
@@ -145,6 +153,8 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("PlanTier");
+
+                    b.HasIndex("RehashPending", "PepperVersion");
 
                     b.HasIndex("UserId", "CreatedAt");
 
@@ -354,6 +364,51 @@ namespace ReplyInMyVoice.Infrastructure.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("BillingSupportRequests");
+                });
+
+            modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.DeadLetterMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("FailureReason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("RequeuedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourceData")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceType", "CreatedAt");
+
+                    b.HasIndex("SourceType", "RequeuedAt")
+                        .HasFilter("[RequeuedAt] IS NULL");
+
+                    b.ToTable("DeadLetterMessages");
                 });
 
             modelBuilder.Entity("ReplyInMyVoice.Domain.Entities.LearningFinding", b =>
