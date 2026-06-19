@@ -75,15 +75,18 @@ public sealed class OutboxDispatcherWorker(
                 break;
             }
 
+            // Register the in-flight gate BEFORE invoking the handler so StopAsync deterministically
+            // observes and drains this iteration — no window where _inFlightIteration is still null
+            // while an iteration is already running.
+            var iterationGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref _inFlightIteration, iterationGate.Task);
             try
             {
                 using var scope = scopeFactory.CreateScope();
                 var handler = scope.ServiceProvider.GetRequiredService<DispatchDueOutboxHandler>();
-                var iteration = handler.HandleAsync(
+                await handler.HandleAsync(
                     new DispatchDueOutboxCommand(DateTimeOffset.UtcNow, _instanceId, BatchSize: 25),
                     stoppingToken);
-                Volatile.Write(ref _inFlightIteration, ObserveCompletion(iteration));
-                await iteration;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -96,14 +99,8 @@ public sealed class OutboxDispatcherWorker(
             finally
             {
                 Volatile.Write(ref _inFlightIteration, null);
+                iterationGate.TrySetResult();
             }
         }
     }
-
-    private static Task ObserveCompletion(Task iteration) =>
-        iteration.ContinueWith(
-            static _ => { },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
 }
