@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Domain.Entities;
@@ -415,6 +416,42 @@ public sealed class WebhookOutboxUseCaseTests
         failure.MessageId.Should().Be(outbox.Id);
         failure.MessageType.Should().Be("RewriteJobCreated");
         failure.Error.Should().Contain("handler failed");
+    }
+
+    [Fact]
+    public async Task DispatchDueOutboxAsync_dead_letters_terminal_failure()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var now = DateTimeOffset.Parse("2026-05-20T00:00:00Z");
+        await SeedOutboxAsync(
+            fixture,
+            Guid.NewGuid(),
+            now,
+            attemptCount: 9,
+            maxAttempts: 10);
+        var outboxHandler = new RecordingOutboxMessageHandler("RewriteJobCreated", fail: true);
+        await using var handlerDb = fixture.CreateContext();
+        var observer = new ReplyInMyVoice.Infrastructure.Services.OutboxDispatchTelemetryObserver(
+            new DeadLetterMessageRepository(handlerDb),
+            NullLogger<ReplyInMyVoice.Infrastructure.Services.OutboxDispatchTelemetryObserver>.Instance);
+        var handler = CreateOutboxHandler(handlerDb, observer, outboxHandler);
+
+        var dispatched = await handler.HandleAsync(
+            new DispatchDueOutboxCommand(now.AddSeconds(1), "test-worker", BatchSize: 10),
+            CancellationToken.None);
+
+        dispatched.Should().Be(1);
+        await using var verifyDb = fixture.CreateContext();
+        var outbox = await verifyDb.OutboxMessages.SingleAsync();
+        var deadLetter = await verifyDb.DeadLetterMessages.SingleAsync();
+        deadLetter.SourceType.Should().Be("OutboxMessage");
+        deadLetter.SourceId.Should().Be(outbox.Id.ToString("D"));
+        deadLetter.FailureReason.Should().Contain("handler failed");
+        deadLetter.RequeuedAt.Should().BeNull();
+        deadLetter.SourceData.Should().Contain(outbox.Id.ToString("D"));
+        deadLetter.SourceData.Should().Contain("RewriteJobCreated");
+        deadLetter.SourceData.Should().Contain("handler failed");
+        outbox.Status.Should().Be(OutboxMessageStatus.Failed);
     }
 
     [Fact]

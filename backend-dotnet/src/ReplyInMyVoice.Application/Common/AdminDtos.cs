@@ -219,6 +219,76 @@ public sealed record AdminAccountingRevenueRowDto(
     int AmountConsumed,
     int CreditsRemaining);
 
+public sealed record AdminDeadLettersListDto(
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    IReadOnlyList<AdminDeadLetterListItemDto> DeadLetters);
+
+public sealed record AdminDeadLetterListItemDto(
+    Guid Id,
+    string SourceType,
+    string SourceId,
+    string FailureReason,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? RequeuedAt,
+    bool IsRequeued,
+    int? AttemptCount,
+    string? LastError);
+
+public sealed record AdminDeadLetterDetailDto(
+    Guid Id,
+    string SourceType,
+    string SourceId,
+    string SourceData,
+    string FailureReason,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? RequeuedAt,
+    bool IsRequeued,
+    int? AttemptCount,
+    string? LastError);
+
+public sealed record AdminDeadLetterRequeueResultDto(
+    AdminDeadLetterRequeueResultKind Kind,
+    AdminDeadLetterDetailDto? Response,
+    string? Detail)
+{
+    public static AdminDeadLetterRequeueResultDto Success(AdminDeadLetterDetailDto response) =>
+        new(AdminDeadLetterRequeueResultKind.Success, response, null);
+
+    public static AdminDeadLetterRequeueResultDto NotFound(string detail) =>
+        new(AdminDeadLetterRequeueResultKind.NotFound, null, detail);
+
+    public static AdminDeadLetterRequeueResultDto AlreadyRequeued(string detail) =>
+        new(AdminDeadLetterRequeueResultKind.AlreadyRequeued, null, detail);
+
+    public static AdminDeadLetterRequeueResultDto OriginalNotFound(string detail) =>
+        new(AdminDeadLetterRequeueResultKind.OriginalNotFound, null, detail);
+
+    public static AdminDeadLetterRequeueResultDto InvalidSource(string detail) =>
+        new(AdminDeadLetterRequeueResultKind.InvalidSource, null, detail);
+
+    public static AdminDeadLetterRequeueResultDto InvalidOriginalState(string detail) =>
+        new(AdminDeadLetterRequeueResultKind.InvalidOriginalState, null, detail);
+}
+
+public enum AdminDeadLetterRequeueResultKind
+{
+    Success,
+    NotFound,
+    AlreadyRequeued,
+    OriginalNotFound,
+    InvalidSource,
+    InvalidOriginalState,
+}
+
+public sealed record AdminDeadLetterAuditDetailsDto(
+    string? SourceType,
+    string? SourceId,
+    int? AttemptCount,
+    string? LastError);
+
 public sealed record AdminSuspensionMutationDto(
     Guid TargetUserId,
     bool Suspended,

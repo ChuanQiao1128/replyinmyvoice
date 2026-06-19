@@ -163,6 +163,9 @@ public sealed class BackgroundServiceStopAsyncTests
             CancellationToken ct = default) =>
             Task.FromResult<OutboxMessage?>(null);
 
+        public Task<OutboxMessage?> GetByIdAsync(Guid messageId, CancellationToken ct = default) =>
+            Task.FromResult<OutboxMessage?>(null);
+
         public Task MarkSentAsync(Guid messageId, DateTimeOffset now, CancellationToken ct = default)
         {
             MarkedSent.SetResult();

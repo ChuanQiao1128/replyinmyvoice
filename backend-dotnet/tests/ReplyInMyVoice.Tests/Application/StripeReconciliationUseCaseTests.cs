@@ -1056,6 +1056,9 @@ public sealed class StripeReconciliationUseCaseTests
             CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<OutboxMessage?> GetByIdAsync(Guid messageId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task MarkSentAsync(Guid messageId, DateTimeOffset now, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

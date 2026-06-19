@@ -11,6 +11,7 @@ public sealed class ProcessPendingStripeEventsHandler(
     IStripeEventRepository stripeEvents,
     StripeEventPayloadSynchronizer synchronizer,
     IRewriteCreditRepository credits,
+    IDeadLetterMessageRepository deadLetters,
     IUnitOfWork unitOfWork,
     StripeEventProcessingOptions options,
     ILogger<ProcessPendingStripeEventsHandler> logger,
@@ -179,6 +180,9 @@ public sealed class ProcessPendingStripeEventsHandler(
                 if (current.AttemptCount >= maxAttempts)
                 {
                     stripeEvents.MarkFailed(current, error, now);
+                    await deadLetters.AddAsync(
+                        DeadLetterMessageSupport.FromStripeEvent(current, error, now),
+                        transactionCt);
                     await unitOfWork.SaveChangesAsync(transactionCt);
                     return new StripeEventFailureInfo(true, current.AttemptCount, current.Type, error);
                 }
@@ -219,6 +223,9 @@ public sealed class ProcessPendingStripeEventsHandler(
                 }
 
                 stripeEvents.MarkFailed(current, error, now);
+                await deadLetters.AddAsync(
+                    DeadLetterMessageSupport.FromStripeEvent(current, error, now),
+                    transactionCt);
                 await unitOfWork.SaveChangesAsync(transactionCt);
                 return new StripeEventFailureInfo(true, current.AttemptCount, current.Type, error);
             },

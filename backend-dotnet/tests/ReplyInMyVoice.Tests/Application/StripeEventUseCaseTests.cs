@@ -1938,6 +1938,7 @@ public sealed class StripeEventUseCaseTests
                     new AdminUserRepository(db),
                     new UnitOfWork(db)),
                 new RewriteCreditRepository(db),
+                new DeadLetterMessageRepository(db),
                 new UnitOfWork(db),
                 new StripeEventProcessingOptions(MaxAttempts: maxAttempts, InlineBudgetSeconds: 8),
                 NullLogger<ProcessPendingStripeEventsHandler>.Instance,

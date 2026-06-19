@@ -84,6 +84,13 @@ public sealed class OutboxMessageRepository(AppDbContext db) : IOutboxMessageRep
         return message;
     }
 
+    public async Task<OutboxMessage?> GetByIdAsync(
+        Guid messageId,
+        CancellationToken ct = default) =>
+        await db.OutboxMessages
+            .AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == messageId, ct);
+
     public async Task MarkSentAsync(
         Guid messageId,
         DateTimeOffset now,
