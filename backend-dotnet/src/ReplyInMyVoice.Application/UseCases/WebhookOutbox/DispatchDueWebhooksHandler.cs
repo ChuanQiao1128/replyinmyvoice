@@ -13,10 +13,12 @@ namespace ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 public sealed class DispatchDueWebhooksHandler(
     IWebhookDeliveryRepository webhookDeliveries,
     IWebhookDeliverySender sender,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    IBusinessMetrics? metrics = null)
 {
     private const int ClaimRaceMaxAttempts = 5;
     private static readonly TimeSpan ClaimLease = TimeSpan.FromSeconds(45);
+    private readonly IBusinessMetrics _metrics = metrics ?? NoOpBusinessMetrics.Instance;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -43,8 +45,10 @@ public sealed class DispatchDueWebhooksHandler(
             ClaimRaceMaxAttempts,
             ct);
 
+        var touchedApiKeyIds = new HashSet<Guid>();
         foreach (var delivery in deliveries)
         {
+            touchedApiKeyIds.Add(delivery.ApiKeyId);
             try
             {
                 var request = BuildRequest(delivery, command.Now);
@@ -56,17 +60,32 @@ public sealed class DispatchDueWebhooksHandler(
                 }
                 else
                 {
-                    await MarkFailedAttemptAsync(delivery.Id, command.Now, $"HTTP {result.StatusCode}", ct);
+                    await MarkFailedAttemptAsync(
+                        delivery.Id,
+                        delivery.ApiKeyId,
+                        command.Now,
+                        $"HTTP {result.StatusCode}",
+                        ct);
                 }
             }
             catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
             {
-                await MarkFailedAttemptAsync(delivery.Id, command.Now, ex.Message, ct);
+                await MarkFailedAttemptAsync(delivery.Id, delivery.ApiKeyId, command.Now, ex.Message, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                await MarkFailedAttemptAsync(delivery.Id, command.Now, ex.Message, ct);
+                await MarkFailedAttemptAsync(delivery.Id, delivery.ApiKeyId, command.Now, ex.Message, ct);
             }
+        }
+
+        foreach (var apiKeyId in touchedApiKeyIds)
+        {
+            var failureMetrics = await webhookDeliveries.GetFailureMetricsAsync(apiKeyId, command.Now, ct);
+            _metrics.Record(
+                BusinessMetricNames.WebhookDeliveryBacklog,
+                failureMetrics.BacklogCount,
+                BusinessMetricDimensions.ApiKeyId,
+                apiKeyId.ToString("D"));
         }
 
         return deliveries.Count;
@@ -74,12 +93,21 @@ public sealed class DispatchDueWebhooksHandler(
 
     private async Task MarkFailedAttemptAsync(
         Guid deliveryId,
+        Guid apiKeyId,
         DateTimeOffset now,
         string error,
         CancellationToken ct)
     {
-        await webhookDeliveries.MarkFailedAttemptAsync(deliveryId, now, error, ct);
+        var failure = await webhookDeliveries.MarkFailedAttemptAsync(deliveryId, now, error, ct);
         await unitOfWork.SaveChangesAsync(ct);
+        if (failure.Status == WebhookDeliveryStatus.Failed)
+        {
+            _metrics.Record(
+                BusinessMetricNames.WebhookDeliveryFailedTotal,
+                1,
+                BusinessMetricDimensions.ApiKeyId,
+                apiKeyId.ToString("D"));
+        }
     }
 
     private static WebhookSendRequest BuildRequest(WebhookDelivery delivery, DateTimeOffset now)

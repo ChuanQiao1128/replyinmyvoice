@@ -33,6 +33,7 @@ public sealed class AdminHttpFunctions
     private readonly ExportAccountingRevenueHandler _exportAccountingRevenueHandler;
     private readonly SetUserSuspensionHandler _setUserSuspensionHandler;
     private readonly IssueRefundHandler _issueRefundHandler;
+    private readonly RetryWebhookDeliveryHandler _retryWebhookDeliveryHandler;
     private readonly CreatePromoCodeHandler _createPromoCodeHandler;
     private readonly ListPromoCodesHandler _listPromoCodesHandler;
     private readonly GetPromoCodeDetailHandler _getPromoCodeDetailHandler;
@@ -53,6 +54,7 @@ public sealed class AdminHttpFunctions
         ExportAccountingRevenueHandler exportAccountingRevenueHandler,
         SetUserSuspensionHandler setUserSuspensionHandler,
         IssueRefundHandler issueRefundHandler,
+        RetryWebhookDeliveryHandler retryWebhookDeliveryHandler,
         CreatePromoCodeHandler createPromoCodeHandler,
         ListPromoCodesHandler listPromoCodesHandler,
         GetPromoCodeDetailHandler getPromoCodeDetailHandler,
@@ -72,6 +74,7 @@ public sealed class AdminHttpFunctions
         _exportAccountingRevenueHandler = exportAccountingRevenueHandler;
         _setUserSuspensionHandler = setUserSuspensionHandler;
         _issueRefundHandler = issueRefundHandler;
+        _retryWebhookDeliveryHandler = retryWebhookDeliveryHandler;
         _createPromoCodeHandler = createPromoCodeHandler;
         _listPromoCodesHandler = listPromoCodesHandler;
         _getPromoCodeDetailHandler = getPromoCodeDetailHandler;
@@ -736,6 +739,50 @@ public sealed class AdminHttpFunctions
         };
     }
 
+    [Function("AdminRetryWebhookDelivery")]
+    public async Task<IActionResult> RetryWebhookDelivery(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/webhook-deliveries/{id}/retry")]
+        HttpRequest request,
+        string id,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await RequireAdminResultAsync(request, cancellationToken);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        if (!Guid.TryParse(id, out var deliveryId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid webhook delivery id",
+                "The admin webhook delivery retry route requires a valid delivery id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _retryWebhookDeliveryHandler.HandleAsync(
+            new RetryWebhookDeliveryCommand(deliveryId, DateTimeOffset.UtcNow),
+            cancellationToken);
+
+        return result.Kind switch
+        {
+            AdminWebhookDeliveryRetryResultKind.Success => new OkObjectResult(
+                new AdminWebhookDeliveryRetryResponse(
+                    result.Id!.Value,
+                    result.Status!.Value.ToString(),
+                    result.AttemptCount!.Value,
+                    result.NextAttemptAt!.Value)),
+            AdminWebhookDeliveryRetryResultKind.NotFailed => FunctionHttpResults.Problem(
+                "Webhook delivery is not failed",
+                "Only failed webhook deliveries can be retried.",
+                StatusCodes.Status409Conflict),
+            _ => FunctionHttpResults.Problem(
+                "Webhook delivery not found",
+                "No webhook delivery exists for the requested id.",
+                StatusCodes.Status404NotFound),
+        };
+    }
+
     private async Task<IActionResult?> RequireAdminResultAsync(
         HttpRequest request,
         CancellationToken cancellationToken)
@@ -1328,3 +1375,9 @@ public sealed record AdminRefundResponse(
     string? Currency,
     string? RefundId,
     bool AlreadyRefunded);
+
+public sealed record AdminWebhookDeliveryRetryResponse(
+    Guid Id,
+    string Status,
+    int AttemptCount,
+    DateTimeOffset NextAttemptAt);
