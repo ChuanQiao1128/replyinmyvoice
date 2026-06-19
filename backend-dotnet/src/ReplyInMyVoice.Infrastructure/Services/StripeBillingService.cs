@@ -218,7 +218,7 @@ public sealed class StripeBillingService(
         }
     }
 
-    internal static void EnsureStripeApiVersionPinned()
+    public static void EnsureStripeApiVersionPinned()
     {
         EnsureStripeApiVersionPinned(StripeConfiguration.ApiVersion);
     }
@@ -319,8 +319,25 @@ public interface IStripeBillingClient
         CancellationToken cancellationToken);
 }
 
-public sealed class StripeBillingClient : IStripeBillingClient
+public interface IStripeAuthProbe
 {
+    Task<bool> VerifyAuthenticatedAsync(
+        IStripeClient client,
+        CancellationToken cancellationToken);
+}
+
+public sealed class StripeBillingClient : IStripeBillingClient, IStripeAuthProbe
+{
+    public async Task<bool> VerifyAuthenticatedAsync(
+        IStripeClient client,
+        CancellationToken cancellationToken)
+    {
+        StripeBillingService.EnsureStripeApiVersionPinned();
+        var balanceService = new BalanceService(client);
+        await balanceService.GetAsync(requestOptions: null, cancellationToken: cancellationToken);
+        return true;
+    }
+
     public async Task<StripeCheckoutSessionResult> CreateCheckoutSessionAsync(
         StripeCheckoutSessionCreateRequest request,
         IStripeClient stripeClient,

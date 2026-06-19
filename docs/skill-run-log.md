@@ -6677,6 +6677,42 @@ claude-heavy-planning-handoff
 - Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ExpiredReservationCleanupTimerFunctionTests` passed 3/3; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ExpiredReservationCleanupServiceTests` passed 2/2; `dotnet build backend-dotnet/` passed with 0 errors; full backend test project passed 815/815.
 - Limitations: Tests use local fakes and do not call live Azure, Stripe, Service Bus, production database, deployment, or secret-backed services.
 
+### 2026-06-19 - system-spec-synthesis - P1-10 issue #860 Stripe readiness auth probe
+
+- Agent: Codex worker
+- Trigger: Issue #860 changes the Azure Functions readiness API contract by adding a Stripe authentication sub-check.
+- Action: Opened and followed the skill as a compact implementation-spec checklist. Mapped the source issue and repo docs into concrete components: `HealthFunction`, `StripeBillingClient`, DI registration, readiness response contract, runbook, decision log, and verification plan.
+- Output artifacts: `stripeAuth` readiness contract, `IStripeAuthProbe`, DI registration, `plans/decisions-log.md`, `docs/stripe-secret-rotation-runbook.md`, and this log entry.
+- Verification evidence: Source docs and required files were read before editing; focused acceptance tests passed 3/3; health-file secret-name grep returned only the single handler lookup; runbook section grep found all required sections.
+- Limitations: No live Azure Functions host, live Stripe account, deployment, secret rotation, or production setting change was performed.
+
+### 2026-06-19 - resilience-test-generation - P1-10 issue #860 Stripe auth failure readiness
+
+- Agent: Codex worker
+- Trigger: Issue #860 tests payment-provider authentication failure handling and readiness degradation without exposing secret values.
+- Action: Opened and followed the skill as a failure-boundary checklist. Added deterministic fake-provider tests for successful auth, 401 auth failure, and false auth result causing HTTP 503 readiness degradation while other checks pass.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/HealthFunctionStripeAuthReadinessTests.cs`, neutral error-code mapping in `HealthFunction.CheckStripeAuthAsync`, and this log entry.
+- Verification evidence: Initial focused test run failed before implementation with missing `IStripeAuthProbe`; after implementation, the three named tests passed individually and the class filter passed 3/3.
+- Limitations: Tests do not call live Stripe, Azure Service Bus, production database, or real secrets; the real probe uses a read-only Stripe SDK call only when the readiness endpoint runs with configured runtime settings.
+
+### 2026-06-19 - data-module-review - P1-10 issue #860 persistence scope check
+
+- Agent: Codex worker
+- Trigger: Conservative skill check while reading health readiness code that queries Stripe event, outbox, and reservation persistence.
+- Action: Opened the skill and confirmed the issue does not require schema, EF model, migration, repository, transaction, index, or persistence invariant changes. Kept data access logic unchanged.
+- Output artifacts: This log entry only for the data-module skill; no data-module files were changed.
+- Verification evidence: `git diff --name-only` for this issue contains no migrations, schemas, repositories, or EF model changes.
+- Limitations: No database migration or production database behavior was exercised because it was out of scope.
+
+### 2026-06-19 - dotnet-backend-testing - P1-10 issue #860 health readiness tests
+
+- Agent: Codex worker
+- Trigger: Issue #860 requires new C# xUnit tests for the Azure Functions readiness endpoint and Stripe auth failure behavior.
+- Action: Opened and followed the project skill for test-level selection. Added function-level xUnit tests using local SQLite, hand-written `IStripeAuthProbe` fakes, and existing Service Bus sender setup; updated existing readiness tests to inject a passing fake for the new dependency.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/HealthFunctionStripeAuthReadinessTests.cs`, updated `HealthFunctionReadinessTests`, and this log entry.
+- Verification evidence: `StripeAuth_ok_when_valid_key`, `StripeAuth_fails_when_secret_key_is_invalid`, and `StripeAuth_returns_degraded_status_in_readiness_when_auth_fails` passed individually; `FullyQualifiedName~HealthFunctionStripeAuthReadinessTests` passed 3/3; `FullyQualifiedName~HealthFunctionReadinessTests` passed 2/2.
+- Limitations: Full backend project test run passed 819 tests and failed 1 existing out-of-scope `OpenApiV1ContractTests.OpenApi_v1_documents_all_produced_status_and_error_tuples` contract-spec test unrelated to P1-10; no live payment, deployment, production secret, or external Stripe call was exercised.
+
 ### 2026-06-19 - dotnet-backend-testing - P1-05 issue #859 OpenAPI v1 contract guard
 
 - Agent: Codex worker

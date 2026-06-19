@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReplyInMyVoice.Functions.Functions;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Services;
+using Stripe;
 
 namespace ReplyInMyVoice.Tests;
 
@@ -33,7 +35,8 @@ public sealed class HealthFunctionReadinessTests
                 ["USE_MANAGED_IDENTITY"] = "true",
                 ["ServiceBus:fullyQualifiedNamespace"] = "rimv-test.servicebus.windows.net",
             }),
-            sender);
+            sender,
+            new PassingStripeAuthProbe());
 
         var result = await function.ReadinessHealth(
             new DefaultHttpContext().Request,
@@ -62,7 +65,8 @@ public sealed class HealthFunctionReadinessTests
             {
                 ["ConnectionStrings:ServiceBus"] = ServiceBusConnectionString,
             }),
-            sender);
+            sender,
+            new PassingStripeAuthProbe());
 
         var result = await function.ReadinessHealth(
             new DefaultHttpContext().Request,
@@ -96,6 +100,17 @@ public sealed class HealthFunctionReadinessTests
 
     private static IConfiguration BuildConfiguration(Dictionary<string, string?> values) =>
         new ConfigurationBuilder()
-            .AddInMemoryCollection(values)
+            .AddInMemoryCollection(values.Concat(new Dictionary<string, string?>
+            {
+                ["STRIPE_SECRET_KEY"] = "configured_test_key",
+            }))
             .Build();
+
+    private sealed class PassingStripeAuthProbe : IStripeAuthProbe
+    {
+        public Task<bool> VerifyAuthenticatedAsync(
+            IStripeClient client,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(true);
+    }
 }

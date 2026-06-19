@@ -221,7 +221,10 @@ public static class ServiceCollectionExtensions
             sp.GetService<TelemetryClient>()));
         services.AddScoped<ExpiredReservationCleanupService>();
         services.AddScoped<RetentionService>();
-        services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient, StripeBillingClient>();
+        services.AddSingleton<StripeBillingClient>();
+        services.AddSingleton<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>(
+            sp => sp.GetRequiredService<StripeBillingClient>());
+        services.AddSingleton<IStripeAuthProbe>(sp => sp.GetRequiredService<StripeBillingClient>());
         services.AddSingleton(ReadStripeEventProcessingOptions(configuration));
         services.AddSingleton(ReadProviderCircuitBreakerOptions(configuration));
         services.AddSingleton(ReadStripeReconciliationOptions(configuration));
