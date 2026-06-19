@@ -15,9 +15,17 @@ using LegacyStripeRefundRequest = ReplyInMyVoice.Infrastructure.Services.StripeR
 
 namespace ReplyInMyVoice.Infrastructure.Providers;
 
+public interface IStripeAuthenticationProbe
+{
+    Task ValidateAuthenticationAsync(CancellationToken cancellationToken = default);
+}
+
 public sealed class ApplicationStripeBillingClient(
     IConfiguration configuration,
-    LegacyStripeBillingClient? stripeBillingClient = null) : AppStripeBillingClient, AppStripeRefundClient
+    LegacyStripeBillingClient? stripeBillingClient = null) :
+    AppStripeBillingClient,
+    AppStripeRefundClient,
+    IStripeAuthenticationProbe
 {
     private const string LegacyPriceEnvVar = "STRIPE_PRICE_ID";
     private readonly LegacyStripeBillingClient _stripeBillingClient =
@@ -142,6 +150,13 @@ public sealed class ApplicationStripeBillingClient(
         }
 
         return payments;
+    }
+
+    public async Task ValidateAuthenticationAsync(CancellationToken cancellationToken = default)
+    {
+        await _stripeBillingClient.ValidateAuthenticationAsync(
+            CreateStripeClient(),
+            cancellationToken);
     }
 
     private StripeClient CreateStripeClient()

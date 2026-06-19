@@ -256,6 +256,7 @@ public static class ServiceCollectionExtensions
                 sp.GetService<ReplyInMyVoice.Infrastructure.Services.IStripeBillingClient>()));
         services.AddScoped<AppStripeBillingClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
         services.AddScoped<AppStripeRefundClient>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
+        services.AddScoped<IStripeAuthenticationProbe>(sp => sp.GetRequiredService<ApplicationStripeBillingClient>());
         services.AddScoped(sp => new StripeBillingService(
             sp.GetRequiredService<Func<AppDbContext>>(),
             configuration,

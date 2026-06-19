@@ -316,6 +316,10 @@ public interface IStripeBillingClient
         StripeRefundRequest request,
         IStripeClient stripeClient,
         CancellationToken cancellationToken);
+
+    Task ValidateAuthenticationAsync(
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken);
 }
 
 public sealed class StripeBillingClient : IStripeBillingClient
@@ -452,6 +456,19 @@ public sealed class StripeBillingClient : IStripeBillingClient
             refund.Amount,
             refund.Currency ?? request.Currency,
             refund.Status);
+    }
+
+    public async Task ValidateAuthenticationAsync(
+        IStripeClient stripeClient,
+        CancellationToken cancellationToken)
+    {
+        var customerService = new CustomerService(stripeClient);
+        await customerService.ListAsync(
+            new CustomerListOptions
+            {
+                Limit = 1,
+            },
+            cancellationToken: cancellationToken);
     }
 }
 
