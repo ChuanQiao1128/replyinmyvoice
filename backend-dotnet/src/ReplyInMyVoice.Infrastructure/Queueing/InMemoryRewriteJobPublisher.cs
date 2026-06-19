@@ -8,7 +8,10 @@ public sealed class InMemoryRewriteJobPublisher : IRewriteJobPublisher
 
     public IReadOnlyList<RewriteJob> PublishedJobs => _publishedJobs;
 
-    public Task PublishAsync(RewriteJob job, CancellationToken cancellationToken)
+    public Task PublishAsync(
+        RewriteJob job,
+        CancellationToken cancellationToken,
+        string? correlationId = null)
     {
         _publishedJobs.Add(job);
         return Task.CompletedTask;

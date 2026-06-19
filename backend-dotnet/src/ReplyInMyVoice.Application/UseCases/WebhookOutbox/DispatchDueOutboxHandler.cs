@@ -1,4 +1,6 @@
 using System.Data;
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 
 namespace ReplyInMyVoice.Application.UseCases.WebhookOutbox;
@@ -8,7 +10,8 @@ public sealed class DispatchDueOutboxHandler(
     IEnumerable<IOutboxMessageHandler> messageHandlers,
     IOutboxDispatchObserver dispatchObserver,
     IUnitOfWork unitOfWork,
-    IBusinessMetrics? metrics = null)
+    IBusinessMetrics? metrics = null,
+    ILogger<DispatchDueOutboxHandler>? logger = null)
 {
     private const int ClaimRaceMaxAttempts = 5;
     private static readonly TimeSpan ClaimLease = TimeSpan.FromSeconds(30);
@@ -89,6 +92,7 @@ public sealed class DispatchDueOutboxHandler(
         DateTimeOffset now,
         CancellationToken ct)
     {
+        using var scope = logger?.BeginScope(BuildLogScope(message.CorrelationId));
         try
         {
             if (!_messageHandlers.TryGetValue(message.MessageType, out var handler))
@@ -117,5 +121,29 @@ public sealed class DispatchDueOutboxHandler(
 
             return false;
         }
+    }
+
+    private static Dictionary<string, object> BuildLogScope(string? correlationId)
+    {
+        var scope = new Dictionary<string, object>();
+        if (!string.IsNullOrWhiteSpace(correlationId))
+        {
+            scope["CorrelationId"] = correlationId;
+        }
+
+        if (Activity.Current is { } activity)
+        {
+            if (!string.IsNullOrWhiteSpace(activity.Id))
+            {
+                scope["ActivityId"] = activity.Id;
+            }
+
+            if (!string.IsNullOrWhiteSpace(activity.RootId))
+            {
+                scope["ActivityRootId"] = activity.RootId;
+            }
+        }
+
+        return scope;
     }
 }

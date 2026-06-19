@@ -1663,6 +1663,9 @@ public sealed record V1UsageResponse(
 
 internal sealed class ThrowingRewriteJobPublisher : IRewriteJobPublisher
 {
-    public Task PublishAsync(RewriteJob job, CancellationToken cancellationToken) =>
+    public Task PublishAsync(
+        RewriteJob job,
+        CancellationToken cancellationToken,
+        string? correlationId = null) =>
         throw new InvalidOperationException("publisher failed");
 }

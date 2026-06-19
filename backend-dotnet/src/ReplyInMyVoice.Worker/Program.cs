@@ -6,6 +6,7 @@ var inProcessRewriteWorkerEnabled = bool.TryParse(builder.Configuration["ENABLE_
     && enableInProcRewriteWorker;
 
 builder.Services.AddApplicationInsightsTelemetryWorkerService();
+builder.Services.AddActivitySourceTelemetry(builder.Configuration, builder.Environment.EnvironmentName);
 builder.Services.AddReplyInMyVoiceInfrastructure(
     builder.Configuration,
     builder.Environment.EnvironmentName,

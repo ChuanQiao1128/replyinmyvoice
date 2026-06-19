@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Diagnostics;
 using Azure.Core;
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
@@ -27,6 +28,7 @@ using ReplyInMyVoice.Application.UseCases.WebhookOutbox;
 using ReplyInMyVoice.Infrastructure.Configuration;
 using ReplyInMyVoice.Infrastructure.Data;
 using ReplyInMyVoice.Infrastructure.Notifications;
+using ReplyInMyVoice.Infrastructure.Observability;
 using ReplyInMyVoice.Infrastructure.Providers;
 using ReplyInMyVoice.Infrastructure.Queueing;
 using ReplyInMyVoice.Infrastructure.Repositories;
@@ -46,6 +48,22 @@ public static class ServiceCollectionExtensions
 {
     private const int DefaultTotalRewriteBudgetSeconds = 180;
 
+    public static IServiceCollection AddActivitySourceTelemetry(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        string? environmentName = null)
+    {
+        Activity.DefaultIdFormat = ActivityIdFormat.W3C;
+        Activity.ForceDefaultIdFormat = true;
+
+        services.TryAddSingleton(DistributedTracingActivitySource.Instance);
+        services.TryAddSingleton(DistributedTracingActivitySource.Source);
+        services.TryAddSingleton(new DistributedTracingSettings(
+            DistributedTracingOptions.IsEnabled(configuration, environmentName)));
+
+        return services;
+    }
+
     public static IServiceCollection AddReplyInMyVoiceInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -57,6 +75,7 @@ public static class ServiceCollectionExtensions
             requireServiceBusConsumer);
 
         services.AddLogging();
+        services.AddActivitySourceTelemetry(configuration, environmentName);
 
         services.AddDbContext<AppDbContext>(options =>
         {
