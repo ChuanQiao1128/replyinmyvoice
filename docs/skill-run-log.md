@@ -6613,3 +6613,39 @@ claude-heavy-planning-handoff
 - Output artifacts: `CreateRewriteAttemptHandler_expired_credits_returns_error_code`, `CreateRewriteAttempt_expired_credits_returns_error_code`, `V1SubmitRewrite_expired_credits_returns_error_code`, updated error-code contract pinning, and this log entry.
 - Verification evidence: focused acceptance filters passed individually; `FunctionHttpResultsTests` passed 7/7; full `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 808/808.
 - Limitations: No live payment, external provider, deployment, or production secret path was exercised.
+
+### 2026-06-19 - state-machine-modeling - P1-03 issue #857 worker shutdown lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #857 changes the background worker shutdown lifecycle around outbox dispatch and expired-reservation cleanup iterations.
+- Action: Opened and followed the project skill as a lifecycle checklist. Modeled worker states as idle, waiting for next poll, iteration in progress, stop requested, drained, and timeout hard-cancel path; modeled outbox states as `Pending`, `Processing`, `Sent`, and `Failed`; modeled cleanup state as pending reservation to expired reservation. Added a stop-request flag so StopAsync drains the active iteration without starting another one.
+- Output artifacts: `OutboxDispatcherWorker.StopAsync`, `ExpiredReservationCleanupWorker.StopAsync`, worker loop iteration tracking, and worker graceful-shutdown tests.
+- Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~OutboxDispatcherWorkerGracefulShutdownTests` passed 3/3; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ExpiredReservationCleanupWorkerGracefulShutdownTests` passed 1/1; full test project passed 812/812.
+- Limitations: No persisted enum, schema, migration, handler transition rule, or Service Bus worker behavior was changed.
+
+### 2026-06-19 - data-module-review - P1-03 issue #857 outbox persistence invariant
+
+- Agent: Codex worker
+- Trigger: Issue #857 protects the persistence invariant that an outbox message published by its handler must still be marked `Sent` before worker shutdown completes, and that handler failures still record failed attempts.
+- Action: Opened and followed the project skill as a persistence-safety review. Reviewed `OutboxMessageRepository`, `DispatchDueOutboxHandler`, `ReleaseExpiredReservationsHandler`, `UsageReservationRepository`, and the existing SQLite fixture patterns. Kept data access code and migrations unchanged; added worker-level tests that assert `Sent`, retry-pending failed attempt, and expired-reservation final state after StopAsync.
+- Output artifacts: `OutboxDispatcherWorkerGracefulShutdownTests`, `ExpiredReservationCleanupWorkerGracefulShutdownTests`, and this log entry.
+- Verification evidence: focused worker filters passed; full `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 812/812; grep acceptance gate found timeout and iteration-tracking logic in both worker classes.
+- Limitations: Persistence coverage uses local SQLite and deterministic fakes; no production database, live queue, deployment, payment, or secret path was exercised.
+
+### 2026-06-19 - resilience-test-generation - P1-03 issue #857 shutdown timeout and recovery
+
+- Agent: Codex worker
+- Trigger: Issue #857 changes timeout, cancellation, queue redelivery, partial-success recovery, and shutdown behavior for worker dispatch loops.
+- Action: Opened and followed the project skill as a failure-mode checklist. Covered mid-iteration success drain, mid-iteration handler failure drain with failed-attempt persistence, non-completing handler timeout warning and bounded return, and cleanup drain with deterministic local fakes.
+- Output artifacts: `OutboxDispatcherWorkerGracefulShutdownTests`, `ExpiredReservationCleanupWorkerGracefulShutdownTests`, 60-second StopAsync timeout constants and warnings, and this log entry.
+- Verification evidence: initial focused test compile failed before implementation because worker constructors lacked the needed test seam; after implementation, outbox focused filter passed 3/3, cleanup focused filter passed 1/1, and the full test project passed 812/812.
+- Limitations: No live Azure Service Bus, Stripe, OpenAI-compatible, Sapling, email, or production database endpoint was called.
+
+### 2026-06-19 - dotnet-backend-testing - P1-03 issue #857 worker graceful shutdown tests
+
+- Agent: Codex worker
+- Trigger: Issue #857 requires C# xUnit worker tests for StopAsync graceful drain and timeout behavior.
+- Action: Opened and followed the project skill for test-level selection. Added worker/service tests using xUnit, FluentAssertions, EF Core SQLite for outbox final state, hand-written blocking handlers, a fake cleanup repository, and a recording logger. Added an aliased Worker project reference so tests can exercise worker types without conflicting with existing API host tests.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/OutboxDispatcherWorkerGracefulShutdownTests.cs`, aliased Worker project reference, and this log entry.
+- Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~OutboxDispatcherWorkerGracefulShutdownTests` passed 3/3; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ExpiredReservationCleanupWorkerGracefulShutdownTests` passed 1/1; full `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 812/812.
+- Limitations: Tests use local fakes and SQLite; no deploy, PR, push, live queue, production secret, or payment path was touched.
