@@ -13,12 +13,14 @@ public sealed class GenerateApiKeyHandler(
         CancellationToken ct = default)
     {
         var plaintext = ApiKeyCredential.GeneratePlaintext(command.IsTest);
+        var pepperVersion = ApiKeyPepperVersions.GetCurrentPepperVersion();
         var now = DateTimeOffset.UtcNow;
         var apiKey = new ApiKeyEntity
         {
             UserId = command.UserId,
             Name = command.Name,
-            KeyHash = ApiKeyCredential.ComputeHash(plaintext),
+            KeyHash = ApiKeyCredential.ComputeHashWithVersion(plaintext, pepperVersion),
+            PepperVersion = pepperVersion,
             Last4 = plaintext[^4..],
             IsTest = command.IsTest,
             CreatedAt = now,

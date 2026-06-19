@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Diagnostics;
+using System.Text;
 using Azure.Core;
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
@@ -47,6 +48,7 @@ namespace ReplyInMyVoice.Infrastructure;
 public static class ServiceCollectionExtensions
 {
     private const int DefaultTotalRewriteBudgetSeconds = 180;
+    private const int MinimumPepperEntropyBytes = 32;
 
     public static IServiceCollection AddActivitySourceTelemetry(
         this IServiceCollection services,
@@ -541,6 +543,7 @@ public static class ServiceCollectionExtensions
         }
 
         var missing = new List<string>();
+        ValidateApiKeyPepperConfiguration(configuration, missing);
         var managedIdentityEnabled = ManagedIdentityConfiguration.IsEnabled(configuration);
         var hasManagedIdentitySqlSettings = managedIdentityEnabled &&
             !string.IsNullOrWhiteSpace(configuration["AZURE_SQL_SERVER"]) &&
@@ -597,6 +600,27 @@ public static class ServiceCollectionExtensions
         }
     }
 
+    private static void ValidateApiKeyPepperConfiguration(
+        IConfiguration configuration,
+        List<string> missing)
+    {
+        var reader = new ConfigurationReader(configuration);
+        var versionedPepperVersions = ApiKeyPepperVersions.GetConfiguredVersionedPepperVersions(reader);
+        var basePepper = configuration["API_KEY_PEPPER"];
+        if (versionedPepperVersions.Any(version => version > ApiKeyPepperVersions.LegacyVersion) &&
+            string.IsNullOrWhiteSpace(basePepper))
+        {
+            missing.Add("API_KEY_PEPPER");
+        }
+
+        if (!string.IsNullOrWhiteSpace(basePepper) &&
+            Encoding.UTF8.GetByteCount(basePepper) < MinimumPepperEntropyBytes)
+        {
+            Trace.TraceWarning(
+                "API_KEY_PEPPER is configured with fewer than 32 bytes of entropy; use a stronger value before production rotation.");
+        }
+    }
+
     private static string? ResolveRuntimeEnvironmentName(IConfiguration configuration, string? environmentName) =>
         !string.IsNullOrWhiteSpace(environmentName)
             ? environmentName
@@ -629,6 +653,14 @@ public static class ServiceCollectionExtensions
         {
             return false;
         }
+    }
+
+    private sealed class ConfigurationReader(IConfiguration configuration) : IConfigurationReader
+    {
+        public string? this[string key] => configuration[key];
+
+        public IEnumerable<string> GetKeys() =>
+            configuration.AsEnumerable().Select(x => x.Key);
     }
 
 }

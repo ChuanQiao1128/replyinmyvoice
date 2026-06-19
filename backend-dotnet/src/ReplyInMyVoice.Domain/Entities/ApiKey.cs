@@ -10,6 +10,11 @@ public sealed class ApiKey
     public required string Name { get; set; }
     public string PlanTier { get; set; } = "free";
     public bool IsTest { get; set; }
+    public int PepperVersion { get; set; } = 1;
+    /// <summary>
+    /// Set after successful authentication with an old pepper version; a later rehash updates KeyHash.
+    /// </summary>
+    public bool RehashPending { get; set; }
     public int RateLimitPerMinute { get; set; } = 60;
     public int MonthlyQuota { get; set; } = 1000;
     /// <summary>

@@ -393,9 +393,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.KeyHash).IsUnique();
             entity.HasIndex(x => new { x.UserId, x.CreatedAt });
             entity.HasIndex(x => x.PlanTier);
+            entity.HasIndex(x => x.RehashPending);
             entity.Property(x => x.KeyHash).HasMaxLength(200);
             entity.Property(x => x.Last4).HasMaxLength(4).IsRequired(false);
             entity.Property(x => x.IsTest).HasDefaultValue(false);
+            entity.Property(x => x.PepperVersion).HasDefaultValue(1);
+            entity.Property(x => x.RehashPending).HasDefaultValue(false);
             entity.Property(x => x.Name).HasMaxLength(200);
             entity.Property(x => x.PlanTier).HasMaxLength(40);
             entity.Property(x => x.WebhookUrl).HasMaxLength(2048);

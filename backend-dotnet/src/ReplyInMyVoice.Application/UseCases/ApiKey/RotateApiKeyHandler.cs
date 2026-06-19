@@ -25,6 +25,7 @@ public sealed class RotateApiKeyHandler(
                 }
 
                 var plaintext = ApiKeyCredential.GeneratePlaintext(apiKey.IsTest);
+                var pepperVersion = ApiKeyPepperVersions.GetCurrentPepperVersion();
                 var now = DateTimeOffset.UtcNow;
                 apiKey.RevokedAt = now;
                 apiKey.UpdatedAt = now;
@@ -34,7 +35,8 @@ public sealed class RotateApiKeyHandler(
                 {
                     UserId = command.UserId,
                     Name = apiKey.Name,
-                    KeyHash = ApiKeyCredential.ComputeHash(plaintext),
+                    KeyHash = ApiKeyCredential.ComputeHashWithVersion(plaintext, pepperVersion),
+                    PepperVersion = pepperVersion,
                     Last4 = plaintext[^4..],
                     IsTest = apiKey.IsTest,
                     PlanTier = apiKey.PlanTier,
