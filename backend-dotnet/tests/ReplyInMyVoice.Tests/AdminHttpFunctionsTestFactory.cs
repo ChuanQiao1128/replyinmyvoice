@@ -46,6 +46,7 @@ internal static class AdminHttpFunctionsTestFactory
             new ExportAccountingRevenueHandler(credits),
             new SetUserSuspensionHandler(adminUsers, unitOfWork),
             new IssueRefundHandler(adminUsers, credits, applicationRefundClient, unitOfWork),
+            new RetryWebhookDeliveryHandler(new WebhookDeliveryRepository(db), unitOfWork),
             new CreatePromoCodeHandler(promoAdmin, unitOfWork),
             new ListPromoCodesHandler(promoAdmin),
             new GetPromoCodeDetailHandler(promoAdmin),

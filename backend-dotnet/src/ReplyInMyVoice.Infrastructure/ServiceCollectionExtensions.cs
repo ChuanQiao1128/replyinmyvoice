@@ -165,6 +165,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ExportAccountingRevenueHandler>();
         services.AddScoped<SetUserSuspensionHandler>();
         services.AddScoped<IssueRefundHandler>();
+        services.AddScoped<RetryWebhookDeliveryHandler>();
         services.AddScoped<CreateCheckoutSessionHandler>();
         services.AddScoped<CreatePortalSessionHandler>();
         services.AddScoped<CancelSubscriptionHandler>();

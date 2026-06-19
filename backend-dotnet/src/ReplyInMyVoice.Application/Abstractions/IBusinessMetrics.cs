@@ -49,6 +49,12 @@ public static class BusinessMetricNames
 
     /// <summary>Dimension: reason (exception type or error category).</summary>
     public const string StuckReservationsCleanupFailedTotal = "stuck_reservations_cleanup_failed_total";
+
+    /// <summary>Dimension: api_key_id.</summary>
+    public const string WebhookDeliveryFailedTotal = "webhook_delivery_failed_total";
+
+    /// <summary>Dimension: api_key_id.</summary>
+    public const string WebhookDeliveryBacklog = "webhook_delivery_backlog";
 }
 
 public static class BusinessMetricDimensions
@@ -58,4 +64,5 @@ public static class BusinessMetricDimensions
     public const string ErrorCode = "error_code";
     public const string ClientName = "client_name";
     public const string Reason = "reason";
+    public const string ApiKeyId = "api_key_id";
 }

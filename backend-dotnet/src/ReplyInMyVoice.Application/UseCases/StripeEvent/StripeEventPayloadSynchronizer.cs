@@ -12,8 +12,7 @@ public sealed class StripeEventPayloadSynchronizer(
     IRewriteCreditRepository credits,
     IStripeInvoiceRepository invoices,
     IOutboxMessageRepository outboxMessages,
-    IAdminUserRepository adminUsers,
-    IUnitOfWork unitOfWork)
+    IAdminUserRepository adminUsers)
 {
     private const int DefaultPaymentGraceDays = 7;
     private const int PaymentGraceReminderElapsedDays = 5;

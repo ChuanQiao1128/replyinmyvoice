@@ -6739,3 +6739,48 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/DistributedTracingActivitySourceTests.cs`, `DistributedTracingE2ETests.cs`, `ServiceBusTraceparentPropagationTests.cs`, and this log entry.
 - Verification evidence: Initial focused test run failed before implementation on missing observability types; after implementation, the three required filters passed. Full backend test project passed 827 tests and failed 1 pre-existing out-of-scope `OpenApiV1ContractTests.OpenApi_v1_documents_all_produced_status_and_error_tuples` static OpenAPI spec guard unrelated to P1-06.
 - Limitations: Tests use local listeners and Service Bus model factories; no live Azure Service Bus, Application Insights ingestion, production database, deploy command, payment provider, secret-backed service, or external provider call was exercised.
+
+### 2026-06-19 - system-spec-synthesis - P1-08 issue #862 webhook delivery ops
+
+- Agent: Codex worker
+- Trigger: Issue #862 adds customer and admin HTTP contracts plus webhook delivery metrics for B2B API operations.
+- Action: Opened and followed the skill as a compact implementation-spec checklist. Mapped the issue and brief into concrete contracts: `GET /webhook/status` using existing bearer API-key auth, `POST /console/webhook-deliveries/{id}/retry` using existing admin auth, per-key failure metrics, terminal-failure metric emission, and no HMAC or URL-safety changes.
+- Output artifacts: `WebhookStatusHttpFunction`, `RetryWebhookDeliveryHandler`, repository read/metrics/retry contracts, OpenAPI v1 stale-spec correction needed for full-suite health, and this log entry.
+- Verification evidence: Focused webhook ops tests passed 5/5; adjacent webhook outbox and HTTP sender tests passed 14/14; full backend `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore /p:NuGetAudit=false` passed 833/833.
+- Limitations: No live customer endpoint, live webhook receiver, deployment, production database, payment provider, or secret-backed service was exercised.
+
+### 2026-06-19 - state-machine-modeling - P1-08 issue #862 webhook delivery lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #862 changes the webhook delivery lifecycle by adding an admin retry transition from terminal `Failed` back to retryable `Pending`.
+- Action: Opened and followed the skill as a lifecycle checklist. State list: `Pending`, `InProgress`, `Delivered`, `Failed`. Events: claim due delivery, send success, send failure, lease expiry, admin retry. Transition table kept existing `Pending -> InProgress -> Delivered|Pending|Failed`; added only `Failed -> Pending` through admin retry, resetting attempt count and lock/error fields. Illegal transitions: customer retry is not exposed, missing delivery returns 404, non-failed retry returns 409.
+- Output artifacts: `RetryFailedAsync`, `RetryWebhookDeliveryHandler`, `AdminRetryWebhookDeliveryTests`, and this log entry.
+- Verification evidence: `AdminRetryWebhookDeliveryTests.RetryWebhookDelivery_resets` passed; full backend test suite passed 833/833.
+- Limitations: No schema, enum, backoff tuning, retention policy, dashboard UI, email alert, HMAC signing, or SSRF guard behavior was changed.
+
+### 2026-06-19 - data-module-review - P1-08 issue #862 webhook delivery persistence
+
+- Agent: Codex worker
+- Trigger: Issue #862 changes repository read paths, per-key delivery metrics, and persisted retry mutation for `WebhookDeliveries`.
+- Action: Opened and followed the skill as a persistence-safety review. Reviewed `WebhookDelivery`, `WebhookDeliveryRepository`, `AppDbContext` indexes, API-key auth lookup, admin functions, and SQLite test fixture behavior. Added no schema or migration; all customer status reads are filtered by `ApiKeyId`; metrics use only `api_key_id` dimension values and never raw keys, URLs, or secrets.
+- Output artifacts: `GetByApiKeyAsync`, `GetFailureMetricsAsync`, `RetryFailedAsync`, `WebhookDeliveryFailureMetricsTests`, and this log entry.
+- Verification evidence: `WebhookDeliveryFailureMetricsTests.GetFailureMetricsAsync_computes` passed; focused and full backend suites passed. SQLite DateTimeOffset ordering was handled with an in-memory test path matching existing repository patterns.
+- Limitations: Repository tests use EF Core SQLite; no production SQL Server/Azure SQL query plan, live data volume, or production database was exercised.
+
+### 2026-06-19 - resilience-test-generation - P1-08 issue #862 webhook delivery failure handling
+
+- Agent: Codex worker
+- Trigger: Issue #862 changes observability and recovery behavior for webhook send failures after bounded delivery attempts.
+- Action: Opened and followed the skill as a failure-mode checklist. Covered terminal HTTP failure after max attempts, missing required delivery data path through existing dispatcher tests, per-key backlog metric emission, admin requeue of terminal failures, customer status isolation, and preserved existing HMAC signing and URL safety tests.
+- Output artifacts: `DispatchDueWebhooksHandlerMetricsTests`, `WebhookStatusHttpFunctionTests`, `AdminRetryWebhookDeliveryTests`, and this log entry.
+- Verification evidence: Initial focused webhook ops test run failed before implementation on missing repository/function/metric symbols; after implementation, focused tests passed 5/5, adjacent existing webhook tests passed 14/14, and full backend suite passed 833/833.
+- Limitations: Tests use deterministic local fakes and SQLite; no live webhook receiver, network retry storm, production alert, deployment, or customer-initiated retry path was exercised.
+
+### 2026-06-19 - dotnet-backend-testing - P1-08 issue #862 webhook delivery tests
+
+- Agent: Codex worker
+- Trigger: Issue #862 requires C#/.NET xUnit tests for repository metrics, customer status endpoint, admin retry, and dispatcher metrics.
+- Action: Opened and followed the project skill for test-level selection. Added EF Core SQLite repository tests, Azure Functions HTTP function tests using `DefaultHttpContext`, admin function tests with claims-based admin auth, dispatcher/service tests with `RecordingWebhookDeliverySender`, and reused `RecordingBusinessMetrics`.
+- Output artifacts: `WebhookDeliveryFailureMetricsTests`, `WebhookStatusHttpFunctionTests`, `AdminRetryWebhookDeliveryTests`, `DispatchDueWebhooksHandlerMetricsTests`, updated `AdminRouteMetadataTests`, and this log entry.
+- Verification evidence: `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore --filter "WebhookDeliveryFailureMetricsTests|WebhookStatusHttpFunctionTests|AdminRetryWebhookDeliveryTests|DispatchDueWebhooksHandlerMetricsTests"` passed 5/5; `dotnet test backend-dotnet/ReplyInMyVoice.sln --no-restore --filter "WebhookOutboxUseCaseTests|HttpWebhookDeliverySenderTests"` passed 14/14; build passed with 0 warnings after audit-clean restore; full backend suite passed 833/833.
+- Limitations: No browser/UI tests applied because this issue has no frontend surface; no live Azure Functions host, production secret, payment provider, external webhook receiver, push, PR, or deployment was used.
