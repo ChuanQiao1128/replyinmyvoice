@@ -461,6 +461,92 @@ public sealed class RewriteApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task V1_rewrite_submit_returns_credits_expired_when_quota_is_exhausted_and_only_expired_credits_remain()
+    {
+        var periodEnd = DateTimeOffset.Parse("2026-07-01T00:00:00Z");
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_expired_credit",
+            SubscriptionStatus.Active,
+            currentPeriodEnd: periodEnd);
+        var now = DateTimeOffset.UtcNow;
+        await using (var seedDb = CreateContext())
+        {
+            seedDb.UsagePeriods.Add(new UsagePeriod
+            {
+                UserId = user.Id,
+                PeriodKey = AccountUsagePlans.GetUsagePlan(user, new ConfigurationBuilder().Build()).PeriodKey,
+                QuotaLimit = 90,
+                ReservedCount = 90,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 5,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-10),
+                ExpiresAt = now.AddMinutes(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await PostV1RewriteAsync(client, token, "v1-expired-credit", ValidV1Draft());
+
+        response.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
+        await AssertErrorCodeAsync(response, RewriteEngineErrorCodes.CreditsExpired);
+        await using var db = CreateContext();
+        (await db.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(0);
+        var credit = await db.RewriteCredits.SingleAsync();
+        credit.AmountConsumed.Should().Be(0);
+        var usage = await db.ApiKeyUsages.SingleAsync();
+        usage.StatusCode.Should().Be(StatusCodes.Status402PaymentRequired);
+    }
+
+    [Fact]
+    public async Task V1_rewrite_submit_with_test_key_returns_sandbox_result_even_when_only_expired_credits_remain()
+    {
+        var (user, token) = await SeedApiKeyUserAsync(
+            "clerk_v1_test_expired_credit",
+            SubscriptionStatus.Inactive,
+            currentPeriodEnd: null,
+            isTest: true);
+        var now = DateTimeOffset.UtcNow;
+        await using (var seedDb = CreateContext())
+        {
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PURCHASE",
+                AmountGranted = 5,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-10),
+                ExpiresAt = now.AddMinutes(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+
+        var response = await PostV1RewriteAsync(client, token, "v1-test-expired-credit", ValidV1Draft());
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var body = await response.Content.ReadFromJsonAsync<V1RewriteSubmitResponse>();
+        body.Should().NotBeNull();
+        body!.Status.Should().Be("processing");
+        await using var db = CreateContext();
+        var credit = await db.RewriteCredits.SingleAsync();
+        credit.AmountConsumed.Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task V1_rewrite_submit_allows_live_key_with_usable_purchased_credit()
     {
         var (user, token) = await SeedApiKeyUserAsync(
@@ -881,6 +967,53 @@ public sealed class RewriteApiTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
         await using var db = CreateContext();
         (await db.UsagePeriods.CountAsync()).Should().Be(0);
+        (await db.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await db.UsageReservations.CountAsync()).Should().Be(0);
+        (await db.OutboxMessages.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Rewrite_with_only_expired_credit_returns_payment_required_with_credits_expired_code()
+    {
+        var externalAuthUserId = "clerk_expired_credit";
+        var now = DateTimeOffset.UtcNow;
+        await using (var seedDb = CreateContext())
+        {
+            var user = new AppUser
+            {
+                ExternalAuthUserId = externalAuthUserId,
+                Email = $"{externalAuthUserId}@example.com",
+                SubscriptionStatus = SubscriptionStatus.Inactive,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            seedDb.AppUsers.Add(user);
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                User = user,
+                Source = "PROMO",
+                AmountGranted = 5,
+                AmountConsumed = 0,
+                GrantedAt = now.AddDays(-10),
+                ExpiresAt = now.AddMinutes(-1),
+            });
+            await seedDb.SaveChangesAsync();
+        }
+        await using var factory = CreateFactory();
+        var client = CreateClient(factory);
+        client.DefaultRequestHeaders.Add("X-External-User-Id", externalAuthUserId);
+        client.DefaultRequestHeaders.Add("X-Idempotency-Key", "api-idem-expired-credit");
+
+        var response = await client.PostAsJsonAsync("/api/rewrite", ValidRequest());
+
+        response.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
+        using var document = await ReadJsonAsync(response);
+        var error = document.RootElement.GetProperty("error");
+        error.GetProperty("code").GetString().Should().Be(RewriteEngineErrorCodes.CreditsExpired);
+        error.GetProperty("message").GetString().Should().Be("No rewrite quota remains for the current period.");
+        await using var db = CreateContext();
+        var credit = await db.RewriteCredits.SingleAsync();
+        credit.AmountConsumed.Should().Be(0);
         (await db.RewriteAttempts.CountAsync()).Should().Be(0);
         (await db.UsageReservations.CountAsync()).Should().Be(0);
         (await db.OutboxMessages.CountAsync()).Should().Be(0);
