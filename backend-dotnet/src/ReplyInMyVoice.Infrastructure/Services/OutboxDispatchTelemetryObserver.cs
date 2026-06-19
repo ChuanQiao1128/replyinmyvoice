@@ -2,14 +2,17 @@ using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Logging;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Domain.Enums;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
 public sealed class OutboxDispatchTelemetryObserver(
     ILogger<OutboxDispatchTelemetryObserver> logger,
+    IDeadLetterRepository deadLetters,
+    IUnitOfWork unitOfWork,
     TelemetryClient? telemetryClient = null) : IOutboxDispatchObserver
 {
-    public Task OnTerminalFailureAsync(
+    public async Task OnTerminalFailureAsync(
         OutboxMessage message,
         string error,
         CancellationToken ct = default)
@@ -55,6 +58,27 @@ public sealed class OutboxDispatchTelemetryObserver(
             }
         }
 
-        return Task.CompletedTask;
+        try
+        {
+            await deadLetters.RecordFailureAsync(
+                DeadLetterEntityType.Outbox,
+                message.Id.ToString("D"),
+                error,
+                ct);
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            try
+            {
+                logger.LogWarning(
+                    ex,
+                    "Could not record terminal outbox failure for message {MessageId}.",
+                    message.Id);
+            }
+            catch (Exception)
+            {
+            }
+        }
     }
 }

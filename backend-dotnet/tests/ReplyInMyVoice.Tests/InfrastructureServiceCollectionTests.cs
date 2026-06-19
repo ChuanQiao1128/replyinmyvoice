@@ -12,6 +12,7 @@ using Microsoft.Data.SqlClient;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
+using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.BillingSupport;
 using ReplyInMyVoice.Application.UseCases.Quota;
 using ReplyInMyVoice.Application.UseCases.Rewrite;
@@ -55,6 +56,7 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IUsageReservationRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IRewriteCreditRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IOutboxMessageRepository>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<IDeadLetterRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IPromoCodeRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IPromoCodeRedemptionRepository>().Should().NotBeNull();
         scopedProvider.GetRequiredService<IStripeInvoiceRepository>().Should().NotBeNull();
@@ -90,6 +92,8 @@ public sealed class InfrastructureServiceCollectionTests
         scopedProvider.GetRequiredService<IngestStripeWebhookHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<ProcessPendingStripeEventsHandler>().Should().NotBeNull();
         scopedProvider.GetRequiredService<StripeEventPayloadSynchronizer>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<RequeueFailedOutboxMessageHandler>().Should().NotBeNull();
+        scopedProvider.GetRequiredService<RequeueFailedStripeEventHandler>().Should().NotBeNull();
         provider.GetRequiredService<StripeEventProcessingOptions>().Should().NotBeNull();
     }
 

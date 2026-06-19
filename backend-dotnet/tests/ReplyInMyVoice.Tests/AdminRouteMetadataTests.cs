@@ -43,6 +43,9 @@ public sealed class AdminRouteMetadataTests
             "console/users/{userId}/suspension",
             "console/users/{userId}/refund",
             "console/webhook-deliveries/{id}/retry",
+            "console/dead-letter",
+            "console/dead-letter/outbox/{messageId}/requeue",
+            "console/dead-letter/stripe/{eventId}/requeue",
         ]);
     }
 }

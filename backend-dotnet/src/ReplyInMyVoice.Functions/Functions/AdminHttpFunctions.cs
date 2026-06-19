@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
+using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Application.UseCases.Admin;
 using ReplyInMyVoice.Application.UseCases.PromoAdmin;
+using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Functions.Auth;
 using ReplyInMyVoice.Functions.Http;
 using AppCommon = ReplyInMyVoice.Application.Common;
@@ -34,6 +36,9 @@ public sealed class AdminHttpFunctions
     private readonly SetUserSuspensionHandler _setUserSuspensionHandler;
     private readonly IssueRefundHandler _issueRefundHandler;
     private readonly RetryWebhookDeliveryHandler _retryWebhookDeliveryHandler;
+    private readonly RequeueFailedOutboxMessageHandler _requeueFailedOutboxMessageHandler;
+    private readonly RequeueFailedStripeEventHandler _requeueFailedStripeEventHandler;
+    private readonly IDeadLetterRepository _deadLetters;
     private readonly CreatePromoCodeHandler _createPromoCodeHandler;
     private readonly ListPromoCodesHandler _listPromoCodesHandler;
     private readonly GetPromoCodeDetailHandler _getPromoCodeDetailHandler;
@@ -55,6 +60,9 @@ public sealed class AdminHttpFunctions
         SetUserSuspensionHandler setUserSuspensionHandler,
         IssueRefundHandler issueRefundHandler,
         RetryWebhookDeliveryHandler retryWebhookDeliveryHandler,
+        RequeueFailedOutboxMessageHandler requeueFailedOutboxMessageHandler,
+        RequeueFailedStripeEventHandler requeueFailedStripeEventHandler,
+        IDeadLetterRepository deadLetters,
         CreatePromoCodeHandler createPromoCodeHandler,
         ListPromoCodesHandler listPromoCodesHandler,
         GetPromoCodeDetailHandler getPromoCodeDetailHandler,
@@ -75,6 +83,9 @@ public sealed class AdminHttpFunctions
         _setUserSuspensionHandler = setUserSuspensionHandler;
         _issueRefundHandler = issueRefundHandler;
         _retryWebhookDeliveryHandler = retryWebhookDeliveryHandler;
+        _requeueFailedOutboxMessageHandler = requeueFailedOutboxMessageHandler;
+        _requeueFailedStripeEventHandler = requeueFailedStripeEventHandler;
+        _deadLetters = deadLetters;
         _createPromoCodeHandler = createPromoCodeHandler;
         _listPromoCodesHandler = listPromoCodesHandler;
         _getPromoCodeDetailHandler = getPromoCodeDetailHandler;
@@ -783,6 +794,94 @@ public sealed class AdminHttpFunctions
         };
     }
 
+    [Function("AdminListDeadLetter")]
+    public async Task<IActionResult> ListDeadLetter(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "console/dead-letter")]
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await RequireAdminResultAsync(request, cancellationToken);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        if (!TryParseDeadLetterEntityType(request.Query, out var entityType))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid dead-letter entity type",
+                "The dead-letter entityType query value must be outbox or stripe.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var page = ParsePositiveInt(request.Query, "page", DefaultPage, int.MaxValue);
+        var pageSize = ParsePositiveInt(request.Query, "pageSize", DefaultPageSize, MaxPageSize);
+        var failures = await _deadLetters.GetFailuresAsync(entityType, page, pageSize, cancellationToken);
+
+        return new OkObjectResult(ToAdminDeadLetterListResponse(failures));
+    }
+
+    [Function("AdminRequeueOutboxMessage")]
+    public async Task<IActionResult> RequeueOutboxMessage(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/dead-letter/outbox/{messageId}/requeue")]
+        HttpRequest request,
+        string messageId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (!Guid.TryParse(messageId, out var parsedMessageId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid outbox message id",
+                "The outbox requeue route requires a valid message id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _requeueFailedOutboxMessageHandler.HandleAsync(
+            new RequeueFailedOutboxMessageCommand(
+                parsedMessageId,
+                admin.ExternalAuthUserId,
+                DateTimeOffset.UtcNow),
+            cancellationToken);
+
+        return MapDeadLetterRequeueResult(result);
+    }
+
+    [Function("AdminRequeueStripeEvent")]
+    public async Task<IActionResult> RequeueStripeEvent(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "console/dead-letter/stripe/{eventId}/requeue")]
+        HttpRequest request,
+        string eventId,
+        CancellationToken cancellationToken)
+    {
+        var admin = await _adminAccess.RequireAdminAsync(request, cancellationToken);
+        if (admin is null)
+        {
+            return AdminForbidden();
+        }
+
+        if (string.IsNullOrWhiteSpace(eventId))
+        {
+            return FunctionHttpResults.Problem(
+                "Invalid Stripe event id",
+                "The Stripe requeue route requires a non-empty event id.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var result = await _requeueFailedStripeEventHandler.HandleAsync(
+            new RequeueFailedStripeEventCommand(
+                eventId.Trim(),
+                DateTimeOffset.UtcNow),
+            cancellationToken);
+
+        return MapDeadLetterRequeueResult(result);
+    }
+
     private async Task<IActionResult?> RequireAdminResultAsync(
         HttpRequest request,
         CancellationToken cancellationToken)
@@ -885,6 +984,42 @@ public sealed class AdminHttpFunctions
                 result.Detail,
                 StatusCodes.Status400BadRequest),
         };
+
+    private static IActionResult MapDeadLetterRequeueResult(AdminDeadLetterRequeueResultDto result) =>
+        result.Kind switch
+        {
+            AdminDeadLetterRequeueResultKind.Success => new OkObjectResult(
+                new AdminDeadLetterRequeueResponse(
+                    FormatDeadLetterEntityType(result.EntityType!.Value),
+                    result.EntityId!,
+                    result.Status!,
+                    result.AttemptCount!.Value,
+                    result.NextAttemptAt)),
+            _ => FunctionHttpResults.Problem(
+                "Dead-letter item not found",
+                "No failed outbox message or Stripe event exists for the requested id.",
+                StatusCodes.Status404NotFound),
+        };
+
+    private static AdminDeadLetterListResponse ToAdminDeadLetterListResponse(
+        DeadLetterFailurePage page) =>
+        new(
+            page.Page,
+            page.PageSize,
+            page.TotalCount,
+            page.TotalPages,
+            page.Items.Select(ToAdminDeadLetterItem).ToList());
+
+    private static AdminDeadLetterItem ToAdminDeadLetterItem(DeadLetterFailureDto item) =>
+        new(
+            item.Id,
+            FormatDeadLetterEntityType(item.EntityType),
+            item.EntityId,
+            item.FailureReason,
+            item.FailureCount,
+            item.FirstFailedAt,
+            item.LastFailedAt,
+            item.CreatedAt);
 
     private static AdminUsersListResponse ToAdminUsersListResponse(AppCommon.AdminUsersListDto dto) =>
         new(
@@ -1122,6 +1257,41 @@ public sealed class AdminHttpFunctions
 
         return Math.Min(parsed, maxValue);
     }
+
+    private static bool TryParseDeadLetterEntityType(
+        IQueryCollection query,
+        out DeadLetterEntityType? entityType)
+    {
+        entityType = null;
+        if (!query.TryGetValue("entityType", out var values) ||
+            string.IsNullOrWhiteSpace(values.ToString()))
+        {
+            return true;
+        }
+
+        var normalized = values.ToString().Trim();
+        if (string.Equals(normalized, "outbox", StringComparison.OrdinalIgnoreCase))
+        {
+            entityType = DeadLetterEntityType.Outbox;
+            return true;
+        }
+
+        if (string.Equals(normalized, "stripe", StringComparison.OrdinalIgnoreCase))
+        {
+            entityType = DeadLetterEntityType.Stripe;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string FormatDeadLetterEntityType(DeadLetterEntityType entityType) =>
+        entityType switch
+        {
+            DeadLetterEntityType.Outbox => "Outbox",
+            DeadLetterEntityType.Stripe => "Stripe",
+            _ => entityType.ToString(),
+        };
 
     private static bool TryParseDateQuery(
         IQueryCollection query,
@@ -1381,3 +1551,27 @@ public sealed record AdminWebhookDeliveryRetryResponse(
     string Status,
     int AttemptCount,
     DateTimeOffset NextAttemptAt);
+
+public sealed record AdminDeadLetterListResponse(
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    IReadOnlyList<AdminDeadLetterItem> Items);
+
+public sealed record AdminDeadLetterItem(
+    Guid Id,
+    string EntityType,
+    string EntityId,
+    string FailureReason,
+    int FailureCount,
+    DateTimeOffset FirstFailedAt,
+    DateTimeOffset LastFailedAt,
+    DateTimeOffset CreatedAt);
+
+public sealed record AdminDeadLetterRequeueResponse(
+    string EntityType,
+    string EntityId,
+    string Status,
+    int AttemptCount,
+    DateTimeOffset? NextAttemptAt);

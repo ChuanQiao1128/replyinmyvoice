@@ -6838,3 +6838,48 @@ claude-heavy-planning-handoff
 - Output artifacts: Updated `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/ApiKeyUseCaseTests.cs`, updated migration scanner repository-wide test contract for marked contract migrations, and this log entry.
 - Verification evidence: Red run failed because `ApiKey.GetProperty("Scope")` still existed; after implementation, `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~ApiKeyUseCaseTests` passed 2/2, `dotnet test ... --filter FullyQualifiedName~MigrationDisciplineScannerTests` passed 17/17, and `dotnet test backend-dotnet/ReplyInMyVoice.sln` passed 844/844.
 - Limitations: No browser/UI tests applied because this issue has no frontend surface; no deployment, push, PR, production database, payment provider, or secret-backed service was used.
+
+### 2026-06-19 - system-spec-synthesis - P1-07 issue #865 dead-letter requeue
+
+- Agent: Codex worker
+- Trigger: Issue #865 adds a new EF Core dead-letter store, repository contract, admin recovery API, and tests across application, infrastructure, and Azure Functions layers.
+- Action: Opened and followed the skill as a requirements-to-implementation checklist. Read the issue, repo brief, `AGENTS.md`, `CLAUDE.md`, affected domain entities, repository contracts, admin functions, dispatcher handlers, telemetry observer, migration history, and admin access tests before editing.
+- Output artifacts: `DeadLetterMessage`, `DeadLetterEntityType`, `IDeadLetterRepository`, `DeadLetterRepository`, requeue handlers, admin routes, EF migration `20260619064730_AddDeadLetterStoreAndRequeueMechanism`, focused tests, and this log entry.
+- Verification evidence: Focused `AdminDeadLetterAndRequeueTests` passed 7/7; exact issue acceptance filters passed; route and DI tests passed; full backend test project passed 851/851; migration SQL script generation showed the required table, columns, foreign keys, and indexes.
+- Limitations: `dotnet ef database update` could not apply locally because this worker has no reachable SQL Server on the configured local connection string; no deployment, push, PR, production database, payment provider, or secret-backed service was used.
+
+### 2026-06-19 - state-machine-modeling - P1-07 issue #865 recovery lifecycle
+
+- Agent: Codex worker
+- Trigger: Issue #865 changes terminal failure recovery for outbox messages and Stripe events from no operator API path to explicit manual requeue.
+- Action: Opened and followed the skill as a lifecycle checklist. Modeled source states `Failed` and `Pending`, dead-letter record lifecycle `recorded`, `updated`, and `cleared`, admin requeue events, not-found paths, non-admin rejection, and repeated requeue idempotency.
+- Output artifacts: Requeue handlers for outbox and Stripe events, dead-letter repository `RecordFailureAsync` and `RequeueAsync`, admin requeue endpoints, `Requeue_idempotent`, and this log entry.
+- Verification evidence: Requeue tests prove `Failed -> Pending`, reset attempt counts, cleared transient failure fields, preserved Stripe payload data, and repeated requeue leaves the row in the same valid state. Full backend test project passed 851/851.
+- Limitations: No automatic retry scheduling, queue broker dead-letter flow, new status enum for source rows, billing state transition, deployment, push, or PR was introduced.
+
+### 2026-06-19 - data-module-review - P1-07 issue #865 dead-letter persistence
+
+- Agent: Codex worker
+- Trigger: Issue #865 adds an EF Core entity, migration, repository, indexes, row-version field, and persistence mutations for failed outbox and Stripe event recovery.
+- Action: Opened and followed the skill as a persistence-safety review. Reviewed entity keys, nullable links, failure-count updates, pagination, SQLite DateTimeOffset behavior, repository save boundaries, source-row reset fields, and preservation of created timestamps, row version, Stripe event IDs, and payload JSON.
+- Output artifacts: `DeadLetterMessage` mapping, migration and model snapshot updates, unique `(EntityType, EntityId)` index, lookup indexes, optional foreign keys, `DeadLetterRepository`, `GetByIdAsync` for outbox messages, and this log entry.
+- Verification evidence: EF migration script generation succeeded and emitted the required schema; focused tests cover list filtering/pagination and source-row reset invariants; full backend test project passed 851/851; grep checks confirmed reset of `AttemptCount` and `LastError` before save.
+- Limitations: Local database apply was blocked by missing SQL Server; verification used EF compile, SQL script generation, SQLite-backed tests, and source checks only.
+
+### 2026-06-19 - resilience-test-generation - P1-07 issue #865 manual recovery
+
+- Agent: Codex worker
+- Trigger: Issue #865 changes terminal failure handling and manual recovery for payment-event-related persistence, including idempotent requeue and authorization failures.
+- Action: Opened and followed the skill as a failure-mode checklist. Covered non-existent IDs, repeated requeue, non-admin rejection before business logic, observer dead-letter recording errors not blocking dispatch telemetry, Stripe poisoned-event recording, pagination boundaries, and source state reset correctness.
+- Output artifacts: `AdminDeadLetterAndRequeueTests`, observer dead-letter recording, Stripe terminal-failure recording helper, admin route guards, and this log entry.
+- Verification evidence: Exact acceptance filters for outbox requeue, Stripe requeue, idempotency, not-found, non-admin rejection, and list pagination all passed; full backend test project passed 851/851; admin route grep confirmed authorization checks before requeue logic.
+- Limitations: Tests use deterministic local fakes and SQLite; no live Azure Functions host, production database, external payment provider, deployment, push, or PR was used.
+
+### 2026-06-19 - dotnet-backend-testing - P1-07 issue #865 admin dead-letter tests
+
+- Agent: Codex worker
+- Trigger: Issue #865 requires C#/.NET tests for admin requeue handlers, Azure Functions endpoints, pagination, authorization, idempotency, and failure-field cleanup.
+- Action: Opened and followed the project skill for test-level selection. Started with a failing model-configuration test before adding the entity, then added SQLite-backed repository/handler tests and `DefaultHttpContext` Azure Functions tests with claim-based admin access.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/AdminDeadLetterAndRequeueTests.cs`, updated admin function factory, route metadata tests, DI tests, and this log entry.
+- Verification evidence: Red test failed before the entity existed; after implementation, `AdminDeadLetterAndRequeueTests` passed 7/7, route and DI tests passed 36/36, all issue acceptance filters passed, and full backend test project passed 851/851.
+- Limitations: No browser/UI tests applied because this issue has no frontend surface; no live Functions host, deployment, push, PR, production database, payment provider, or secret-backed service was used.

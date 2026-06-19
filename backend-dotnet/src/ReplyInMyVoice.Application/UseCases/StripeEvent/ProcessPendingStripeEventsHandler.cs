@@ -14,7 +14,8 @@ public sealed class ProcessPendingStripeEventsHandler(
     IUnitOfWork unitOfWork,
     StripeEventProcessingOptions options,
     ILogger<ProcessPendingStripeEventsHandler> logger,
-    IBusinessMetrics? metrics = null)
+    IBusinessMetrics? metrics = null,
+    IDeadLetterRepository? deadLetters = null)
 {
     private const int ClaimRaceMaxAttempts = 5;
     private static readonly TimeSpan ClaimLease = TimeSpan.FromMinutes(2);
@@ -199,6 +200,7 @@ public sealed class ProcessPendingStripeEventsHandler(
         {
             RecordFailedMetric(failure.EventType ?? eventType);
             LogPoisoned(eventId, failure.EventType ?? eventType, failure.AttemptCount, failure.Error);
+            await RecordDeadLetterAsync(eventId, failure.Error, ct);
         }
     }
 
@@ -229,6 +231,35 @@ public sealed class ProcessPendingStripeEventsHandler(
         {
             RecordFailedMetric(failure.EventType ?? eventType);
             LogPoisoned(eventId, failure.EventType ?? eventType, failure.AttemptCount, failure.Error);
+            await RecordDeadLetterAsync(eventId, failure.Error, ct);
+        }
+    }
+
+    private async Task RecordDeadLetterAsync(
+        string eventId,
+        string error,
+        CancellationToken ct)
+    {
+        if (deadLetters is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await deadLetters.RecordFailureAsync(
+                DeadLetterEntityType.Stripe,
+                eventId,
+                error,
+                ct);
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                ex,
+                "Could not record poisoned Stripe event {EventId}.",
+                eventId);
         }
     }
 
