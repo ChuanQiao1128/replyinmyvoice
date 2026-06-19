@@ -4,5 +4,8 @@ namespace ReplyInMyVoice.Infrastructure.Queueing;
 
 public interface IRewriteJobPublisher
 {
-    Task PublishAsync(RewriteJob job, CancellationToken cancellationToken);
+    Task PublishAsync(
+        RewriteJob job,
+        CancellationToken cancellationToken,
+        string? correlationId = null);
 }

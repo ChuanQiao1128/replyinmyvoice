@@ -6721,3 +6721,21 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/OpenApiV1ContractTests.cs` and this log entry.
 - Verification evidence: The quoted brief filter `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter 'FullyQualifiedName~OpenApiV1ContractTests::*'` compiled but matched no tests under this xUnit runner; `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~OpenApiV1ContractTests` ran 2 tests with the source-scan pin passing and the spec guard failing as intended against the current uncorrected spec, listing missing tuples including `api_requires_paid_plan` 402, `rewrite_failed` 500, and `rate_limit_unavailable` 503; full backend `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 816 existing tests and failed only the new OpenAPI guard.
 - Limitations: `public/openapi.json` was not modified because issue #859 explicitly leaves the spec correction to a separate issue. No API implementation, payment, deployment, production secret, or provider path was changed.
+
+### 2026-06-19 - system-spec-synthesis - P1-06 issue #861 distributed tracing
+
+- Agent: Codex worker
+- Trigger: Issue #861 changes multi-module trace flow across API, Azure Functions, Infrastructure queue publishing, outbox dispatch, and the Service Bus worker.
+- Action: Opened and followed the skill as a compact implementation-spec checklist. Converted the issue and repo constraints into the no-schema safe default: one shared `ReplyInMyVoice` `ActivitySource`, `OTEL_ENABLED` runtime gate, W3C `traceparent` propagation through Service Bus application properties, correlation-only logging scopes, and worker-side consumer activity continuation.
+- Output artifacts: `DistributedTracingActivitySource`, `DistributedTracingContext`, `DistributedTracingSettings`, API/Functions/Worker DI setup, Service Bus property stamping, worker activity continuation, and this log entry.
+- Verification evidence: Focused tracing tests passed for `DistributedTracingActivitySourceTests`, `ServiceBusTraceparentPropagationTests`, and `DistributedTracingE2ETests`; `dotnet build backend-dotnet/ReplyInMyVoice.sln` passed with 0 errors and no tracing-related warnings; grep checks found `Activity.Current`, `traceparent`, and `ApplicationProperties` in the requested source paths.
+- Limitations: No `OutboxMessage` schema or migration was added; no live Azure Service Bus, Application Insights export, production deployment, secret, payment, auth, or rewrite-engine path was exercised.
+
+### 2026-06-19 - dotnet-backend-testing - P1-06 issue #861 distributed tracing tests
+
+- Agent: Codex worker
+- Trigger: Issue #861 requires C# xUnit coverage for ActivitySource registration, API request activity emission, Service Bus traceparent stamping, worker-side trace continuation, and correlation preservation.
+- Action: Opened and followed the project skill for test-level selection. Added focused xUnit/FluentAssertions tests using `ActivityListener`, `WebApplicationFactory`, `ServiceBusMessage`, and `ServiceBusModelFactory` without live Azure dependencies.
+- Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/DistributedTracingActivitySourceTests.cs`, `DistributedTracingE2ETests.cs`, `ServiceBusTraceparentPropagationTests.cs`, and this log entry.
+- Verification evidence: Initial focused test run failed before implementation on missing observability types; after implementation, the three required filters passed. Full backend test project passed 827 tests and failed 1 pre-existing out-of-scope `OpenApiV1ContractTests.OpenApi_v1_documents_all_produced_status_and_error_tuples` static OpenAPI spec guard unrelated to P1-06.
+- Limitations: Tests use local listeners and Service Bus model factories; no live Azure Service Bus, Application Insights ingestion, production database, deploy command, payment provider, secret-backed service, or external provider call was exercised.

@@ -1,15 +1,19 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using ReplyInMyVoice.Application.UseCases.RewriteJob;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Infrastructure.Configuration;
+using ReplyInMyVoice.Infrastructure.Observability;
 
 namespace ReplyInMyVoice.Worker;
 
 public sealed class ServiceBusRewriteWorker(
     IConfiguration configuration,
     IServiceScopeFactory scopeFactory,
+    DistributedTracingActivitySource tracing,
+    DistributedTracingSettings tracingSettings,
     ILogger<ServiceBusRewriteWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -68,6 +72,20 @@ public sealed class ServiceBusRewriteWorker(
 
     private async Task ProcessMessageAsync(ProcessMessageEventArgs args)
     {
+        using var activityScope = DistributedTracingContext.StartServiceBusConsumerActivity(
+            tracing,
+            args.Message.ApplicationProperties,
+            "Worker.ServiceBusRewriteJob",
+            tracingSettings.Enabled);
+        var correlationId = DistributedTracingContext.GetApplicationPropertyValue(
+            args.Message.ApplicationProperties,
+            DistributedTracingContext.CorrelationIdPropertyName);
+        if (Activity.Current is not null)
+        {
+            Activity.Current.AddEvent(new ActivityEvent("worker.servicebus.message"));
+        }
+
+        using var logScope = logger.BeginScope(DistributedTracingContext.BuildLogScope(correlationId));
         RewriteJob? job;
         try
         {

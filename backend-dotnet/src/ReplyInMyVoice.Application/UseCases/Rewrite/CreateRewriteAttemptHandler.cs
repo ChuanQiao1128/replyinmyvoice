@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -230,7 +231,7 @@ public sealed class CreateRewriteAttemptHandler(
             NextAttemptAt = now,
             AttemptCount = 0,
             MaxAttempts = 10,
-            CorrelationId = attemptId.ToString(),
+            CorrelationId = Activity.Current?.Id ?? attemptId.ToString(),
         };
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);

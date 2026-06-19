@@ -1,14 +1,18 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Middleware;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using ReplyInMyVoice.Infrastructure.Observability;
 
 namespace ReplyInMyVoice.Functions.Http;
 
 public sealed class HttpHardeningMiddleware(
     IConfiguration configuration,
+    DistributedTracingActivitySource tracing,
+    DistributedTracingSettings tracingSettings,
     ILogger<HttpHardeningMiddleware> logger) : IFunctionsWorkerMiddleware
 {
     public const string CorrelationHeaderName = "X-Correlation-Id";
@@ -28,9 +32,21 @@ public sealed class HttpHardeningMiddleware(
             return;
         }
 
+        using var activityScope = DistributedTracingContext.StartIncomingActivity(
+            tracing,
+            "Functions.HttpRequest",
+            ActivityKind.Server,
+            http.Request.Headers[DistributedTracingContext.TraceparentHeaderName].ToString(),
+            http.Request.Headers[DistributedTracingContext.TracestateHeaderName].ToString(),
+            tracingSettings.Enabled);
         var correlationId = ResolveCorrelationId(http.Request);
         http.Items["CorrelationId"] = correlationId;
         http.Response.Headers[CorrelationHeaderName] = correlationId;
+        if (Activity.Current is not null)
+        {
+            Activity.Current.SetTag(DistributedTracingContext.CorrelationIdPropertyName, correlationId);
+            Activity.Current.AddEvent(new ActivityEvent("functions.http.request"));
+        }
 
         var limit = ResolveBodyLimitBytes(configuration, context.FunctionDefinition.Name);
         if (await TryRejectOversizedBodyAsync(http, limit, context.CancellationToken))
@@ -38,10 +54,7 @@ public sealed class HttpHardeningMiddleware(
             return;
         }
 
-        using var scope = logger.BeginScope(new Dictionary<string, object>
-        {
-            ["CorrelationId"] = correlationId,
-        });
+        using var scope = logger.BeginScope(DistributedTracingContext.BuildLogScope(correlationId));
         await next(context);
     }
 

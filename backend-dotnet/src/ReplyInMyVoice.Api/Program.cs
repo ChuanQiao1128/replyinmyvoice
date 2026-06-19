@@ -12,6 +12,7 @@ using ReplyInMyVoice.Domain.Enums;
 using ReplyInMyVoice.Api;
 using ReplyInMyVoice.Infrastructure;
 using ReplyInMyVoice.Infrastructure.Data;
+using ReplyInMyVoice.Infrastructure.Observability;
 using ReplyInMyVoice.Infrastructure.Services;
 using Stripe;
 using System.Diagnostics;
@@ -56,6 +57,7 @@ builder.Services.AddSwaggerGen();
 Console.Error.WriteLine("TRACE api: swagger registered");
 builder.Services.AddApplicationInsightsTelemetry();
 Console.Error.WriteLine("TRACE api: app insights registered");
+builder.Services.AddActivitySourceTelemetry(builder.Configuration, builder.Environment.EnvironmentName);
 
 builder.Services.AddReplyInMyVoiceInfrastructure(builder.Configuration);
 Console.Error.WriteLine("TRACE api: infrastructure registered");
@@ -68,6 +70,32 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.Use(async (httpContext, next) =>
+{
+    var tracingSettings = httpContext.RequestServices.GetRequiredService<DistributedTracingSettings>();
+    if (!tracingSettings.Enabled)
+    {
+        await next();
+        return;
+    }
+
+    var tracing = httpContext.RequestServices.GetRequiredService<DistributedTracingActivitySource>();
+    using var activityScope = DistributedTracingContext.StartIncomingActivity(
+        tracing,
+        "Api.HttpRequest",
+        ActivityKind.Server,
+        httpContext.Request.Headers[DistributedTracingContext.TraceparentHeaderName].ToString(),
+        httpContext.Request.Headers[DistributedTracingContext.TracestateHeaderName].ToString(),
+        tracingSettings.Enabled);
+    if (Activity.Current is not null)
+    {
+        Activity.Current.SetTag(DistributedTracingContext.CorrelationIdPropertyName, httpContext.TraceIdentifier);
+        Activity.Current.AddEvent(new ActivityEvent("api.request"));
+    }
+
+    await next();
+});
 
 app.MapGet("/health", () => Results.Ok(new { ok = true, service = "replyinmyvoice-api" }));
 

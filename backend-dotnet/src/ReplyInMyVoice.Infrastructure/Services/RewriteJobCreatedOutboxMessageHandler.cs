@@ -1,12 +1,16 @@
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using ReplyInMyVoice.Application.Abstractions;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.Entities;
+using ReplyInMyVoice.Infrastructure.Observability;
 using ReplyInMyVoice.Infrastructure.Queueing;
 
 namespace ReplyInMyVoice.Infrastructure.Services;
 
-public sealed class RewriteJobCreatedOutboxMessageHandler(IRewriteJobPublisher jobPublisher) : IOutboxMessageHandler
+public sealed class RewriteJobCreatedOutboxMessageHandler(
+    IRewriteJobPublisher jobPublisher,
+    ILogger<RewriteJobCreatedOutboxMessageHandler>? logger = null) : IOutboxMessageHandler
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -26,7 +30,8 @@ public sealed class RewriteJobCreatedOutboxMessageHandler(IRewriteJobPublisher j
             throw new JsonException("Outbox payload did not contain a valid attempt id.");
         }
 
-        await jobPublisher.PublishAsync(new RewriteJob(payload.AttemptId), ct);
+        using var scope = logger?.BeginScope(DistributedTracingContext.BuildLogScope(message.CorrelationId));
+        await jobPublisher.PublishAsync(new RewriteJob(payload.AttemptId), ct, message.CorrelationId);
     }
 
     private sealed record RewriteJobCreatedPayload(Guid AttemptId);

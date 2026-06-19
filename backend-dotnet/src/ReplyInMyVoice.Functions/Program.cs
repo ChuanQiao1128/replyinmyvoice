@@ -23,6 +23,7 @@ builder.UseMiddleware<HttpHardeningMiddleware>();
 builder.Services
     .AddApplicationInsightsTelemetryWorkerService()
     .ConfigureFunctionsApplicationInsights();
+builder.Services.AddActivitySourceTelemetry(builder.Configuration, builder.Environment.EnvironmentName);
 
 builder.Services.AddReplyInMyVoiceInfrastructure(
     builder.Configuration,
