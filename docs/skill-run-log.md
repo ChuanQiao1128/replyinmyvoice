@@ -6586,3 +6586,30 @@ claude-heavy-planning-handoff
 - Output artifacts: `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeEventUseCaseTests.cs`, `backend-dotnet/tests/ReplyInMyVoice.Tests/Application/StripeReconciliationUseCaseTests.cs`, and this log entry.
 - Verification evidence: `dotnet build backend-dotnet/ReplyInMyVoice.sln -c Release` exited 0 with one duplicate-using warning in `InfrastructureServiceCollectionTests.cs`.
 - Limitations: `dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release` did not reach test execution in this sandbox. The exact command failed with MSBuild named-pipe/socket `Permission denied`, and `MSBUILDDISABLENODEREUSE=1 dotnet test backend-dotnet/ReplyInMyVoice.sln -c Release --no-build -m:1 /nodeReuse:false` reached VSTest but aborted with the same local socket permission denial.
+
+### 2026-06-19 - state-machine-modeling - P1-01 issue #856 credit expiry quota result
+
+- Agent: Codex worker
+- Trigger: Issue #856 changes quota rejection behavior for the rewrite attempt lifecycle when period quota is unavailable and remaining credits are expired.
+- Action: Opened and followed the project skill as a lifecycle checklist. Modeled the relevant states as period quota unavailable, usable credit unavailable, remaining credit expired, and rewrite attempt rejected; kept the transition terminal with no attempt, reservation, outbox message, or credit consumption.
+- Output artifacts: `CreateRewriteAttemptHandler` expired-credit classification, focused handler and HTTP tests, and this log entry.
+- Verification evidence: `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj --filter FullyQualifiedName~CreateRewriteAttemptHandler_expired_credits` passed; full `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 808/808.
+- Limitations: No subscription, reservation, attempt status enum, or quota transition semantics were changed beyond the new rejection code.
+
+### 2026-06-19 - data-module-review - P1-01 issue #856 rewrite credit read path
+
+- Agent: Codex worker
+- Trigger: Issue #856 reads `RewriteCredit` rows after no usable credit can be reserved, and the task touches quota/accounting invariants.
+- Action: Opened and followed the project skill as a persistence checklist. Reviewed `RewriteCredit`, `UsagePeriod`, `UsageReservation`, `RewriteAttempt`, repository reads, and handler transaction behavior; added only a read of existing user credits and did not alter `UsableForReservation`, SQL consumption, schema, indexes, or migrations.
+- Output artifacts: `RewriteEngineErrorCodes.CreditsExpired`, `CreateRewriteAttemptHandler` remaining-credit expiry check, HTTP propagation changes, tests, and this log entry.
+- Verification evidence: new tests assert expired credits keep `AmountConsumed` unchanged and create no usage period, attempt, reservation, or outbox row; full backend test project passed 808/808.
+- Limitations: The check reports the distinct code only when at least one credit has remaining balance and every remaining-balance credit has an expiry at or before the command timestamp.
+
+### 2026-06-19 - dotnet-backend-testing - P1-01 issue #856 expired-credit API coverage
+
+- Agent: Codex worker
+- Trigger: Issue #856 required new C# xUnit tests for handler behavior and HTTP 402 response codes on `/api/rewrite` and `/api/v1/rewrite`.
+- Action: Opened and followed the project skill for test selection. Added one EF-backed handler test in `RewriteUseCaseTests` and two WebApplicationFactory API tests in `RewriteApiTests`; kept deterministic local SQLite fixtures and asserted both response codes and persistence side effects.
+- Output artifacts: `CreateRewriteAttemptHandler_expired_credits_returns_error_code`, `CreateRewriteAttempt_expired_credits_returns_error_code`, `V1SubmitRewrite_expired_credits_returns_error_code`, updated error-code contract pinning, and this log entry.
+- Verification evidence: focused acceptance filters passed individually; `FunctionHttpResultsTests` passed 7/7; full `dotnet test backend-dotnet/tests/ReplyInMyVoice.Tests/ReplyInMyVoice.Tests.csproj` passed 808/808.
+- Limitations: No live payment, external provider, deployment, or production secret path was exercised.

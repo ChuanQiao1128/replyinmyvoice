@@ -191,6 +191,50 @@ public sealed class RewriteUseCaseTests
     }
 
     [Fact]
+    public async Task CreateRewriteAttemptHandler_expired_credits_returns_error_code()
+    {
+        await using var fixture = await DbFixture.CreateAsync();
+        var user = await fixture.CreateUserAsync();
+        var now = DateTimeOffset.Parse("2026-06-09T00:00:00Z");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.RewriteCredits.Add(new RewriteCredit
+            {
+                UserId = user.Id,
+                Source = "PROMO",
+                AmountGranted = 3,
+                AmountConsumed = 1,
+                GrantedAt = now.AddDays(-10),
+                ExpiresAt = now,
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var handlerDb = fixture.CreateContext();
+        var handler = CreateHandler(handlerDb);
+
+        var result = await handler.HandleAsync(new CreateRewriteAttemptCommand(
+            user.Id,
+            "idem-expired-credit",
+            Request("Please confirm next steps."),
+            "free:lifetime",
+            QuotaLimit: 0,
+            Now: now,
+            ApiKeyId: null));
+
+        result.Kind.Should().Be(ApplicationResultKind.QuotaExceeded);
+        result.ErrorCode.Should().Be("credits_expired");
+
+        await using var verifyDb = fixture.CreateContext();
+        var credit = await verifyDb.RewriteCredits.SingleAsync();
+        credit.AmountConsumed.Should().Be(1);
+        (await verifyDb.UsagePeriods.CountAsync()).Should().Be(0);
+        (await verifyDb.RewriteAttempts.CountAsync()).Should().Be(0);
+        (await verifyDb.UsageReservations.CountAsync()).Should().Be(0);
+        (await verifyDb.OutboxMessages.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task CreateRewriteAttemptAsync_consumes_available_credit_when_period_quota_is_exhausted()
     {
         await using var fixture = await DbFixture.CreateAsync();

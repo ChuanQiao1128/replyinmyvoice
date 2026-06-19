@@ -223,6 +223,14 @@ app.MapPost("/api/rewrite", async (
 
     if (result.Kind == ApplicationResultKind.QuotaExceeded)
     {
+        if (!string.IsNullOrWhiteSpace(result.ErrorCode))
+        {
+            return V1Error(
+                result.ErrorCode,
+                "No rewrite quota remains for the current period.",
+                StatusCodes.Status402PaymentRequired);
+        }
+
         return Results.Problem(
             title: "Rewrite quota exhausted",
             detail: "No rewrite quota remains for the current period.",
@@ -458,7 +466,10 @@ app.MapPost("/api/v1/rewrite", async (
         return await CompleteV1Async(
             db,
             auth.ApiKeyId,
-            V1Error("quota_exhausted", "No rewrite quota remains for the current period.", StatusCodes.Status402PaymentRequired),
+            V1Error(
+                result.ErrorCode ?? "quota_exhausted",
+                "No rewrite quota remains for the current period.",
+                StatusCodes.Status402PaymentRequired),
             StatusCodes.Status402PaymentRequired,
             stopwatch,
             now,
