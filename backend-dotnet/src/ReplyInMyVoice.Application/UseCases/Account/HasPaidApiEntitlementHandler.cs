@@ -16,6 +16,10 @@ public sealed class HasPaidApiEntitlementHandler(
             return false;
         }
 
+        // INTENTIONAL: the paid B2B API excludes PastDue (IsPaidApiSubscriptionStatus = Active/Trialing/
+        // Testing only) — stricter than the consumer web path, which DOES grant a PastDue dunning grace
+        // (see AccountUsagePlans.GetUsagePlan). API integrators must keep billing current; purchased
+        // credits below are still honoured regardless of subscription status.
         if (AccountUseCaseSupport.IsPaidApiSubscriptionStatus(user.SubscriptionStatus))
         {
             return true;
