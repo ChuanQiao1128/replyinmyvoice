@@ -10,6 +10,12 @@ public static class AccountUsagePlans
 
     public static AccountUsagePlan GetUsagePlan(AppUser user, IConfiguration? configuration = null)
     {
+        // INTENTIONAL POLICY (do not "fix" as a bug): the consumer WEB path grants paid quota during the
+        // PastDue dunning grace window (so a failed renewal charge doesn't instantly cut off a paying
+        // customer — the grace is time-bounded by PaymentGraceEndsAt + the grace-expiry job). The paid B2B
+        // API is deliberately STRICTER and excludes PastDue (see HasPaidApiEntitlementHandler /
+        // AccountUseCaseSupport.IsPaidApiSubscriptionStatus): API integrators must keep billing current.
+        // Different customer types, different reasonable policies — this divergence is by design.
         if (user.SubscriptionStatus is SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.Testing or SubscriptionStatus.PastDue)
         {
             return new AccountUsagePlan(
