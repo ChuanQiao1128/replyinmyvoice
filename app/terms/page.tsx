@@ -40,7 +40,7 @@ const sections = [
   },
   {
     title: "Billing and quota",
-    text: "Trial access is granted by redeeming a trial code, which provides a small number of successful rewrites (currently 3). After that, you can buy one-time rewrite packs — for example Quick Pack (NZ$2.50 for 10 successful rewrites) and Value Pack (NZ$6.90 for 30 successful rewrites) — which are valid for 90 days from purchase. Pro/API is NZ$19.90 per month for 90 successful rewrites per billing month plus API access; the monthly quota resets at the start of each billing period and unused monthly rewrites do not roll over. Subscriptions, packs, and payment details are managed through Stripe-hosted Checkout and customer portal pages. Reply In My Voice does not collect or store full card numbers or card security codes.",
+    text: "Trial access is granted by redeeming a trial code, which provides a small number of successful rewrites (currently 3). After that, you can buy one-time rewrite packs, for example Quick Pack (NZ$2.50 for 10 successful rewrites) and Value Pack (NZ$6.90 for 30 successful rewrites), which are valid for 90 days from purchase. Pro/API is NZ$19.90 per month for 90 successful rewrites per billing month plus API access; the monthly quota resets at the start of each billing period and unused monthly rewrites do not roll over. Subscriptions, packs, and payment details are managed through Stripe-hosted Checkout and customer portal pages. Reply In My Voice does not collect or store full card numbers or card security codes.",
   },
   {
     title: "Cancellation",

@@ -32,7 +32,7 @@ describe("pricing redesign foundation", () => {
     expect(pricingPage).toContain("≈ NZ$0.23 / rewrite");
     expect(pricingPage).toContain("≈ NZ$0.22 / rewrite");
     expect(pricingPage).toContain('aria-disabled="true"');
-    expect(pricingPage).toContain("Focus Pack — available soon");
+    expect(pricingPage).toContain("Focus Pack · available soon");
   });
 
   it("provides downstream component markers and starter content", () => {

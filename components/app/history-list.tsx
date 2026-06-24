@@ -557,7 +557,7 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                             </span>
                           </div>
                           <p className={styles.histSignalNote}>
-                            A third-party reference signal — lower reads more natural.
+                            A third-party reference signal, lower reads more natural.
                             It is not a guarantee; review before sending.
                           </p>
                         </div>

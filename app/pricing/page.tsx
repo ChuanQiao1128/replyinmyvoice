@@ -65,8 +65,8 @@ function PlanAction({
   if (!configured) {
     const unavailableTitle =
       sku === "focus_pack"
-        ? "Focus Pack — available soon"
-        : `${label.replace(/^(Get|Go) /, "")} — available soon`;
+        ? "Focus Pack · available soon"
+        : `${label.replace(/^(Get|Go) /, "")} · available soon`;
 
     return (
       <button
@@ -203,11 +203,11 @@ export default async function PricingPage() {
             <h1>Pricing</h1>
             <p className="lede">
               Pay per rewrite with one-time packs, or go monthly for heavy use
-              and the API. A trial code unlocks 3 trial rewrites — no card.
+              and the API. A trial code unlocks 3 trial rewrites, no card.
             </p>
             {sessionEmail ? (
               <p className="pricing-session-hint">
-                Signed in as {sessionEmail} — purchases credit this account.
+                Signed in as {sessionEmail}. Purchases credit this account.
               </p>
             ) : null}
             <PricingCheckoutResume />
@@ -236,7 +236,7 @@ export default async function PricingPage() {
                 </li>
                 <li>
                   <Check />
-                  Full engine — facts preserved
+                  Full engine · facts preserved
                 </li>
                 <li>
                   <Check />
@@ -284,7 +284,7 @@ export default async function PricingPage() {
                   </li>
                   <li>
                     <Check />
-                    One-time — never auto-renews
+                    One-time · never auto-renews
                   </li>
                   <li>
                     <Check />
@@ -325,7 +325,7 @@ export default async function PricingPage() {
                 </li>
                 <li>
                   <Check />
-                  One key — web + API share one balance
+                  One key · web + API share one balance
                 </li>
                 <li>
                   <Check />

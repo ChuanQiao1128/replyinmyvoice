@@ -284,7 +284,7 @@ export function RedeemCodeCard({ open = true, onClose }: RedeemCodeCardProps = {
       const successPrefix =
         creditsGranted === 3 ? "3 rewrites unlocked" : `${creditsGranted} rewrites unlocked`;
       setSuccess(
-        `${successPrefix}${expiry ? ` — ${expiry}` : ""}`,
+        `${successPrefix}${expiry ? ` · ${expiry}` : ""}`,
       );
       await refetchAccountSummary();
       onClose?.();

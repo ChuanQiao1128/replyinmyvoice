@@ -13,11 +13,11 @@ import { SiteHeader } from "../components/site-header";
 import { getCurrentSession } from "../lib/entra-auth";
 
 export const metadata: Metadata = {
-  title: { absolute: "Reply In My Voice — replies that still sound like you" },
+  title: { absolute: "Reply In My Voice: replies that still sound like you" },
   description:
     "Paste a stiff, generic, or over-polished draft and get a clear, natural reply that keeps your facts and your voice. For teacher, sales, workplace, and client replies.",
   openGraph: {
-    title: "Reply In My Voice — replies that still sound like you",
+    title: "Reply In My Voice: replies that still sound like you",
     description:
       "Paste a draft and get a clear, natural reply that keeps your facts and your voice.",
     url: "https://replyinmyvoice.com/",

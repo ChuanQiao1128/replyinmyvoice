@@ -90,7 +90,7 @@ export function InteractiveDemo() {
             AI Signal
             <span
               className="q"
-              title="Naturalness reference — not a guarantee"
+              title="Naturalness reference, not a guarantee"
               aria-hidden="true"
             >
               ?

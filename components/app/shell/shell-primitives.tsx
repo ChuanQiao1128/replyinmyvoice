@@ -102,7 +102,7 @@ export function UpsellCard({
       <div style={{ marginTop: 16 }}>
         {children ?? (
           <Link href="/pricing" className="btn btn-primary">
-            See Pro/API — NZ$19.90/mo
+            See Pro/API · NZ$19.90/mo
           </Link>
         )}
       </div>
@@ -119,7 +119,7 @@ export function DeveloperUpsell() {
   return (
     <UpsellCard
       title="API & MCP access comes with Pro/API"
-      body="One key powers both the REST API and the MCP server — use Reply In My Voice from your own product or inside Claude Code, Claude Desktop, Codex, and Cursor. API calls share the same balance as your web rewrites."
+      body="One key powers both the REST API and the MCP server. Use Reply In My Voice from your own product or inside Claude Code, Claude Desktop, Codex, and Cursor. API calls share the same balance as your web rewrites."
     >
       <ul
         style={{
@@ -139,7 +139,7 @@ export function DeveloperUpsell() {
       </ul>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Link href="/pricing" className="btn btn-primary">
-          Get Pro/API — NZ$19.90/mo
+          Get Pro/API · NZ$19.90/mo
         </Link>
         <Link href="/developers/api" className="btn btn-ghost">
           Read API docs

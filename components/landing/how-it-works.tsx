@@ -35,7 +35,7 @@ export function HowItWorks() {
               <div style={{ paddingTop: 6 }}>From: Daniel</div>
               <div>Subject: Missed Friday&apos;s quiz</div>
               <div style={{ color: "var(--muted)", paddingTop: 4 }}>
-                — rough reply —
+                rough reply
               </div>
               <div>
                 <span className="caret">▍</span>Dear Daniel, thank you very…
@@ -80,7 +80,7 @@ export function HowItWorks() {
             <h3>Choose a tone preset</h3>
             <p>
               Choose Warm or Direct. The app shapes the reply around your
-              context — never inventing.
+              context, never inventing.
             </p>
             <div className="step-figure">
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
@@ -103,7 +103,7 @@ export function HowItWorks() {
               </div>
               <div style={{ color: "var(--muted)" }}>{"// preview"}</div>
               <div>
-                Hi Daniel — sorry you were out
+                Hi Daniel, sorry you were out
                 <br />
                 sick, hope you&apos;re on the mend…
               </div>
@@ -117,7 +117,7 @@ export function HowItWorks() {
             </div>
             <h3>Review the AI Signal</h3>
             <p>
-              Compare the before/after AI Signal — a naturalness reference — then copy the reply when
+              Compare the before/after AI Signal (a naturalness reference), then copy the reply when
               it feels right.
             </p>
             <div className="step-figure">

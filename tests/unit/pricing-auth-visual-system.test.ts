@@ -24,7 +24,7 @@ describe("pricing and auth visual system", () => {
     expect(pricingPage).toContain('className={"pcards"');
     expect(pricingPage).toContain("<h1>Pricing</h1>");
     expect(pricingPage).toContain(
-      "unlocks 3 trial rewrites — no card.",
+      "unlocks 3 trial rewrites, no card.",
     );
     expect(pricingPage).toContain("Trial code access");
     expect(pricingPage).toContain("Redeem a trial code");

@@ -28,7 +28,7 @@ export default function AppError({ reset }: { error: Error; reset: () => void })
         </p>
         <h1 style={{ fontSize: 30, margin: "8px 0 10px" }}>We hit a snag</h1>
         <p style={{ color: "var(--ink-3)", marginBottom: 24 }}>
-          That didn&apos;t load as expected. Try again, or head back home — your
+          That didn&apos;t load as expected. Try again, or head back home. Your
           account and balance are safe.
         </p>
         <div

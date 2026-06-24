@@ -92,7 +92,7 @@ const progressSteps = [
 ];
 const workspaceExampleSample = homepageSampleCases[0];
 const signalRegressionTooltip =
-  "the rewrite reads less natural than your draft — can happen with very short or already-natural drafts; review before sending.";
+  "the rewrite reads less natural than your draft. This can happen with very short or already-natural drafts; review before sending.";
 
 function Eyebrow({
   children,
@@ -749,7 +749,7 @@ export function RewriteWorkspace({
         <header className={shell.pageHeader}>
           <h1 className={shell.pageTitle}>Rewrite</h1>
           <p className={shell.pageDesc}>
-            Paste a draft. Get a clearer version that keeps your facts — and
+            Paste a draft. Get a clearer version that keeps your facts, and
             see the AI Signal (naturalness) before and after.
           </p>
         </header>
@@ -1015,7 +1015,7 @@ export function RewriteWorkspace({
                     <p>Usually 10–60 seconds.</p>
                     {rewriteIsSlow ? (
                       <p className="font-medium text-ink/65" role="status">
-                        Still working — longer than usual.
+                        Still working, longer than usual.
                       </p>
                     ) : null}
                   </div>
@@ -1206,7 +1206,7 @@ export function RewriteWorkspace({
                 </div>
               </div>
               <p className="mt-4 text-xs leading-5 text-ink/50">
-                A third-party reference signal — lower reads more natural. It is
+                A third-party reference signal, lower reads more natural. It is
                 not a guarantee; review before sending.
               </p>
             </>

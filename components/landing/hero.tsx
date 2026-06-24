@@ -24,8 +24,8 @@ export function Hero({ signedIn = false }: { signedIn?: boolean }) {
         </h1>
         <p className="hero-lead">
           Paste a draft that sounds stiff, generic, or too polished. Reply In
-          My Voice rewrites it into a clear, natural message — your meaning and
-          facts intact.
+          My Voice rewrites it into a clear, natural message that keeps your
+          meaning and facts intact.
         </p>
         <div className="hero-cta">
           {signedIn ? (
@@ -38,7 +38,7 @@ export function Hero({ signedIn = false }: { signedIn?: boolean }) {
             </Link>
           )}
           <a href="#workflow" className="btn btn-ghost btn-lg">
-            See an example — no sign-up
+            See an example, no sign-up
           </a>
         </div>
         <div className="hero-stats">
