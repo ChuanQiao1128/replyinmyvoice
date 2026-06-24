@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ReplyInMyVoice.Application.Abstractions;
+using ReplyInMyVoice.Domain.Quality;
 using ReplyInMyVoice.Application.Common;
 using ReplyInMyVoice.Application.UseCases.Account;
 using ReplyInMyVoice.Application.UseCases.Admin;
@@ -292,6 +293,7 @@ public static class ServiceCollectionExtensions
             })
             .ConfigurePrimaryHttpMessageHandler(WebhookHttpClientFactory.CreateHandler);
         services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleRewriteModelClient));
+        services.AddResilientProviderHttpClient(nameof(OpenAiCompatibleChatCompletionClient));
         services.AddResilientProviderHttpClient(nameof(SaplingWritingSignalClient));
         services.AddHttpClient(nameof(ResendNotificationEmailProvider));
         services.AddSingleton<INotificationEmailProvider>(sp =>
@@ -352,6 +354,11 @@ public static class ServiceCollectionExtensions
         // T0 quality audit confirms it stays false-positive-free across the corpus.
         var qualityGateChainEnabled = string.Equals(
             configuration["QUALITY_GATE_CHAIN_ENABLED"], "true", StringComparison.OrdinalIgnoreCase);
+        // Default-off flag for the LLM FidelityJudge layer (object/term drift, truth-value flips). It
+        // layers on the deterministic chain (only runs when QUALITY_GATE_CHAIN_ENABLED is also on) and
+        // costs one model call per surviving candidate; a judge error fails closed.
+        var qualityFidelityJudgeEnabled = string.Equals(
+            configuration["QUALITY_FIDELITY_JUDGE_ENABLED"], "true", StringComparison.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(modelApiKey) && string.IsNullOrWhiteSpace(saplingApiKey))
         {
@@ -387,14 +394,31 @@ public static class ServiceCollectionExtensions
                     saplingApiKey,
                     TimeSpan.FromSeconds(signalTimeoutSeconds));
             });
-            services.AddScoped<IRewriteProvider>(sp => new FactReconstructRewriteProvider(
-                sp.GetRequiredService<IRewriteModelClient>(),
-                sp.GetRequiredService<IWritingSignalClient>(),
-                new FactReconstructRewriteOptions(
-                    RequestedMaxAttempts: rewriteMaxAttempts,
-                    TargetAiLikePercent: aiSignalTarget,
-                    TotalTimeBudget: TimeSpan.FromSeconds(totalRewriteBudgetSeconds),
-                    QualityGateChainEnabled: qualityGateChainEnabled)));
+            services.AddScoped<IRewriteProvider>(sp =>
+            {
+                IFidelityJudge? fidelityJudge = null;
+                if (qualityFidelityJudgeEnabled && !string.IsNullOrWhiteSpace(modelApiKey))
+                {
+                    var chat = new OpenAiCompatibleChatCompletionClient(
+                        sp.GetRequiredService<IHttpClientFactory>()
+                            .CreateClient(nameof(OpenAiCompatibleChatCompletionClient)),
+                        modelApiKey,
+                        model,
+                        openAiBaseUrl,
+                        TimeSpan.FromSeconds(openAiTimeoutSeconds));
+                    fidelityJudge = new FidelityJudge((s, u, ct) => chat.CompleteAsync(s, u, 2000, 0, ct));
+                }
+
+                return new FactReconstructRewriteProvider(
+                    sp.GetRequiredService<IRewriteModelClient>(),
+                    sp.GetRequiredService<IWritingSignalClient>(),
+                    new FactReconstructRewriteOptions(
+                        RequestedMaxAttempts: rewriteMaxAttempts,
+                        TargetAiLikePercent: aiSignalTarget,
+                        TotalTimeBudget: TimeSpan.FromSeconds(totalRewriteBudgetSeconds),
+                        QualityGateChainEnabled: qualityGateChainEnabled),
+                    fidelityJudge);
+            });
         }
 
         return services;

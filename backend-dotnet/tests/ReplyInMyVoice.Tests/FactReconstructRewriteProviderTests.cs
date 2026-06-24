@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using ReplyInMyVoice.Domain.Contracts;
 using ReplyInMyVoice.Domain.RewriteEngine;
+using ReplyInMyVoice.Domain.Quality;
 using ReplyInMyVoice.Infrastructure.Providers;
 
 namespace ReplyInMyVoice.Tests;
@@ -387,6 +388,63 @@ public sealed class FactReconstructRewriteProviderTests
         result.ErrorCode.Should().BeNull();
     }
 
+    [Fact]
+    public async Task RewriteAsync_with_fidelity_judge_rejects_semantic_drift()
+    {
+        // A clean candidate clears the deterministic chain (the minimal draft has no protected anchors to
+        // drop), so the LLM FidelityJudge alone decides. Here it flags an object substitution, so the
+        // candidate is rejected and re-routed exactly like a deterministic fidelity failure.
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult("Hi there,\n\nThanks for the update, I will review the details and follow up with you shortly.\n\nBest.", true, null));
+        var signal = new QueueWritingSignalClient(new WritingSignalResult(true, 88, null));
+        var judge = new FakeFidelityJudge(new FidelityJudgeResult(
+            false,
+            new[] { new FidelityDrift(FidelityDriftKind.ObjectSubstituted, "the details", "the invoice", "the details", "object swapped") },
+            null));
+        var provider = new FactReconstructRewriteProvider(
+            model,
+            signal,
+            new FactReconstructRewriteOptions(RequestedMaxAttempts: 1, QualityGateChainEnabled: true),
+            judge);
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), MinimalRequest(), CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be("fact_gate_failed");
+        judge.CallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RewriteAsync_with_fidelity_judge_passes_when_no_drift()
+    {
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult("Hi there,\n\nThanks for the update, I will review the details and follow up with you shortly.\n\nBest.", true, null));
+        var signal = new QueueWritingSignalClient(
+            new WritingSignalResult(true, 88, null),
+            new WritingSignalResult(true, 15, null));
+        var judge = new FakeFidelityJudge(FidelityJudgeResult.Clean);
+        var provider = new FactReconstructRewriteProvider(
+            model,
+            signal,
+            new FactReconstructRewriteOptions(RequestedMaxAttempts: 1, QualityGateChainEnabled: true),
+            judge);
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), MinimalRequest(), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        judge.CallCount.Should().Be(1);
+    }
+
+    private static RewriteRequest MinimalRequest() =>
+        new(
+            null,
+            "Thanks for the update. I will review the details and follow up shortly.",
+            null,
+            null,
+            null,
+            null,
+            "warm");
+
     private static RewriteRequest AcronymRequest() =>
         new(
             "Jordan asked whether the SSO setup can be enabled this week.",
@@ -447,5 +505,20 @@ internal sealed class QueueWritingSignalClient(params WritingSignalResult[] resu
     {
         CallCount += 1;
         return Task.FromResult(_results.Dequeue());
+    }
+}
+
+internal sealed class FakeFidelityJudge(FidelityJudgeResult result) : IFidelityJudge
+{
+    public int CallCount { get; private set; }
+
+    public Task<FidelityJudgeResult> EvaluateAsync(
+        string sourceText,
+        string candidateText,
+        IReadOnlyList<string>? protectedTerms,
+        CancellationToken ct)
+    {
+        CallCount += 1;
+        return Task.FromResult(result);
     }
 }
