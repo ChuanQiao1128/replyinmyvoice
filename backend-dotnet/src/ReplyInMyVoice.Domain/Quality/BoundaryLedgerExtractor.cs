@@ -21,6 +21,15 @@ public static class BoundaryLedgerExtractor
 {
     private static readonly Regex SentenceRegex = new(@"[^.!?\n]+[.!?]?", RegexOptions.Compiled);
 
+    // Soft first-person volition ("I do not want any of them to get lost") is a conversational
+    // preference, not a policy/capability constraint. A faithful rewrite can state it affirmatively
+    // ("I want to make sure each is handled") without the negation, so enforcing the negative marker
+    // there false-fails faithful output. Hard refusals ("I cannot waive...", "we will not ship...")
+    // do not match this pattern and stay enforced.
+    private static readonly Regex SoftVolitionalNegative = new(
+        @"\b(?:i|we)\s+(?:do\s+not|don['’]?t|would\s+not|wouldn['’]?t|did\s+not|didn['’]?t)\s+(?:want|wish|like|think|feel|intend|mean|expect)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public static IReadOnlyList<Boundary> FromFactLedger(RewriteFactLedger factLedger)
     {
         var items = new List<Boundary>();
@@ -43,6 +52,13 @@ public static class BoundaryLedgerExtractor
             // rate in the T0 audit. InferPolarity uses \bno\b / \bnot\b etc., so those are dropped here.
             if (BoundaryGate.InferPolarity(text) is { } polarity)
             {
+                // Drop soft volitional negatives — not a hard boundary; a faithful affirmative rephrase
+                // would otherwise false-fail as a polarity flip.
+                if (polarity == BoundaryPolarity.Negative && SoftVolitionalNegative.IsMatch(text))
+                {
+                    continue;
+                }
+
                 items.Add(new Boundary(text, KindFor(polarity), polarity));
             }
         }

@@ -146,6 +146,9 @@ public static class ProtectedTermLedgerExtractor
     private static readonly HashSet<string> NonAcronyms = new(StringComparer.Ordinal)
     {
         "OK", "AM", "PM", "OKAY", "FYI", "ASAP", "FAQ", "RE", "FW", "PS",
+        // Generic words an all-caps run grabs but a faithful rewrite may legitimately rephrase
+        // ("your member ID" -> "your membership"); not specific business acronyms like SSO/API.
+        "ID", "TV", "PC", "OKR", "EOD", "COB",
     };
 
     // A sentence boundary just before a match: start of text, or sentence punctuation followed only by

@@ -188,6 +188,20 @@ public class ProtectedTermLedgerExtractorTests
         ledger.Terms.Should().NotContain(t => t.Text == "OK" || t.Text == "FAQ" || t.Text == "ASAP");
     }
 
+    [Fact]
+    public void Generic_all_caps_words_like_ID_are_not_protected_acronyms()
+    {
+        // "ID" is grabbed by the acronym regex but is a generic word a faithful rewrite may rephrase
+        // ("member ID" -> "membership"); only specific business acronyms (SSO) should be exact-required.
+        var ledger = ProtectedTermLedgerExtractor.Build(
+            "Please confirm your member ID and the SSO setup.",
+            new RewriteFactLedger(Array.Empty<RewriteFact>()),
+            Array.Empty<string>());
+
+        ledger.Terms.Should().NotContain(t => t.Text == "ID");
+        ledger.Terms.Should().Contain(t => t.Text == "SSO");
+    }
+
     private sealed class FakeProposer(IReadOnlyList<string> spans) : IProtectedTermProposer
     {
         public Task<IReadOnlyList<string>> ProposeAsync(string draft, CancellationToken cancellationToken) =>
