@@ -102,6 +102,18 @@ public static class BoundaryGate
 
         foreach (var boundary in ledger.Items)
         {
+            // Conditional flattening ("if the box is unopened, we can refund" -> "we can refund") is
+            // deferred to the LLM FidelityJudge. A faithful rewrite routinely re-expresses a condition
+            // WITHOUT the literal if/unless marker ("if you want to adjust to 9 seats..." -> "to adjust to
+            // 9 seats..."), which the marker-based check cannot tell from a real drop — it false-failed
+            // faithful T0 output in the quality audit. The deterministic gate enforces only the robust
+            // Negative/Uncertain polarity flips (cannot->can, may->will, "no refund"->refund); those have
+            // reliable marker synonym sets and stay false-positive-free.
+            if (boundary.Polarity == BoundaryPolarity.Conditional)
+            {
+                continue;
+            }
+
             var sourceTokens = ContentTokens(boundary.Text);
             if (sourceTokens.Count < 2)
             {

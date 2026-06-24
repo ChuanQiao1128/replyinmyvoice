@@ -63,7 +63,15 @@ public static class ProtectedTermLedgerExtractor
         IReadOnlyList<string>? loadBearingSpans = null,
         bool proposedSpansHard = false)
     {
-        var result = new List<ProtectedTerm>(FromFactLedger(factLedger));
+        // Drop ProperName anchors that only ever appear at a sentence start in the draft. The deterministic
+        // PersonRegex (\b[A-Z][a-z]{2,}\b) grabs sentence-initial common words ("After", "What", "Please") as
+        // names; left as exact-required terms they false-fail ProtectedTermGate when a faithful rewrite
+        // rephrases that opening (~13% false-reject in the T0 quality audit). A genuine name appears in a
+        // name position (after a greeting or mid-sentence) at least once; the LLM FidelityJudge still
+        // backstops real name/role drift.
+        var result = FromFactLedger(factLedger)
+            .Where(t => t.Kind != ProtectedTermKind.ProperName || AppearsAsName(t.Text, draft))
+            .ToList();
         var seen = new HashSet<string>(result.Select(t => t.Text), StringComparer.OrdinalIgnoreCase);
 
         // HARD load-bearing phrases (e.g. "expires June 7", "reply by June 7") — verbatim required, so the
@@ -139,6 +147,47 @@ public static class ProtectedTermLedgerExtractor
     {
         "OK", "AM", "PM", "OKAY", "FYI", "ASAP", "FAQ", "RE", "FW", "PS",
     };
+
+    // A sentence boundary just before a match: start of text, or sentence punctuation followed only by
+    // whitespace/opening quotes/brackets up to the match.
+    private static readonly Regex SentenceStartRegex =
+        new(@"(^|[.!?:;\n\r])[\s""'(\[]*$", RegexOptions.Compiled);
+
+    // A ProperName anchor is trusted only if it appears in the draft at least once NOT at a sentence start.
+    // Sentence-initial-only capitalized words ("After", "What", "Please") are PersonRegex noise, not names;
+    // a real name shows up after a greeting ("Hi Mark") or mid-sentence. A term we cannot locate in the
+    // draft is kept (conservative) so this never silently weakens a real anchor.
+    private static bool AppearsAsName(string text, string? draft)
+    {
+        var word = (text ?? string.Empty).Trim();
+        if (word.Length == 0)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(draft))
+        {
+            return true;
+        }
+
+        var matches = Regex.Matches(
+            draft, $@"(?<![\p{{L}}\p{{N}}]){Regex.Escape(word)}(?![\p{{L}}\p{{N}}])");
+        if (matches.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (Match match in matches)
+        {
+            // Mid-sentence if the text before the match does not reduce to a sentence boundary.
+            if (!SentenceStartRegex.IsMatch(draft[..match.Index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public static async Task<ProtectedTermLedger> BuildAsync(
         string draft,

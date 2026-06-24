@@ -60,21 +60,16 @@ public class BoundaryGateTests
     }
 
     [Fact]
-    public void Flags_dropped_condition()
+    public void Conditional_flattening_is_deferred_to_the_llm_judge_not_the_deterministic_gate()
     {
         var ledger = Ledger(new Boundary(
             "If the box is unopened, we can refund the full amount", BoundaryKind.PolicyLimit, BoundaryPolarity.Conditional));
 
-        // Condition dropped, content preserved -> flip.
-        BoundaryGate.Check("We can refund the full amount for the box.", ledger).Passed.Should().BeFalse();
-    }
-
-    [Fact]
-    public void Passes_condition_preserved()
-    {
-        var ledger = Ledger(new Boundary(
-            "If the box is unopened, we can refund the full amount", BoundaryKind.PolicyLimit, BoundaryPolarity.Conditional));
-
+        // A faithful rewrite re-expresses a condition without the literal "if" ("to do X...", "want to..."),
+        // which the marker-based check cannot distinguish from a real drop — too FP-prone for prod (it
+        // false-failed faithful T0 output). The deterministic gate therefore does NOT enforce Conditional
+        // polarity; the LLM FidelityJudge owns condition drift. So neither a drop nor a faithful keep flips.
+        BoundaryGate.Check("We can refund the full amount for the box.", ledger).Passed.Should().BeTrue();
         BoundaryGate.Check("If the box is unopened, we'll refund the full amount.", ledger).Passed.Should().BeTrue();
     }
 
