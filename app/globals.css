@@ -522,6 +522,7 @@ select {
   line-height: 1.55;
   color: var(--ink);
   font-family: var(--sans);
+  white-space: pre-wrap;
 }
 .compare-col.before .compare-body {
   color: var(--ink-2);
