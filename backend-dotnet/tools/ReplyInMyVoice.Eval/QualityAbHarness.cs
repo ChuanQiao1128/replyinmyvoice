@@ -39,9 +39,14 @@ internal static class QualityAbRunner
         var proposer = new ProtectedTermProposer(deepseek);
         var judge = new SemanticEvalJudge(judgeHttp, apiKey, config.Model, config.OpenAiBaseUrl, TimeSpan.FromSeconds(90));
         var tierJudge = new SendabilityTierJudge(deepseek);
+        // The EXACT judge wired into prod behind QUALITY_FIDELITY_JUDGE_ENABLED (Domain FidelityJudge,
+        // fact-ledger prompt), to audit its false-positive rate on deterministic-passing T0 output.
+        var domainJudge = new ReplyInMyVoice.Domain.Quality.FidelityJudge(
+            (s, u, jct) => deepseek.CompleteAsync(s, u, 2000, 0, jct));
 
         Console.WriteLine($"Quality A/B (variant=t0): cases={cases.Count} model={config.Model} AI-detection=OFF (offline-only)");
         var rows = new List<QualityAbRow>();
+        var domainFjRejects = new List<string>();
 
         foreach (var sample in cases)
         {
@@ -63,6 +68,20 @@ internal static class QualityAbRunner
             // Deterministic chain.
             var det = QualityGateChain.Evaluate(text, ctx);
 
+            // Domain FidelityJudge audit (the wired prod judge): how many deterministic-PASSING outputs
+            // would it additionally reject? Those are real semantic drift the regex missed OR LLM FPs.
+            if (det.Passed)
+            {
+                var withFj = await QualityGateChain.EvaluateWithFidelityAsync(
+                    text, sample.InputDraft, ctx, domainJudge, CancellationToken.None);
+                if (!withFj.Passed)
+                {
+                    var fjReasons = withFj.Reasons
+                        .Where(r => r.Contains("FidelityJudge", StringComparison.Ordinal)).ToList();
+                    domainFjRejects.Add($"{sample.Id}: {string.Join(" | ", fjReasons)}");
+                }
+            }
+
             // LLM judges.
             var sem = await judge.VerifyAsync(text, sample.MustKeep, sample.MustNotClaim, CancellationToken.None);
             var fidelityPass = sem.Error is null && sem.FactsReallyPass && sem.RealForbidden == 0 && !sem.MeaningChanged;
@@ -83,6 +102,14 @@ internal static class QualityAbRunner
                 + $"(P={YN(det.ProtectedTermPass)} B={YN(det.BoundaryPass)} S={det.SendabilityTier}) "
                 + $"fidelity={(fidelityPass ? "pass" : "FAIL")} llmTier={llmTier.Tier} "
                 + $"=> quality={(qualityPass ? "PASS" : "fail")}");
+        }
+
+        Console.WriteLine(
+            $"\n[DOMAIN FidelityJudge] would additionally reject {domainFjRejects.Count}/{rows.Count(r => r.HasOutput)} "
+            + "deterministic-passing T0 outputs (inspect: real drift vs LLM false positive):");
+        foreach (var f in domainFjRejects)
+        {
+            Console.WriteLine($"  - {f}");
         }
 
         var report = Render(rows, config, startedAt, deepseek.CallCount, modelCounter.CallCount, signalCounter.CallCount, judge);
