@@ -9,7 +9,8 @@ namespace ReplyInMyVoice.Infrastructure.Providers;
 public sealed class FactReconstructRewriteProvider(
     IRewriteModelClient modelClient,
     IWritingSignalClient writingSignalClient,
-    FactReconstructRewriteOptions? options = null) : IRewriteProvider
+    FactReconstructRewriteOptions? options = null,
+    IFidelityJudge? fidelityJudge = null) : IRewriteProvider
 {
     private const int MaxWritingSignalAttempts = 3;
     private const int MaxModelGenerationAttempts = 3;
@@ -134,16 +135,28 @@ public sealed class FactReconstructRewriteProvider(
                 continue;
             }
 
-            // Optional deterministic fidelity layer (default-off, env QUALITY_GATE_CHAIN_ENABLED): on
-            // top of the existing structure + fact gates, audit the candidate through the
-            // QualityGateChain (ProtectedTerm object/name substitution, Boundary polarity flips,
-            // Sendability garble). Zero cost / zero latency (no LLM). A failure is treated as a
-            // fidelity loss: record it and re-route, identical to the other gates. Inert when off.
+            // Optional fidelity layer (default-off). The deterministic QualityGateChain (ProtectedTerm
+            // object/name substitution, Boundary observe-only, Sendability garble) is zero cost / zero
+            // latency. When a fidelityJudge is supplied (env QUALITY_FIDELITY_JUDGE_ENABLED) it layers the
+            // semantic LLM judge on top (object/term drift, truth-value flips) at the cost of one model
+            // call per surviving candidate; a judge error fails closed. A failure (either layer) is
+            // recorded as a fidelity loss and re-routed, identical to the other gates. Inert when off.
             if (_options.QualityGateChainEnabled)
             {
-                var qualityReport = QualityGateChain.Evaluate(
-                    candidate,
-                    QualityContext.Build(request.RoughDraftReply, ledger));
+                var qualityContext = QualityContext.Build(request.RoughDraftReply, ledger);
+                QualityGateReport qualityReport;
+                try
+                {
+                    qualityReport = fidelityJudge is not null
+                        ? await QualityGateChain.EvaluateWithFidelityAsync(
+                            candidate, request.RoughDraftReply, qualityContext, fidelityJudge, token)
+                        : QualityGateChain.Evaluate(candidate, qualityContext);
+                }
+                catch (OperationCanceledException)
+                {
+                    break; // time budget spent during the fidelity judge call — stop with the best found
+                }
+
                 if (!qualityReport.Passed)
                 {
                     history.Add(CreateHistoryItem(
