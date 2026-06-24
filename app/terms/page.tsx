@@ -36,7 +36,7 @@ const sections = [
   },
   {
     title: "No guaranteed writing score",
-    text: "AI Signal percentages are reference signals for comparison. They are not a promise that a message will be judged a certain way by any person or system.",
+    text: "AI Signal (naturalness) percentages are reference signals for comparison. They are not a promise that a message will be judged a certain way by any person or system.",
   },
   {
     title: "Billing and quota",

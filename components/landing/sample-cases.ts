@@ -71,4 +71,17 @@ export const homepageSampleCases: HomepageSampleCase[] = [
     after: 8,
     sourceDocument: "docs/sample-cases.md",
   },
+  {
+    label: "AI-Assisted Draft",
+    icon: "A",
+    context:
+      "You drafted a refund reply to a customer, Mara, with an AI assistant; it is accurate but sounds generic and corporate, and you want it to sound like you while keeping the numbers and the refund window exact.",
+    draft:
+      "Dear Mara, Thank you for reaching out to us regarding your recent cancellation, and please accept our sincere appreciation for your continued patronage. We completely understand your concerns and are more than happy to assist. Please be advised that, in accordance with our refund policy, customers are eligible to receive a prorated refund provided that the request is submitted within fourteen (14) days of the renewal date. As your cancellation occurred merely three days into the new term, you are indeed eligible for a prorated refund of your $89 annual subscription. The refund will be processed to your original payment method, and you may reasonably expect it to appear within five (5) to seven (7) business days. Should you have any further questions or require additional assistance, please do not hesitate to contact us. We value your business immensely and sincerely hope to have the opportunity to serve you again in the future.",
+    rewrite:
+      "Hi Mara — good news, you're all set for a refund. You cancelled just 3 days into the new term, so you're well inside our 14-day window, which means you get a prorated refund on the $89 annual plan. I'll send it back to the card you originally paid with, and it usually lands within 5 to 7 business days. If it hasn't shown up by then, just reply here and I'll chase it down for you. Sorry it didn't work out this time — and if you ever decide to come back, your old setup will be right where you left it.",
+    before: 80,
+    after: 11,
+    sourceDocument: "docs/sample-cases.md",
+  },
 ];

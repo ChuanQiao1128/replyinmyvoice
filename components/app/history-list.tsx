@@ -520,7 +520,7 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                         <div className={styles.histSignal}>
                           <div className={styles.histSignalHead}>
                             <span className={styles.histBlockLabel}>
-                              AI Signal · before vs after
+                              AI Signal (naturalness) · before vs after
                             </span>
                             {delta !== null ? (
                               <span
@@ -536,7 +536,7 @@ export function HistoryList({ demoItems, demoDetail }: Props = {}) {
                                   ? `−${delta} pts more natural`
                                   : delta < 0
                                     ? `+${Math.abs(delta)} pts`
-                                    : "No signal change"}
+                                    : "No change"}
                               </span>
                             ) : null}
                           </div>

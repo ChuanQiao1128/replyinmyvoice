@@ -87,10 +87,10 @@ export function InteractiveDemo() {
       <div className="compare-foot">
         <div className="nat">
           <div className="nat-label">
-            Tone check
+            AI Signal
             <span
               className="q"
-              title="Reference writing signal — not a guarantee"
+              title="Naturalness reference — not a guarantee"
               aria-hidden="true"
             >
               ?

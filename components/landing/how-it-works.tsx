@@ -14,7 +14,7 @@ export function HowItWorks() {
             </h2>
             <p className="lede">
               Paste the thread. Add the facts that must stay. Pick a tone.
-              Compare the signal. Copy it into your email. Under a minute.
+              Compare the AI Signal. Copy it into your email. Under a minute.
             </p>
           </div>
         </div>
@@ -115,9 +115,9 @@ export function HowItWorks() {
               <span className="step-node">04</span>
               <span className="step-line" aria-hidden="true" />
             </div>
-            <h3>Review the signal</h3>
+            <h3>Review the AI Signal</h3>
             <p>
-              Compare the before/after AI-like signal, then copy the reply when
+              Compare the before/after AI Signal — a naturalness reference — then copy the reply when
               it feels right.
             </p>
             <div className="step-figure">

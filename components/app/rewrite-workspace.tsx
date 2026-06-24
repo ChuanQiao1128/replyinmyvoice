@@ -92,7 +92,7 @@ const progressSteps = [
 ];
 const workspaceExampleSample = homepageSampleCases[0];
 const signalRegressionTooltip =
-  "the rewrite reads more AI-like than your draft — can happen with very short or already-natural drafts; review before sending.";
+  "the rewrite reads less natural than your draft — can happen with very short or already-natural drafts; review before sending.";
 
 function Eyebrow({
   children,
@@ -114,7 +114,7 @@ function Eyebrow({
 
 function labelForNaturalness(naturalness?: Naturalness) {
   if (!naturalness || naturalness.label === "unavailable") {
-    return "Signal unavailable";
+    return "AI Signal unavailable";
   }
   if (naturalness.label === "lower") {
     return "AI Signal improved";
@@ -127,7 +127,7 @@ function labelForNaturalness(naturalness?: Naturalness) {
 
 function titleForQualityFailure(reason?: string) {
   if (reason === "signal_unavailable") {
-    return "Signal unavailable";
+    return "AI Signal unavailable";
   }
   if (reason === "fact_check_failed") {
     return "Facts need another pass";
@@ -750,7 +750,7 @@ export function RewriteWorkspace({
           <h1 className={shell.pageTitle}>Rewrite</h1>
           <p className={shell.pageDesc}>
             Paste a draft. Get a clearer version that keeps your facts — and
-            see the AI Signal before and after.
+            see the AI Signal (naturalness) before and after.
           </p>
         </header>
         <Button onClick={resetWorkspace} type="button" variant="secondary">
@@ -1160,12 +1160,12 @@ export function RewriteWorkspace({
           </section>
         </div>
 
-        {/* AI Signal — focal before/after band */}
+        {/* AI Signal (naturalness) — focal before/after band */}
         <section className="mt-6 rounded-2xl border border-line bg-white p-5 shadow-soft md:p-6">
           {hasSignal ? (
             <>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <Eyebrow>AI SIGNAL · BEFORE VS AFTER</Eyebrow>
+                <Eyebrow>AI SIGNAL (NATURALNESS) · BEFORE VS AFTER</Eyebrow>
                 {signalDelta !== null ? (
                   <span
                     className={`rounded-lg px-3 py-2 font-mono text-sm font-semibold ${
@@ -1212,7 +1212,7 @@ export function RewriteWorkspace({
             </>
           ) : (
             <p className="rounded-lg border border-line bg-paper/60 px-4 py-3 text-sm text-ink/55">
-              Run a rewrite to see the AI Signal before and after.
+              Run a rewrite to see the AI Signal (naturalness) before and after.
             </p>
           )}
         </section>
