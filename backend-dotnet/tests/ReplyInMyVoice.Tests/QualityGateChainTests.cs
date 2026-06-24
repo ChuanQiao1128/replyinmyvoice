@@ -49,15 +49,17 @@ public class QualityGateChainTests
     }
 
     [Fact]
-    public void Fails_on_boundary_flip()
+    public void Boundary_flip_is_observed_but_does_not_gate()
     {
         var ctx = Context(boundaries: new[] { new Boundary("I cannot waive the late fee for this order", BoundaryKind.NegativeConstraint, BoundaryPolarity.Negative) });
 
         var report = QualityGateChain.Evaluate("Sure, I can waive the late fee for this order.", ctx);
 
-        report.Passed.Should().BeFalse();
+        // Boundary polarity is reported but deferred to the LLM FidelityJudge (the deterministic marker
+        // check is too FP-prone on real output), so a boundary-only difference does not fail the chain.
         report.BoundaryPass.Should().BeFalse();
         report.FlippedBoundaries.Should().NotBeEmpty();
+        report.Passed.Should().BeTrue();
     }
 
     [Fact]
