@@ -340,6 +340,63 @@ public sealed class FactReconstructRewriteProviderTests
         model.CallCount.Should().Be(3);
     }
 
+    [Fact]
+    public async Task RewriteAsync_with_quality_gate_chain_on_rejects_protected_term_drift()
+    {
+        // Candidate clears structure + fact gates (no fact-ledger term lost) but drops the acronym "SSO"
+        // (rephrased to "single sign-on"). With the deterministic quality chain ON, ProtectedTermGate
+        // catches the object drift and the rewrite is rejected as a fidelity loss.
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult(
+                "Hi Jordan,\n\nThe single sign-on setup needs a new approval cycle before we can enable it.\n\nLet me know if you want me to start that.",
+                true,
+                null));
+        var signal = new QueueWritingSignalClient(new WritingSignalResult(true, 88, null));
+        var provider = new FactReconstructRewriteProvider(
+            model,
+            signal,
+            new FactReconstructRewriteOptions(RequestedMaxAttempts: 1, QualityGateChainEnabled: true));
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), AcronymRequest(), CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be("fact_gate_failed");
+    }
+
+    [Fact]
+    public async Task RewriteAsync_with_quality_gate_chain_off_keeps_default_behavior()
+    {
+        // Same candidate, gate OFF (default): the "SSO" -> "single sign-on" drift is not enforced, so the
+        // candidate passes exactly as it does today. Proves the flag is inert until turned on.
+        var model = new RecordingRewriteModelClient(
+            new RewriteModelResult(
+                "Hi Jordan,\n\nThe single sign-on setup needs a new approval cycle before we can enable it.\n\nLet me know if you want me to start that.",
+                true,
+                null));
+        var signal = new QueueWritingSignalClient(
+            new WritingSignalResult(true, 88, null),
+            new WritingSignalResult(true, 15, null));
+        var provider = new FactReconstructRewriteProvider(
+            model,
+            signal,
+            new FactReconstructRewriteOptions(RequestedMaxAttempts: 1));
+
+        var result = await provider.RewriteAsync(Guid.NewGuid(), AcronymRequest(), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.ErrorCode.Should().BeNull();
+    }
+
+    private static RewriteRequest AcronymRequest() =>
+        new(
+            "Jordan asked whether the SSO setup can be enabled this week.",
+            "Hi Jordan, the SSO setup needs a new approval cycle before we can enable it.",
+            "IT manager",
+            "Explain the SSO setup status.",
+            "The SSO setup requires an approval cycle.",
+            "Preserve Jordan and the SSO setup.",
+            "direct");
+
     private static RewriteRequest ValidRequest() =>
         new(
             "Jordan asked whether the NZD $200 invoice preview can be changed by Friday.",

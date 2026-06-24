@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ReplyInMyVoice.Domain.Contracts;
+using ReplyInMyVoice.Domain.Quality;
 using ReplyInMyVoice.Domain.RewriteEngine;
 
 namespace ReplyInMyVoice.Infrastructure.Providers;
@@ -131,6 +132,31 @@ public sealed class FactReconstructRewriteProvider(
                     null));
                 decision = ChooseNext(analysis, history);
                 continue;
+            }
+
+            // Optional deterministic fidelity layer (default-off, env QUALITY_GATE_CHAIN_ENABLED): on
+            // top of the existing structure + fact gates, audit the candidate through the
+            // QualityGateChain (ProtectedTerm object/name substitution, Boundary polarity flips,
+            // Sendability garble). Zero cost / zero latency (no LLM). A failure is treated as a
+            // fidelity loss: record it and re-route, identical to the other gates. Inert when off.
+            if (_options.QualityGateChainEnabled)
+            {
+                var qualityReport = QualityGateChain.Evaluate(
+                    candidate,
+                    QualityContext.Build(request.RoughDraftReply, ledger));
+                if (!qualityReport.Passed)
+                {
+                    history.Add(CreateHistoryItem(
+                        attemptNo,
+                        decision.Strategy,
+                        candidate,
+                        [RewriteFailureKind.FactLoss],
+                        string.Join(" ", qualityReport.Reasons),
+                        draftSignal.AiLikePercent,
+                        null));
+                    decision = ChooseNext(analysis, history);
+                    continue;
+                }
             }
 
             var rewriteSignal = await MeasureWritingSignalWithRetryAsync(candidate, token);

@@ -66,4 +66,9 @@ public sealed record FactReconstructRewriteOptions(
     TimeSpan TotalTimeBudget = default,
     // Eval-only experiment lever: force the initial routing strategy (e.g. FactsFirstReconstruct)
     // regardless of the length/policy router. Default null = current production routing.
-    RewriteStrategy? ForceInitialStrategy = null);
+    RewriteStrategy? ForceInitialStrategy = null,
+    // When true, each candidate that clears the structure + fact gates is also run through the
+    // deterministic Domain.Quality chain (ProtectedTerm / Boundary / Sendability). Default false:
+    // the gate is inert until explicitly enabled (env QUALITY_GATE_CHAIN_ENABLED), so production
+    // behavior is unchanged until cutover. The LLM FidelityJudge layer is a later, separate lever.
+    bool QualityGateChainEnabled = false);

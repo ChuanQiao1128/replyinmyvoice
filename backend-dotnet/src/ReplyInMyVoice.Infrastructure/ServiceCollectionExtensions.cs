@@ -347,6 +347,11 @@ public static class ServiceCollectionExtensions
         // Production wall-clock cap for the whole rewrite (all loops combined). An explicit
         // TOTAL_REWRITE_BUDGET_SEC=0 still leaves it unlimited for controlled non-production runs.
         var totalRewriteBudgetSeconds = rewriteOptions.TotalBudgetSeconds;
+        // Default-off cutover flag for the deterministic Domain.Quality gate chain (ProtectedTerm /
+        // Boundary / Sendability). Off = production behavior unchanged; flip to "true" only after the
+        // T0 quality audit confirms it stays false-positive-free across the corpus.
+        var qualityGateChainEnabled = string.Equals(
+            configuration["QUALITY_GATE_CHAIN_ENABLED"], "true", StringComparison.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(modelApiKey) && string.IsNullOrWhiteSpace(saplingApiKey))
         {
@@ -388,7 +393,8 @@ public static class ServiceCollectionExtensions
                 new FactReconstructRewriteOptions(
                     RequestedMaxAttempts: rewriteMaxAttempts,
                     TargetAiLikePercent: aiSignalTarget,
-                    TotalTimeBudget: TimeSpan.FromSeconds(totalRewriteBudgetSeconds))));
+                    TotalTimeBudget: TimeSpan.FromSeconds(totalRewriteBudgetSeconds),
+                    QualityGateChainEnabled: qualityGateChainEnabled)));
         }
 
         return services;
