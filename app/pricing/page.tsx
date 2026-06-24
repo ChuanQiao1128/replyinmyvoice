@@ -240,7 +240,7 @@ export default async function PricingPage() {
                 </li>
                 <li>
                   <Check />
-                  AI Signal before/after on every rewrite
+                  AI Signal (naturalness) before/after on every rewrite
                 </li>
               </ul>
               <p className="pcard-foot">

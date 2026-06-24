@@ -39,6 +39,14 @@ const useCases = [
     snippet:
       "I'm frustrated about the outcome and want to understand the next step without escalating the conversation.",
   },
+  {
+    icon: "A",
+    title: "Polish an AI draft",
+    k: "06",
+    body: "Paste a reply you drafted with AI and make it sound like you — without losing a number, date, or policy.",
+    snippet:
+      "Please be advised that you are eligible for a prorated refund in accordance with our policy.",
+  },
 ];
 
 export function UseCases() {

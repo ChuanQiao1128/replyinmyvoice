@@ -41,10 +41,10 @@ describe("landing demo samples", () => {
         new RegExp(`## ${escaped(sample.label)}[\\s\\S]*Used on homepage: yes`),
       );
       expect(sampleCasesDocument).toContain(
-        `Draft AI-like signal: ${sample.before}%`,
+        `Draft naturalness: ${sample.before}%`,
       );
       expect(sampleCasesDocument).toContain(
-        `Rewrite AI-like signal: ${sample.after}%`,
+        `Rewrite naturalness: ${sample.after}%`,
       );
       expect(sampleCasesDocument).toContain(sample.context);
       expect(sampleCasesDocument).toContain(sample.draft);

@@ -26,7 +26,7 @@ const faqs = [
     a: "Rewrite packs are one-time with nothing to cancel. The Pro/API subscription can be paused or cancelled any time through Stripe billing from your account.",
   },
   {
-    q: "Is Tone check a guarantee?",
+    q: "Is the AI Signal a guarantee?",
     a: "No. It is a reference writing signal that helps you compare drafts. You should always review the reply before sending it.",
   },
   {

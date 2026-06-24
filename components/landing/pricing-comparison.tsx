@@ -38,7 +38,7 @@ const comparisonRows: ComparisonRow[] = [
     values: ["Trial", "90 days", "90 days", "Monthly"],
   },
   {
-    label: "AI Signal",
+    label: "AI Signal (naturalness)",
     values: [included, included, included, included],
   },
   {

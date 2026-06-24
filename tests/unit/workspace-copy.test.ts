@@ -238,7 +238,7 @@ describe("rewrite workspace surface copy", () => {
     expect(workspaceSource).toContain("draftAiLikePercent");
     expect(workspaceSource).toContain("rewriteAiLikePercent");
     expect(aiSignalSource).toContain(
-      "Run a rewrite to see the AI Signal before and after.",
+      "Run a rewrite to see the AI Signal (naturalness) before and after.",
     );
     expect(aiSignalSource).not.toContain("border-dashed");
     expect(aiSignalSource).not.toContain("py-7");
@@ -258,7 +258,7 @@ describe("rewrite workspace surface copy", () => {
     expect(resultPanelSource).toContain("Original draft");
     expect(resultPanelSource).toContain("Rewritten reply");
     expect(workspaceSource).toContain(
-      "the rewrite reads more AI-like than your draft",
+      "the rewrite reads less natural than your draft",
     );
     expect(workspaceSource).toContain("very short or already-natural drafts");
     expect(workspaceSource).toContain("review before sending");
@@ -267,7 +267,7 @@ describe("rewrite workspace surface copy", () => {
   it("shows the AI Signal meter in history details", () => {
     expect(historyListSource).toContain('from "../landing/nat-bar"');
     expect(historyListSource).toContain("NatBar");
-    expect(historyListSource).toContain("AI Signal · before vs after");
+    expect(historyListSource).toContain("AI Signal (naturalness) · before vs after");
     expect(historyListSource).toContain("Draft {detail.draftSignal}%");
     expect(historyListSource).toContain("Rewrite {detail.rewriteSignal}%");
     expect(historyListSource).toContain("A third-party reference signal");
@@ -314,7 +314,7 @@ describe("rewrite workspace surface copy", () => {
   });
 
   it("keeps legal copy aligned with AI Signal, review, and retention naming", () => {
-    expect(termsSource).toContain("AI Signal percentages");
+    expect(termsSource).toContain("AI Signal (naturalness) percentages");
     expect(termsSource).toContain("reference signals for comparison");
     expect(termsSource).not.toMatch(/tone check/i);
 

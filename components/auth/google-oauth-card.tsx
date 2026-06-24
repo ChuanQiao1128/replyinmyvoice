@@ -80,7 +80,7 @@ const sideHighlights = {
   "sign-up": [
     "Redeem a trial code for 3 rewrites",
     "Verify your email before the workspace opens",
-    "Keep facts and tone checks tied to your account",
+    "Keep facts and AI Signal results tied to your account",
   ],
   reset: [
     "Reset access without leaving the app",

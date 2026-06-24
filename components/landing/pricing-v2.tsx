@@ -37,7 +37,7 @@ export function PricingV2() {
             </p>
             <ul className="plan-list">
               <li>Trial code unlocks 3 successful rewrites</li>
-              <li>Tone check before and after</li>
+              <li>AI Signal (naturalness) before and after</li>
               <li>Warm and Direct tone presets</li>
               <li>Facts-preserved view</li>
             </ul>

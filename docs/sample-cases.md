@@ -7,7 +7,7 @@ pairs a stiff, templated "rough draft" with a natural, fact-preserving rewrite
 in the sender's own voice. Every fact in a rewrite is also present in its draft
 and context — the rewrite changes the voice, not the information.
 
-The "AI-like signal" values shown below are representative homepage figures (a
+The "naturalness" values shown below are representative homepage figures (a
 high draft reading dropping to a low rewrite reading). The `landing-demo-samples`
 test keeps `components/landing/sample-cases.ts` aligned with the context, draft,
 rewrite, and signal values documented here.
@@ -18,8 +18,8 @@ rewrite, and signal values documented here.
 - Used on homepage: yes
 - Incoming context: Daniel emails to say he was out sick for Friday's quiz and is anxious about both his grade and the essay deadline.
 - Tone preset: Warm
-- Draft AI-like signal: 74%
-- Rewrite AI-like signal: 10%
+- Draft naturalness: 74%
+- Rewrite naturalness: 10%
 - Score change: -64 pts
 - Preserved facts checklist: makeup quiz this Tuesday at lunch in Room 204, bring only a pen, essay deadline moved from Monday to Wednesday, office hours Thursday 3:00–4:00 PM. Keep it reassuring; do not add new facts.
 
@@ -37,8 +37,8 @@ Rewritten reply:
 - Used on homepage: yes
 - Incoming context: Jonah is comparing two vendors and wants the final numbers plus whether onboarding can start before June 1.
 - Tone preset: Warm
-- Draft AI-like signal: 69%
-- Rewrite AI-like signal: 12%
+- Draft naturalness: 69%
+- Rewrite naturalness: 12%
 - Score change: -57 pts
 - Preserved facts checklist: $1,800/month for 25 seats, one-time $650 onboarding fee, earliest kickoff May 28, full setup ~5 business days after the signed contract and data access, can start before June 1 but completion not guaranteed.
 
@@ -56,8 +56,8 @@ Rewritten reply:
 - Used on homepage: yes
 - Incoming context: You need to tell your manager Dana the redesign is slipping and get her to choose between two options before Friday's client call.
 - Tone preset: Direct
-- Draft AI-like signal: 82%
-- Rewrite AI-like signal: 7%
+- Draft naturalness: 82%
+- Rewrite naturalness: 7%
 - Score change: -75 pts
 - Preserved facts checklist: design assets landed late, original June 6 launch at risk, Option A (launch June 6 with reduced scope, defer blog and careers pages), Option B (full scope, launch June 13), recommend Option A, decision needed before Friday's client call.
 
@@ -75,8 +75,8 @@ Rewritten reply:
 - Used on homepage: yes
 - Incoming context: A recruiter, Priya, cold-emails about a Senior PM role at a fintech startup, lists a comp range, and asks if you're open to a chat this week.
 - Tone preset: Warm
-- Draft AI-like signal: 88%
-- Rewrite AI-like signal: 8%
+- Draft naturalness: 88%
+- Rewrite naturalness: 8%
 - Score change: -80 pts
 - Preserved facts checklist: Senior Product Manager role at a fintech startup, comp range $160,000–$185,000, open to an intro chat this week (Wednesday or Thursday afternoon), not actively looking. Do not invent a company name.
 
@@ -87,3 +87,22 @@ Rough draft:
 Rewritten reply:
 
 > Hi Priya — thanks for reaching out, this one actually caught my eye. I'm happy where I am right now, so I'm not actively looking, but a Senior PM role at a fintech startup is the kind of thing I'd at least want to hear more about before I say no to it. The $160–185k range you mentioned is in the right ballpark for me, so we wouldn't be wasting each other's time on that front. Before we book a call, a couple of quick things that'd help me figure out if it's worth both our time: is the role remote or hybrid, how big is the product team right now, and is this backfilling someone or a brand-new seat? On timing, this week works fine — I'm pretty open Wednesday or Thursday afternoon, so send a couple of slots and I'll grab one. Fair warning: I'm not in any rush to move, so I'll be upfront about whether it's a real fit rather than just taking the meeting for the sake of it. But genuinely, thanks for thinking of me — let's talk.
+
+## AI-Assisted Draft
+
+- Category: Polishing an AI-drafted customer reply
+- Used on homepage: yes
+- Incoming context: You drafted a refund reply to a customer, Mara, with an AI assistant; it is accurate but sounds generic and corporate, and you want it to sound like you while keeping the numbers and the refund window exact.
+- Tone preset: Warm
+- Draft naturalness: 80%
+- Rewrite naturalness: 11%
+- Score change: -69 pts
+- Preserved facts checklist: prorated refund available within 14 days of renewal, cancellation was 3 days into the new term, $89 annual subscription, refund to the original payment method, 5 to 7 business days to appear. Do not invent a company name or new terms.
+
+Rough draft:
+
+> Dear Mara, Thank you for reaching out to us regarding your recent cancellation, and please accept our sincere appreciation for your continued patronage. We completely understand your concerns and are more than happy to assist. Please be advised that, in accordance with our refund policy, customers are eligible to receive a prorated refund provided that the request is submitted within fourteen (14) days of the renewal date. As your cancellation occurred merely three days into the new term, you are indeed eligible for a prorated refund of your $89 annual subscription. The refund will be processed to your original payment method, and you may reasonably expect it to appear within five (5) to seven (7) business days. Should you have any further questions or require additional assistance, please do not hesitate to contact us. We value your business immensely and sincerely hope to have the opportunity to serve you again in the future.
+
+Rewritten reply:
+
+> Hi Mara — good news, you're all set for a refund. You cancelled just 3 days into the new term, so you're well inside our 14-day window, which means you get a prorated refund on the $89 annual plan. I'll send it back to the card you originally paid with, and it usually lands within 5 to 7 business days. If it hasn't shown up by then, just reply here and I'll chase it down for you. Sorry it didn't work out this time — and if you ever decide to come back, your old setup will be right where you left it.

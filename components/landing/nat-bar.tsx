@@ -39,7 +39,7 @@ export function NatBar({ before, after, animate = false }: NatBarProps) {
     <div
       className="nat-bar"
       role="img"
-      aria-label={`Draft signal ${before} percent, rewrite signal ${after} percent`}
+      aria-label={`Draft AI Signal ${before} percent, rewrite AI Signal ${after} percent`}
     >
       <div className="nat-track" />
       <div className="nat-before" style={{ width: `${b}%` }} />

@@ -10,9 +10,9 @@ const trustItems = [
     p: "Use it when you know what happened but the wording feels too stiff, too vague, or sharper than you mean.",
   },
   {
-    k: "Tone check",
+    k: "AI Signal",
     h: "A reference, not a promise",
-    p: "Tone check helps compare drafts while you remain the person who reviews the reply and decides what to send.",
+    p: "The AI Signal is a naturalness reference that helps compare drafts while you remain the person who reviews the reply and decides what to send.",
   },
   {
     k: "Billing",
