@@ -57,9 +57,15 @@ public static class QualityGateChain
         reasons.AddRange(boundaryResult.Reasons);
         reasons.AddRange(sendabilityResult.Issues.Select(i => $"{i.Kind}: {i.Detail}"));
 
+        // Boundary polarity is observed (reported in BoundaryPass / FlippedBoundaries) but does NOT gate.
+        // The deterministic marker check is too false-positive-prone on real output: a faithful rewrite
+        // routinely re-expresses an incidental negation ("not ours" -> "their office handles it", "if you
+        // do not reply by X" -> "reply by X") without the literal marker, and the T0 quality audit found
+        // zero real boundary flips — every flag was a false positive. Boundary-polarity drift is the LLM
+        // FidelityJudge's job (a later, separate lever). The deterministic chain gates on the parts that
+        // stay false-positive-free: facts, protected-term/object substitution, and sendability.
         var passed = factResult.Passed
             && protectedResult.Passed
-            && boundaryResult.Passed
             && sendabilityResult.Passed;
 
         return new QualityGateReport(
