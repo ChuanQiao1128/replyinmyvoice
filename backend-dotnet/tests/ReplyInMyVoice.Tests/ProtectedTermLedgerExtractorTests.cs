@@ -151,6 +151,35 @@ public class ProtectedTermLedgerExtractorTests
     }
 
     [Fact]
+    public void Build_drops_sentence_initial_common_words_misread_as_names_but_keeps_real_names()
+    {
+        // PersonRegex (\b[A-Z][a-z]{2,}\b) grabs sentence-initial "After"/"What" as Person facts. Left as
+        // exact-required terms they false-fail the gate when a faithful rewrite rephrases the opening, so
+        // Build must drop the sentence-initial-only ones while keeping a real name used in a name position.
+        const string draft =
+            "Hi Daniel, your makeup quiz is Tuesday. After that, the deadline moves. What else helps?";
+
+        var ledger = ProtectedTermLedgerExtractor.Build(
+            draft,
+            new RewriteFactLedger(new[]
+            {
+                Fact("Daniel", RewriteFactCategory.Person),
+                Fact("After", RewriteFactCategory.Person),
+                Fact("What", RewriteFactCategory.Person),
+            }),
+            Array.Empty<string>());
+
+        ledger.Terms.Should().Contain(t => t.Text == "Daniel");   // real name after a greeting -> kept
+        ledger.Terms.Should().NotContain(t => t.Text == "After"); // sentence-initial noise -> dropped
+        ledger.Terms.Should().NotContain(t => t.Text == "What");
+
+        // And the gate no longer false-fails a faithful rephrase of the opening.
+        ProtectedTermGate.Check(
+            "Hi Daniel, the makeup quiz is Tuesday, then the deadline moves. Anything else that helps?",
+            ledger).Passed.Should().BeTrue();
+    }
+
+    [Fact]
     public void Common_all_caps_words_are_not_treated_as_acronyms()
     {
         var ledger = ProtectedTermLedgerExtractor.Build(
