@@ -58,7 +58,7 @@ public sealed class OpenAiCompatibleRewriteModelClient(
             }
 
             RecordProviderCall(stopwatch, usage, success: true, errorCode: null);
-            return new RewriteModelResult(candidate.Trim(), true, null);
+            return new RewriteModelResult(RewriteOutputStyle.Apply(candidate).Trim(), true, null);
         }
         catch (OperationCanceledException)
         {
@@ -106,6 +106,7 @@ public sealed class OpenAiCompatibleRewriteModelClient(
                     Do not add professional-advice redirects such as "ask your accountant/lawyer/doctor" unless the source facts explicitly provide that next step.
                     Prefer concise, concrete wording over generic email templates, especially when the rough draft is short.
                     Format the reply as a send-ready email. Keep the draft's greeting if it has one, or open with a short greeting that uses the recipient's name when the facts give it. Group the body into two to four short paragraphs by topic (acknowledge, then the key facts or status, then the next step) separated by blank lines, rather than one dense block or a separate line for every sentence. Close with a brief, natural sign-off; if the facts do not give a sender name, use a simple close such as "Best," without inventing a name, role, or team.
+                    Write with plain punctuation. Do not use em dashes (long dashes); use commas, periods, parentheses, or separate sentences instead.
                     Avoid stock filler like "thank you for reaching out", "I completely understand", or "looking forward"; a short plain sign-off is fine, but do not pad with generic template lines.
                     Do not add unsupported judgment labels such as dismissive, careless, rude, negligent, or unprofessional.
                     Do not invent promises, discounts, timelines, policies, people, or outcomes.
