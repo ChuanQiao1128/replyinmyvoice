@@ -214,7 +214,7 @@ describe("rewrite workspace surface copy", () => {
   it("sets wait expectations, allows cancellation, and announces results accessibly", () => {
     expect(workspaceSource).toContain("rewriteSlowPathDelayMs = 35000");
     expect(workspaceSource).toContain("Usually 10–60 seconds.");
-    expect(workspaceSource).toContain("Still working — longer than usual.");
+    expect(workspaceSource).toContain("Still working, longer than usual.");
     expect(workspaceSource).toContain("cancelRewrite");
     expect(workspaceSource).toContain("AbortController");
     expect(workspaceSource).toContain("pollRewriteAttempt(attemptId, abortController.signal)");

@@ -43,7 +43,7 @@ const useCases = [
     icon: "A",
     title: "Polish an AI draft",
     k: "06",
-    body: "Paste a reply you drafted with AI and make it sound like you — without losing a number, date, or policy.",
+    body: "Paste a reply you drafted with AI and make it sound like you, without losing a number, date, or policy.",
     snippet:
       "Please be advised that you are eligible for a prorated refund in accordance with our policy.",
   },
@@ -85,7 +85,7 @@ export function UseCases() {
             <p className="uc-body">{feature.body}</p>
             <ul className="uc-points">
               <li>Keeps your reason and dates intact</li>
-              <li>Warm or Direct — your call</li>
+              <li>Warm or Direct, your call</li>
               <li>Copy-ready in a single pass</li>
             </ul>
             <div className="uc-snippet">

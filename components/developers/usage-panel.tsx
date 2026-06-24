@@ -419,7 +419,7 @@ export function UsagePanel() {
                 {formatPeriodEnd(summary.periodEnd)}.
               </p>
               <p className="mt-3 text-sm text-ink/65">
-                Only succeeded rewrites consume credits — web and API rewrites share this balance; polling and failed jobs are free.
+                Only succeeded rewrites consume credits, web and API rewrites share this balance; polling and failed jobs are free.
               </p>
 
               {exhausted ? (

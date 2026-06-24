@@ -20,7 +20,7 @@ export function Naturalness() {
             </h2>
             <p className="lede">
               The AI Signal compares the draft and rewrite using a third-party
-              writing signal. It&apos;s a reference — not a guarantee. You always
+              writing signal. It&apos;s a reference, not a guarantee. You always
               review before sending.
             </p>
           </div>
@@ -53,7 +53,7 @@ export function Naturalness() {
           <div className="nat-aside">
             <h3>Use the score, then make the call.</h3>
             <p>
-              The score is a useful sanity check — not a green light. A lower
+              The score is a useful sanity check, not a green light. A lower
               number generally means the rewrite reads less stiff or generic.
             </p>
             <p>

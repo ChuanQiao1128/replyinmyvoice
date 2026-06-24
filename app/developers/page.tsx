@@ -43,17 +43,17 @@ const pathCards = [
 
 const integrationBenefits = [
   {
-    title: "REST API — build it into your product",
+    title: "REST API: build it into your product",
     benefits: [
-      "Two-endpoint contract: submit a draft, poll the job — plain JSON, no SDK required (an official TypeScript SDK exists if you want one).",
+      "Two-endpoint contract: submit a draft, poll the job. Plain JSON, no SDK required (an official TypeScript SDK exists if you want one).",
       "Only succeeded rewrites consume credits. Failed jobs, rejected requests, and polling are free.",
       "Safe retries with Idempotency-Key, documented rate-limit headers, and a published OpenAPI spec.",
     ],
   },
   {
-    title: "MCP server — give it to your agent",
+    title: "MCP server: give it to your agent",
     benefits: [
-      "Works inside Claude Code, Claude Desktop, Cursor, Codex, and any MCP host — no integration code.",
+      "Works inside Claude Code, Claude Desktop, Cursor, Codex, and any MCP host, no integration code.",
       "Install in one step: a Cursor deep link or a single claude mcp add command.",
       "Two simple tools (rewrite_email, get_rewrite_result) your agent can call mid-workflow.",
       "Same key and same balance as the REST API and the web workspace.",
@@ -111,7 +111,7 @@ const legalLinks = [
   },
 ];
 
-const evaluationTrialClaim = "A trial code unlocks 3 trial rewrites — no card.";
+const evaluationTrialClaim = "A trial code unlocks 3 trial rewrites, no card.";
 
 export default function DevelopersPage() {
   return (
@@ -182,7 +182,7 @@ export default function DevelopersPage() {
                   Try it in the workspace <span className="btn-arrow">→</span>
                 </Link>
                 <Link href="/pricing#pro" className="btn btn-ghost">
-                  Unlock the API — NZ$19.90/mo
+                  Unlock the API · NZ$19.90/mo
                 </Link>
               </div>
             </div>

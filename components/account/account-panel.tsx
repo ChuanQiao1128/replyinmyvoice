@@ -898,7 +898,7 @@ export function AccountPanel(props: Props = {}) {
           <div className={shell.statLabel}>Rewrites left</div>
           <div className={shell.statValue}>{usageCopy(account)}</div>
           <div className={shell.statSub}>
-            Successful rewrites only — failed checks are not charged
+            Successful rewrites only. Failed checks are not charged
           </div>
         </div>
         <div className={shell.statCard}>

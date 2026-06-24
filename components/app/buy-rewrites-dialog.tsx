@@ -41,7 +41,7 @@ export const workspacePacks: WorkspacePack[] = [
     allowance: "30 rewrites",
     term: "Valid 90 days",
     unitPrice: "≈ NZ$0.23 / rewrite",
-    description: "Best price per rewrite — most people start here.",
+    description: "Best price per rewrite, most people start here.",
     cta: "Get Value Pack",
     badge: "Most popular",
     highlight: true,
