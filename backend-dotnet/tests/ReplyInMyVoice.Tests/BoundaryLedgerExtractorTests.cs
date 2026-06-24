@@ -76,4 +76,22 @@ public class BoundaryLedgerExtractorTests
         var faithful = BoundaryGate.Check("I cannot waive the forty dollar fee for late returns.", ledger);
         faithful.Passed.Should().BeTrue();
     }
+
+    [Fact]
+    public void Soft_first_person_volition_is_not_a_boundary_but_a_hard_refusal_is()
+    {
+        var ledger = new RewriteFactLedger(new[]
+        {
+            Fact("I do not want any of them to get lost", RewriteFactCategory.NegativeConstraint),
+            Fact("I cannot waive the late fee", RewriteFactCategory.NegativeConstraint),
+        });
+
+        var items = BoundaryLedgerExtractor.FromFactLedger(ledger);
+
+        // Soft volition ("I do not want...") is a preference, not a policy constraint -> dropped, so a
+        // faithful affirmative rephrase ("I'll make sure each is handled") is not a false flip.
+        items.Should().NotContain(b => b.Text.Contains("get lost"));
+        // A hard capability refusal is still a boundary.
+        items.Should().Contain(b => b.Text.Contains("late fee"));
+    }
 }
